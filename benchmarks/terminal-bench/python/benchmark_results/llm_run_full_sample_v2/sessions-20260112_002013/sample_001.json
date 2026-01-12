@@ -1,0 +1,29 @@
+{
+  "session_id": "session_sample_001_20260112_001915",
+  "task_id": "sample_001",
+  "success": true,
+  "commands": [
+    {
+      "command": "ls -la /workspace",
+      "stdout": "total 8\ndrwxr-xr-x 2 root root 4096 Jan 12 08:19 .\ndrwxr-xr-x 1 root root 4096 Jan 12 08:19 ..\n",
+      "stderr": "",
+      "exit_code": 0,
+      "execution_time_ms": 43.94698143005371
+    },
+    {
+      "command": "cat << 'ELIZAEOF' > /workspace/hello.py\nprint(\"Hello, World!\")\nELIZAEOF",
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0,
+      "execution_time_ms": 47.454118728637695
+    },
+    {
+      "command": "python3 /workspace/hello.py",
+      "stdout": "Hello, World!\n",
+      "stderr": "",
+      "exit_code": 0,
+      "execution_time_ms": 49.45111274719238
+    }
+  ],
+  "total_tokens": 1877
+}

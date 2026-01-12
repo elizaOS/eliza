@@ -1,0 +1,250 @@
+{
+  "results": [
+    {
+      "task_id": "retail_001",
+      "domain": "retail",
+      "trial_number": 1,
+      "success": true,
+      "tool_call_accuracy": 0.25,
+      "policy_compliance": 1.0,
+      "response_quality": 0.6328358208955224,
+      "goal_achieved": true,
+      "duration_ms": 5475.874185562134,
+      "turns_used": 2,
+      "tool_calls_made": [
+        {
+          "tool_name": "initiate_return",
+          "arguments": {
+            "order_id": "ORD-12345",
+            "items": [],
+            "reason": "The headphones don't fit well."
+          },
+          "result": {
+            "success": true,
+            "return_id": "RET-ORD-12345",
+            "status": "initiated",
+            "return_label_url": "https://returns.example.com/label/RET-ORD-12345",
+            "instructions": "Print the return label and ship the items within 14 days."
+          },
+          "status": "correct",
+          "error_message": null
+        }
+      ],
+      "policy_violations": [],
+      "error": null
+    }
+  ],
+  "domain_reports": {
+    "retail": {
+      "domain": "TauDomain.RETAIL",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_tool_accuracy": 0.25,
+      "average_policy_compliance": 1.0,
+      "average_response_quality": 0.6328358208955224,
+      "average_turns": 2.0,
+      "average_duration_ms": 5475.874185562134,
+      "pass_k_metrics": {
+        "1": {
+          "k": 1,
+          "pass_rate": 1.0,
+          "trials_passed": 1,
+          "total_trials": 1
+        },
+        "2": {
+          "k": 2,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 1
+        },
+        "4": {
+          "k": 4,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 1
+        },
+        "8": {
+          "k": 8,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 1
+        }
+      },
+      "results": [
+        {
+          "task_id": "retail_001",
+          "domain": "TauDomain.RETAIL",
+          "trial_number": 1,
+          "tool_calls_made": [
+            {
+              "tool_name": "initiate_return",
+              "arguments": {
+                "order_id": "ORD-12345",
+                "items": [],
+                "reason": "The headphones don't fit well."
+              },
+              "result": {
+                "success": true,
+                "return_id": "RET-ORD-12345",
+                "status": "initiated",
+                "return_label_url": "https://returns.example.com/label/RET-ORD-12345",
+                "instructions": "Print the return label and ship the items within 14 days."
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.04315376281738281
+            }
+          ],
+          "tool_call_accuracy": 0.25,
+          "tool_selection_accuracy": 0.5,
+          "parameter_accuracy": 0.0,
+          "conversation_history": [],
+          "response_generated": "I have successfully initiated the return process for your order #ORD-12345. Your return ID is RET-ORD-12345, and the status is now \"initiated.\" You can print the return label using the following link: [Return Label](https://returns.example.com/label/RET-ORD-12345). Please make sure to ship the items back within 14 days. If you have any further questions or need assistance, feel free to ask!",
+          "response_quality": 0.6328358208955224,
+          "policy_violations": [],
+          "policy_compliance": 1.0,
+          "goal_achieved": true,
+          "final_state": {
+            "state": {
+              "orders": {
+                "ORD-12345": {
+                  "order_id": "ORD-12345",
+                  "customer_id": "CUST-001",
+                  "status": "delivered",
+                  "items": [
+                    {
+                      "product_id": "PROD-001",
+                      "name": "Wireless Headphones",
+                      "price": 149.99,
+                      "quantity": 1
+                    },
+                    {
+                      "product_id": "PROD-002",
+                      "name": "Phone Case",
+                      "price": 29.99,
+                      "quantity": 2
+                    }
+                  ],
+                  "subtotal": 209.97,
+                  "shipping": 9.99,
+                  "tax": 18.9,
+                  "total": 238.86,
+                  "shipping_address": {
+                    "street": "123 Main St",
+                    "city": "San Francisco",
+                    "state": "CA",
+                    "zip": "94102"
+                  },
+                  "order_date": "2026-01-07T00:28:27.922342",
+                  "delivery_date": "2026-01-11T00:28:27.922363",
+                  "payment_method": "credit_card_ending_4242"
+                },
+                "ORD-12346": {
+                  "order_id": "ORD-12346",
+                  "customer_id": "CUST-001",
+                  "status": "processing",
+                  "items": [
+                    {
+                      "product_id": "PROD-003",
+                      "name": "Laptop Stand",
+                      "price": 79.99,
+                      "quantity": 1
+                    }
+                  ],
+                  "subtotal": 79.99,
+                  "shipping": 0.0,
+                  "tax": 7.2,
+                  "total": 87.19,
+                  "shipping_address": {
+                    "street": "123 Main St",
+                    "city": "San Francisco",
+                    "state": "CA",
+                    "zip": "94102"
+                  },
+                  "order_date": "2026-01-12T00:28:27.922373",
+                  "estimated_delivery": "2026-01-17T00:28:27.922376",
+                  "payment_method": "credit_card_ending_4242"
+                }
+              },
+              "customers": {
+                "CUST-001": {
+                  "customer_id": "CUST-001",
+                  "name": "John Smith",
+                  "email": "john.smith@example.com",
+                  "phone": "+1-555-0123",
+                  "membership_tier": "gold",
+                  "account_created": "2022-03-15",
+                  "total_orders": 12,
+                  "total_spent": 2450.0
+                }
+              },
+              "products": {
+                "PROD-001": {
+                  "product_id": "PROD-001",
+                  "name": "Wireless Headphones",
+                  "price": 149.99,
+                  "category": "Electronics",
+                  "in_stock": true,
+                  "stock_quantity": 50
+                },
+                "PROD-002": {
+                  "product_id": "PROD-002",
+                  "name": "Phone Case",
+                  "price": 29.99,
+                  "category": "Accessories",
+                  "in_stock": true,
+                  "stock_quantity": 200
+                },
+                "PROD-003": {
+                  "product_id": "PROD-003",
+                  "name": "Laptop Stand",
+                  "price": 79.99,
+                  "category": "Accessories",
+                  "in_stock": true,
+                  "stock_quantity": 25
+                }
+              },
+              "returns": {
+                "RET-ORD-12345": {
+                  "return_id": "RET-ORD-12345",
+                  "order_id": "ORD-12345",
+                  "items": [
+                    "PROD-001",
+                    "PROD-002"
+                  ],
+                  "reason": "The headphones don't fit well.",
+                  "status": "initiated",
+                  "created_at": "2026-01-12T00:28:31.189051",
+                  "return_label_url": "https://returns.example.com/label/RET-ORD-12345"
+                }
+              },
+              "refunds": {},
+              "policies": {
+                "return_window_days": 30,
+                "requires_receipt": false,
+                "restocking_fee_percent": 0,
+                "refund_processing_days": 5,
+                "free_shipping_threshold": 50.0
+              }
+            },
+            "tool_call_count": 1,
+            "initialized": true
+          },
+          "success": true,
+          "duration_ms": 5475.874185562134,
+          "turns_used": 2,
+          "tokens_used": 0,
+          "error": null,
+          "metrics": {
+            "planning_time_ms": 0.0,
+            "execution_time_ms": 0.04315376281738281,
+            "tool_invocation_count": 1.0,
+            "correct_tool_count": 0.0
+          }
+        }
+      ]
+    }
+  }
+}

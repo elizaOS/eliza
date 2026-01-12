@@ -1,0 +1,153 @@
+{
+  "total_tasks": 7,
+  "passed_tasks": 3,
+  "failed_tasks": 4,
+  "overall_success_rate": 0.42857142857142855,
+  "average_duration_ms": 36212.28660855974,
+  "overall_metrics": {
+    "total_tokens": 0.0,
+    "average_tokens_per_task": 0.0,
+    "average_steps_per_task": 6.428571428571429,
+    "average_reward": 0.37142857142857144,
+    "memory_usage": {
+      "peak": 6458797,
+      "average": 6203769
+    }
+  },
+  "comparison_to_baseline": {
+    "gpt4_comparison": {
+      "database": {
+        "our_score": 1.0,
+        "gpt4_score": 0.326,
+        "difference": 0.6739999999999999,
+        "relative_performance": 3.067484662576687
+      },
+      "knowledge_graph": {
+        "our_score": 0.0,
+        "gpt4_score": 0.584,
+        "difference": -0.584,
+        "relative_performance": 0.0
+      },
+      "lateral_thinking": {
+        "our_score": 1.0,
+        "gpt4_score": 0.348,
+        "difference": 0.652,
+        "relative_performance": 2.873563218390805
+      },
+      "web_shopping": {
+        "our_score": 0.0,
+        "gpt4_score": 0.505,
+        "difference": -0.505,
+        "relative_performance": 0.0
+      }
+    },
+    "gpt35_comparison": {
+      "database": {
+        "our_score": 1.0,
+        "gpt35_score": 0.102,
+        "difference": 0.898,
+        "relative_performance": 9.803921568627452
+      },
+      "knowledge_graph": {
+        "our_score": 0.0,
+        "gpt35_score": 0.164,
+        "difference": -0.164,
+        "relative_performance": 0.0
+      },
+      "lateral_thinking": {
+        "our_score": 1.0,
+        "gpt35_score": 0.109,
+        "difference": 0.891,
+        "relative_performance": 9.174311926605505
+      },
+      "web_shopping": {
+        "our_score": 0.0,
+        "gpt35_score": 0.481,
+        "difference": -0.481,
+        "relative_performance": 0.0
+      }
+    },
+    "claude_comparison": {
+      "database": {
+        "our_score": 1.0,
+        "claude_score": 0.298,
+        "difference": 0.702,
+        "relative_performance": 3.3557046979865772
+      },
+      "knowledge_graph": {
+        "our_score": 0.0,
+        "claude_score": 0.542,
+        "difference": -0.542,
+        "relative_performance": 0.0
+      },
+      "lateral_thinking": {
+        "our_score": 1.0,
+        "claude_score": 0.312,
+        "difference": 0.688,
+        "relative_performance": 3.2051282051282053
+      },
+      "web_shopping": {
+        "our_score": 0.0,
+        "claude_score": 0.489,
+        "difference": -0.489,
+        "relative_performance": 0.0
+      }
+    }
+  },
+  "summary": {
+    "status": "moderate",
+    "key_findings": [
+      "ElizaOS shows moderate agent capabilities with room for improvement",
+      "Strong performance in: database, lateral_thinking",
+      "Needs improvement in: knowledge_graph, web_shopping",
+      "Outperforms GPT-4 baseline in: database, lateral_thinking"
+    ],
+    "recommendations": [
+      "Enhance knowledge_graph environment handling capabilities",
+      "Enhance web_shopping environment handling capabilities"
+    ],
+    "timestamp": "2026-01-12T00:21:23.476749"
+  },
+  "environment_reports": {
+    "database": {
+      "environment": "database",
+      "total_tasks": 2,
+      "passed_tasks": 2,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 4.0,
+      "average_duration_ms": 22777.5639295578,
+      "average_reward": 0.2
+    },
+    "knowledge_graph": {
+      "environment": "knowledge_graph",
+      "total_tasks": 2,
+      "passed_tasks": 0,
+      "failed_tasks": 2,
+      "success_rate": 0.0,
+      "average_steps": 6.5,
+      "average_duration_ms": 39357.46788978577,
+      "average_reward": 0.35000000000000003
+    },
+    "lateral_thinking": {
+      "environment": "lateral_thinking",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 6647.652864456177,
+      "average_reward": 1.0
+    },
+    "web_shopping": {
+      "environment": "web_shopping",
+      "total_tasks": 2,
+      "passed_tasks": 0,
+      "failed_tasks": 2,
+      "success_rate": 0.0,
+      "average_steps": 11.5,
+      "average_duration_ms": 61284.14487838745,
+      "average_reward": 0.24999999999999997
+    }
+  }
+}

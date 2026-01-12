@@ -154,7 +154,10 @@ export class SwapAction {
       !params.fromToken.startsWith("0x") ||
       (params.fromToken.length !== 42 && params.fromToken !== NATIVE_TOKEN_ADDRESS)
     ) {
-      throw new EVMError(EVMErrorCode.INVALID_PARAMS, `Invalid fromToken address: ${params.fromToken}`);
+      throw new EVMError(
+        EVMErrorCode.INVALID_PARAMS,
+        `Invalid fromToken address: ${params.fromToken}`
+      );
     }
 
     if (

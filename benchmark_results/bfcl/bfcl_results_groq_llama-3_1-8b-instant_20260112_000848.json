@@ -1,0 +1,1326 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 50,
+    "timestamp": "2026-01-12T00:08:48Z",
+    "model": "groq/llama-3.1-8b-instant"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.25641025641025644,
+    "ast_accuracy": 0.24,
+    "exec_accuracy": 0.24,
+    "relevance_accuracy": 0.0,
+    "total_tests": 50,
+    "passed_tests": 12,
+    "failed_tests": 38,
+    "latency": {
+      "avg": 2202.7117013931274,
+      "p50": 2195.227861404419,
+      "p95": 2277.1859169006348,
+      "p99": 2390.2101516723633
+    },
+    "category_breakdown": {
+      "parallel": {
+        "total": 13,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 2191.797843346229
+      },
+      "java": {
+        "total": 13,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 2202.3069858551025
+      },
+      "rest_api": {
+        "total": 12,
+        "ast_accuracy": 1.0,
+        "exec_accuracy": 1.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 2226.16974512736
+      },
+      "sql": {
+        "total": 12,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 2191.5154457092285
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 0,
+      "argument_mismatch": 0,
+      "missing_call": 38,
+      "extra_call": 0,
+      "type_error": 0,
+      "relevance_error": 38,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.6305897435897436,
+    "gpt-4o": -0.6345897435897436,
+    "claude-3-opus": -0.5955897435897435,
+    "claude-3-sonnet": -0.5665897435897436,
+    "gemini-1.5-pro": -0.5885897435897436,
+    "qwen-2.5-72b": -0.4555897435897435,
+    "llama-3.1-70b": -0.4285897435897436,
+    "mistral-large": -0.4415897435897435
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "Overall score: 25.64% (AST: 24.00%, Exec: 24.00%)",
+      "Best category: rest_api (100.00%)",
+      "Needs work: sql (0.00%)",
+      "Behind llama-3.1-70b by 42.86%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation",
+      "Better detection of irrelevant queries"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "parallel_130",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2277.1859169006348,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "find_restaurants",
+          "arguments": {
+            "location": "New York",
+            "food_type": "Italian",
+            "number": 4,
+            "dietary_requirements": [
+              "vegan",
+              "gluten-free"
+            ]
+          }
+        },
+        {
+          "name": "find_restaurants",
+          "arguments": {
+            "location": "Los Angeles",
+            "food_type": "Italian",
+            "number": 4,
+            "dietary_requirements": [
+              "vegan",
+              "gluten-free"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_180",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2202.5368213653564,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "Open"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "Close"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "High"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "Low"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "Open"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "Close"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "High"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "Low"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_114",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2192.168951034546,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "analyze_dna_sequence",
+          "arguments": {
+            "sequence": "AGCTTAGCTA",
+            "reference_sequence": "AGCTTAGCTA",
+            "mutation_type": "insertion"
+          }
+        },
+        {
+          "name": "analyze_dna_sequence",
+          "arguments": {
+            "sequence": "AGCTTAGGCTA",
+            "reference_sequence": "AGCTTAGCTA",
+            "mutation_type": "insertion"
+          }
+        },
+        {
+          "name": "analyze_dna_sequence",
+          "arguments": {
+            "sequence": "AGCTTAGCTA",
+            "reference_sequence": "AGCTTAGCTA",
+            "mutation_type": "deletion"
+          }
+        },
+        {
+          "name": "analyze_dna_sequence",
+          "arguments": {
+            "sequence": "AGCTTAGGCTA",
+            "reference_sequence": "AGCTTAGCTA",
+            "mutation_type": "deletion"
+          }
+        },
+        {
+          "name": "analyze_dna_sequence",
+          "arguments": {
+            "sequence": "AGCTTAGCTA",
+            "reference_sequence": "AGCTTAGCTA",
+            "mutation_type": "substitution"
+          }
+        },
+        {
+          "name": "analyze_dna_sequence",
+          "arguments": {
+            "sequence": "AGCTTAGGCTA",
+            "reference_sequence": "AGCTTAGCTA",
+            "mutation_type": "substitution"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_172",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2191.509962081909,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "finance.predict_future_value",
+          "arguments": {
+            "present_value": 5000,
+            "annual_interest_rate": 0.05,
+            "compounding_periods_per_year": 1,
+            "time_years": 10
+          }
+        },
+        {
+          "name": "finance.predict_future_value",
+          "arguments": {
+            "present_value": 7000,
+            "annual_interest_rate": 0.04,
+            "compounding_periods_per_year": 1,
+            "time_years": 15
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_2",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2159.5261096954346,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "calculate_resistance",
+          "arguments": {
+            "length": 5,
+            "area": 0.01,
+            "resistivity": "copper"
+          }
+        },
+        {
+          "name": "calculate_resistance",
+          "arguments": {
+            "length": 5,
+            "area": 0.01,
+            "resistivity": "aluminum"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_192",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2192.8021907806396,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "get_news",
+          "arguments": {
+            "topic": "Climate Change",
+            "quantity": 5,
+            "region": "Europe"
+          }
+        },
+        {
+          "name": "get_news",
+          "arguments": {
+            "topic": "Artificial Intelligence",
+            "quantity": 5,
+            "region": "Europe"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_119",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2165.1558876037598,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "identify_bird",
+          "arguments": {
+            "color": "blue",
+            "habitat": "forest",
+            "size": "small"
+          }
+        },
+        {
+          "name": "identify_bird",
+          "arguments": {
+            "color": "black",
+            "habitat": "lake",
+            "size": "large"
+          }
+        },
+        {
+          "name": "identify_bird",
+          "arguments": {
+            "color": "brown",
+            "habitat": "desert",
+            "size": "medium"
+          }
+        },
+        {
+          "name": "identify_bird",
+          "arguments": {
+            "color": "green",
+            "habitat": "tropical rainforest",
+            "size": "large"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_158",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2181.974172592163,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "random.normalvariate",
+          "arguments": {
+            "mu": 5,
+            "sigma": 2
+          }
+        },
+        {
+          "name": "random.normalvariate",
+          "arguments": {
+            "mu": 10,
+            "sigma": 3
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_60",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2191.7922496795654,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "math.factorial",
+          "arguments": {
+            "number": 5
+          }
+        },
+        {
+          "name": "math.factorial",
+          "arguments": {
+            "number": 7
+          }
+        },
+        {
+          "name": "math.factorial",
+          "arguments": {
+            "number": 9
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_92",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2187.33811378479,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "get_shortest_driving_distance",
+          "arguments": {
+            "origin": "New York City",
+            "destination": "Los Angeles",
+            "unit": "miles"
+          }
+        },
+        {
+          "name": "get_shortest_driving_distance",
+          "arguments": {
+            "origin": "Los Angeles",
+            "destination": "Miami",
+            "unit": "miles"
+          }
+        },
+        {
+          "name": "get_shortest_driving_distance",
+          "arguments": {
+            "origin": "Miami",
+            "destination": "New York City",
+            "unit": "miles"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_103",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2156.5308570861816,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "entropy_change.calculate",
+          "arguments": {
+            "substance": "A",
+            "mass": 2,
+            "initial_temperature": 25,
+            "final_temperature": 75,
+            "pressure": 1
+          }
+        },
+        {
+          "name": "entropy_change.calculate",
+          "arguments": {
+            "substance": "A",
+            "mass": 2,
+            "initial_temperature": 10,
+            "final_temperature": 50,
+            "pressure": 1
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_124",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2199.622869491577,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "population_projections",
+          "arguments": {
+            "country": "Japan",
+            "years": 10,
+            "growth_rate": 0.01
+          }
+        },
+        {
+          "name": "population_projections",
+          "arguments": {
+            "country": "Japan",
+            "years": 10,
+            "growth_rate": 0.015
+          }
+        },
+        {
+          "name": "population_projections",
+          "arguments": {
+            "country": "India",
+            "years": 20,
+            "growth_rate": 0.021
+          }
+        },
+        {
+          "name": "population_projections",
+          "arguments": {
+            "country": "India",
+            "years": 20,
+            "growth_rate": 0.01
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_81",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2188.493013381958,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "TestObjectGraphAfterGC.doTesting",
+          "arguments": {
+            "testcaseData": "humongous-test-case.json",
+            "doGC": "customGarbageCollector",
+            "checker": "referenceChecker",
+            "gcLogName": "gc-analysis.log",
+            "shouldContain": [
+              "GC pause"
+            ],
+            "shouldNotContain": [
+              "OutOfMemoryError"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_51",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2197.528123855591,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "CCRUsageTransportAction.masterOperation",
+          "arguments": {
+            "task": "usageTask",
+            "request": "usageRequest",
+            "state": "clusterState",
+            "listener": "actionListener"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_12",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2210.7419967651367,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "ExasolExecutionContext.setCurrentSchema",
+          "arguments": {
+            "monitor": "progressMonitor",
+            "schemaName": "AnalyticsDB"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_54",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2199.7599601745605,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "AbstractTransportSearchableSnapshotsAction.shardOperation",
+          "arguments": {
+            "request": "snapshotRequest",
+            "shardRouting": "shardRouteInfo",
+            "task": "snapshotTask",
+            "listener": "operationListener"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_49",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2179.886817932129,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "convertEnumeratedValue",
+          "arguments": {
+            "key": "contenteditable",
+            "value": "plaintext-only"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_10",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2181.755781173706,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "JNIBridge.setLauncherInfo",
+          "arguments": {
+            "launcher": "/usr/local/bin/dbeaver",
+            "name": "DBeaverLauncher"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_46",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2193.7992572784424,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "vOe",
+          "arguments": {
+            "r": "packageInfo",
+            "e": "version",
+            "t": "1.2.3"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_13",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2220.064878463745,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "AltibaseGrantee.prepareObjectsStatement",
+          "arguments": {
+            "session": "JDBC_session",
+            "owner": "JohnDoe"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_17",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2234.100103378296,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "generateNotificationHandler",
+          "arguments": {
+            "app": "app",
+            "priorityLevel": 3,
+            "messagingService": "messagingSvc",
+            "notificationType": 2
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_86",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2235.7897758483887,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "argumenttypes001.runThis",
+          "arguments": {
+            "argv": [
+              "-v",
+              "--no-strict"
+            ],
+            "out": "debugOutput"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_63",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2197.651147842407,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "withinQuery",
+          "arguments": {
+            "field": "age",
+            "from": 30,
+            "to": 40,
+            "includeFrom": true,
+            "includeTo": false
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_52",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2202.5320529937744,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "SamlObjectSignerTests.getChildren",
+          "arguments": {
+            "node": "SAMLAssertionNode",
+            "node_type": "Element.class"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_66",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2315.9947395324707,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_42",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2262.3260021209717,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_27",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2207.0329189300537,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_51",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2197.382926940918,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_20",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2198.24481010437,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_47",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2213.710308074951,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_52",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2390.2101516723633,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_69",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2185.9383583068848,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_64",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2211.6079330444336,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_38",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2182.600975036621,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_4",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2165.708065032959,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_62",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 2183.2797527313232,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_93",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2175.726890563965,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Inventory",
+            "columns": [
+              "ProductID",
+              "ProductName",
+              "SupplierID",
+              "CategoryID",
+              "QuantityPerUnit",
+              "UnitPrice"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_80",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2204.827070236206,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "Employees",
+            "columns": [
+              "name",
+              "salaries"
+            ],
+            "conditions": [
+              "salaries > 5000"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_11",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2191.5860176086426,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "Physicists",
+            "columns": [
+              "name",
+              "research_topic"
+            ],
+            "conditions": "research_topic = 'Quantum Mechanics'"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_70",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2218.583822250366,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "sales",
+            "columns": [
+              "product_name",
+              "quantity_sold"
+            ],
+            "conditions": [
+              "product_name = 'Product X'",
+              "sale_date >= '2022-01-01'",
+              "sale_date <= '2022-03-31'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_90",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2193.6910152435303,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "employees",
+            "columns": [
+              "name",
+              "age",
+              "salary"
+            ],
+            "conditions": [
+              "age > 30"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_84",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2166.693925857544,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "customers",
+            "columns": [
+              "balance"
+            ],
+            "update_values": [
+              "1500"
+            ],
+            "conditions": [
+              "name = 'John Doe'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_9",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2197.455883026123,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "MathScores",
+            "columns": [
+              "StudentID",
+              "Name",
+              "TestScore",
+              "TestDate"
+            ],
+            "insert_values": [
+              "EW123",
+              "Emily Watson",
+              "95",
+              "2022-03-01"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_96",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2169.6577072143555,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "employees",
+            "conditions": [
+              "salary < 50000"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_33",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2172.189235687256,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Genes",
+            "columns": [
+              "GeneID",
+              "GeneName",
+              "Chromosome",
+              "StartLocation",
+              "EndLocation"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_61",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2168.894052505493,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "customers",
+            "columns": [
+              "AVG"
+            ],
+            "conditions": [
+              "purchase > 1000"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_14",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2201.817750930786,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "ExperimentData",
+            "columns": [
+              "DataValue"
+            ],
+            "update_values": [
+              10.0
+            ],
+            "conditions": [
+              "ExperimentID = EX123"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_29",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2237.0619773864746,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT INTO",
+            "table_name": "PeriodicTable",
+            "columns": [
+              "Element",
+              "AtomicNumber",
+              "Symbol",
+              "AtomicMass"
+            ],
+            "insert_values": [
+              "Neon",
+              10,
+              "Ne",
+              20.1797
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_167",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2195.227861404419,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "linear_regression.get_r_squared",
+          "arguments": {
+            "dataset_path": "/user/home/datasets/finance.csv",
+            "independent_variables": [
+              "income",
+              "age",
+              "education"
+            ],
+            "dependent_variable": "credit_score"
+          }
+        },
+        {
+          "name": "linear_regression.get_r_squared",
+          "arguments": {
+            "dataset_path": "/user/home/datasets/finance.csv",
+            "independent_variables": [
+              "income",
+              "age",
+              "credit_score"
+            ],
+            "dependent_variable": "education"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_93",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 2187.8879070281982,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "AbstractJarAgent.runJarAgent",
+          "arguments": {
+            "options": "trace log",
+            "inst": "appInstrumentation"
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

@@ -14,6 +14,7 @@ from elizaos_plugin_planning.benchmarks.types import (
 from elizaos_plugin_planning.benchmarks.benchmark_runner import BenchmarkRunner
 from elizaos_plugin_planning.benchmarks.realm_bench_adapter import RealmBenchAdapter
 from elizaos_plugin_planning.benchmarks.api_bank_adapter import ApiBankAdapter
+from elizaos_plugin_planning.benchmarks.cli import main as run_cli
 
 __all__ = [
     # Types
@@ -32,4 +33,6 @@ __all__ = [
     "BenchmarkRunner",
     "RealmBenchAdapter",
     "ApiBankAdapter",
+    # CLI
+    "run_cli",
 ]

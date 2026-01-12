@@ -1,0 +1,149 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 5,
+    "timestamp": "2026-01-11T23:58:28Z"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 1.0,
+    "ast_accuracy": 1.0,
+    "exec_accuracy": 1.0,
+    "relevance_accuracy": 0.0,
+    "total_tests": 5,
+    "passed_tests": 5,
+    "failed_tests": 0,
+    "latency": {
+      "avg": 162.01561490441514,
+      "p50": 185.8698360925912,
+      "p95": 195.98429465013876,
+      "p99": 195.98429465013876
+    },
+    "category_breakdown": {
+      "sql": {
+        "total": 1,
+        "ast_accuracy": 1.0,
+        "exec_accuracy": 1.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 185.8698360925912
+      },
+      "java": {
+        "total": 1,
+        "ast_accuracy": 1.0,
+        "exec_accuracy": 1.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 165.87978683905322
+      },
+      "parallel": {
+        "total": 2,
+        "ast_accuracy": 1.0,
+        "exec_accuracy": 1.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 131.1720784701463
+      },
+      "rest_api": {
+        "total": 1,
+        "ast_accuracy": 1.0,
+        "exec_accuracy": 1.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 195.98429465013876
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 0,
+      "argument_mismatch": 0,
+      "missing_call": 0,
+      "extra_call": 0,
+      "type_error": 0,
+      "relevance_error": 0,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": 0.11299999999999999,
+    "gpt-4o": 0.10899999999999999,
+    "claude-3-opus": 0.14800000000000002,
+    "claude-3-sonnet": 0.17700000000000005,
+    "gemini-1.5-pro": 0.15500000000000003,
+    "qwen-2.5-72b": 0.28800000000000003,
+    "llama-3.1-70b": 0.31499999999999995,
+    "mistral-large": 0.30200000000000005
+  },
+  "summary": {
+    "status": "excellent",
+    "key_findings": [
+      "Overall score: 100.00% (AST: 100.00%, Exec: 100.00%)",
+      "Best category: sql (100.00%)",
+      "Needs work: rest_api (100.00%)",
+      "Outperforms gpt-4o by 10.90%"
+    ],
+    "recommendations": [
+      "Better detection of irrelevant queries"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "sql_71",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 185.8698360925912,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "java_9",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 165.87978683905322,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_189",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 66.43442468397478,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_53",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 195.98429465013876,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_38",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 195.90973225631777,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,880 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 20,
+    "timestamp": "2026-01-12T00:05:30Z",
+    "model": "groq/llama-3.1-8b-instant"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.43076923076923074,
+    "ast_accuracy": 0.4,
+    "exec_accuracy": 0.4,
+    "relevance_accuracy": 1.0,
+    "total_tests": 20,
+    "passed_tests": 8,
+    "failed_tests": 12,
+    "latency": {
+      "avg": 512.5375628471375,
+      "p50": 470.28207778930664,
+      "p95": 1159.7139835357666,
+      "p99": 1159.7139835357666
+    },
+    "category_breakdown": {
+      "java": {
+        "total": 5,
+        "ast_accuracy": 0.8,
+        "exec_accuracy": 0.8,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 453.6664009094238
+      },
+      "rest_api": {
+        "total": 5,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 462.32919692993164
+      },
+      "sql": {
+        "total": 5,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 446.06122970581055
+      },
+      "parallel": {
+        "total": 5,
+        "ast_accuracy": 0.8,
+        "exec_accuracy": 0.8,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 688.0934238433838
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 1,
+      "argument_mismatch": 4,
+      "missing_call": 1,
+      "extra_call": 6,
+      "type_error": 0,
+      "relevance_error": 0,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.4562307692307693,
+    "gpt-4o": -0.4602307692307693,
+    "claude-3-opus": -0.42123076923076924,
+    "claude-3-sonnet": -0.3922307692307692,
+    "gemini-1.5-pro": -0.41423076923076924,
+    "qwen-2.5-72b": -0.28123076923076923,
+    "llama-3.1-70b": -0.2542307692307693,
+    "mistral-large": -0.2672307692307692
+  },
+  "summary": {
+    "status": "fair",
+    "key_findings": [
+      "Overall score: 43.08% (AST: 40.00%, Exec: 40.00%)",
+      "Best category: java (80.00%)",
+      "Needs work: sql (0.00%)",
+      "Behind llama-3.1-70b by 25.42%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "javascript_44",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 450.0889778137207,
+      "predicted_calls": [
+        {
+          "name": "skipThrough",
+          "arguments": {
+            "node": "currentNode",
+            "st": "nodeState",
+            "c": "processNode"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "skipThrough",
+          "arguments": {
+            "node": "currentNode",
+            "st": "nodeState",
+            "c": "processNode"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_21",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 333.91785621643066,
+      "predicted_calls": [
+        {
+          "name": "SessionHandler.exceptionCaught",
+          "arguments": {
+            "ctx": "nettyChannelContext",
+            "e": "ioExceptionEvent"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "SessionHandler.exceptionCaught",
+          "arguments": {
+            "ctx": "nettyChannelContext",
+            "e": "ioExceptionEvent"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_4",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 398.9260196685791,
+      "predicted_calls": [
+        {
+          "name": "emailFormatValidator",
+          "arguments": {
+            "email": "example@domain.com",
+            "domain": "domain.com"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "emailFormatValidator",
+          "arguments": {
+            "email": "example@domain.com",
+            "domain": "domain.com"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_35",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 744.293212890625,
+      "predicted_calls": [
+        {
+          "name": "RedissonConnection.bitOp",
+          "arguments": {
+            "destination": [
+              "user:online:both"
+            ],
+            "op": "BitOperation.AND",
+            "keys": [
+              "user:online:today",
+              "user:online:yesterday"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "RedissonConnection.bitOp",
+          "arguments": {
+            "op": "BitOperation.AND",
+            "destination": "user:online:both",
+            "keys": [
+              "user:online:today",
+              "user:online:yesterday"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_36",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 341.1059379577637,
+      "predicted_calls": [
+        {
+          "name": "updateBreak",
+          "arguments": {
+            "node": "breaknode",
+            "label": "loopEnd"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "updateBreak",
+          "arguments": {
+            "node": "breakNode",
+            "label": "loopEnd"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_0",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 444.9961185455322,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://timezone-by-location.p.rapidapi.com/timezone",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "timezone-by-location.p.rapidapi.com"
+            },
+            "params": {
+              "lat": "48.8584",
+              "lon": "2.2945",
+              "c": "1"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_69",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 293.12801361083984,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://date.nager.at/api/v3/LongWeekend/2023/CA"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_45",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 496.52791023254395,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://api.open-meteo.com/v1/forecast",
+            "params": {
+              "latitude": "35.6895",
+              "longitude": "139.6917",
+              "hourly": "[\"temperature_2m_max\",\"temperature_2m_min\",\"windspeed_10m_max\",\"precipitation_sum\"]",
+              "daily": "[\"temperature_2m_max\",\"temperature_2m_min\",\"precipitation_sum\"]",
+              "temperature_unit": "fahrenheit"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_26",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 473.2489585876465,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://yahoo-finance15.p.rapidapi.com/api/v1/markets/search",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "yahoo-finance15.p.rapidapi.com"
+            },
+            "params": {
+              "search": "Apple"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_18",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 603.7449836730957,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_80",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 465.49510955810547,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "Employees",
+            "columns": [
+              "name",
+              "salary"
+            ],
+            "conditions": [
+              "salary > 5000"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "Employees",
+            "columns": [
+              "name",
+              "salaries"
+            ],
+            "conditions": [
+              "salaries > 5000"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_55",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 363.8348579406738,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "products",
+            "update_values": [
+              "price = 20"
+            ],
+            "conditions": [
+              [
+                "category = 'Electronics'"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "products",
+            "columns": [
+              "price"
+            ],
+            "update_values": [
+              20
+            ],
+            "conditions": [
+              "category = 'Electronics'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_35",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 473.4759330749512,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "PlantSpecies",
+            "update_values": [
+              "AverageHeight = 150"
+            ],
+            "conditions": [
+              [
+                "Name = 'Sunflower'",
+                "AverageHeight < 150"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "PlantSpecies",
+            "columns": [
+              "AverageHeight"
+            ],
+            "update_values": [
+              150
+            ],
+            "conditions": "SpeciesName = 'Sunflower'"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_19",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 559.7531795501709,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "SoundSpeedExperiment",
+            "columns": [
+              "Medium",
+              "Speed",
+              "Temperature",
+              "ExperimentNumber"
+            ],
+            "insert_values": [
+              [
+                "air",
+                "343",
+                "20",
+                "1"
+              ]
+            ]
+          }
+        },
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "SoundSpeedExperiment",
+            "columns": [
+              "Medium",
+              "Speed",
+              "Temperature",
+              "ExperimentNumber"
+            ],
+            "insert_values": [
+              [
+                "water",
+                "1482",
+                "20",
+                "2"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "SoundSpeedExperiment",
+            "insert_values": [
+              "Air",
+              343,
+              20,
+              1
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_59",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 367.74706840515137,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "customer",
+            "columns": [
+              "customer_id",
+              "customer_name",
+              "customer_email",
+              "customer_address",
+              "customer_phone"
+            ],
+            "insert_values": [
+              [
+                "C1023",
+                "Jane Smith",
+                "janesmith@example.com",
+                "123 Main St, Anytown",
+                "987-654-3210"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "customer",
+            "columns": [
+              "customer_id",
+              "customer_name",
+              "customer_email",
+              "customer_address",
+              "customer_phone"
+            ],
+            "insert_values": [
+              "C1023",
+              "Jane Smith",
+              "janesmith@example.com",
+              "123 Main St, Anytown",
+              "987-654-3210"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_116",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 502.38800048828125,
+      "predicted_calls": [
+        {
+          "name": "calculate_genotype_frequency",
+          "arguments": {
+            "allele_frequency": 0.7,
+            "genotype": "AA"
+          }
+        },
+        {
+          "name": "calculate_genotype_frequency",
+          "arguments": {
+            "allele_frequency": 0.7,
+            "genotype": "Aa"
+          }
+        },
+        {
+          "name": "calculate_genotype_frequency",
+          "arguments": {
+            "allele_frequency": 0.7,
+            "genotype": "aa"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_genotype_frequency",
+          "arguments": {
+            "allele_frequency": 0.7,
+            "genotype": "AA"
+          }
+        },
+        {
+          "name": "calculate_genotype_frequency",
+          "arguments": {
+            "allele_frequency": 0.7,
+            "genotype": "Aa"
+          }
+        },
+        {
+          "name": "calculate_genotype_frequency",
+          "arguments": {
+            "allele_frequency": 0.7,
+            "genotype": "aa"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_110",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 1159.7139835357666,
+      "predicted_calls": [
+        {
+          "name": "cell_biology.function_lookup",
+          "arguments": {
+            "molecule": "ATP",
+            "organelle": "mitochondria",
+            "specific_function": true
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "cell_biology.function_lookup",
+          "arguments": {
+            "molecule": "ATP",
+            "organelle": "mitochondria",
+            "specific_function": true
+          }
+        },
+        {
+          "name": "cell_biology.function_lookup",
+          "arguments": {
+            "molecule": "DNA",
+            "organelle": "nucleus",
+            "specific_function": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_36",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 455.8401107788086,
+      "predicted_calls": [
+        {
+          "name": "paint_color_mixture",
+          "arguments": {
+            "paint_type": "Watercolor",
+            "color": "magenta"
+          }
+        },
+        {
+          "name": "paint_color_mixture",
+          "arguments": {
+            "paint_type": "Acrylic",
+            "color": "navy"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "paint_color_mixture",
+          "arguments": {
+            "paint_type": "Watercolor",
+            "color": "Magenta"
+          }
+        },
+        {
+          "name": "paint_color_mixture",
+          "arguments": {
+            "paint_type": "Acrylic",
+            "color": "Navy"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_194",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 470.28207778930664,
+      "predicted_calls": [
+        {
+          "name": "event_finder.find_upcoming",
+          "arguments": {
+            "location": "Los Angeles, CA",
+            "genre": "jazz",
+            "days_ahead": 14
+          }
+        },
+        {
+          "name": "event_finder.find_upcoming",
+          "arguments": {
+            "location": "Chicago, IL",
+            "genre": "rock",
+            "days_ahead": 10
+          }
+        },
+        {
+          "name": "event_finder.find_upcoming",
+          "arguments": {
+            "location": "Boston, MA",
+            "genre": "classical music",
+            "days_ahead": 7
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "event_finder.find_upcoming",
+          "arguments": {
+            "location": "Los Angeles, CA",
+            "genre": "jazz",
+            "days_ahead": 14
+          }
+        },
+        {
+          "name": "event_finder.find_upcoming",
+          "arguments": {
+            "location": "Chicago, IL",
+            "genre": "rock",
+            "days_ahead": 10
+          }
+        },
+        {
+          "name": "event_finder.find_upcoming",
+          "arguments": {
+            "location": "Boston, MA",
+            "genre": "classical music",
+            "days_ahead": 7
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_43",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 852.2429466247559,
+      "predicted_calls": [
+        {
+          "name": "concert_finder",
+          "arguments": {
+            "location": "San Francisco, California",
+            "music_genre": "rock",
+            "time_period": 30
+          }
+        },
+        {
+          "name": "concert_finder",
+          "arguments": {
+            "location": "San Francisco, California",
+            "music_genre": "jazz",
+            "time_period": 30
+          }
+        },
+        {
+          "name": "concert_finder",
+          "arguments": {
+            "location": "New York, New York",
+            "music_genre": "rock",
+            "time_period": 30
+          }
+        },
+        {
+          "name": "concert_finder",
+          "arguments": {
+            "location": "New York, New York",
+            "music_genre": "jazz",
+            "time_period": 30
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "concert_finder",
+          "arguments": {
+            "location": "San Francisco, California",
+            "music_genre": "rock",
+            "time_period": 30
+          }
+        },
+        {
+          "name": "concert_finder",
+          "arguments": {
+            "location": "San Francisco, California",
+            "music_genre": "jazz",
+            "time_period": 30
+          }
+        },
+        {
+          "name": "concert_finder",
+          "arguments": {
+            "location": "New York, New York",
+            "music_genre": "rock",
+            "time_period": 30
+          }
+        },
+        {
+          "name": "concert_finder",
+          "arguments": {
+            "location": "New York, New York",
+            "music_genre": "jazz",
+            "time_period": 30
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

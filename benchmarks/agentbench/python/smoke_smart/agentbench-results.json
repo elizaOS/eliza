@@ -1,0 +1,180 @@
+{
+  "total_tasks": 5,
+  "passed_tasks": 4,
+  "failed_tasks": 1,
+  "overall_success_rate": 0.8,
+  "average_duration_ms": 4.167413711547852,
+  "overall_metrics": {
+    "total_tokens": 0.0,
+    "average_tokens_per_task": 0.0,
+    "average_steps_per_task": 4.6,
+    "average_reward": 0.47000000000000003,
+    "memory_usage": {
+      "peak": 34334,
+      "average": 34334
+    }
+  },
+  "comparison_to_baseline": {
+    "gpt4_comparison": {
+      "operating_system": {
+        "our_score": 1.0,
+        "gpt4_score": 0.421,
+        "difference": 0.579,
+        "relative_performance": 2.375296912114014
+      },
+      "database": {
+        "our_score": 1.0,
+        "gpt4_score": 0.326,
+        "difference": 0.6739999999999999,
+        "relative_performance": 3.067484662576687
+      },
+      "knowledge_graph": {
+        "our_score": 1.0,
+        "gpt4_score": 0.584,
+        "difference": 0.41600000000000004,
+        "relative_performance": 1.7123287671232879
+      },
+      "lateral_thinking": {
+        "our_score": 1.0,
+        "gpt4_score": 0.348,
+        "difference": 0.652,
+        "relative_performance": 2.873563218390805
+      },
+      "web_shopping": {
+        "our_score": 0.0,
+        "gpt4_score": 0.505,
+        "difference": -0.505,
+        "relative_performance": 0.0
+      }
+    },
+    "gpt35_comparison": {
+      "operating_system": {
+        "our_score": 1.0,
+        "gpt35_score": 0.36,
+        "difference": 0.64,
+        "relative_performance": 2.7777777777777777
+      },
+      "database": {
+        "our_score": 1.0,
+        "gpt35_score": 0.102,
+        "difference": 0.898,
+        "relative_performance": 9.803921568627452
+      },
+      "knowledge_graph": {
+        "our_score": 1.0,
+        "gpt35_score": 0.164,
+        "difference": 0.836,
+        "relative_performance": 6.097560975609756
+      },
+      "lateral_thinking": {
+        "our_score": 1.0,
+        "gpt35_score": 0.109,
+        "difference": 0.891,
+        "relative_performance": 9.174311926605505
+      },
+      "web_shopping": {
+        "our_score": 0.0,
+        "gpt35_score": 0.481,
+        "difference": -0.481,
+        "relative_performance": 0.0
+      }
+    },
+    "claude_comparison": {
+      "operating_system": {
+        "our_score": 1.0,
+        "claude_score": 0.395,
+        "difference": 0.605,
+        "relative_performance": 2.531645569620253
+      },
+      "database": {
+        "our_score": 1.0,
+        "claude_score": 0.298,
+        "difference": 0.702,
+        "relative_performance": 3.3557046979865772
+      },
+      "knowledge_graph": {
+        "our_score": 1.0,
+        "claude_score": 0.542,
+        "difference": 0.45799999999999996,
+        "relative_performance": 1.8450184501845017
+      },
+      "lateral_thinking": {
+        "our_score": 1.0,
+        "claude_score": 0.312,
+        "difference": 0.688,
+        "relative_performance": 3.2051282051282053
+      },
+      "web_shopping": {
+        "our_score": 0.0,
+        "claude_score": 0.489,
+        "difference": -0.489,
+        "relative_performance": 0.0
+      }
+    }
+  },
+  "summary": {
+    "status": "strong",
+    "key_findings": [
+      "ElizaOS demonstrates strong agent capabilities across tested environments",
+      "Strong performance in: operating_system, database, knowledge_graph, lateral_thinking",
+      "Needs improvement in: web_shopping",
+      "Outperforms GPT-4 baseline in: operating_system, database, knowledge_graph, lateral_thinking"
+    ],
+    "recommendations": [
+      "Enhance web_shopping environment handling capabilities"
+    ],
+    "timestamp": "2026-01-12T00:10:51.418088"
+  },
+  "environment_reports": {
+    "operating_system": {
+      "environment": "operating_system",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 13.406038284301758,
+      "average_reward": 0.1
+    },
+    "database": {
+      "environment": "database",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 5.0,
+      "average_duration_ms": 2.7892589569091797,
+      "average_reward": 0.5
+    },
+    "knowledge_graph": {
+      "environment": "knowledge_graph",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 1.5118122100830078,
+      "average_reward": 0.0
+    },
+    "lateral_thinking": {
+      "environment": "lateral_thinking",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 0.7390975952148438,
+      "average_reward": 1.0
+    },
+    "web_shopping": {
+      "environment": "web_shopping",
+      "total_tasks": 1,
+      "passed_tasks": 0,
+      "failed_tasks": 1,
+      "success_rate": 0.0,
+      "average_steps": 15.0,
+      "average_duration_ms": 2.3908615112304688,
+      "average_reward": 0.7500000000000001
+    }
+  }
+}

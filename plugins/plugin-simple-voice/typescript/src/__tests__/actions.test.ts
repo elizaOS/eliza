@@ -23,7 +23,7 @@ describe("SayAloudAction", () => {
 
     it("has examples", () => {
       expect(sayAloudAction.examples).toBeDefined();
-      expect(sayAloudAction.examples!.length).toBeGreaterThan(0);
+      expect(sayAloudAction.examples?.length).toBeGreaterThan(0);
     });
   });
 

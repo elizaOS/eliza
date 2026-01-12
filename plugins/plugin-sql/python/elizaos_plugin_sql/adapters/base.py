@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from abc import abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from elizaos.types import (
@@ -730,7 +730,7 @@ class BaseSQLAdapter(IDatabaseAdapter):
             result = await session.execute(select(CacheTable).where(CacheTable.key == key))
             cache_entry = result.scalar_one_or_none()
             if cache_entry:
-                if cache_entry.expires_at and cache_entry.expires_at < datetime.utcnow():
+                if cache_entry.expires_at and cache_entry.expires_at < datetime.now(timezone.utc):
                     await self.delete_cache(key)
                     return None
                 return cache_entry.value

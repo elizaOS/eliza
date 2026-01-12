@@ -1,0 +1,158 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-11T23:36:41.654485",
+    "duration_seconds": 0.0789031982421875,
+    "total_tasks": 2,
+    "categories": [
+      "sequential",
+      "reactive",
+      "complex",
+      "multi_agent",
+      "tool_use",
+      "reasoning"
+    ],
+    "config": {
+      "execution_model": "dag",
+      "max_steps": 15,
+      "enable_adaptation": true,
+      "model": "gpt-4"
+    }
+  },
+  "summary": {
+    "status": "excellent",
+    "success_rate": "100.0%",
+    "estimated_rank": 1,
+    "key_findings": [
+      "Excellent planning performance: 100.0% success rate",
+      "Strongest category: sequential (100.0%)",
+      "High plan quality scores achieved",
+      "Excellent execution efficiency",
+      "Outperforms 7/7 baseline models",
+      "Estimated leaderboard rank: #1"
+    ],
+    "recommendations": [
+      "Continue testing with larger datasets",
+      "Compare with additional model configurations"
+    ]
+  },
+  "metrics": {
+    "overall_success_rate": 1.0,
+    "total_tasks": 2,
+    "passed_tasks": 2,
+    "failed_tasks": 0,
+    "avg_plan_quality": 1.0,
+    "avg_goal_achievement": 1.0,
+    "avg_efficiency": 0.9994680530495114,
+    "avg_planning_time_ms": 9.80287790298462,
+    "avg_execution_time_ms": 29.408633708953857,
+    "avg_latency_ms": 39.21151161193848,
+    "total_tokens": 1590,
+    "category_success_rates": {
+      "sequential": 1.0
+    }
+  },
+  "category_breakdown": {
+    "sequential": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "success_rate": 1.0,
+      "avg_plan_quality": 1.0,
+      "avg_efficiency": 0.9994680530495114
+    }
+  },
+  "leaderboard_comparison": {
+    "GPT-4": {
+      "their_score": 69.3,
+      "our_score": 100.0,
+      "difference": 30.700000000000003,
+      "better": 1.0,
+      "sequential_diff": 21.5
+    },
+    "GPT-4-Turbo": {
+      "their_score": 72.9,
+      "our_score": 100.0,
+      "difference": 27.099999999999994,
+      "better": 1.0,
+      "sequential_diff": 17.900000000000006
+    },
+    "Claude-3-Opus": {
+      "their_score": 67.2,
+      "our_score": 100.0,
+      "difference": 32.8,
+      "better": 1.0,
+      "sequential_diff": 23.799999999999997
+    },
+    "Claude-3-Sonnet": {
+      "their_score": 62.7,
+      "our_score": 100.0,
+      "difference": 37.3,
+      "better": 1.0,
+      "sequential_diff": 28.599999999999994
+    },
+    "Gemini-Pro": {
+      "their_score": 58.7,
+      "our_score": 100.0,
+      "difference": 41.3,
+      "better": 1.0,
+      "sequential_diff": 31.5
+    },
+    "Llama-3-70B": {
+      "their_score": 52.9,
+      "our_score": 100.0,
+      "difference": 47.1,
+      "better": 1.0,
+      "sequential_diff": 37.7
+    },
+    "Mixtral-8x7B": {
+      "their_score": 45.8,
+      "our_score": 100.0,
+      "difference": 54.2,
+      "better": 1.0,
+      "sequential_diff": 45.4
+    }
+  },
+  "results": [
+    {
+      "task_id": "seq-001",
+      "category": "sequential",
+      "success": true,
+      "steps_executed": 3,
+      "actions_performed": [
+        "sum_two_elements",
+        "multiply_two_elements",
+        "compute_log"
+      ],
+      "duration_ms": 34.654855728149414,
+      "metrics": {
+        "planning_time": 8.663713932037354,
+        "execution_time": 25.99114179611206,
+        "plan_quality": 1.0,
+        "goal_achievement": 1.0,
+        "efficiency": 0.9994224190711976
+      },
+      "error": null
+    },
+    {
+      "task_id": "seq-002",
+      "category": "sequential",
+      "success": true,
+      "steps_executed": 4,
+      "actions_performed": [
+        "fetch_data",
+        "filter_data",
+        "sort_data",
+        "export_data"
+      ],
+      "duration_ms": 43.76816749572754,
+      "metrics": {
+        "planning_time": 10.942041873931885,
+        "execution_time": 32.826125621795654,
+        "plan_quality": 1.0,
+        "goal_achievement": 1.0,
+        "efficiency": 0.9995136870278252
+      },
+      "error": null
+    }
+  ]
+}

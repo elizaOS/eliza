@@ -1,0 +1,39 @@
+[
+  {
+    "task_id": "seq-001",
+    "success": true,
+    "steps": 3,
+    "actions": [
+      "sum_two_elements",
+      "multiply_two_elements",
+      "compute_log"
+    ],
+    "duration_ms": 34.654855728149414,
+    "metrics": {
+      "planning_time": 8.663713932037354,
+      "execution_time": 25.99114179611206,
+      "plan_quality": 1.0,
+      "goal_achievement": 1.0,
+      "efficiency": 0.9994224190711976
+    }
+  },
+  {
+    "task_id": "seq-002",
+    "success": true,
+    "steps": 4,
+    "actions": [
+      "fetch_data",
+      "filter_data",
+      "sort_data",
+      "export_data"
+    ],
+    "duration_ms": 43.76816749572754,
+    "metrics": {
+      "planning_time": 10.942041873931885,
+      "execution_time": 32.826125621795654,
+      "plan_quality": 1.0,
+      "goal_achievement": 1.0,
+      "efficiency": 0.9995136870278252
+    }
+  }
+]

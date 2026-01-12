@@ -27,9 +27,26 @@
         "vitest": "^4.0.0",
       },
     },
-    "apps/code": {
+    "examples/aws": {
+      "name": "@elizaos/aws-examples",
+      "version": "2.0.0",
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.9.3",
+      },
+    },
+    "examples/cloudflare": {
+      "name": "elizaos-cloudflare-worker",
+      "version": "2.0.0",
+      "devDependencies": {
+        "@cloudflare/workers-types": "^4.20241205.0",
+        "wrangler": "^3.99.0",
+      },
+    },
+    "examples/code": {
       "name": "eliza-code",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "bin": {
         "eliza-code": "./dist/index.js",
       },
@@ -58,26 +75,9 @@
         "vitest": "^4.0.0",
       },
     },
-    "examples/aws": {
-      "name": "@elizaos/aws-examples",
-      "version": "1.0.0",
-      "devDependencies": {
-        "@types/node": "^25.0.3",
-        "ts-node": "^10.9.2",
-        "typescript": "^5.9.3",
-      },
-    },
-    "examples/cloudflare": {
-      "name": "elizaos-cloudflare-worker",
-      "version": "1.0.0",
-      "devDependencies": {
-        "@cloudflare/workers-types": "^4.20241205.0",
-        "wrangler": "^3.99.0",
-      },
-    },
     "examples/elizagotchi": {
       "name": "elizagotchi",
-      "version": "0.1.0",
+      "version": "2.0.0",
       "dependencies": {
         "react": "19.2.3",
         "react-dom": "19.2.3",
@@ -92,7 +92,7 @@
     },
     "examples/gcp": {
       "name": "@elizaos/gcp-examples",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@types/node": "^25.0.3",
         "typescript": "^5.9.3",
@@ -100,11 +100,11 @@
     },
     "examples/html": {
       "name": "@elizaos-examples/html-eliza",
-      "version": "0.0.1",
+      "version": "2.0.0",
     },
     "examples/next": {
       "name": "eliza-next-example",
-      "version": "0.1.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
@@ -124,7 +124,7 @@
     },
     "examples/react": {
       "name": "eliza-react-example",
-      "version": "0.1.0",
+      "version": "2.0.0",
       "dependencies": {
         "@electric-sql/pglite": "^0.3.3",
         "@elizaos/core": "workspace:*",
@@ -145,7 +145,7 @@
     },
     "examples/react-wasm": {
       "name": "eliza-react-wasm-rust",
-      "version": "0.1.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/plugin-eliza-classic": "workspace:*",
         "@elizaos/plugin-localdb": "workspace:*",
@@ -164,7 +164,7 @@
     },
     "examples/vercel": {
       "name": "@elizaos/vercel-edge-examples",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
@@ -181,14 +181,14 @@
     },
     "packages/@schemas": {
       "name": "@elizaos/schemas",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@bufbuild/buf": "^1.47.2",
       },
     },
     "packages/elizaos": {
       "name": "elizaos",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "bin": {
         "elizaos": "./dist/cli.js",
       },
@@ -204,7 +204,7 @@
     },
     "packages/interop": {
       "name": "@elizaos/interop",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -215,19 +215,19 @@
     },
     "packages/prompts": {
       "name": "@elizaos/prompts",
-      "version": "1.0.0",
+      "version": "2.0.0",
     },
     "packages/python": {
       "name": "@elizaos/python",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
     },
     "packages/rust": {
       "name": "@elizaos/rust",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
     },
     "packages/typescript": {
       "name": "@elizaos/core",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "dependencies": {
         "@bufbuild/protobuf": "^2.10.2",
         "@langchain/core": "^1.1.12",
@@ -255,7 +255,7 @@
     },
     "plugins/plugin-anthropic": {
       "name": "@elizaos/plugin-anthropic-root",
-      "version": "1.5.12",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -268,7 +268,7 @@
     },
     "plugins/plugin-anthropic/typescript": {
       "name": "@elizaos/plugin-anthropic",
-      "version": "1.5.12",
+      "version": "2.0.0",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.9",
         "@elizaos/core": "workspace:*",
@@ -284,7 +284,7 @@
     },
     "plugins/plugin-bluesky": {
       "name": "@elizaos/plugin-bluesky-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@atproto/api": "^0.13.14",
         "@atproto/identity": "^0.4.4",
@@ -303,7 +303,7 @@
     },
     "plugins/plugin-bluesky/typescript": {
       "name": "@elizaos/plugin-bluesky",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@atproto/api": "^0.13.14",
         "@atproto/identity": "^0.4.4",
@@ -325,7 +325,7 @@
     },
     "plugins/plugin-browser": {
       "name": "@elizaos/plugin-browser-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -338,7 +338,7 @@
     },
     "plugins/plugin-browser/typescript": {
       "name": "@elizaos/plugin-browser",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "axios": "^1.7.7",
         "ws": "^8.18.0",
@@ -355,7 +355,7 @@
     },
     "plugins/plugin-discord": {
       "name": "@elizaos/plugin-discord-root",
-      "version": "1.3.6",
+      "version": "2.0.0",
       "dependencies": {
         "@discordjs/opus": "^0.10.0",
         "@discordjs/rest": "2.4.3",
@@ -381,7 +381,7 @@
     },
     "plugins/plugin-discord/typescript": {
       "name": "@elizaos/plugin-discord",
-      "version": "1.3.6",
+      "version": "2.0.0",
       "dependencies": {
         "@discordjs/opus": "^0.10.0",
         "@discordjs/rest": "2.4.3",
@@ -409,7 +409,7 @@
     },
     "plugins/plugin-eliza-classic": {
       "name": "@elizaos/plugin-eliza-classic-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -422,7 +422,7 @@
     },
     "plugins/plugin-eliza-classic/typescript": {
       "name": "@elizaos/plugin-eliza-classic",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -434,7 +434,7 @@
     },
     "plugins/plugin-elizacloud": {
       "name": "@elizaos/plugin-elizacloud-root",
-      "version": "1.7.4",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -447,7 +447,7 @@
     },
     "plugins/plugin-elizacloud/typescript": {
       "name": "@elizaos/plugin-elizacloud",
-      "version": "1.7.4",
+      "version": "2.0.0",
       "dependencies": {
         "@ai-sdk/openai": "^2.0.88",
         "@elizaos/core": "workspace:*",
@@ -467,7 +467,7 @@
     },
     "plugins/plugin-evm": {
       "name": "@elizaos/plugin-evm-root",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@lifi/data-types": "5.15.5",
@@ -503,9 +503,39 @@
         "typescript": "^5.9.3",
       },
     },
+    "plugins/plugin-experience": {
+      "name": "@elizaos/plugin-experience-root",
+      "version": "2.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "uuid": "^13.0.0",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.3.11",
+        "@types/bun": "^1.3.5",
+        "@types/node": "^25.0.3",
+        "@types/uuid": "^11.0.0",
+        "typescript": "^5.9.3",
+      },
+    },
+    "plugins/plugin-experience/typescript": {
+      "name": "@elizaos/plugin-experience",
+      "version": "2.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "uuid": "^13.0.0",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.3.11",
+        "@types/bun": "^1.3.5",
+        "@types/node": "^25.0.3",
+        "@types/uuid": "^11.0.0",
+        "typescript": "^5.9.3",
+      },
+    },
     "plugins/plugin-farcaster": {
       "name": "@elizaos/plugin-farcaster-root",
-      "version": "1.7.2",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -518,7 +548,7 @@
     },
     "plugins/plugin-farcaster/typescript": {
       "name": "@elizaos/plugin-farcaster",
-      "version": "1.7.2",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@neynar/nodejs-sdk": "^3.34.0",
@@ -535,7 +565,7 @@
     },
     "plugins/plugin-forms": {
       "name": "@elizaos/plugin-forms-root",
-      "version": "1.2.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "uuid": "^13.0.0",
@@ -552,7 +582,7 @@
     },
     "plugins/plugin-forms/typescript": {
       "name": "@elizaos/plugin-forms",
-      "version": "1.2.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "uuid": "^13.0.0",
@@ -569,7 +599,7 @@
     },
     "plugins/plugin-github": {
       "name": "@elizaos/plugin-github-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -582,7 +612,7 @@
     },
     "plugins/plugin-github/typescript": {
       "name": "@elizaos/plugin-github",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@octokit/rest": "^21.0.0",
@@ -600,7 +630,7 @@
     },
     "plugins/plugin-goals": {
       "name": "@elizaos/plugin-goals-root",
-      "version": "1.2.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -613,7 +643,7 @@
     },
     "plugins/plugin-goals/typescript": {
       "name": "@elizaos/plugin-goals",
-      "version": "1.2.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@radix-ui/react-checkbox": "^1.1.4",
@@ -633,7 +663,7 @@
     },
     "plugins/plugin-google-genai": {
       "name": "@elizaos/plugin-google-genai-root",
-      "version": "1.1.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -646,7 +676,7 @@
     },
     "plugins/plugin-google-genai/typescript": {
       "name": "@elizaos/plugin-google-genai",
-      "version": "1.1.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@google/genai": "^1.5.1",
@@ -661,7 +691,7 @@
     },
     "plugins/plugin-groq": {
       "name": "@elizaos/plugin-groq-root",
-      "version": "1.0.4",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -674,7 +704,7 @@
     },
     "plugins/plugin-groq/typescript": {
       "name": "@elizaos/plugin-groq",
-      "version": "1.0.4",
+      "version": "2.0.0",
       "dependencies": {
         "@ai-sdk/groq": "^3.0.4",
         "@elizaos/core": "workspace:*",
@@ -689,7 +719,7 @@
     },
     "plugins/plugin-inmemorydb": {
       "name": "@elizaos/plugin-inmemorydb-root",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -702,7 +732,7 @@
     },
     "plugins/plugin-inmemorydb/typescript": {
       "name": "@elizaos/plugin-inmemorydb",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -714,7 +744,7 @@
     },
     "plugins/plugin-instagram": {
       "name": "@elizaos/plugin-instagram-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -727,7 +757,7 @@
     },
     "plugins/plugin-instagram/typescript": {
       "name": "@elizaos/plugin-instagram",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
@@ -740,7 +770,7 @@
     },
     "plugins/plugin-knowledge": {
       "name": "@elizaos/plugin-knowledge-root",
-      "version": "1.6.1",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -753,7 +783,7 @@
     },
     "plugins/plugin-knowledge/typescript": {
       "name": "@elizaos/plugin-knowledge",
-      "version": "1.6.1",
+      "version": "2.0.0",
       "dependencies": {
         "@ai-sdk/anthropic": "^2.0.17",
         "@ai-sdk/google": "^2.0.14",
@@ -794,7 +824,7 @@
     },
     "plugins/plugin-linear": {
       "name": "@elizaos/plugin-linear-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -807,7 +837,7 @@
     },
     "plugins/plugin-linear/typescript": {
       "name": "@elizaos/plugin-linear",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@linear/sdk": "^51.0.0",
@@ -821,7 +851,7 @@
     },
     "plugins/plugin-local-ai": {
       "name": "@elizaos/plugin-local-ai-root",
-      "version": "1.2.1",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@huggingface/transformers": "^3.5.1",
@@ -841,7 +871,7 @@
     },
     "plugins/plugin-local-ai/typescript": {
       "name": "@elizaos/plugin-local-ai",
-      "version": "1.2.1",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@huggingface/transformers": "^3.5.1",
@@ -863,7 +893,7 @@
     },
     "plugins/plugin-localdb": {
       "name": "@elizaos/plugin-localdb-root",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -876,7 +906,7 @@
     },
     "plugins/plugin-localdb/typescript": {
       "name": "@elizaos/plugin-localdb",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -888,7 +918,7 @@
     },
     "plugins/plugin-mcp": {
       "name": "@elizaos/plugin-mcp-root",
-      "version": "1.7.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.7.0",
@@ -906,7 +936,7 @@
     },
     "plugins/plugin-mcp/typescript": {
       "name": "@elizaos/plugin-mcp",
-      "version": "1.7.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.7.0",
@@ -924,7 +954,7 @@
     },
     "plugins/plugin-memory": {
       "name": "@elizaos/plugin-memory-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -937,7 +967,7 @@
     },
     "plugins/plugin-memory/typescript": {
       "name": "@elizaos/plugin-memory",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -951,7 +981,7 @@
     },
     "plugins/plugin-n8n": {
       "name": "@elizaos/plugin-n8n-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -964,7 +994,7 @@
     },
     "plugins/plugin-n8n/typescript": {
       "name": "@elizaos/plugin-n8n",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "fs-extra": "^11.2.0",
@@ -982,7 +1012,7 @@
     },
     "plugins/plugin-ollama": {
       "name": "@elizaos/plugin-ollama-root",
-      "version": "1.2.4",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -995,7 +1025,7 @@
     },
     "plugins/plugin-ollama/typescript": {
       "name": "@elizaos/plugin-ollama",
-      "version": "1.2.4",
+      "version": "2.0.0",
       "dependencies": {
         "@ai-sdk/ui-utils": "^1.2.8",
         "@elizaos/core": "workspace:*",
@@ -1011,7 +1041,7 @@
     },
     "plugins/plugin-openai": {
       "name": "@elizaos/plugin-openai-root",
-      "version": "1.6.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1024,7 +1054,7 @@
     },
     "plugins/plugin-openai/typescript": {
       "name": "@elizaos/plugin-openai",
-      "version": "1.6.0",
+      "version": "2.0.0",
       "dependencies": {
         "@ai-sdk/openai": "^3.0.7",
         "@elizaos/core": "workspace:*",
@@ -1044,7 +1074,7 @@
     },
     "plugins/plugin-openrouter": {
       "name": "@elizaos/plugin-openrouter-root",
-      "version": "1.5.17",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1057,7 +1087,7 @@
     },
     "plugins/plugin-openrouter/typescript": {
       "name": "@elizaos/plugin-openrouter",
-      "version": "1.5.17",
+      "version": "2.0.0",
       "dependencies": {
         "@ai-sdk/openai": "^2.0.32",
         "@ai-sdk/ui-utils": "1.2.11",
@@ -1077,7 +1107,7 @@
     },
     "plugins/plugin-pdf": {
       "name": "@elizaos/plugin-pdf-root",
-      "version": "1.0.2",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1090,7 +1120,7 @@
     },
     "plugins/plugin-pdf/typescript": {
       "name": "@elizaos/plugin-pdf",
-      "version": "1.0.2",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "pdfjs-dist": "3.11.174",
@@ -1103,7 +1133,7 @@
     },
     "plugins/plugin-planning": {
       "name": "@elizaos/plugin-planning-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1116,7 +1146,7 @@
     },
     "plugins/plugin-planning/typescript": {
       "name": "@elizaos/plugin-planning",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1129,7 +1159,7 @@
     },
     "plugins/plugin-polymarket": {
       "name": "@elizaos/plugin-polymarket-root",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-evm": "workspace:*",
@@ -1151,7 +1181,7 @@
     },
     "plugins/plugin-polymarket/typescript": {
       "name": "@elizaos/plugin-polymarket",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-evm": "workspace:*",
@@ -1198,7 +1228,7 @@
     },
     "plugins/plugin-rss": {
       "name": "@elizaos/plugin-rss-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1211,7 +1241,7 @@
     },
     "plugins/plugin-rss/typescript": {
       "name": "@elizaos/plugin-rss",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -1224,7 +1254,7 @@
     },
     "plugins/plugin-s3-storage": {
       "name": "@elizaos/plugin-s3-storage-root",
-      "version": "1.0.3",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1237,7 +1267,7 @@
     },
     "plugins/plugin-s3-storage/typescript": {
       "name": "@elizaos/plugin-s3-storage",
-      "version": "1.0.3",
+      "version": "2.0.0",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.705.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
@@ -1251,7 +1281,7 @@
     },
     "plugins/plugin-shell": {
       "name": "@elizaos/plugin-shell-root",
-      "version": "1.2.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1264,7 +1294,7 @@
     },
     "plugins/plugin-shell/typescript": {
       "name": "@elizaos/plugin-shell",
-      "version": "1.2.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "cross-spawn": "^7.0.6",
@@ -1280,7 +1310,7 @@
     },
     "plugins/plugin-simple-voice": {
       "name": "@elizaos/plugin-simple-voice-root",
-      "version": "0.1.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1293,7 +1323,7 @@
     },
     "plugins/plugin-simple-voice/typescript": {
       "name": "@elizaos/plugin-simple-voice",
-      "version": "0.1.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "sam-js": "^0.3.1",
@@ -1311,7 +1341,7 @@
     },
     "plugins/plugin-solana": {
       "name": "@elizaos/plugin-solana-root",
-      "version": "1.2.6",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1324,7 +1354,7 @@
     },
     "plugins/plugin-solana/typescript": {
       "name": "@elizaos/plugin-solana",
-      "version": "1.2.6",
+      "version": "2.0.0",
       "dependencies": {
         "@solana/spl-token": "0.4.14",
         "@solana/spl-token-metadata": "^0.1.6",
@@ -1348,7 +1378,7 @@
     },
     "plugins/plugin-sql": {
       "name": "@elizaos/plugin-sql-root",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1361,7 +1391,7 @@
     },
     "plugins/plugin-sql/typescript": {
       "name": "@elizaos/plugin-sql",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0",
       "dependencies": {
         "@electric-sql/pglite": "^0.3.3",
         "@elizaos/core": "workspace:*",
@@ -1380,7 +1410,7 @@
     },
     "plugins/plugin-tee": {
       "name": "@elizaos/plugin-tee-root",
-      "version": "1.0.2",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1393,7 +1423,7 @@
     },
     "plugins/plugin-tee/typescript": {
       "name": "@elizaos/plugin-tee",
-      "version": "1.0.2",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@phala/dstack-sdk": "0.1.11",
@@ -1409,7 +1439,7 @@
     },
     "plugins/plugin-telegram": {
       "name": "@elizaos/plugin-telegram-root",
-      "version": "1.6.2",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1422,7 +1452,7 @@
     },
     "plugins/plugin-telegram/typescript": {
       "name": "@elizaos/plugin-telegram",
-      "version": "1.6.2",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@telegraf/types": "7.1.0",
@@ -1439,7 +1469,7 @@
     },
     "plugins/plugin-todo": {
       "name": "@elizaos/plugin-todo-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "drizzle-orm": "^0.30.10",
@@ -1456,7 +1486,7 @@
     },
     "plugins/plugin-todo/typescript": {
       "name": "@elizaos/plugin-todo",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "drizzle-orm": "^0.30.10",
@@ -1474,7 +1504,7 @@
     },
     "plugins/plugin-vercel-ai-gateway": {
       "name": "@elizaos/plugin-vercel-ai-gateway-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1487,7 +1517,7 @@
     },
     "plugins/plugin-vercel-ai-gateway/typescript": {
       "name": "@elizaos/plugin-vercel-ai-gateway",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -1501,7 +1531,7 @@
     },
     "plugins/plugin-vision": {
       "name": "@elizaos/plugin-vision-root",
-      "version": "1.2.1",
+      "version": "2.0.0",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -1514,7 +1544,7 @@
     },
     "plugins/plugin-vision/typescript": {
       "name": "@elizaos/plugin-vision",
-      "version": "1.2.1",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@tensorflow-models/coco-ssd": "^2.2.3",
@@ -1541,7 +1571,7 @@
     },
     "plugins/plugin-xai": {
       "name": "@elizaos/plugin-xai-root",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "twitter-api-v2": "^1.17.2",
@@ -1554,7 +1584,7 @@
     },
     "plugins/plugin-xai/typescript": {
       "name": "@elizaos/plugin-xai",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "twitter-api-v2": "^1.28.0",
@@ -1902,6 +1932,10 @@
     "@elizaos/plugin-evm": ["@elizaos/plugin-evm@workspace:plugins/plugin-evm/typescript"],
 
     "@elizaos/plugin-evm-root": ["@elizaos/plugin-evm-root@workspace:plugins/plugin-evm"],
+
+    "@elizaos/plugin-experience": ["@elizaos/plugin-experience@workspace:plugins/plugin-experience/typescript"],
+
+    "@elizaos/plugin-experience-root": ["@elizaos/plugin-experience-root@workspace:plugins/plugin-experience"],
 
     "@elizaos/plugin-farcaster": ["@elizaos/plugin-farcaster@workspace:plugins/plugin-farcaster/typescript"],
 
@@ -3715,7 +3749,7 @@
 
     "electron-to-chromium": ["electron-to-chromium@1.5.267", "", {}, "sha512-0Drusm6MVRXSOJpGbaSVgcQsuB4hEkMpHXaVstcPmhu5LIedxs1xNK/nIxmQIU/RPC0+1/o0AVZfBTkTNJOdUw=="],
 
-    "eliza-code": ["eliza-code@workspace:apps/code"],
+    "eliza-code": ["eliza-code@workspace:examples/code"],
 
     "eliza-next-example": ["eliza-next-example@workspace:examples/next"],
 

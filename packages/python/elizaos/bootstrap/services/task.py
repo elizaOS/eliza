@@ -54,13 +54,16 @@ class TaskService(Service):
         self._tasks: dict[UUID, Task] = {}
         self._runtime: IAgentRuntime | None = None
 
-    async def start(self, runtime: IAgentRuntime) -> None:
-        self._runtime = runtime
+    @classmethod
+    async def start(cls, runtime: IAgentRuntime) -> TaskService:
+        service = cls()
+        service._runtime = runtime
         runtime.logger.info(
             "Task service started",
             src="service:task",
             agentId=str(runtime.agent_id),
         )
+        return service
 
     async def stop(self) -> None:
         if self._runtime:

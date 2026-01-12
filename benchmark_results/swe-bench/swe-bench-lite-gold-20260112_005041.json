@@ -1,0 +1,57 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-12T00:50:41.909110",
+    "variant": "lite",
+    "config": {
+      "mode": "gold",
+      "use_gold_patches": true,
+      "max_steps": 30,
+      "max_instances": 2,
+      "repo_filter": null,
+      "model": "gpt-4",
+      "use_docker_eval": true,
+      "timeout_seconds": 1800,
+      "swebench_namespace": "ghcr.io/epoch-research",
+      "swebench_max_workers": 1
+    }
+  },
+  "summary": {
+    "total_instances": 2,
+    "resolved": 2,
+    "unresolved": 0,
+    "resolve_rate": 1.0,
+    "apply_rate": 1.0,
+    "average_duration": 0.0,
+    "average_tokens": 0.0
+  },
+  "by_repository": {
+    "astropy/astropy": {
+      "total": 2,
+      "resolved": 2,
+      "resolve_rate": 1.0
+    }
+  },
+  "errors": {},
+  "results": [
+    {
+      "instance_id": "astropy__astropy-12907",
+      "success": true,
+      "patch_status": "tests_passed",
+      "duration_seconds": 0.0,
+      "tokens_used": 0,
+      "tests_passed": 15,
+      "tests_failed": 0,
+      "error": null
+    },
+    {
+      "instance_id": "astropy__astropy-14182",
+      "success": true,
+      "patch_status": "tests_passed",
+      "duration_seconds": 0.0,
+      "tokens_used": 0,
+      "tests_passed": 10,
+      "tests_failed": 0,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "total_tasks": 1,
+  "passed_tasks": 1,
+  "failed_tasks": 0,
+  "overall_success_rate": 1.0,
+  "average_duration_ms": 2.366304397583008,
+  "overall_metrics": {
+    "total_tokens": 0.0,
+    "average_tokens_per_task": 0.0,
+    "average_steps_per_task": 5.0,
+    "average_reward": 0.8500000000000001,
+    "memory_usage": {
+      "peak": 0,
+      "average": 0
+    }
+  },
+  "comparison_to_baseline": {
+    "gpt4_comparison": {
+      "web_shopping": {
+        "our_score": 1.0,
+        "gpt4_score": 0.505,
+        "difference": 0.495,
+        "relative_performance": 1.9801980198019802
+      }
+    },
+    "gpt35_comparison": {
+      "web_shopping": {
+        "our_score": 1.0,
+        "gpt35_score": 0.481,
+        "difference": 0.519,
+        "relative_performance": 2.079002079002079
+      }
+    },
+    "claude_comparison": {
+      "web_shopping": {
+        "our_score": 1.0,
+        "claude_score": 0.489,
+        "difference": 0.511,
+        "relative_performance": 2.044989775051125
+      }
+    }
+  },
+  "summary": {
+    "status": "strong",
+    "key_findings": [
+      "ElizaOS demonstrates strong agent capabilities across tested environments",
+      "Strong performance in: web_shopping",
+      "Outperforms GPT-4 baseline in: web_shopping"
+    ],
+    "recommendations": [],
+    "timestamp": "2026-01-12T00:14:35.441359"
+  },
+  "environment_reports": {
+    "web_shopping": {
+      "environment": "web_shopping",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 5.0,
+      "average_duration_ms": 2.366304397583008,
+      "average_reward": 0.8500000000000001
+    }
+  }
+}

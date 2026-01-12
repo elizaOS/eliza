@@ -1,0 +1,798 @@
+[
+  {
+    "task_id": "db-001",
+    "environment": "database",
+    "success": true,
+    "steps_taken": 4,
+    "actions": [
+      "think",
+      "SELECT id, name, salary, department\nFROM employees\nWHERE salary > 50000;",
+      "SELECT id, name, salary, department\nFROM employees\nWHERE salary > 50000;",
+      "SELECT id, name, salary, department\nFROM employees\nWHERE salary > 50000;"
+    ],
+    "final_state": {
+      "query": "SELECT id, name, salary, department\nFROM employees\nWHERE salary > 50000;",
+      "results": [
+        {
+          "id": 1,
+          "name": "Alice",
+          "salary": 60000.0,
+          "department": "Engineering"
+        },
+        {
+          "id": 3,
+          "name": "Charlie",
+          "salary": 75000.0,
+          "department": "Engineering"
+        },
+        {
+          "id": 4,
+          "name": "Diana",
+          "salary": 52000.0,
+          "department": "HR"
+        }
+      ],
+      "row_count": 3,
+      "columns": [
+        "id",
+        "name",
+        "salary",
+        "department"
+      ],
+      "success": true
+    },
+    "duration_ms": 23233.76488685608,
+    "error": "Task timed out after 23234ms",
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 23233.76488685608,
+      "tokens_used": 0.0,
+      "reward": 0.2,
+      "efficiency": 0.05
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "think",
+        "observation": "{'error': 'No valid SQL query found in action'}",
+        "reward": -0.1,
+        "timestamp_ms": 7700.051307678223,
+        "metadata": {
+          "action": "think"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "SELECT id, name, salary, department\nFROM employees\nWHERE salary > 50000;",
+        "observation": "{'query': 'SELECT id, name, salary, department\\nFROM employees\\nWHERE salary > 50000;', 'results': [{'id': 1, 'name': 'Alice', 'salary': 60000.0, 'department': 'Engineering'}, {'id': 3, 'name': 'Charlie', 'salary': 75000.0, 'department': 'Engineering'}, {'id': 4, 'name': 'Diana', 'salary': 52000.0, 'department': 'HR'}], 'row_count': 3, 'columns': ['id', 'name', 'salary', 'department'], 'success': True}",
+        "reward": 0.1,
+        "timestamp_ms": 5407.0281982421875,
+        "metadata": {
+          "query": "SELECT id, name, salary, department\nFROM employees\nWHERE salary > 50000;",
+          "row_count": 3
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "SELECT id, name, salary, department\nFROM employees\nWHERE salary > 50000;",
+        "observation": "{'query': 'SELECT id, name, salary, department\\nFROM employees\\nWHERE salary > 50000;', 'results': [{'id': 1, 'name': 'Alice', 'salary': 60000.0, 'department': 'Engineering'}, {'id': 3, 'name': 'Charlie', 'salary': 75000.0, 'department': 'Engineering'}, {'id': 4, 'name': 'Diana', 'salary': 52000.0, 'department': 'HR'}], 'row_count': 3, 'columns': ['id', 'name', 'salary', 'department'], 'success': True}",
+        "reward": 0.1,
+        "timestamp_ms": 4918.026924133301,
+        "metadata": {
+          "query": "SELECT id, name, salary, department\nFROM employees\nWHERE salary > 50000;",
+          "row_count": 3
+        }
+      },
+      {
+        "step_number": 3,
+        "action": "SELECT id, name, salary, department\nFROM employees\nWHERE salary > 50000;",
+        "observation": "{'query': 'SELECT id, name, salary, department\\nFROM employees\\nWHERE salary > 50000;', 'results': [{'id': 1, 'name': 'Alice', 'salary': 60000.0, 'department': 'Engineering'}, {'id': 3, 'name': 'Charlie', 'salary': 75000.0, 'department': 'Engineering'}, {'id': 4, 'name': 'Diana', 'salary': 52000.0, 'department': 'HR'}], 'row_count': 3, 'columns': ['id', 'name', 'salary', 'department'], 'success': True}",
+        "reward": 0.1,
+        "timestamp_ms": 5206.949949264526,
+        "metadata": {
+          "query": "SELECT id, name, salary, department\nFROM employees\nWHERE salary > 50000;",
+          "row_count": 3
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "db-002",
+    "environment": "database",
+    "success": true,
+    "steps_taken": 4,
+    "actions": [
+      "think",
+      "SELECT\n  department,\n  AVG(salary) AS average_salary\nFROM employees\nGROUP BY department\nORDER BY department;",
+      "SELECT\n  department,\n  AVG(salary) AS average_salary\nFROM employees\nGROUP BY department\nORDER BY department;",
+      "SELECT\n  department,\n  AVG(salary) AS average_salary\nFROM employees\nGROUP BY department\nORDER BY department;"
+    ],
+    "final_state": {
+      "query": "SELECT\n  department,\n  AVG(salary) AS average_salary\nFROM employees\nGROUP BY department\nORDER BY department;",
+      "results": [
+        {
+          "department": "Engineering",
+          "average_salary": 67500.0
+        },
+        {
+          "department": "HR",
+          "average_salary": 52000.0
+        },
+        {
+          "department": "Sales",
+          "average_salary": 46500.0
+        }
+      ],
+      "row_count": 3,
+      "columns": [
+        "department",
+        "average_salary"
+      ],
+      "success": true
+    },
+    "duration_ms": 22321.36297225952,
+    "error": "Task timed out after 22321ms",
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 22321.36297225952,
+      "tokens_used": 0.0,
+      "reward": 0.2,
+      "efficiency": 0.05
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "think",
+        "observation": "{'error': 'No valid SQL query found in action'}",
+        "reward": -0.1,
+        "timestamp_ms": 7034.799098968506,
+        "metadata": {
+          "action": "think"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "SELECT\n  department,\n  AVG(salary) AS average_salary\nFROM employees\nGROUP BY department\nORDER BY department;",
+        "observation": "{'query': 'SELECT\\n  department,\\n  AVG(salary) AS average_salary\\nFROM employees\\nGROUP BY department\\nORDER BY department;', 'results': [{'department': 'Engineering', 'average_salary': 67500.0}, {'department': 'HR', 'average_salary': 52000.0}, {'department': 'Sales', 'average_salary': 46500.0}], 'row_count': 3, 'columns': ['department', 'average_salary'], 'success': True}",
+        "reward": 0.1,
+        "timestamp_ms": 5592.185974121094,
+        "metadata": {
+          "query": "SELECT\n  department,\n  AVG(salary) AS average_salary\nFROM employees\nGROUP BY department\nORDER BY department;",
+          "row_count": 3
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "SELECT\n  department,\n  AVG(salary) AS average_salary\nFROM employees\nGROUP BY department\nORDER BY department;",
+        "observation": "{'query': 'SELECT\\n  department,\\n  AVG(salary) AS average_salary\\nFROM employees\\nGROUP BY department\\nORDER BY department;', 'results': [{'department': 'Engineering', 'average_salary': 67500.0}, {'department': 'HR', 'average_salary': 52000.0}, {'department': 'Sales', 'average_salary': 46500.0}], 'row_count': 3, 'columns': ['department', 'average_salary'], 'success': True}",
+        "reward": 0.1,
+        "timestamp_ms": 5518.5606479644775,
+        "metadata": {
+          "query": "SELECT\n  department,\n  AVG(salary) AS average_salary\nFROM employees\nGROUP BY department\nORDER BY department;",
+          "row_count": 3
+        }
+      },
+      {
+        "step_number": 3,
+        "action": "SELECT\n  department,\n  AVG(salary) AS average_salary\nFROM employees\nGROUP BY department\nORDER BY department;",
+        "observation": "{'query': 'SELECT\\n  department,\\n  AVG(salary) AS average_salary\\nFROM employees\\nGROUP BY department\\nORDER BY department;', 'results': [{'department': 'Engineering', 'average_salary': 67500.0}, {'department': 'HR', 'average_salary': 52000.0}, {'department': 'Sales', 'average_salary': 46500.0}], 'row_count': 3, 'columns': ['department', 'average_salary'], 'success': True}",
+        "reward": 0.1,
+        "timestamp_ms": 4173.999786376953,
+        "metadata": {
+          "query": "SELECT\n  department,\n  AVG(salary) AS average_salary\nFROM employees\nGROUP BY department\nORDER BY department;",
+          "row_count": 3
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "kg-001",
+    "environment": "knowledge_graph",
+    "success": false,
+    "steps_taken": 6,
+    "actions": [
+      "think",
+      "find_entities[name_contains=Albert Einstein]",
+      "find_relations[subject=e001]",
+      "get_entity[e001]",
+      "think",
+      "think"
+    ],
+    "final_state": {
+      "query_type": "think",
+      "message": "Thinking..."
+    },
+    "duration_ms": 32806.00881576538,
+    "error": "Task timed out after 32806ms",
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 32806.00881576538,
+      "tokens_used": 0.0,
+      "reward": 0.30000000000000004,
+      "efficiency": 0.05000000000000001
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "think",
+        "observation": "{'query_type': 'think', 'message': 'Thinking...'}",
+        "reward": 0.0,
+        "timestamp_ms": 5248.342990875244,
+        "metadata": {
+          "query_type": "think",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "find_entities[name_contains=Albert Einstein]",
+        "observation": "{'query_type': 'find_entities', 'results': [{'id': 'e001', 'name': 'Albert Einstein', 'type': 'person', 'birth_year': 1879, 'death_year': 1955}], 'total': 1, 'message': 'Found 1 entities'}",
+        "reward": 0.1,
+        "timestamp_ms": 5394.679069519043,
+        "metadata": {
+          "query_type": "find_entities",
+          "params": "{'name_contains': 'Albert Einstein'}"
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "find_relations[subject=e001]",
+        "observation": "{'query_type': 'find_relations', 'results': [{'subject': 'e001', 'predicate': 'born_in', 'object': 'e002'}, {'subject': 'e001', 'predicate': 'worked_in', 'object': 'e003'}, {'subject': 'e001', 'predicate': 'field', 'object': 'e004'}, {'subject': 'e001', 'predicate': 'won', 'object': 'e005'}, {'subject': 'e001', 'predicate': 'developed', 'object': 'e006'}], 'total': 5, 'message': 'Found 5 relations'}",
+        "reward": 0.1,
+        "timestamp_ms": 5614.099979400635,
+        "metadata": {
+          "query_type": "find_relations",
+          "params": "{'subject': 'e001'}"
+        }
+      },
+      {
+        "step_number": 3,
+        "action": "get_entity[e001]",
+        "observation": "{'query_type': 'get_entity', 'entity_id': 'e001', 'result': {'name': 'Albert Einstein', 'type': 'person', 'birth_year': 1879, 'death_year': 1955}, 'message': 'Found entity: Albert Einstein'}",
+        "reward": 0.1,
+        "timestamp_ms": 4107.532978057861,
+        "metadata": {
+          "query_type": "get_entity",
+          "params": "{'id': 'e001'}"
+        }
+      },
+      {
+        "step_number": 4,
+        "action": "think",
+        "observation": "{'query_type': 'think', 'message': 'Thinking...'}",
+        "reward": 0.0,
+        "timestamp_ms": 6469.328880310059,
+        "metadata": {
+          "query_type": "think",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 5,
+        "action": "think",
+        "observation": "{'query_type': 'think', 'message': 'Thinking...'}",
+        "reward": 0.0,
+        "timestamp_ms": 5971.862077713013,
+        "metadata": {
+          "query_type": "think",
+          "params": "{}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "kg-002",
+    "environment": "knowledge_graph",
+    "success": false,
+    "steps_taken": 7,
+    "actions": [
+      "find_entities[type=award, name_contains=Nobel]",
+      "find_relations[object=e005]",
+      "think",
+      "find_entities[type=, name_contains=Nobel Prize in Physics]",
+      "think",
+      "find_entities[name_contains=Nobel Prize in Physics]",
+      "find_relations[subject=e005]"
+    ],
+    "final_state": {
+      "query_type": "find_relations",
+      "results": [],
+      "total": 0,
+      "message": "Found 0 relations"
+    },
+    "duration_ms": 45908.92696380615,
+    "error": "Task timed out after 45909ms",
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 45908.92696380615,
+      "tokens_used": 0.0,
+      "reward": 0.4,
+      "efficiency": 0.05714285714285715
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "find_entities[type=award, name_contains=Nobel]",
+        "observation": "{'query_type': 'find_entities', 'results': [{'id': 'e005', 'name': 'Nobel Prize in Physics', 'type': 'award'}, {'id': 'e011', 'name': 'Nobel Prize in Chemistry', 'type': 'award'}], 'total': 2, 'message': 'Found 2 entities'}",
+        "reward": 0.1,
+        "timestamp_ms": 5893.077850341797,
+        "metadata": {
+          "query_type": "find_entities",
+          "params": "{'type': 'award', 'name_contains': 'Nobel'}"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "find_relations[object=e005]",
+        "observation": "{'query_type': 'find_relations', 'results': [{'subject': 'e001', 'predicate': 'won', 'object': 'e005'}, {'subject': 'e007', 'predicate': 'won', 'object': 'e005'}], 'total': 2, 'message': 'Found 2 relations'}",
+        "reward": 0.1,
+        "timestamp_ms": 4936.592102050781,
+        "metadata": {
+          "query_type": "find_relations",
+          "params": "{'object': 'e005'}"
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "think",
+        "observation": "{'query_type': 'think', 'message': 'Thinking...'}",
+        "reward": 0.0,
+        "timestamp_ms": 6046.282052993774,
+        "metadata": {
+          "query_type": "think",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 3,
+        "action": "find_entities[type=, name_contains=Nobel Prize in Physics]",
+        "observation": "{'query_type': 'find_entities', 'results': [{'id': 'e005', 'name': 'Nobel Prize in Physics', 'type': 'award'}], 'total': 1, 'message': 'Found 1 entities'}",
+        "reward": 0.1,
+        "timestamp_ms": 7748.133182525635,
+        "metadata": {
+          "query_type": "find_entities",
+          "params": "{'type': '', 'name_contains': 'Nobel Prize in Physics'}"
+        }
+      },
+      {
+        "step_number": 4,
+        "action": "think",
+        "observation": "{'query_type': 'think', 'message': 'Thinking...'}",
+        "reward": 0.0,
+        "timestamp_ms": 8553.28106880188,
+        "metadata": {
+          "query_type": "think",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 5,
+        "action": "find_entities[name_contains=Nobel Prize in Physics]",
+        "observation": "{'query_type': 'find_entities', 'results': [{'id': 'e005', 'name': 'Nobel Prize in Physics', 'type': 'award'}], 'total': 1, 'message': 'Found 1 entities'}",
+        "reward": 0.1,
+        "timestamp_ms": 7499.661207199097,
+        "metadata": {
+          "query_type": "find_entities",
+          "params": "{'name_contains': 'Nobel Prize in Physics'}"
+        }
+      },
+      {
+        "step_number": 6,
+        "action": "find_relations[subject=e005]",
+        "observation": "{'query_type': 'find_relations', 'results': [], 'total': 0, 'message': 'Found 0 relations'}",
+        "reward": 0.0,
+        "timestamp_ms": 5231.700897216797,
+        "metadata": {
+          "query_type": "find_relations",
+          "params": "{'subject': 'e005'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "lt-001",
+    "environment": "lateral_thinking",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "guess[He had hiccups. He asked for water to stop them, but the bartender realized and startled him by pointing a gun, curing the hiccups. The man thanked him and left.]"
+    ],
+    "final_state": {
+      "correct": true,
+      "answer": "hiccups",
+      "guesses_made": 1,
+      "hints_used": 0,
+      "message": "Correct! The answer was: hiccups"
+    },
+    "duration_ms": 6647.652864456177,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 6647.652864456177,
+      "tokens_used": 0.0,
+      "reward": 1.0,
+      "efficiency": 1.0
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "guess[He had hiccups. He asked for water to stop them, but the bartender realized and startled him by pointing a gun, curing the hiccups. The man thanked him and left.]",
+        "observation": "{'correct': True, 'answer': 'hiccups', 'guesses_made': 1, 'hints_used': 0, 'message': 'Correct! The answer was: hiccups'}",
+        "reward": 1.0,
+        "timestamp_ms": 6647.608041763306,
+        "metadata": {
+          "action_type": "guess",
+          "params": "{'answer': 'He had hiccups. He asked for water to stop them, but the bartender realized and startled him by pointing a gun, curing the hiccups. The man thanked him and left.'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "ws-001",
+    "environment": "web_shopping",
+    "success": false,
+    "steps_taken": 11,
+    "actions": [
+      "search[black wireless headphones under $100]",
+      "search[black wireless headphones]",
+      "search[wireless headphones]",
+      "search[black wireless headphones]",
+      "search[bluetooth headphones black under 100]",
+      "search[black wireless headphones under 100]",
+      "search[black wireless headphones]",
+      "think",
+      "search[black wireless headphones]",
+      "search[wireless headphones]",
+      "search[Bluetooth headphones]"
+    ],
+    "final_state": {
+      "page": "search_results",
+      "query": "bluetooth headphones",
+      "results": [
+        {
+          "id": "P001",
+          "name": "Wireless Bluetooth Headphones",
+          "price": "$79.99",
+          "rating": 4.5,
+          "category": "Electronics"
+        }
+      ],
+      "total_results": 1,
+      "message": "Found 1 products matching 'bluetooth headphones'",
+      "cart_count": 0,
+      "cart_total": 0
+    },
+    "duration_ms": 62159.602880477905,
+    "error": "Task timed out after 62160ms",
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 62159.602880477905,
+      "tokens_used": 0.0,
+      "reward": 0.05,
+      "efficiency": 0.004545454545454546
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "search[black wireless headphones under $100]",
+        "observation": "{'page': 'search_results', 'query': 'black wireless headphones under $100', 'results': [], 'total_results': 0, 'message': \"Found 0 products matching 'black wireless headphones under $100'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 2765.3799057006836,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'black wireless headphones under $100'}"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "search[black wireless headphones]",
+        "observation": "{'page': 'search_results', 'query': 'black wireless headphones', 'results': [], 'total_results': 0, 'message': \"Found 0 products matching 'black wireless headphones'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 5114.017009735107,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'black wireless headphones'}"
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "search[wireless headphones]",
+        "observation": "{'page': 'search_results', 'query': 'wireless headphones', 'results': [], 'total_results': 0, 'message': \"Found 0 products matching 'wireless headphones'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 6405.329942703247,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'wireless headphones'}"
+        }
+      },
+      {
+        "step_number": 3,
+        "action": "search[black wireless headphones]",
+        "observation": "{'page': 'search_results', 'query': 'black wireless headphones', 'results': [], 'total_results': 0, 'message': \"Found 0 products matching 'black wireless headphones'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 7927.448034286499,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'black wireless headphones'}"
+        }
+      },
+      {
+        "step_number": 4,
+        "action": "search[bluetooth headphones black under 100]",
+        "observation": "{'page': 'search_results', 'query': 'bluetooth headphones black under 100', 'results': [], 'total_results': 0, 'message': \"Found 0 products matching 'bluetooth headphones black under 100'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 6255.903959274292,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'bluetooth headphones black under 100'}"
+        }
+      },
+      {
+        "step_number": 5,
+        "action": "search[black wireless headphones under 100]",
+        "observation": "{'page': 'search_results', 'query': 'black wireless headphones under 100', 'results': [], 'total_results': 0, 'message': \"Found 0 products matching 'black wireless headphones under 100'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 4543.389320373535,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'black wireless headphones under 100'}"
+        }
+      },
+      {
+        "step_number": 6,
+        "action": "search[black wireless headphones]",
+        "observation": "{'page': 'search_results', 'query': 'black wireless headphones', 'results': [], 'total_results': 0, 'message': \"Found 0 products matching 'black wireless headphones'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 5349.610805511475,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'black wireless headphones'}"
+        }
+      },
+      {
+        "step_number": 7,
+        "action": "think",
+        "observation": "{'page': 'search_results', 'message': 'Thinking...', 'cart': [], 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 7570.852041244507,
+        "metadata": {
+          "action_type": "think",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 8,
+        "action": "search[black wireless headphones]",
+        "observation": "{'page': 'search_results', 'query': 'black wireless headphones', 'results': [], 'total_results': 0, 'message': \"Found 0 products matching 'black wireless headphones'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 5507.0929527282715,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'black wireless headphones'}"
+        }
+      },
+      {
+        "step_number": 9,
+        "action": "search[wireless headphones]",
+        "observation": "{'page': 'search_results', 'query': 'wireless headphones', 'results': [], 'total_results': 0, 'message': \"Found 0 products matching 'wireless headphones'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 4775.959014892578,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'wireless headphones'}"
+        }
+      },
+      {
+        "step_number": 10,
+        "action": "search[Bluetooth headphones]",
+        "observation": "{'page': 'search_results', 'query': 'bluetooth headphones', 'results': [{'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics'}], 'total_results': 1, 'message': \"Found 1 products matching 'bluetooth headphones'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 5944.510936737061,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'bluetooth headphones'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "ws-002",
+    "environment": "web_shopping",
+    "success": false,
+    "steps_taken": 12,
+    "actions": [
+      "search[Sports highest rated]",
+      "search[sports]",
+      "click[P004]",
+      "think",
+      "search[Sports]",
+      "click[P004]",
+      "search[Sports]",
+      "click[P004]",
+      "search[Sports]",
+      "think",
+      "search[Sports]",
+      "click[P004]"
+    ],
+    "final_state": {
+      "page": "product_detail",
+      "product": {
+        "id": "P004",
+        "name": "Stainless Steel Water Bottle",
+        "price": "$24.99",
+        "rating": 4.6,
+        "category": "Sports",
+        "features": [
+          "insulated",
+          "leak-proof",
+          "eco-friendly"
+        ],
+        "options": {
+          "size": [
+            "500ml",
+            "750ml",
+            "1L"
+          ],
+          "color": [
+            "silver",
+            "blue",
+            "green"
+          ]
+        }
+      },
+      "message": "Viewing product: Stainless Steel Water Bottle",
+      "cart_count": 0,
+      "cart_total": 0
+    },
+    "duration_ms": 60408.686876297,
+    "error": "Task timed out after 60409ms",
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 60408.686876297,
+      "tokens_used": 0.0,
+      "reward": 0.44999999999999996,
+      "efficiency": 0.0375
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "search[Sports highest rated]",
+        "observation": "{'page': 'search_results', 'query': 'sports highest rated', 'results': [], 'total_results': 0, 'message': \"Found 0 products matching 'sports highest rated'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 2767.1029567718506,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'sports highest rated'}"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "search[sports]",
+        "observation": "{'page': 'search_results', 'query': 'sports', 'results': [{'id': 'P002', 'name': 'Running Shoes - Lightweight', 'price': '$129.99', 'rating': 4.3, 'category': 'Sports'}, {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports'}], 'total_results': 2, 'message': \"Found 2 products matching 'sports'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 4751.033782958984,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'sports'}"
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "click[P004]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports', 'features': ['insulated', 'leak-proof', 'eco-friendly'], 'options': {'size': ['500ml', '750ml', '1L'], 'color': ['silver', 'blue', 'green']}}, 'message': 'Viewing product: Stainless Steel Water Bottle', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 5868.855714797974,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p004'}"
+        }
+      },
+      {
+        "step_number": 3,
+        "action": "think",
+        "observation": "{'page': 'product_detail', 'message': 'Thinking...', 'cart': [], 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 3832.8027725219727,
+        "metadata": {
+          "action_type": "think",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 4,
+        "action": "search[Sports]",
+        "observation": "{'page': 'search_results', 'query': 'sports', 'results': [{'id': 'P002', 'name': 'Running Shoes - Lightweight', 'price': '$129.99', 'rating': 4.3, 'category': 'Sports'}, {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports'}], 'total_results': 2, 'message': \"Found 2 products matching 'sports'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 4999.921798706055,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'sports'}"
+        }
+      },
+      {
+        "step_number": 5,
+        "action": "click[P004]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports', 'features': ['insulated', 'leak-proof', 'eco-friendly'], 'options': {'size': ['500ml', '750ml', '1L'], 'color': ['silver', 'blue', 'green']}}, 'message': 'Viewing product: Stainless Steel Water Bottle', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 4896.505117416382,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p004'}"
+        }
+      },
+      {
+        "step_number": 6,
+        "action": "search[Sports]",
+        "observation": "{'page': 'search_results', 'query': 'sports', 'results': [{'id': 'P002', 'name': 'Running Shoes - Lightweight', 'price': '$129.99', 'rating': 4.3, 'category': 'Sports'}, {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports'}], 'total_results': 2, 'message': \"Found 2 products matching 'sports'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 5039.421081542969,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'sports'}"
+        }
+      },
+      {
+        "step_number": 7,
+        "action": "click[P004]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports', 'features': ['insulated', 'leak-proof', 'eco-friendly'], 'options': {'size': ['500ml', '750ml', '1L'], 'color': ['silver', 'blue', 'green']}}, 'message': 'Viewing product: Stainless Steel Water Bottle', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 5192.019939422607,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p004'}"
+        }
+      },
+      {
+        "step_number": 8,
+        "action": "search[Sports]",
+        "observation": "{'page': 'search_results', 'query': 'sports', 'results': [{'id': 'P002', 'name': 'Running Shoes - Lightweight', 'price': '$129.99', 'rating': 4.3, 'category': 'Sports'}, {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports'}], 'total_results': 2, 'message': \"Found 2 products matching 'sports'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 6498.120069503784,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'sports'}"
+        }
+      },
+      {
+        "step_number": 9,
+        "action": "think",
+        "observation": "{'page': 'search_results', 'message': 'Thinking...', 'cart': [], 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.0,
+        "timestamp_ms": 6349.774122238159,
+        "metadata": {
+          "action_type": "think",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 10,
+        "action": "search[Sports]",
+        "observation": "{'page': 'search_results', 'query': 'sports', 'results': [{'id': 'P002', 'name': 'Running Shoes - Lightweight', 'price': '$129.99', 'rating': 4.3, 'category': 'Sports'}, {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports'}], 'total_results': 2, 'message': \"Found 2 products matching 'sports'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 3801.293134689331,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'sports'}"
+        }
+      },
+      {
+        "step_number": 11,
+        "action": "click[P004]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports', 'features': ['insulated', 'leak-proof', 'eco-friendly'], 'options': {'size': ['500ml', '750ml', '1L'], 'color': ['silver', 'blue', 'green']}}, 'message': 'Viewing product: Stainless Steel Water Bottle', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 6411.7138385772705,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p004'}"
+        }
+      }
+    ]
+  }
+]

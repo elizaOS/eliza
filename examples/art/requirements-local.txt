@@ -1,0 +1,14 @@
+# Additional dependencies for local model training
+# Install with: pip install -r requirements-local.txt
+
+# Core dependencies
+-r requirements.txt
+
+# Local inference server
+vllm>=0.3.0
+
+# Quantization support
+bitsandbytes>=0.42.0
+
+# Flash attention (optional, for faster inference)
+# flash-attn>=2.5.0

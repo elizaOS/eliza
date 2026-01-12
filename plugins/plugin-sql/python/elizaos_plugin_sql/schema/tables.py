@@ -6,7 +6,7 @@ These tables mirror the TypeScript Drizzle schema for compatibility.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
@@ -23,6 +23,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+
+def _utc_now() -> datetime:
+    """Return current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 
 class Base(DeclarativeBase):
@@ -43,8 +48,8 @@ class AgentTable(Base):
     secrets = Column(JSON, nullable=True)
     enabled = Column(Boolean, default=True)
     status = Column(String(50), default="active")
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
 
     # Relationships
     entities = relationship("EntityTable", back_populates="agent")
@@ -64,8 +69,8 @@ class EntityTable(Base):
     )
     names: Column[list[str]] = Column(ARRAY(String), nullable=False)
     entity_metadata = Column("metadata", JSON, default={})
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
 
     # Relationships
     agent = relationship("AgentTable", back_populates="entities")
@@ -89,7 +94,7 @@ class ComponentTable(Base):
     source_entity_id = Column(UUID(as_uuid=True), nullable=False)
     type = Column(String(255), nullable=False)
     data = Column(JSON, default={})
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
     # Relationships
     entity = relationship("EntityTable", back_populates="components")
@@ -111,8 +116,8 @@ class WorldTable(Base):
     )
     message_server_id = Column(UUID(as_uuid=True), nullable=True)
     world_metadata = Column("metadata", JSON, default={})
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
 
     # Relationships
     agent = relationship("AgentTable", back_populates="worlds")
@@ -138,8 +143,8 @@ class RoomTable(Base):
         UUID(as_uuid=True), ForeignKey("worlds.id", ondelete="SET NULL"), nullable=True
     )
     room_metadata = Column("metadata", JSON, default={})
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
 
     # Relationships
     agent = relationship("AgentTable", back_populates="rooms")
@@ -164,7 +169,7 @@ class ParticipantTable(Base):
     )
     room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
     user_state = Column(String(50), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
     # Relationships
     entity = relationship("EntityTable", back_populates="participations")
@@ -189,7 +194,7 @@ class MemoryTable(Base):
     content = Column(JSON, nullable=False)
     unique = Column(Boolean, default=False)
     memory_metadata = Column("metadata", JSON, default={})
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
     # Relationships
     room = relationship("RoomTable", back_populates="memories")
@@ -218,7 +223,7 @@ class EmbeddingTable(Base):
     # For production, use pgvector extension
     embedding_vector: Column[list[float]] = Column("embedding", ARRAY(Float), nullable=False)
     dimension = Column(Integer, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
     # Relationships
     memory = relationship("MemoryTable", back_populates="embedding")
@@ -236,7 +241,7 @@ class RelationshipTable(Base):
     agent_id = Column(UUID(as_uuid=True), nullable=False)
     tags: Column[list[str]] = Column(ARRAY(String), default=[])
     relationship_metadata = Column("metadata", JSON, default={})
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
     __table_args__ = (
         Index("idx_relationships_source", "source_entity_id"),
@@ -258,8 +263,8 @@ class TaskTable(Base):
     status = Column(String(50), default="pending", nullable=False)
     task_tags: Column[list[str]] = Column("tags", ARRAY(String), default=[])
     task_metadata = Column("metadata", JSON, default={})
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
 
     __table_args__ = (
         Index("idx_tasks_name", "name"),
@@ -274,8 +279,8 @@ class CacheTable(Base):
 
     key = Column(String(512), primary_key=True)
     value = Column(JSON, nullable=False)
-    expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
     __table_args__ = (Index("idx_cache_expires_at", "expires_at"),)
 
@@ -289,7 +294,7 @@ class LogTable(Base):
     room_id = Column(UUID(as_uuid=True), nullable=True)
     type = Column(String(100), nullable=False)
     body = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
     __table_args__ = (
         Index("idx_logs_entity_id", "entity_id"),

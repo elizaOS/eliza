@@ -1,0 +1,67 @@
+{
+  "total_tasks": 1,
+  "passed_tasks": 0,
+  "failed_tasks": 1,
+  "overall_success_rate": 0.0,
+  "average_duration_ms": 8789.143085479736,
+  "overall_metrics": {
+    "total_tokens": 0.0,
+    "average_tokens_per_task": 0.0,
+    "average_steps_per_task": 10.0,
+    "average_reward": 0.1,
+    "memory_usage": {
+      "peak": 4099347,
+      "average": 4035360
+    }
+  },
+  "comparison_to_baseline": {
+    "gpt4_comparison": {
+      "knowledge_graph": {
+        "our_score": 0.0,
+        "gpt4_score": 0.584,
+        "difference": -0.584,
+        "relative_performance": 0.0
+      }
+    },
+    "gpt35_comparison": {
+      "knowledge_graph": {
+        "our_score": 0.0,
+        "gpt35_score": 0.164,
+        "difference": -0.164,
+        "relative_performance": 0.0
+      }
+    },
+    "claude_comparison": {
+      "knowledge_graph": {
+        "our_score": 0.0,
+        "claude_score": 0.542,
+        "difference": -0.542,
+        "relative_performance": 0.0
+      }
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "ElizaOS agent capabilities need significant improvement",
+      "Needs improvement in: knowledge_graph",
+      "Note: baseline scores are published AgentBench results; comparisons are reference-only unless you run the official AgentBench task set."
+    ],
+    "recommendations": [
+      "Enhance knowledge_graph environment handling capabilities"
+    ],
+    "timestamp": "2026-01-12T00:53:21.353640"
+  },
+  "environment_reports": {
+    "knowledge_graph": {
+      "environment": "knowledge_graph",
+      "total_tasks": 1,
+      "passed_tasks": 0,
+      "failed_tasks": 1,
+      "success_rate": 0.0,
+      "average_steps": 10.0,
+      "average_duration_ms": 8789.143085479736,
+      "average_reward": 0.1
+    }
+  }
+}

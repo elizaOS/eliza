@@ -1,0 +1,94 @@
+{
+  "name": "@elizaos/plugin-experience-root",
+  "version": "2.0.0",
+  "description": "Experience learning plugin for ElizaOS - records and recalls transferable agent learnings",
+  "type": "module",
+  "main": "typescript/dist/node/index.node.js",
+  "module": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "elizaOS",
+  "keywords": ["plugin", "elizaos", "experience", "learning", "memory"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/elizaos"
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/elizaos/elizaos/issues"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./typescript/dist/index.d.ts",
+      "node": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "default": "./typescript/dist/node/index.node.js"
+    }
+  },
+  "files": ["typescript/dist", "python", "rust", "README.md"],
+  "sideEffects": false,
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.5",
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
+  },
+  "scripts": {
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./typescript/prompts ./typescript/generated/prompts --target all",
+    "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
+    "build:python": "test -d python && cd python && (python3 -m build 2>/dev/null || pyproject-build) || echo 'Python build skipped - no python directory'",
+    "dev": "cd typescript && bun --hot build.ts",
+    "test": "bun run test:ts && bun run test:rust && bun run test:python",
+    "test:ts": "cd typescript && vitest run || echo 'TypeScript tests skipped - no tests found'",
+    "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
+    "test:python": "test -d python && cd python && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'",
+    "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint:check": "bunx @biomejs/biome check ./typescript",
+    "lint:rust": "test -d rust && cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt || echo 'Rust lint skipped'",
+    "lint:python": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint skipped'",
+    "lint:python:fix": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint fix skipped'",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "MAX_EXPERIENCES": {
+        "type": "number",
+        "description": "Maximum number of experiences to keep in memory.",
+        "required": false,
+        "default": 10000,
+        "sensitive": false
+      },
+      "AUTO_RECORD_THRESHOLD": {
+        "type": "number",
+        "description": "Minimum confidence required to auto-record extracted experiences.",
+        "required": false,
+        "default": 0.7,
+        "sensitive": false
+      }
+    },
+    "description": "Records and recalls transferable agent learnings."
+  }
+}
+

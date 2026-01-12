@@ -1,0 +1,5502 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 150,
+    "timestamp": "2026-01-12T00:48:35Z",
+    "model": "groq/llama-3.1-8b-instant"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.6167720158238734,
+    "ast_accuracy": 0.6343283582089553,
+    "exec_accuracy": 0.6343283582089553,
+    "relevance_accuracy": 0.9477611940298507,
+    "total_tests": 134,
+    "passed_tests": 85,
+    "failed_tests": 49,
+    "latency": {
+      "avg": 445.1141357421875,
+      "p50": 415.651798248291,
+      "p95": 690.2852058410645,
+      "p99": 1296.4129447937012
+    },
+    "category_breakdown": {
+      "java": {
+        "total": 16,
+        "ast_accuracy": 0.8125,
+        "exec_accuracy": 0.8125,
+        "relevance_accuracy": 0.9375,
+        "avg_latency_ms": 530.0108045339584
+      },
+      "relevance": {
+        "total": 17,
+        "ast_accuracy": 0.5882352941176471,
+        "exec_accuracy": 0.5882352941176471,
+        "relevance_accuracy": 0.6470588235294118,
+        "avg_latency_ms": 502.31578770805805
+      },
+      "multiple": {
+        "total": 16,
+        "ast_accuracy": 0.5,
+        "exec_accuracy": 0.5,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 337.66523003578186
+      },
+      "simple": {
+        "total": 19,
+        "ast_accuracy": 0.6842105263157895,
+        "exec_accuracy": 0.6842105263157895,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 349.7376567439029
+      },
+      "javascript": {
+        "total": 17,
+        "ast_accuracy": 0.7058823529411765,
+        "exec_accuracy": 0.7058823529411765,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 475.87188552407656
+      },
+      "parallel_multiple": {
+        "total": 17,
+        "ast_accuracy": 0.5294117647058824,
+        "exec_accuracy": 0.5294117647058824,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 465.0336574105655
+      },
+      "parallel": {
+        "total": 16,
+        "ast_accuracy": 0.6875,
+        "exec_accuracy": 0.6875,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 498.1776624917984
+      },
+      "sql": {
+        "total": 16,
+        "ast_accuracy": 0.5625,
+        "exec_accuracy": 0.5625,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 375.2789497375488
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 8,
+      "argument_mismatch": 31,
+      "missing_call": 2,
+      "extra_call": 8,
+      "type_error": 0,
+      "relevance_error": 7,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0,
+      "no_ground_truth": 16
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.2702279841761266,
+    "gpt-4o": -0.2742279841761266,
+    "claude-3-opus": -0.23522798417612656,
+    "claude-3-sonnet": -0.20622798417612653,
+    "gemini-1.5-pro": -0.22822798417612655,
+    "qwen-2.5-72b": -0.09522798417612655,
+    "llama-3.1-70b": -0.06822798417612663,
+    "mistral-large": -0.08122798417612653
+  },
+  "summary": {
+    "status": "good",
+    "key_findings": [
+      "Overall score: 61.68% (AST: 63.43%, Exec: 63.43%)",
+      "Best category: java (81.25%)",
+      "Needs work: multiple (50.00%)",
+      "Behind llama-3.1-70b by 6.82%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "java_76",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 412.10126876831055,
+      "predicted_calls": [
+        {
+          "name": "Intro.step",
+          "arguments": {
+            "w": 800,
+            "h": 600
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "Intro.step",
+          "arguments": {
+            "w": 800,
+            "h": 600
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_6",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 385.99395751953125,
+      "predicted_calls": [
+        {
+          "name": "SpreadsheetPresentation.refreshData",
+          "arguments": {
+            "refreshMetadata": true,
+            "append": true,
+            "keepState": true
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "SpreadsheetPresentation.refreshData",
+          "arguments": {
+            "refreshMetadata": true,
+            "append": true,
+            "keepState": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_42",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 365.1859760284424,
+      "predicted_calls": [
+        {
+          "name": "TermQueryBuilderTests.termQuery",
+          "arguments": {
+            "mapper": "usernameField",
+            "value": "JohnDoe",
+            "caseInsensitive": true
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "TermQueryBuilderTests.termQuery",
+          "arguments": {
+            "mapper": "usernameField",
+            "value": "JohnDoe",
+            "caseInsensitive": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_78",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 2185.0879192352295,
+      "predicted_calls": [
+        {
+          "name": "OptionSpecBuilder.requiredUnless",
+          "arguments": {
+            "dependent": "quiet",
+            "otherDependents": [
+              "verbose"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "OptionSpecBuilder.requiredUnless",
+          "arguments": {
+            "dependent": "quiet",
+            "otherDependents": [
+              "verbose"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_3",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 683.4843158721924,
+      "predicted_calls": [
+        {
+          "name": "DB2Tablespace.resolveTablespaceReference",
+          "arguments": {
+            "monitor": "dbMonitor",
+            "dataSource": "db2DataSource",
+            "reference": "USERSPACE1"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "DB2Tablespace.resolveTablespaceReference",
+          "arguments": {
+            "monitor": "dbMonitor",
+            "dataSource": "db2DataSource",
+            "reference": "USERSPACE1"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_62",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 348.1910228729248,
+      "predicted_calls": [
+        {
+          "name": "dvRangeQuery",
+          "arguments": {
+            "field": "temperature",
+            "queryType": "FLOAT",
+            "from": 20.5,
+            "to": 30.0,
+            "includeFrom": true,
+            "includeTo": false
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "dvRangeQuery",
+          "arguments": {
+            "field": "temperature",
+            "queryType": "FLOAT",
+            "from": 20.5,
+            "to": 30.0,
+            "includeFrom": true,
+            "includeTo": false
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_0",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 353.4409999847412,
+      "predicted_calls": [
+        {
+          "name": "GeometryPresentation.createPresentation",
+          "arguments": {
+            "controller": "mapController",
+            "parent": "mapArea"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "GeometryPresentation.createPresentation",
+          "arguments": {
+            "controller": "mapController",
+            "parent": "mapArea"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_86",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 374.00102615356445,
+      "predicted_calls": [
+        {
+          "name": "argumenttypes001.runThis",
+          "arguments": {
+            "argv": [
+              "-v",
+              "--no-strict"
+            ],
+            "out": "debugOutput"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "argumenttypes001.runThis",
+          "arguments": {
+            "argv": [
+              "-v",
+              "--no-strict"
+            ],
+            "out": "debugOutput"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_72",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 220.0009822845459,
+      "predicted_calls": [
+        {
+          "name": "ToTextStream.characters",
+          "arguments": {
+            "ch": "textBuffer",
+            "start": 5,
+            "length": 10
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "ToTextStream.characters",
+          "arguments": {
+            "ch": "textBuffer",
+            "start": 5,
+            "length": 10
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_77",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 532.1738719940186,
+      "predicted_calls": [
+        {
+          "name": "JndiLoginModule.verifyPassword",
+          "arguments": {
+            "encryptedPassword": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "password": "P@ssw0rd!"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "JndiLoginModule.verifyPassword",
+          "arguments": {
+            "encryptedPassword": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "password": "P@ssw0rd!"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_98",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 402.8298854827881,
+      "predicted_calls": [
+        {
+          "name": "LoopConditionProfile.calculateProbability",
+          "arguments": {
+            "trueCountLocal": 150,
+            "falseCountLocal": 50
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "LoopConditionProfile.calculateProbability",
+          "arguments": {
+            "trueCountLocal": 150,
+            "falseCountLocal": 50
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_63",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 340.3968811035156,
+      "predicted_calls": [
+        {
+          "name": "withinQuery",
+          "arguments": {
+            "field": "age",
+            "from": 30,
+            "to": 40,
+            "includeFrom": true,
+            "includeTo": false
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "withinQuery",
+          "arguments": {
+            "field": "age",
+            "from": 30,
+            "to": 40,
+            "includeFrom": true,
+            "includeTo": false
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_51",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 568.3209896087646,
+      "predicted_calls": [
+        {
+          "name": "CCRUsageTransportAction.masterOperation",
+          "arguments": {
+            "task": "CCR usage statistics gathering",
+            "request": "usageRequest",
+            "state": "clusterState",
+            "listener": "actionListener"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "CCRUsageTransportAction.masterOperation",
+          "arguments": {
+            "task": "usageTask",
+            "request": "usageRequest",
+            "state": "clusterState",
+            "listener": "actionListener"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_83",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 799.9529838562012,
+      "predicted_calls": [
+        {
+          "name": "thrcputime002.runIt",
+          "arguments": {
+            "argv": [
+              "-waitTime",
+              120,
+              "-iterations",
+              500
+            ],
+            "out": "System.out"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "thrcputime002.runIt",
+          "arguments": {
+            "argv": [
+              "-waitTime",
+              "2",
+              "-iterations",
+              "500"
+            ],
+            "out": "System.out"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_32",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 233.60681533813477,
+      "predicted_calls": [
+        {
+          "name": "RedissonPermitExpirableSemaphore.tryAcquireAsync",
+          "arguments": {
+            "waitTime": 5,
+            "leaseTime": 120,
+            "unit": "SECONDS"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "RedissonPermitExpirableSemaphore.tryAcquireAsync",
+          "arguments": {
+            "waitTime": 5,
+            "leaseTime": 120,
+            "unit": "SECONDS"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_12",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 275.4039764404297,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "ExasolExecutionContext.setCurrentSchema",
+          "arguments": {
+            "monitor": "progressMonitor",
+            "schemaName": "AnalyticsDB"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_11",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 470.4768657684326,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_18",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 508.75282287597656,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_40",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 370.67604064941406,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://geocode.maps.co/reverse",
+            "params": {
+              "lat": 63.65687,
+              "lon": 117.05229,
+              "api_key": "YOUR-GEOCODE-API-KEY",
+              "format": "json"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_54",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 520.986795425415,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_32",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 407.304048538208,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "http://ip-api.com/json",
+            "params": {
+              "lang": "es",
+              "fields": "city,country,isp"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_53",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 365.1692867279053,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://mashape-community-urban-dictionary.p.rapidapi.com/define",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "mashape-community-urban-dictionary.p.rapidapi.com"
+            },
+            "params": {
+              "term": "yeet"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_50",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 564.3131732940674,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://api.open-meteo.com/v1/forecast",
+            "params": {
+              "latitude": 37.8651,
+              "longitude": -119.5383,
+              "hourly": [
+                "temperature_2m",
+                "wind_speed_10m",
+                "precipitation"
+              ],
+              "daily": "",
+              "temperature_unit": "fahrenheit",
+              "wind_speed_unit": "mph",
+              "precipitation_unit": "inch",
+              "forecast_days": 10,
+              "timezone": "auto"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_44",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 466.27187728881836,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://geocode.maps.co/reverse",
+            "params": {
+              "lat": 48.8584,
+              "lon": 2.2945,
+              "api_key": "YOUR-GEOCODE-API-KEY",
+              "format": "json"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_29",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 411.98205947875977,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "http://ip-api.com/json",
+            "params": {
+              "fields": "query,status,country",
+              "lang": "fr"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_46",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 500.2758502960205,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://api.open-meteo.com/v1/forecast",
+            "params": {
+              "latitude": 35.68,
+              "longitude": -121.34,
+              "daily": "[\"temperature_2m_max\", \"precipitation_sum\"]",
+              "forecast_days": 10,
+              "temperature_unit": "fahrenheit",
+              "precipitation_unit": "inch"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_60",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 575.9029388427734,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "http://www.omdbapi.com/",
+            "params": {
+              "t": "The Social Network",
+              "plot": "full",
+              "apikey": "YOUR-OMDB-API-KEY"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_4",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 520.0939178466797,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_57",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 403.6679267883301,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://mashape-community-urban-dictionary.p.rapidapi.com/define",
+            "params": {
+              "term": "swole"
+            },
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "mashape-community-urban-dictionary.p.rapidapi.com"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_25",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 617.8281307220459,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://yahoo-finance15.p.rapidapi.com/api/v1/markets/search",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "yahoo-finance15.p.rapidapi.com"
+            },
+            "params": {
+              "search": "Tesla"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_65",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 451.9329071044922,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://date.nager.at/api/v3/LongWeekend/2023/CA"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_59",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 573.5852718353271,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "http://www.omdbapi.com/",
+            "params": {
+              "t": "The Social Network",
+              "y": 2010,
+              "apikey": "YOUR-OMDB-API-KEY"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "irrelevance_68",
+      "category": "relevance",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 480.7920455932617,
+      "predicted_calls": [
+        {
+          "name": "statistics.calculate_p_value",
+          "arguments": {
+            "sample_mean": 98.2,
+            "population_mean": 98.6,
+            "sample_std_dev": 1.4,
+            "sample_size": 40,
+            "two_tailed": true
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_225",
+      "category": "relevance",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 554.7699928283691,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_198",
+      "category": "relevance",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 388.469934463501,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_116",
+      "category": "relevance",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 524.0468978881836,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_187",
+      "category": "relevance",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 488.16680908203125,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_229",
+      "category": "relevance",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 612.5438213348389,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_119",
+      "category": "relevance",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 356.5659523010254,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_109",
+      "category": "relevance",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 230.82995414733887,
+      "predicted_calls": [
+        {
+          "name": "calculate_water_needs",
+          "arguments": {
+            "plant_type": "cactus",
+            "location": "Arizona",
+            "season": "summer"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_185",
+      "category": "relevance",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 1032.8619480133057,
+      "predicted_calls": [
+        {
+          "name": "player_stats.average_scoring",
+          "arguments": {
+            "player_name": "LeBron James",
+            "season": "2020-2021"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_235",
+      "category": "relevance",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 428.90405654907227,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_142",
+      "category": "relevance",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 509.83309745788574,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_222",
+      "category": "relevance",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 525.6600379943848,
+      "predicted_calls": [
+        {
+          "name": "grocery_store.item_details",
+          "arguments": {
+            "item_name": "tomato",
+            "store_location": "user's location",
+            "details_level": "detailed"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "live_relevance_11-11-0",
+      "category": "relevance",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 356.0450077056885,
+      "predicted_calls": [
+        {
+          "name": "Services_1_FindProvider",
+          "arguments": {
+            "city": "Antioch",
+            "is_unisex": "True"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_141",
+      "category": "relevance",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 690.2852058410645,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_71",
+      "category": "relevance",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 531.9128036499023,
+      "predicted_calls": [
+        {
+          "name": "Investment",
+          "arguments": {
+            "arg_0": "ROI"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_49",
+      "category": "relevance",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 420.712947845459,
+      "predicted_calls": [
+        {
+          "name": "get_co_ordinate",
+          "arguments": {
+            "location": "Los Angeles"
+          }
+        },
+        {
+          "name": "get_co_ordinate",
+          "arguments": {
+            "location": "Berlin"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_7",
+      "category": "multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 511.20901107788086,
+      "predicted_calls": [
+        {
+          "name": "wildlife_population.assess_growth",
+          "arguments": {
+            "species": "deer",
+            "location": "Washington state",
+            "duration": 10
+          }
+        },
+        {
+          "name": "ecological_impact.analyze",
+          "arguments": {
+            "species": "deer",
+            "ecosystem": "woodland",
+            "location": "Washington state",
+            "timeframe": 10
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "wildlife_population.assess_growth",
+          "arguments": {
+            "species": "deer",
+            "location": "Washington state",
+            "duration": 10
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_173",
+      "category": "multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 238.9669418334961,
+      "predicted_calls": [
+        {
+          "name": "get_defense_ranking",
+          "arguments": {
+            "season": 2021,
+            "top": 1
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_defense_ranking",
+          "arguments": {
+            "season": 2021,
+            "top": 1
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_33",
+      "category": "multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 308.9420795440674,
+      "predicted_calls": [
+        {
+          "name": "calculate_integral",
+          "arguments": {
+            "func": "3x^2",
+            "a": 1,
+            "b": 2
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_integral",
+          "arguments": {
+            "func": "3x**2",
+            "a": 1,
+            "b": 2
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_97",
+      "category": "multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 200.67811012268066,
+      "predicted_calls": [
+        {
+          "name": "geometry.area_circle",
+          "arguments": {
+            "radius": 10
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "geometry.area_circle",
+          "arguments": {
+            "radius": 10,
+            "units": "meters"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_136",
+      "category": "multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 276.31425857543945,
+      "predicted_calls": [
+        {
+          "name": "get_crime_rate",
+          "arguments": {
+            "city": "San Francisco",
+            "state": "California",
+            "type": "violent crime",
+            "year": 2020
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_crime_rate",
+          "arguments": {
+            "city": "San Francisco",
+            "state": "California",
+            "type": "violent",
+            "year": 2020
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_194",
+      "category": "multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 214.9178981781006,
+      "predicted_calls": [
+        {
+          "name": "get_museum_hours",
+          "arguments": {
+            "museum_name": "Metropolitan Museum of Art",
+            "day": "Saturday"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_museum_hours",
+          "arguments": {
+            "museum_name": "Metropolitan Museum of Art",
+            "day": "Saturday"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_74",
+      "category": "multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 215.8200740814209,
+      "predicted_calls": [
+        {
+          "name": "art_auction.fetch_artwork_price",
+          "arguments": {
+            "artwork_name": "Starry Night",
+            "artist": "Van Gogh",
+            "platform": "all"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "art_auction.fetch_artwork_price",
+          "arguments": {
+            "artwork_name": "Starry Night",
+            "artist": "Van Gogh",
+            "platform": "all"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_11",
+      "category": "multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 460.01601219177246,
+      "predicted_calls": [
+        {
+          "name": "math_roots.quadratic",
+          "arguments": {
+            "a": 5,
+            "b": 20,
+            "c": -25
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "math_roots.quadratic",
+          "arguments": {
+            "a": 5,
+            "b": 20,
+            "c": -25
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_134",
+      "category": "multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 439.9118423461914,
+      "predicted_calls": [
+        {
+          "name": "crime_record.get_record",
+          "arguments": {
+            "case_number": "CA123456",
+            "county": "San Diego County",
+            "details": "true"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "crime_record.get_record",
+          "arguments": {
+            "case_number": "CA123456",
+            "county": "San Diego",
+            "details": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_2",
+      "category": "multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 304.39019203186035,
+      "predicted_calls": [
+        {
+          "name": "country_info.capital",
+          "arguments": {
+            "country": "Brazil"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "country_info.capital",
+          "arguments": {
+            "country": "Brazil"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_48",
+      "category": "multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 439.3448829650879,
+      "predicted_calls": [
+        {
+          "name": "library.find_nearby",
+          "arguments": {
+            "location": "New York City, NY",
+            "preferences": [
+              "Pet-friendly",
+              "Disabled Access"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "library.find_nearby",
+          "arguments": {
+            "location": "New York City",
+            "preferences": [
+              "Pet-friendly",
+              "Disabled Access"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_118",
+      "category": "multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 408.2009792327881,
+      "predicted_calls": [
+        {
+          "name": "imdb.find_movies_by_actor",
+          "arguments": {
+            "actor_name": "Leonardo DiCaprio",
+            "year": 2010
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "imdb.find_movies_by_actor",
+          "arguments": {
+            "actor_name": "Leonardo DiCaprio",
+            "year": 2010,
+            "category": "all"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_149",
+      "category": "multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 407.31215476989746,
+      "predicted_calls": [
+        {
+          "name": "sentiment_analysis",
+          "arguments": {
+            "text": "I love the food here! It's always fresh and delicious.",
+            "language": "English"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sentiment_analysis",
+          "arguments": {
+            "text": "I love the food here! It's always fresh and delicious.",
+            "language": "english"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_57",
+      "category": "multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 252.2721290588379,
+      "predicted_calls": [
+        {
+          "name": "financial.compound_interest",
+          "arguments": {
+            "principle": 1000,
+            "rate": 0.05,
+            "time": 10,
+            "n": 4
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "financial.compound_interest",
+          "arguments": {
+            "principle": 1000,
+            "rate": 0.05,
+            "time": 10,
+            "n": 4
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_56",
+      "category": "multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 386.91210746765137,
+      "predicted_calls": [
+        {
+          "name": "avg_closing_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 60
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "avg_closing_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 60,
+            "data_source": "yahoo finance"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "multiple_144",
+      "category": "multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 337.4350070953369,
+      "predicted_calls": [
+        {
+          "name": "air_quality",
+          "arguments": {
+            "location": "London",
+            "date": "2022/08/16"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "air_quality",
+          "arguments": {
+            "location": "London",
+            "date": "2022-08-16"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_395",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 352.5381088256836,
+      "predicted_calls": [
+        {
+          "name": "parking_lot.find_nearest",
+          "arguments": {
+            "location": "Central Park, NY",
+            "radius": 2,
+            "type": "public"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "parking_lot.find_nearest",
+          "arguments": {
+            "location": "Central Park, NY",
+            "radius": 2,
+            "type": "public"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_301",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 208.88423919677734,
+      "predicted_calls": [
+        {
+          "name": "get_third_chord",
+          "arguments": {
+            "key": "C",
+            "type": "major"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_third_chord",
+          "arguments": {
+            "key": "C",
+            "type": "major"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_82",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 489.78614807128906,
+      "predicted_calls": [
+        {
+          "name": "calculate_average",
+          "arguments": {
+            "numbers": [
+              12,
+              15,
+              18,
+              20,
+              21,
+              26,
+              30
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_average",
+          "arguments": {
+            "numbers": [
+              12.0,
+              15.0,
+              18.0,
+              20.0,
+              21.0,
+              26.0,
+              30.0
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_227",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 236.27591133117676,
+      "predicted_calls": [
+        {
+          "name": "get_personality_traits",
+          "arguments": {
+            "type": "ENFJ",
+            "traits": [
+              "strengths",
+              "weaknesses"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_personality_traits",
+          "arguments": {
+            "type": "ENFJ",
+            "traits": [
+              "strengths",
+              "weaknesses"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_116",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 517.1098709106445,
+      "predicted_calls": [
+        {
+          "name": "probabilities.calculate_single",
+          "arguments": {
+            "total_outcomes": 52,
+            "event_outcomes": 4,
+            "round": 2
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "probabilities.calculate_single",
+          "arguments": {
+            "total_outcomes": 52,
+            "event_outcomes": 4,
+            "round": 2
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_396",
+      "category": "simple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 240.42987823486328,
+      "predicted_calls": [
+        {
+          "name": "hospital.locate",
+          "arguments": {
+            "location": "Denver, CO",
+            "radius": 5,
+            "department": "Pediatrics"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "hospital.locate",
+          "arguments": {
+            "location": "Denver, Colorado",
+            "radius": 5,
+            "department": "Pediatrics"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_20",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 298.4049320220947,
+      "predicted_calls": [
+        {
+          "name": "math.hcf",
+          "arguments": {
+            "number1": 36,
+            "number2": 24
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "math.hcf",
+          "arguments": {
+            "number1": 36,
+            "number2": 24
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_386",
+      "category": "simple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 753.1728744506836,
+      "predicted_calls": [
+        {
+          "name": "book_hotel",
+          "arguments": {
+            "hotel_name": "Hotel Paradise",
+            "location": "Las Vegas",
+            "room_type": "luxury",
+            "start_date": "05-12-2022",
+            "stay_duration": 3,
+            "view": "city"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "book_hotel",
+          "arguments": {
+            "hotel_name": "Hotel Paradise",
+            "location": "Las Vegas",
+            "room_type": "luxury",
+            "start_date": "05-12-2022",
+            "stay_duration": 3,
+            "view": "city view"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_339",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 581.6159248352051,
+      "predicted_calls": [
+        {
+          "name": "poker_probability.full_house",
+          "arguments": {
+            "deck_size": 52,
+            "hand_size": 5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "poker_probability.full_house",
+          "arguments": {
+            "deck_size": 52,
+            "hand_size": 5
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_45",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 242.8879737854004,
+      "predicted_calls": [
+        {
+          "name": "thermo.calculate_energy",
+          "arguments": {
+            "mass": 100,
+            "phase_transition": "vaporization",
+            "substance": "water"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "thermo.calculate_energy",
+          "arguments": {
+            "mass": 100,
+            "phase_transition": "vaporization",
+            "substance": "water"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_279",
+      "category": "simple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 343.43814849853516,
+      "predicted_calls": [
+        {
+          "name": "instrument_price.get",
+          "arguments": {
+            "brand": "Fender",
+            "model": "American Professional II Stratocaster",
+            "finish": "Rosewood Finish"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "instrument_price.get",
+          "arguments": {
+            "brand": "Fender",
+            "model": "American Professional II Stratocaster",
+            "finish": "Rosewood"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_52",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 206.73084259033203,
+      "predicted_calls": [
+        {
+          "name": "calc_heat_capacity",
+          "arguments": {
+            "temp": 298,
+            "volume": 10,
+            "gas": "air"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calc_heat_capacity",
+          "arguments": {
+            "temp": 298,
+            "volume": 10,
+            "gas": "air"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_378",
+      "category": "simple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 360.93688011169434,
+      "predicted_calls": [
+        {
+          "name": "timezone.convert",
+          "arguments": {
+            "time": "3pm",
+            "from_timezone": "New York",
+            "to_timezone": "London"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "timezone.convert",
+          "arguments": {
+            "time": "3pm",
+            "from_timezone": "America/New_York",
+            "to_timezone": "Europe/London"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_389",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 401.6239643096924,
+      "predicted_calls": [
+        {
+          "name": "currency_converter",
+          "arguments": {
+            "base_currency": "USD",
+            "target_currency": "GBP",
+            "amount": 200
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "currency_converter",
+          "arguments": {
+            "base_currency": "USD",
+            "target_currency": "GBP",
+            "amount": 200.0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_74",
+      "category": "simple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 342.82493591308594,
+      "predicted_calls": [
+        {
+          "name": "calculate_bacteria_evolution_rate",
+          "arguments": {
+            "start_population": 5000,
+            "duplication_frequency": 1,
+            "duration": 6
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_bacteria_evolution_rate",
+          "arguments": {
+            "start_population": 5000,
+            "duplication_frequency": 1,
+            "duration": 6,
+            "generation_time": 20
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_263",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 210.4489803314209,
+      "predicted_calls": [
+        {
+          "name": "get_sculpture_info",
+          "arguments": {
+            "artist_name": "James Plensa",
+            "detail": true
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_sculpture_info",
+          "arguments": {
+            "artist_name": "James Plensa",
+            "detail": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_0",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 481.07385635375977,
+      "predicted_calls": [
+        {
+          "name": "validateUserInput",
+          "arguments": {
+            "inputField": "userInputField",
+            "isComplete": true
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "validateUserInput",
+          "arguments": {
+            "inputField": "userInputField",
+            "isComplete": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_22",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 398.87213706970215,
+      "predicted_calls": [
+        {
+          "name": "resetStateProperty",
+          "arguments": {
+            "stateProperty": "userSession"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "resetStateProperty",
+          "arguments": {
+            "stateProperty": "userSession"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_29",
+      "category": "javascript",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 675.4627227783203,
+      "predicted_calls": [
+        {
+          "name": "EventScheduler",
+          "arguments": {
+            "events": {
+              "setupStage": {
+                "function": "setupStageFunction",
+                "prerequisites": []
+              },
+              "cleanupStage": {
+                "function": "cleanStageFunction",
+                "prerequisites": [
+                  "setupStage"
+                ]
+              }
+            },
+            "concurrencyLimit": 3
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "EventScheduler",
+          "arguments": {
+            "events": {
+              "setupStage": [
+                "setupStageFunction"
+              ],
+              "cleanupStage": [
+                "cleanStageFunction"
+              ]
+            },
+            "concurrencyLimit": 3.0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_39",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 423.86317253112793,
+      "predicted_calls": [
+        {
+          "name": "maybeAddJsSyntheticRestParameter",
+          "arguments": {
+            "declaration": "funcDeclaration",
+            "parameters": "funcParameters"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "maybeAddJsSyntheticRestParameter",
+          "arguments": {
+            "declaration": "funcDeclaration",
+            "parameters": "funcParameters"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_43",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 359.8959445953369,
+      "predicted_calls": [
+        {
+          "name": "invokeCallback",
+          "arguments": {
+            "callback": "processResult",
+            "error": "null",
+            "value": "Operation successful"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "invokeCallback",
+          "arguments": {
+            "callback": "processResult",
+            "error": "null",
+            "value": "Operation successful"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_7",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 320.0340270996094,
+      "predicted_calls": [
+        {
+          "name": "getNextKeyValues",
+          "arguments": {
+            "ctx": "dataAnalysisContext",
+            "currentKey": "userId"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "getNextKeyValues",
+          "arguments": {
+            "ctx": "dataAnalysisContext",
+            "currentKey": "userId"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_36",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 363.6748790740967,
+      "predicted_calls": [
+        {
+          "name": "updateBreak",
+          "arguments": {
+            "node": "breaknode",
+            "label": "loopEnd"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "updateBreak",
+          "arguments": {
+            "node": "breakNode",
+            "label": "loopEnd"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_32",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 367.9349422454834,
+      "predicted_calls": [
+        {
+          "name": "pollQueue",
+          "arguments": {
+            "queue": "fileWatchQueue",
+            "pollingInterval": 500,
+            "pollIndex": 0,
+            "chunkSize": 10
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "pollQueue",
+          "arguments": {
+            "queue": "fileWatchQueue",
+            "pollingInterval": 500.0,
+            "pollIndex": 0.0,
+            "chunkSize": 10.0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_3",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 473.6030101776123,
+      "predicted_calls": [
+        {
+          "name": "submitAtCoordinate",
+          "arguments": {
+            "action": "submit",
+            "formId": "loginForm",
+            "coordinates": [
+              60,
+              30
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "submitAtCoordinate",
+          "arguments": {
+            "action": "submit",
+            "formId": "loginForm",
+            "coordinates": [
+              60,
+              30
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_15",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 230.19099235534668,
+      "predicted_calls": [
+        {
+          "name": "ChartSeriesGenerator",
+          "arguments": {
+            "labels": "axisLabelsArray",
+            "data": "dataPointsArray",
+            "color": "defaultColor",
+            "chartLayout": "chartLayoutObject"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "ChartSeriesGenerator",
+          "arguments": {
+            "labels": "axisLabelsArray",
+            "data": "dataPointsArray",
+            "color": "defaultColor",
+            "chartLayout": "chartLayoutObject"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_25",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 280.87306022644043,
+      "predicted_calls": [
+        {
+          "name": "trackSubmitWithValidation",
+          "arguments": {
+            "obj": "formHandler",
+            "validationFlags": [
+              "isRequired",
+              "isValidEmail"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "trackSubmitWithValidation",
+          "arguments": {
+            "obj": "formHandler",
+            "validationFlags": [
+              "isRequired",
+              "isValidEmail"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_48",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 491.26195907592773,
+      "predicted_calls": [
+        {
+          "name": "updateDOMListeners",
+          "arguments": {
+            "oldVnode": "oldVirtualNode",
+            "vnode": "newVirtualNode"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "updateDOMListeners",
+          "arguments": {
+            "oldVnode": "oldVirtualNode",
+            "vnode": "newVirtualNode"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_2",
+      "category": "javascript",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 1296.4129447937012,
+      "predicted_calls": [
+        {
+          "name": "extractLastTransactionId",
+          "arguments": {
+            "filepath": "/var/log/db.log",
+            "status": [
+              "completed",
+              "failed"
+            ],
+            "encoding": "utf-8",
+            "processFunction": "processing_function"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "extractLastTransactionId",
+          "arguments": {
+            "filepath": "/var/log/db.log",
+            "status": [
+              "completed",
+              "failed"
+            ],
+            "encoding": "utf-8",
+            "processFunction": "processFunction"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_14",
+      "category": "javascript",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 641.4072513580322,
+      "predicted_calls": [
+        {
+          "name": "chartDataAccessorFactory",
+          "arguments": {
+            "chart": {
+              "nm": "BarChart",
+              "mn": "chartModule"
+            },
+            "library": "visualizationLibrary",
+            "configObject": "config"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "chartDataAccessorFactory",
+          "arguments": {
+            "chart": {
+              "nm": [
+                "BarChart"
+              ],
+              "mn": [
+                "chartModule"
+              ]
+            },
+            "library": "visualizationLibrary",
+            "configObject": "config"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_27",
+      "category": "javascript",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 578.4912109375,
+      "predicted_calls": [
+        {
+          "name": "validateReactProp",
+          "arguments": {
+            "obj": "serviceProvider",
+            "componentName": "UserProfile"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "validateReactProp",
+          "arguments": {
+            "obj": "serviceProvider",
+            "componentName": "UserProfile"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_41",
+      "category": "javascript",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 436.34629249572754,
+      "predicted_calls": [
+        {
+          "name": "queue_1",
+          "arguments": {
+            "worker": "myWorkerFunction",
+            "concurrency": 5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "queue",
+          "arguments": {
+            "worker": "myWorkerFunction",
+            "concurrency": 5.0,
+            "payload": 0.0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_79",
+      "category": "parallel_multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 487.44964599609375,
+      "predicted_calls": [
+        {
+          "name": "solve.quadratic_equation",
+          "arguments": {
+            "a": 5,
+            "b": 6,
+            "c": 1
+          }
+        },
+        {
+          "name": "convert.rgb_to_hex",
+          "arguments": {
+            "r": 255,
+            "g": 160,
+            "b": 0
+          }
+        },
+        {
+          "name": "perform.string_reverse",
+          "arguments": {
+            "input_string": "Hello, World!"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "solve.quadratic_equation",
+          "arguments": {
+            "a": 5,
+            "b": 6,
+            "c": 1
+          }
+        },
+        {
+          "name": "convert.rgb_to_hex",
+          "arguments": {
+            "r": 255,
+            "g": 160,
+            "b": 0
+          }
+        },
+        {
+          "name": "perform.string_reverse",
+          "arguments": {
+            "input_string": "Hello, World!"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_71",
+      "category": "parallel_multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 347.6717472076416,
+      "predicted_calls": [
+        {
+          "name": "sculpture_availability.check",
+          "arguments": {
+            "sculpture_name": "The Thinker",
+            "material": "bronze"
+          }
+        },
+        {
+          "name": "sculptor_info.get",
+          "arguments": {
+            "name": "Auguste Rodin"
+          }
+        },
+        {
+          "name": "sculpture_price.calculate",
+          "arguments": {
+            "material": "marble",
+            "size": 10,
+            "complexity": "high"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sculpture_price.calculate",
+          "arguments": {
+            "material": "marble",
+            "size": 10,
+            "complexity": "high"
+          }
+        },
+        {
+          "name": "sculptor_info.get",
+          "arguments": {
+            "name": "Auguste Rodin"
+          }
+        },
+        {
+          "name": "sculpture_availability.check",
+          "arguments": {
+            "sculpture_name": "The Thinker",
+            "material": "bronze"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_81",
+      "category": "parallel_multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 432.0991039276123,
+      "predicted_calls": [
+        {
+          "name": "geometry_rectangle.calculate",
+          "arguments": {
+            "width": 30,
+            "length": 50
+          }
+        },
+        {
+          "name": "geometry_square.calculate",
+          "arguments": {
+            "side": 5
+          }
+        },
+        {
+          "name": "geometry_circle.calculate",
+          "arguments": {
+            "radius": 3
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "geometry_rectangle.calculate",
+          "arguments": {
+            "width": 30,
+            "length": 50
+          }
+        },
+        {
+          "name": "geometry_square.calculate",
+          "arguments": {
+            "side": 5
+          }
+        },
+        {
+          "name": "geometry_circle.calculate",
+          "arguments": {
+            "radius": 3
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_160",
+      "category": "parallel_multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 415.16613960266113,
+      "predicted_calls": [
+        {
+          "name": "compound_interest",
+          "arguments": {
+            "principal": 5000,
+            "annual_rate": 5,
+            "compounding_freq": "quarterly",
+            "time_in_years": 7
+          }
+        },
+        {
+          "name": "lawsuits_search",
+          "arguments": {
+            "company_name": "Tech Corp",
+            "location": "San Francisco",
+            "year": 2018
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "compound_interest",
+          "arguments": {
+            "principal": 5000,
+            "annual_rate": 0.05,
+            "compounding_freq": "quarterly",
+            "time_in_years": 7
+          }
+        },
+        {
+          "name": "lawsuits_search",
+          "arguments": {
+            "company_name": "Tech Corp",
+            "location": "San Francisco",
+            "year": 2018,
+            "case_type": ""
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_165",
+      "category": "parallel_multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 440.75608253479004,
+      "predicted_calls": [
+        {
+          "name": "event_finder.find_upcoming",
+          "arguments": {
+            "location": "San Francisco, CA",
+            "genre": "jazz",
+            "days_ahead": 5
+          }
+        },
+        {
+          "name": "lawsuit_search",
+          "arguments": {
+            "company": "Apple Inc.",
+            "start_date": "2020-01-01",
+            "location": "California",
+            "status": "ongoing"
+          }
+        },
+        {
+          "name": "walmart.check_price",
+          "arguments": {
+            "items": [
+              "olive oil",
+              "rice",
+              "beans"
+            ],
+            "quantities": [
+              2,
+              3,
+              4
+            ],
+            "store_location": "San Jose, CA"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "event_finder.find_upcoming",
+          "arguments": {
+            "location": "San Francisco, CA",
+            "genre": "jazz",
+            "days_ahead": 5
+          }
+        },
+        {
+          "name": "lawsuit_search",
+          "arguments": {
+            "company": "Apple Inc.",
+            "start_date": "2020-01-01",
+            "location": "California",
+            "status": "ongoing"
+          }
+        },
+        {
+          "name": "walmart.check_price",
+          "arguments": {
+            "items": [
+              "olive oil",
+              "rice",
+              "beans"
+            ],
+            "quantities": [
+              2,
+              3,
+              4
+            ],
+            "store_location": "San Jose, CA"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_169",
+      "category": "parallel_multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 427.46877670288086,
+      "predicted_calls": [
+        {
+          "name": "get_team_score",
+          "arguments": {
+            "team_name": "Los Angeles Lakers",
+            "league": "NBA",
+            "include_player_stats": true
+          }
+        },
+        {
+          "name": "get_team_score",
+          "arguments": {
+            "team_name": "Manchester United",
+            "league": "Premier League",
+            "include_player_stats": true
+          }
+        },
+        {
+          "name": "weather.humidity_forecast",
+          "arguments": {
+            "location": "New York",
+            "days": 5,
+            "min_humidity": 60
+          }
+        },
+        {
+          "name": "weather.humidity_forecast",
+          "arguments": {
+            "location": "London",
+            "days": 7
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_team_score",
+          "arguments": {
+            "team_name": "Los Angeles Lakers",
+            "league": "NBA",
+            "include_player_stats": true
+          }
+        },
+        {
+          "name": "get_team_score",
+          "arguments": {
+            "team_name": "Manchester United",
+            "league": "Premier League",
+            "include_player_stats": true
+          }
+        },
+        {
+          "name": "weather.humidity_forecast",
+          "arguments": {
+            "location": "New York",
+            "days": 5,
+            "min_humidity": 60
+          }
+        },
+        {
+          "name": "weather.humidity_forecast",
+          "arguments": {
+            "location": "London",
+            "days": 7,
+            "min_humidity": ""
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_78",
+      "category": "parallel_multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 420.11117935180664,
+      "predicted_calls": [
+        {
+          "name": "maps.shortest_path",
+          "arguments": {
+            "start_location": "New York City",
+            "end_location": "Metropolitan Museum of Art",
+            "mode": "walk"
+          }
+        },
+        {
+          "name": "maps.route_times",
+          "arguments": {
+            "route": "New York City to Metropolitan Museum of Art",
+            "mode": "walk"
+          }
+        },
+        {
+          "name": "maps.shortest_path",
+          "arguments": {
+            "start_location": "Metropolitan Museum of Art",
+            "end_location": "Central Park",
+            "mode": "bike"
+          }
+        },
+        {
+          "name": "maps.route_times",
+          "arguments": {
+            "route": "Metropolitan Museum of Art to Central Park",
+            "mode": "bike"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "maps.shortest_path",
+          "arguments": {
+            "start_location": "New York City",
+            "end_location": "Metropolitan Museum of Art",
+            "mode": "walk"
+          }
+        },
+        {
+          "name": "maps.shortest_path",
+          "arguments": {
+            "start_location": "Metropolitan Museum of Art",
+            "end_location": "Central Park",
+            "mode": "bike"
+          }
+        },
+        {
+          "name": "maps.route_times",
+          "arguments": {
+            "route": "New York City to Metropolitan Museum of Art",
+            "mode": "walk"
+          }
+        },
+        {
+          "name": "maps.route_times",
+          "arguments": {
+            "route": "Metropolitan Museum of Art to Central Park",
+            "mode": "bike"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_154",
+      "category": "parallel_multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 583.8091373443604,
+      "predicted_calls": [
+        {
+          "name": "predict_house_price",
+          "arguments": {
+            "area": 2000,
+            "rooms": 4,
+            "year": 1985,
+            "location": "San Francisco"
+          }
+        },
+        {
+          "name": "lawsuit_search",
+          "arguments": {
+            "entity": "Mr. John Doe",
+            "county": "San Francisco",
+            "state": "California"
+          }
+        },
+        {
+          "name": "calculate_probability",
+          "arguments": {
+            "total_outcomes": 1000,
+            "favorable_outcomes": 5,
+            "round_to": 3
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "predict_house_price",
+          "arguments": {
+            "area": 2000,
+            "rooms": 4,
+            "year": 1985,
+            "location": "San Francisco"
+          }
+        },
+        {
+          "name": "lawsuit_search",
+          "arguments": {
+            "entity": "John Doe",
+            "county": "San Francisco",
+            "state": "California"
+          }
+        },
+        {
+          "name": "calculate_probability",
+          "arguments": {
+            "total_outcomes": 1000,
+            "favorable_outcomes": 5,
+            "round_to": 3
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_86",
+      "category": "parallel_multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 739.4769191741943,
+      "predicted_calls": [
+        {
+          "name": "kinematics.calculate_speed_from_rest",
+          "arguments": {
+            "distance": 120,
+            "time": 10,
+            "initial_speed": 0
+          }
+        },
+        {
+          "name": "kinematics.calculate_acceleration",
+          "arguments": {
+            "initial_speed": 12,
+            "final_speed": 24,
+            "time": 5,
+            "distance": 0
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "kinematics.calculate_speed_from_rest",
+          "arguments": {
+            "distance": 120.0,
+            "time": 10.0,
+            "initial_speed": 0.0
+          }
+        },
+        {
+          "name": "kinematics.calculate_acceleration",
+          "arguments": {
+            "initial_speed": 12.0,
+            "final_speed": 24.0,
+            "time": 5.0,
+            "distance": ""
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_197",
+      "category": "parallel_multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 371.51193618774414,
+      "predicted_calls": [
+        {
+          "name": "recipe_search",
+          "arguments": {
+            "dietary_restriction": "Vegetarian",
+            "ingredients": [
+              "potatoes",
+              "carrots",
+              "onions"
+            ],
+            "servings": 4
+          }
+        },
+        {
+          "name": "detailed_weather_forecast",
+          "arguments": {
+            "location": "New York",
+            "duration": 12,
+            "include_precipitation": true
+          }
+        },
+        {
+          "name": "get_time_difference",
+          "arguments": {
+            "place1": "New York",
+            "place2": "Tokyo"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "recipe_search",
+          "arguments": {
+            "dietary_restriction": "Vegetarian",
+            "ingredients": [
+              "potatoes",
+              "carrots",
+              "onions"
+            ],
+            "servings": 4
+          }
+        },
+        {
+          "name": "detailed_weather_forecast",
+          "arguments": {
+            "location": "New York",
+            "duration": 12,
+            "include_precipitation": true
+          }
+        },
+        {
+          "name": "get_time_difference",
+          "arguments": {
+            "place1": "New York",
+            "place2": "Tokyo"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_163",
+      "category": "parallel_multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 492.5508499145508,
+      "predicted_calls": [
+        {
+          "name": "calculate_mutual_fund_balance",
+          "arguments": {
+            "investment_amount": 5000,
+            "annual_yield": 0.07,
+            "years": 10
+          }
+        },
+        {
+          "name": "geometry.calculate_area_circle",
+          "arguments": {
+            "radius": 5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "geometry.calculate_area_circle",
+          "arguments": {
+            "radius": 5,
+            "unit": "meters"
+          }
+        },
+        {
+          "name": "calculate_mutual_fund_balance",
+          "arguments": {
+            "investment_amount": 5000,
+            "annual_yield": 0.07,
+            "years": 10
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_30",
+      "category": "parallel_multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 431.55884742736816,
+      "predicted_calls": [
+        {
+          "name": "legal_case.find_parties",
+          "arguments": {
+            "party_name": "Charles Dickens",
+            "city": "Boston"
+          }
+        },
+        {
+          "name": "legal_case.find_parties",
+          "arguments": {
+            "party_name": "University of California",
+            "city": "Los Angeles"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "legal_case.find_parties",
+          "arguments": {
+            "party_name": "Charles Dickens",
+            "city": "Boston"
+          }
+        },
+        {
+          "name": "legal_case.find_parties",
+          "arguments": {
+            "party_name": "University of California",
+            "city": "Los Angeles"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_173",
+      "category": "parallel_multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 392.0891284942627,
+      "predicted_calls": [
+        {
+          "name": "restaurant.find_nearby",
+          "arguments": {
+            "location": "New York, NY",
+            "cuisine": "Thai",
+            "max_distance": 10
+          }
+        },
+        {
+          "name": "restaurant.find_nearby",
+          "arguments": {
+            "location": "New York, NY",
+            "cuisine": "Italian",
+            "max_distance": 10
+          }
+        },
+        {
+          "name": "ecology_data.precipitation_stats",
+          "arguments": {
+            "location": "Amazon rainforest",
+            "time_frame": "year"
+          }
+        },
+        {
+          "name": "ecology_data.precipitation_stats",
+          "arguments": {
+            "location": "Amazon rainforest",
+            "time_frame": "five_years"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "restaurant.find_nearby",
+          "arguments": {
+            "location": "New York, NY",
+            "cuisine": "Thai",
+            "max_distance": 10.0
+          }
+        },
+        {
+          "name": "restaurant.find_nearby",
+          "arguments": {
+            "location": "New York, NY",
+            "cuisine": "Italian",
+            "max_distance": 10.0
+          }
+        },
+        {
+          "name": "ecology_data.precipitation_stats",
+          "arguments": {
+            "location": "Amazon rainforest",
+            "time_frame": "year"
+          }
+        },
+        {
+          "name": "ecology_data.precipitation_stats",
+          "arguments": {
+            "location": "Amazon rainforest",
+            "time_frame": "five_years"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_138",
+      "category": "parallel_multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 415.651798248291,
+      "predicted_calls": [
+        {
+          "name": "calculate_magnetic_field",
+          "arguments": {
+            "current": 5,
+            "radius": 0.02
+          }
+        },
+        {
+          "name": "concert_booking.book_ticket",
+          "arguments": {
+            "artist": "Taylor Swift",
+            "city": "New York",
+            "num_tickets": 3
+          }
+        },
+        {
+          "name": "lawsuit_details.find",
+          "arguments": {
+            "company_name": "Apple Inc.",
+            "year": 2010,
+            "case_type": "Patent"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_magnetic_field",
+          "arguments": {
+            "current": 5,
+            "radius": 0.02,
+            "permeability": ""
+          }
+        },
+        {
+          "name": "concert_booking.book_ticket",
+          "arguments": {
+            "artist": "Taylor Swift",
+            "city": "New York",
+            "num_tickets": 3
+          }
+        },
+        {
+          "name": "lawsuit_details.find",
+          "arguments": {
+            "company_name": "Apple Inc.",
+            "year": 2010,
+            "case_type": "Patent"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_31",
+      "category": "parallel_multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 661.4391803741455,
+      "predicted_calls": [
+        {
+          "name": "lawsuit.fetch_details",
+          "arguments": {
+            "company_name": "Pacific Gas and Electric"
+          }
+        },
+        {
+          "name": "lawsuit.judge",
+          "arguments": {
+            "company_name": "Pacific Gas and Electric"
+          }
+        },
+        {
+          "name": "lawsuit.fetch_details",
+          "arguments": {
+            "company_name": "Tesla Inc."
+          }
+        },
+        {
+          "name": "lawsuit.judge",
+          "arguments": {
+            "company_name": "Tesla Inc."
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "lawsuit.fetch_details",
+          "arguments": {
+            "company_name": "Pacific Gas and Electric"
+          }
+        },
+        {
+          "name": "lawsuit.judge",
+          "arguments": {
+            "company_name": "Pacific Gas and Electric",
+            "lawsuit_id": 123
+          }
+        },
+        {
+          "name": "lawsuit.fetch_details",
+          "arguments": {
+            "company_name": "Tesla Inc."
+          }
+        },
+        {
+          "name": "lawsuit.judge",
+          "arguments": {
+            "company_name": "Tesla Inc.",
+            "lawsuit_id": 123
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_85",
+      "category": "parallel_multiple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 387.9568576812744,
+      "predicted_calls": [
+        {
+          "name": "calculate_gcd",
+          "arguments": {
+            "num1": 56,
+            "num2": 98,
+            "algorithm": "euclidean"
+          }
+        },
+        {
+          "name": "calculate_gcd",
+          "arguments": {
+            "num1": 81,
+            "num2": 27,
+            "algorithm": "binary"
+          }
+        },
+        {
+          "name": "calculate_lcm",
+          "arguments": {
+            "num1": 15,
+            "num2": 25,
+            "method": "standard"
+          }
+        },
+        {
+          "name": "calculate_lcm",
+          "arguments": {
+            "num1": 21,
+            "num2": 14,
+            "method": "reduced"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_gcd",
+          "arguments": {
+            "num1": 56,
+            "num2": 98,
+            "algorithm": "euclidean"
+          }
+        },
+        {
+          "name": "calculate_gcd",
+          "arguments": {
+            "num1": 81,
+            "num2": 27,
+            "algorithm": "binary"
+          }
+        },
+        {
+          "name": "calculate_lcm",
+          "arguments": {
+            "num1": 15,
+            "num2": 25,
+            "method": "standard"
+          }
+        },
+        {
+          "name": "calculate_lcm",
+          "arguments": {
+            "num1": 21,
+            "num2": 14,
+            "method": "reduced"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_172",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 493.1478500366211,
+      "predicted_calls": [
+        {
+          "name": "finance.predict_future_value",
+          "arguments": {
+            "present_value": 5000,
+            "annual_interest_rate": 0.05,
+            "compounding_periods_per_year": 1,
+            "time_years": 10
+          }
+        },
+        {
+          "name": "finance.predict_future_value",
+          "arguments": {
+            "present_value": 7000,
+            "annual_interest_rate": 0.04,
+            "compounding_periods_per_year": 1,
+            "time_years": 15
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "finance.predict_future_value",
+          "arguments": {
+            "present_value": 5000,
+            "annual_interest_rate": 0.05,
+            "compounding_periods_per_year": 1,
+            "time_years": 10
+          }
+        },
+        {
+          "name": "finance.predict_future_value",
+          "arguments": {
+            "present_value": 7000,
+            "annual_interest_rate": 0.04,
+            "compounding_periods_per_year": 1,
+            "time_years": 15
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_137",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 625.6840229034424,
+      "predicted_calls": [
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": "[45, 12, 67, 21, 89]",
+            "order": "ascending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": "[45, 12, 67, 21, 89]",
+            "order": "descending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": "[34, 78, 12, 56, 90]",
+            "order": "ascending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": "[34, 78, 12, 56, 90]",
+            "order": "descending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": "[23, 45, 67, 89, 12]",
+            "order": "ascending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": "[23, 45, 67, 89, 12]",
+            "order": "descending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": "[56, 78, 90, 12, 34]",
+            "order": "ascending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": "[56, 78, 90, 12, 34]",
+            "order": "descending"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": [
+              45,
+              12,
+              67,
+              21,
+              89
+            ],
+            "order": "ascending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": [
+              45,
+              12,
+              67,
+              21,
+              89
+            ],
+            "order": "descending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": [
+              34,
+              78,
+              12,
+              56,
+              90
+            ],
+            "order": "ascending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": [
+              34,
+              78,
+              12,
+              56,
+              90
+            ],
+            "order": "descending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": [
+              23,
+              45,
+              67,
+              89,
+              12
+            ],
+            "order": "ascending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": [
+              23,
+              45,
+              67,
+              89,
+              12
+            ],
+            "order": "descending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": [
+              56,
+              78,
+              90,
+              12,
+              34
+            ],
+            "order": "ascending"
+          }
+        },
+        {
+          "name": "array_sort",
+          "arguments": {
+            "list": [
+              56,
+              78,
+              90,
+              12,
+              34
+            ],
+            "order": "descending"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_159",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 399.51491355895996,
+      "predicted_calls": [
+        {
+          "name": "probability.dice_roll",
+          "arguments": {
+            "desired_number": 4,
+            "number_of_rolls": 3,
+            "die_sides": 6
+          }
+        },
+        {
+          "name": "probability.dice_roll",
+          "arguments": {
+            "desired_number": 2,
+            "number_of_rolls": 2,
+            "die_sides": 6
+          }
+        },
+        {
+          "name": "probability.dice_roll",
+          "arguments": {
+            "desired_number": 7,
+            "number_of_rolls": 2,
+            "die_sides": 8
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "probability.dice_roll",
+          "arguments": {
+            "desired_number": 4,
+            "number_of_rolls": 3,
+            "die_sides": 6
+          }
+        },
+        {
+          "name": "probability.dice_roll",
+          "arguments": {
+            "desired_number": 2,
+            "number_of_rolls": 2,
+            "die_sides": 6
+          }
+        },
+        {
+          "name": "probability.dice_roll",
+          "arguments": {
+            "desired_number": 7,
+            "number_of_rolls": 2,
+            "die_sides": 8
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_58",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 427.7219772338867,
+      "predicted_calls": [
+        {
+          "name": "get_exchange_rate",
+          "arguments": {
+            "base_currency": "USD",
+            "target_currency": "AUD"
+          }
+        },
+        {
+          "name": "get_exchange_rate",
+          "arguments": {
+            "base_currency": "USD",
+            "target_currency": "CAD"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_exchange_rate",
+          "arguments": {
+            "base_currency": "USD",
+            "target_currency": "AUD"
+          }
+        },
+        {
+          "name": "get_exchange_rate",
+          "arguments": {
+            "base_currency": "USD",
+            "target_currency": "CAD"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_152",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 546.4489459991455,
+      "predicted_calls": [
+        {
+          "name": "math.power",
+          "arguments": {
+            "base": 3,
+            "exponent": 5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "math.power",
+          "arguments": {
+            "base": 2,
+            "exponent": 3,
+            "mod": null
+          }
+        },
+        {
+          "name": "math.power",
+          "arguments": {
+            "base": 3,
+            "exponent": 5,
+            "mod": null
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_190",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 801.7289638519287,
+      "predicted_calls": [
+        {
+          "name": "calculate_shortest_distance",
+          "arguments": {
+            "start_location": "New York City",
+            "end_location": "Los Angeles",
+            "route_preference": "Shortest"
+          }
+        },
+        {
+          "name": "calculate_shortest_distance",
+          "arguments": {
+            "start_location": "New York City",
+            "end_location": "Los Angeles",
+            "route_preference": "Scenic"
+          }
+        },
+        {
+          "name": "calculate_shortest_distance",
+          "arguments": {
+            "start_location": "Los Angeles",
+            "end_location": "Miami",
+            "route_preference": "Shortest"
+          }
+        },
+        {
+          "name": "calculate_shortest_distance",
+          "arguments": {
+            "start_location": "Los Angeles",
+            "end_location": "Miami",
+            "route_preference": "Scenic"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_shortest_distance",
+          "arguments": {
+            "start_location": "New York City",
+            "end_location": "Los Angeles",
+            "route_preference": "Shortest"
+          }
+        },
+        {
+          "name": "calculate_shortest_distance",
+          "arguments": {
+            "start_location": "Los Angeles",
+            "end_location": "Miami",
+            "route_preference": "Shortest"
+          }
+        },
+        {
+          "name": "calculate_shortest_distance",
+          "arguments": {
+            "start_location": "New York City",
+            "end_location": "Los Angeles",
+            "route_preference": "Scenic"
+          }
+        },
+        {
+          "name": "calculate_shortest_distance",
+          "arguments": {
+            "start_location": "Los Angeles",
+            "end_location": "Miami",
+            "route_preference": "Scenic"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_151",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 511.98410987854004,
+      "predicted_calls": [
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 15,
+            "height": 20,
+            "unit": "square meters"
+          }
+        },
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 25,
+            "height": 30,
+            "unit": "square feet"
+          }
+        },
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 35,
+            "height": 40,
+            "unit": "square inches"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 15,
+            "height": 20,
+            "unit": "square meters"
+          }
+        },
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 25,
+            "height": 30,
+            "unit": "square feet"
+          }
+        },
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 35,
+            "height": 40,
+            "unit": "square inches"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_180",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 632.7600479125977,
+      "predicted_calls": [
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "Open"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "Close"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "High"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "Low"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "Open"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "Close"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "High"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "Low"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "Open"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "Close"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "High"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Microsoft",
+            "days": 30,
+            "data_type": "Low"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "Open"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "Close"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "High"
+          }
+        },
+        {
+          "name": "stock_price",
+          "arguments": {
+            "company": "Apple",
+            "days": 30,
+            "data_type": "Low"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_53",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 392.2739028930664,
+      "predicted_calls": [
+        {
+          "name": "get_cooking_recipe",
+          "arguments": {
+            "dish_name": "Lasagne Bolognese",
+            "serving_size": 4
+          }
+        },
+        {
+          "name": "get_cooking_recipe",
+          "arguments": {
+            "dish_name": "Caesar Salad",
+            "serving_size": 2
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_cooking_recipe",
+          "arguments": {
+            "dish_name": "Lasagne Bolognese",
+            "serving_size": 4
+          }
+        },
+        {
+          "name": "get_cooking_recipe",
+          "arguments": {
+            "dish_name": "Caesar Salad",
+            "serving_size": 2
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_134",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 351.14002227783203,
+      "predicted_calls": [
+        {
+          "name": "calculate_bmi",
+          "arguments": {
+            "weight": 85,
+            "height": 175
+          }
+        },
+        {
+          "name": "calculate_bmi",
+          "arguments": {
+            "weight": 60,
+            "height": 160
+          }
+        },
+        {
+          "name": "calculate_bmi",
+          "arguments": {
+            "weight": 75,
+            "height": 180
+          }
+        },
+        {
+          "name": "calculate_bmi",
+          "arguments": {
+            "weight": 90,
+            "height": 185
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_bmi",
+          "arguments": {
+            "weight": 85,
+            "height": 175,
+            "unit": "metric"
+          }
+        },
+        {
+          "name": "calculate_bmi",
+          "arguments": {
+            "weight": 60,
+            "height": 160,
+            "unit": "metric"
+          }
+        },
+        {
+          "name": "calculate_bmi",
+          "arguments": {
+            "weight": 75,
+            "height": 180,
+            "unit": "metric"
+          }
+        },
+        {
+          "name": "calculate_bmi",
+          "arguments": {
+            "weight": 90,
+            "height": 185,
+            "unit": "metric"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_125",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 475.55088996887207,
+      "predicted_calls": [
+        {
+          "name": "elephant_population_estimate",
+          "arguments": {
+            "current_population": 500,
+            "growth_rate": 0.02,
+            "years": 10
+          }
+        },
+        {
+          "name": "elephant_population_estimate",
+          "arguments": {
+            "current_population": 500,
+            "growth_rate": 0.015,
+            "years": 10
+          }
+        },
+        {
+          "name": "elephant_population_estimate",
+          "arguments": {
+            "current_population": 500,
+            "growth_rate": 0.025,
+            "years": 10
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "elephant_population_estimate",
+          "arguments": {
+            "current_population": 500,
+            "growth_rate": 0.02,
+            "years": 10
+          }
+        },
+        {
+          "name": "elephant_population_estimate",
+          "arguments": {
+            "current_population": 500,
+            "growth_rate": 0.015,
+            "years": 10
+          }
+        },
+        {
+          "name": "elephant_population_estimate",
+          "arguments": {
+            "current_population": 500,
+            "growth_rate": 0.025,
+            "years": 10
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_45",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 383.8059902191162,
+      "predicted_calls": [
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "genre": "Pop",
+            "region": "Australia"
+          }
+        },
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "genre": "Rock",
+            "region": "Australia"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "genre": "Pop",
+            "region": "Australia",
+            "duration": 0
+          }
+        },
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "genre": "Rock",
+            "region": "Australia",
+            "duration": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_148",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 332.08513259887695,
+      "predicted_calls": [
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "distance": 500,
+            "time": 25,
+            "to_unit": "km/h"
+          }
+        },
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "distance": 1000,
+            "time": 200,
+            "to_unit": "m/s"
+          }
+        },
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "distance": 10000,
+            "time": 600,
+            "to_unit": "km/h"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "distance": 500,
+            "time": 25,
+            "to_unit": "km/h"
+          }
+        },
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "distance": 1000,
+            "time": 200,
+            "to_unit": "m/s"
+          }
+        },
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "distance": 10000,
+            "time": 600,
+            "to_unit": "km/h"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_186",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 481.23693466186523,
+      "predicted_calls": [
+        {
+          "name": "calculate_emission_savings",
+          "arguments": {
+            "energy_type": "solar",
+            "usage_duration": 12,
+            "region": "Midwest"
+          }
+        },
+        {
+          "name": "calculate_emission_savings",
+          "arguments": {
+            "energy_type": "wind",
+            "usage_duration": 8,
+            "region": "Midwest"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_emission_savings",
+          "arguments": {
+            "energy_type": "solar",
+            "usage_duration": 12,
+            "region": "Midwest"
+          }
+        },
+        {
+          "name": "calculate_emission_savings",
+          "arguments": {
+            "energy_type": "wind",
+            "usage_duration": 8,
+            "region": "Midwest"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_66",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 514.1830444335938,
+      "predicted_calls": [
+        {
+          "name": "geometry.area_circle",
+          "arguments": {
+            "radius": 5
+          }
+        },
+        {
+          "name": "geometry.area_circle",
+          "arguments": {
+            "radius": 10
+          }
+        },
+        {
+          "name": "geometry.area_circle",
+          "arguments": {
+            "radius": 15
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "geometry.area_circle",
+          "arguments": {
+            "radius": 5,
+            "units": "meters"
+          }
+        },
+        {
+          "name": "geometry.area_circle",
+          "arguments": {
+            "radius": 10,
+            "units": "meters"
+          }
+        },
+        {
+          "name": "geometry.area_circle",
+          "arguments": {
+            "radius": 15,
+            "units": "meters"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_2",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 601.5758514404297,
+      "predicted_calls": [
+        {
+          "name": "calculate_resistance",
+          "arguments": {
+            "length": 5,
+            "area": 0.01,
+            "resistivity": "copper"
+          }
+        },
+        {
+          "name": "calculate_resistance",
+          "arguments": {
+            "length": 5,
+            "area": 0.01,
+            "resistivity": "aluminum"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_resistance",
+          "arguments": {
+            "length": 5,
+            "area": 0.01,
+            "resistivity": "copper"
+          }
+        },
+        {
+          "name": "calculate_resistance",
+          "arguments": {
+            "length": 5,
+            "area": 0.01,
+            "resistivity": "aluminum"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_23",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 261.3239288330078,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "MolecularStructures",
+            "columns": [
+              "MoleculeName",
+              "MolecularFormula",
+              "MolecularWeight",
+              "StructureDiagram"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "MolecularStructures",
+            "columns": [
+              "MoleculeName",
+              "MolecularFormula",
+              "MolecularWeight",
+              "StructureDiagram"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_0",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 501.11985206604004,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "students",
+            "columns": [
+              "name"
+            ],
+            "conditions": [
+              "id = 1234"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "students",
+            "columns": [
+              "name"
+            ],
+            "conditions": [
+              "id = 1234"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_73",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 256.06679916381836,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "FiscalPolicy",
+            "columns": [
+              "Year",
+              "GovernmentSpending",
+              "TaxRevenue",
+              "BudgetDeficit",
+              "PublicDebt"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "FiscalPolicy",
+            "columns": [
+              "Year",
+              "GovernmentSpending",
+              "TaxRevenue",
+              "BudgetDeficit",
+              "PublicDebt"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_48",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 277.0090103149414,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Students",
+            "columns": [
+              "ID",
+              "Name",
+              "Age",
+              "Grade"
+            ],
+            "insert_values": [
+              "S101",
+              "John Doe",
+              16,
+              10
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Students",
+            "columns": [
+              "ID",
+              "Name",
+              "Age",
+              "Grade"
+            ],
+            "insert_values": [
+              [
+                "S101",
+                "John Doe",
+                16,
+                10
+              ]
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_96",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 283.707857131958,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "employees",
+            "conditions": [
+              "salary < 50000"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "employees",
+            "conditions": [
+              "salary < 50000"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_28",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 286.75007820129395,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "ChemicalElements",
+            "columns": [
+              "ElementName",
+              "AtomicNumber",
+              "Symbol",
+              "AtomicWeight"
+            ],
+            "insert_values": [
+              "Helium",
+              2,
+              "He",
+              4.002602
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "ChemicalElements",
+            "columns": [
+              "ElementName",
+              "AtomicNumber",
+              "Symbol",
+              "AtomicWeight"
+            ],
+            "insert_values": [
+              "Helium",
+              2,
+              "He",
+              4.002602
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_6",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 598.0119705200195,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Students",
+            "conditions": [
+              "GPA < 2.0"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Students",
+            "columns": [
+              "StudentID",
+              "Name",
+              "GPA"
+            ],
+            "conditions": [
+              "GPA < 2.0"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_36",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 255.39612770080566,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Genes",
+            "conditions": [
+              "GeneID = 'BRCA1'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Genes",
+            "conditions": [
+              "GeneID = 'BRCA1'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_38",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 320.0879096984863,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Species",
+            "columns": [
+              "Species_Name",
+              "Lifespan",
+              "Size",
+              "Weight"
+            ],
+            "insert_values": [
+              "Leptodactylus pentadactylus",
+              10,
+              7.5,
+              80
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Species",
+            "columns": "Species_Name",
+            "insert_values": [
+              "Leptodactylus pentadactylus",
+              10,
+              7.5,
+              80
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_70",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 539.680004119873,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "sales",
+            "columns": [
+              "quantity_sold"
+            ],
+            "conditions": [
+              "product_name = 'Product X'",
+              "sale_date >= '2022-01-01'",
+              "sale_date <= '2022-03-31'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "sales",
+            "columns": [
+              "product_name",
+              "quantity_sold"
+            ],
+            "conditions": [
+              "product_name = 'Product X'",
+              "sale_date >= '2022-01-01'",
+              "sale_date <= '2022-03-31'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_35",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 483.1888675689697,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "PlantSpecies",
+            "update_values": [
+              "AverageHeight = 150"
+            ],
+            "conditions": [
+              "Name = 'Sunflower'",
+              "AverageHeight < 150"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "PlantSpecies",
+            "columns": [
+              "AverageHeight"
+            ],
+            "update_values": [
+              150
+            ],
+            "conditions": "SpeciesName = 'Sunflower'"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_63",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 475.45909881591797,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "SurveyResults",
+            "columns": [
+              "RespondentID",
+              "Age",
+              "Gender",
+              "Income",
+              "SatisfactionScore"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "SurveyResults",
+            "columns": [
+              "RespondentID",
+              "Age",
+              "Gender",
+              "Income",
+              "SatisfactionScore"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_67",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 480.07869720458984,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "student_scores",
+            "conditions": [
+              "score < 50"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "student_scores",
+            "conditions": [
+              "score < 50"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_83",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 431.7159652709961,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "FinancialTransactions",
+            "columns": [
+              "TransactionID",
+              "TransactionType",
+              "TransactionAmount",
+              "TransactionDate"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "FinancialTransactions",
+            "columns": [
+              "TransactionID",
+              "TransactionType",
+              "TransactionAmount",
+              "TransactionDate"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_66",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 276.98802947998047,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "employees",
+            "conditions": [
+              "job_title = 'Data Analyst'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "employees",
+            "conditions": [
+              "job_title='Data Analyst'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_30",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 277.878999710083,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "species",
+            "columns": [
+              "species_name",
+              "lifespan"
+            ],
+            "conditions": [
+              "lifespan > 50"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "species",
+            "columns": [
+              "species_name"
+            ],
+            "conditions": [
+              "lifespan > 50"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_152",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 393.83506774902344,
+      "predicted_calls": [
+        {
+          "name": "calculate_mutual_fund_balance",
+          "arguments": {
+            "investment_amount": 50000,
+            "annual_yield": 0.05,
+            "years": 3
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_mutual_fund_balance",
+          "arguments": {
+            "investment_amount": 50000,
+            "annual_yield": 0.05,
+            "years": 3
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "irrelevance_76",
+      "category": "relevance",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 406.9678783416748,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_13",
+      "category": "javascript",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 270.42365074157715,
+      "predicted_calls": [
+        {
+          "name": "DynamicChartGenerator",
+          "arguments": {
+            "userData": "userDataArray",
+            "scalingFactor": 3,
+            "dashboard": "dashboardElement",
+            "options": {}
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "DynamicChartGenerator",
+          "arguments": {
+            "userData": [
+              "userDataArray"
+            ],
+            "scalingFactor": 3.0,
+            "dashboard": "dashboardElement",
+            "options": {}
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_247",
+      "category": "simple",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 239.8829460144043,
+      "predicted_calls": [
+        {
+          "name": "historical_contrib.get_contrib",
+          "arguments": {
+            "scientist": "Albert Einstein",
+            "date": "1915-03-17",
+            "category": "all"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "historical_contrib.get_contrib",
+          "arguments": {
+            "scientist": "Albert Einstein",
+            "date": "1915-03-17",
+            "category": "all"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_multiple_64",
+      "category": "parallel_multiple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 458.8048458099365,
+      "predicted_calls": [
+        {
+          "name": "ecological_impact.analyze",
+          "arguments": {
+            "species": "African Elephant",
+            "ecosystem": "Serengeti ecosystem",
+            "location": "Serengeti",
+            "timeframe": 5
+          }
+        },
+        {
+          "name": "wildlife_population.assess_growth",
+          "arguments": {
+            "species": "African Elephant",
+            "location": "Serengeti",
+            "duration": 10
+          }
+        },
+        {
+          "name": "ecological_impact.analyze",
+          "arguments": {
+            "species": "Bengal Tiger",
+            "ecosystem": "Sundarbans ecosystem",
+            "location": "Sundarbans",
+            "timeframe": 3
+          }
+        },
+        {
+          "name": "wildlife_population.assess_growth",
+          "arguments": {
+            "species": "Bengal Tiger",
+            "location": "Sundarbans",
+            "duration": 7
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "wildlife_population.assess_growth",
+          "arguments": {
+            "species": "African Elephant",
+            "location": "Serengeti",
+            "duration": 10
+          }
+        },
+        {
+          "name": "ecological_impact.analyze",
+          "arguments": {
+            "species": "African Elephant",
+            "ecosystem": "Serengeti",
+            "location": "Serengeti",
+            "timeframe": 5
+          }
+        },
+        {
+          "name": "wildlife_population.assess_growth",
+          "arguments": {
+            "species": "Bengal Tiger",
+            "location": "Sundarbans",
+            "duration": 7
+          }
+        },
+        {
+          "name": "ecological_impact.analyze",
+          "arguments": {
+            "species": "Bengal Tiger",
+            "ecosystem": "Sundarbans",
+            "location": "Sundarbans",
+            "timeframe": 3
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "simple_315",
+      "category": "simple",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 224.18785095214844,
+      "predicted_calls": [
+        {
+          "name": "get_defense_ranking",
+          "arguments": {
+            "season": 2021
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_defense_ranking",
+          "arguments": {
+            "season": 2021,
+            "top": 1
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

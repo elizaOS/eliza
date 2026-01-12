@@ -1,0 +1,349 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 10,
+    "timestamp": "2026-01-12T00:00:12Z"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.0,
+    "ast_accuracy": 0.0,
+    "exec_accuracy": 0.0,
+    "relevance_accuracy": 1.0,
+    "total_tests": 10,
+    "passed_tests": 0,
+    "failed_tests": 10,
+    "latency": {
+      "avg": 601.3615608215332,
+      "p50": 487.4749183654785,
+      "p95": 1673.4671592712402,
+      "p99": 1673.4671592712402
+    },
+    "category_breakdown": {
+      "parallel": {
+        "total": 2,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 678.1255006790161
+      },
+      "sql": {
+        "total": 3,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 383.14374287923175
+      },
+      "java": {
+        "total": 2,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 379.77898120880127
+      },
+      "rest_api": {
+        "total": 3,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 916.1251386006674
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 0,
+      "argument_mismatch": 0,
+      "missing_call": 0,
+      "extra_call": 10,
+      "type_error": 0,
+      "relevance_error": 0,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.887,
+    "gpt-4o": -0.891,
+    "claude-3-opus": -0.852,
+    "claude-3-sonnet": -0.823,
+    "gemini-1.5-pro": -0.845,
+    "qwen-2.5-72b": -0.712,
+    "llama-3.1-70b": -0.685,
+    "mistral-large": -0.698
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "Overall score: 0.00% (AST: 0.00%, Exec: 0.00%)",
+      "Best category: parallel (0.00%)",
+      "Needs work: rest_api (0.00%)",
+      "Behind llama-3.1-70b by 68.50%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "parallel_45",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 902.5280475616455,
+      "predicted_calls": [
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "region": "Australia",
+            "genre": "Pop"
+          }
+        },
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "region": "Australia",
+            "genre": "Rock"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_42",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 453.7229537963867,
+      "predicted_calls": [
+        {
+          "name": "check_instrument_availability",
+          "arguments": {
+            "city": "Berlin",
+            "instrument": "Yamaha P125 piano"
+          }
+        },
+        {
+          "name": "check_instrument_availability",
+          "arguments": {
+            "city": "Madrid",
+            "instrument": "Yamaha P125 piano"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_61",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 487.4749183654785,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "customers",
+            "columns": [
+              "AVG(age)"
+            ],
+            "conditions": [
+              "purchase_amount > 1000"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_91",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 294.67320442199707,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "products",
+            "columns": [
+              "product_name",
+              "product_id",
+              "price"
+            ],
+            "conditions": [
+              "price < 20"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_39",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 488.1479740142822,
+      "predicted_calls": [
+        {
+          "name": "maybeAddJsSyntheticRestParameter",
+          "arguments": {
+            "declaration": "funcDeclaration",
+            "parameters": "funcParameters"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "java_39",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 271.4099884033203,
+      "predicted_calls": [
+        {
+          "name": "NodeIdConverter.format",
+          "arguments": {
+            "event": "logEvent",
+            "toAppendTo": "logBuilder"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_50",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 623.7170696258545,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://api.open-meteo.com/v1/forecast",
+            "params": {
+              "latitude": "37.8651",
+              "longitude": "-119.5383",
+              "hourly": [
+                "temperature_2m",
+                "wind_speed_10m",
+                "precipitation"
+              ],
+              "daily": null,
+              "temperature_unit": "fahrenheit",
+              "wind_speed_unit": "mph",
+              "precipitation_unit": "inch",
+              "timezone": "auto",
+              "forecast_days": 10
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_12",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 1673.4671592712402,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://covid-193.p.rapidapi.com/statistics",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "covid-193.p.rapidapi.com"
+            },
+            "timeout": 5
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_36",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 451.1911869049072,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://geocode.maps.co/search",
+            "params": {
+              "q": "886 Cannery Row, Monterey, CA",
+              "api_key": "YOUR-GEOCODE-API-KEY",
+              "format": "json"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_39",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 367.2831058502197,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Plant_Species",
+            "columns": [
+              "Species_Name",
+              "Height",
+              "Lifespan",
+              "Seed_Weight"
+            ],
+            "insert_values": [
+              [
+                "Cactaceae saharae",
+                "15",
+                "20",
+                "0.5"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    }
+  ]
+}

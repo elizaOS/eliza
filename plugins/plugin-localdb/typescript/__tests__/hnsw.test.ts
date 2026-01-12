@@ -126,7 +126,7 @@ describe("SimpleHNSW", () => {
     });
 
     it("should throw on dimension mismatch", async () => {
-      expect(
+      await expect(
         hnsw.add("v1", [1.0, 0.0]) // 2D instead of 3D
       ).rejects.toThrow("dimension mismatch");
     });

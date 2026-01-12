@@ -1,0 +1,296 @@
+[
+  {
+    "task_id": "kg-001",
+    "environment": "knowledge_graph",
+    "success": true,
+    "steps_taken": 3,
+    "actions": [
+      "find_entities[type=person, name_contains=Albert Einstein]",
+      "find_relations[subject=e001]",
+      "get_entity[e002]"
+    ],
+    "final_state": {
+      "query_type": "get_entity",
+      "entity_id": "e002",
+      "result": {
+        "name": "Germany",
+        "type": "country",
+        "continent": "Europe"
+      },
+      "message": "Found entity: Germany"
+    },
+    "duration_ms": 11995.301008224487,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 11995.301008224487,
+      "tokens_used": 0.0,
+      "reward": 0.30000000000000004,
+      "efficiency": 0.10000000000000002
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "find_entities[type=person, name_contains=Albert Einstein]",
+        "observation": "{'query_type': 'find_entities', 'results': [{'id': 'e001', 'name': 'Albert Einstein', 'type': 'person', 'birth_year': 1879, 'death_year': 1955}], 'total': 1, 'message': 'Found 1 entities'}",
+        "reward": 0.1,
+        "timestamp_ms": 2372.2879886627197,
+        "metadata": {
+          "query_type": "find_entities",
+          "params": "{'type': 'person', 'name_contains': 'Albert Einstein'}"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "find_relations[subject=e001]",
+        "observation": "{'query_type': 'find_relations', 'results': [{'subject': 'e001', 'predicate': 'born_in', 'object': 'e002'}, {'subject': 'e001', 'predicate': 'worked_in', 'object': 'e003'}, {'subject': 'e001', 'predicate': 'field', 'object': 'e004'}, {'subject': 'e001', 'predicate': 'won', 'object': 'e005'}, {'subject': 'e001', 'predicate': 'developed', 'object': 'e006'}], 'total': 5, 'message': 'Found 5 relations'}",
+        "reward": 0.1,
+        "timestamp_ms": 2997.328042984009,
+        "metadata": {
+          "query_type": "find_relations",
+          "params": "{'subject': 'e001'}"
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "get_entity[e002]",
+        "observation": "{'query_type': 'get_entity', 'entity_id': 'e002', 'result': {'name': 'Germany', 'type': 'country', 'continent': 'Europe'}, 'message': 'Found entity: Germany'}",
+        "reward": 0.1,
+        "timestamp_ms": 6625.023126602173,
+        "metadata": {
+          "query_type": "get_entity",
+          "params": "{'id': 'e002'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "ws-001",
+    "environment": "web_shopping",
+    "success": false,
+    "steps_taken": 15,
+    "actions": [
+      "search[black wireless headphones under $100]",
+      "click[P001]",
+      "select_option[color, black]",
+      "add_to_cart",
+      "search[black wireless headphones under $100]",
+      "click[P001]",
+      "select_option[color, black]",
+      "add_to_cart",
+      "back",
+      "click[P001]",
+      "select_option[color, black]",
+      "add_to_cart",
+      "search[black wireless headphones under $100]",
+      "click[P001]",
+      "select_option[color, black]"
+    ],
+    "final_state": {
+      "page": "product_detail",
+      "product": {
+        "id": "P001",
+        "name": "Wireless Bluetooth Headphones",
+        "price": "$79.99",
+        "rating": 4.5,
+        "category": "Electronics",
+        "features": [
+          "noise cancelling",
+          "40h battery",
+          "comfortable"
+        ],
+        "options": {
+          "color": [
+            "black",
+            "white",
+            "blue"
+          ]
+        }
+      },
+      "selected_options": {
+        "color": "black"
+      },
+      "message": "Selected color: black",
+      "cart_count": 3,
+      "cart_total": 239.96999999999997
+    },
+    "duration_ms": 61228.739738464355,
+    "error": "Task timed out after 61229ms",
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 61228.739738464355,
+      "tokens_used": 0.0,
+      "reward": 1.1500000000000001,
+      "efficiency": 0.07666666666666667
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "search[black wireless headphones under $100]",
+        "observation": "{'page': 'search_results', 'query': 'black wireless headphones under $100', 'results': [{'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics'}], 'total_results': 1, 'message': \"Found 1 products matching 'black wireless headphones under $100'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 2584.800958633423,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'black wireless headphones under $100'}"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "click[P001]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'message': 'Viewing product: Wireless Bluetooth Headphones', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 3134.2248916625977,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p001'}"
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "select_option[color, black]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'selected_options': {'color': 'black'}, 'message': 'Selected color: black', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 3574.8910903930664,
+        "metadata": {
+          "action_type": "select_option",
+          "params": "{'option': 'color', 'value': 'black'}"
+        }
+      },
+      {
+        "step_number": 3,
+        "action": "add_to_cart",
+        "observation": "{'page': 'product_detail', 'cart': [{'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'options': {'color': 'black'}}], 'message': 'Added Wireless Bluetooth Headphones to cart!', 'cart_count': 1, 'cart_total': 79.99}",
+        "reward": 0.2,
+        "timestamp_ms": 2501.328945159912,
+        "metadata": {
+          "action_type": "add_to_cart",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 4,
+        "action": "search[black wireless headphones under $100]",
+        "observation": "{'page': 'search_results', 'query': 'black wireless headphones under $100', 'results': [{'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics'}], 'total_results': 1, 'message': \"Found 1 products matching 'black wireless headphones under $100'\", 'cart_count': 1, 'cart_total': 79.99}",
+        "reward": 0.05,
+        "timestamp_ms": 8450.753211975098,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'black wireless headphones under $100'}"
+        }
+      },
+      {
+        "step_number": 5,
+        "action": "click[P001]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'message': 'Viewing product: Wireless Bluetooth Headphones', 'cart_count': 1, 'cart_total': 79.99}",
+        "reward": 0.05,
+        "timestamp_ms": 1583.677053451538,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p001'}"
+        }
+      },
+      {
+        "step_number": 6,
+        "action": "select_option[color, black]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'selected_options': {'color': 'black'}, 'message': 'Selected color: black', 'cart_count': 1, 'cart_total': 79.99}",
+        "reward": 0.05,
+        "timestamp_ms": 3330.5318355560303,
+        "metadata": {
+          "action_type": "select_option",
+          "params": "{'option': 'color', 'value': 'black'}"
+        }
+      },
+      {
+        "step_number": 7,
+        "action": "add_to_cart",
+        "observation": "{'page': 'product_detail', 'cart': [{'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'options': {'color': 'black'}}, {'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'options': {'color': 'black'}}], 'message': 'Added Wireless Bluetooth Headphones to cart!', 'cart_count': 2, 'cart_total': 159.98}",
+        "reward": 0.2,
+        "timestamp_ms": 2018.5930728912354,
+        "metadata": {
+          "action_type": "add_to_cart",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 8,
+        "action": "back",
+        "observation": "{'page': 'search_results', 'results': [{'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics'}], 'message': 'Back to search results', 'cart_count': 2, 'cart_total': 159.98}",
+        "reward": 0.0,
+        "timestamp_ms": 14638.170957565308,
+        "metadata": {
+          "action_type": "back",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 9,
+        "action": "click[P001]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'message': 'Viewing product: Wireless Bluetooth Headphones', 'cart_count': 2, 'cart_total': 159.98}",
+        "reward": 0.05,
+        "timestamp_ms": 1806.7810535430908,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p001'}"
+        }
+      },
+      {
+        "step_number": 10,
+        "action": "select_option[color, black]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'selected_options': {'color': 'black'}, 'message': 'Selected color: black', 'cart_count': 2, 'cart_total': 159.98}",
+        "reward": 0.05,
+        "timestamp_ms": 2733.4887981414795,
+        "metadata": {
+          "action_type": "select_option",
+          "params": "{'option': 'color', 'value': 'black'}"
+        }
+      },
+      {
+        "step_number": 11,
+        "action": "add_to_cart",
+        "observation": "{'page': 'product_detail', 'cart': [{'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'options': {'color': 'black'}}, {'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'options': {'color': 'black'}}, {'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'options': {'color': 'black'}}], 'message': 'Added Wireless Bluetooth Headphones to cart!', 'cart_count': 3, 'cart_total': 239.96999999999997}",
+        "reward": 0.2,
+        "timestamp_ms": 4041.829824447632,
+        "metadata": {
+          "action_type": "add_to_cart",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 12,
+        "action": "search[black wireless headphones under $100]",
+        "observation": "{'page': 'search_results', 'query': 'black wireless headphones under $100', 'results': [{'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics'}], 'total_results': 1, 'message': \"Found 1 products matching 'black wireless headphones under $100'\", 'cart_count': 3, 'cart_total': 239.96999999999997}",
+        "reward": 0.05,
+        "timestamp_ms": 7205.944061279297,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'black wireless headphones under $100'}"
+        }
+      },
+      {
+        "step_number": 13,
+        "action": "click[P001]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'message': 'Viewing product: Wireless Bluetooth Headphones', 'cart_count': 3, 'cart_total': 239.96999999999997}",
+        "reward": 0.05,
+        "timestamp_ms": 1513.5228633880615,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p001'}"
+        }
+      },
+      {
+        "step_number": 14,
+        "action": "select_option[color, black]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'selected_options': {'color': 'black'}, 'message': 'Selected color: black', 'cart_count': 3, 'cart_total': 239.96999999999997}",
+        "reward": 0.05,
+        "timestamp_ms": 2109.879970550537,
+        "metadata": {
+          "action_type": "select_option",
+          "params": "{'option': 'color', 'value': 'black'}"
+        }
+      }
+    ]
+  }
+]

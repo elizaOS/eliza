@@ -1,0 +1,66 @@
+{
+  "total_tasks": 1,
+  "passed_tasks": 1,
+  "failed_tasks": 0,
+  "overall_success_rate": 1.0,
+  "average_duration_ms": 7298.178911209106,
+  "overall_metrics": {
+    "total_tokens": 0.0,
+    "average_tokens_per_task": 0.0,
+    "average_steps_per_task": 6.0,
+    "average_reward": 0.30000000000000004,
+    "memory_usage": {
+      "peak": 4091788,
+      "average": 4026370
+    }
+  },
+  "comparison_to_baseline": {
+    "gpt4_comparison": {
+      "knowledge_graph": {
+        "our_score": 1.0,
+        "gpt4_score": 0.584,
+        "difference": 0.41600000000000004,
+        "relative_performance": 1.7123287671232879
+      }
+    },
+    "gpt35_comparison": {
+      "knowledge_graph": {
+        "our_score": 1.0,
+        "gpt35_score": 0.164,
+        "difference": 0.836,
+        "relative_performance": 6.097560975609756
+      }
+    },
+    "claude_comparison": {
+      "knowledge_graph": {
+        "our_score": 1.0,
+        "claude_score": 0.542,
+        "difference": 0.45799999999999996,
+        "relative_performance": 1.8450184501845017
+      }
+    }
+  },
+  "summary": {
+    "status": "strong",
+    "key_findings": [
+      "ElizaOS demonstrates strong agent capabilities across tested environments",
+      "Strong performance in: knowledge_graph",
+      "Higher success rate than published GPT-4 baseline (reference) in: knowledge_graph",
+      "Note: baseline scores are published AgentBench results; comparisons are reference-only unless you run the official AgentBench task set."
+    ],
+    "recommendations": [],
+    "timestamp": "2026-01-12T00:59:04.466350"
+  },
+  "environment_reports": {
+    "knowledge_graph": {
+      "environment": "knowledge_graph",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 6.0,
+      "average_duration_ms": 7298.178911209106,
+      "average_reward": 0.30000000000000004
+    }
+  }
+}

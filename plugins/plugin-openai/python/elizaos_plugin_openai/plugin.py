@@ -71,13 +71,23 @@ class OpenAIPlugin:
         *,
         system: str | None = None,
         max_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> str:
-        params = TextGenerationParams(
-            prompt=prompt,
-            model=self._config.small_model,
-            system=system,
-            max_tokens=max_tokens,
-        )
+        if temperature is None:
+            params = TextGenerationParams(
+                prompt=prompt,
+                model=self._config.small_model,
+                system=system,
+                max_tokens=max_tokens,
+            )
+        else:
+            params = TextGenerationParams(
+                prompt=prompt,
+                model=self._config.small_model,
+                system=system,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
         return await self._client.generate_text(params)
 
     async def generate_text_large(
@@ -86,13 +96,23 @@ class OpenAIPlugin:
         *,
         system: str | None = None,
         max_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> str:
-        params = TextGenerationParams(
-            prompt=prompt,
-            model=self._config.large_model,
-            system=system,
-            max_tokens=max_tokens,
-        )
+        if temperature is None:
+            params = TextGenerationParams(
+                prompt=prompt,
+                model=self._config.large_model,
+                system=system,
+                max_tokens=max_tokens,
+            )
+        else:
+            params = TextGenerationParams(
+                prompt=prompt,
+                model=self._config.large_model,
+                system=system,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
         return await self._client.generate_text(params)
 
     async def stream_text(
@@ -316,19 +336,29 @@ def create_openai_elizaos_plugin() -> Plugin:
 
     async def text_large_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
+        temperature_raw = params.get("temperature")
+        temperature = (
+            float(temperature_raw) if isinstance(temperature_raw, (int, float)) else None
+        )
         return await client.generate_text_large(
             params.get("prompt", ""),
             system=params.get("system"),
             max_tokens=params.get("maxTokens"),
+            temperature=temperature,
         )
 
     async def text_small_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
+        temperature_raw = params.get("temperature")
+        temperature = (
+            float(temperature_raw) if isinstance(temperature_raw, (int, float)) else None
+        )
         # Note: gpt-5-mini doesn't support temperature - use defaults
         return await client.generate_text_small(
             params.get("prompt", ""),
             system=params.get("system"),
             max_tokens=params.get("maxTokens"),
+            temperature=temperature,
         )
 
     async def embedding_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> list[float]:

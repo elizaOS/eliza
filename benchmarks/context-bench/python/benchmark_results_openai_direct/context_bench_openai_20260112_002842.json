@@ -1,0 +1,105 @@
+{
+  "overall_accuracy": 1.0,
+  "total_tasks": 12,
+  "passed_tasks": 12,
+  "failed_tasks": 0,
+  "avg_semantic_similarity": 0.6037175925129717,
+  "lost_in_middle_score": 0.0,
+  "context_degradation_rate": 0.0,
+  "avg_latency_ms": 753.718376159668,
+  "total_duration_ms": 9082.99708366394,
+  "position_heatmap": [
+    [
+      1.0,
+      1.0
+    ],
+    [
+      1.0,
+      1.0
+    ],
+    [
+      1.0,
+      1.0
+    ]
+  ],
+  "position_heatmap_lengths": [
+    1024,
+    4096
+  ],
+  "position_heatmap_positions": [
+    "start",
+    "middle",
+    "end"
+  ],
+  "position_accuracies": {
+    "start": {
+      "accuracy": 1.0,
+      "total_tasks": 4
+    },
+    "middle": {
+      "accuracy": 1.0,
+      "total_tasks": 4
+    },
+    "end": {
+      "accuracy": 1.0,
+      "total_tasks": 4
+    }
+  },
+  "length_accuracies": {
+    "1024": {
+      "accuracy": 1.0,
+      "total_tasks": 6
+    },
+    "4096": {
+      "accuracy": 1.0,
+      "total_tasks": 6
+    }
+  },
+  "multi_hop_success_rates": {},
+  "comparison_to_leaderboard": {
+    "gpt-4-turbo": {
+      "overall_diff": 0.08999999999999997,
+      "lost_in_middle_diff": 0.12,
+      "niah_4k_diff": 0.020000000000000018
+    },
+    "gpt-4o": {
+      "overall_diff": 0.06000000000000005,
+      "lost_in_middle_diff": 0.08,
+      "niah_4k_diff": 0.010000000000000009
+    },
+    "claude-3-opus": {
+      "overall_diff": 0.050000000000000044,
+      "lost_in_middle_diff": 0.05,
+      "niah_4k_diff": 0.010000000000000009
+    },
+    "claude-3-sonnet": {
+      "overall_diff": 0.12,
+      "lost_in_middle_diff": 0.15,
+      "niah_4k_diff": 0.020000000000000018
+    },
+    "llama-3.1-70b": {
+      "overall_diff": 0.19999999999999996,
+      "lost_in_middle_diff": 0.22,
+      "niah_4k_diff": 0.050000000000000044
+    },
+    "mistral-large": {
+      "overall_diff": 0.24,
+      "lost_in_middle_diff": 0.25,
+      "niah_4k_diff": 0.06000000000000005
+    }
+  },
+  "summary": {
+    "status": "excellent",
+    "overall_accuracy": "100.0%",
+    "findings": [
+      "Excellent overall retrieval accuracy (\u226595%)",
+      "Performance matches or exceeds Claude-3-Opus baseline (+5.0%)"
+    ],
+    "recommendations": []
+  },
+  "metadata": {
+    "timestamp": "2026-01-12T00:28:42.162877",
+    "seed": 42,
+    "total_duration_ms": 9082.99708366394
+  }
+}

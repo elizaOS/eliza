@@ -1,0 +1,283 @@
+{
+  "results": [
+    {
+      "task_id": "retail_001",
+      "domain": "retail",
+      "trial_number": 1,
+      "success": false,
+      "tool_call_accuracy": 0.5,
+      "policy_compliance": 1.0,
+      "response_quality": 0.5636363636363636,
+      "goal_achieved": false,
+      "duration_ms": 4394.8259353637695,
+      "turns_used": 2,
+      "tool_calls_made": [
+        {
+          "tool_name": "get_order_details",
+          "arguments": {
+            "order_id": "ORD-12345"
+          },
+          "result": {
+            "order_id": "ORD-12345",
+            "customer_id": "CUST-001",
+            "status": "delivered",
+            "items": [
+              {
+                "product_id": "PROD-001",
+                "name": "Wireless Headphones",
+                "price": 149.99,
+                "quantity": 1
+              },
+              {
+                "product_id": "PROD-002",
+                "name": "Phone Case",
+                "price": 29.99,
+                "quantity": 2
+              }
+            ],
+            "subtotal": 209.97,
+            "shipping": 9.99,
+            "tax": 18.9,
+            "total": 238.86,
+            "shipping_address": {
+              "street": "123 Main St",
+              "city": "San Francisco",
+              "state": "CA",
+              "zip": "94102"
+            },
+            "order_date": "2026-01-07T00:27:41.024119",
+            "delivery_date": "2026-01-11T00:27:41.024139",
+            "payment_method": "credit_card_ending_4242"
+          },
+          "status": "correct",
+          "error_message": null
+        }
+      ],
+      "policy_violations": [],
+      "error": null
+    }
+  ],
+  "domain_reports": {
+    "retail": {
+      "domain": "TauDomain.RETAIL",
+      "total_tasks": 1,
+      "passed_tasks": 0,
+      "failed_tasks": 1,
+      "success_rate": 0.0,
+      "average_tool_accuracy": 0.5,
+      "average_policy_compliance": 1.0,
+      "average_response_quality": 0.5636363636363636,
+      "average_turns": 2.0,
+      "average_duration_ms": 4394.8259353637695,
+      "pass_k_metrics": {
+        "1": {
+          "k": 1,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 1
+        },
+        "2": {
+          "k": 2,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 1
+        },
+        "4": {
+          "k": 4,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 1
+        },
+        "8": {
+          "k": 8,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 1
+        }
+      },
+      "results": [
+        {
+          "task_id": "retail_001",
+          "domain": "TauDomain.RETAIL",
+          "trial_number": 1,
+          "tool_calls_made": [
+            {
+              "tool_name": "get_order_details",
+              "arguments": {
+                "order_id": "ORD-12345"
+              },
+              "result": {
+                "order_id": "ORD-12345",
+                "customer_id": "CUST-001",
+                "status": "delivered",
+                "items": [
+                  {
+                    "product_id": "PROD-001",
+                    "name": "Wireless Headphones",
+                    "price": 149.99,
+                    "quantity": 1
+                  },
+                  {
+                    "product_id": "PROD-002",
+                    "name": "Phone Case",
+                    "price": 29.99,
+                    "quantity": 2
+                  }
+                ],
+                "subtotal": 209.97,
+                "shipping": 9.99,
+                "tax": 18.9,
+                "total": 238.86,
+                "shipping_address": {
+                  "street": "123 Main St",
+                  "city": "San Francisco",
+                  "state": "CA",
+                  "zip": "94102"
+                },
+                "order_date": "2026-01-07T00:27:41.024119",
+                "delivery_date": "2026-01-11T00:27:41.024139",
+                "payment_method": "credit_card_ending_4242"
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.015974044799804688
+            }
+          ],
+          "tool_call_accuracy": 0.5,
+          "tool_selection_accuracy": 0.5,
+          "parameter_accuracy": 0.5,
+          "conversation_history": [],
+          "response_generated": "Your order #ORD-12345 was delivered on January 11, 2026. Since the return must be initiated within 30 days of delivery, you are still within the return window. I can help you start the return process for the Wireless Headphones. Could you please confirm that you would like to return this item and provide a reason for the return?",
+          "response_quality": 0.5636363636363636,
+          "policy_violations": [],
+          "policy_compliance": 1.0,
+          "goal_achieved": false,
+          "final_state": {
+            "state": {
+              "orders": {
+                "ORD-12345": {
+                  "order_id": "ORD-12345",
+                  "customer_id": "CUST-001",
+                  "status": "delivered",
+                  "items": [
+                    {
+                      "product_id": "PROD-001",
+                      "name": "Wireless Headphones",
+                      "price": 149.99,
+                      "quantity": 1
+                    },
+                    {
+                      "product_id": "PROD-002",
+                      "name": "Phone Case",
+                      "price": 29.99,
+                      "quantity": 2
+                    }
+                  ],
+                  "subtotal": 209.97,
+                  "shipping": 9.99,
+                  "tax": 18.9,
+                  "total": 238.86,
+                  "shipping_address": {
+                    "street": "123 Main St",
+                    "city": "San Francisco",
+                    "state": "CA",
+                    "zip": "94102"
+                  },
+                  "order_date": "2026-01-07T00:27:41.024119",
+                  "delivery_date": "2026-01-11T00:27:41.024139",
+                  "payment_method": "credit_card_ending_4242"
+                },
+                "ORD-12346": {
+                  "order_id": "ORD-12346",
+                  "customer_id": "CUST-001",
+                  "status": "processing",
+                  "items": [
+                    {
+                      "product_id": "PROD-003",
+                      "name": "Laptop Stand",
+                      "price": 79.99,
+                      "quantity": 1
+                    }
+                  ],
+                  "subtotal": 79.99,
+                  "shipping": 0.0,
+                  "tax": 7.2,
+                  "total": 87.19,
+                  "shipping_address": {
+                    "street": "123 Main St",
+                    "city": "San Francisco",
+                    "state": "CA",
+                    "zip": "94102"
+                  },
+                  "order_date": "2026-01-12T00:27:41.024148",
+                  "estimated_delivery": "2026-01-17T00:27:41.024151",
+                  "payment_method": "credit_card_ending_4242"
+                }
+              },
+              "customers": {
+                "CUST-001": {
+                  "customer_id": "CUST-001",
+                  "name": "John Smith",
+                  "email": "john.smith@example.com",
+                  "phone": "+1-555-0123",
+                  "membership_tier": "gold",
+                  "account_created": "2022-03-15",
+                  "total_orders": 12,
+                  "total_spent": 2450.0
+                }
+              },
+              "products": {
+                "PROD-001": {
+                  "product_id": "PROD-001",
+                  "name": "Wireless Headphones",
+                  "price": 149.99,
+                  "category": "Electronics",
+                  "in_stock": true,
+                  "stock_quantity": 50
+                },
+                "PROD-002": {
+                  "product_id": "PROD-002",
+                  "name": "Phone Case",
+                  "price": 29.99,
+                  "category": "Accessories",
+                  "in_stock": true,
+                  "stock_quantity": 200
+                },
+                "PROD-003": {
+                  "product_id": "PROD-003",
+                  "name": "Laptop Stand",
+                  "price": 79.99,
+                  "category": "Accessories",
+                  "in_stock": true,
+                  "stock_quantity": 25
+                }
+              },
+              "returns": {},
+              "refunds": {},
+              "policies": {
+                "return_window_days": 30,
+                "requires_receipt": false,
+                "restocking_fee_percent": 0,
+                "refund_processing_days": 5,
+                "free_shipping_threshold": 50.0
+              }
+            },
+            "tool_call_count": 1,
+            "initialized": true
+          },
+          "success": false,
+          "duration_ms": 4394.8259353637695,
+          "turns_used": 2,
+          "tokens_used": 0,
+          "error": null,
+          "metrics": {
+            "planning_time_ms": 0.0,
+            "execution_time_ms": 0.015974044799804688,
+            "tool_invocation_count": 1.0,
+            "correct_tool_count": 1.0
+          }
+        }
+      ]
+    }
+  }
+}

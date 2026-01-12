@@ -1,0 +1,644 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 50,
+    "timestamp": "2026-01-11T23:42:20Z"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 1.0,
+    "ast_accuracy": 1.0,
+    "exec_accuracy": 1.0,
+    "relevance_accuracy": 0.0,
+    "total_tests": 50,
+    "passed_tests": 50,
+    "failed_tests": 0,
+    "latency": {
+      "avg": 122.37942987279871,
+      "p50": 122.647197398998,
+      "p95": 193.45656726877095,
+      "p99": 197.18083795965487
+    },
+    "category_breakdown": {
+      "parallel": {
+        "total": 14,
+        "ast_accuracy": 1.0,
+        "exec_accuracy": 1.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 143.8007813755199
+      },
+      "sql": {
+        "total": 12,
+        "ast_accuracy": 1.0,
+        "exec_accuracy": 1.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 123.21413275804396
+      },
+      "rest_api": {
+        "total": 12,
+        "ast_accuracy": 1.0,
+        "exec_accuracy": 1.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 116.99124682946915
+      },
+      "java": {
+        "total": 12,
+        "ast_accuracy": 1.0,
+        "exec_accuracy": 1.0,
+        "relevance_accuracy": 0.0,
+        "avg_latency_ms": 101.94133327770827
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 0,
+      "argument_mismatch": 0,
+      "missing_call": 0,
+      "extra_call": 0,
+      "type_error": 0,
+      "relevance_error": 0,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": 0.11299999999999999,
+    "gpt-4o": 0.10899999999999999,
+    "claude-3-opus": 0.14800000000000002,
+    "claude-3-sonnet": 0.17700000000000005,
+    "gemini-1.5-pro": 0.15500000000000003,
+    "qwen-2.5-72b": 0.28800000000000003,
+    "llama-3.1-70b": 0.31499999999999995,
+    "mistral-large": 0.30200000000000005
+  },
+  "summary": {
+    "status": "excellent",
+    "key_findings": [
+      "Overall score: 100.00% (AST: 100.00%, Exec: 100.00%)",
+      "Best category: parallel (100.00%)",
+      "Needs work: java (100.00%)",
+      "Outperforms gpt-4o by 10.90%"
+    ],
+    "recommendations": [
+      "Better detection of irrelevant queries"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "parallel_150",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 188.80240821724607,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_20",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 76.02931644391481,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_61",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 141.52221288377262,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_25",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 133.6268626913463,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_57",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 176.73758289929248,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_40",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 141.5786550151643,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_167",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 169.4921746551646,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_24",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 177.27687310035384,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_103",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 96.75638837252735,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_102",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 83.68977587874315,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_47",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 83.44637397590874,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_66",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 184.67797451215006,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_81",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 86.35629780231797,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_29",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 75.6770713030153,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_93",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 79.99752632875214,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_18",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 105.28876336193001,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_17",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 148.56008788416682,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_70",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 112.47192570229905,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_77",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 166.87646708059413,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_75",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 197.18083795965487,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_61",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 114.17544018129087,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_37",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 124.05231403609365,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_96",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 110.19689833684694,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_44",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 157.73596311956578,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_12",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 193.45656726877095,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_21",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 138.27154725172147,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_56",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 122.647197398998,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_49",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 89.30625500329779,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_42",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 130.05908200327804,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_36",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 117.95198967368806,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_33",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 137.8878229477482,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_19",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 143.20405174560253,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_53",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 73.01143793912647,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_65",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 94.0426668671214,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_2",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 60.5116197477057,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_59",
+      "category": "rest_api",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 103.54472410657121,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "java_53",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 96.6699189246787,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "java_83",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 62.596108834593075,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "java_45",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 55.16867067538668,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_30",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 174.09600169577618,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "java_67",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 71.27213525562175,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "java_26",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 178.9261419189484,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_49",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 72.64262394489432,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "java_85",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 79.07053702800599,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_5",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 131.37631162596864,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "java_18",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 91.33920254846254,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_13",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 137.29417563863154,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_20",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 72.84417124153137,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_14",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 194.68369963931875,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_97",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": false,
+      "latency_ms": 164.8906409723757,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": null
+    }
+  ]
+}

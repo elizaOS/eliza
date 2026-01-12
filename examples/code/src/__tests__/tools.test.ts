@@ -4,6 +4,16 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTools, parseToolCalls } from "../lib/sub-agents/tools.js";
 
+type Tool = ReturnType<typeof createTools>[number];
+
+function getTool(tools: Tool[], name: string): Tool {
+  const tool = tools.find((t) => t.name === name);
+  if (!tool) {
+    throw new Error(`Tool "${name}" not found`);
+  }
+  return tool;
+}
+
 describe("createTools", () => {
   let testDir: string;
 
@@ -30,7 +40,7 @@ describe("createTools", () => {
   describe("read_file", () => {
     it("should read file contents", async () => {
       const tools = createTools(testDir);
-      const readFile = tools.find((t) => t.name === "read_file")!;
+      const readFile = getTool(tools, "read_file");
 
       await fs.writeFile(path.join(testDir, "test.txt"), "Hello World");
       const result = await readFile.execute({ filepath: "test.txt" });
@@ -41,7 +51,7 @@ describe("createTools", () => {
 
     it("should return error for missing file", async () => {
       const tools = createTools(testDir);
-      const readFile = tools.find((t) => t.name === "read_file")!;
+      const readFile = getTool(tools, "read_file");
 
       const result = await readFile.execute({ filepath: "missing.txt" });
 
@@ -53,7 +63,7 @@ describe("createTools", () => {
   describe("write_file", () => {
     it("should create new file", async () => {
       const tools = createTools(testDir);
-      const writeFile = tools.find((t) => t.name === "write_file")!;
+      const writeFile = getTool(tools, "write_file");
 
       const result = await writeFile.execute({
         filepath: "new.txt",
@@ -67,7 +77,7 @@ describe("createTools", () => {
 
     it("should create directories if needed", async () => {
       const tools = createTools(testDir);
-      const writeFile = tools.find((t) => t.name === "write_file")!;
+      const writeFile = getTool(tools, "write_file");
 
       const result = await writeFile.execute({
         filepath: "nested/dir/file.txt",
@@ -86,7 +96,7 @@ describe("createTools", () => {
   describe("edit_file", () => {
     it("should replace text in file", async () => {
       const tools = createTools(testDir);
-      const editFile = tools.find((t) => t.name === "edit_file")!;
+      const editFile = getTool(tools, "edit_file");
 
       await fs.writeFile(path.join(testDir, "edit.txt"), "Hello World");
       const result = await editFile.execute({
@@ -105,7 +115,7 @@ describe("createTools", () => {
 
     it("should fail if text not found", async () => {
       const tools = createTools(testDir);
-      const editFile = tools.find((t) => t.name === "edit_file")!;
+      const editFile = getTool(tools, "edit_file");
 
       await fs.writeFile(path.join(testDir, "edit.txt"), "Hello World");
       const result = await editFile.execute({
@@ -122,7 +132,7 @@ describe("createTools", () => {
   describe("list_files", () => {
     it("should list directory contents", async () => {
       const tools = createTools(testDir);
-      const listFiles = tools.find((t) => t.name === "list_files")!;
+      const listFiles = getTool(tools, "list_files");
 
       await fs.writeFile(path.join(testDir, "file1.txt"), "");
       await fs.writeFile(path.join(testDir, "file2.txt"), "");
@@ -140,7 +150,7 @@ describe("createTools", () => {
   describe("search_files", () => {
     it("should search text across files", async () => {
       const tools = createTools(testDir);
-      const searchFiles = tools.find((t) => t.name === "search_files")!;
+      const searchFiles = getTool(tools, "search_files");
 
       await fs.writeFile(
         path.join(testDir, "a.txt"),
@@ -164,7 +174,7 @@ describe("createTools", () => {
   describe("shell", () => {
     it("should execute shell command", async () => {
       const tools = createTools(testDir);
-      const shell = tools.find((t) => t.name === "shell")!;
+      const shell = getTool(tools, "shell");
 
       const result = await shell.execute({ command: "echo 'test'" });
 
@@ -174,7 +184,7 @@ describe("createTools", () => {
 
     it("should block dangerous commands", async () => {
       const tools = createTools(testDir);
-      const shell = tools.find((t) => t.name === "shell")!;
+      const shell = getTool(tools, "shell");
 
       const result = await shell.execute({ command: "rm -rf /" });
 

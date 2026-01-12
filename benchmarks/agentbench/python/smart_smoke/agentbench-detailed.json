@@ -1,0 +1,275 @@
+[
+  {
+    "task_id": "os-001",
+    "environment": "operating_system",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "mkdir -p test_dir && echo 'Hello, World!' > test_dir/hello.txt && echo TASK_COMPLETE"
+    ],
+    "final_state": {
+      "command": "mkdir -p test_dir && echo 'Hello, World!' > test_dir/hello.txt && echo TASK_COMPLETE",
+      "output": "TASK_COMPLETE",
+      "exit_code": 0,
+      "working_dir": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/agentbench_os_6wtya8ed/home/user"
+    },
+    "duration_ms": 14.415979385375977,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 14.415979385375977,
+      "tokens_used": 0.0,
+      "reward": 0.1,
+      "efficiency": 0.1
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "mkdir -p test_dir && echo 'Hello, World!' > test_dir/hello.txt && echo TASK_COMPLETE",
+        "observation": "{'command': \"mkdir -p test_dir && echo 'Hello, World!' > test_dir/hello.txt && echo TASK_COMPLETE\", 'output': 'TASK_COMPLETE', 'exit_code': 0, 'working_dir': '/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/agentbench_os_6wtya8ed/home/user'}",
+        "reward": 0.1,
+        "timestamp_ms": 9.095907211303711,
+        "metadata": {
+          "command": "mkdir -p test_dir && echo 'Hello, World!' > test_dir/hello.txt && echo TASK_COMPLETE",
+          "exit_code": 0
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "db-001",
+    "environment": "database",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "SELECT * FROM employees WHERE salary > 50000"
+    ],
+    "final_state": {
+      "query": "SELECT * FROM employees WHERE salary > 50000",
+      "results": [
+        {
+          "id": 1,
+          "name": "Alice",
+          "salary": 60000.0,
+          "department": "Engineering"
+        },
+        {
+          "id": 3,
+          "name": "Charlie",
+          "salary": 75000.0,
+          "department": "Engineering"
+        },
+        {
+          "id": 4,
+          "name": "Diana",
+          "salary": 52000.0,
+          "department": "HR"
+        }
+      ],
+      "row_count": 3,
+      "columns": [
+        "id",
+        "name",
+        "salary",
+        "department"
+      ],
+      "success": true
+    },
+    "duration_ms": 2.4368762969970703,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 2.4368762969970703,
+      "tokens_used": 0.0,
+      "reward": 0.1,
+      "efficiency": 0.1
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "SELECT * FROM employees WHERE salary > 50000",
+        "observation": "{'query': 'SELECT * FROM employees WHERE salary > 50000', 'results': [{'id': 1, 'name': 'Alice', 'salary': 60000.0, 'department': 'Engineering'}, {'id': 3, 'name': 'Charlie', 'salary': 75000.0, 'department': 'Engineering'}, {'id': 4, 'name': 'Diana', 'salary': 52000.0, 'department': 'HR'}], 'row_count': 3, 'columns': ['id', 'name', 'salary', 'department'], 'success': True}",
+        "reward": 0.1,
+        "timestamp_ms": 0.6132125854492188,
+        "metadata": {
+          "query": "SELECT * FROM employees WHERE salary > 50000",
+          "row_count": 3
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "kg-001",
+    "environment": "knowledge_graph",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "answer[Germany]"
+    ],
+    "final_state": {
+      "query_type": "answer",
+      "answer": "Germany",
+      "message": "Answer submitted: Germany"
+    },
+    "duration_ms": 1.4019012451171875,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 1.4019012451171875,
+      "tokens_used": 0.0,
+      "reward": 0.0,
+      "efficiency": 0.0
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "answer[Germany]",
+        "observation": "{'query_type': 'answer', 'answer': 'Germany', 'message': 'Answer submitted: Germany'}",
+        "reward": 0.0,
+        "timestamp_ms": 1.3458728790283203,
+        "metadata": {
+          "query_type": "answer",
+          "params": "{'answer': 'Germany'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "lt-001",
+    "environment": "lateral_thinking",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "guess[hiccups]"
+    ],
+    "final_state": {
+      "correct": true,
+      "answer": "hiccups",
+      "guesses_made": 1,
+      "hints_used": 0,
+      "message": "Correct! The answer was: hiccups"
+    },
+    "duration_ms": 0.7128715515136719,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 0.7128715515136719,
+      "tokens_used": 0.0,
+      "reward": 1.0,
+      "efficiency": 1.0
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "guess[hiccups]",
+        "observation": "{'correct': True, 'answer': 'hiccups', 'guesses_made': 1, 'hints_used': 0, 'message': 'Correct! The answer was: hiccups'}",
+        "reward": 1.0,
+        "timestamp_ms": 0.6871223449707031,
+        "metadata": {
+          "action_type": "guess",
+          "params": "{'answer': 'hiccups'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "ws-001",
+    "environment": "web_shopping",
+    "success": true,
+    "steps_taken": 5,
+    "actions": [
+      "search[headphones]",
+      "click[P001]",
+      "select_option[color, black]",
+      "add_to_cart",
+      "checkout"
+    ],
+    "final_state": {
+      "page": "checkout_complete",
+      "cart": [
+        {
+          "name": "Wireless Bluetooth Headphones",
+          "price": "$79.99",
+          "options": {
+            "color": "black"
+          }
+        }
+      ],
+      "total": 79.99,
+      "message": "Order placed successfully! Total: $79.99",
+      "cart_count": 1,
+      "cart_total": 79.99
+    },
+    "duration_ms": 2.1588802337646484,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 2.1588802337646484,
+      "tokens_used": 0.0,
+      "reward": 0.8500000000000001,
+      "efficiency": 0.17
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "search[headphones]",
+        "observation": "{'page': 'search_results', 'query': 'headphones', 'results': [{'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics'}], 'total_results': 1, 'message': \"Found 1 products matching 'headphones'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 0.6299018859863281,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'headphones'}"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "click[P001]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'message': 'Viewing product: Wireless Bluetooth Headphones', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 0.38886070251464844,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p001'}"
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "select_option[color, black]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'selected_options': {'color': 'black'}, 'message': 'Selected color: black', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 0.49686431884765625,
+        "metadata": {
+          "action_type": "select_option",
+          "params": "{'option': 'color', 'value': 'black'}"
+        }
+      },
+      {
+        "step_number": 3,
+        "action": "add_to_cart",
+        "observation": "{'page': 'product_detail', 'cart': [{'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'options': {'color': 'black'}}], 'message': 'Added Wireless Bluetooth Headphones to cart!', 'cart_count': 1, 'cart_total': 79.99}",
+        "reward": 0.2,
+        "timestamp_ms": 0.2791881561279297,
+        "metadata": {
+          "action_type": "add_to_cart",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 4,
+        "action": "checkout",
+        "observation": "{'page': 'checkout_complete', 'cart': [{'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'options': {'color': 'black'}}], 'total': 79.99, 'message': 'Order placed successfully! Total: $79.99', 'cart_count': 1, 'cart_total': 79.99}",
+        "reward": 0.5,
+        "timestamp_ms": 0.308990478515625,
+        "metadata": {
+          "action_type": "checkout",
+          "params": "{}"
+        }
+      }
+    ]
+  }
+]

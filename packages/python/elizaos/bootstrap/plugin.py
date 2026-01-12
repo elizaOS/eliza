@@ -59,7 +59,7 @@ def _get_evaluators(config: CapabilityConfig) -> list:
     return result
 
 
-def _get_services(config: CapabilityConfig) -> list:
+def _get_services(config: CapabilityConfig) -> list[type]:
     """Get services based on capability config."""
     result = []
     if not config.disable_basic:
@@ -86,16 +86,12 @@ def create_bootstrap_plugin(config: CapabilityConfig | None = None) -> Plugin:
         runtime: IAgentRuntime,
     ) -> None:
         """Initialize the Bootstrap plugin."""
+        _ = plugin_config
         runtime.logger.info(
             "Initializing Bootstrap plugin",
             src="plugin:bootstrap",
             agentId=str(runtime.agent_id),
         )
-
-        for service_class in services:
-            service = service_class()
-            await service.start(runtime)
-            await runtime.register_service(service)
 
         runtime.logger.info(
             "Bootstrap plugin initialized",
@@ -115,6 +111,7 @@ def create_bootstrap_plugin(config: CapabilityConfig | None = None) -> Plugin:
         ),
         init=init_plugin,
         config={},
+        services=services,
         actions=actions,
         providers=providers,
         evaluators=evaluators,

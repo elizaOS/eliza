@@ -1,0 +1,1265 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 30,
+    "timestamp": "2026-01-12T00:36:45Z",
+    "model": "openai/gpt-4o-mini"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.5314039408866995,
+    "ast_accuracy": 0.5217391304347826,
+    "exec_accuracy": 0.5217391304347826,
+    "relevance_accuracy": 1.0,
+    "total_tests": 23,
+    "passed_tests": 12,
+    "failed_tests": 11,
+    "latency": {
+      "avg": 12432.772469520569,
+      "p50": 10713.082075119019,
+      "p95": 32581.73894882202,
+      "p99": 37520.374059677124
+    },
+    "category_breakdown": {
+      "java": {
+        "total": 8,
+        "ast_accuracy": 0.625,
+        "exec_accuracy": 0.625,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 6516.722023487091
+      },
+      "parallel": {
+        "total": 8,
+        "ast_accuracy": 0.625,
+        "exec_accuracy": 0.625,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 11948.052406311035
+      },
+      "sql": {
+        "total": 7,
+        "ast_accuracy": 0.2857142857142857,
+        "exec_accuracy": 0.2857142857142857,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 12190.815074103219
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 4,
+      "argument_mismatch": 6,
+      "missing_call": 1,
+      "extra_call": 0,
+      "type_error": 0,
+      "relevance_error": 0,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0,
+      "no_ground_truth": 7
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.3555960591133005,
+    "gpt-4o": -0.3595960591133005,
+    "claude-3-opus": -0.32059605911330047,
+    "claude-3-sonnet": -0.29159605911330044,
+    "gemini-1.5-pro": -0.31359605911330046,
+    "qwen-2.5-72b": -0.18059605911330046,
+    "llama-3.1-70b": -0.15359605911330054,
+    "mistral-large": -0.16659605911330044
+  },
+  "summary": {
+    "status": "fair",
+    "key_findings": [
+      "Overall score: 53.14% (AST: 52.17%, Exec: 52.17%)",
+      "Best category: java (62.50%)",
+      "Needs work: sql (28.57%)",
+      "Behind llama-3.1-70b by 15.36%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "java_40",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 3282.994031906128,
+      "predicted_calls": [
+        {
+          "name": "RoutingNodesChangedObserver.shardInitialized",
+          "arguments": {
+            "unassignedShard": "shardA",
+            "initializedShard": "shardB"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "RoutingNodesChangedObserver.shardInitialized",
+          "arguments": {
+            "unassignedShard": "shardA",
+            "initializedShard": "shardB"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_62",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 3741.1391735076904,
+      "predicted_calls": [
+        {
+          "name": "dvRangeQuery",
+          "arguments": {
+            "field": "temperature",
+            "queryType": "FLOAT",
+            "from": 20.5,
+            "to": 30.0,
+            "includeFrom": true,
+            "includeTo": false
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "dvRangeQuery",
+          "arguments": {
+            "field": "temperature",
+            "queryType": "FLOAT",
+            "from": 20.5,
+            "to": 30.0,
+            "includeFrom": true,
+            "includeTo": false
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_11",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 3545.5291271209717,
+      "predicted_calls": [
+        {
+          "name": "BasePolicyDataProvider.getRegistryPolicyValue",
+          "arguments": {
+            "root": "HKEY_LOCAL_MACHINE",
+            "property": "EnableExtensions"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "BasePolicyDataProvider.getRegistryPolicyValue",
+          "arguments": {
+            "root": "WinReg.HKEY_LOCAL_MACHINE",
+            "property": "EnableExtensions"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_30",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 3560.7199668884277,
+      "predicted_calls": [
+        {
+          "name": "RedissonAsyncCache.putIfAbsent",
+          "arguments": {
+            "value": 42,
+            "key": "answer"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "RedissonAsyncCache.putIfAbsent",
+          "arguments": {
+            "key": "answer",
+            "value": "42"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_37",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 20291.93091392517,
+      "predicted_calls": [
+        {
+          "name": "addInitializedPropertyStatements",
+          "arguments": {
+            "property": [
+              "width",
+              "height"
+            ],
+            "statements": [],
+            "receiver": "shape"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "addInitializedPropertyStatements",
+          "arguments": {
+            "statements": "shapeStatements",
+            "property": [
+              "width",
+              "height"
+            ],
+            "receiver": "shape"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_13",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 2749.6180534362793,
+      "predicted_calls": [
+        {
+          "name": "AltibaseGrantee.prepareObjectsStatement",
+          "arguments": {
+            "session": "JDBC_session",
+            "owner": "JohnDoe"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "AltibaseGrantee.prepareObjectsStatement",
+          "arguments": {
+            "session": "JDBC_session",
+            "owner": "JohnDoe"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_65",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 10600.651979446411,
+      "predicted_calls": [
+        {
+          "name": "RootObjectMapper.doXContent",
+          "arguments": {
+            "params": "include_defaults=true&skip_runtime_fields=true",
+            "builder": "xContentBuilderInstance"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "RootObjectMapper.doXContent",
+          "arguments": {
+            "builder": "xContentBuilderInstance",
+            "params": [
+              "include_defaults",
+              true,
+              "TOXCONTENT_SKIP_RUNTIME",
+              true
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_63",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 3485.981225967407,
+      "predicted_calls": [
+        {
+          "name": "solve_quadratic_equation",
+          "arguments": {
+            "a": 5,
+            "b": 6,
+            "c": 1
+          }
+        },
+        {
+          "name": "solve_quadratic_equation",
+          "arguments": {
+            "a": 3,
+            "b": 2,
+            "c": 1
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "solve_quadratic_equation",
+          "arguments": {
+            "a": 5,
+            "b": 6,
+            "c": 1
+          }
+        },
+        {
+          "name": "solve_quadratic_equation",
+          "arguments": {
+            "a": 3,
+            "b": 2,
+            "c": 1
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_84",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 15259.116888046265,
+      "predicted_calls": [
+        {
+          "name": "calculate_displacement",
+          "arguments": {
+            "time": 7,
+            "initial_velocity": 15,
+            "acceleration": 3.5
+          }
+        },
+        {
+          "name": "calculate_displacement",
+          "arguments": {
+            "time": 10,
+            "initial_velocity": 20,
+            "acceleration": 2
+          }
+        },
+        {
+          "name": "calculate_displacement",
+          "arguments": {
+            "time": 8,
+            "initial_velocity": 25
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_displacement",
+          "arguments": {
+            "initial_velocity": 15,
+            "time": 7,
+            "acceleration": 3.5
+          }
+        },
+        {
+          "name": "calculate_displacement",
+          "arguments": {
+            "initial_velocity": 20,
+            "time": 10,
+            "acceleration": 2.0
+          }
+        },
+        {
+          "name": "calculate_displacement",
+          "arguments": {
+            "initial_velocity": 25,
+            "time": 8,
+            "acceleration": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_10",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 16397.881746292114,
+      "predicted_calls": [
+        {
+          "name": "math.pythagoras",
+          "arguments": {
+            "a": 3,
+            "b": 4
+          }
+        },
+        {
+          "name": "math.pythagoras",
+          "arguments": {
+            "a": 5,
+            "b": 12
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "math.pythagoras",
+          "arguments": {
+            "a": 3,
+            "b": 4
+          }
+        },
+        {
+          "name": "math.pythagoras",
+          "arguments": {
+            "a": 5,
+            "b": 12
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_155",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 5704.087018966675,
+      "predicted_calls": [
+        {
+          "name": "run_linear_regression",
+          "arguments": {
+            "predictors": [
+              "Age",
+              "Income",
+              "Education"
+            ],
+            "target": "Spending Score",
+            "standardize": false
+          }
+        },
+        {
+          "name": "run_linear_regression",
+          "arguments": {
+            "predictors": [
+              "Age",
+              "Income",
+              "Education"
+            ],
+            "target": "Spending Score",
+            "standardize": true
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "run_linear_regression",
+          "arguments": {
+            "predictors": [
+              "Age",
+              "Income",
+              "Education"
+            ],
+            "target": "Spending Score",
+            "standardize": false
+          }
+        },
+        {
+          "name": "run_linear_regression",
+          "arguments": {
+            "predictors": [
+              "Age",
+              "Income",
+              "Education"
+            ],
+            "target": "Spending Score",
+            "standardize": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_9",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 13024.751663208008,
+      "predicted_calls": [
+        {
+          "name": "find_movie_showing",
+          "arguments": {
+            "location": "San Diego, CA",
+            "movie": [
+              "Tenet",
+              "No Time To Die"
+            ],
+            "time": [
+              "5 pm",
+              "7:30 pm"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "find_movie_showing",
+          "arguments": {
+            "location": "San Diego",
+            "movie": [
+              "Tenet"
+            ],
+            "time": [
+              "5 pm"
+            ]
+          }
+        },
+        {
+          "name": "find_movie_showing",
+          "arguments": {
+            "location": "San Diego",
+            "movie": [
+              "No Time To Die"
+            ],
+            "time": [
+              "7:30 pm"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_136",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 24677.1457195282,
+      "predicted_calls": [
+        {
+          "name": "city_distance.find_shortest",
+          "arguments": {
+            "start_city": "New York",
+            "end_city": "Los Angeles",
+            "transportation": "bus",
+            "allow_transfer": false
+          }
+        },
+        {
+          "name": "city_distance.find_shortest",
+          "arguments": {
+            "start_city": "New York",
+            "end_city": "Los Angeles",
+            "allow_transfer": true
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "city_distance.find_shortest",
+          "arguments": {
+            "start_city": "New York",
+            "end_city": "Los Angeles",
+            "transportation": "bus",
+            "allow_transfer": false
+          }
+        },
+        {
+          "name": "city_distance.find_shortest",
+          "arguments": {
+            "start_city": "New York",
+            "end_city": "Los Angeles",
+            "transportation": "bus",
+            "allow_transfer": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_28",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 8216.300010681152,
+      "predicted_calls": [
+        {
+          "name": "get_current_and_future_temperature",
+          "arguments": {
+            "location": "Seattle",
+            "hours": 3
+          }
+        },
+        {
+          "name": "get_current_and_future_temperature",
+          "arguments": {
+            "location": "Los Angeles",
+            "hours": 3
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_current_and_future_temperature",
+          "arguments": {
+            "location": "Seattle",
+            "hours": 3
+          }
+        },
+        {
+          "name": "get_current_and_future_temperature",
+          "arguments": {
+            "location": "Los Angeles",
+            "hours": 3
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_40",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 32581.73894882202,
+      "predicted_calls": [
+        {
+          "name": "get",
+          "arguments": {
+            "arg_0": "https://geocode.maps.co/reverse",
+            "params": {
+              "lat": 63.65687,
+              "lon": 117.05229,
+              "api_key": "YOUR-GEOCODE-API-KEY",
+              "format": "json"
+            },
+            "timeout": 20
+          }
+        },
+        {
+          "name": "json",
+          "arguments": {}
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_14",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 17343.55926513672,
+      "predicted_calls": [
+        {
+          "name": "GET",
+          "arguments": {
+            "arg_0": "no special headers required"
+          }
+        },
+        {
+          "name": "base_code",
+          "arguments": {
+            "arg_0": "EUR"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_23",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 10713.082075119019,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://yahoo-finance15.p.rapidapi.com/api/v1/markets/search",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "yahoo-finance15.p.rapidapi.com"
+            },
+            "params": {
+              "search": "Meta"
+            },
+            "timeout": 30
+          }
+        },
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://yahoo-finance15.p.rapidapi.com/api/v1/markets/search",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "yahoo-finance15.p.rapidapi.com"
+            },
+            "params": {
+              "search": "Meta"
+            },
+            "timeout": 30
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_37",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 10758.662939071655,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://geocode.maps.co/search",
+            "params": {
+              "q": "1600 Amphitheatre Parkway, Mountain View, CA",
+              "api_key": "YOUR-GEOCODE-API-KEY",
+              "format": "json"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_18",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 37520.374059677124,
+      "predicted_calls": [
+        {
+          "name": "Python",
+          "arguments": {
+            "arg_0": "requests"
+          }
+        },
+        {
+          "name": "get",
+          "arguments": {
+            "arg_0": "url",
+            "timeout": 10
+          }
+        },
+        {
+          "name": "raise_for_status",
+          "arguments": {}
+        },
+        {
+          "name": "json",
+          "arguments": {}
+        },
+        {
+          "name": "get",
+          "arguments": {
+            "arg_0": "result"
+          }
+        },
+        {
+          "name": "RuntimeError",
+          "arguments": {
+            "arg_0": "f\"API error: {data.get('error-type'"
+          }
+        },
+        {
+          "name": "get",
+          "arguments": {
+            "arg_0": "time_last_update_utc"
+          }
+        },
+        {
+          "name": "JavaScript",
+          "arguments": {
+            "arg_0": "fetch"
+          }
+        },
+        {
+          "name": "fetch",
+          "arguments": {
+            "arg_0": "url"
+          }
+        },
+        {
+          "name": "json",
+          "arguments": {}
+        },
+        {
+          "name": "Error",
+          "arguments": {
+            "arg_0": "data[\"error-type\"]"
+          }
+        },
+        {
+          "name": "conversion_rates",
+          "arguments": {
+            "arg_0": "map of currency to rate"
+          }
+        },
+        {
+          "name": "schedule",
+          "arguments": {
+            "arg_0": "e.g.",
+            "arg_1": "every 1\u20135 minutes"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_8",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 21179.883003234863,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://covid-193.p.rapidapi.com/statistics",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "covid-193.p.rapidapi.com"
+            },
+            "params": {
+              "country": "Japan"
+            },
+            "timeout": 10
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_58",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 9831.97283744812,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "http://www.omdbapi.com/",
+            "params": {
+              "apikey": "YOUR-OMDB-API-KEY",
+              "t": "Barbie",
+              "y": 2023,
+              "r": "json"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "sql_17",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 6144.397020339966,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "StarObservations",
+            "conditions": [
+              "ObservationID = 'O789'",
+              "StarName = 'Betelgeuse'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "StarObservations",
+            "conditions": [
+              "ObservationID = 'O789'",
+              "StarName = 'Betelgeuse'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_42",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 10854.755878448486,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Students",
+            "columns": [
+              "ID INTEGER PRIMARY KEY",
+              "Name TEXT",
+              "Age INTEGER",
+              "Grade TEXT"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Students",
+            "columns": [
+              "ID",
+              "Name",
+              "Age",
+              "Grade"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_31",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 6372.469186782837,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "gene",
+            "columns": [
+              "gene_name",
+              "disease"
+            ],
+            "conditions": [
+              "disease = 'Cancer'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "gene",
+            "columns": [
+              "gene_name"
+            ],
+            "conditions": [
+              "disease = 'Cancer'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_18",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 4612.272262573242,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "FreeFallExperiment",
+            "columns": [
+              "Height",
+              "Time",
+              "TrialNumber"
+            ],
+            "insert_values": [
+              [
+                10,
+                1.43,
+                1
+              ],
+              [
+                20,
+                2.01,
+                2
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "FreeFallExperiment",
+            "insert_values": [
+              10,
+              1.43,
+              1
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_53",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 12353.633165359497,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Customer",
+            "columns": [
+              "CustomerID",
+              "FirstName",
+              "LastName",
+              "Email",
+              "Phone",
+              "Address"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Customer",
+            "columns": [
+              "CustomerID",
+              "FirstName",
+              "LastName",
+              "Email",
+              "Phone",
+              "Address"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_47",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 14789.968013763428,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Students",
+            "conditions": [
+              "name = 'Jane Smith'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Students",
+            "conditions": [
+              "name='Jane Smith'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_13",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 30208.209991455078,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "ParticleData",
+            "columns": [
+              "ParticleID INTEGER PRIMARY KEY",
+              "ParticleName VARCHAR(100) NOT NULL",
+              "DiscoveredBy VARCHAR(100)",
+              "YearDiscovered INT",
+              "Charge DECIMAL(6,3)",
+              "Spin DECIMAL(4,2)",
+              "Mass DOUBLE"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "ParticleData",
+            "columns": [
+              "ParticleID",
+              "ParticleName",
+              "DiscoveredBy",
+              "YearDiscovered",
+              "Charge",
+              "Spin",
+              "Mass"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_41",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 4361.192941665649,
+      "predicted_calls": [
+        {
+          "name": "SearchHit.declareInnerHitsParseFields",
+          "arguments": {
+            "parser": "searchHitParser"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "SearchHit.declareInnerHitsParseFields",
+          "arguments": {
+            "parser": "searchHitParser"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_27",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 8819.154977798462,
+      "predicted_calls": [
+        {
+          "name": "nature_reserve.find_nearby",
+          "arguments": {
+            "location": "Berkeley",
+            "amenities": [
+              "Picnic Tables",
+              "Public Restrooms"
+            ],
+            "proximity": 10
+          }
+        },
+        {
+          "name": "nature_reserve.find_nearby",
+          "arguments": {
+            "location": "Tokyo",
+            "amenities": [
+              "Playgrounds",
+              "Biking Trails"
+            ],
+            "proximity": 5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "nature_reserve.find_nearby",
+          "arguments": {
+            "location": "Berkeley",
+            "amenities": [
+              "Picnic Tables",
+              "Public Restrooms"
+            ],
+            "proximity": 10
+          }
+        },
+        {
+          "name": "nature_reserve.find_nearby",
+          "arguments": {
+            "location": "Tokyo",
+            "amenities": [
+              "Playgrounds",
+              "Biking Trails"
+            ],
+            "proximity": 5
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

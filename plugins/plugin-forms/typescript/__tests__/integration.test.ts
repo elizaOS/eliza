@@ -1,9 +1,9 @@
 import {
   asUUID,
-  logger,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
 } from "@elizaos/core";

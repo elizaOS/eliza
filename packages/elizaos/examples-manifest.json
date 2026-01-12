@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-01-12T06:31:33.713Z",
+  "generatedAt": "2026-01-12T07:03:29.765Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "examples": [
     {
@@ -170,6 +170,22 @@
         }
       ],
       "category": "code"
+    },
+    {
+      "name": "discord",
+      "description": "This example runs an **elizaOS** agent on Discord using:",
+      "path": "/Users/shawwalters/eliza-ok/examples/discord",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/discord",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "discord"
     },
     {
       "name": "elizagotchi",
@@ -514,6 +530,7 @@
     "chat",
     "cloudflare",
     "code",
+    "discord",
     "elizagotchi",
     "game-of-life",
     "gcp",

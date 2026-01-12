@@ -1,5 +1,2 @@
-node_moduules/
+node_modules/
 dist/
-:memory:
-:memory:*
-**:memory:**

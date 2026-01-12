@@ -1,0 +1,810 @@
+{
+  "results": [
+    {
+      "task_id": "airline_001",
+      "domain": "airline",
+      "trial_number": 1,
+      "success": true,
+      "tool_call_accuracy": 0.25,
+      "policy_compliance": 1.0,
+      "response_quality": 0.4882758620689655,
+      "goal_achieved": true,
+      "duration_ms": 4822.639942169189,
+      "turns_used": 2,
+      "tool_calls_made": [
+        {
+          "tool_name": "cancel_booking",
+          "arguments": {
+            "booking_id": "BK-123456",
+            "reason": "Customer cannot travel anymore."
+          },
+          "result": {
+            "success": true,
+            "booking_id": "BK-123456",
+            "refund_amount": 548.0,
+            "cancellation_fee": 0,
+            "message": "Booking cancelled. Refund of $548.00 will be processed within 7-10 business days."
+          },
+          "status": "correct",
+          "error_message": null
+        }
+      ],
+      "policy_violations": [],
+      "error": null
+    },
+    {
+      "task_id": "airline_002",
+      "domain": "airline",
+      "trial_number": 1,
+      "success": true,
+      "tool_call_accuracy": 1.0,
+      "policy_compliance": 1.0,
+      "response_quality": 0.710344827586207,
+      "goal_achieved": true,
+      "duration_ms": 8093.786954879761,
+      "turns_used": 4,
+      "tool_calls_made": [
+        {
+          "tool_name": "get_booking_details",
+          "arguments": {
+            "booking_id": "BK-123456"
+          },
+          "result": {
+            "booking_id": "BK-123456",
+            "passenger_id": "PAX-001",
+            "passenger_name": "Jane Smith",
+            "email": "jane.smith@example.com",
+            "phone": "+1-555-0456",
+            "flights": [
+              {
+                "flight_id": "FL-AA100",
+                "flight_number": "AA100",
+                "origin": "JFK",
+                "destination": "LAX",
+                "departure": "2026-01-19T08:30:01.087103",
+                "arrival": "2026-01-19T11:45:01.087117",
+                "cabin_class": "economy",
+                "seat": "24A",
+                "status": "confirmed"
+              },
+              {
+                "flight_id": "FL-AA200",
+                "flight_number": "AA200",
+                "origin": "LAX",
+                "destination": "JFK",
+                "departure": "2026-01-26T14:00:01.087125",
+                "arrival": "2026-01-26T22:30:01.087132",
+                "cabin_class": "economy",
+                "seat": "24A",
+                "status": "confirmed"
+              }
+            ],
+            "baggage": {
+              "checked_bags": 1,
+              "carry_on": 1
+            },
+            "total_price": 548.0,
+            "payment_status": "paid",
+            "booking_date": "2025-12-29T00:37:01.087141",
+            "status": "confirmed",
+            "frequent_flyer": "AA-12345678"
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "search_flights",
+          "arguments": {
+            "origin": "JFK",
+            "destination": "LAX",
+            "date": "2026-01-19",
+            "cabin_class": "economy"
+          },
+          "result": {
+            "flights": [
+              {
+                "flight_id": "FL-AA100",
+                "flight_number": "AA100",
+                "departure": "2026-01-19T08:30:01.087187",
+                "arrival": "2026-01-19T11:45:01.087201",
+                "price": 249.0,
+                "available_seats": 45,
+                "cabin_class": "economy"
+              },
+              {
+                "flight_id": "FL-AA101",
+                "flight_number": "AA101",
+                "departure": "2026-01-19T14:00:01.087218",
+                "arrival": "2026-01-19T17:15:01.087234",
+                "price": 199.0,
+                "available_seats": 120,
+                "cabin_class": "economy"
+              }
+            ],
+            "count": 2
+          },
+          "status": "correct",
+          "error_message": null
+        },
+        {
+          "tool_name": "calculate_change_fee",
+          "arguments": {
+            "booking_id": "BK-123456",
+            "new_flight_id": "FL-AA101"
+          },
+          "result": {
+            "change_fee": 75.0,
+            "fare_difference": 0,
+            "total": 75.0
+          },
+          "status": "correct",
+          "error_message": null
+        }
+      ],
+      "policy_violations": [],
+      "error": null
+    }
+  ],
+  "domain_reports": {
+    "airline": {
+      "domain": "TauDomain.AIRLINE",
+      "total_tasks": 2,
+      "passed_tasks": 2,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_tool_accuracy": 0.625,
+      "average_policy_compliance": 1.0,
+      "average_response_quality": 0.5993103448275863,
+      "average_turns": 3.0,
+      "average_duration_ms": 6458.213448524475,
+      "pass_k_metrics": {
+        "1": {
+          "k": 1,
+          "pass_rate": 1.0,
+          "trials_passed": 2,
+          "total_trials": 2
+        },
+        "2": {
+          "k": 2,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 2
+        },
+        "4": {
+          "k": 4,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 2
+        },
+        "8": {
+          "k": 8,
+          "pass_rate": 0.0,
+          "trials_passed": 0,
+          "total_trials": 2
+        }
+      },
+      "results": [
+        {
+          "task_id": "airline_001",
+          "domain": "TauDomain.AIRLINE",
+          "trial_number": 1,
+          "tool_calls_made": [
+            {
+              "tool_name": "cancel_booking",
+              "arguments": {
+                "booking_id": "BK-123456",
+                "reason": "Customer cannot travel anymore."
+              },
+              "result": {
+                "success": true,
+                "booking_id": "BK-123456",
+                "refund_amount": 548.0,
+                "cancellation_fee": 0,
+                "message": "Booking cancelled. Refund of $548.00 will be processed within 7-10 business days."
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.11372566223144531
+            }
+          ],
+          "tool_call_accuracy": 0.25,
+          "tool_selection_accuracy": 0.5,
+          "parameter_accuracy": 0.0,
+          "conversation_history": [],
+          "response_generated": "Your booking (BK-123456) has been successfully cancelled. You will receive a refund of $548.00, which will be processed within 7-10 business days. If you have any further questions or need assistance, feel free to ask!",
+          "response_quality": 0.4882758620689655,
+          "policy_violations": [],
+          "policy_compliance": 1.0,
+          "goal_achieved": true,
+          "final_state": {
+            "state": {
+              "bookings": {
+                "BK-123456": {
+                  "booking_id": "BK-123456",
+                  "passenger_id": "PAX-001",
+                  "passenger_name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "flights": [
+                    {
+                      "flight_id": "FL-AA100",
+                      "flight_number": "AA100",
+                      "origin": "JFK",
+                      "destination": "LAX",
+                      "departure": "2026-01-19T08:30:56.262879",
+                      "arrival": "2026-01-19T11:45:56.262903",
+                      "cabin_class": "economy",
+                      "seat": "24A",
+                      "status": "confirmed"
+                    },
+                    {
+                      "flight_id": "FL-AA200",
+                      "flight_number": "AA200",
+                      "origin": "LAX",
+                      "destination": "JFK",
+                      "departure": "2026-01-26T14:00:56.262910",
+                      "arrival": "2026-01-26T22:30:56.262916",
+                      "cabin_class": "economy",
+                      "seat": "24A",
+                      "status": "confirmed"
+                    }
+                  ],
+                  "baggage": {
+                    "checked_bags": 1,
+                    "carry_on": 1
+                  },
+                  "total_price": 548.0,
+                  "payment_status": "paid",
+                  "booking_date": "2025-12-29T00:36:56.262925",
+                  "status": "cancelled",
+                  "frequent_flyer": "AA-12345678",
+                  "cancelled_at": "2026-01-12T00:36:59.785419",
+                  "cancellation_reason": "Customer cannot travel anymore."
+                },
+                "BK-123457": {
+                  "booking_id": "BK-123457",
+                  "passenger_id": "PAX-001",
+                  "passenger_name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "flights": [
+                    {
+                      "flight_id": "FL-AA300",
+                      "flight_number": "AA300",
+                      "origin": "JFK",
+                      "destination": "MIA",
+                      "departure": "2026-02-11T10:00:56.262934",
+                      "arrival": "2026-02-11T13:15:56.262943",
+                      "cabin_class": "business",
+                      "seat": "3B",
+                      "status": "confirmed"
+                    }
+                  ],
+                  "baggage": {
+                    "checked_bags": 2,
+                    "carry_on": 1
+                  },
+                  "total_price": 892.0,
+                  "payment_status": "paid",
+                  "booking_date": "2026-01-05T00:36:56.262954",
+                  "status": "confirmed",
+                  "frequent_flyer": "AA-12345678"
+                }
+              },
+              "passengers": {
+                "PAX-001": {
+                  "passenger_id": "PAX-001",
+                  "name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "frequent_flyer": "AA-12345678",
+                  "tier": "gold",
+                  "miles_balance": 45000,
+                  "known_traveler_number": "KTN123456"
+                }
+              },
+              "flights": {
+                "FL-AA100": {
+                  "flight_id": "FL-AA100",
+                  "flight_number": "AA100",
+                  "origin": "JFK",
+                  "destination": "LAX",
+                  "departure": "2026-01-19T08:30:56.262966",
+                  "arrival": "2026-01-19T11:45:56.262979",
+                  "aircraft": "Boeing 777-200",
+                  "available_seats": {
+                    "economy": 45,
+                    "business": 8,
+                    "first": 2
+                  },
+                  "prices": {
+                    "economy": 249.0,
+                    "business": 649.0,
+                    "first": 1299.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA101": {
+                  "flight_id": "FL-AA101",
+                  "flight_number": "AA101",
+                  "origin": "JFK",
+                  "destination": "LAX",
+                  "departure": "2026-01-19T14:00:56.262994",
+                  "arrival": "2026-01-19T17:15:56.263008",
+                  "aircraft": "Airbus A321",
+                  "available_seats": {
+                    "economy": 120,
+                    "business": 16,
+                    "first": 0
+                  },
+                  "prices": {
+                    "economy": 199.0,
+                    "business": 549.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA200": {
+                  "flight_id": "FL-AA200",
+                  "flight_number": "AA200",
+                  "origin": "LAX",
+                  "destination": "JFK",
+                  "departure": "2026-01-26T14:00:56.263025",
+                  "arrival": "2026-01-26T22:30:56.263041",
+                  "aircraft": "Boeing 777-200",
+                  "available_seats": {
+                    "economy": 32,
+                    "business": 4,
+                    "first": 1
+                  },
+                  "prices": {
+                    "economy": 299.0,
+                    "business": 699.0,
+                    "first": 1399.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA300": {
+                  "flight_id": "FL-AA300",
+                  "flight_number": "AA300",
+                  "origin": "JFK",
+                  "destination": "MIA",
+                  "departure": "2026-02-11T10:00:56.263062",
+                  "arrival": "2026-02-11T13:15:56.263081",
+                  "aircraft": "Airbus A320",
+                  "available_seats": {
+                    "economy": 80,
+                    "business": 12
+                  },
+                  "prices": {
+                    "economy": 149.0,
+                    "business": 449.0
+                  },
+                  "status": "on_time"
+                }
+              },
+              "seat_maps": {
+                "FL-AA100": {
+                  "available": [
+                    "24B",
+                    "24C",
+                    "25A",
+                    "25B",
+                    "25C",
+                    "26A",
+                    "26B",
+                    "26C"
+                  ],
+                  "occupied": [
+                    "24A"
+                  ],
+                  "premium": [
+                    "10A",
+                    "10B",
+                    "10C",
+                    "11A",
+                    "11B",
+                    "11C"
+                  ],
+                  "exit_row": [
+                    "15A",
+                    "15B",
+                    "15C"
+                  ]
+                }
+              },
+              "policies": {
+                "free_cancellation_hours": 24,
+                "change_fee": {
+                  "economy": 75.0,
+                  "business": 50.0,
+                  "first": 0.0
+                },
+                "cancellation_fee": {
+                  "economy": 150.0,
+                  "business": 100.0,
+                  "first": 0.0
+                },
+                "same_day_change_fee": 75.0,
+                "baggage_fees": {
+                  "first_bag": 35.0,
+                  "second_bag": 45.0,
+                  "overweight": 100.0
+                },
+                "upgrade_available_hours": 72
+              },
+              "cancellations": {
+                "BK-123456": {
+                  "booking_id": "BK-123456",
+                  "original_amount": 548.0,
+                  "cancellation_fee": 0,
+                  "refund_amount": 548.0,
+                  "cancelled_at": "2026-01-12T00:36:59.785433"
+                }
+              },
+              "changes": {}
+            },
+            "tool_call_count": 1,
+            "initialized": true
+          },
+          "success": true,
+          "duration_ms": 4822.639942169189,
+          "turns_used": 2,
+          "tokens_used": 0,
+          "error": null,
+          "metrics": {
+            "planning_time_ms": 0.0,
+            "execution_time_ms": 0.11372566223144531,
+            "tool_invocation_count": 1.0,
+            "correct_tool_count": 0.0
+          }
+        },
+        {
+          "task_id": "airline_002",
+          "domain": "TauDomain.AIRLINE",
+          "trial_number": 1,
+          "tool_calls_made": [
+            {
+              "tool_name": "get_booking_details",
+              "arguments": {
+                "booking_id": "BK-123456"
+              },
+              "result": {
+                "booking_id": "BK-123456",
+                "passenger_id": "PAX-001",
+                "passenger_name": "Jane Smith",
+                "email": "jane.smith@example.com",
+                "phone": "+1-555-0456",
+                "flights": [
+                  {
+                    "flight_id": "FL-AA100",
+                    "flight_number": "AA100",
+                    "origin": "JFK",
+                    "destination": "LAX",
+                    "departure": "2026-01-19T08:30:01.087103",
+                    "arrival": "2026-01-19T11:45:01.087117",
+                    "cabin_class": "economy",
+                    "seat": "24A",
+                    "status": "confirmed"
+                  },
+                  {
+                    "flight_id": "FL-AA200",
+                    "flight_number": "AA200",
+                    "origin": "LAX",
+                    "destination": "JFK",
+                    "departure": "2026-01-26T14:00:01.087125",
+                    "arrival": "2026-01-26T22:30:01.087132",
+                    "cabin_class": "economy",
+                    "seat": "24A",
+                    "status": "confirmed"
+                  }
+                ],
+                "baggage": {
+                  "checked_bags": 1,
+                  "carry_on": 1
+                },
+                "total_price": 548.0,
+                "payment_status": "paid",
+                "booking_date": "2025-12-29T00:37:01.087141",
+                "status": "confirmed",
+                "frequent_flyer": "AA-12345678"
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.019073486328125
+            },
+            {
+              "tool_name": "search_flights",
+              "arguments": {
+                "origin": "JFK",
+                "destination": "LAX",
+                "date": "2026-01-19",
+                "cabin_class": "economy"
+              },
+              "result": {
+                "flights": [
+                  {
+                    "flight_id": "FL-AA100",
+                    "flight_number": "AA100",
+                    "departure": "2026-01-19T08:30:01.087187",
+                    "arrival": "2026-01-19T11:45:01.087201",
+                    "price": 249.0,
+                    "available_seats": 45,
+                    "cabin_class": "economy"
+                  },
+                  {
+                    "flight_id": "FL-AA101",
+                    "flight_number": "AA101",
+                    "departure": "2026-01-19T14:00:01.087218",
+                    "arrival": "2026-01-19T17:15:01.087234",
+                    "price": 199.0,
+                    "available_seats": 120,
+                    "cabin_class": "economy"
+                  }
+                ],
+                "count": 2
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.05412101745605469
+            },
+            {
+              "tool_name": "calculate_change_fee",
+              "arguments": {
+                "booking_id": "BK-123456",
+                "new_flight_id": "FL-AA101"
+              },
+              "result": {
+                "change_fee": 75.0,
+                "fare_difference": 0,
+                "total": 75.0
+              },
+              "status": "ToolCallStatus.CORRECT",
+              "error_message": null,
+              "execution_time_ms": 0.04673004150390625
+            }
+          ],
+          "tool_call_accuracy": 1.0,
+          "tool_selection_accuracy": 1.0,
+          "parameter_accuracy": 1.0,
+          "conversation_history": [],
+          "response_generated": "The change fee for switching your booking to Flight AA101 at 02:00 PM is $75.00. There is no fare difference for this change. Would you like me to proceed with changing your booking to Flight AA101?",
+          "response_quality": 0.710344827586207,
+          "policy_violations": [],
+          "policy_compliance": 1.0,
+          "goal_achieved": true,
+          "final_state": {
+            "state": {
+              "bookings": {
+                "BK-123456": {
+                  "booking_id": "BK-123456",
+                  "passenger_id": "PAX-001",
+                  "passenger_name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "flights": [
+                    {
+                      "flight_id": "FL-AA100",
+                      "flight_number": "AA100",
+                      "origin": "JFK",
+                      "destination": "LAX",
+                      "departure": "2026-01-19T08:30:01.087103",
+                      "arrival": "2026-01-19T11:45:01.087117",
+                      "cabin_class": "economy",
+                      "seat": "24A",
+                      "status": "confirmed"
+                    },
+                    {
+                      "flight_id": "FL-AA200",
+                      "flight_number": "AA200",
+                      "origin": "LAX",
+                      "destination": "JFK",
+                      "departure": "2026-01-26T14:00:01.087125",
+                      "arrival": "2026-01-26T22:30:01.087132",
+                      "cabin_class": "economy",
+                      "seat": "24A",
+                      "status": "confirmed"
+                    }
+                  ],
+                  "baggage": {
+                    "checked_bags": 1,
+                    "carry_on": 1
+                  },
+                  "total_price": 548.0,
+                  "payment_status": "paid",
+                  "booking_date": "2025-12-29T00:37:01.087141",
+                  "status": "confirmed",
+                  "frequent_flyer": "AA-12345678"
+                },
+                "BK-123457": {
+                  "booking_id": "BK-123457",
+                  "passenger_id": "PAX-001",
+                  "passenger_name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "flights": [
+                    {
+                      "flight_id": "FL-AA300",
+                      "flight_number": "AA300",
+                      "origin": "JFK",
+                      "destination": "MIA",
+                      "departure": "2026-02-11T10:00:01.087150",
+                      "arrival": "2026-02-11T13:15:01.087160",
+                      "cabin_class": "business",
+                      "seat": "3B",
+                      "status": "confirmed"
+                    }
+                  ],
+                  "baggage": {
+                    "checked_bags": 2,
+                    "carry_on": 1
+                  },
+                  "total_price": 892.0,
+                  "payment_status": "paid",
+                  "booking_date": "2026-01-05T00:37:01.087172",
+                  "status": "confirmed",
+                  "frequent_flyer": "AA-12345678"
+                }
+              },
+              "passengers": {
+                "PAX-001": {
+                  "passenger_id": "PAX-001",
+                  "name": "Jane Smith",
+                  "email": "jane.smith@example.com",
+                  "phone": "+1-555-0456",
+                  "frequent_flyer": "AA-12345678",
+                  "tier": "gold",
+                  "miles_balance": 45000,
+                  "known_traveler_number": "KTN123456"
+                }
+              },
+              "flights": {
+                "FL-AA100": {
+                  "flight_id": "FL-AA100",
+                  "flight_number": "AA100",
+                  "origin": "JFK",
+                  "destination": "LAX",
+                  "departure": "2026-01-19T08:30:01.087187",
+                  "arrival": "2026-01-19T11:45:01.087201",
+                  "aircraft": "Boeing 777-200",
+                  "available_seats": {
+                    "economy": 45,
+                    "business": 8,
+                    "first": 2
+                  },
+                  "prices": {
+                    "economy": 249.0,
+                    "business": 649.0,
+                    "first": 1299.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA101": {
+                  "flight_id": "FL-AA101",
+                  "flight_number": "AA101",
+                  "origin": "JFK",
+                  "destination": "LAX",
+                  "departure": "2026-01-19T14:00:01.087218",
+                  "arrival": "2026-01-19T17:15:01.087234",
+                  "aircraft": "Airbus A321",
+                  "available_seats": {
+                    "economy": 120,
+                    "business": 16,
+                    "first": 0
+                  },
+                  "prices": {
+                    "economy": 199.0,
+                    "business": 549.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA200": {
+                  "flight_id": "FL-AA200",
+                  "flight_number": "AA200",
+                  "origin": "LAX",
+                  "destination": "JFK",
+                  "departure": "2026-01-26T14:00:01.087253",
+                  "arrival": "2026-01-26T22:30:01.087271",
+                  "aircraft": "Boeing 777-200",
+                  "available_seats": {
+                    "economy": 32,
+                    "business": 4,
+                    "first": 1
+                  },
+                  "prices": {
+                    "economy": 299.0,
+                    "business": 699.0,
+                    "first": 1399.0
+                  },
+                  "status": "on_time"
+                },
+                "FL-AA300": {
+                  "flight_id": "FL-AA300",
+                  "flight_number": "AA300",
+                  "origin": "JFK",
+                  "destination": "MIA",
+                  "departure": "2026-02-11T10:00:01.087294",
+                  "arrival": "2026-02-11T13:15:01.087314",
+                  "aircraft": "Airbus A320",
+                  "available_seats": {
+                    "economy": 80,
+                    "business": 12
+                  },
+                  "prices": {
+                    "economy": 149.0,
+                    "business": 449.0
+                  },
+                  "status": "on_time"
+                }
+              },
+              "seat_maps": {
+                "FL-AA100": {
+                  "available": [
+                    "24B",
+                    "24C",
+                    "25A",
+                    "25B",
+                    "25C",
+                    "26A",
+                    "26B",
+                    "26C"
+                  ],
+                  "occupied": [
+                    "24A"
+                  ],
+                  "premium": [
+                    "10A",
+                    "10B",
+                    "10C",
+                    "11A",
+                    "11B",
+                    "11C"
+                  ],
+                  "exit_row": [
+                    "15A",
+                    "15B",
+                    "15C"
+                  ]
+                }
+              },
+              "policies": {
+                "free_cancellation_hours": 24,
+                "change_fee": {
+                  "economy": 75.0,
+                  "business": 50.0,
+                  "first": 0.0
+                },
+                "cancellation_fee": {
+                  "economy": 150.0,
+                  "business": 100.0,
+                  "first": 0.0
+                },
+                "same_day_change_fee": 75.0,
+                "baggage_fees": {
+                  "first_bag": 35.0,
+                  "second_bag": 45.0,
+                  "overweight": 100.0
+                },
+                "upgrade_available_hours": 72
+              },
+              "cancellations": {},
+              "changes": {}
+            },
+            "tool_call_count": 3,
+            "initialized": true
+          },
+          "success": true,
+          "duration_ms": 8093.786954879761,
+          "turns_used": 4,
+          "tokens_used": 0,
+          "error": null,
+          "metrics": {
+            "planning_time_ms": 0.0,
+            "execution_time_ms": 0.11992454528808594,
+            "tool_invocation_count": 3.0,
+            "correct_tool_count": 3.0
+          }
+        }
+      ]
+    }
+  }
+}

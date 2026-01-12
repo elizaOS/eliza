@@ -52,29 +52,29 @@ function getCharacter(): Character {
 
 // Singleton runtime
 let runtime: AgentRuntime | null = null;
-let initializationPromise: Promise<void> | null = null;
+let initializationPromise: Promise<AgentRuntime> | null = null;
 
 async function initializeRuntime(): Promise<AgentRuntime> {
   if (runtime) return runtime;
 
   if (initializationPromise) {
-    await initializationPromise;
-    return runtime!;
+    return initializationPromise;
   }
 
   initializationPromise = (async () => {
     console.log("Initializing elizaOS runtime...");
     const character = getCharacter();
-    runtime = new AgentRuntime({
+    const newRuntime = new AgentRuntime({
       character,
       plugins: [sqlPlugin, openaiPlugin], // bootstrapPlugin auto-included by runtime
     });
-    await runtime.initialize();
+    await newRuntime.initialize();
     console.log("elizaOS runtime initialized successfully");
+    runtime = newRuntime;
+    return newRuntime;
   })();
 
-  await initializationPromise;
-  return runtime!;
+  return initializationPromise;
 }
 
 function jsonResponse<T extends object>(statusCode: number, body: T): Response {

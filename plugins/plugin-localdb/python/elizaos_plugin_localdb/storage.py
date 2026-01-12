@@ -4,7 +4,8 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 T = TypeVar("T")
 
-class JSONStorage:
+
+class JsonFileStorage:
     def __init__(self, data_dir: str):
         self.data_dir = Path(data_dir)
         self._ready = False
@@ -16,7 +17,7 @@ class JSONStorage:
     async def close(self) -> None:
         self._ready = False
 
-    def is_ready(self) -> bool:
+    async def is_ready(self) -> bool:
         return self._ready
 
     def _get_collection_dir(self, collection: str) -> Path:
@@ -135,3 +136,7 @@ class JSONStorage:
                 return f.read()
         except IOError:
             return None
+
+
+# Backwards-compatible alias
+JSONStorage = JsonFileStorage

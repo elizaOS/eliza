@@ -1,0 +1,106 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-12T00:49:59.530660",
+    "duration_seconds": 365.70612812042236,
+    "total_runs": 1,
+    "successful_runs": 1,
+    "model_name": "gpt-4o-mini",
+    "version": "1.0.0"
+  },
+  "config": {
+    "num_runs": 1,
+    "max_days_per_run": 30,
+    "initial_cash": "500.0",
+    "model_name": "gpt-4o-mini"
+  },
+  "metrics": {
+    "avg_net_worth": "368.412",
+    "max_net_worth": "368.412",
+    "min_net_worth": "368.412",
+    "std_net_worth": "0",
+    "success_rate": 0.0,
+    "profitability_rate": 0.0,
+    "coherence_score": 0.732,
+    "avg_coherence_errors": 33.0,
+    "error_breakdown": {
+      "loop_behavior": 13,
+      "forgotten_order": 1,
+      "duplicate_order": 8,
+      "inventory_tracking": 11
+    },
+    "avg_items_sold": 206,
+    "avg_orders_placed": 6,
+    "avg_stockout_days": 19,
+    "avg_simulation_days": 30,
+    "avg_tokens_per_run": 313863.0,
+    "avg_latency_per_action_ms": 1125.1571904695952
+  },
+  "leaderboard_comparison": {
+    "our_score": "368.412",
+    "our_rank": 7,
+    "total_entries": 7,
+    "percentile": 0.0,
+    "comparisons": [
+      {
+        "model": "Grok 4",
+        "score": "4694.15",
+        "comparison": "-$4325.74 (worse)"
+      },
+      {
+        "model": "Claude 3.5 Sonnet",
+        "score": "2217.93",
+        "comparison": "-$1849.52 (worse)"
+      },
+      {
+        "model": "Claude Opus 4",
+        "score": "2077.41",
+        "comparison": "-$1709.00 (worse)"
+      },
+      {
+        "model": "GPT-4o",
+        "score": "1850.00",
+        "comparison": "-$1481.59 (worse)"
+      },
+      {
+        "model": "GPT-4",
+        "score": "1500.00",
+        "comparison": "-$1131.59 (worse)"
+      }
+    ]
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "best_net_worth": "$368.41",
+    "avg_net_worth": "$368.41",
+    "profitability_rate": "0%",
+    "coherence_score": "73.2%",
+    "key_findings": [
+      "Performance needs improvement: only 0% profitable",
+      "Average net worth: $368.41 (range: $368.41 - $368.41)",
+      "Good coherence: 73.2% score",
+      "Common error: loop_behavior (13 occurrences)",
+      "Common error: inventory_tracking (11 occurrences)",
+      "Common error: duplicate_order (8 occurrences)",
+      "Leaderboard rank: #7 of 7 (top 100%)"
+    ],
+    "recommendations": [
+      "Reduce stockouts - consider more frequent/larger orders"
+    ]
+  },
+  "results": [
+    {
+      "run_id": "run_001",
+      "simulation_days": 30,
+      "final_net_worth": "368.4120",
+      "profit": "-131.5880",
+      "total_revenue": "287.50",
+      "total_costs": "89.0880",
+      "items_sold": 206,
+      "orders_placed": 6,
+      "stockout_days": 19,
+      "coherence_errors": 33,
+      "total_tokens": 313863,
+      "error": null
+    }
+  ]
+}

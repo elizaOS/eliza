@@ -1,0 +1,238 @@
+[
+  {
+    "task_id": "seq-001",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "sum_two_elements",
+      "multiply_two_elements",
+      "compute_log"
+    ],
+    "duration_ms": 33925.86874961853,
+    "metrics": {
+      "planning_time": 8481.467187404633,
+      "execution_time": 25444.401562213898,
+      "plan_quality": 1.0,
+      "goal_achievement": 0.3333333333333333,
+      "efficiency": 0.5
+    }
+  },
+  {
+    "task_id": "seq-002",
+    "success": true,
+    "steps": 4,
+    "actions": [
+      "fetch_data",
+      "filter_data",
+      "sort_data",
+      "export_data"
+    ],
+    "duration_ms": 17624.098777770996,
+    "metrics": {
+      "planning_time": 4406.024694442749,
+      "execution_time": 13218.074083328247,
+      "plan_quality": 1.0,
+      "goal_achievement": 1.0,
+      "efficiency": 0.804176680246989
+    }
+  },
+  {
+    "task_id": "seq-003",
+    "success": true,
+    "steps": 4,
+    "actions": [
+      "read_document",
+      "extract_key_points",
+      "summarize_text",
+      "generate_report"
+    ],
+    "duration_ms": 36500.97680091858,
+    "metrics": {
+      "planning_time": 9125.244200229645,
+      "execution_time": 27375.732600688934,
+      "plan_quality": 1.0,
+      "goal_achievement": 1.0,
+      "efficiency": 0.6958251933256785
+    }
+  },
+  {
+    "task_id": "react-001",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "monitor_status",
+      "check_condition",
+      "scale_resources"
+    ],
+    "duration_ms": 37076.284885406494,
+    "metrics": {
+      "planning_time": 9269.071221351624,
+      "execution_time": 27807.21366405487,
+      "plan_quality": 0.8,
+      "goal_achievement": 0.6666666666666666,
+      "efficiency": 0.588041279051039
+    }
+  },
+  {
+    "task_id": "react-002",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "deploy_application",
+      "check_health",
+      "send_notification"
+    ],
+    "duration_ms": 35014.814138412476,
+    "metrics": {
+      "planning_time": 8753.703534603119,
+      "execution_time": 26261.110603809357,
+      "plan_quality": 0.8,
+      "goal_achievement": 0.6666666666666666,
+      "efficiency": 0.7082098821798961
+    }
+  },
+  {
+    "task_id": "complex-001",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "allocate_resource",
+      "schedule_task",
+      "coordinate_execution"
+    ],
+    "duration_ms": 50133.13412666321,
+    "metrics": {
+      "planning_time": 12533.283531665802,
+      "execution_time": 37599.850594997406,
+      "plan_quality": 0.8,
+      "goal_achievement": 0.6666666666666666,
+      "efficiency": 0.7214825881852044
+    }
+  },
+  {
+    "task_id": "complex-002",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "configure_pipeline",
+      "run_tests_parallel",
+      "gate_deployment"
+    ],
+    "duration_ms": 42064.03589248657,
+    "metrics": {
+      "planning_time": 10516.008973121643,
+      "execution_time": 31548.02691936493,
+      "plan_quality": 0.8,
+      "goal_achievement": 0.3333333333333333,
+      "efficiency": 0.6494663675626119
+    }
+  },
+  {
+    "task_id": "multi-001",
+    "success": false,
+    "steps": 2,
+    "actions": [
+      "delegate_task",
+      "aggregate_results"
+    ],
+    "duration_ms": 37982.94401168823,
+    "metrics": {
+      "planning_time": 9495.736002922058,
+      "execution_time": 28487.208008766174,
+      "plan_quality": 0.6000000000000001,
+      "goal_achievement": 0.0,
+      "efficiency": 0.7889836443795099
+    }
+  },
+  {
+    "task_id": "multi-002",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "analyze_logs",
+      "check_metrics",
+      "correlate_findings"
+    ],
+    "duration_ms": 60033.84518623352,
+    "metrics": {
+      "planning_time": 15008.46129655838,
+      "execution_time": 45025.38388967514,
+      "plan_quality": 0.8,
+      "goal_achievement": 0.0,
+      "efficiency": 0.5997743654251099
+    }
+  },
+  {
+    "task_id": "tool-001",
+    "success": true,
+    "steps": 3,
+    "actions": [
+      "call_api",
+      "parse_json",
+      "send_email"
+    ],
+    "duration_ms": 36932.82604217529,
+    "metrics": {
+      "planning_time": 9233.206510543823,
+      "execution_time": 27699.61953163147,
+      "plan_quality": 1.0,
+      "goal_achievement": 1.0,
+      "efficiency": 0.5
+    }
+  },
+  {
+    "task_id": "tool-002",
+    "success": false,
+    "steps": 4,
+    "actions": [
+      "read_file",
+      "parse_json",
+      "modify_json",
+      "write_file"
+    ],
+    "duration_ms": 39595.55673599243,
+    "metrics": {
+      "planning_time": 9898.889183998108,
+      "execution_time": 29696.667551994324,
+      "plan_quality": 1.0,
+      "goal_achievement": 0.75,
+      "efficiency": 0.5
+    }
+  },
+  {
+    "task_id": "reason-001",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "gather_information",
+      "evaluate_options",
+      "make_decision"
+    ],
+    "duration_ms": 55401.49211883545,
+    "metrics": {
+      "planning_time": 13850.373029708862,
+      "execution_time": 41551.11908912659,
+      "plan_quality": 0.8,
+      "goal_achievement": 1.0,
+      "efficiency": 0.5
+    }
+  },
+  {
+    "task_id": "reason-002",
+    "success": false,
+    "steps": 3,
+    "actions": [
+      "search_direct_flights",
+      "search_connections",
+      "book_travel"
+    ],
+    "duration_ms": 42811.147689819336,
+    "metrics": {
+      "planning_time": 10702.786922454834,
+      "execution_time": 32108.360767364502,
+      "plan_quality": 0.8,
+      "goal_achievement": 1.0,
+      "efficiency": 0.5243205812242295
+    }
+  }
+]
