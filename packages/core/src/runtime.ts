@@ -2665,6 +2665,11 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.createEntities([entity]);
   }
 
+  /**
+   * Ensures entity exists, creating if needed.
+   * @param entity - The entity to ensure exists
+   * @returns Input entity on success (not re-fetched to avoid extra query), null on failure
+   */
   async ensureEntity(entity: Entity): Promise<Entity | null> {
     if (!entity.id) return null;
 
