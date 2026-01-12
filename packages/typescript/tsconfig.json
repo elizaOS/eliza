@@ -9,7 +9,7 @@
     "noEmit": true,
     "skipLibCheck": true,
     "paths": {
-      "@elizaos/core": ["./packages/typescript/src/index.ts"],
+      "@elizaos/core": ["./packages/typescript/src/index.node.ts"],
       "@elizaos/core/*": ["./packages/typescript/src/*"],
       "@elizaos/plugin-sql": ["./plugins/plugin-sql/typescript/index.ts"]
     }

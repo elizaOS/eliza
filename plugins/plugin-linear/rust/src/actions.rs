@@ -5,7 +5,7 @@
 
 use serde_json::{json, Value};
 
-use crate::error::Result;
+use crate::error::{LinearError, Result};
 use crate::service::LinearService;
 use crate::types::*;
 
@@ -17,12 +17,12 @@ pub async fn create_issue(service: &LinearService, params: Value) -> Result<Acti
     let title = params
         .get("title")
         .and_then(|t| t.as_str())
-        .ok_or_else(|| crate::LinearError::InvalidInput("Title is required".to_string()))?;
+        .ok_or_else(|| LinearError::InvalidInput("Title is required".to_string()))?;
 
     let team_id = params
         .get("teamId")
         .and_then(|t| t.as_str())
-        .ok_or_else(|| crate::LinearError::InvalidInput("Team ID is required".to_string()))?;
+        .ok_or_else(|| LinearError::InvalidInput("Team ID is required".to_string()))?;
 
     let input = IssueInput {
         title: title.to_string(),
@@ -58,7 +58,7 @@ pub async fn get_issue(service: &LinearService, params: Value) -> Result<ActionR
     let issue_id = params
         .get("issueId")
         .and_then(|i| i.as_str())
-        .ok_or_else(|| crate::LinearError::InvalidInput("Issue ID is required".to_string()))?;
+        .ok_or_else(|| LinearError::InvalidInput("Issue ID is required".to_string()))?;
 
     let issue = service.get_issue(issue_id).await?;
 
@@ -108,7 +108,7 @@ pub async fn update_issue(service: &LinearService, params: Value) -> Result<Acti
     let issue_id = params
         .get("issueId")
         .and_then(|i| i.as_str())
-        .ok_or_else(|| crate::LinearError::InvalidInput("Issue ID is required".to_string()))?;
+        .ok_or_else(|| LinearError::InvalidInput("Issue ID is required".to_string()))?;
 
     let updates = params
         .get("updates")
@@ -132,7 +132,7 @@ pub async fn delete_issue(service: &LinearService, params: Value) -> Result<Acti
     let issue_id = params
         .get("issueId")
         .and_then(|i| i.as_str())
-        .ok_or_else(|| crate::LinearError::InvalidInput("Issue ID is required".to_string()))?;
+        .ok_or_else(|| LinearError::InvalidInput("Issue ID is required".to_string()))?;
 
     // Get issue details first
     let issue = service.get_issue(issue_id).await?;
@@ -238,12 +238,12 @@ pub async fn create_comment(service: &LinearService, params: Value) -> Result<Ac
     let issue_id = params
         .get("issueId")
         .and_then(|i| i.as_str())
-        .ok_or_else(|| crate::LinearError::InvalidInput("Issue ID is required".to_string()))?;
+        .ok_or_else(|| LinearError::InvalidInput("Issue ID is required".to_string()))?;
 
     let body = params
         .get("body")
         .and_then(|b| b.as_str())
-        .ok_or_else(|| crate::LinearError::InvalidInput("Comment body is required".to_string()))?;
+        .ok_or_else(|| LinearError::InvalidInput("Comment body is required".to_string()))?;
 
     // Get issue first to get identifier
     let issue = service.get_issue(issue_id).await?;

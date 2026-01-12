@@ -43,6 +43,70 @@ export interface LinearSearchFilters {
   limit?: number;
 }
 
+/**
+ * Action-specific parameter types for type-safe handler options
+ */
+
+/** Parameters for CREATE_LINEAR_COMMENT action */
+export interface CreateCommentParameters {
+  issueId?: string;
+  body?: string;
+}
+
+/** Parameters for CREATE_LINEAR_ISSUE action */
+export interface CreateIssueParameters {
+  issueData?: Partial<LinearIssueInput>;
+}
+
+/** Parameters for DELETE_LINEAR_ISSUE action */
+export interface DeleteIssueParameters {
+  issueId?: string;
+}
+
+/** Parameters for SEARCH_LINEAR_ISSUES action */
+export interface SearchIssuesParameters {
+  filters?: LinearSearchFilters;
+  limit?: number;
+}
+
+/** Type guard to check if parameters match CreateCommentParameters */
+export function isCreateCommentParameters(
+  params: Record<string, unknown> | undefined
+): params is CreateCommentParameters {
+  if (!params) return false;
+  return (
+    (params.issueId === undefined || typeof params.issueId === "string") &&
+    (params.body === undefined || typeof params.body === "string")
+  );
+}
+
+/** Type guard to check if parameters match CreateIssueParameters */
+export function isCreateIssueParameters(
+  params: Record<string, unknown> | undefined
+): params is CreateIssueParameters {
+  if (!params) return false;
+  return params.issueData === undefined || typeof params.issueData === "object";
+}
+
+/** Type guard to check if parameters match DeleteIssueParameters */
+export function isDeleteIssueParameters(
+  params: Record<string, unknown> | undefined
+): params is DeleteIssueParameters {
+  if (!params) return false;
+  return params.issueId === undefined || typeof params.issueId === "string";
+}
+
+/** Type guard to check if parameters match SearchIssuesParameters */
+export function isSearchIssuesParameters(
+  params: Record<string, unknown> | undefined
+): params is SearchIssuesParameters {
+  if (!params) return false;
+  return (
+    (params.filters === undefined || typeof params.filters === "object") &&
+    (params.limit === undefined || typeof params.limit === "number")
+  );
+}
+
 /** Error response structure from Linear API */
 export interface LinearErrorResponse {
   message?: string;

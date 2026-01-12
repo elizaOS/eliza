@@ -180,6 +180,13 @@ async function generateTypeScriptDeclarations() {
     `// Main entry point fallback for @elizaos/core\nexport * from './node/index.node.js';\n`,
   );
 
+  // Create main index.d.ts to re-export all types from node build
+  // This ensures TypeScript resolves all exports when using moduleResolution: bundler
+  await fs.writeFile(
+    "dist/index.d.ts",
+    `// Type definitions for @elizaos/core\n// Re-exports all types from the Node.js entry point\nexport * from './index.node';\n`,
+  );
+
   // Ensure testing module directory and declarations exist
   await fs.mkdir("dist/testing", { recursive: true });
 

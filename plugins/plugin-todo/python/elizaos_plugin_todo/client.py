@@ -3,6 +3,7 @@ High-level client for the Todo Plugin.
 """
 
 from datetime import datetime
+from types import TracebackType
 from uuid import UUID
 
 from elizaos_plugin_todo.cache_manager import CacheManager
@@ -59,7 +60,12 @@ class TodoClient:
         await self.start()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Async context manager exit."""
         await self.stop()
 

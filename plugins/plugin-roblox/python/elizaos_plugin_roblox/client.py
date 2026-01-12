@@ -113,7 +113,7 @@ class RobloxClient:
     async def publish_message(
         self,
         topic: str,
-        data: Any,
+        data: object,  # JSON-serializable data
         universe_id: str | None = None,
     ) -> None:
         """Publish a message to a topic via the Messaging Service.
@@ -196,7 +196,7 @@ class RobloxClient:
         self,
         datastore_name: str,
         key: str,
-        value: Any,
+        value: object,  # JSON-serializable value
         scope: str = "global",
     ) -> DataStoreEntry:
         """Set an entry in a DataStore.
@@ -334,7 +334,8 @@ class RobloxClient:
             data = response.get("data", [])
             if data:
                 return data[0].get("imageUrl")  # type: ignore[no-any-return]
-        except Exception:
+        except Exception:  # noqa: S110, BLE001
+            # Silent fail - avatar URL is optional
             pass
 
         return None

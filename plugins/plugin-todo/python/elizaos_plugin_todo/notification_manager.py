@@ -6,7 +6,6 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from elizaos_plugin_todo.types import NotificationType
@@ -55,7 +54,7 @@ class NotificationManager:
     - Multi-channel delivery (in-app, browser)
     """
 
-    def __init__(self, runtime: Any | None = None) -> None:
+    def __init__(self, runtime: object | None = None) -> None:
         """
         Initialize the notification manager.
 

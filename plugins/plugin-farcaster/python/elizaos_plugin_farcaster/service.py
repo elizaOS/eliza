@@ -7,6 +7,7 @@ Provides the main service interface for Farcaster integration.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -14,6 +15,8 @@ from elizaos_plugin_farcaster.client import FarcasterClient
 from elizaos_plugin_farcaster.config import FarcasterConfig
 from elizaos_plugin_farcaster.error import ConfigError, FarcasterError
 from elizaos_plugin_farcaster.types import Cast, FidRequest, Profile
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

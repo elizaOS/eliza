@@ -52,8 +52,8 @@ async def get_markets(
             try:
                 market = Market.model_validate(market_data)
                 markets.append(market)
-            except Exception:
-                # Skip invalid markets
+            except Exception:  # noqa: S112, BLE001
+                # Skip invalid market data silently (common in API responses)
                 continue
 
         # Apply client-side filters if provided
@@ -107,7 +107,7 @@ async def get_simplified_markets(
             try:
                 market = SimplifiedMarket.model_validate(market_data)
                 markets.append(market)
-            except Exception:
+            except Exception:  # noqa: S112, BLE001
                 continue
 
         return SimplifiedMarketsResponse(
@@ -196,7 +196,7 @@ async def get_sampling_markets(
             try:
                 market = SimplifiedMarket.model_validate(market_data)
                 markets.append(market)
-            except Exception:
+            except Exception:  # noqa: S112, BLE001
                 continue
 
         return SimplifiedMarketsResponse(
