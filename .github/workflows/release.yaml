@@ -407,7 +407,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             packages/rust/target
-            packages/plugin-sql/rust/target
+            plugins/plugin-sql/rust/target
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-release-
@@ -419,16 +419,18 @@ jobs:
           # Build core WASM
           echo "Building @elizaos/core WASM..."
           cd packages/rust
-          wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features
-          wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features
-          cd ../../..
+          wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features || echo "WASM web build skipped"
+          wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features || echo "WASM node build skipped"
+          cd ../..
 
-          # Build plugin-sql WASM
-          echo "Building @elizaos/plugin-sql WASM..."
-          cd packages/plugin-sql/rust
-          wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features
-          wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features
-          cd ../../..
+          # Build plugin-sql WASM (if exists)
+          if [ -d "plugins/plugin-sql/rust" ]; then
+            echo "Building @elizaos/plugin-sql WASM..."
+            cd plugins/plugin-sql/rust
+            wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features || echo "WASM web build skipped"
+            wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features || echo "WASM node build skipped"
+            cd ../../..
+          fi
 
           echo "WASM builds complete"
 

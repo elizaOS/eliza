@@ -1,6 +1,6 @@
 {
-  "version": "2.0.0",
-  "generatedAt": "2026-01-12T03:40:08.037Z",
+  "version": "1.0.0",
+  "generatedAt": "2026-01-12T04:27:36.598Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "examples": [
     {
@@ -154,6 +154,22 @@
         }
       ],
       "category": "cloudflare"
+    },
+    {
+      "name": "code",
+      "description": "An async coding agent terminal app built on ElizaOS - like Claude Code, but with fully asynchronous ",
+      "path": "/Users/shawwalters/eliza-ok/examples/code",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/code",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "code"
     },
     {
       "name": "elizagotchi",
@@ -497,6 +513,7 @@
     "aws",
     "chat",
     "cloudflare",
+    "code",
     "elizagotchi",
     "game-of-life",
     "gcp",

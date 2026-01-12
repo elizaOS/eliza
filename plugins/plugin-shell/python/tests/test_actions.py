@@ -27,48 +27,63 @@ class TestExecuteCommandAction:
 
     @pytest.mark.asyncio
     async def test_validate_command_keywords(self, action: ExecuteCommandAction) -> None:
-        assert await action.validate("run ls -la")
-        assert await action.validate("execute the build command")
-        assert await action.validate("show me files in directory")
-        assert await action.validate("install package")
+        message = {"content": {"text": "run ls -la"}}
+        state: dict[str, object] = {}
+        assert await action.validate(message, state)
+        
+        message = {"content": {"text": "execute the build command"}}
+        assert await action.validate(message, state)
+        
+        message = {"content": {"text": "show me files in directory"}}
+        assert await action.validate(message, state)
+        
+        message = {"content": {"text": "install package"}}
+        assert await action.validate(message, state)
 
     @pytest.mark.asyncio
     async def test_validate_direct_commands(self, action: ExecuteCommandAction) -> None:
-        assert await action.validate("ls -la")
-        assert await action.validate("git status")
-        assert await action.validate("npm install")
-        assert await action.validate("brew install package")
+        state: dict[str, object] = {}
+        
+        message = {"content": {"text": "ls -la"}}
+        assert await action.validate(message, state)
+        
+        message = {"content": {"text": "git status"}}
+        assert await action.validate(message, state)
+        
+        message = {"content": {"text": "npm install"}}
+        assert await action.validate(message, state)
+        
+        message = {"content": {"text": "brew install package"}}
+        assert await action.validate(message, state)
 
     @pytest.mark.asyncio
     async def test_validate_non_command(self, action: ExecuteCommandAction) -> None:
-        assert not await action.validate("hello there")
-        assert not await action.validate("what is the weather")
+        state: dict[str, object] = {}
+        
+        message = {"content": {"text": "hello there"}}
+        assert not await action.validate(message, state)
+        
+        message = {"content": {"text": "what is the weather"}}
+        assert not await action.validate(message, state)
 
     @pytest.mark.asyncio
-    async def test_handler_success(self, action: ExecuteCommandAction) -> None:
-        params = {
-            "command": "ls -la",
-            "conversation_id": "test-conv",
+    async def test_handler_without_service(self, action: ExecuteCommandAction) -> None:
+        message = {
+            "content": {"text": "ls -la"},
+            "room_id": "test-conv",
         }
-        result = await action.handler(params)
+        state: dict[str, object] = {}
         
-        assert result["action"] == "EXECUTE_COMMAND"
-        assert result["command"] == "ls -la"
-        assert result["conversation_id"] == "test-conv"
-        assert result["status"] == "pending_execution"
-
-    @pytest.mark.asyncio
-    async def test_handler_missing_command(self, action: ExecuteCommandAction) -> None:
-        params: dict[str, object] = {"conversation_id": "test-conv"}
+        result = await action.handler(message, state, service=None)
         
-        with pytest.raises(ValueError, match="Missing 'command' parameter"):
-            await action.handler(params)
+        assert not result.success
+        assert "not available" in result.text.lower()
 
     def test_examples(self, action: ExecuteCommandAction) -> None:
-        examples = action.examples
+        examples = action.examples()
         assert len(examples) > 0
-        assert all(ex.input for ex in examples)
-        assert all(ex.output for ex in examples)
+        assert all(ex.user_message for ex in examples)
+        assert all(ex.agent_response for ex in examples)
 
 
 class TestClearHistoryAction:
@@ -86,32 +101,42 @@ class TestClearHistoryAction:
 
     @pytest.mark.asyncio
     async def test_validate_clear_history(self, action: ClearHistoryAction) -> None:
-        assert await action.validate("clear the command history")
-        assert await action.validate("reset my history")
-        assert await action.validate("wipe the commands")
-        assert await action.validate("forget all commands")
+        state: dict[str, object] = {}
+        
+        message = {"content": {"text": "clear the command history"}}
+        assert await action.validate(message, state)
+        
+        message = {"content": {"text": "reset my history"}}
+        assert await action.validate(message, state)
+        
+        message = {"content": {"text": "wipe the commands"}}
+        assert await action.validate(message, state)
+        
+        message = {"content": {"text": "forget all commands"}}
+        assert await action.validate(message, state)
 
     @pytest.mark.asyncio
     async def test_validate_non_clear(self, action: ClearHistoryAction) -> None:
-        assert not await action.validate("run ls")
-        assert not await action.validate("show history")
-        assert not await action.validate("clear the screen")
+        state: dict[str, object] = {}
+        
+        message = {"content": {"text": "run ls"}}
+        assert not await action.validate(message, state)
+        
+        message = {"content": {"text": "show history"}}
+        assert not await action.validate(message, state)
+        
+        message = {"content": {"text": "clear the screen"}}
+        assert not await action.validate(message, state)
 
     @pytest.mark.asyncio
-    async def test_handler_success(self, action: ClearHistoryAction) -> None:
-        params = {"conversation_id": "test-conv"}
-        result = await action.handler(params)
+    async def test_handler_without_service(self, action: ClearHistoryAction) -> None:
+        message = {"content": {"text": "clear history"}, "room_id": "test-conv"}
+        state: dict[str, object] = {}
         
-        assert result["action"] == "CLEAR_SHELL_HISTORY"
-        assert result["conversation_id"] == "test-conv"
-        assert result["status"] == "history_cleared"
-
-    @pytest.mark.asyncio
-    async def test_handler_missing_conversation_id(self, action: ClearHistoryAction) -> None:
-        params: dict[str, object] = {}
+        result = await action.handler(message, state, service=None)
         
-        with pytest.raises(ValueError, match="Missing 'conversation_id' parameter"):
-            await action.handler(params)
+        assert not result.success
+        assert "not available" in result.text.lower()
 
 
 class TestActionRegistry:

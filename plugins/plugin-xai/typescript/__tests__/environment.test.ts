@@ -119,10 +119,10 @@ describe("Environment Configuration", () => {
       await expect(validateXConfig(runtime)).rejects.toThrow("X OAuth requires");
     });
 
-    it("should throw when broker mode is missing broker url", async () => {
+    it("should throw when bearer mode is missing bearer token", async () => {
       vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
-          X_AUTH_MODE: "broker",
+          X_AUTH_MODE: "bearer",
         };
         return settings[key];
       });

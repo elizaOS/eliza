@@ -43,6 +43,8 @@ on:
 jobs:
   generate-docs:
     runs-on: ubuntu-latest
+    # NOTE: This workflow requires packages/autodoc to exist
+    # Currently disabled until autodoc package is added to the monorepo
 
     permissions:
       contents: write
@@ -58,63 +60,51 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Initialize submodules manually
+      - name: Check if autodoc package exists
+        id: check-autodoc
         run: |
-          # Initialize submodules with proper error handling
-          if git submodule status | grep -q '^-'; then
-            echo "Initializing submodules..."
-            git submodule update --init --recursive || echo "Submodule initialization failed, continuing..."
+          if [ -d "packages/autodoc" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
           else
-            echo "Submodules already initialized or not present"
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ packages/autodoc does not exist. Skipping documentation generation."
+            echo "To enable this workflow, create the autodoc package or update this workflow."
           fi
 
       - name: Setup Node.js
+        if: steps.check-autodoc.outputs.exists == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: "23.3.0"
+          node-version: "23"
 
       - name: Setup Python
+        if: steps.check-autodoc.outputs.exists == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends \
-            git \
-            make \
-            build-essential \
-            unzip \
-            curl
-
       - name: Setup Bun
+        if: steps.check-autodoc.outputs.exists == 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.4"
 
-      - name: Verify installations
-        run: |
-          node -v
-          python3 --version
-          bun --version
+      - name: Install dependencies
+        if: steps.check-autodoc.outputs.exists == 'true'
+        run: bun install
 
-      - name: Install root dependencies
-        run: |
-          # Skip postinstall script to avoid submodule issues in CI
-          SKIP_POSTINSTALL=1 bun install
-        env:
-          SKIP_POSTINSTALL: 1
-
-      - name: Install package dependencies
+      - name: Install autodoc package dependencies
+        if: steps.check-autodoc.outputs.exists == 'true'
         working-directory: packages/autodoc
         run: bun install
 
-      - name: Build TypeScript
+      - name: Build autodoc
+        if: steps.check-autodoc.outputs.exists == 'true'
         working-directory: packages/autodoc
         run: bun run build
 
       - name: Run documentation generator
+        if: steps.check-autodoc.outputs.exists == 'true'
         working-directory: packages/autodoc
         run: bun run autodoc
         env:

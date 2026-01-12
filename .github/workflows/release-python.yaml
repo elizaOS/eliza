@@ -3,7 +3,8 @@ name: Python Release
 # Publish Python packages to PyPI on release
 # Packages:
 #   - elizaos (packages/python)
-#   - elizaos-plugin-sql (packages/plugin-sql/python)
+#   - elizaos-plugin-sql (plugins/plugin-sql/python)
+#   - elizaos-plugin-* (plugins/plugin-*/python)
 
 on:
   release:
@@ -41,22 +42,22 @@ jobs:
             path: packages/python
             pypi_name: elizaos
           - name: elizaos-plugin-sql
-            path: packages/plugin-sql/python
+            path: plugins/plugin-sql/python
             pypi_name: elizaos-plugin-sql
           - name: elizaos-plugin-anthropic
-            path: packages/plugin-anthropic/python
+            path: plugins/plugin-anthropic/python
             pypi_name: elizaos-plugin-anthropic
           - name: elizaos-plugin-bootstrap
-            path: packages/plugin-bootstrap/python
+            path: plugins/plugin-bootstrap/python
             pypi_name: elizaos-plugin-bootstrap
           - name: elizaos-plugin-mcp
-            path: packages/plugin-mcp/python
+            path: plugins/plugin-mcp/python
             pypi_name: elizaos-plugin-mcp
           - name: elizaos-plugin-openai
-            path: packages/plugin-openai/python
+            path: plugins/plugin-openai/python
             pypi_name: elizaos-plugin-openai
           - name: elizaos-plugin-solana
-            path: packages/plugin-solana/python
+            path: plugins/plugin-solana/python
             pypi_name: elizaos-plugin-solana
 
     steps:
