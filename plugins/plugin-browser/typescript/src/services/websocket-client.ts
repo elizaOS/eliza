@@ -6,9 +6,17 @@ import { logger } from "@elizaos/core";
 import type { NavigationResult, WebSocketMessage, WebSocketResponse } from "../types.js";
 
 // Dynamic import for WebSocket
+// Type adapter for browser WebSocket to match Node.js ws interface
+type WebSocketLike = {
+  new (url: string): InstanceType<typeof import("ws").default>;
+  prototype: InstanceType<typeof import("ws").default>;
+} & typeof import("ws").default;
+
 let WebSocket: typeof import("ws").default;
 if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
-  WebSocket = window.WebSocket as unknown as typeof import("ws").default;
+  // Browser WebSocket is runtime-compatible with ws but has different types
+  // Create adapter that preserves the interface
+  WebSocket = window.WebSocket as WebSocketLike;
 } else {
   WebSocket = require("ws");
 }

@@ -23,6 +23,11 @@ interface TestablePgliteAdapter extends PgliteDatabaseAdapter {
   embeddingDimension: string;
 }
 
+// Helper function to access private properties for testing
+function getTestableAdapter(adapter: PgliteDatabaseAdapter): TestablePgliteAdapter {
+  return adapter as TestablePgliteAdapter;
+}
+
 describe("PgliteDatabaseAdapter", () => {
   let adapter: PgliteDatabaseAdapter;
   let mockManager: Partial<PGliteClientManager>;
@@ -52,13 +57,13 @@ describe("PgliteDatabaseAdapter", () => {
   describe("constructor", () => {
     it("should initialize with correct agentId and manager", () => {
       expect(adapter).toBeDefined();
-      const testAdapter = adapter as unknown as TestablePgliteAdapter;
+      const testAdapter = getTestableAdapter(adapter);
       expect(testAdapter.agentId).toBe(agentId);
       expect(testAdapter.manager).toBe(mockManager);
     });
 
     it("should set embeddingDimension to default 384", () => {
-      const testAdapter = adapter as unknown as TestablePgliteAdapter;
+      const testAdapter = getTestableAdapter(adapter);
       expect(testAdapter.embeddingDimension).toBe("dim384");
     });
   });

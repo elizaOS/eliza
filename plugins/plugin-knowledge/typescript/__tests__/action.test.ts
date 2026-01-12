@@ -30,12 +30,12 @@ describe("processKnowledgeAction", () => {
       addKnowledge: vi.fn(),
       getKnowledge: vi.fn(),
       serviceType: "knowledge-service",
-    } as unknown as KnowledgeService;
+    } as KnowledgeService;
 
     agentRuntime = {
       agentId: "test-agent" as UUID,
       getService: vi.fn().mockReturnValue(mockKnowledgeService),
-    } as unknown as IAgentRuntime;
+    } as Partial<IAgentRuntime> as IAgentRuntime;
 
     mockCallback = vi.fn();
     mockState = {

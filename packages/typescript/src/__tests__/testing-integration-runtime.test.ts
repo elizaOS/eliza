@@ -77,7 +77,7 @@ function createMockDatabaseAdapter(): IDatabaseAdapter {
     ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
     withTransaction: vi.fn().mockImplementation((fn) => fn()),
     withDatabase: vi.fn().mockImplementation((fn) => fn({})),
-  } as unknown as IDatabaseAdapter;
+  } satisfies Partial<IDatabaseAdapter> as IDatabaseAdapter;
 }
 
 describe("Integration Runtime", () => {
@@ -108,9 +108,10 @@ describe("Integration Runtime", () => {
 
   describe("createIntegrationTestRuntime", () => {
     it("should throw when databaseAdapter is missing", async () => {
+      // Testing with null adapter (intentional type test)
       await expect(
         createIntegrationTestRuntime({
-          databaseAdapter: null as unknown as IDatabaseAdapter,
+          databaseAdapter: null as IDatabaseAdapter,
         }),
       ).rejects.toThrow("Integration tests require a database adapter");
     });

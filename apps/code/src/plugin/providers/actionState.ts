@@ -55,6 +55,128 @@ interface ActionResultEntry {
 }
 
 /**
+ * Type guard to check if a value is an ActionPlanStep
+ */
+function isActionPlanStep(value: unknown): value is ActionPlanStep {
+  if (!value || typeof value !== "object") return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.action === "string" &&
+    typeof obj.status === "string" &&
+    ["pending", "completed", "failed"].includes(obj.status) &&
+    (obj.error === undefined || typeof obj.error === "string") &&
+    (obj.result === undefined ||
+      (typeof obj.result === "object" &&
+        obj.result !== null &&
+        ((obj.result as Record<string, unknown>).text === undefined ||
+          typeof (obj.result as Record<string, unknown>).text === "string")))
+  );
+}
+
+/**
+ * Type guard to check if a value is an ActionPlan
+ */
+function isActionPlan(value: unknown): value is ActionPlan {
+  if (!value || typeof value !== "object") return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.thought === "string" &&
+    typeof obj.currentStep === "number" &&
+    typeof obj.totalSteps === "number" &&
+    Array.isArray(obj.steps) &&
+    obj.steps.every(isActionPlanStep)
+  );
+}
+
+/**
+ * Type guard to check if a value is an ActionResultEntry
+ */
+function isActionResultEntry(value: unknown): value is ActionResultEntry {
+  if (!value || typeof value !== "object") return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.success === "boolean" &&
+    (obj.text === undefined || typeof obj.text === "string") &&
+    (obj.error === undefined ||
+      obj.error instanceof Error ||
+      typeof obj.error === "string") &&
+    (obj.values === undefined ||
+      (typeof obj.values === "object" &&
+        obj.values !== null &&
+        !Array.isArray(obj.values))) &&
+    (obj.data === undefined ||
+      (typeof obj.data === "object" &&
+        obj.data !== null &&
+        !Array.isArray(obj.data)))
+  );
+}
+
+/**
+ * Safely extract action results from state data
+ */
+function extractActionResults(
+  stateData: Record<string, JsonValue> | undefined,
+): ActionResultEntry[] {
+  const results = stateData?.actionResults;
+  if (!results) return [];
+  if (!Array.isArray(results)) return [];
+  return results.filter(isActionResultEntry);
+}
+
+/**
+ * Safely extract action plan from state data
+ */
+function extractActionPlan(
+  stateData: Record<string, JsonValue> | undefined,
+): ActionPlan | null {
+  const plan = stateData?.actionPlan;
+  if (!plan) return null;
+  return isActionPlan(plan) ? plan : null;
+}
+
+/**
+ * Safely extract working memory from state data
+ */
+function extractWorkingMemory(
+  stateData: Record<string, JsonValue> | undefined,
+): Record<string, JsonValue> {
+  const memory = stateData?.workingMemory;
+  if (!memory) return {};
+  if (typeof memory !== "object" || memory === null || Array.isArray(memory)) {
+    return {};
+  }
+  // Validate that all values are JsonValue-compatible
+  const result: Record<string, JsonValue> = {};
+  for (const [key, value] of Object.entries(memory)) {
+    if (isJsonValue(value)) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
+ * Type guard to check if a value is a valid JsonValue
+ */
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+  if (typeof value === "object") {
+    return Object.values(value).every(isJsonValue);
+  }
+  return false;
+}
+
+/**
  * Provider for sharing action execution state and plan between actions
  * Makes previous action results and execution plan available to subsequent actions
  */
@@ -65,10 +187,13 @@ export const actionStateProvider: Provider = {
   position: 150,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Get action results, plan, and working memory from the incoming state
-    const stateData = state.data as Record<string, JsonValue> | undefined;
-    const actionResults = (stateData?.actionResults || []) as unknown as ActionResultEntry[];
-    const actionPlan = stateData?.actionPlan as unknown as ActionPlan | null;
-    const workingMemory = (stateData?.workingMemory || {}) as Record<string, JsonValue>;
+    const stateData =
+      state.data && typeof state.data === "object" && !Array.isArray(state.data)
+        ? (state.data as Record<string, JsonValue>)
+        : undefined;
+    const actionResults = extractActionResults(stateData);
+    const actionPlan = extractActionPlan(stateData);
+    const workingMemory = extractWorkingMemory(stateData);
 
     // Format action plan for display
     let planText = "";

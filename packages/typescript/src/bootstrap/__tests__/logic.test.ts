@@ -163,7 +163,7 @@ describe("Reaction Events", () => {
   it("should store reaction messages correctly", async () => {
     // Spy on createMemory
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
-      mockReaction.id as unknown as UUID,
+      mockReaction.id,
     );
 
     // Get the REACTION_RECEIVED handler

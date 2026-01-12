@@ -3,7 +3,10 @@ import * as entities from "../entities";
 import * as logger_module from "../logger";
 import { findWorldsForOwner, getUserServerRole } from "../roles";
 import { type IAgentRuntime, Role, type UUID, type World } from "../types";
-import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
+import {
+  cleanupTestRuntime,
+  createTestRuntime,
+} from "../bootstrap/__tests__/test-utils";
 
 describe("roles utilities", () => {
   let runtime: IAgentRuntime;
@@ -243,10 +246,11 @@ describe("roles utilities", () => {
     it("should return null when entityId is null", async () => {
       const { logger } = await import("../logger");
 
+      // Testing with null value (intentional type test)
       const result = await findWorldsForOwner(
         runtime,
-        null as unknown as string,
-      ); // Testing with null value
+        null as string,
+      );
 
       expect(result).toBeNull();
       expect(logger.error).toHaveBeenCalledWith(

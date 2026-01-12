@@ -422,6 +422,22 @@ Response (YES/NO):`;
       });
 
       // Save post as memory with error handling
+      // Convert Post to ContentValue-compatible format
+      // Post properties are JSON-serializable and compatible with ContentValue
+      const postContentValue: Record<string, ContentValue> = {
+        id: post.id ?? null,
+        text: post.text ?? null,
+        userId: post.userId ?? null,
+        username: post.username ?? null,
+        timestamp: post.timestamp ?? null,
+        conversationId: post.conversationId ?? null,
+        likes: post.likes ?? null,
+        reposts: post.reposts ?? null,
+        replies: post.replies ?? null,
+        quotes: post.quotes ?? null,
+        permanentUrl: post.permanentUrl ?? null,
+      };
+
       const postMemory: Memory = {
         id: createUniqueUuid(this.runtime, post.id || ""),
         entityId: context.entityId,
@@ -429,7 +445,7 @@ Response (YES/NO):`;
           text: post.text,
           url: post.permanentUrl,
           source: "x",
-          post: post as unknown as { [key: string]: ContentValue },
+          post: postContentValue,
         },
         agentId: this.runtime.agentId,
         roomId: context.roomId,
@@ -636,6 +652,16 @@ Response (YES/NO):`;
         });
 
         // 3. Create a memory for the post
+        // Convert Post to ContentValue-compatible format
+        const postContentValue: Record<string, ContentValue> = {
+          id: post.id ?? null,
+          text: post.text ?? null,
+          userId: post.userId ?? null,
+          username: post.username ?? null,
+          timestamp: post.timestamp ?? null,
+          conversationId: post.conversationId ?? null,
+        };
+
         const memory: Memory = {
           id: postId,
           entityId,
@@ -643,14 +669,7 @@ Response (YES/NO):`;
             text: post.text,
             url: post.permanentUrl,
             source: "x",
-            post: {
-              id: post.id,
-              text: post.text,
-              userId: post.userId,
-              username: post.username,
-              timestamp: post.timestamp,
-              conversationId: post.conversationId,
-            } as Record<string, string | number | boolean | null | undefined>,
+            post: postContentValue,
           },
           agentId: this.runtime.agentId,
           roomId,
@@ -924,6 +943,9 @@ Response (YES/NO):`;
       typeof message.metadata === "object" && !Array.isArray(message.metadata)
         ? message.metadata
         : { type: MemoryType.CUSTOM };
+    
+    // Create properly typed CustomMetadata with X-specific properties
+    // CustomMetadata allows additional properties via index signature
     message.metadata = {
       ...metadataObj,
       type: (metadataObj.type as MemoryType) || MemoryType.CUSTOM,
@@ -933,7 +955,7 @@ Response (YES/NO):`;
         xUsername: xUsername as string,
         thread: thread,
       },
-    } as unknown as typeof message.metadata;
+    } as MemoryMetadata;
 
     // Process message through message service
     const result = await this.runtime.messageService?.handleMessage(

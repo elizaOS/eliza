@@ -173,10 +173,11 @@ describe("ACTION_PLANNING Feature", () => {
     });
 
     it("should handle boolean ACTION_PLANNING setting", () => {
+      // Testing with boolean value (intentional type test)
       const runtime = new AgentRuntime({
         character: createTestCharacter(),
         adapter: mockDatabaseAdapter,
-        settings: { ACTION_PLANNING: false as unknown as string },
+        settings: { ACTION_PLANNING: false as string },
       });
 
       expect(runtime.isActionPlanningEnabled()).toBe(false);

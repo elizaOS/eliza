@@ -1374,6 +1374,16 @@ async function expandDocumentGraphHandler(
   }
 }
 
+/**
+ * Type for multer's upload.array middleware.
+ * Multer's types don't expose this well, so we define it based on actual behavior.
+ */
+type MulterMiddleware = (
+  req: IncomingMessage,
+  res: ServerResponse,
+  next: (err: Error | null) => void
+) => void;
+
 // Wrapper handler that applies multer middleware before calling the upload handler
 async function uploadKnowledgeWithMulter(
   req: ExtendedRequest,
@@ -1384,22 +1394,17 @@ async function uploadKnowledgeWithMulter(
   const uploadArray = upload.array(
     "files",
     parseInt(String(runtime.getSetting("KNOWLEDGE_MAX_FILES") || "10"), 10)
-  );
+  ) as MulterMiddleware;
 
   // Apply multer middleware manually
-  // Using explicit any cast for multer compatibility with different Express types
-  (uploadArray as (req: unknown, res: unknown, next: (err: Error | null) => void) => void)(
-    req,
-    res,
-    (err: Error | null) => {
-      if (err) {
-        logger.error({ error: err }, "[Document Processor] ❌ File upload error");
-        return sendError(res, 400, "UPLOAD_ERROR", err.message);
-      }
-      // If multer succeeded, call the actual handler
-      uploadKnowledgeHandler(req, res, runtime);
+  uploadArray(req, res, (err: Error | null) => {
+    if (err) {
+      logger.error({ error: err }, "[Document Processor] ❌ File upload error");
+      return sendError(res, 400, "UPLOAD_ERROR", err.message);
     }
-  );
+    // If multer succeeded, call the actual handler
+    uploadKnowledgeHandler(req, res, runtime);
+  });
 }
 
 // Type alias for route handler with extended types
@@ -1410,11 +1415,22 @@ type ExtendedRouteHandler = (
 ) => Promise<void>;
 
 /**
- * Cast handler to the expected Route handler type.
- * ExtendedRouteHandler uses more specific request/response types than Route["handler"].
+ * Adapt Node.js HTTP handlers to the Route["handler"] type.
+ * 
+ * This plugin uses Node.js IncomingMessage/ServerResponse (for streaming, multer, etc.)
+ * rather than the abstract RouteRequest/RouteResponse interfaces.
+ * The handler types are structurally compatible at runtime but TypeScript cannot verify
+ * this due to the different interface definitions.
+ * 
+ * Note: If migrating to RouteRequest/RouteResponse, handlers would need to be rewritten
+ * to use res.status().json() instead of res.writeHead()/res.end().
  */
-const asRouteHandler = (handler: ExtendedRouteHandler): Route["handler"] =>
-  handler as unknown as Route["handler"];
+function asRouteHandler(handler: ExtendedRouteHandler): Route["handler"] {
+  // The cast is necessary because Route uses abstract interfaces while
+  // this module uses Node.js HTTP primitives for multer and streaming support.
+  // ExtendedRouteHandler is structurally compatible with Route["handler"] at runtime.
+  return handler as Route["handler"];
+}
 
 export const knowledgeRoutes: Route[] = [
   {

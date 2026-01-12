@@ -184,7 +184,7 @@ export class TelegramTestSuite implements TestSuite {
           chat,
         } as Message.TextMessage,
         telegram: this.bot.telegram,
-      } as unknown as Context;
+      } as Partial<Context> as Context;
 
       try {
         await this.messageManager.handleMessage(mockContext);

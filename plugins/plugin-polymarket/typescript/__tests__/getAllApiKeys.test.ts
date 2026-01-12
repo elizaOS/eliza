@@ -15,7 +15,13 @@ vi.mock("crypto", () => ({
 interface GlobalWithFetch {
   fetch: ReturnType<typeof vi.fn>;
 }
-(globalThis as unknown as GlobalWithFetch).fetch = vi.fn();
+
+// Helper function to access global fetch with proper typing
+function getGlobalFetch(): GlobalWithFetch {
+  return globalThis as GlobalWithFetch;
+}
+
+getGlobalFetch().fetch = vi.fn();
 
 /**
  * Creates a REAL AgentRuntime for testing - NO MOCKS.
@@ -142,7 +148,7 @@ describe("getAllApiKeysAction", () => {
   describe("handler", () => {
     beforeEach(() => {
       // Reset fetch mock
-      (globalThis as unknown as GlobalWithFetch).fetch.mockReset();
+      getGlobalFetch().fetch.mockReset();
     });
 
     it("should successfully retrieve non-empty array of API keys", async () => {
@@ -164,7 +170,7 @@ describe("getAllApiKeysAction", () => {
         },
       ];
 
-      (globalThis as unknown as GlobalWithFetch).fetch.mockResolvedValue({
+      getGlobalFetch().fetch.mockResolvedValue({
         ok: true,
         json: vi.fn().mockResolvedValue(mockApiKeys),
       });
@@ -197,7 +203,7 @@ describe("getAllApiKeysAction", () => {
 
     it("should handle empty array of API keys", async () => {
       // Mock API response with empty array
-      (globalThis as unknown as GlobalWithFetch).fetch.mockResolvedValue({
+      getGlobalFetch().fetch.mockResolvedValue({
         ok: true,
         json: vi.fn().mockResolvedValue([]),
       });
@@ -239,7 +245,7 @@ describe("getAllApiKeysAction", () => {
         ],
       };
 
-      (globalThis as unknown as GlobalWithFetch).fetch.mockResolvedValue({
+      getGlobalFetch().fetch.mockResolvedValue({
         ok: true,
         json: vi.fn().mockResolvedValue(mockApiResponse),
       });
@@ -305,7 +311,7 @@ describe("getAllApiKeysAction", () => {
 
     it("should handle network/auth error from API", async () => {
       // Mock failed API response
-      (globalThis as unknown as GlobalWithFetch).fetch.mockResolvedValue({
+      getGlobalFetch().fetch.mockResolvedValue({
         ok: false,
         status: 401,
         statusText: "Unauthorized",
@@ -326,7 +332,7 @@ describe("getAllApiKeysAction", () => {
 
     it("should handle network connectivity issues", async () => {
       // Mock network error
-      (globalThis as unknown as GlobalWithFetch).fetch.mockRejectedValue(
+      getGlobalFetch().fetch.mockRejectedValue(
         new Error("Network error")
       );
 
@@ -353,7 +359,7 @@ describe("getAllApiKeysAction", () => {
         },
       ];
 
-      (globalThis as unknown as GlobalWithFetch).fetch.mockResolvedValue({
+      getGlobalFetch().fetch.mockResolvedValue({
         ok: true,
         json: vi.fn().mockResolvedValue(mockApiKeys),
       });

@@ -534,11 +534,11 @@ describe("Event Handlers", () => {
       throw new Error("MESSAGE_RECEIVED event handler not found");
     }
 
-    const malformedPayload = {
+    const malformedPayload: Partial<MessagePayload> = {
       runtime,
     };
 
-    await handler(malformedPayload as unknown as MessagePayload);
+    await handler(malformedPayload as MessagePayload);
   });
 
   it("should handle event with empty message content", async () => {
@@ -593,7 +593,7 @@ describe("StarterService", () => {
   });
 
   it("should throw error when stopping non-existent service", async () => {
-    vi.spyOn(runtime, "getService").mockReturnValue(null as unknown as Service);
+    vi.spyOn(runtime, "getService").mockReturnValue(null);
 
     await expect(StarterService.stop(runtime)).rejects.toThrow(
       "Starter service not found",

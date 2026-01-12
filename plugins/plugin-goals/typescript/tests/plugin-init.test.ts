@@ -2,15 +2,20 @@ import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import GoalsPlugin from "../index";
 
+// Helper function to create a minimal mock runtime for testing
+function createMockRuntime(): IAgentRuntime {
+  return {
+    agentId: "test-agent-uuid-1234-5678-abcd" as UUID,
+    getSetting: () => undefined,
+    db: null, // No database available
+  } as Partial<IAgentRuntime> as IAgentRuntime;
+}
+
 describe("GoalsPlugin Initialization", () => {
   let agentRuntime: IAgentRuntime;
 
   const setupMocks = () => {
-    agentRuntime = {
-      agentId: "test-agent-uuid-1234-5678-abcd" as UUID,
-      getSetting: () => undefined,
-      db: null, // No database available
-    } as unknown as IAgentRuntime;
+    agentRuntime = createMockRuntime();
   };
 
   it("should have correct plugin metadata", () => {

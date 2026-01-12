@@ -636,12 +636,14 @@ export class KnowledgeTestSuite implements TestSuite {
           // Since the service handles most content types gracefully, we need to test
           // a different error condition. Let's test with null content.
           try {
+            // Intentionally pass null to test error handling
+            // Using a type assertion to bypass TypeScript's type checking for this test case
             await service.addKnowledge({
               clientDocumentId: uuidv4() as UUID,
               contentType: "text/plain",
               originalFilename: "null-content.txt",
               worldId: runtime.agentId,
-              content: null as unknown as string, // This should definitely cause an error
+              content: null as string, // Test invalid input - should cause an error
               roomId: runtime.agentId,
               entityId: runtime.agentId,
             });

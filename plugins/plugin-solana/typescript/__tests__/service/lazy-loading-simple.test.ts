@@ -120,8 +120,9 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
 
     // Step 4: Reload keys to pick up new settings
     console.log("📝 Step 4: Calling reloadKeys()...");
-    // Cast to access private method for testing
-    await (service as unknown as { reloadKeys(): Promise<void> }).reloadKeys();
+    // Access private method for testing using type assertion to a testable interface
+    type TestableService = { reloadKeys(): Promise<void> };
+    await (service as TestableService).reloadKeys();
     console.log("✅ Keys reloaded");
 
     // Step 5: Verify wallet is now available

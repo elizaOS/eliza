@@ -19,6 +19,31 @@ import type {
 import { getCwd } from "../providers/cwd.js";
 
 /**
+ * Safely converts a value to JsonValue by recursively validating and converting.
+ * This ensures type safety without using unsafe casts.
+ */
+function toJsonValue(value: unknown): JsonValue {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(toJsonValue);
+  }
+  if (typeof value === "object") {
+    const result: Record<string, JsonValue> = {};
+    for (const [key, val] of Object.entries(value)) {
+      result[key] = toJsonValue(val);
+    }
+    return result;
+  }
+  // Fallback: convert to string for unsupported types
+  return String(value);
+}
+
+/**
  * CodeTaskService - Manages code tasks using core runtime.
  * Wraps runtime.createTask/getTasks with code-specific functionality.
  */
@@ -121,7 +146,7 @@ export class CodeTaskService extends Service {
       this.currentTaskId = taskId;
     }
 
-    this.emit("task:created", taskId, { task: task as unknown as JsonValue });
+    this.emit("task:created", taskId, { task: toJsonValue(task) });
     return task;
   }
 
@@ -284,7 +309,7 @@ export class CodeTaskService extends Service {
     metadata.progress = Math.round((completed / metadata.steps.length) * 100);
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
-    this.emit("task:progress", taskId, { step: step as unknown as JsonValue, progress: metadata.progress });
+    this.emit("task:progress", taskId, { step: toJsonValue(step), progress: metadata.progress });
   }
 
   async setTaskResult(taskId: string, result: TaskResult): Promise<void> {
@@ -307,10 +332,10 @@ export class CodeTaskService extends Service {
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
     if (metadata.status === "cancelled") {
-      this.emit("task:cancelled", taskId, { result: result as unknown as JsonValue });
+      this.emit("task:cancelled", taskId, { result: toJsonValue(result) });
     } else {
       this.emit(result.success ? "task:completed" : "task:failed", taskId, {
-        result: result as unknown as JsonValue,
+        result: toJsonValue(result),
       });
     }
   }

@@ -59,13 +59,23 @@ describe("DatabaseMigrationService", () => {
     });
   });
 
+  // Helper interface for accessing private properties
+  interface TestableMigrationService {
+    db: typeof mockDb;
+  }
+
+  // Helper function to access private properties for testing
+  function getTestableService(service: DatabaseMigrationService): TestableMigrationService {
+    return service as TestableMigrationService;
+  }
+
   describe("initializeWithDatabase", () => {
     it("should initialize with database", async () => {
       await migrationService.initializeWithDatabase(mockDb);
 
       // In vitest we can use vi.spyOn() for log assertions if needed
       // Access private db property for testing
-      const testService = migrationService as unknown as { db: typeof mockDb };
+      const testService = getTestableService(migrationService);
       expect(testService.db).toBe(mockDb);
     });
   });

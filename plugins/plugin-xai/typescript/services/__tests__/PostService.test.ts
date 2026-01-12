@@ -41,6 +41,11 @@ interface MockClient {
   };
 }
 
+// Helper function to convert MockClient to ClientBase for testing
+function asClientBase(client: MockClient): ClientBase {
+  return client as ClientBase;
+}
+
 describe("XPostService", () => {
   let service: XPostService;
   let mockClient: MockClient;
@@ -67,7 +72,7 @@ describe("XPostService", () => {
       },
     };
 
-    service = new XPostService(mockClient as unknown as ClientBase);
+    service = new XPostService(asClientBase(mockClient));
   });
 
   describe("createPost", () => {

@@ -83,7 +83,7 @@ const createMockDatabaseAdapter = (): IDatabaseAdapter =>
     updateMemory: vi.fn().mockResolvedValue(true),
     deleteRoomsByWorldId: vi.fn().mockResolvedValue(undefined),
     getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
-  }) as unknown as IDatabaseAdapter;
+  } satisfies Partial<IDatabaseAdapter> as IDatabaseAdapter;
 
 const mockCharacter: Character = {
   id: stringToUuid(uuidv4()),

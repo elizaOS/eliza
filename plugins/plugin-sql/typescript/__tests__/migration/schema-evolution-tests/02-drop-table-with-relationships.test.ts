@@ -5,9 +5,13 @@ import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
 
 // Helper types for database query result rows
-
 interface ExistsRow {
   exists: boolean;
+}
+
+// Helper function to safely cast query result rows
+function asExistsRow(row: unknown): ExistsRow {
+  return row as ExistsRow;
 }
 
 interface StatsRow {
@@ -326,7 +330,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
         WHERE table_name = 'memories' AND table_schema = 'public'
       ) as exists`
     );
-    expect((tableExists.rows[0] as unknown as ExistsRow).exists).toBe(true);
+    expect(asExistsRow(tableExists.rows[0]).exists).toBe(true);
 
     // Test 4: Force drop with environment variable
     process.env.NODE_ENV = "development";
@@ -346,7 +350,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
         ) as exists`
       );
 
-      expect((tableExistsAfter.rows[0] as unknown as ExistsRow).exists).toBe(false);
+      expect(asExistsRow(tableExistsAfter.rows[0]).exists).toBe(false);
 
       console.log("\n📊 After forced table drop:");
       console.log("  ❌ Memories table dropped");

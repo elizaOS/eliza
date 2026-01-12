@@ -5,6 +5,19 @@ import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createTestDatabase } from "../test-helpers";
 
+// Helper type for testing edge cases with non-standard Entity inputs
+type PartialEntity = Partial<Entity> & {
+  id: UUID;
+  agentId: UUID;
+  names?: string | string[] | Set<string> | number | boolean | object | null | undefined;
+  metadata?: Record<string, unknown>;
+};
+
+// Helper function to create test entity with type assertion for edge cases
+function createTestEntity(entity: PartialEntity): Entity {
+  return entity as Entity;
+}
+
 describe("Entity Array Serialization Fix Tests", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let cleanup: () => Promise<void>;
@@ -89,12 +102,12 @@ describe("Entity Array Serialization Fix Tests", () => {
       // Simulate what might happen if names accidentally becomes a Set
       const namesSet = new Set(["user-name1", "user-name2"]);
       // Use type assertion to test edge case where names is a Set (not conforming to Entity type)
-      const entity = {
+      const entity = createTestEntity({
         id: entityId,
         agentId: testAgentId,
         names: namesSet, // This should be normalized to an array
         metadata: {},
-      } as unknown as Entity;
+      });
 
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
@@ -157,12 +170,12 @@ describe("Entity Array Serialization Fix Tests", () => {
       // Update with Set-like names
       const namesSet = new Set(["updated-name1", "updated-name2"]);
       // Use type assertion to test edge case where names is a Set (not conforming to Entity type)
-      const updatedEntity = {
+      const updatedEntity = createTestEntity({
         id: entityId,
         agentId: testAgentId,
         names: namesSet, // This should be normalized to an array
         metadata: { updated: true },
-      } as unknown as Entity;
+      });
 
       await adapter.updateEntity(updatedEntity);
 

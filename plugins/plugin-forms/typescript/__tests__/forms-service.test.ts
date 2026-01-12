@@ -5,6 +5,17 @@ import { FormsService } from "../services/forms-service";
 import type { Form, FormTemplate } from "../types";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
+// Helper interface for accessing private properties
+interface TestableFormsService {
+  templates: Map<string, FormTemplate>;
+  forms: Map<string, Form>;
+}
+
+// Helper function to access private properties for testing
+function getTestableService(service: FormsService): TestableFormsService {
+  return service as TestableFormsService;
+}
+
 // Helper to create a test Memory object
 const createTestMemory = (text: string): Memory => ({
   id: asUUID(uuidv4()),
@@ -53,10 +64,10 @@ describe("FormsService", () => {
     });
 
     test("should register default contact template on creation", () => {
-      const templates = (service as unknown as { templates: Map<string, FormTemplate> }).templates;
-      expect(templates.has("contact")).toBe(true);
+      const testService = getTestableService(service);
+      expect(testService.templates.has("contact")).toBe(true);
 
-      const contactTemplate = templates.get("contact");
+      const contactTemplate = testService.templates.get("contact");
       expect(contactTemplate).toBeDefined();
       expect(contactTemplate?.name).toBe("contact");
       expect(contactTemplate?.steps).toHaveLength(1);
@@ -199,8 +210,8 @@ describe("FormsService", () => {
 
     test("should handle already completed forms", async () => {
       // Complete the form first
-      const forms = (service as unknown as { forms: Map<string, Form> }).forms;
-      const formData = forms.get(testForm.id);
+      const testService = getTestableService(service);
+      const formData = testService.forms.get(testForm.id);
       if (formData) {
         formData.status = "completed";
       }
@@ -237,8 +248,8 @@ describe("FormsService", () => {
 
       // Create and complete a form
       const form3 = await service.createForm("contact");
-      const forms = (service as unknown as { forms: Map<string, Form> }).forms;
-      const form3Data = forms.get(form3.id);
+      const testService = getTestableService(service);
+      const form3Data = testService.forms.get(form3.id);
       if (form3Data) {
         form3Data.status = "completed";
       }
@@ -281,9 +292,8 @@ describe("FormsService", () => {
 
       service.registerTemplate(template);
 
-      const registeredTemplate = (
-        service as unknown as { templates: Map<string, FormTemplate> }
-      ).templates.get("custom-template");
+      const testService = getTestableService(service);
+      const registeredTemplate = testService.templates.get("custom-template");
       expect(registeredTemplate).toEqual(template);
     });
   });
@@ -297,17 +307,17 @@ describe("FormsService", () => {
       // Set old timestamps
       const oldTimestamp = Date.now() - 25 * 60 * 60 * 1000; // 25 hours ago
 
-      const forms = (service as unknown as { forms: Map<string, Form> }).forms;
+      const testService = getTestableService(service);
 
       // Complete and age form1
-      const form1Data = forms.get(form1.id);
+      const form1Data = testService.forms.get(form1.id);
       if (form1Data) {
         form1Data.status = "completed";
         form1Data.updatedAt = oldTimestamp;
       }
 
       // Cancel and age form2
-      const form2Data = forms.get(form2.id);
+      const form2Data = testService.forms.get(form2.id);
       if (form2Data) {
         form2Data.status = "cancelled";
         form2Data.updatedAt = oldTimestamp;
@@ -315,7 +325,7 @@ describe("FormsService", () => {
 
       // Create a recent completed form
       const form3 = await service.createForm("contact");
-      const form3Data = forms.get(form3.id);
+      const form3Data = testService.forms.get(form3.id);
       if (form3Data) {
         form3Data.status = "completed";
       }
