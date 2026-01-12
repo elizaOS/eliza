@@ -4,7 +4,6 @@ import type {
   Content,
   EntityPayload,
   EvaluatorEventPayload,
-  HandlerCallback,
   IAgentRuntime,
   Memory,
   MessagePayload,
@@ -23,8 +22,6 @@ const bootstrapPlugin = createBootstrapPlugin();
 
 describe("Message Handler Logic", () => {
   let runtime: IAgentRuntime;
-  let _mockMessage: Memory;
-  let _mockCallback: HandlerCallback;
 
   beforeEach(async () => {
     // Create real runtime
@@ -80,15 +77,6 @@ describe("Message Handler Logic", () => {
 
     vi.spyOn(runtime, "getParticipantUserState").mockResolvedValue("ACTIVE");
 
-    // Create test message
-    _mockMessage = createTestMemory({
-      content: {
-        text: "Hello, bot!",
-        channelType: ChannelType.GROUP,
-      } as Content,
-    });
-    _mockCallback = vi.fn().mockResolvedValue([]) as HandlerCallback;
-
     // Update character templates
     runtime.character = {
       ...runtime.character,
@@ -112,11 +100,6 @@ describe("Message Handler Logic", () => {
     expect(bootstrapPlugin.events).toBeDefined();
 
     // Check for mandatory event handlers
-    // Removed events now handled directly via runtime.messageService:
-    // - MESSAGE_RECEIVED -> deprecated (kept for logging only)
-    // - VOICE_MESSAGE_RECEIVED -> runtime.messageService.handleMessage()
-    // - MESSAGE_DELETED -> runtime.messageService.deleteMessage()
-    // - CHANNEL_CLEARED -> runtime.messageService.clearChannel()
     const requiredEvents = [
       EventType.REACTION_RECEIVED,
       EventType.MESSAGE_SENT,
@@ -132,9 +115,6 @@ describe("Message Handler Logic", () => {
       expect(bootstrapPluginEventsForType?.length).toBeGreaterThan(0);
     });
   });
-
-  // MESSAGE_RECEIVED handler is deprecated - actual handling via runtime.messageService
-  // Tests for message handling are now in packages/typescript/src/__tests__/message-service.test.ts
 });
 
 describe("Reaction Events", () => {

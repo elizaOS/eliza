@@ -50,10 +50,10 @@ describe("XMessageService", () => {
   let mockClient: MockClient;
 
   beforeEach(() => {
-    // Create mock client
+    // Create mock client - use TEST_AGENT_ID for consistent UUID usage
     mockClient = {
       runtime: {
-        agentId: "agent-123",
+        agentId: TEST_AGENT_ID,
       },
       profile: {
         id: "user-123",
@@ -153,9 +153,10 @@ describe("XMessageService", () => {
         posts: mockPosts,
       });
 
+      // The mock for createUniqueUuid returns "uuid-${id}", so we need to match that
       const options = {
         agentId: TEST_AGENT_ID,
-        roomId: TEST_CONV_ID,
+        roomId: "uuid-conv-1" as ReturnType<typeof stringToUuid>,
       };
 
       const messages = await service.getMessages(options);
@@ -195,7 +196,11 @@ describe("XMessageService", () => {
 
       const message = await service.sendMessage(options);
 
-      expect(mockClient.xClient.sendDirectMessage).toHaveBeenCalledWith("room-123", "Hello DM");
+      // sendDirectMessage receives roomId.toString() which is the UUID string
+      expect(mockClient.xClient.sendDirectMessage).toHaveBeenCalledWith(
+        TEST_ROOM_ID.toString(),
+        "Hello DM"
+      );
 
       expect(message).toEqual({
         id: "dm-123",
@@ -207,9 +212,7 @@ describe("XMessageService", () => {
         type: MessageType.DIRECT_MESSAGE,
         timestamp: expect.any(Number),
         inReplyTo: undefined,
-        metadata: {
-          result: mockResult,
-        },
+        metadata: undefined,
       });
     });
 

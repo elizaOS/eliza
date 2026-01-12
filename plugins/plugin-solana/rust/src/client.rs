@@ -8,7 +8,6 @@ use crate::{
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
-#[allow(deprecated)]
 use solana_sdk::system_instruction;
 use solana_sdk::{
     commitment_config::CommitmentConfig, message::VersionedMessage, pubkey::Pubkey,
