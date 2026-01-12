@@ -27,11 +27,7 @@ impl ClobClient {
             .trim_end_matches('/')
             .to_string();
 
-        let key = if private_key.starts_with("0x") {
-            &private_key[2..]
-        } else {
-            private_key
-        };
+        let key = private_key.strip_prefix("0x").unwrap_or(private_key);
 
         let signer: PrivateKeySigner = key
             .parse()

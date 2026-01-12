@@ -27,9 +27,9 @@ class TestGameStateProvider:
             conversation_id="test-conv",
             agent_id="test-agent",
         )
-        
+
         result = await provider.get(params)
-        
+
         assert "universeId" in result.values
         assert "not connected" in result.text.lower()
         assert result.data["connected"] is False

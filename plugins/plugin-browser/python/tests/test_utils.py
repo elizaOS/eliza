@@ -1,41 +1,41 @@
 """Tests for browser plugin utilities."""
 
-import pytest
-import asyncio
 import time
 
+import pytest
+
+from elizaos_browser.types import ErrorCode, RateLimitConfig, RetryConfig, SecurityConfig
 from elizaos_browser.utils.errors import (
+    ActionError,
     BrowserError,
+    CaptchaError,
+    NavigationError,
+    NoUrlFoundError,
+    SecurityError,
     ServiceNotAvailableError,
     SessionError,
-    NavigationError,
-    ActionError,
-    SecurityError,
-    CaptchaError,
-    TimeoutError as BrowserTimeoutError,
-    NoUrlFoundError,
     handle_browser_error,
 )
-from elizaos_browser.utils.url import (
-    extract_url,
-    parse_click_target,
-    parse_type_action,
-    parse_select_action,
-    parse_extract_instruction,
-)
-from elizaos_browser.utils.security import (
-    UrlValidator,
-    InputSanitizer,
-    RateLimiter,
-    validate_secure_action,
-    default_url_validator,
+from elizaos_browser.utils.errors import (
+    TimeoutError as BrowserTimeoutError,
 )
 from elizaos_browser.utils.retry import (
     DEFAULT_RETRY_CONFIGS,
     retry_with_backoff,
     sleep,
 )
-from elizaos_browser.types import SecurityConfig, RetryConfig, RateLimitConfig, ErrorCode
+from elizaos_browser.utils.security import (
+    InputSanitizer,
+    RateLimiter,
+    UrlValidator,
+)
+from elizaos_browser.utils.url import (
+    extract_url,
+    parse_click_target,
+    parse_extract_instruction,
+    parse_select_action,
+    parse_type_action,
+)
 
 
 class TestErrorClasses:

@@ -1,7 +1,8 @@
 """Tests for Solana plugin actions."""
 
-import pytest
 from decimal import Decimal
+
+import pytest
 
 from elizaos_plugin_solana.actions import (
     SWAP_ACTION,

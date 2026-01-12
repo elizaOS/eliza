@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from elizaos_plugin_rss.actions.get_feed import ActionExample
 
 

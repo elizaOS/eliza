@@ -18,7 +18,7 @@ class RuntimeProtocol(Protocol):
 
 class XService:
     """X Client Instance - orchestrates all X (formerly Twitter) functionality.
-    
+
     Components:
     - client: base operations (auth, timeline caching)
     - post: autonomous posting
@@ -42,10 +42,10 @@ class XService:
     @classmethod
     async def start(cls, runtime: RuntimeProtocol) -> "XService":
         """Start the X service.
-        
+
         Args:
             runtime: The agent runtime
-            
+
         Returns:
             The started service instance
         """

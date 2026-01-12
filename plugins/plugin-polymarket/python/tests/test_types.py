@@ -1,14 +1,11 @@
 """Tests for Polymarket plugin types."""
 
-import pytest
 from elizaos_plugin_polymarket.types import (
-    Market,
     MarketFilters,
     MarketsResponse,
-    SimplifiedMarket,
-    SimplifiedMarketsResponse,
     OrderSide,
     OrderStatus,
+    SimplifiedMarketsResponse,
 )
 
 

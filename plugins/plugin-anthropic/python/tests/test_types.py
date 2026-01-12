@@ -5,10 +5,8 @@ These tests do not require an API key.
 
 from __future__ import annotations
 
-import pytest
-
+from elizaos_plugin_anthropic.models import Model, ModelSize
 from elizaos_plugin_anthropic.types import (
-    ContentBlock,
     Message,
     ObjectGenerationParams,
     ObjectGenerationResponse,
@@ -19,7 +17,6 @@ from elizaos_plugin_anthropic.types import (
     TextGenerationResponse,
     TokenUsage,
 )
-from elizaos_plugin_anthropic.models import Model, ModelSize
 
 
 class TestModelSize:

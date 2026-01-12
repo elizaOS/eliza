@@ -30,39 +30,39 @@ class TestExecuteCommandAction:
         message = {"content": {"text": "run ls -la"}}
         state: dict[str, object] = {}
         assert await action.validate(message, state)
-        
+
         message = {"content": {"text": "execute the build command"}}
         assert await action.validate(message, state)
-        
+
         message = {"content": {"text": "show me files in directory"}}
         assert await action.validate(message, state)
-        
+
         message = {"content": {"text": "install package"}}
         assert await action.validate(message, state)
 
     @pytest.mark.asyncio
     async def test_validate_direct_commands(self, action: ExecuteCommandAction) -> None:
         state: dict[str, object] = {}
-        
+
         message = {"content": {"text": "ls -la"}}
         assert await action.validate(message, state)
-        
+
         message = {"content": {"text": "git status"}}
         assert await action.validate(message, state)
-        
+
         message = {"content": {"text": "npm install"}}
         assert await action.validate(message, state)
-        
+
         message = {"content": {"text": "brew install package"}}
         assert await action.validate(message, state)
 
     @pytest.mark.asyncio
     async def test_validate_non_command(self, action: ExecuteCommandAction) -> None:
         state: dict[str, object] = {}
-        
+
         message = {"content": {"text": "hello there"}}
         assert not await action.validate(message, state)
-        
+
         message = {"content": {"text": "what is the weather"}}
         assert not await action.validate(message, state)
 
@@ -73,9 +73,9 @@ class TestExecuteCommandAction:
             "room_id": "test-conv",
         }
         state: dict[str, object] = {}
-        
+
         result = await action.handler(message, state, service=None)
-        
+
         assert not result.success
         assert "not available" in result.text.lower()
 
@@ -102,29 +102,29 @@ class TestClearHistoryAction:
     @pytest.mark.asyncio
     async def test_validate_clear_history(self, action: ClearHistoryAction) -> None:
         state: dict[str, object] = {}
-        
+
         message = {"content": {"text": "clear the command history"}}
         assert await action.validate(message, state)
-        
+
         message = {"content": {"text": "reset my history"}}
         assert await action.validate(message, state)
-        
+
         message = {"content": {"text": "wipe the commands"}}
         assert await action.validate(message, state)
-        
+
         message = {"content": {"text": "forget all commands"}}
         assert await action.validate(message, state)
 
     @pytest.mark.asyncio
     async def test_validate_non_clear(self, action: ClearHistoryAction) -> None:
         state: dict[str, object] = {}
-        
+
         message = {"content": {"text": "run ls"}}
         assert not await action.validate(message, state)
-        
+
         message = {"content": {"text": "show history"}}
         assert not await action.validate(message, state)
-        
+
         message = {"content": {"text": "clear the screen"}}
         assert not await action.validate(message, state)
 
@@ -132,9 +132,9 @@ class TestClearHistoryAction:
     async def test_handler_without_service(self, action: ClearHistoryAction) -> None:
         message = {"content": {"text": "clear history"}, "room_id": "test-conv"}
         state: dict[str, object] = {}
-        
+
         result = await action.handler(message, state, service=None)
-        
+
         assert not result.success
         assert "not available" in result.text.lower()
 

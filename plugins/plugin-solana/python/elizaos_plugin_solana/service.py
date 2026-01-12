@@ -19,7 +19,7 @@ class SolanaService:
         self._client = client
 
     @classmethod
-    def from_env_or_generate(cls) -> "SolanaService":
+    def from_env_or_generate(cls) -> SolanaService:
         config = WalletConfig.from_env_or_generate()
         return cls(SolanaClient(config))
 

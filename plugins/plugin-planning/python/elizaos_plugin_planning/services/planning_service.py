@@ -525,7 +525,7 @@ Focus on:
                 result = await self._execute_step(step, message, execution, callback)
                 execution.results.append(result)
                 execution.state.current_step_index = i + 1
-            except Exception as e:
+            except Exception:
                 if step.on_error == "abort" or (
                     step.retry_policy and step.retry_policy.on_error == "abort"
                 ):
@@ -743,7 +743,7 @@ Return the adapted plan in the same XML format as the original planning response
                     + [f"Adapted at step {current_step_index}"],
                 },
             )
-        except Exception as e:
+        except Exception:
             return ActionPlan(
                 id=uuid4(),
                 goal=original_plan.goal,

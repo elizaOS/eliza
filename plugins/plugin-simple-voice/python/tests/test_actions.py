@@ -9,7 +9,6 @@ from eliza_plugin_simple_voice.actions.say_aloud import (
     say_aloud_action,
 )
 from eliza_plugin_simple_voice.services.sam_tts_service import SamTTSService
-from eliza_plugin_simple_voice.types import SamTTSOptions
 
 from .conftest import MockMemory, MockRuntime
 

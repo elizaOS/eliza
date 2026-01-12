@@ -1,8 +1,6 @@
 from dataclasses import dataclass
-from typing import Optional
 
 from elizaos_plugin_shell.service import ShellService
-from elizaos_plugin_shell.types import CommandResult
 
 
 @dataclass
@@ -15,8 +13,8 @@ class ActionExample:
 class ActionResult:
     success: bool
     text: str
-    data: Optional[dict] = None
-    error: Optional[str] = None
+    data: dict | None = None
+    error: str | None = None
 
 
 class ExecuteCommandAction:
@@ -83,7 +81,7 @@ class ExecuteCommandAction:
         self,
         message: dict,
         state: dict,
-        service: Optional[ShellService] = None,
+        service: ShellService | None = None,
     ) -> ActionResult:
         if service is None:
             return ActionResult(

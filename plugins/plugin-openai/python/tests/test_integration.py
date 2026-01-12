@@ -1,6 +1,7 @@
 """Integration tests for the OpenAI plugin."""
 
 import os
+
 import pytest
 
 # Check if API key is available
@@ -23,9 +24,9 @@ class TestOpenAIPluginStructure:
     def test_import_types(self) -> None:
         """Test that types can be imported."""
         from elizaos_plugin_openai import (
+            EmbeddingParams,
             OpenAIConfig,
             TextGenerationParams,
-            EmbeddingParams,
         )
         assert OpenAIConfig is not None
         assert TextGenerationParams is not None
@@ -38,15 +39,15 @@ class TestOpenAITokenization:
     def test_tokenize(self) -> None:
         """Test text tokenization."""
         from elizaos_plugin_openai import tokenize
-        
+
         tokens = tokenize("Hello, world!")
         assert isinstance(tokens, list)
         assert len(tokens) > 0
 
     def test_detokenize(self) -> None:
         """Test token detokenization."""
-        from elizaos_plugin_openai import tokenize, detokenize
-        
+        from elizaos_plugin_openai import detokenize, tokenize
+
         original = "Hello, world!"
         tokens = tokenize(original)
         decoded = detokenize(tokens)
@@ -55,14 +56,14 @@ class TestOpenAITokenization:
     def test_count_tokens(self) -> None:
         """Test token counting."""
         from elizaos_plugin_openai import count_tokens
-        
+
         count = count_tokens("Hello, world!")
         assert count > 0
 
     def test_truncate_to_token_limit(self) -> None:
         """Test text truncation to token limit."""
         from elizaos_plugin_openai import truncate_to_token_limit
-        
+
         text = "This is a longer text that might exceed token limits."
         truncated = truncate_to_token_limit(text, 5)
         assert len(truncated) <= len(text)
@@ -74,14 +75,14 @@ class TestOpenAIConfig:
     def test_config_creation(self) -> None:
         """Test config creation."""
         from elizaos_plugin_openai import OpenAIConfig
-        
+
         config = OpenAIConfig(api_key="sk-test-key-1234567890")
         assert config.api_key == "sk-test-key-1234567890"
 
     def test_config_defaults(self) -> None:
         """Test config defaults."""
         from elizaos_plugin_openai import OpenAIConfig
-        
+
         config = OpenAIConfig(api_key="sk-test-key-1234567890")
         assert config.base_url is not None
 
@@ -94,6 +95,6 @@ class TestOpenAIAPIIntegration:
     async def test_plugin_initialization(self) -> None:
         """Test plugin initialization with real API key."""
         from elizaos_plugin_openai import get_openai_plugin
-        
+
         plugin = get_openai_plugin()
         assert plugin is not None

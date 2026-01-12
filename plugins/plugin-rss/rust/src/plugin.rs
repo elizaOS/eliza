@@ -127,11 +127,8 @@ impl RssPlugin {
                         item.pub_date.as_str()
                     );
                     
-                    if !items.contains_key(&item_id) {
-                        items.insert(
-                            item_id,
-                            FeedItemMetadata::from_item(item, &url, feed.title()),
-                        );
+                    if let std::collections::hash_map::Entry::Vacant(e) = items.entry(item_id) {
+                        e.insert(FeedItemMetadata::from_item(item, &url, feed.title()));
                         new_items += 1;
                     }
                 }

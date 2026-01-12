@@ -16,7 +16,7 @@ class PluginCreationService:
         self._client = client
 
     @classmethod
-    def from_env(cls) -> "PluginCreationService":
+    def from_env(cls) -> PluginCreationService:
         config = N8nConfig.from_env()
         return cls(PluginCreationClient(config))
 

@@ -27,9 +27,9 @@ class TestFeedItemsProvider:
             conversation_id="test-conv",
             agent_id="test-agent",
         )
-        
+
         result = await provider.get(params)
-        
+
         assert "itemCount" in result.values
         assert "No RSS feed items" in result.text
         assert result.data["count"] == 0

@@ -45,7 +45,7 @@ impl TextChunker {
                 if search_start < end {
                     let search_region = &text[search_start..end];
 
-                    if let Some(pos) = search_region.rfind(|c| c == '.' || c == '!' || c == '?' || c == '\n') {
+                    if let Some(pos) = search_region.rfind(['.', '!', '?', '\n']) {
                         end = search_start + pos + 1;
                     }
                 }

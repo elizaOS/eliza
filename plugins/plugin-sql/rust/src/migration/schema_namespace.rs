@@ -49,7 +49,7 @@ pub fn derive_schema_name(plugin_name: &str) -> String {
 
     // Ensure it starts with a letter (PostgreSQL requirement)
     if schema_name.is_empty()
-        || !schema_name.chars().next().map_or(false, |c| c.is_alphabetic())
+        || !schema_name.chars().next().is_some_and(|c| c.is_alphabetic())
     {
         schema_name = format!("p_{}", schema_name);
     }

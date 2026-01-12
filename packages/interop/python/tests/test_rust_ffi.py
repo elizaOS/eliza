@@ -7,8 +7,6 @@ They test JSON serialization, type handling, and the expected protocol.
 
 import json
 import pytest
-from typing import Any
-from unittest.mock import MagicMock, patch
 
 
 class TestFFIProtocol:
@@ -152,10 +150,11 @@ class TestFFIFunctionSignatures:
 
     def test_elizaos_invoke_action_signature(self):
         """Test elizaos_invoke_action parameter and return format."""
-        action_name = "TEST_ACTION"
-        memory_json = json.dumps({"content": {"text": "Hello"}})
-        state_json = json.dumps({"values": {}})
-        options_json = json.dumps({"timeout": 5000})
+        # Test parameter types used in FFI calls
+        _action_name = "TEST_ACTION"
+        _memory_json = json.dumps({"content": {"text": "Hello"}})
+        _state_json = json.dumps({"values": {}})
+        _options_json = json.dumps({"timeout": 5000})
 
         # Simulate return value
         result_json = json.dumps({"success": True, "text": "Done!"})
@@ -165,9 +164,10 @@ class TestFFIFunctionSignatures:
 
     def test_elizaos_get_provider_signature(self):
         """Test elizaos_get_provider parameter and return format."""
-        provider_name = "TEST_PROVIDER"
-        memory_json = json.dumps({"content": {}})
-        state_json = json.dumps({"values": {}})
+        # Test parameter types used in FFI calls
+        _provider_name = "TEST_PROVIDER"
+        _memory_json = json.dumps({"content": {}})
+        _state_json = json.dumps({"values": {}})
 
         # Simulate return value
         result_json = json.dumps({"text": "Provider data", "values": {"key": "value"}})

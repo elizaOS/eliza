@@ -99,6 +99,10 @@ ignore = [
     "S101",   # use of assert (needed for tests)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Test files don't need strict type annotations
+"tests/*" = ["ANN001", "ANN201", "ANN202", "ANN204"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["elizaos_plugin_todo"]
 

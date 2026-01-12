@@ -1,6 +1,5 @@
 """Tests for Telegram plugin providers."""
 
-import pytest
 
 from elizaos_plugin_telegram.providers import (
     CHAT_STATE_PROVIDER,

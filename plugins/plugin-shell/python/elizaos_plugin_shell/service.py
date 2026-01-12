@@ -6,6 +6,7 @@ import os
 import shlex
 import subprocess
 import time
+
 from elizaos_plugin_shell.path_utils import (
     is_forbidden_command,
     is_safe_command,

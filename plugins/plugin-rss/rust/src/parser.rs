@@ -175,7 +175,7 @@ fn parse_atom_feed(xml_content: &str) -> Result<RssFeed> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                let local_name = name.split(':').last().unwrap_or(&name);
+                let local_name = name.split(':').next_back().unwrap_or(&name);
                 current_tag = local_name.to_string();
 
                 match local_name {
@@ -220,7 +220,7 @@ fn parse_atom_feed(xml_content: &str) -> Result<RssFeed> {
             }
             Ok(Event::End(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                let local_name = name.split(':').last().unwrap_or(&name);
+                let local_name = name.split(':').next_back().unwrap_or(&name);
 
                 match local_name {
                     "entry" => {

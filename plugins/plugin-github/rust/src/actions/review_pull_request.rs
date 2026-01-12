@@ -82,7 +82,7 @@ impl GitHubAction for ReviewPullRequestAction {
             .state
             .get("pullNumber")
             .and_then(|p| p.as_u64())
-            .unwrap_or(0) as u64;
+            .unwrap_or(0);
 
         if pull_number == 0 {
             return Ok(ActionResult::error("Pull request number is required"));

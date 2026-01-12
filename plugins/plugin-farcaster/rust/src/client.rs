@@ -472,7 +472,7 @@ impl FarcasterClient {
             .ok_or_else(|| FarcasterError::cast("Cast not found"))?;
 
         if let Ok(mut cache) = self.cast_cache.write() {
-            let cache: &mut HashMap<String, Cast> = &mut *cache;
+            let cache: &mut HashMap<String, Cast> = &mut cache;
             cache.insert(cast_hash.to_string(), cast.clone());
         }
 
@@ -556,7 +556,7 @@ impl FarcasterClient {
         };
 
         if let Ok(mut cache) = self.profile_cache.write() {
-            let cache: &mut HashMap<u64, Profile> = &mut *cache;
+            let cache: &mut HashMap<u64, Profile> = &mut cache;
             cache.insert(fid, profile.clone());
         }
 
@@ -584,7 +584,7 @@ impl FarcasterClient {
                     .map(|c| {
                         let cast: Cast = neynar_cast_to_cast(c);
                         if let Ok(mut cache) = self.cast_cache.write() {
-                            let cache: &mut HashMap<String, Cast> = &mut *cache;
+                            let cache: &mut HashMap<String, Cast> = &mut cache;
                             cache.insert(cast.hash.clone(), cast.clone());
                         }
                         cast
@@ -604,11 +604,11 @@ impl FarcasterClient {
 
     pub fn clear_cache(&self) {
         if let Ok(mut cache) = self.profile_cache.write() {
-            let cache: &mut HashMap<u64, Profile> = &mut *cache;
+            let cache: &mut HashMap<u64, Profile> = &mut cache;
             cache.clear();
         }
         if let Ok(mut cache) = self.cast_cache.write() {
-            let cache: &mut HashMap<String, Cast> = &mut *cache;
+            let cache: &mut HashMap<String, Cast> = &mut cache;
             cache.clear();
         }
     }

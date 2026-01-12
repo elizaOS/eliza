@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
-
 from elizaos_vision.types import (
     BoundingBox,
     CameraInfo,
     DetectedObject,
-    EntityAppearance,
     EntityAttributes,
     Keypoint,
     OCRBlock,

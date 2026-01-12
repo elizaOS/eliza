@@ -90,7 +90,7 @@ async def handle_complete_todo(
     else:
         task = next((t for t in available_todos if t.id == task_id), None)
         if not task:
-            error_msg = f"I couldn't find a task matching the provided ID. Here are your current tasks:\n\n" + "\n".join(
+            error_msg = "I couldn't find a task matching the provided ID. Here are your current tasks:\n\n" + "\n".join(
                 f"- {t.name}" for t in available_todos
             )
             if callback:

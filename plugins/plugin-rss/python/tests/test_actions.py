@@ -2,9 +2,9 @@ import pytest
 
 from elizaos_plugin_rss.actions import (
     GetFeedAction,
+    ListFeedsAction,
     SubscribeFeedAction,
     UnsubscribeFeedAction,
-    ListFeedsAction,
     get_rss_action_names,
 )
 
@@ -29,7 +29,7 @@ class TestGetFeedAction:
     async def test_handler_success(self, action: GetFeedAction) -> None:
         params = {"url": "https://example.com/feed.rss"}
         result = await action.handler(params)
-        
+
         assert result["action"] == "GET_NEWSFEED"
         assert result["url"] == "https://example.com/feed.rss"
         assert result["status"] == "pending_fetch"
@@ -58,7 +58,7 @@ class TestSubscribeFeedAction:
     async def test_handler_success(self, action: SubscribeFeedAction) -> None:
         params = {"url": "https://example.com/feed.rss"}
         result = await action.handler(params)
-        
+
         assert result["action"] == "SUBSCRIBE_RSS_FEED"
         assert result["status"] == "pending_subscription"
 
@@ -95,7 +95,7 @@ class TestListFeedsAction:
     @pytest.mark.asyncio
     async def test_handler_success(self, action: ListFeedsAction) -> None:
         result = await action.handler({})
-        
+
         assert result["action"] == "LIST_RSS_FEEDS"
         assert result["status"] == "pending_list"
 

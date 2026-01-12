@@ -23,7 +23,12 @@ from elizaos_plugin_xai.models import (
     handle_text_large,
     handle_text_small,
 )
-from elizaos_plugin_xai.plugin import XAIPlugin, create_plugin, get_xai_plugin, get_xai_elizaos_plugin
+from elizaos_plugin_xai.plugin import (
+    XAIPlugin,
+    create_plugin,
+    get_xai_elizaos_plugin,
+    get_xai_plugin,
+)
 from elizaos_plugin_xai.types import (
     AuthMode,
     Mention,

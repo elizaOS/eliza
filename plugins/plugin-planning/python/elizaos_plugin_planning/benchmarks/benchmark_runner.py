@@ -35,7 +35,7 @@ class MemoryTracker:
         self.measurements = []
         self._running = True
         tracemalloc.start()
-            self._task = asyncio.create_task(self._track())
+        self._task = asyncio.create_task(self._track())
 
     async def stop(self) -> None:
         self._running = False

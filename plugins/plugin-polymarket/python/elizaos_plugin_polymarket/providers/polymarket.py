@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from elizaos_plugin_polymarket.constants import DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID
 from elizaos_plugin_polymarket.providers.clob import RuntimeProtocol
@@ -53,7 +53,7 @@ async def get_polymarket_context(
             "featuresAvailable": features_available,
         },
         "data": {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "service": "polymarket",
         },
     }

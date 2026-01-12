@@ -5,10 +5,10 @@ No mocks are used - tests use real classes and code only.
 """
 
 import os
+
 import pytest
 
 from elizaos_plugin_polymarket.actions import markets
-
 
 # Skip entire module if API keys not available
 pytestmark = pytest.mark.skipif(

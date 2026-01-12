@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from elizaos_vision.config import ConfigurationManager, default_vision_config
 from elizaos_vision.types import VisionConfig, VisionMode
 

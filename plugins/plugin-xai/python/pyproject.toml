@@ -79,7 +79,11 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP", "ANN", "S"]
-ignore = ["E501", "S101"]
+ignore = ["E501", "S101", "ANN101", "ANN102"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files don't need strict type annotations
+"tests/*" = ["ANN001", "ANN201", "ANN202", "ANN204", "S105", "S106"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["elizaos_plugin_xai"]

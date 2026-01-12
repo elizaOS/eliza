@@ -1,8 +1,6 @@
 from dataclasses import dataclass
-from typing import Optional
 
 from elizaos_plugin_shell.service import ShellService
-from elizaos_plugin_shell.types import CommandHistoryEntry, FileOperation
 
 MAX_OUTPUT_LENGTH = 8000
 TRUNCATE_SEGMENT_LENGTH = 4000
@@ -35,7 +33,7 @@ class ShellHistoryProvider:
         self,
         message: dict,
         state: dict,
-        service: Optional[ShellService] = None,
+        service: ShellService | None = None,
     ) -> ProviderResult:
         if service is None:
             return ProviderResult(
@@ -113,7 +111,7 @@ class ShellHistoryProvider:
                     ops_strs.append(f"- {op.type}: {op.target} → {op.secondary_target}")
                 else:
                     ops_strs.append(f"- {op.type}: {op.target}")
-            file_ops_text = f"\n\n# Recent File Operations\n\n" + "\n".join(ops_strs)
+            file_ops_text = "\n\n# Recent File Operations\n\n" + "\n".join(ops_strs)
 
         text = (
             f"Current Directory: {cwd}\n"

@@ -1,24 +1,19 @@
-try:
-    from ...typescript.generated.prompts.python.prompts import (
-        FORM_CREATION_TEMPLATE,
-        FORM_EXTRACTION_TEMPLATE,
-    )
-except ImportError:
-    import sys
-    from pathlib import Path
+# Define default prompts (may be overridden by generated prompts if available)
+FORM_EXTRACTION_TEMPLATE: str
+FORM_CREATION_TEMPLATE: str
 
-    # Add the generated prompts directory to the path
-    dist_path = (
-        Path(__file__).parent.parent.parent / "typescript" / "generated" / "prompts" / "python"
+try:
+    from elizaos_plugin_forms._generated_prompts import (  # type: ignore[import-not-found]
+        FORM_CREATION_TEMPLATE as _FORM_CREATION_TEMPLATE,
     )
-    if dist_path.exists():
-        sys.path.insert(0, str(dist_path.parent))
-        from prompts import (
-            FORM_CREATION_TEMPLATE,
-            FORM_EXTRACTION_TEMPLATE,
-        )
-    else:
-        FORM_EXTRACTION_TEMPLATE = """# Task: Extract Form Field Values
+    from elizaos_plugin_forms._generated_prompts import (
+        FORM_EXTRACTION_TEMPLATE as _FORM_EXTRACTION_TEMPLATE,
+    )
+    FORM_EXTRACTION_TEMPLATE = _FORM_EXTRACTION_TEMPLATE
+    FORM_CREATION_TEMPLATE = _FORM_CREATION_TEMPLATE
+except ImportError:
+    # Use default prompts when generated prompts are not available
+    FORM_EXTRACTION_TEMPLATE = """# Task: Extract Form Field Values
 
 ## User Message
 <user_message>
@@ -42,7 +37,7 @@ Return your response in XML format:
 
 Be precise and extract only what is explicitly stated."""
 
-        FORM_CREATION_TEMPLATE = """# Task: Identify Form Type
+    FORM_CREATION_TEMPLATE = """# Task: Identify Form Type
 
 ## User Message
 <user_message>

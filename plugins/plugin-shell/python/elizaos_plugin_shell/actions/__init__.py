@@ -1,5 +1,5 @@
-from elizaos_plugin_shell.actions.execute_command import ExecuteCommandAction
 from elizaos_plugin_shell.actions.clear_history import ClearHistoryAction
+from elizaos_plugin_shell.actions.execute_command import ExecuteCommandAction
 
 __all__ = [
     "ExecuteCommandAction",

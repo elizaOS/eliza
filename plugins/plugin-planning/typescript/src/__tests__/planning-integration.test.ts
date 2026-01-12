@@ -136,7 +136,10 @@ describe("Planning Integration Tests", () => {
       const prompt = (options as { prompt: string }).prompt || "";
 
       // Check if this is a comprehensive planning request
-      if (prompt.includes("Create a detailed plan") || prompt.includes("expert AI planning system")) {
+      if (
+        prompt.includes("Create a detailed plan") ||
+        prompt.includes("expert AI planning system")
+      ) {
         const goal = prompt.match(/GOAL: (.*)/)?.[1] || "Default goal";
         const executionModel = prompt.match(/EXECUTION MODEL: (\w+)/)?.[1] || "sequential";
 
@@ -171,7 +174,10 @@ describe("Planning Integration Tests", () => {
       }
 
       // Check if this is an adaptation request
-      if (prompt.includes("expert AI adaptation system") || prompt.includes("plan execution has encountered")) {
+      if (
+        prompt.includes("expert AI adaptation system") ||
+        prompt.includes("plan execution has encountered")
+      ) {
         return `<plan>
 <goal>Adapted plan</goal>
 <execution_model>sequential</execution_model>
@@ -854,15 +860,17 @@ describe("Planning Integration Tests", () => {
           name: "REPLY",
           similes: [],
           description: "Send a reply",
-          handler: vi.fn().mockImplementation(async (_runtime, _message, _state, options, callback) => {
-            if (callback) {
-              await callback({
-                text: options.text || "Reply sent",
-                source: "test",
-              });
-            }
-            return { text: options.text || "Reply sent", success: true };
-          }),
+          handler: vi
+            .fn()
+            .mockImplementation(async (_runtime, _message, _state, options, callback) => {
+              if (callback) {
+                await callback({
+                  text: options.text || "Reply sent",
+                  source: "test",
+                });
+              }
+              return { text: options.text || "Reply sent", success: true };
+            }),
           validate: vi.fn().mockResolvedValue(true),
           examples: [],
         },

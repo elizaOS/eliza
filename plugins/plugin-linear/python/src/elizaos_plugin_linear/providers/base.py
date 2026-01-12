@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 
-
-
 class RuntimeProtocol(Protocol):
     def get_service(self, name: str) -> Any:
         ...

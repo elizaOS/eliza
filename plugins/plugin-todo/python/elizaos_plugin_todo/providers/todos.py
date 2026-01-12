@@ -45,7 +45,7 @@ async def get_todos(
         if hasattr(runtime, "get_room"):
             room_details = await runtime.get_room(room_id)
 
-        world_id = (
+        (
             room_details.world_id
             if room_details and hasattr(room_details, "world_id")
             else message.world_id or message.entity_id

@@ -11,12 +11,14 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
 
+import logging
+
 from elizaos_plugin_xai.grok import GrokClient, GrokConfig, TextGenerationParams
 
-logger = None
+logger: logging.Logger | None = None
 
 
-def _get_logger():
+def _get_logger() -> logging.Logger:
     """Lazy import logger to avoid circular imports."""
     global logger
     if logger is None:

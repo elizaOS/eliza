@@ -20,7 +20,6 @@ from elizaos_vision.types import (
     SceneDescription,
     TrackedEntity,
     VisionConfig,
-    VisionMode,
 )
 
 

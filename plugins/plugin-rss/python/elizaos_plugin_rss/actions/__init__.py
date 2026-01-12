@@ -1,7 +1,7 @@
 from elizaos_plugin_rss.actions.get_feed import GetFeedAction
+from elizaos_plugin_rss.actions.list_feeds import ListFeedsAction
 from elizaos_plugin_rss.actions.subscribe_feed import SubscribeFeedAction
 from elizaos_plugin_rss.actions.unsubscribe_feed import UnsubscribeFeedAction
-from elizaos_plugin_rss.actions.list_feeds import ListFeedsAction
 
 __all__ = [
     "GetFeedAction",

@@ -2,8 +2,6 @@
 
 from datetime import datetime
 
-import pytest
-
 from elizaos_browser.types import (
     BROWSER_SERVICE_TYPE,
     ActionResult,

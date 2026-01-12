@@ -40,7 +40,7 @@ class TestEnums:
             merge_method="merge",
         )
         assert params.merge_method == "merge"
-        
+
         params_squash = MergePullRequestParams(
             owner="owner",
             repo="repo",
@@ -48,7 +48,7 @@ class TestEnums:
             merge_method="squash",
         )
         assert params_squash.merge_method == "squash"
-        
+
         params_rebase = MergePullRequestParams(
             owner="owner",
             repo="repo",

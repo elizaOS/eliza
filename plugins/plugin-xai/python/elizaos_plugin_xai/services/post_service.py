@@ -19,11 +19,11 @@ class IPostService(ABC):
     @abstractmethod
     async def create_post(self, text: str, reply_to: str | None = None) -> dict[str, object]:
         """Create a new post.
-        
+
         Args:
             text: The post text
             reply_to: Optional tweet ID to reply to
-            
+
         Returns:
             The created post data
         """
@@ -32,10 +32,10 @@ class IPostService(ABC):
     @abstractmethod
     async def get_post(self, post_id: str) -> dict[str, object] | None:
         """Get a specific post.
-        
+
         Args:
             post_id: The post ID
-            
+
         Returns:
             The post data or None if not found
         """
@@ -44,10 +44,10 @@ class IPostService(ABC):
     @abstractmethod
     async def like_post(self, post_id: str) -> bool:
         """Like a post.
-        
+
         Args:
             post_id: The post ID
-            
+
         Returns:
             True if successful
         """
@@ -56,10 +56,10 @@ class IPostService(ABC):
     @abstractmethod
     async def repost(self, post_id: str) -> bool:
         """Repost (retweet) a post.
-        
+
         Args:
             post_id: The post ID
-            
+
         Returns:
             True if successful
         """
@@ -71,7 +71,7 @@ class PostService(IPostService):
 
     def __init__(self, runtime: RuntimeProtocol) -> None:
         """Initialize the post service.
-        
+
         Args:
             runtime: The agent runtime
         """
@@ -95,11 +95,11 @@ class PostService(IPostService):
 
     async def create_post(self, text: str, reply_to: str | None = None) -> dict[str, object]:
         """Create a new post.
-        
+
         Args:
             text: The post text
             reply_to: Optional tweet ID to reply to
-            
+
         Returns:
             The created post data
         """
@@ -114,10 +114,10 @@ class PostService(IPostService):
 
     async def get_post(self, post_id: str) -> dict[str, object] | None:
         """Get a specific post.
-        
+
         Args:
             post_id: The post ID
-            
+
         Returns:
             The post data or None if not found
         """
@@ -127,10 +127,10 @@ class PostService(IPostService):
 
     async def like_post(self, post_id: str) -> bool:
         """Like a post.
-        
+
         Args:
             post_id: The post ID
-            
+
         Returns:
             True if successful
         """
@@ -140,10 +140,10 @@ class PostService(IPostService):
 
     async def repost(self, post_id: str) -> bool:
         """Repost (retweet) a post.
-        
+
         Args:
             post_id: The post ID
-            
+
         Returns:
             True if successful
         """

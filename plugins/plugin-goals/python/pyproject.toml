@@ -64,6 +64,10 @@ line-length = 100
 select = ["E", "W", "F", "I", "B", "C4", "UP", "ANN", "S", "T20"]
 ignore = ["E501", "ANN101", "ANN102", "S101"]
 
+[tool.ruff.lint.per-file-ignores]
+# Test files don't need strict type annotations
+"tests/*" = ["ANN001", "ANN201", "ANN202", "ANN204"]
+
 
 
 

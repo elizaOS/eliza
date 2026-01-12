@@ -176,7 +176,7 @@ async def handle_confirm_todo(
         priority_val = pending_todo.get("priority")
         priority = Priority(priority_val) if priority_val else (Priority.MEDIUM if task_type == TaskType.ONE_OFF else None)
         urgent = pending_todo.get("urgent", False)
-        due_date_str = pending_todo.get("dueDate")
+        pending_todo.get("dueDate")
         due_date = None
         tags = pending_todo.get("tags", [])
         metadata_dict = pending_todo.get("metadata", {})

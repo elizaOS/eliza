@@ -53,7 +53,7 @@ impl OpenRouterClient {
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>> {
         let response = self
             .http_client
-            .get(&self.config.models_url())
+            .get(self.config.models_url())
             .send()
             .await?;
 
@@ -212,7 +212,7 @@ impl OpenRouterClient {
 
         let response = self
             .http_client
-            .post(&self.config.embeddings_url())
+            .post(self.config.embeddings_url())
             .json(&request)
             .send()
             .await?;
@@ -242,7 +242,7 @@ impl OpenRouterClient {
     ) -> Result<ChatCompletionResponse> {
         let response = self
             .http_client
-            .post(&self.config.chat_completions_url())
+            .post(self.config.chat_completions_url())
             .json(request)
             .send()
             .await?;

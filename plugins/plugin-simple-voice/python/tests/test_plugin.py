@@ -1,6 +1,5 @@
 """Tests for plugin module."""
 
-import pytest
 
 from eliza_plugin_simple_voice import (
     SamTTSOptions,

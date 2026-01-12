@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from time import time
 
-from elizaos_plugin_evm.constants import CACHE_REFRESH_INTERVAL_SECS, DEFAULT_CHAINS, EVM_SERVICE_NAME
+from elizaos_plugin_evm.constants import (
+    CACHE_REFRESH_INTERVAL_SECS,
+    DEFAULT_CHAINS,
+    EVM_SERVICE_NAME,
+)
 from elizaos_plugin_evm.providers.wallet import EVMWalletProvider
 from elizaos_plugin_evm.types import SupportedChain
 
@@ -59,7 +63,7 @@ class EVMService:
         for chain_name in DEFAULT_CHAINS:
             try:
                 chain = SupportedChain(chain_name)
-            except Exception:
+            except ValueError:  # Invalid enum value
                 # Skip invalid configuration entries
                 continue
 

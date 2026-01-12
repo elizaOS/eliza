@@ -3,6 +3,8 @@ __version__ = "0.1.0"
 from elizaos_plugin_evm.actions import (
     bridge_action,
     evm_bridge_tokens_action,
+    evm_swap_tokens_action,
+    evm_transfer_tokens_action,
     execute_action,
     execute_bridge,
     execute_governance,
@@ -14,9 +16,7 @@ from elizaos_plugin_evm.actions import (
     propose_action,
     queue_action,
     swap_action,
-    evm_swap_tokens_action,
     transfer_action,
-    evm_transfer_tokens_action,
     vote_action,
 )
 from elizaos_plugin_evm.constants import (

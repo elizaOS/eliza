@@ -1,9 +1,19 @@
+# Actions
+from elizaos_plugin_shell.actions import (
+    ClearHistoryAction,
+    ExecuteCommandAction,
+    get_shell_action_names,
+)
 from elizaos_plugin_shell.path_utils import (
     DEFAULT_FORBIDDEN_COMMANDS,
     extract_base_command,
     is_forbidden_command,
     is_safe_command,
     validate_path,
+)
+from elizaos_plugin_shell.providers import (
+    ShellHistoryProvider,
+    get_shell_provider_names,
 )
 from elizaos_plugin_shell.service import ShellService
 from elizaos_plugin_shell.types import (
@@ -12,18 +22,6 @@ from elizaos_plugin_shell.types import (
     FileOperation,
     FileOperationType,
     ShellConfig,
-)
-
-# Actions
-from elizaos_plugin_shell.actions import (
-    ClearHistoryAction,
-    ExecuteCommandAction,
-    get_shell_action_names,
-)
-
-from elizaos_plugin_shell.providers import (
-    ShellHistoryProvider,
-    get_shell_provider_names,
 )
 
 __version__ = "1.2.0"

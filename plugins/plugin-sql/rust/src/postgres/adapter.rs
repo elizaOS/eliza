@@ -954,10 +954,10 @@ impl DatabaseAdapter for PostgresAdapter {
             )
         };
 
-        let rows = if table_name.is_some() {
+        let rows = if let Some(table) = table_name {
             sqlx::query(&query)
                 .bind(uuid)
-                .bind(table_name.unwrap())
+                .bind(table)
                 .fetch_all(self.manager.get_pool())
                 .await?
         } else {
@@ -1094,8 +1094,7 @@ impl DatabaseAdapter for PostgresAdapter {
             world
                 .message_server_id
                 .as_ref()
-                .map(|u| uuid::Uuid::parse_str(u.as_str()).ok())
-                .flatten(),
+                .and_then(|u| uuid::Uuid::parse_str(u.as_str()).ok()),
         )
         .bind(&metadata)
         .execute(self.manager.get_pool())
@@ -1247,7 +1246,7 @@ impl DatabaseAdapter for PostgresAdapter {
             .bind(&room.source)
             .bind(room.room_type.as_str())
             .bind(&room.channel_id)
-            .bind(room.message_server_id.as_ref().map(|u| uuid::Uuid::parse_str(u.as_str()).ok()).flatten())
+            .bind(room.message_server_id.as_ref().and_then(|u| uuid::Uuid::parse_str(u.as_str()).ok()))
             .bind(world_id)
             .bind(&metadata)
             .execute(self.manager.get_pool())

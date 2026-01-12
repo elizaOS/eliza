@@ -94,7 +94,7 @@ async fn test_send_message() {
     let channel_id = config.test_channel_id.clone()
         .expect("DISCORD_TEST_CHANNEL_ID required for this test");
 
-    let mut service = DiscordService::new(config);
+    let service = DiscordService::new(config);
 
     // Start the service
     // service.start().await.expect("Failed to start service");

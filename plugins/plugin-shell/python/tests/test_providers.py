@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from elizaos_plugin_shell.providers import (
     ShellHistoryProvider,
@@ -32,9 +33,9 @@ class TestShellHistoryProvider:
         """Test provider returns appropriate values when no service is available."""
         message = {"room_id": "test-conv", "agent_id": "test-agent"}
         state: dict = {}
-        
+
         result = await provider.get(message, state, service=None)
-        
+
         assert "shellHistory" in result.values
         assert "currentWorkingDirectory" in result.values
         assert "allowedDirectory" in result.values
@@ -47,12 +48,12 @@ class TestShellHistoryProvider:
         mock_service.get_command_history.return_value = []
         mock_service.get_current_directory.return_value = "/home/user"
         mock_service.get_allowed_directory.return_value = "/home/user"
-        
+
         message = {"room_id": "test-conv"}
         state: dict = {}
-        
+
         result = await provider.get(message, state, service=mock_service)
-        
+
         assert result.values["currentWorkingDirectory"] == "/home/user"
         assert result.values["allowedDirectory"] == "/home/user"
         assert "No commands in history" in result.values["shellHistory"]
@@ -70,17 +71,17 @@ class TestShellHistoryProvider:
                 working_directory="/home/user",
             ),
         ]
-        
+
         mock_service = MagicMock()
         mock_service.get_command_history.return_value = history
         mock_service.get_current_directory.return_value = "/home/user"
         mock_service.get_allowed_directory.return_value = "/home/user"
-        
+
         message = {"room_id": "test-conv"}
         state: dict = {}
-        
+
         result = await provider.get(message, state, service=mock_service)
-        
+
         assert "ls -la" in result.values["shellHistory"]
         assert "file1.txt" in result.values["shellHistory"]
         assert "Exit Code: 0" in result.values["shellHistory"]
@@ -105,17 +106,17 @@ class TestShellHistoryProvider:
                 ],
             ),
         ]
-        
+
         mock_service = MagicMock()
         mock_service.get_command_history.return_value = history
         mock_service.get_current_directory.return_value = "/home/user"
         mock_service.get_allowed_directory.return_value = "/home/user"
-        
+
         message = {"room_id": "test-conv"}
         state: dict = {}
-        
+
         result = await provider.get(message, state, service=mock_service)
-        
+
         assert "File Operations" in result.text
         assert "CREATE" in result.text
 

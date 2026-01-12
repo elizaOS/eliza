@@ -8,7 +8,6 @@ from typing import Protocol
 from eth_account import Account
 
 from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
-from elizaos_plugin_polymarket.providers import get_authenticated_clob_client
 from elizaos_plugin_polymarket.types import ApiKey
 
 

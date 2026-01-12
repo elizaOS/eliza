@@ -1,4 +1,3 @@
-import pytest
 
 
 class TestPdfPluginStructure:
@@ -13,8 +12,8 @@ class TestPdfPluginStructure:
     def test_import_types(self) -> None:
         from elizaos_plugin_pdf import (
             PdfConversionResult,
-            PdfExtractionOptions,
             PdfDocumentInfo,
+            PdfExtractionOptions,
         )
         assert PdfConversionResult is not None
         assert PdfExtractionOptions is not None
@@ -24,13 +23,13 @@ class TestPdfPluginStructure:
 class TestPdfPluginCreation:
     def test_create_plugin(self) -> None:
         from elizaos_plugin_pdf import PdfPlugin
-        
+
         plugin = PdfPlugin()
         assert plugin is not None
 
     def test_get_pdf_plugin(self) -> None:
         from elizaos_plugin_pdf import get_pdf_plugin
-        
+
         plugin = get_pdf_plugin()
         assert plugin is not None
 
@@ -38,7 +37,7 @@ class TestPdfPluginCreation:
 class TestPdfTypes:
     def test_extraction_options(self) -> None:
         from elizaos_plugin_pdf import PdfExtractionOptions
-        
+
         options = PdfExtractionOptions(
             start_page=1,
             end_page=10,
@@ -49,7 +48,7 @@ class TestPdfTypes:
 
     def test_conversion_result_success(self) -> None:
         from elizaos_plugin_pdf import PdfConversionResult
-        
+
         result = PdfConversionResult(
             success=True,
             text="Sample PDF content",
@@ -60,7 +59,7 @@ class TestPdfTypes:
 
     def test_conversion_result_error(self) -> None:
         from elizaos_plugin_pdf import PdfConversionResult
-        
+
         result = PdfConversionResult(
             success=False,
             error="Failed to parse PDF",

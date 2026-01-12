@@ -12,6 +12,7 @@ from elizaos_plugin_bluesky.errors import (
     ProfileError,
     RateLimitError,
 )
+from elizaos_plugin_bluesky.service import BlueSkyService
 from elizaos_plugin_bluesky.types import (
     BLUESKY_CHAT_SERVICE_DID,
     BLUESKY_MAX_POST_LENGTH,
@@ -28,7 +29,6 @@ from elizaos_plugin_bluesky.types import (
     TimelineRequest,
     TimelineResponse,
 )
-from elizaos_plugin_bluesky.service import BlueSkyService
 
 __all__ = [
     "BlueSkyClient",
