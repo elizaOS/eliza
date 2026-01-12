@@ -291,11 +291,14 @@ async function loginToECR(registryUrl: string, authToken: string): Promise<void>
   );
 
   // Docker login - use Bun.spawn directly for stdin input
-  const proc = Bun.spawn(['docker', 'login', '--username', username, '--password-stdin', cleanRegistryUrl], {
-    stdin: 'pipe',
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const proc = Bun.spawn(
+    ['docker', 'login', '--username', username, '--password-stdin', cleanRegistryUrl],
+    {
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    }
+  );
 
   // Write password to stdin using FileSink API
   if (proc.stdin) {

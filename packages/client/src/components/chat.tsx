@@ -205,7 +205,7 @@ export function MessageContent({
   shouldAnimate,
   onDelete,
   onRetry,
-  isUser
+  isUser,
 }: {
   message: UiMessage;
   agentForTts?: Agent | Partial<Agent> | null;

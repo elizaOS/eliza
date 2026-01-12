@@ -2533,7 +2533,9 @@ export class AgentRuntime implements IAgentRuntime {
     await this.adapter.ensureEmbeddingDimension(dimension);
     this.logger.debug(
       { src: 'agent', agentId: this.agentId, dimension },
-      useProvidedDimension ? 'Embedding dimension set from config' : 'Embedding dimension set via API call'
+      useProvidedDimension
+        ? 'Embedding dimension set from config'
+        : 'Embedding dimension set via API call'
     );
   }
 

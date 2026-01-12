@@ -318,7 +318,11 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
       try {
         await runtime.updateWorld(world);
         logger.info(
-          { src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId, messageServerId: world.messageServerId },
+          {
+            src: 'plugin:bootstrap:action:update_role',
+            agentId: runtime.agentId,
+            messageServerId: world.messageServerId,
+          },
           'Updated roles in world metadata'
         );
       } catch (error) {
