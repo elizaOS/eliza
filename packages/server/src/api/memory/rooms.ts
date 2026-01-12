@@ -1,4 +1,4 @@
-import type { ElizaOS, Room, UUID } from '@elizaos/core';
+import type { ElizaOS, UUID } from '@elizaos/core';
 import { validateUuid, logger, createUniqueUuid, ChannelType } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';

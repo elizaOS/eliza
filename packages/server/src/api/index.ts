@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
+import type { IAgentRuntime, UUID, ElizaOS, RouteRequest } from '@elizaos/core';
 import { logger, validateUuid, addLogListener } from '@elizaos/core';
 import cors from 'cors';
 import express from 'express';
@@ -75,6 +75,26 @@ function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
   addLogListener((entry) => {
     router.broadcastLog(io, entry);
   });
+}
+
+/**
+ * Converts Express Request to RouteRequest for plugin handlers.
+ * Normalizes params by taking first element if array (Express can return string[]).
+ */
+function toRouteRequest(req: express.Request): RouteRequest {
+  const params: Record<string, string> = {};
+  for (const [key, value] of Object.entries(req.params)) {
+    params[key] = Array.isArray(value) ? value[0] : value;
+  }
+  return {
+    body: req.body,
+    params,
+    query: req.query as Record<string, unknown>,
+    headers: req.headers as Record<string, string | string[] | undefined>,
+    method: req.method,
+    path: req.path,
+    url: req.url,
+  };
 }
 
 // Extracted function to handle plugin routes
@@ -164,7 +184,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
             );
             try {
               if (route.handler) {
-                route.handler(req, res, runtime);
+                route.handler(toRouteRequest(req), res, runtime);
                 handled = true;
               }
             } catch (error) {
@@ -234,7 +254,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
             req.params = { ...(matched.params || {}) };
             try {
               if (route.handler) {
-                route.handler(req, res, runtime);
+                route.handler(toRouteRequest(req), res, runtime);
                 handled = true;
               }
             } catch (error) {
