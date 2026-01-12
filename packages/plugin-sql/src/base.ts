@@ -730,7 +730,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
             metadata: entity.metadata || {},
           }));
 
-          await tx.insert(entityTable).values(normalizedEntities);
+          await tx.insert(entityTable).values(normalizedEntities).onConflictDoNothing();
 
           return true;
         });
@@ -2888,11 +2888,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   async createWorld(world: World): Promise<UUID> {
     return this.withDatabase(async () => {
       const newWorldId = world.id || v4();
-      await this.db.insert(worldTable).values({
-        ...world,
-        id: newWorldId,
-        name: world.name || '',
-      });
+      await this.db
+        .insert(worldTable)
+        .values({
+          ...world,
+          id: newWorldId,
+          name: world.name || '',
+        })
+        .onConflictDoNothing();
       return newWorldId;
     });
   }

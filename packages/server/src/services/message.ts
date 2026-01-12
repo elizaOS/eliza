@@ -440,52 +440,29 @@ export class MessageBusService extends Service {
     const agentWorldId = createUniqueUuid(this.runtime, message.message_server_id);
     const agentRoomId = createUniqueUuid(this.runtime, message.channel_id);
 
-    try {
-      await this.runtime.ensureWorldExists({
-        id: agentWorldId,
-        name: message.metadata?.serverName || `Server ${message.message_server_id.substring(0, 8)}`,
-        agentId: this.runtime.agentId,
-        messageServerId: message.message_server_id,
-        metadata: {
-          ...(message.metadata?.serverMetadata || {}),
-        },
-      });
-    } catch (error: unknown) {
-      if (error instanceof Error && error.message.includes('worlds_pkey')) {
-        logger.debug(
-          { src: 'service:message-bus', agentId: this.runtime.agentId, worldId: agentWorldId },
-          'World already exists'
-        );
-      } else {
-        throw error;
-      }
-    }
+    await this.runtime.ensureWorldExists({
+      id: agentWorldId,
+      name: message.metadata?.serverName || `Server ${message.message_server_id.substring(0, 8)}`,
+      agentId: this.runtime.agentId,
+      messageServerId: message.message_server_id,
+      metadata: {
+        ...(message.metadata?.serverMetadata || {}),
+      },
+    });
 
-    try {
-      await this.runtime.ensureRoomExists({
-        id: agentRoomId,
-        name: message.metadata?.channelName || `Channel ${message.channel_id.substring(0, 8)}`,
-        agentId: this.runtime.agentId,
-        worldId: agentWorldId,
-        channelId: message.channel_id,
-        messageServerId: message.message_server_id,
-        source: message.source_type || 'central-bus',
-        type: (message.metadata?.channelType as ChannelType) || ChannelType.GROUP,
-        metadata: {
-          ...(message.metadata?.channelMetadata || {}),
-        },
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('rooms_pkey')) {
-        logger.debug(
-          { src: 'service:message-bus', agentId: this.runtime.agentId, roomId: agentRoomId },
-          'Room already exists'
-        );
-      } else {
-        throw error;
-      }
-    }
+    await this.runtime.ensureRoomExists({
+      id: agentRoomId,
+      name: message.metadata?.channelName || `Channel ${message.channel_id.substring(0, 8)}`,
+      agentId: this.runtime.agentId,
+      worldId: agentWorldId,
+      channelId: message.channel_id,
+      messageServerId: message.message_server_id,
+      source: message.source_type || 'central-bus',
+      type: (message.metadata?.channelType as ChannelType) || ChannelType.GROUP,
+      metadata: {
+        ...(message.metadata?.channelMetadata || {}),
+      },
+    });
 
     return { agentWorldId, agentRoomId };
   }
