@@ -1,7 +1,4 @@
 import { type UUID, logger, type Agent, type Entity, type Memory } from '@elizaos/core';
-import { v4 } from 'uuid';
-import { eq } from 'drizzle-orm';
-import { embeddingTable } from '../schema';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
@@ -128,54 +125,6 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
    */
   async isReady(): Promise<boolean> {
     return !this.manager.isShuttingDown();
-  }
-
-  /**
-   * Upserts embedding with retry logic (PGLite lacks real transactions).
-   */
-  protected async upsertEmbedding(
-    _tx: PgliteDatabase,
-    memoryId: UUID,
-    embedding: number[]
-  ): Promise<void> {
-    const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
-
-    const maxRetries = 3;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const existing = await this.db
-          .select({ id: embeddingTable.id })
-          .from(embeddingTable)
-          .where(eq(embeddingTable.memoryId, memoryId))
-          .limit(1);
-
-        if (existing.length > 0) {
-          const updateValues: Record<string, unknown> = {};
-          updateValues[this.embeddingDimension] = cleanVector;
-          await this.db
-            .update(embeddingTable)
-            .set(updateValues)
-            .where(eq(embeddingTable.memoryId, memoryId));
-        } else {
-          const embeddingValues: Record<string, unknown> = {
-            id: v4(),
-            memoryId,
-          };
-          embeddingValues[this.embeddingDimension] = cleanVector;
-          await this.db.insert(embeddingTable).values([embeddingValues]);
-        }
-        return;
-      } catch (error) {
-        if (attempt === maxRetries) {
-          logger.error(
-            { src: 'plugin:sql:pglite', memoryId, attempt, error },
-            'Embedding upsert failed'
-          );
-          throw error;
-        }
-        await new Promise((r) => setTimeout(r, 50 * attempt));
-      }
-    }
   }
 
   /**
