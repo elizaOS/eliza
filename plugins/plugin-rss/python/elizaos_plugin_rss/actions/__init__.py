@@ -1,9 +1,3 @@
-"""
-RSS plugin actions module.
-
-Provides action definitions for RSS feed management.
-"""
-
 from elizaos_plugin_rss.actions.get_feed import GetFeedAction
 from elizaos_plugin_rss.actions.subscribe_feed import SubscribeFeedAction
 from elizaos_plugin_rss.actions.unsubscribe_feed import UnsubscribeFeedAction

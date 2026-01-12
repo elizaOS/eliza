@@ -5,6 +5,7 @@ pub mod client;
 pub mod config;
 pub mod error;
 pub mod types;
+pub mod service;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
@@ -12,6 +13,7 @@ pub mod wasm;
 pub use client::BlueSkyClient;
 pub use config::BlueSkyConfig;
 pub use error::{BlueSkyError, Result};
+pub use service::BlueSkyService;
 
 pub fn create_client_from_env() -> Result<BlueSkyClient> {
     let config = BlueSkyConfig::from_env()?;

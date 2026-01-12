@@ -106,6 +106,9 @@ pub struct SwapAction {
 }
 
 impl SwapAction {
+    /// elizaOS Action name (TS parity).
+    pub const NAME: &'static str = "EVM_SWAP_TOKENS";
+
     #[must_use]
     pub fn new(provider: Arc<WalletProvider>) -> Self {
         Self {

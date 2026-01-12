@@ -1,5 +1,3 @@
-"""Chat state provider for Telegram."""
-
 from __future__ import annotations
 
 import logging
@@ -10,8 +8,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ChatStateResult:
-    """Result of the chat state provider."""
-
     data: dict[str, int | str | bool | None]
     values: dict[str, str] = field(default_factory=dict)
     text: str = ""
@@ -23,17 +19,6 @@ def get_chat_state(
     thread_id: int | None = None,
     room_id: str | None = None,
 ) -> ChatStateResult:
-    """Get Telegram chat state information.
-
-    Args:
-        chat_id: The Telegram chat ID.
-        user_id: The Telegram user ID.
-        thread_id: The thread/topic ID if in a forum.
-        room_id: The elizaOS room ID.
-
-    Returns:
-        The chat state result.
-    """
     is_private = chat_id is not None and chat_id > 0
     is_group = chat_id is not None and chat_id < 0
 
@@ -67,7 +52,6 @@ def get_chat_state(
     return ChatStateResult(data=data, values=values, text=text)
 
 
-# Provider definition for elizaOS integration
 CHAT_STATE_PROVIDER = {
     "name": "telegram_chat_state",
     "description": "Provides Telegram chat context including chat ID, user ID, and chat type",

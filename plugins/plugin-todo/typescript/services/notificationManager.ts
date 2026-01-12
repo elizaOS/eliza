@@ -52,18 +52,12 @@ export class NotificationManager {
   }
 
   private async initialize() {
-    // Start processing queue
     this.startQueueProcessor();
-
-    // Load user preferences from storage
     await this.loadUserPreferences();
 
     logger.info("NotificationManager initialized");
   }
 
-  /**
-   * Start the queue processor to handle notifications
-   */
   private startQueueProcessor() {
     if (this.queueTimer) {
       clearInterval(this.queueTimer);
@@ -72,9 +66,6 @@ export class NotificationManager {
     this.queueTimer = setInterval(() => this.processNotificationQueue(), 1000);
   }
 
-  /**
-   * Process queued notifications
-   */
   private async processNotificationQueue() {
     if (this.isProcessing || this.notificationQueue.length === 0) return;
 
@@ -91,11 +82,7 @@ export class NotificationManager {
     }
   }
 
-  /**
-   * Queue a notification for delivery
-   */
   public async queueNotification(notification: NotificationData) {
-    // Check if we're in quiet hours
     if (this.isInQuietHours(notification.roomId)) {
       logger.debug("Notification queued for after quiet hours:", notification.title);
       return;
@@ -104,20 +91,14 @@ export class NotificationManager {
     this.notificationQueue.push(notification);
   }
 
-  /**
-   * Send a notification through appropriate channels
-   */
   private async sendNotification(notification: NotificationData) {
     try {
-      // Send in-app notification
       await this.sendInAppNotification(notification);
 
-      // Send browser notification if enabled
       if (this.shouldSendBrowserNotification(notification)) {
         await this.sendBrowserNotification(notification);
       }
 
-      // Log notification for audit
       logger.info(
         {
           type: notification.type,
@@ -133,9 +114,6 @@ export class NotificationManager {
     }
   }
 
-  /**
-   * Send an in-app notification
-   */
   private async sendInAppNotification(notification: NotificationData) {
     if (!notification.roomId) return;
 
@@ -164,15 +142,7 @@ export class NotificationManager {
     await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, payload);
   }
 
-  /**
-   * Send a browser notification (placeholder - would need browser context)
-   */
   private async sendBrowserNotification(notification: NotificationData) {
-    // In a real implementation, this would:
-    // 1. Check for browser notification permission
-    // 2. Create and show the notification
-    // 3. Handle click events on the notification
-
     logger.debug(
       {
         title: notification.title,
@@ -183,9 +153,6 @@ export class NotificationManager {
     );
   }
 
-  /**
-   * Check if browser notifications should be sent
-   */
   private shouldSendBrowserNotification(notification: NotificationData): boolean {
     if (!notification.roomId) return false;
 
@@ -207,9 +174,6 @@ export class NotificationManager {
     }
   }
 
-  /**
-   * Check if we're in quiet hours
-   */
   private isInQuietHours(roomId?: UUID): boolean {
     if (!roomId) return false;
 
@@ -220,7 +184,6 @@ export class NotificationManager {
     const currentHour = now.getHours();
     const { start, end } = prefs.quietHours;
 
-    // Handle cases where quiet hours span midnight
     if (start <= end) {
       return currentHour >= start && currentHour < end;
     } else {
@@ -228,14 +191,10 @@ export class NotificationManager {
     }
   }
 
-  /**
-   * Get user preferences for notifications
-   */
   public getUserPreferences(userOrRoomId: UUID): NotificationPreferences {
     const existing = this.userPreferences.get(userOrRoomId);
     if (existing) return existing;
 
-    // Return default preferences
     const defaults: NotificationPreferences = {
       enabled: true,
       sound: true,
@@ -255,9 +214,6 @@ export class NotificationManager {
     return defaults;
   }
 
-  /**
-   * Update user preferences
-   */
   public async updateUserPreferences(
     userOrRoomId: UUID,
     preferences: Partial<NotificationPreferences>
@@ -266,36 +222,23 @@ export class NotificationManager {
     const updated = { ...current, ...preferences };
     this.userPreferences.set(userOrRoomId, updated);
 
-    // Save to persistent storage
     await this.saveUserPreferences();
   }
 
-  /**
-   * Load user preferences from storage
-   */
   private async loadUserPreferences(): Promise<void> {
-    // In a real implementation, this would load from database
     logger.debug("Loading notification preferences...");
   }
 
-  /**
-   * Save user preferences to storage
-   */
   private async saveUserPreferences(): Promise<void> {
-    // In a real implementation, this would save to database
     logger.debug("Saving notification preferences...");
   }
 
-  /**
-   * Stop the manager
-   */
   async stop() {
     if (this.queueTimer) {
       clearInterval(this.queueTimer);
       this.queueTimer = null;
     }
 
-    // Process any remaining notifications
     await this.processNotificationQueue();
 
     logger.info("NotificationManager stopped");

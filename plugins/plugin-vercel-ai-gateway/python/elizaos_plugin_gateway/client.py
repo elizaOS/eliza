@@ -1,10 +1,3 @@
-"""
-Vercel AI Gateway API Client
-
-Async HTTP client for Vercel AI Gateway API interactions using httpx.
-All methods use strong typing and fail-fast error handling.
-"""
-
 from __future__ import annotations
 
 import json
@@ -28,28 +21,13 @@ from elizaos_plugin_gateway.types import (
 
 
 class GatewayClientError(Exception):
-    """Base exception for Gateway client errors."""
-
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
 
 
 class GatewayClient:
-    """
-    Async Vercel AI Gateway client.
-
-    All methods are async and use httpx for HTTP requests.
-    Errors are raised immediately - no silent failures.
-    """
-
     def __init__(self, config: GatewayConfig) -> None:
-        """
-        Initialize the Gateway client.
-
-        Args:
-            config: Gateway configuration with API key and settings.
-        """
         self._config = config
         self._client = httpx.AsyncClient(
             base_url=config.base_url,
@@ -61,7 +39,6 @@ class GatewayClient:
         )
 
     async def close(self) -> None:
-        """Close the HTTP client."""
         await self._client.aclose()
 
     async def __aenter__(self) -> GatewayClient:
@@ -71,7 +48,6 @@ class GatewayClient:
         await self.close()
 
     def _raise_for_status(self, response: httpx.Response) -> None:
-        """Raise an exception if the response indicates an error."""
         if response.is_success:
             return
 
@@ -115,7 +91,6 @@ class GatewayClient:
             "messages": messages,
         }
 
-        # Only add temperature/sampling params for models that support them
         if model_supports_temperature(model):
             if params.temperature is not None:
                 request_body["temperature"] = params.temperature
@@ -128,7 +103,6 @@ class GatewayClient:
             if params.max_tokens is not None:
                 request_body["max_tokens"] = params.max_tokens
         else:
-            # Reasoning models use max_completion_tokens instead of max_tokens
             if params.max_tokens is not None:
                 request_body["max_completion_tokens"] = params.max_tokens
 
@@ -146,18 +120,6 @@ class GatewayClient:
         return content
 
     async def stream_text(self, params: TextGenerationParams) -> AsyncIterator[str]:
-        """
-        Stream text generation using the chat completions API.
-
-        Args:
-            params: Text generation parameters.
-
-        Yields:
-            Text chunks as they are generated.
-
-        Raises:
-            GatewayClientError: If the API request fails.
-        """
         model = params.model or self._config.large_model
 
         messages: list[dict[str, str]] = []
@@ -171,7 +133,6 @@ class GatewayClient:
             "stream": True,
         }
 
-        # Only add temperature for models that support it
         if model_supports_temperature(model):
             if params.temperature is not None:
                 request_body["temperature"] = params.temperature
@@ -198,23 +159,7 @@ class GatewayClient:
                 except json.JSONDecodeError:
                     continue
 
-    # =========================================================================
-    # Embeddings
-    # =========================================================================
-
     async def create_embedding(self, params: EmbeddingParams) -> list[float]:
-        """
-        Generate an embedding for the given text.
-
-        Args:
-            params: Embedding parameters.
-
-        Returns:
-            List of float values representing the embedding.
-
-        Raises:
-            GatewayClientError: If the API request fails.
-        """
         model = params.model or self._config.embedding_model
         dimensions = params.dimensions or self._config.embedding_dimensions
 
@@ -234,23 +179,7 @@ class GatewayClient:
 
         return embedding_response.data[0].embedding
 
-    # =========================================================================
-    # Image Generation
-    # =========================================================================
-
     async def generate_image(self, params: ImageGenerationParams) -> list[ImageGenerationResult]:
-        """
-        Generate images.
-
-        Args:
-            params: Image generation parameters.
-
-        Returns:
-            List of generated image results with URLs.
-
-        Raises:
-            GatewayClientError: If the API request fails.
-        """
         model = params.model or self._config.image_model
 
         request_body: dict[str, object] = {
@@ -271,23 +200,7 @@ class GatewayClient:
             for item in image_response.data
         ]
 
-    # =========================================================================
-    # Image Description
-    # =========================================================================
-
     async def describe_image(self, params: ImageDescriptionParams) -> ImageDescriptionResult:
-        """
-        Describe/analyze an image using vision capabilities.
-
-        Args:
-            params: Image description parameters.
-
-        Returns:
-            ImageDescriptionResult with title and description.
-
-        Raises:
-            GatewayClientError: If the API request fails.
-        """
         model = params.model or "gpt-5-mini"
         prompt = (
             params.prompt
@@ -319,7 +232,6 @@ class GatewayClient:
         if content is None:
             raise GatewayClientError("API returned empty image description")
 
-        # Parse title and description from response
         title = "Image Analysis"
         description = content
 
@@ -332,10 +244,6 @@ class GatewayClient:
 
         return ImageDescriptionResult(title=title, description=description)
 
-    # =========================================================================
-    # Structured Output
-    # =========================================================================
-
     async def generate_object(
         self,
         prompt: str,
@@ -343,17 +251,6 @@ class GatewayClient:
         model: str | None = None,
         temperature: float | None = None,
     ) -> dict[str, object]:
-        """
-        Generate a structured JSON object.
-
-        Args:
-            prompt: Prompt describing the object to generate.
-            model: Model to use (defaults to small model).
-            temperature: Sampling temperature.
-
-        Returns:
-            Generated object as a dictionary.
-        """
         params = TextGenerationParams(
             prompt=f"Respond with only valid JSON. {prompt}",
             model=model or self._config.small_model,
@@ -361,7 +258,6 @@ class GatewayClient:
         )
         response = await self.generate_text(params)
 
-        # Clean up markdown code blocks if present
         cleaned = response.strip()
         if cleaned.startswith("```json"):
             cleaned = cleaned[7:]
@@ -371,8 +267,4 @@ class GatewayClient:
             cleaned = cleaned[:-3]
 
         return json.loads(cleaned.strip())  # type: ignore[no-any-return]
-
-
-
-
 

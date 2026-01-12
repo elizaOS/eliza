@@ -1,11 +1,9 @@
-//! Chat state provider for Telegram
-
 use async_trait::async_trait;
 use serde_json::Value;
 
 use super::{ProviderContext, TelegramProvider};
 
-/// Provider for Telegram chat state
+/// Provider that exposes the current chat/user/thread context as JSON.
 pub struct ChatStateProvider;
 
 #[async_trait]

@@ -1,14 +1,7 @@
-/**
- * Timeline provider for Farcaster.
- */
-
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { FarcasterService } from "../services/FarcasterService";
 import { FARCASTER_SERVICE_NAME } from "../types";
 
-/**
- * Format time ago for display.
- */
 function getTimeAgo(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
 

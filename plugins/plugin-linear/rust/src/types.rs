@@ -219,5 +219,3 @@ impl ProviderResult {
         }
     }
 }
-
-

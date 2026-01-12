@@ -13,7 +13,6 @@ pub async fn browser_extract(
     service: Arc<BrowserService>,
     message: &str,
 ) -> ActionResult {
-    // Get or create session
     let session = match service.get_or_create_session().await {
         Ok(s) => s,
         Err(e) => {

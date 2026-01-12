@@ -18,7 +18,6 @@ export class PlaywrightInstaller {
         process.env.PLAYWRIGHT_BROWSERS_PATH ||
         join(process.env.HOME || "/home/eliza", ".cache", "ms-playwright");
 
-      const _chromiumPath = join(playwrightPath, "chromium-*");
       const hasChromium =
         existsSync(playwrightPath) &&
         require("node:fs")
@@ -26,7 +25,7 @@ export class PlaywrightInstaller {
           .some((dir: string) => dir.startsWith("chromium-"));
 
       return hasChromium;
-    } catch (_error) {
+    } catch {
       return false;
     }
   }
@@ -48,11 +47,9 @@ export class PlaywrightInstaller {
         },
       });
 
-      let _stdout = "";
       let stderr = "";
 
       installProcess.stdout.on("data", (data) => {
-        _stdout += data.toString();
         this.logger.debug(`Playwright install: ${data.toString().trim()}`);
       });
 

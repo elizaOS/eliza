@@ -38,6 +38,24 @@ impl DiscordProvider for ChannelStateProvider {
     }
 }
 
+/// TS-parity alias provider (camelCase name).
+pub struct ChannelStateProviderCamel;
+
+#[async_trait]
+impl DiscordProvider for ChannelStateProviderCamel {
+    fn name(&self) -> &str {
+        "channelState"
+    }
+
+    fn description(&self) -> &str {
+        "Provides information about the current Discord channel, including type, permissions, and activity."
+    }
+
+    async fn get(&self, context: &ProviderContext) -> Value {
+        ChannelStateProvider.get(context).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

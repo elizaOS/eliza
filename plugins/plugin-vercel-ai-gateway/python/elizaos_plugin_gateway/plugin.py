@@ -1,9 +1,3 @@
-"""
-Vercel AI Gateway Plugin for elizaOS.
-
-Provides a high-level interface to Vercel AI Gateway APIs.
-"""
-
 from __future__ import annotations
 
 import os
@@ -30,12 +24,6 @@ if TYPE_CHECKING:
 
 
 class GatewayPlugin:
-    """
-    High-level Vercel AI Gateway plugin for elizaOS.
-
-    Provides convenient methods for all Gateway API operations.
-    """
-
     def __init__(
         self,
         api_key: str | None = None,
@@ -45,20 +33,6 @@ class GatewayPlugin:
         embedding_model: str = "text-embedding-3-small",
         embedding_dimensions: int = 1536,
     ) -> None:
-        """
-        Initialize the Gateway plugin.
-
-        Args:
-            api_key: Gateway API key (defaults to AI_GATEWAY_API_KEY env var).
-            base_url: API base URL.
-            small_model: Small model identifier.
-            large_model: Large model identifier.
-            embedding_model: Embedding model identifier.
-            embedding_dimensions: Embedding dimensions.
-
-        Raises:
-            ValueError: If no API key is provided or found in environment.
-        """
         key = (
             api_key
             or os.environ.get("AI_GATEWAY_API_KEY")
@@ -82,7 +56,6 @@ class GatewayPlugin:
         self._client = GatewayClient(self._config)
 
     async def close(self) -> None:
-        """Close the plugin and release resources."""
         await self._client.close()
 
     async def __aenter__(self) -> GatewayPlugin:
@@ -91,10 +64,6 @@ class GatewayPlugin:
     async def __aexit__(self, *_: object) -> None:
         await self.close()
 
-    # =========================================================================
-    # Text Generation
-    # =========================================================================
-
     async def generate_text_small(
         self,
         prompt: str,
@@ -102,17 +71,6 @@ class GatewayPlugin:
         system: str | None = None,
         max_tokens: int | None = None,
     ) -> str:
-        """
-        Generate text using the small model (gpt-5-mini).
-
-        Args:
-            prompt: The prompt for generation.
-            system: Optional system message.
-            max_tokens: Maximum output tokens.
-
-        Returns:
-            Generated text.
-        """
         params = TextGenerationParams(
             prompt=prompt,
             model=self._config.small_model,
@@ -154,17 +112,6 @@ class GatewayPlugin:
         model: str | None = None,
         system: str | None = None,
     ) -> AsyncIterator[str]:
-        """
-        Stream text generation.
-
-        Args:
-            prompt: The prompt for generation.
-            model: Model to use (defaults to large model).
-            system: Optional system message.
-
-        Yields:
-            Text chunks as they are generated.
-        """
         params = TextGenerationParams(
             prompt=prompt,
             model=model or self._config.large_model,
@@ -174,30 +121,13 @@ class GatewayPlugin:
         async for chunk in self._client.stream_text(params):
             yield chunk
 
-    # =========================================================================
-    # Embeddings
-    # =========================================================================
-
     async def create_embedding(self, text: str) -> list[float]:
-        """
-        Generate an embedding for text.
-
-        Args:
-            text: The text to embed.
-
-        Returns:
-            The embedding vector.
-        """
         params = EmbeddingParams(
             text=text,
             model=self._config.embedding_model,
             dimensions=self._config.embedding_dimensions,
         )
         return await self._client.create_embedding(params)
-
-    # =========================================================================
-    # Images
-    # =========================================================================
 
     async def generate_image(
         self,
@@ -208,19 +138,6 @@ class GatewayPlugin:
         quality: ImageQuality = ImageQuality.STANDARD,
         style: ImageStyle = ImageStyle.VIVID,
     ) -> list[ImageGenerationResult]:
-        """
-        Generate images.
-
-        Args:
-            prompt: The prompt describing the image.
-            n: Number of images to generate.
-            size: Image size.
-            quality: Image quality.
-            style: Image style.
-
-        Returns:
-            List of generated image results.
-        """
         params = ImageGenerationParams(
             prompt=prompt,
             model=self._config.image_model,
@@ -238,17 +155,6 @@ class GatewayPlugin:
         prompt: str | None = None,
         max_tokens: int = 8192,
     ) -> ImageDescriptionResult:
-        """
-        Describe/analyze an image.
-
-        Args:
-            image_url: URL of the image.
-            prompt: Custom analysis prompt.
-            max_tokens: Maximum response tokens.
-
-        Returns:
-            Image description with title and description.
-        """
         params = ImageDescriptionParams(
             image_url=image_url,
             max_tokens=max_tokens,
@@ -261,10 +167,6 @@ class GatewayPlugin:
             )
         return await self._client.describe_image(params)
 
-    # =========================================================================
-    # Structured Output
-    # =========================================================================
-
     async def generate_object(
         self,
         prompt: str,
@@ -272,17 +174,6 @@ class GatewayPlugin:
         model: str | None = None,
         temperature: float | None = None,
     ) -> dict[str, object]:
-        """
-        Generate a structured JSON object.
-
-        Args:
-            prompt: Prompt describing the object to generate.
-            model: Model to use (defaults to small model).
-            temperature: Sampling temperature.
-
-        Returns:
-            Generated object as a dictionary.
-        """
         return await self._client.generate_object(prompt, model=model, temperature=temperature)
 
 
@@ -327,7 +218,6 @@ def create_gateway_elizaos_plugin() -> Plugin:
     from elizaos import Plugin
     from elizaos.types.model import ModelType
 
-    # Client instance (created lazily on first use)
     _client: GatewayPlugin | None = None
 
     def _get_client() -> GatewayPlugin:
@@ -374,18 +264,12 @@ def create_gateway_elizaos_plugin() -> Plugin:
     )
 
 
-# Lazy plugin singleton
 _gateway_plugin_instance: Plugin | None = None
 
 
 def get_gateway_plugin() -> Plugin:
-    """Get the singleton elizaOS Gateway plugin instance."""
     global _gateway_plugin_instance
     if _gateway_plugin_instance is None:
         _gateway_plugin_instance = create_gateway_elizaos_plugin()
     return _gateway_plugin_instance
-
-
-
-
 

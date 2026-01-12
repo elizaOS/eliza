@@ -160,7 +160,6 @@ impl KnowledgePlugin {
         service.get_knowledge(query, count).await
     }
 
-    /// Delete a knowledge document.
     pub async fn delete_knowledge(&self, document_id: &str) -> bool {
         let mut service = self.service.write().await;
         service.delete_knowledge(document_id).await
@@ -171,7 +170,6 @@ impl KnowledgePlugin {
         service.get_documents().into_iter().cloned().collect()
     }
 
-    /// Get a document by ID.
     pub async fn get_document(&self, document_id: &str) -> Option<KnowledgeDocument> {
         let service = self.service.read().await;
         service.get_document(document_id).cloned()
@@ -236,7 +234,6 @@ mod tests {
 
         assert!(plugin.initialized);
 
-        // Second init should be no-op
         plugin.init().await.unwrap();
         assert!(plugin.initialized);
     }
@@ -316,8 +313,4 @@ mod tests {
         assert!(!plugin2.initialized);
     }
 }
-
-
-
-
 

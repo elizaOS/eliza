@@ -15,7 +15,3 @@ def config() -> LocalAIConfig:
 def plugin(config: LocalAIConfig) -> LocalAIPlugin:
     return LocalAIPlugin(config)
 
-
-
-
-

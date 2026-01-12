@@ -1,36 +1,41 @@
 #![allow(missing_docs)]
 
-use std::f32::consts::PI;
 use crate::types::SamTTSOptions;
+use std::f32::consts::PI;
 
 const FORMANT_FREQUENCIES: [(u16, u16, u16); 32] = [
-    (730, 1090, 2440), (730, 1090, 2440),   // a
-    (530, 1840, 2480), (530, 1840, 2480),   // e
-    (390, 1990, 2550), (390, 1990, 2550),   // i
-    (570, 840, 2410), (570, 840, 2410),     // o
-    (440, 1020, 2240), (440, 1020, 2240),   // u
-    (200, 900, 2200),   // b
-    (200, 1800, 2600),  // c
-    (200, 1700, 2600),  // d
-    (200, 1400, 2200),  // f
-    (200, 1800, 2300),  // g
-    (200, 1200, 2500),  // h
-    (200, 2000, 2700),  // j
-    (200, 1800, 2400),  // k
-    (350, 1200, 2600),  // l
-    (200, 900, 2200),   // m
-    (200, 1100, 2400),  // n
-    (200, 900, 2100),   // p
-    (200, 1800, 2400),  // q
-    (350, 1300, 1700),  // r
-    (200, 1600, 2600),  // s
-    (200, 1800, 2600),  // t
-    (200, 1200, 2200),  // v
-    (200, 700, 2200),   // w
-    (200, 1600, 2600),  // x
-    (200, 2200, 2800),  // y
-    (200, 1500, 2500),  // z
-    (0, 0, 0),          // silence
+    (730, 1090, 2440),
+    (730, 1090, 2440), // a
+    (530, 1840, 2480),
+    (530, 1840, 2480), // e
+    (390, 1990, 2550),
+    (390, 1990, 2550), // i
+    (570, 840, 2410),
+    (570, 840, 2410), // o
+    (440, 1020, 2240),
+    (440, 1020, 2240), // u
+    (200, 900, 2200),  // b
+    (200, 1800, 2600), // c
+    (200, 1700, 2600), // d
+    (200, 1400, 2200), // f
+    (200, 1800, 2300), // g
+    (200, 1200, 2500), // h
+    (200, 2000, 2700), // j
+    (200, 1800, 2400), // k
+    (350, 1200, 2600), // l
+    (200, 900, 2200),  // m
+    (200, 1100, 2400), // n
+    (200, 900, 2100),  // p
+    (200, 1800, 2400), // q
+    (350, 1300, 1700), // r
+    (200, 1600, 2600), // s
+    (200, 1800, 2600), // t
+    (200, 1200, 2200), // v
+    (200, 700, 2200),  // w
+    (200, 1600, 2600), // x
+    (200, 2200, 2800), // y
+    (200, 1500, 2500), // z
+    (0, 0, 0),         // silence
 ];
 
 pub struct SamEngine {
@@ -53,15 +58,32 @@ impl SamEngine {
 
     fn char_to_phonemes(c: char) -> Vec<u8> {
         match c {
-            'a' => vec![0, 1], 'e' => vec![2, 3], 'i' => vec![4, 5],
-            'o' => vec![6, 7], 'u' => vec![8, 9],
-            'b' => vec![10], 'c' => vec![11], 'd' => vec![12],
-            'f' => vec![13], 'g' => vec![14], 'h' => vec![15],
-            'j' => vec![16], 'k' => vec![17], 'l' => vec![18],
-            'm' => vec![19], 'n' => vec![20], 'p' => vec![21],
-            'q' => vec![22], 'r' => vec![23], 's' => vec![24],
-            't' => vec![25], 'v' => vec![26], 'w' => vec![27],
-            'x' => vec![28], 'y' => vec![29], 'z' => vec![30],
+            'a' => vec![0, 1],
+            'e' => vec![2, 3],
+            'i' => vec![4, 5],
+            'o' => vec![6, 7],
+            'u' => vec![8, 9],
+            'b' => vec![10],
+            'c' => vec![11],
+            'd' => vec![12],
+            'f' => vec![13],
+            'g' => vec![14],
+            'h' => vec![15],
+            'j' => vec![16],
+            'k' => vec![17],
+            'l' => vec![18],
+            'm' => vec![19],
+            'n' => vec![20],
+            'p' => vec![21],
+            'q' => vec![22],
+            'r' => vec![23],
+            's' => vec![24],
+            't' => vec![25],
+            'v' => vec![26],
+            'w' => vec![27],
+            'x' => vec![28],
+            'y' => vec![29],
+            'z' => vec![30],
             ' ' => vec![31],
             '.' | ',' | '!' | '?' | ';' | ':' => vec![31, 31],
             _ if c.is_alphabetic() => vec![0],
@@ -78,7 +100,8 @@ impl SamEngine {
 
     fn synthesize_phoneme(&self, phoneme: u8, duration_ms: u32) -> Vec<f32> {
         let speed_factor = 100.0 / self.options.speed.max(1) as f32;
-        let duration_samples = (duration_ms as f32 * speed_factor * self.sample_rate as f32 / 1000.0) as usize;
+        let duration_samples =
+            (duration_ms as f32 * speed_factor * self.sample_rate as f32 / 1000.0) as usize;
 
         if duration_samples == 0 {
             return Vec::new();
@@ -99,7 +122,6 @@ impl SamEngine {
 
         let mut wave = vec![0.0f32; duration_samples];
 
-        // Generate harmonics
         for h in 1..=7 {
             let freq = fundamental * h as f32;
             let amp = 1.0 / h as f32;
@@ -157,7 +179,8 @@ impl SamEngine {
 
         let audio: Vec<f32> = segments.into_iter().flatten().collect();
 
-        audio.iter()
+        audio
+            .iter()
             .map(|&s| (((s + 1.0) / 2.0) * 255.0) as u8)
             .collect()
     }
@@ -166,7 +189,6 @@ impl SamEngine {
         self.synthesize(text)
     }
 }
-
 
 impl Default for SamEngine {
     fn default() -> Self {
@@ -188,8 +210,14 @@ mod tests {
 
     #[test]
     fn applies_options() {
-        let slow = SamEngine::new(SamTTSOptions { speed: 40, ..Default::default() });
-        let fast = SamEngine::new(SamTTSOptions { speed: 120, ..Default::default() });
+        let slow = SamEngine::new(SamTTSOptions {
+            speed: 40,
+            ..Default::default()
+        });
+        let fast = SamEngine::new(SamTTSOptions {
+            speed: 120,
+            ..Default::default()
+        });
 
         let slow_audio = slow.synthesize("Test");
         let fast_audio = fast.synthesize("Test");

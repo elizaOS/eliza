@@ -1,7 +1,3 @@
-"""
-Vision Plugin Error Handling
-Comprehensive error handling with recovery strategies and circuit breakers
-"""
 
 from __future__ import annotations
 
@@ -18,7 +14,6 @@ T = TypeVar("T")
 
 
 class VisionError(Exception):
-    """Base error class for all vision-related errors"""
 
     def __init__(
         self,
@@ -34,21 +29,18 @@ class VisionError(Exception):
 
 
 class CameraError(VisionError):
-    """Camera-related errors"""
 
     def __init__(self, message: str, context: dict[str, Any] | None = None):
         super().__init__(message, "CAMERA_ERROR", True, context)
 
 
 class ScreenCaptureError(VisionError):
-    """Screen capture errors"""
 
     def __init__(self, message: str, context: dict[str, Any] | None = None):
         super().__init__(message, "SCREEN_CAPTURE_ERROR", True, context)
 
 
 class ModelInitializationError(VisionError):
-    """Model initialization errors"""
 
     def __init__(self, message: str, model_name: str, context: dict[str, Any] | None = None):
         ctx = context or {}
@@ -57,21 +49,18 @@ class ModelInitializationError(VisionError):
 
 
 class ProcessingError(VisionError):
-    """Processing errors"""
 
     def __init__(self, message: str, context: dict[str, Any] | None = None):
         super().__init__(message, "PROCESSING_ERROR", True, context)
 
 
 class ConfigurationError(VisionError):
-    """Configuration errors"""
 
     def __init__(self, message: str, context: dict[str, Any] | None = None):
         super().__init__(message, "CONFIG_ERROR", False, context)
 
 
 class APIError(VisionError):
-    """API errors"""
 
     def __init__(
         self,
@@ -103,7 +92,6 @@ class RecoveryStrategy(ABC):
 
 
 class ErrorRecoveryManager:
-    """Error recovery manager"""
 
     def __init__(self, max_retries: int = 3):
         self._strategies: dict[str, RecoveryStrategy] = {}
@@ -112,7 +100,6 @@ class ErrorRecoveryManager:
         self._register_default_strategies()
 
     def _register_default_strategies(self) -> None:
-        """Register default recovery strategies"""
 
         class CameraRecoveryStrategy(RecoveryStrategy):
             def __init__(self, manager: ErrorRecoveryManager):
@@ -162,11 +149,9 @@ class ErrorRecoveryManager:
         self._strategies["SCREEN_CAPTURE_ERROR"] = ScreenCaptureRecoveryStrategy()
 
     def register_strategy(self, error_code: str, strategy: RecoveryStrategy) -> None:
-        """Register a recovery strategy for an error code"""
         self._strategies[error_code] = strategy
 
     async def handle_error(self, error: VisionError) -> bool:
-        """Handle an error and attempt recovery"""
         logger.error(
             f"[ErrorRecovery] Handling {error.__class__.__name__}: {error} {error.context}"
         )
@@ -197,17 +182,14 @@ class ErrorRecoveryManager:
             return False
 
     def reset_error_count(self, error_code: str) -> None:
-        """Reset error count for a specific code"""
         if error_code in self._error_counts:
             del self._error_counts[error_code]
 
     def reset_all_counts(self) -> None:
-        """Reset all error counts"""
         self._error_counts.clear()
 
 
 class CircuitBreaker:
-    """Circuit breaker for external services"""
 
     def __init__(self, threshold: int = 5, timeout: float = 60.0, name: str = "unknown"):
         self._threshold = threshold
@@ -218,7 +200,6 @@ class CircuitBreaker:
         self._state: str = "closed"  # closed, open, half-open
 
     async def execute(self, operation: Callable[[], T]) -> T:
-        """Execute an operation with circuit breaker protection"""
         if self._state == "open":
             if time.time() - self._last_failure_time > self._timeout:
                 self._state = "half-open"
@@ -242,14 +223,12 @@ class CircuitBreaker:
             raise
 
     def _on_success(self) -> None:
-        """Handle successful operation"""
         if self._state == "half-open":
             logger.info(f"[CircuitBreaker] {self._name} recovered, closing circuit")
         self._failures = 0
         self._state = "closed"
 
     def _on_failure(self) -> None:
-        """Handle failed operation"""
         self._failures += 1
         self._last_failure_time = time.time()
 
@@ -259,18 +238,15 @@ class CircuitBreaker:
 
     @property
     def state(self) -> str:
-        """Get current circuit state"""
         return self._state
 
     def reset(self) -> None:
-        """Reset the circuit breaker"""
         self._failures = 0
         self._state = "closed"
         logger.info(f"[CircuitBreaker] {self._name} reset")
 
 
 class VisionErrorHandler:
-    """Global vision error handler (singleton)"""
 
     _instance: VisionErrorHandler | None = None
 
@@ -283,19 +259,16 @@ class VisionErrorHandler:
 
     @classmethod
     def get_instance(cls) -> VisionErrorHandler:
-        """Get the singleton instance"""
         return cls()
 
     def get_circuit_breaker(
         self, name: str, threshold: int = 5, timeout: float = 60.0
     ) -> CircuitBreaker:
-        """Get or create a circuit breaker"""
         if name not in self._circuit_breakers:
             self._circuit_breakers[name] = CircuitBreaker(threshold, timeout, name)
         return self._circuit_breakers[name]
 
     async def handle(self, error: Exception) -> bool:
-        """Handle an error"""
         if isinstance(error, VisionError):
             return await self._recovery_manager.handle_error(error)
         else:
@@ -303,11 +276,9 @@ class VisionErrorHandler:
             return await self._recovery_manager.handle_error(vision_error)
 
     def reset_circuit_breaker(self, name: str) -> None:
-        """Reset a specific circuit breaker"""
         if name in self._circuit_breakers:
             self._circuit_breakers[name].reset()
 
     def reset_all_circuit_breakers(self) -> None:
-        """Reset all circuit breakers"""
         for breaker in self._circuit_breakers.values():
             breaker.reset()

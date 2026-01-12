@@ -1,7 +1,3 @@
-"""
-Process analysis action for the planning plugin.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,7 +6,6 @@ from elizaos_plugin_planning.actions.analyze_input import ActionExample
 
 @dataclass
 class ProcessAnalysisAction:
-    """Action to process analysis results and make decisions."""
 
     @property
     def name(self) -> str:

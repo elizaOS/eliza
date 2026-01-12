@@ -10,5 +10,3 @@ pub use services::{BrowserService, BrowserWebSocketClient};
 pub use actions::*;
 pub use providers::*;
 pub use plugin::{BrowserPlugin, create_browser_plugin};
-
-

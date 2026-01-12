@@ -1,7 +1,3 @@
-"""
-Vision Service
-Core vision service providing camera integration and scene analysis
-"""
 
 from __future__ import annotations
 
@@ -39,15 +35,12 @@ logger = logging.getLogger(__name__)
 
 
 class RuntimeProtocol(Protocol):
-    """Protocol for runtime access"""
-
     def get_setting(self, key: str) -> str | None: ...
 
     async def use_model(self, model_type: str, data: Any) -> Any: ...
 
 
 class CameraDevice:
-    """Camera device wrapper"""
 
     def __init__(self, id: str, name: str, capture_fn):
         self.id = id
@@ -55,12 +48,10 @@ class CameraDevice:
         self._capture_fn = capture_fn
 
     async def capture(self) -> bytes:
-        """Capture an image from the camera"""
         return await self._capture_fn()
 
 
 class VisionService:
-    """Core vision service"""
 
     SERVICE_TYPE = "VISION"
 
@@ -90,7 +81,6 @@ class VisionService:
         logger.info(f"[VisionService] Constructed with mode: {self._config.vision_mode}")
 
     def _parse_config(self, runtime: RuntimeProtocol | None) -> VisionConfig:
-        """Parse configuration from runtime"""
         if not runtime:
             return VisionConfig()
 
@@ -125,13 +115,11 @@ class VisionService:
 
     @classmethod
     async def start(cls, runtime: RuntimeProtocol) -> VisionService:
-        """Create and start the vision service"""
         service = cls(runtime)
         await service.initialize()
         return service
 
     async def initialize(self) -> None:
-        """Initialize the vision service"""
         try:
             if self._config.vision_mode in (VisionMode.SCREEN, VisionMode.BOTH):
                 await self._initialize_screen_vision()
@@ -144,7 +132,6 @@ class VisionService:
             logger.error(f"[VisionService] Failed to initialize: {e}")
 
     async def _initialize_screen_vision(self) -> None:
-        """Initialize screen vision components"""
         try:
             logger.info("[VisionService] Initializing screen vision...")
 
@@ -163,7 +150,6 @@ class VisionService:
             logger.error(f"[VisionService] Failed to initialize screen vision: {e}")
 
     async def _initialize_camera_vision(self) -> None:
-        """Initialize camera vision"""
         tool_check = await self._check_camera_tools()
         if not tool_check["available"]:
             system = platform.system()
@@ -181,7 +167,6 @@ class VisionService:
             logger.warning("[VisionService] No suitable camera found")
 
     async def _check_camera_tools(self) -> dict[str, Any]:
-        """Check if camera tools are available"""
         system = platform.system()
 
         try:
@@ -221,7 +206,6 @@ class VisionService:
         return {"available": False, "tool": "none"}
 
     def _start_processing(self) -> None:
-        """Start processing loops"""
         self._running = True
 
         if self._config.vision_mode in (VisionMode.CAMERA, VisionMode.BOTH) and self._camera:
@@ -231,7 +215,6 @@ class VisionService:
             self._screen_processing_task = asyncio.create_task(self._screen_processing_loop())
 
     async def _frame_processing_loop(self) -> None:
-        """Main frame processing loop"""
         logger.debug("[VisionService] Started frame processing loop")
         while self._running:
             if not self._is_processing and self._camera:
@@ -244,7 +227,6 @@ class VisionService:
             await asyncio.sleep(self._config.update_interval / 1000)
 
     async def _capture_and_process_frame(self) -> None:
-        """Capture and process a single frame"""
         if not self._camera:
             return
 
@@ -268,7 +250,6 @@ class VisionService:
             logger.error(f"[VisionService] Error capturing frame: {e}")
 
     async def _process_frame_data(self, data: bytes) -> VisionFrame:
-        """Process raw frame data"""
         if not data:
             raise ValueError("Empty frame data")
 
@@ -284,7 +265,6 @@ class VisionService:
         )
 
     async def _calculate_pixel_change(self, frame1: VisionFrame, frame2: VisionFrame) -> float:
-        """Calculate percentage of changed pixels"""
         if frame1.width != frame2.width or frame1.height != frame2.height:
             return 100.0
 
@@ -305,11 +285,9 @@ class VisionService:
         return (changed_pixels / total_pixels) * 100
 
     async def _update_scene_description(self, frame: VisionFrame, change_percentage: float) -> None:
-        """Update the scene description"""
         try:
             current_time = int(time.time() * 1000)
 
-            # Convert to JPEG for VLM
             img = Image.frombytes("RGBA", (frame.width, frame.height), frame.data).convert("RGB")
             buffer = BytesIO()
             img.save(buffer, format="JPEG")
@@ -319,7 +297,6 @@ class VisionService:
             base64_image = base64.b64encode(jpeg_data).decode()
             image_url = f"data:image/jpeg;base64,{base64_image}"
 
-            # Check if we should update VLM
             time_since_vlm = current_time - self._last_vlm_update_time
             should_update_vlm = (
                 time_since_vlm >= self._config.vlm_update_interval
@@ -333,11 +310,9 @@ class VisionService:
                 self._last_vlm_update_time = current_time
                 self._last_tf_description = description
 
-            # Motion detection
             detected_objects = await self._detect_motion_objects(frame)
             people = await self._detect_people_from_motion(frame, detected_objects)
 
-            # Update entity tracker
             await self._entity_tracker.update_entities(
                 detected_objects, people, None, self._runtime
             )
@@ -355,7 +330,6 @@ class VisionService:
             logger.error(f"[VisionService] Failed to update scene description: {e}")
 
     async def _describe_scene_with_vlm(self, image_url: str) -> str:
-        """Get scene description from VLM"""
         try:
             if self._runtime:
                 result = await self._runtime.use_model("IMAGE_DESCRIPTION", image_url)
@@ -369,7 +343,6 @@ class VisionService:
             return "Unable to describe scene"
 
     async def _detect_motion_objects(self, frame: VisionFrame) -> list[DetectedObject]:
-        """Detect objects based on motion"""
         if not self._last_frame:
             return []
 
@@ -415,7 +388,6 @@ class VisionService:
         return self._merge_adjacent_objects(objects)
 
     def _merge_adjacent_objects(self, objects: list[DetectedObject]) -> list[DetectedObject]:
-        """Merge adjacent motion blocks"""
         if not objects:
             return []
 
@@ -469,7 +441,6 @@ class VisionService:
         return [o for o in merged if o.bounding_box.area() > 2000]
 
     def _classify_object_by_size(self, width: float, height: float) -> str:
-        """Classify object by size"""
         area = width * height
         aspect = width / height if height > 0 else 0
 
@@ -484,7 +455,6 @@ class VisionService:
     async def _detect_people_from_motion(
         self, frame: VisionFrame, objects: list[DetectedObject]
     ) -> list[PersonInfo]:
-        """Detect people from motion objects"""
         people: list[PersonInfo] = []
         candidates = [o for o in objects if o.type == "person-candidate"]
 
@@ -512,7 +482,6 @@ class VisionService:
         return people
 
     async def _screen_processing_loop(self) -> None:
-        """Screen processing loop"""
         logger.debug("[VisionService] Started screen processing loop")
         while self._running:
             if not self._is_processing_screen:
@@ -545,7 +514,6 @@ class VisionService:
             logger.error(f"[VisionService] Error capturing screen: {e}")
 
     async def _update_enhanced_scene_description(self) -> None:
-        """Update enhanced scene description"""
         if not self._last_screen_capture:
             return
 
@@ -574,20 +542,15 @@ class VisionService:
             ),
         )
 
-    # Public API
-
     async def get_current_frame(self) -> VisionFrame | None:
-        """Get the current frame"""
         return self._last_frame
 
     async def get_scene_description(self) -> SceneDescription | None:
-        """Get the current scene description"""
         return self._last_scene_description
 
     async def get_enhanced_scene_description(
         self,
     ) -> EnhancedSceneDescription | SceneDescription | None:
-        """Get enhanced scene description"""
         return self._last_enhanced_scene or self._last_scene_description
 
     async def get_screen_capture(self) -> ScreenCapture | None:
@@ -595,7 +558,6 @@ class VisionService:
         return self._last_screen_capture
 
     def get_vision_mode(self) -> VisionMode:
-        """Get current vision mode"""
         return self._config.vision_mode
 
     async def set_vision_mode(self, mode: VisionMode) -> None:
@@ -617,7 +579,6 @@ class VisionService:
         self._start_processing()
 
     async def _stop_processing(self) -> None:
-        """Stop processing loops"""
         self._running = False
 
         if self._frame_processing_task:
@@ -637,21 +598,17 @@ class VisionService:
             self._screen_processing_task = None
 
     def get_camera_info(self) -> CameraInfo | None:
-        """Get camera info"""
         if not self._camera:
             return None
         return CameraInfo(id=self._camera.id, name=self._camera.name, connected=True)
 
     def is_active(self) -> bool:
-        """Check if service is active"""
         return self._camera is not None and self._running
 
     def get_entity_tracker(self) -> EntityTracker:
-        """Get the entity tracker"""
         return self._entity_tracker
 
     async def capture_image(self) -> bytes | None:
-        """Capture an image"""
         if not self._camera:
             logger.warning("[VisionService] No camera available")
             return None
@@ -662,7 +619,6 @@ class VisionService:
             return None
 
     async def stop(self) -> None:
-        """Stop the vision service"""
         logger.info("[VisionService] Stopping vision service...")
         await self._stop_processing()
         await self._ocr_service.dispose()
@@ -674,7 +630,6 @@ class VisionService:
         logger.info("[VisionService] Stopped.")
 
     async def _find_camera(self) -> CameraDevice | None:
-        """Find and connect to a camera"""
         try:
             cameras = await self._list_cameras()
             if not cameras:
@@ -766,7 +721,6 @@ class VisionService:
         return cameras
 
     def _create_camera_device(self, info: CameraInfo) -> CameraDevice:
-        """Create a camera device wrapper"""
         system = platform.system()
 
         async def capture() -> bytes:

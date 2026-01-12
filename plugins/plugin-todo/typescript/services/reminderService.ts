@@ -10,9 +10,8 @@ import { CacheManager } from "./cacheManager";
 import { NotificationManager } from "./notificationManager";
 import { createTodoDataService, type TodoData } from "./todoDataService";
 
-// Import rolodex services for actual message delivery
-type MessageDeliveryService = Service; // Temporary type until we can properly import
-type EntityRelationshipService = Service; // Temporary type until we can properly import
+type MessageDeliveryService = Service;
+type EntityRelationshipService = Service;
 
 interface ReminderMessage {
   entityId: UUID;
@@ -27,9 +26,6 @@ interface ReminderMessage {
   };
 }
 
-/**
- * Main todo reminder service that handles all reminder functionality
- */
 export class TodoReminderService extends Service {
   static serviceType: ServiceTypeName = "TODO_REMINDER" as ServiceTypeName;
   serviceName = "TODO_REMINDER" as ServiceTypeName;
@@ -40,7 +36,7 @@ export class TodoReminderService extends Service {
   private reminderTimer: NodeJS.Timeout | null = null;
   private rolodexMessageService: MessageDeliveryService | null = null;
   private rolodexEntityService: EntityRelationshipService | null = null;
-  private lastReminderCheck: Map<UUID, number> = new Map(); // Track last reminder time per todo
+  private lastReminderCheck: Map<UUID, number> = new Map();
 
   static async start(runtime: IAgentRuntime): Promise<TodoReminderService> {
     logger.info("Starting TodoReminderService...");
@@ -52,11 +48,9 @@ export class TodoReminderService extends Service {
   }
 
   private async initialize(): Promise<void> {
-    // Initialize internal managers
     this.notificationManager = new NotificationManager(this.runtime);
     this.cacheManager = new CacheManager();
 
-    // Try to get rolodex services for external message delivery
     this.rolodexMessageService = this.runtime.getService("MESSAGE_DELIVERY" as ServiceTypeName);
     this.rolodexEntityService = this.runtime.getService("ENTITY_RELATIONSHIP" as ServiceTypeName);
 
@@ -66,7 +60,6 @@ export class TodoReminderService extends Service {
       logger.warn("Rolodex services not found - only in-app notifications will be sent");
     }
 
-    // Start reminder checking loop
     this.startReminderLoop();
   }
 
@@ -75,20 +68,15 @@ export class TodoReminderService extends Service {
       clearInterval(this.reminderTimer);
     }
 
-    // Check for reminders every 30 seconds for better responsiveness
-    this.reminderTimer = setInterval(
-      () => {
-        this.checkTasksForReminders().catch((error) => {
-          logger.error(
-            "Error in reminder loop:",
-            error instanceof Error ? error.message : String(error)
-          );
-        });
-      },
-      30 * 1000 // 30 seconds instead of 5 minutes
-    );
+    this.reminderTimer = setInterval(() => {
+      this.checkTasksForReminders().catch((error) => {
+        logger.error(
+          "Error in reminder loop:",
+          error instanceof Error ? error.message : String(error)
+        );
+      });
+    }, 30 * 1000);
 
-    // Also run immediately on start
     this.checkTasksForReminders().catch((error) => {
       logger.error(
         "Error in initial reminder check:",
@@ -102,7 +90,6 @@ export class TodoReminderService extends Service {
   async checkTasksForReminders(): Promise<void> {
     const dataService = createTodoDataService(this.runtime);
 
-    // Get all incomplete todos
     const todos = await dataService.getTodos({ isCompleted: false });
 
     for (const todo of todos) {
@@ -116,37 +103,28 @@ export class TodoReminderService extends Service {
     let reminderType: "overdue" | "upcoming" | "daily" | "system" = "system";
     let priority: "low" | "medium" | "high" = "medium";
 
-    // Check last reminder time to avoid spam
     const lastReminder = this.lastReminderCheck.get(todo.id) || 0;
     const timeSinceLastReminder = now.getTime() - lastReminder;
-    const MIN_REMINDER_INTERVAL = 30 * 60 * 1000; // 30 minutes
+    const MIN_REMINDER_INTERVAL = 30 * 60 * 1000;
 
     if (timeSinceLastReminder < MIN_REMINDER_INTERVAL) {
-      return; // Skip if we reminded recently
+      return;
     }
 
-    // Check if overdue
     if (todo.dueDate && todo.dueDate < now) {
       shouldRemind = true;
       reminderType = "overdue";
       priority = "high";
-    }
-    // Check if upcoming (within 30 minutes)
-    else if (todo.dueDate) {
+    } else if (todo.dueDate) {
       const timeUntilDue = todo.dueDate.getTime() - now.getTime();
       if (timeUntilDue < 30 * 60 * 1000 && timeUntilDue > 0) {
         shouldRemind = true;
         reminderType = "upcoming";
         priority = todo.isUrgent ? "high" : "medium";
       }
-    }
-    // Check daily tasks (remind in morning and evening)
-    else if (todo.type === "daily") {
+    } else if (todo.type === "daily") {
       const hour = now.getHours();
-      // Morning reminder at 9 AM
       if (hour === 9 || hour === 18) {
-        // Evening reminder at 6 PM
-        // Check if completed today
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -172,7 +150,6 @@ export class TodoReminderService extends Service {
     const title = this.formatReminderTitle(todo, reminderType);
     const body = this.formatReminderBody(todo, reminderType);
 
-    // Always send in-app notification
     await this.notificationManager.queueNotification({
       title,
       body,
@@ -182,7 +159,6 @@ export class TodoReminderService extends Service {
       priority,
     });
 
-    // If rolodex is available, send external notifications
     if (this.rolodexMessageService && this.rolodexEntityService) {
       const reminderMessage: ReminderMessage = {
         entityId: todo.entityId,
@@ -196,7 +172,6 @@ export class TodoReminderService extends Service {
         },
       };
 
-      // Send through rolodex message delivery service
       await this.sendRolodexReminder(reminderMessage);
 
       logger.info(`Sent ${reminderType} reminder via rolodex for todo: ${todo.name}`);
@@ -227,7 +202,6 @@ export class TodoReminderService extends Service {
         message: reminder.message,
         priority: reminder.priority,
         metadata: reminder.metadata,
-        // Let rolodex determine the best platforms based on entity preferences
       });
 
       if (result?.success) {
@@ -249,13 +223,13 @@ export class TodoReminderService extends Service {
   private formatReminderTitle(todo: TodoData, reminderType: string): string {
     switch (reminderType) {
       case "overdue":
-        return `⚠️ OVERDUE: ${todo.name}`;
+        return `?? OVERDUE: ${todo.name}`;
       case "upcoming":
-        return `⏰ REMINDER: ${todo.name}`;
+        return `? REMINDER: ${todo.name}`;
       case "daily":
-        return `📅 Daily Reminder`;
+        return `?? Daily Reminder`;
       default:
-        return `📋 Reminder: ${todo.name}`;
+        return `?? Reminder: ${todo.name}`;
     }
   }
 

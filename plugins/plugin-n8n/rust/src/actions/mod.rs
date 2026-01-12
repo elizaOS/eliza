@@ -1,12 +1,12 @@
-mod create_plugin;
-mod check_status;
 mod cancel_plugin;
+mod check_status;
 mod create_from_description;
+mod create_plugin;
 
-pub use create_plugin::CreatePluginAction;
-pub use check_status::CheckStatusAction;
 pub use cancel_plugin::CancelPluginAction;
+pub use check_status::CheckStatusAction;
 pub use create_from_description::CreateFromDescriptionAction;
+pub use create_plugin::CreatePluginAction;
 
 use async_trait::async_trait;
 use serde_json::Value;

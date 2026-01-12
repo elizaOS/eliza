@@ -1,7 +1,3 @@
-"""
-ElizaOS Vision Plugin
-Provides visual perception through camera integration and scene analysis
-"""
 
 from .actions import (
     capture_image_action,

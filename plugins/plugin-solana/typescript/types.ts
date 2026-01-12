@@ -12,17 +12,6 @@ export interface Item {
   valueSol?: string;
 }
 
-/**
- * Defines the interface for storing price information for various cryptocurrencies.
- *
- * @interface Prices
- * @property {Object} solana - Price information for Solana cryptocurrency.
- * @property {string} solana.usd - Price of Solana in USD.
- * @property {Object} bitcoin - Price information for Bitcoin cryptocurrency.
- * @property {string} bitcoin.usd - Price of Bitcoin in USD.
- * @property {Object} ethereum - Price information for Ethereum cryptocurrency.
- * @property {string} ethereum.usd - Price of Ethereum in USD.
- */
 export interface Prices {
   solana: { usd: string };
   bitcoin: { usd: string };
@@ -37,28 +26,6 @@ export interface WalletPortfolio {
   lastUpdated?: number;
 }
 
-/**
- * Represents the structure of a Token Account Info object.
- * @typedef {object} TokenAccountInfo
- * @property {PublicKey} pubkey - The public key associated with the token account.
- * @property {object} account - Information about the token account.
- * @property {number} account.lamports - The amount of lamports in the account.
- * @property {object} account.data - Data associated with the account.
- * @property {object} account.data.parsed - Parsed information.
- * @property {object} account.data.parsed.info - Detailed information.
- * @property {string} account.data.parsed.info.mint - The mint associated with the token.
- * @property {string} account.data.parsed.info.owner - The owner of the token.
- * @property {object} account.data.parsed.info.tokenAmount - Token amount details.
- * @property {string} account.data.parsed.info.tokenAmount.amount - The amount of the token.
- * @property {number} account.data.parsed.info.tokenAmount.decimals - The decimals of the token.
- * @property {number} account.data.parsed.info.tokenAmount.uiAmount - The UI amount of the token.
- * @property {string} account.data.parsed.type - The type of parsed data.
- * @property {string} account.data.program - The program associated with the account.
- * @property {number} account.data.space - The space available in the account.
- * @property {string} account.owner - The owner of the account.
- * @property {boolean} account.executable - Indicates if the account is executable.
- * @property {number} account.rentEpoch - The rent epoch of the account.
- */
 export interface TokenAccountInfo {
   pubkey: PublicKey;
   account: {
@@ -97,7 +64,6 @@ export interface ApiError {
   details?: string;
 }
 
-// GET /wallet/address
 export interface WalletAddressResponse {
   publicKey: string;
 }
@@ -108,7 +74,6 @@ export interface WalletBalanceResponse {
   symbol: string;
 }
 
-// GET /wallet/balance/:token
 export interface TokenBalanceResponse {
   publicKey: string;
   token: string;
@@ -141,7 +106,6 @@ export interface PortfolioTokenResponse {
   valueSol: string;
 }
 
-// GET /wallet/tokens
 export interface WalletTokensResponse {
   publicKey: string;
   tokens: TokenAccountResponse[];
@@ -161,9 +125,6 @@ export interface MintBalance {
   uiAmount: number;
 }
 
-/**
- * Parsed token account from Solana RPC.
- */
 export interface ParsedTokenAccount {
   pubkey: PublicKey;
   account: {
@@ -181,7 +142,7 @@ export interface ParsedTokenAccount {
           };
           isNative?: boolean;
           state?: string;
-          extensions?: unknown[];
+          extensions?: Array<Record<string, string | number | boolean>>;
         };
         type: string;
       };
@@ -224,9 +185,6 @@ export interface JupiterQuote {
   timeTaken: number;
 }
 
-/**
- * Jupiter swap result.
- */
 export interface JupiterSwapResult {
   swapTransaction: string;
   lastValidBlockHeight: number;
@@ -249,9 +207,6 @@ export interface SwapFees {
   networkFee: number;
 }
 
-/**
- * Exchange/swap provider interface.
- */
 export interface ExchangeProvider {
   name: string;
   getQuote(params: SwapQuoteParams): Promise<JupiterQuote>;
@@ -265,9 +220,6 @@ export interface SwapQuoteParams {
   slippageBps?: number;
 }
 
-/**
- * Parameters for executing a swap.
- */
 export interface SwapExecuteParams {
   quote: JupiterQuote;
   userPublicKey: string;
@@ -279,10 +231,6 @@ export interface JupiterServiceInterface {
   swap(params: SwapExecuteParams): Promise<SwapResult>;
 }
 
-/**
- * Extended Jupiter service interface with additional methods used by SolanaService.
- * This extends the base interface with methods that may be provided by Jupiter plugin implementations.
- */
 export interface ExtendedJupiterServiceInterface extends JupiterServiceInterface {
   getPriceImpact?(params: {
     inputMint: string;
@@ -312,9 +260,6 @@ export interface TradingSignal {
   targetTokenCA: string;
 }
 
-/**
- * Swap execution response for a single wallet.
- */
 export interface SwapExecutionResponse {
   success: boolean;
   outAmount?: string;
@@ -338,7 +283,7 @@ export interface AccountNotification {
       | string
       | Buffer
       | {
-          parsed: unknown;
+          parsed: Record<string, string | number | boolean | null>;
           program: string;
           space: number;
         };
@@ -358,9 +303,6 @@ export interface CacheWrapper<T> {
   data: T;
 }
 
-/**
- * Token metadata parsed from Token-2022 TLV.
- */
 export interface Token2022Metadata {
   isMutable: boolean;
   updateAuthority?: string;
@@ -377,9 +319,6 @@ export interface TokenSupplyInfo {
   human: string;
 }
 
-/**
- * Birdeye API token price response.
- */
 export interface BirdeyePriceResponse {
   success: boolean;
   data: {
@@ -401,9 +340,6 @@ export interface BirdeyeWalletTokenItem {
   uiAmount?: string;
 }
 
-/**
- * Birdeye API wallet token list response.
- */
 export interface BirdeyeWalletTokenListResponse {
   success: boolean;
   data?: {
@@ -417,9 +353,6 @@ export interface SwapWalletEntry {
   amount: number;
 }
 
-/**
- * Batch swap result.
- */
 export interface BatchSwapResult {
   success: boolean;
   outAmount?: number;
@@ -446,7 +379,7 @@ export interface TokenAccountEntry {
             uiAmountString: string;
           };
           isNative?: boolean;
-          extensions?: unknown[];
+          extensions?: Array<Record<string, string | number | boolean>>;
         };
       };
     };
@@ -455,9 +388,6 @@ export interface TokenAccountEntry {
   };
 }
 
-/**
- * Token metadata cache entry
- */
 export interface TokenMetaCacheEntry {
   setAt: number;
   data: {

@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! Push Code Action
-//!
-//! Creates a commit with file changes and pushes to a branch.
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -11,7 +8,6 @@ use crate::error::Result;
 use crate::types::{CreateCommitParams, FileChange};
 use crate::GitHubService;
 
-/// Action to push code to a GitHub repository
 pub struct PushCodeAction;
 
 #[async_trait]
@@ -62,7 +58,6 @@ impl GitHubAction for PushCodeAction {
             .and_then(|t| t.as_str())
             .unwrap_or("");
 
-        // Get commit message from state or use text
         let message = context
             .state
             .get("message")
@@ -70,7 +65,6 @@ impl GitHubAction for PushCodeAction {
             .map(|s| s.to_string())
             .unwrap_or_else(|| text.chars().take(100).collect());
 
-        // Get branch from state or use default
         let branch = context
             .state
             .get("branch")
@@ -78,7 +72,6 @@ impl GitHubAction for PushCodeAction {
             .map(|s| s.to_string())
             .unwrap_or_else(|| "main".to_string());
 
-        // Get files from state
         let files: Vec<FileChange> = context
             .state
             .get("files")
@@ -89,7 +82,6 @@ impl GitHubAction for PushCodeAction {
             return Ok(ActionResult::error("No files to commit"));
         }
 
-        // Get optional author info
         let author_name = context
             .state
             .get("authorName")

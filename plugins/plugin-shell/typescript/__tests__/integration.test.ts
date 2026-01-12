@@ -1,8 +1,3 @@
-/**
- * Integration tests for the Shell plugin.
- * No API key required for these tests.
- */
-
 import { describe, expect, it } from "vitest";
 
 describe("Shell Plugin Integration Tests", () => {
@@ -11,7 +6,7 @@ describe("Shell Plugin Integration Tests", () => {
       const { shellPlugin } = await import("../index");
       expect(shellPlugin).toBeDefined();
       expect(shellPlugin.name).toBe("shell");
-    }, 30000); // Increase timeout for dynamic import
+    }, 30000);
 
     it("should have correct description", async () => {
       const { shellPlugin } = await import("../index");
@@ -119,7 +114,6 @@ describe("Shell Plugin Integration Tests", () => {
   describe("Types", () => {
     it("should export CommandResult type", async () => {
       const types = await import("../types");
-      // Type exports don't have runtime values, but we can check the module loads
       expect(types).toBeDefined();
     });
   });

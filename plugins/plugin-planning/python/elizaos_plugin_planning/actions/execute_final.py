@@ -1,7 +1,3 @@
-"""
-Execute final action for the planning plugin.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,7 +6,6 @@ from elizaos_plugin_planning.actions.analyze_input import ActionExample
 
 @dataclass
 class ExecuteFinalAction:
-    """Action to execute the final action based on processing results."""
 
     @property
     def name(self) -> str:

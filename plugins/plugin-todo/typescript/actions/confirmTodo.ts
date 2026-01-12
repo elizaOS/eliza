@@ -17,7 +17,6 @@ import {
 import { extractConfirmationTemplate } from "../generated/prompts/typescript/prompts.js";
 import { createTodoDataService } from "../services/todoDataService";
 
-// Interface for confirmation data stored in state
 interface PendingTodoData {
   name: string;
   description?: string;
@@ -30,16 +29,12 @@ interface PendingTodoData {
   metadata?: Record<string, unknown>;
 }
 
-// Interface for confirmation response
 interface ConfirmationResponse {
   isConfirmation: boolean;
   shouldProceed: boolean;
   modifications?: string;
 }
 
-/**
- * Extracts confirmation intent from the user's message
- */
 async function extractConfirmationIntent(
   runtime: IAgentRuntime,
   message: Memory,
@@ -92,16 +87,12 @@ ${pendingTask.recurring ? `Recurring: ${pendingTask.recurring}` : ""}
   };
 }
 
-/**
- * The CONFIRM_TODO action handles the confirmation step of todo creation
- */
 export const confirmTodoAction: Action = {
   name: "CONFIRM_TODO",
   similes: ["CONFIRM_TASK", "APPROVE_TODO", "APPROVE_TASK", "TODO_CONFIRM"],
   description: "Confirms or cancels a pending todo creation after user review.",
 
   validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State): Promise<boolean> => {
-    // This action is only valid if there's a pending todo in the state
     const pendingTodo = state?.data?.pendingTodo as PendingTodoData | undefined;
     return !!pendingTodo;
   },
@@ -147,11 +138,9 @@ export const confirmTodoAction: Action = {
       return;
     }
 
-    // Extract confirmation intent
     const confirmation = await extractConfirmationIntent(runtime, message, pendingTodo, state);
 
     if (!confirmation.isConfirmation) {
-      // User said something unrelated to the confirmation
       if (callback) {
         await callback({
           text: `I'm still waiting for your confirmation on the task "${pendingTodo.name}". Would you like me to create it?`,
@@ -163,8 +152,6 @@ export const confirmTodoAction: Action = {
     }
 
     if (!confirmation.shouldProceed) {
-      // User rejected the task
-      // Clear the pending todo from state
       delete state.data.pendingTodo;
 
       if (callback) {
@@ -177,10 +164,8 @@ export const confirmTodoAction: Action = {
       return { success: false, text: "Task creation cancelled" };
     }
 
-    // User confirmed - create the task
     const dataService = createTodoDataService(runtime);
 
-    // Check for duplicates one more time
     const existingTodos = await dataService.getTodos({
       entityId: message.entityId,
       roomId: message.roomId,
@@ -201,7 +186,6 @@ export const confirmTodoAction: Action = {
       return { success: false, text: "Duplicate task found" };
     }
 
-    // Create the task
     const room = state.data?.room ?? (await runtime.getRoom(message.roomId));
     const worldId = room?.worldId || message.worldId || runtime.agentId;
 
@@ -224,10 +208,8 @@ export const confirmTodoAction: Action = {
       throw new Error("Failed to create todo");
     }
 
-    // Clear the pending todo from state
     delete state.data.pendingTodo;
 
-    // Send success message
     let successMessage = "";
     if (pendingTodo.taskType === "daily") {
       successMessage = `✅ Created daily task: "${pendingTodo.name}". Complete it regularly to build your streak!`;

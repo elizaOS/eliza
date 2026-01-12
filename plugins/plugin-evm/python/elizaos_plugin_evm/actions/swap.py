@@ -132,3 +132,9 @@ swap_action = {
     ],
     "handler": execute_swap,
 }
+
+# TS parity aliases (keep legacy names too)
+evm_swap_tokens_action = {
+    **swap_action,
+    "name": "EVM_SWAP_TOKENS",
+}

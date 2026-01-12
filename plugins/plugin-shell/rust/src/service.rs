@@ -141,8 +141,6 @@ impl ShellService {
     /// Run a command using tokio process.
     async fn run_command(&self, command: &str) -> Result<CommandResult> {
         let cwd = self.current_directory.display().to_string();
-
-        // Check if we need shell for redirects/pipes
         let use_shell = command.contains('>') || command.contains('<') || command.contains('|');
 
         let mut cmd = if use_shell {
@@ -172,8 +170,6 @@ impl ShellService {
             .stderr(Stdio::piped());
 
         let timeout_duration = Duration::from_millis(self.config.timeout_ms);
-
-        // Spawn the child process
         let spawn_result = cmd.spawn();
 
         match spawn_result {
@@ -181,7 +177,6 @@ impl ShellService {
                 let stdout_handle = child.stdout.take();
                 let stderr_handle = child.stderr.take();
 
-                // Wait for the process with timeout
                 match timeout(timeout_duration, child.wait()).await {
                     Ok(Ok(status)) => {
                         let mut stdout = String::new();
@@ -229,7 +224,6 @@ impl ShellService {
         }
     }
 
-    /// Add a command to the history.
     fn add_to_history(
         &mut self,
         conversation_id: &str,
@@ -259,13 +253,11 @@ impl ShellService {
 
         history.push(entry);
 
-        // Trim history if it exceeds max length
         if history.len() > self.max_history_per_conversation {
             history.remove(0);
         }
     }
 
-    /// Detect file operations from a command.
     fn detect_file_operations(&self, command: &str) -> Option<Vec<FileOperation>> {
         let parts: Vec<&str> = command.split_whitespace().collect();
         if parts.is_empty() {
@@ -343,7 +335,6 @@ impl ShellService {
         }
     }
 
-    /// Get command history for a conversation.
     pub fn get_command_history(
         &self,
         conversation_id: &str,
@@ -361,18 +352,15 @@ impl ShellService {
         }
     }
 
-    /// Clear command history for a conversation.
     pub fn clear_command_history(&mut self, conversation_id: &str) {
         self.command_history.remove(conversation_id);
         info!("Cleared command history for conversation: {}", conversation_id);
     }
 
-    /// Get the current directory for a conversation.
     pub fn get_current_directory(&self, _conversation_id: Option<&str>) -> &Path {
         &self.current_directory
     }
 
-    /// Get the allowed directory.
     pub fn get_allowed_directory(&self) -> &Path {
         &self.config.allowed_directory
     }

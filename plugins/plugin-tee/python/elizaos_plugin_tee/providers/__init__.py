@@ -1,7 +1,3 @@
-"""
-TEE Providers exports.
-"""
-
 from elizaos_plugin_tee.providers.base import DeriveKeyProvider, RemoteAttestationProvider
 from elizaos_plugin_tee.providers.derive_key import (
     PhalaDeriveKeyProvider,
@@ -12,6 +8,9 @@ from elizaos_plugin_tee.providers.remote_attestation import (
     get_remote_attestation,
 )
 
+PHALA_DERIVE_KEY_PROVIDER_NAME = "phala-derive-key"
+PHALA_REMOTE_ATTESTATION_PROVIDER_NAME = "phala-remote-attestation"
+
 __all__ = [
     "DeriveKeyProvider",
     "RemoteAttestationProvider",
@@ -19,9 +18,7 @@ __all__ = [
     "PhalaRemoteAttestationProvider",
     "get_derived_keys",
     "get_remote_attestation",
+    "PHALA_DERIVE_KEY_PROVIDER_NAME",
+    "PHALA_REMOTE_ATTESTATION_PROVIDER_NAME",
 ]
-
-
-
-
 

@@ -15,6 +15,7 @@ pub mod error;
 pub mod models;
 /// Providers for n8n plugin status and capabilities information.
 pub mod providers;
+pub mod service;
 pub mod types;
 
 #[cfg(feature = "wasm")]
@@ -24,11 +25,12 @@ pub use client::PluginCreationClient;
 pub use config::N8nConfig;
 pub use error::{N8nError, Result};
 pub use models::{ClaudeModel, JobStatus};
+pub use service::{PluginCreationService, PLUGIN_CREATION_SERVICE_TYPE};
 pub use types::PluginSpecification;
 
 pub use actions::{
-    ActionContext, ActionResult, CancelPluginAction, CheckStatusAction, CreateFromDescriptionAction,
-    CreatePluginAction, N8nAction,
+    ActionContext, ActionResult, CancelPluginAction, CheckStatusAction,
+    CreateFromDescriptionAction, CreatePluginAction, N8nAction,
 };
 
 pub use providers::{

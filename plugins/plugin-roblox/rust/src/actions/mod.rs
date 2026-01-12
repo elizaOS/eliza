@@ -1,14 +1,9 @@
 #![allow(missing_docs)]
-//! Actions for the Roblox plugin.
-//!
-//! This module provides action definitions that can be used by elizaOS agents
-//! to interact with Roblox games.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Action trait for elizaOS compatibility.
 #[async_trait]
 pub trait Action: Send + Sync {
     fn name(&self) -> &'static str;
@@ -24,11 +19,6 @@ pub struct ActionExample {
     pub output: String,
 }
 
-// ============================================================================
-// Send Game Message Action
-// ============================================================================
-
-/// Action to send a message to Roblox game players.
 pub struct SendGameMessageAction;
 
 #[async_trait]
@@ -82,12 +72,15 @@ impl Action for SendGameMessageAction {
     }
 }
 
-// ============================================================================
-// Execute Game Action
-// ============================================================================
-
-/// Action to execute a custom game action.
 pub struct ExecuteGameActionAction;
+
+/// Known in-game action names supported by the TypeScript implementation.
+pub const AVAILABLE_GAME_ACTION_NAMES: &[&str] = &[
+    "give_coins",
+    "teleport",
+    "spawn_entity",
+    "start_event",
+];
 
 #[async_trait]
 impl Action for ExecuteGameActionAction {
@@ -141,14 +134,8 @@ impl Action for ExecuteGameActionAction {
     }
 }
 
-// ============================================================================
-// Get Player Info Action
-// ============================================================================
-
-/// Action to look up a player by ID or username.
 pub struct GetPlayerInfoAction;
 
-/// Player identifier type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum PlayerIdentifier {
@@ -201,7 +188,6 @@ impl Action for GetPlayerInfoAction {
     }
 }
 
-/// Get all Roblox plugin action names.
 pub fn get_roblox_action_names() -> Vec<&'static str> {
     vec![
         "SEND_ROBLOX_MESSAGE",
@@ -238,10 +224,5 @@ mod tests {
         assert!(!action.validate("hello world").await);
     }
 }
-
-
-
-
-
 
 

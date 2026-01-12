@@ -23,7 +23,6 @@ export async function handleTextEmbedding(
   }
 
   if (params === null) {
-    logger.debug("Creating test embedding for initialization");
     const testVector = Array(embeddingDimension).fill(0) as number[];
     testVector[0] = 0.1;
     return testVector;
@@ -109,7 +108,6 @@ export async function handleTextEmbedding(
       emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, text, usage);
     }
 
-    logger.log(`Got valid embedding with length ${embedding.length}`);
     return embedding;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

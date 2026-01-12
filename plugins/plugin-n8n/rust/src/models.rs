@@ -129,10 +129,3 @@ mod tests {
         assert!(JobStatus::Cancelled.is_terminal());
     }
 }
-
-
-
-
-
-
-

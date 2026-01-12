@@ -223,36 +223,19 @@ export class TranscribeManager {
     }
 
     try {
-      // Check if the buffer is already a WAV file
       const isWav =
         audioBuffer.length > 4 &&
         audioBuffer.toString("ascii", 0, 4) === "RIFF" &&
         audioBuffer.length > 12 &&
         audioBuffer.toString("ascii", 8, 12) === "WAVE";
 
-      // Use appropriate extension based on format detection
       const extension = isWav ? ".wav" : "";
       const tempInputFile = path.join(this.cacheDir, `temp_input_${Date.now()}${extension}`);
       const tempWavFile = path.join(this.cacheDir, `temp_${Date.now()}.wav`);
 
-      // logger.info("Creating temporary files", {
-      //   inputFile: tempInputFile,
-      //   wavFile: tempWavFile,
-      //   bufferSize: audioBuffer.length,
-      //   timestamp: new Date().toISOString()
-      // });
-
-      // Write buffer to temporary file
       fs.writeFileSync(tempInputFile, audioBuffer);
-      // logger.info("Temporary input file created", {
-      //   path: tempInputFile,
-      //   size: audioBuffer.length,
-      //   timestamp: new Date().toISOString()
-      // });
 
-      // If already WAV with correct format, skip conversion
       if (isWav) {
-        // Check if it's already in the correct format (16kHz, mono, 16-bit)
         try {
           const { stdout } = await execAsync(
             `ffprobe -v error -show_entries stream=sample_rate,channels,bits_per_raw_sample -of json "${tempInputFile}"`

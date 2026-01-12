@@ -1,4 +1,4 @@
-//! SWAP_SOLANA action implementation.
+#![allow(missing_docs)]
 
 use rust_decimal::Decimal;
 use solana_sdk::pubkey::Pubkey;
@@ -9,37 +9,22 @@ use crate::client::SolanaClient;
 use crate::types::SwapQuoteParams;
 use crate::WRAPPED_SOL_MINT;
 
-/// Result of a swap action.
 #[derive(Debug, Clone)]
 pub struct SwapActionResult {
-    /// Whether the action succeeded.
     pub success: bool,
-    /// Response text.
     pub text: String,
-    /// Transaction signature if successful.
     pub signature: Option<String>,
-    /// Input amount.
     pub in_amount: Option<String>,
-    /// Output amount.
     pub out_amount: Option<String>,
-    /// Error message if failed.
     pub error: Option<String>,
 }
 
-/// Swap Action for Solana.
-///
-/// Performs token swaps via Jupiter DEX aggregator.
 pub struct SwapAction;
 
 impl SwapAction {
-    /// Action name.
     pub const NAME: &'static str = "SWAP_SOLANA";
-
-    /// Action description.
     pub const DESCRIPTION: &'static str =
         "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.";
-
-    /// Similar action names.
     pub const SIMILES: &'static [&'static str] = &[
         "SWAP_SOL",
         "SWAP_TOKENS_SOLANA",
@@ -48,33 +33,10 @@ impl SwapAction {
         "EXCHANGE_TOKENS_SOLANA",
     ];
 
-    /// Validate if the swap action can be executed.
-    ///
-    /// # Arguments
-    ///
-    /// * `client` - Reference to the Solana client.
-    ///
-    /// # Returns
-    ///
-    /// True if the client is properly configured.
     pub fn validate(client: &SolanaClient) -> bool {
-        // Check that we have a valid public key configured
         !client.public_key().to_string().is_empty()
     }
 
-    /// Execute the swap action.
-    ///
-    /// # Arguments
-    ///
-    /// * `client` - The Solana client.
-    /// * `input_mint` - Input token mint address.
-    /// * `output_mint` - Output token mint address.
-    /// * `amount` - Amount to swap in token units.
-    /// * `slippage_bps` - Slippage tolerance in basis points (default: 50 = 0.5%).
-    ///
-    /// # Returns
-    ///
-    /// The swap result.
     pub async fn handle(
         client: &SolanaClient,
         input_mint: &str,
@@ -87,7 +49,6 @@ impl SwapAction {
             amount, input_mint, output_mint
         );
 
-        // Validate addresses
         if Pubkey::from_str(input_mint).is_err() {
             return SwapActionResult {
                 success: false,
@@ -110,8 +71,6 @@ impl SwapAction {
             };
         }
 
-        // Calculate amount in lamports/smallest unit
-        // For SOL and most SPL tokens, this is 9 decimals
         let decimals = 9;
         let amount_raw = (amount * Decimal::from(10u64.pow(decimals)))
             .to_string()
@@ -127,7 +86,6 @@ impl SwapAction {
             slippage_bps: slippage_bps.unwrap_or(50),
         };
 
-        // Get quote
         let quote = match client.get_swap_quote(&quote_params).await {
             Ok(q) => q,
             Err(e) => {
@@ -143,7 +101,6 @@ impl SwapAction {
             }
         };
 
-        // Execute swap
         match client.execute_swap(&quote).await {
             Ok(result) => {
                 let text = if let Some(ref sig) = result.signature {
@@ -177,7 +134,6 @@ impl SwapAction {
         }
     }
 
-    /// Helper to resolve SOL symbol to wrapped SOL mint.
     pub fn resolve_sol_mint(symbol_or_mint: &str) -> &str {
         if symbol_or_mint.to_uppercase() == "SOL" {
             WRAPPED_SOL_MINT

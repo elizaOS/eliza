@@ -3,8 +3,10 @@
 //! Contains provider implementations for goal state.
 
 mod goals_state;
+mod goals;
 
 pub use goals_state::GoalsStateProvider;
+pub use goals::GoalsProvider;
 
 use async_trait::async_trait;
 use serde_json::Value;

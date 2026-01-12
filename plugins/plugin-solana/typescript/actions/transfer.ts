@@ -63,8 +63,7 @@ export default {
     "PAY_TOKENS_SOLANA",
     "PAY_SOLANA",
   ],
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
-    runtime.logger.log("Validating transfer from entity:", message.entityId);
+  validate: async () => {
     return true;
   },
   description: "Transfer SOL or SPL tokens to another address on Solana.",
@@ -72,13 +71,11 @@ export default {
     runtime: IAgentRuntime,
     _message: Memory,
     state: State,
-    _options: { [key: string]: unknown },
+    _options: Record<string, string | number | boolean>,
     callback?: HandlerCallback
   ): Promise<undefined | ActionResult | undefined> => {
-    logger.log("Starting TRANSFER handler...");
-
     const transferPrompt = composePromptFromState({
-      state: state,
+      state,
       template: transferTemplate,
     });
 

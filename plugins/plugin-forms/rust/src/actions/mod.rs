@@ -1,10 +1,10 @@
+mod cancel_form;
 mod create_form;
 mod update_form;
-mod cancel_form;
 
+pub use cancel_form::CancelFormAction;
 pub use create_form::CreateFormAction;
 pub use update_form::UpdateFormAction;
-pub use cancel_form::CancelFormAction;
 
 use std::collections::HashMap;
 
@@ -12,7 +12,8 @@ pub trait Action: Send + Sync {
     fn name(&self) -> &'static str;
     fn similes(&self) -> Vec<&'static str>;
     fn description(&self) -> &'static str;
-    fn validate(&self, message_text: &str, has_active_forms: bool, has_forms_service: bool) -> bool;
+    fn validate(&self, message_text: &str, has_active_forms: bool, has_forms_service: bool)
+        -> bool;
     fn examples(&self) -> Vec<ActionExample>;
 }
 
@@ -31,7 +32,7 @@ impl ActionExample {
             actions: vec![],
         }
     }
-    
+
     pub fn assistant(text: &'static str, actions: Vec<&'static str>) -> Self {
         Self {
             role: "assistant",
@@ -56,7 +57,7 @@ impl ActionResult {
             error: None,
         }
     }
-    
+
     pub fn failure(error: impl Into<String>) -> Self {
         Self {
             success: false,
@@ -82,7 +83,7 @@ mod tests {
     fn test_get_actions() {
         let actions = get_actions();
         assert_eq!(actions.len(), 3);
-        
+
         let names: Vec<_> = actions.iter().map(|a| a.name()).collect();
         assert!(names.contains(&"CREATE_FORM"));
         assert!(names.contains(&"UPDATE_FORM"));

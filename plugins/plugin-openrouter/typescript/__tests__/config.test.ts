@@ -4,9 +4,6 @@ import * as undici from "undici";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { openrouterPlugin } from "../index";
 
-/**
- * Creates a REAL AgentRuntime for testing - NO MOCKS.
- */
 async function createTestRuntime(settings: Record<string, string> = {}): Promise<{
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;
@@ -57,7 +54,6 @@ describe("OpenRouter Plugin Configuration", () => {
   let cleanup: () => Promise<void>;
 
   beforeEach(() => {
-    // Stub undici fetch to prevent network calls
     vi.spyOn(undici, "fetch").mockImplementation(() =>
       Promise.resolve({
         ok: true,
@@ -69,7 +65,6 @@ describe("OpenRouter Plugin Configuration", () => {
   });
 
   afterEach(async () => {
-    // Clear all mocks
     vi.restoreAllMocks();
     if (cleanup) {
       await cleanup();
@@ -77,61 +72,45 @@ describe("OpenRouter Plugin Configuration", () => {
   });
 
   test("should warn when API key is missing", async () => {
-    // Save original env value
     const originalApiKey = process.env.OPENROUTER_API_KEY;
-
-    // Clear API key from environment
     delete process.env.OPENROUTER_API_KEY;
 
-    // Create a real runtime with no API key
     const result = await createTestRuntime({});
     cleanup = result.cleanup;
 
-    // Spy on logger warnings
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
-    // Initialize plugin
     if (openrouterPlugin.init) {
       await openrouterPlugin.init({}, result.runtime);
     }
 
-    // Wait a tick for async initialization
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Check that warning was logged
     expect(warnSpy).toHaveBeenCalled();
-
-    // Restore mock
     warnSpy.mockRestore();
 
-    // Restore original env value
     if (originalApiKey) {
       process.env.OPENROUTER_API_KEY = originalApiKey;
     }
   });
 
   test("should initialize properly with valid API key", async () => {
-    // Skip if no API key available for testing
     if (!process.env.OPENROUTER_API_KEY) {
       console.warn("Skipping test: OPENROUTER_API_KEY not set");
       return;
     }
 
-    // Create a real runtime with API key
     const result = await createTestRuntime({
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     });
     cleanup = result.cleanup;
 
-    // Initialize plugin
     if (openrouterPlugin.init) {
       await openrouterPlugin.init({}, result.runtime);
     }
 
-    // Wait a tick for async validation
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    // Check that fetch was called to validate API key
     expect(undici.fetch).toHaveBeenCalled();
     expect(undici.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/models"),
@@ -144,7 +123,6 @@ describe("OpenRouter Plugin Configuration", () => {
   });
 
   test("should use custom image model when configured", async () => {
-    // Create a real runtime with custom model settings
     const customImageModel = "anthropic/claude-3-opus-vision";
     const result = await createTestRuntime({
       OPENROUTER_IMAGE_MODEL: customImageModel,
@@ -152,22 +130,17 @@ describe("OpenRouter Plugin Configuration", () => {
     });
     cleanup = result.cleanup;
 
-    // Create spy to access private function
     const getSpy = vi.spyOn(result.runtime, "getSetting");
 
-    // Check if our model is used
     if (openrouterPlugin.models?.IMAGE_DESCRIPTION) {
       const imageDescHandler = openrouterPlugin.models.IMAGE_DESCRIPTION;
 
-      // Just initiating the handler should call getSetting with OPENROUTER_IMAGE_MODEL
       try {
         imageDescHandler(result.runtime, "https://example.com/image.jpg");
       } catch (_err) {
-        // We expect an error since we're not making a real API call
-        // We just want to verify getSetting was called
+        // Expected error - not making real API call
       }
 
-      // Verify getSetting was called with OPENROUTER_IMAGE_MODEL
       expect(getSpy).toHaveBeenCalledWith("OPENROUTER_IMAGE_MODEL");
     }
   });
@@ -186,20 +159,17 @@ describe("OpenRouter Plugin Configuration", () => {
     });
     cleanup = result.cleanup;
 
-    // Create spy to access getSetting calls
     const getSpy = vi.spyOn(result.runtime, "getSetting");
 
     if (openrouterPlugin.models?.TEXT_EMBEDDING) {
       const embeddingHandler = openrouterPlugin.models.TEXT_EMBEDDING;
 
-      // Call with null to trigger the test embedding path (no API call)
       try {
         embeddingHandler(result.runtime, null);
       } catch (_err) {
-        // Ignore errors, we just want to verify config access
+        // Ignore errors
       }
 
-      // Verify getSetting was called with OPENROUTER_EMBEDDING_MODEL or EMBEDDING_MODEL
       const calls = getSpy.mock.calls.map((call) => call[0]);
       expect(
         calls.some(

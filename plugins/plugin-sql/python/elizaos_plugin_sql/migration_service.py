@@ -91,13 +91,11 @@ def _normalize_schema_name(input_str: str) -> str:
 
 
 class MigrationBase(DeclarativeBase):
-    """Base for migration tracking tables."""
 
     pass
 
 
 class MigrationTable(MigrationBase):
-    """Tracks migration history per plugin."""
 
     __tablename__ = "_migrations"
 
@@ -108,7 +106,6 @@ class MigrationTable(MigrationBase):
 
 
 class JournalTable(MigrationBase):
-    """Tracks migration journal per plugin."""
 
     __tablename__ = "_journal"
 
@@ -119,7 +116,6 @@ class JournalTable(MigrationBase):
 
 
 class SnapshotTable(MigrationBase):
-    """Stores schema snapshots per plugin."""
 
     __tablename__ = "_snapshots"
 
@@ -153,7 +149,6 @@ class MigrationService:
         self.engine = engine
 
     async def initialize(self) -> None:
-        """Initialize migration tracking tables."""
         async with self.engine.begin() as conn:
             # Check if we're using PostgreSQL (SQLite doesn't support schemas)
             dialect_name = self.engine.dialect.name

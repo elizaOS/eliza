@@ -41,22 +41,15 @@ export class GitHubService extends Service {
   private octokit: Octokit | null = null;
   private _config: GitHubPluginConfig | null = null;
 
-  // Override config to be compatible with base class
   declare config?: Metadata;
 
   capabilityDescription =
     "GitHub integration for repository management, issues, pull requests, and code reviews";
 
-  /**
-   * Get the service name.
-   */
   get name(): string {
     return GITHUB_SERVICE_NAME;
   }
 
-  /**
-   * Get the current configuration.
-   */
   getConfig(): GitHubPluginConfig {
     if (!this._config) {
       throw new Error("GitHub service not initialized");
@@ -367,13 +360,6 @@ export class GitHubService extends Service {
     return data.map((r) => this.mapReview(r));
   }
 
-  // ===========================================================================
-  // Comment Operations
-  // ===========================================================================
-
-  /**
-   * Create a comment on an issue or pull request.
-   */
   async createComment(params: CreateCommentParams): Promise<GitHubComment> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -413,14 +399,11 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    // First, get the SHA of the source ref
     let sha: string;
 
     if (params.fromRef.match(/^[0-9a-f]{40}$/i)) {
-      // It's already a SHA
       sha = params.fromRef;
     } else {
-      // It's a branch name, get its SHA
       const { data: refData } = await client.git.getRef({
         owner,
         repo,
@@ -493,7 +476,6 @@ export class GitHubService extends Service {
       throw new FileNotFoundError(`${params.path} is not a file`, owner, repo);
     }
 
-    // Decode content
     let content = "";
     if ("content" in data && data.content) {
       content = Buffer.from(data.content, "base64").toString("utf-8");
@@ -542,7 +524,6 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    // Get the current commit SHA for the branch
     let parentSha = params.parentSha;
     if (!parentSha) {
       const { data: refData } = await client.git.getRef({
@@ -553,14 +534,12 @@ export class GitHubService extends Service {
       parentSha = refData.object.sha;
     }
 
-    // Get the tree of the parent commit
     const { data: parentCommit } = await client.git.getCommit({
       owner,
       repo,
       commit_sha: parentSha,
     });
 
-    // Create blobs for each file
     const treeItems: Array<{
       path: string;
       mode: "100644" | "100755" | "040000" | "160000" | "120000";
@@ -588,7 +567,6 @@ export class GitHubService extends Service {
       });
     }
 
-    // Create a new tree
     const { data: newTree } = await client.git.createTree({
       owner,
       repo,
@@ -610,7 +588,6 @@ export class GitHubService extends Service {
         : undefined,
     });
 
-    // Update the branch reference
     await client.git.updateRef({
       owner,
       repo,
@@ -677,13 +654,6 @@ export class GitHubService extends Service {
     }));
   }
 
-  // ===========================================================================
-  // User Operations
-  // ===========================================================================
-
-  /**
-   * Get the authenticated user.
-   */
   async getAuthenticatedUser(): Promise<GitHubUser> {
     const client = this.getClient();
 
@@ -698,13 +668,6 @@ export class GitHubService extends Service {
     return this.mapUser(data);
   }
 
-  // ===========================================================================
-  // Helper Methods
-  // ===========================================================================
-
-  /**
-   * Resolve repository reference with defaults.
-   */
   private resolveRepoRef(params: Partial<RepositoryRef>): {
     owner: string;
     repo: string;

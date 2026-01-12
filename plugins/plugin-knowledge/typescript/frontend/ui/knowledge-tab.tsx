@@ -124,13 +124,12 @@ interface UploadResultItem {
   filename?: string;
 }
 
-// Helper function to get correct MIME type based on file extension
 const getCorrectMimeType = (file: File): string => {
   const filename = file.name.toLowerCase();
   const ext = filename.split(".").pop() || "";
 
   // Map common text file extensions to text/plain
-  const textExtensions = [
+  const textExtensions: string[] = [
     "ts",
     "tsx",
     "js",
@@ -204,15 +203,14 @@ const getCorrectMimeType = (file: File): string => {
     "txt",
   ];
 
-  const markdownExtensions = ["md", "markdown"];
-  const jsonExtensions = ["json"];
-  const xmlExtensions = ["xml"];
-  const htmlExtensions = ["html", "htm"];
-  const cssExtensions = ["css", "scss", "sass", "less"];
-  const csvExtensions = ["csv", "tsv"];
-  const yamlExtensions = ["yaml", "yml"];
+  const markdownExtensions: string[] = ["md", "markdown"];
+  const jsonExtensions: string[] = ["json"];
+  const xmlExtensions: string[] = ["xml"];
+  const htmlExtensions: string[] = ["html", "htm"];
+  const cssExtensions: string[] = ["css", "scss", "sass", "less"];
+  const csvExtensions: string[] = ["csv", "tsv"];
+  const yamlExtensions: string[] = ["yaml", "yml"];
 
-  // Check extensions and return appropriate MIME type
   if (textExtensions.includes(ext)) {
     return "text/plain";
   } else if (markdownExtensions.includes(ext)) {
@@ -237,13 +235,10 @@ const getCorrectMimeType = (file: File): string => {
     return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   }
 
-  // Return the original MIME type if not recognized
   return file.type || "application/octet-stream";
 };
 
-// Get the API base path from the injected configuration
 const getApiBase = () => {
-  // Check if we have the ELIZA_CONFIG from the server
   if (window.ELIZA_CONFIG?.apiBase) {
     return window.ELIZA_CONFIG.apiBase;
   }
@@ -256,7 +251,6 @@ const apiClient = {
     options?: { limit?: number; before?: number; includeEmbedding?: boolean }
   ) => {
     const params = new URLSearchParams();
-    // Don't append agentId to params if it's already in the URL path
     if (options?.limit) params.append("limit", options.limit.toString());
     if (options?.before) params.append("before", options.before.toString());
     if (options?.includeEmbedding) params.append("includeEmbedding", "true");
@@ -372,7 +366,6 @@ const useKnowledgeDocuments = (
 };
 
 const useKnowledgeChunks = (agentId: UUID, enabled: boolean = true, selectedDocumentId?: UUID) => {
-  // Query for documents only (initial load)
   const {
     data: documents = [],
     isLoading: documentsLoading,
@@ -388,7 +381,6 @@ const useKnowledgeChunks = (agentId: UUID, enabled: boolean = true, selectedDocu
     enabled: enabled && !selectedDocumentId,
   });
 
-  // Query for specific document with all its fragments
   const {
     data: documentWithFragments = [],
     isLoading: fragmentsLoading,
@@ -406,7 +398,6 @@ const useKnowledgeChunks = (agentId: UUID, enabled: boolean = true, selectedDocu
     enabled: enabled && !!selectedDocumentId,
   });
 
-  // Combine the data appropriately
   const allMemories = selectedDocumentId ? documentWithFragments : documents;
   const isLoading = documentsLoading || fragmentsLoading;
   const error = documentsError || fragmentsError;
@@ -423,7 +414,6 @@ const useKnowledgeChunks = (agentId: UUID, enabled: boolean = true, selectedDocu
   };
 };
 
-// Hook for deleting knowledge documents
 const useDeleteKnowledgeDocument = (agentId: UUID) => {
   const queryClient = useQueryClient();
   return useMutation<void, Error, { knowledgeId: UUID }>({
@@ -438,7 +428,6 @@ const useDeleteKnowledgeDocument = (agentId: UUID) => {
   });
 };
 
-// Type to represent content that can be viewed (either Memory or SearchResult)
 type ViewableContent =
   | Memory
   | {
@@ -466,7 +455,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
   const [urlError, setUrlError] = useState<string | null>(null);
   const [urls, setUrls] = useState<string[]>([]);
 
-  // Search result type
   interface SearchResult {
     id?: string;
     content?: { text?: string };
@@ -495,14 +483,12 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // List mode: use useKnowledgeDocuments to get only documents
   const {
     data: documentsOnly = [],
     isLoading: documentsLoading,
     error: documentsError,
   } = useKnowledgeDocuments(agentId, viewMode === "list" && !showSearch, false);
 
-  // Graph mode: use useKnowledgeChunks to get documents and fragments
   const {
     data: graphMemories = [],
     isLoading: graphLoading,
@@ -511,18 +497,15 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     fragments: graphFragments = [],
   } = useKnowledgeChunks(agentId, viewMode === "graph" && !showSearch, selectedDocumentForGraph);
 
-  // Use the appropriate data based on the mode
   const isLoading = viewMode === "list" ? documentsLoading : graphLoading;
   const error = viewMode === "list" ? documentsError : graphError;
   const memories = viewMode === "list" ? documentsOnly : graphMemories;
 
-  // Calculate counts for display
   const documentCount = viewMode === "list" ? documentsOnly.length : graphDocuments.length;
   const fragmentCount = viewMode === "graph" ? graphFragments.length : 0;
 
   const { mutate: deleteKnowledgeDoc } = useDeleteKnowledgeDocument(agentId);
 
-  // Filter memories by filename in list view
   const filteredMemories = React.useMemo(() => {
     if (viewMode !== "list" || !filenameFilter.trim()) {
       return memories;
@@ -557,17 +540,15 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     setVisibleItems(ITEMS_PER_PAGE);
   }, []);
 
-  // Reset visible items when filter changes
   useEffect(() => {
     setVisibleItems(ITEMS_PER_PAGE);
   }, []);
 
-  // Handle escape key to close document detail modal
   useEffect(() => {
     const handleEscapeKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && viewingContent) {
         setViewingContent(null);
-        setPdfZoom(1.0); // Reset zoom when closing
+        setPdfZoom(1.0);
       }
     };
 
@@ -585,7 +566,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     }
   }, [handleScroll]);
 
-  // Track changes to selectedMemory and scroll to it
   const detailsPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -598,8 +578,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     }
   }, [selectedMemory]);
 
-  // Memoized callback for graph node clicks to prevent unnecessary re-renders
-  // MUST be defined here (before early returns) to follow Rules of Hooks
   const handleGraphNodeClick = useCallback((memory: Memory) => {
     setSelectedMemory(memory);
   }, []);
@@ -714,19 +692,15 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
   };
 
   const handleUrlSubmit = async () => {
-    // Check if there's a URL in the input field that hasn't been added to the list
     if (urlInput.trim()) {
       try {
         const url = new URL(urlInput);
         if (url.protocol.startsWith("http") && !urls.includes(urlInput)) {
           setUrls([...urls, urlInput]);
         }
-      } catch (_e) {
-        // If the input is not a valid URL, just ignore it
-      }
+      } catch {}
     }
 
-    // If no URLs to process, show error
     if (urls.length === 0) {
       setUrlError("Please add at least one valid URL");
       return;
@@ -806,8 +780,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
       }
 
       const result = await response.json();
-
-      // The actual array of upload outcomes is in result.data
       const uploadOutcomes: UploadResultItem[] = result.data || [];
 
       if (
@@ -889,7 +861,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
 
   const HeaderControls = () => {
     if (isDocumentFocused) {
-      // Simplified controls when document is focused
       return (
         <>
           <Button
@@ -919,7 +890,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     }
 
     if (showSearch) {
-      // Search mode: only show List View button
       return (
         <Button
           variant="outline"
@@ -942,7 +912,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     }
 
     if (viewMode === "graph") {
-      // Graph mode: only show List View button
       return (
         <Button
           variant="outline"
@@ -958,7 +927,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
       );
     }
 
-    // List mode: show full controls
     return (
       <>
         <Button
@@ -1024,7 +992,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
   const KnowledgeCard = ({ memory, index }: { memory: Memory; index: number }) => {
     const metadata = (memory.metadata as MemoryMetadata) || {};
 
-    // Try to get a meaningful name from various metadata fields
     const getDocumentName = () => {
       if (metadata.title) return metadata.title;
       if (metadata.filename) return metadata.filename;
@@ -1060,7 +1027,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
         onClick={() => setViewingContent(memory)}
       >
         <div className="flex items-center px-1 py-2 min-h-[2rem]">
-          {/* Left side: Icon + Filename + Pill + Date */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <div className="flex-shrink-0">{getFileIcon(displayName)}</div>
             <div className="flex-1 min-w-0">
@@ -1082,7 +1048,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
             </div>
           </div>
 
-          {/* Right side: Delete button */}
           <div className="flex items-center gap-2 flex-shrink-0">
             {memory.id && (
               <Button
@@ -1107,7 +1072,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     );
   };
 
-  // Component to display the details of a fragment or document
   const MemoryDetails = ({ memory }: { memory: Memory }) => {
     const metadata = memory.metadata as MemoryMetadata;
     const isFragment = metadata?.type === "fragment";
@@ -1222,7 +1186,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     );
   };
 
-  // Check if we're in a focused document view that needs simplified controls
   const isDocumentFocused = viewMode === "graph" && selectedDocumentForGraph && !showSearch;
 
   return (
@@ -1249,7 +1212,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
         </div>
       </div>
 
-      {/* Search Panel */}
       {showSearch && (
         <div className="border-b border-border bg-muted/30 p-4">
           <div className="space-y-4">
@@ -1315,7 +1277,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
         </div>
       )}
 
-      {/* Dialog for URL upload */}
       {showUrlDialog && (
         <Dialog open={showUrlDialog} onOpenChange={setShowUrlDialog}>
           <DialogContent className="max-w-md w-full">
@@ -1423,7 +1384,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
         </Dialog>
       )}
 
-      {/* Existing input for file upload */}
       <input
         ref={fileInputRef}
         type="file"
@@ -1529,7 +1489,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
               )}
             </div>
 
-            {/* Display details of selected node */}
             {selectedMemory && (
               <div
                 ref={detailsPanelRef}
@@ -1541,7 +1500,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
           </div>
         ) : (
           <div className="h-full flex flex-col">
-            {/* Filename filter search bar */}
             <div className="flex-shrink-0 p-4 pb-2 border-b border-border/30">
               <Input
                 placeholder="Filter by filename..."
@@ -1622,12 +1580,9 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                 const isPdf = contentType === "application/pdf" || fileExt === "pdf";
 
                 if (isPdf && viewingContent.content?.text) {
-                  // For PDFs, the content.text contains base64 data
-                  // Validate base64 content before creating data URL
                   const base64Content = viewingContent.content.text.trim();
 
                   if (!base64Content) {
-                    // Show error message if no content available
                     return (
                       <div className="h-full w-full bg-background rounded-lg border border-border p-6 flex items-center justify-center">
                         <div className="text-center text-muted-foreground">
@@ -1652,7 +1607,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                     );
                   }
 
-                  // Create a data URL for the PDF
                   const pdfDataUrl = `data:application/pdf;base64,${base64Content}`;
 
                   return (
@@ -1683,7 +1637,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                     </div>
                   );
                 } else if (isPdf && !viewingContent.content?.text) {
-                  // Show error message for PDFs without content
                   return (
                     <div className="h-full w-full bg-background rounded-lg border border-border p-6 flex items-center justify-center">
                       <div className="text-center text-muted-foreground">
@@ -1707,7 +1660,6 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                     </div>
                   );
                 } else {
-                  // For all other documents, display as plain text
                   return (
                     <div className="h-full w-full bg-background rounded-lg border border-border p-6 overflow-y-auto">
                       <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed text-foreground break-words">
@@ -1723,7 +1675,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                 variant="outline"
                 onClick={() => {
                   setViewingContent(null);
-                  setPdfZoom(1.0); // Reset zoom when closing
+                  setPdfZoom(1.0);
                 }}
               >
                 Close

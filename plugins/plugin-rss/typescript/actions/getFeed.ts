@@ -27,8 +27,6 @@ export const getFeedAction: Action = {
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult> => {
-    runtime.logger.log("GET_NEWSFEED Starting handler...");
-
     const service = runtime.getService("RSS") as RssService;
     if (!service) {
       runtime.logger.error("RSS service not found");

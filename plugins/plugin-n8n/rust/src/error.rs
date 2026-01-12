@@ -10,44 +10,28 @@ pub enum N8nError {
     Config(String),
 
     #[error("{provider}_API_KEY is not configured.")]
-    ApiKey {
-        provider: String,
-    },
+    ApiKey { provider: String },
 
     #[error("Validation error for {field}: {message}")]
-    Validation {
-        field: String,
-        message: String,
-    },
+    Validation { field: String, message: String },
 
     #[error("Invalid plugin name: {name}. Must follow format: @scope/plugin-name")]
-    InvalidPluginName {
-        name: String,
-    },
+    InvalidPluginName { name: String },
 
     #[error("Plugin {name} has already been created in this session")]
-    PluginExists {
-        name: String,
-    },
+    PluginExists { name: String },
 
     #[error("Rate limit exceeded. Please wait before creating another plugin.")]
     RateLimit,
 
     #[error("Maximum number of concurrent jobs ({max_jobs}) reached. Please wait for existing jobs to complete.")]
-    MaxConcurrentJobs {
-        max_jobs: usize,
-    },
+    MaxConcurrentJobs { max_jobs: usize },
 
     #[error("Job {job_id}: {message}")]
-    Job {
-        job_id: String,
-        message: String,
-    },
+    Job { job_id: String, message: String },
 
     #[error("Job {job_id} not found")]
-    JobNotFound {
-        job_id: String,
-    },
+    JobNotFound { job_id: String },
 
     #[error("HTTP request error: {0}")]
     Http(#[from] reqwest::Error),
@@ -112,10 +96,3 @@ impl N8nError {
         }
     }
 }
-
-
-
-
-
-
-

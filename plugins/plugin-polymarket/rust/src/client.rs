@@ -1,12 +1,9 @@
 #![allow(missing_docs)]
-//! CLOB Client for Polymarket API
-//!
-//! Provides HTTP client for interacting with the Polymarket CLOB API.
 
-use reqwest::Client;
-use std::time::Duration;
 use alloy::primitives::Address;
 use alloy::signers::local::PrivateKeySigner;
+use reqwest::Client;
+use std::time::Duration;
 
 use crate::constants::{DEFAULT_CLOB_API_URL, DEFAULT_REQUEST_TIMEOUT_SECS, POLYGON_CHAIN_ID};
 use crate::error::{PolymarketError, Result};
@@ -15,54 +12,39 @@ use crate::types::{
     SimplifiedMarketsResponse,
 };
 
-/// CLOB Client for Polymarket
 pub struct ClobClient {
-    /// HTTP client
     http: Client,
-    /// Base API URL
     base_url: String,
-    /// Chain ID (137 for Polygon)
     chain_id: u64,
-    /// Wallet address
     address: Address,
-    /// API credentials (optional)
     creds: Option<ApiKeyCreds>,
 }
 
 impl ClobClient {
-    /// Create a new CLOB client
-    ///
-    /// # Arguments
-    ///
-    /// * `base_url` - Base URL for the CLOB API (or None for default)
-    /// * `private_key` - Hex-encoded private key
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the private key is invalid
     pub async fn new(base_url: Option<&str>, private_key: &str) -> Result<Self> {
         let base_url = base_url
             .unwrap_or(DEFAULT_CLOB_API_URL)
             .trim_end_matches('/')
             .to_string();
 
-        // Parse private key
         let key = if private_key.starts_with("0x") {
             &private_key[2..]
         } else {
             private_key
         };
 
-        let signer: PrivateKeySigner = key.parse().map_err(|e| {
-            PolymarketError::config_error(format!("Invalid private key: {e}"))
-        })?;
+        let signer: PrivateKeySigner = key
+            .parse()
+            .map_err(|e| PolymarketError::config_error(format!("Invalid private key: {e}")))?;
 
         let address = signer.address();
 
         let http = Client::builder()
             .timeout(Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SECS))
             .build()
-            .map_err(|e| PolymarketError::network_error(format!("Failed to create HTTP client: {e}")))?;
+            .map_err(|e| {
+                PolymarketError::network_error(format!("Failed to create HTTP client: {e}"))
+            })?;
 
         Ok(Self {
             http,
@@ -73,13 +55,6 @@ impl ClobClient {
         })
     }
 
-    /// Create a new authenticated CLOB client
-    ///
-    /// # Arguments
-    ///
-    /// * `base_url` - Base URL for the CLOB API (or None for default)
-    /// * `private_key` - Hex-encoded private key
-    /// * `creds` - API credentials
     pub async fn new_with_creds(
         base_url: Option<&str>,
         private_key: &str,
@@ -90,13 +65,11 @@ impl ClobClient {
         Ok(client)
     }
 
-    /// Get the wallet address
     #[must_use]
     pub fn address(&self) -> Address {
         self.address
     }
 
-    /// Get the chain ID
     #[must_use]
     pub fn chain_id(&self) -> u64 {
         self.chain_id
@@ -123,9 +96,10 @@ impl ClobClient {
             url = format!("{url}?next_cursor={cursor}");
         }
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            PolymarketError::network_error(format!("Failed to fetch markets: {e}"))
-        })?;
+        let response =
+            self.http.get(&url).send().await.map_err(|e| {
+                PolymarketError::network_error(format!("Failed to fetch markets: {e}"))
+            })?;
 
         if !response.status().is_success() {
             return Err(PolymarketError::api_error(format!(
@@ -207,9 +181,10 @@ impl ClobClient {
     pub async fn get_market(&self, condition_id: &str) -> Result<Market> {
         let url = format!("{}/markets/{condition_id}", self.base_url);
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            PolymarketError::network_error(format!("Failed to fetch market: {e}"))
-        })?;
+        let response =
+            self.http.get(&url).send().await.map_err(|e| {
+                PolymarketError::network_error(format!("Failed to fetch market: {e}"))
+            })?;
 
         if !response.status().is_success() {
             if response.status().as_u16() == 404 {
@@ -295,9 +270,10 @@ impl ClobClient {
     pub async fn get_spread(&self, token_id: &str) -> Result<String> {
         let url = format!("{}/spread?token_id={token_id}", self.base_url);
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            PolymarketError::network_error(format!("Failed to fetch spread: {e}"))
-        })?;
+        let response =
+            self.http.get(&url).send().await.map_err(|e| {
+                PolymarketError::network_error(format!("Failed to fetch spread: {e}"))
+            })?;
 
         if !response.status().is_success() {
             return Err(PolymarketError::api_error(format!(
@@ -348,9 +324,7 @@ impl ClobClient {
             .json(&params)
             .send()
             .await
-            .map_err(|e| {
-                PolymarketError::network_error(format!("Failed to place order: {e}"))
-            })?;
+            .map_err(|e| PolymarketError::network_error(format!("Failed to place order: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -360,9 +334,10 @@ impl ClobClient {
             )));
         }
 
-        response.json().await.map_err(|e| {
-            PolymarketError::api_error(format!("Failed to parse order response: {e}"))
-        })
+        response
+            .json()
+            .await
+            .map_err(|e| PolymarketError::api_error(format!("Failed to parse order response: {e}")))
     }
 }
 
@@ -377,8 +352,3 @@ mod tests {
         assert_eq!(POLYGON_CHAIN_ID, 137);
     }
 }
-
-
-
-
-

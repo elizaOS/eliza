@@ -47,7 +47,7 @@ export interface RobloxResponse {
 
 export interface RobloxGameAction {
   name: string;
-  parameters: Record<string, unknown>;
+  parameters: Record<string, string | number | boolean | null>;
   targetPlayerIds?: number[];
 }
 
@@ -59,9 +59,18 @@ export interface DataStoreEntry<T = unknown> {
   updatedAt: Date;
 }
 
+export type MessagingServiceDataValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | number[]
+  | Record<string, string | number | boolean | null>;
+
 export interface MessagingServiceMessage {
   topic: string;
-  data: unknown;
+  data: Record<string, MessagingServiceDataValue>;
   sender?: {
     agentId: UUID;
     agentName: string;
@@ -89,12 +98,12 @@ export interface RobloxEventTypes {
   };
   [RobloxEventType.GAME_EVENT]: {
     eventName: string;
-    data: Record<string, unknown>;
+    data: Record<string, string | number | boolean | null>;
     triggeredBy?: RobloxUser;
   };
   [RobloxEventType.WEBHOOK_RECEIVED]: {
     type: string;
-    payload: unknown;
+    payload: Record<string, string | number | boolean | null>;
   };
 }
 
@@ -120,3 +129,15 @@ export interface RobloxExperienceInfo {
   visits?: number;
   rootPlaceId: string;
 }
+
+export type ManagerHealthStatus =
+  | {
+      status: "healthy";
+      universeId: string;
+      experienceName: string;
+      playing?: number;
+    }
+  | {
+      status: "unhealthy";
+      error: string;
+    };

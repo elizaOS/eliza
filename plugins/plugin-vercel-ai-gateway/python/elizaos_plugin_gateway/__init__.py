@@ -1,17 +1,3 @@
-"""
-elizaOS Vercel AI Gateway Plugin - AI Gateway integration.
-
-This package provides a type-safe async client for Vercel AI Gateway APIs,
-supporting text generation, embeddings, image generation, and more.
-
-Example:
-    >>> from elizaos_plugin_gateway import GatewayClient, GatewayConfig
-    >>> config = GatewayConfig.from_env()
-    >>> async with GatewayClient(config) as client:
-    ...     response = await client.generate_text("Hello, world!")
-    ...     print(response)
-"""
-
 from elizaos_plugin_gateway.client import GatewayClient, GatewayClientError
 from elizaos_plugin_gateway.config import GatewayConfig
 from elizaos_plugin_gateway.plugin import (
@@ -78,8 +64,4 @@ __all__ = [
     "ImageGenerationResult",
     "ImageDescriptionResult",
 ]
-
-
-
-
 

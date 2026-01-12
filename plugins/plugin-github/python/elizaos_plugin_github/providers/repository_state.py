@@ -4,19 +4,10 @@ from elizaos_plugin_github.types import ListIssuesParams, ListPullRequestsParams
 
 
 class ProviderContext(Protocol):
-    """Provider context protocol."""
-
     pass
 
 
 class RepositoryStateProvider:
-    """
-    Repository state provider.
-
-    Provides information about the configured repository, including
-    recent issues, pull requests, and repository metadata.
-    """
-
     @property
     def name(self) -> str:
         return "GITHUB_REPOSITORY_STATE"
@@ -62,7 +53,6 @@ class RepositoryStateProvider:
                 )
             )
 
-            # Build context string
             parts: list[str] = [
                 f"## GitHub Repository: {repo.full_name}",
                 "",

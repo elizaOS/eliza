@@ -1,7 +1,3 @@
-/**
- * Build script for Vercel AI Gateway TypeScript plugin.
- */
-
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -22,7 +18,6 @@ const shared = {
 async function buildAll() {
   console.log("Building Vercel AI Gateway plugin...");
 
-  // ESM build for Node
   await build({
     ...shared,
     outdir: join(distDir, "node"),
@@ -31,7 +26,6 @@ async function buildAll() {
     target: "node20",
   });
 
-  // ESM build for Browser
   await build({
     ...shared,
     outdir: join(distDir, "browser"),
@@ -40,7 +34,6 @@ async function buildAll() {
     target: "es2022",
   });
 
-  // CJS build for Node
   await build({
     ...shared,
     outdir: join(distDir, "cjs"),

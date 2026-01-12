@@ -1,12 +1,7 @@
-/**
- * Tests for the Key Derivation Provider.
- */
-
 import { TEEMode } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PhalaDeriveKeyProvider } from "../providers/deriveKey";
 
-// Mock dependencies
 const mockDeriveKey = vi.fn().mockResolvedValue({
   asUint8Array: () => new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
 });

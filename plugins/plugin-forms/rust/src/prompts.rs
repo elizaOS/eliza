@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use crate::generated::prompts::{FORM_EXTRACTION_TEMPLATE, FORM_CREATION_TEMPLATE};
+use crate::generated::prompts::{FORM_CREATION_TEMPLATE, FORM_EXTRACTION_TEMPLATE};
 
 pub struct FieldInfo<'a> {
     pub id: &'a str,
@@ -14,7 +14,10 @@ pub fn build_extraction_prompt(user_message: &str, fields: &[FieldInfo<'_>]) -> 
     let field_descriptions: String = fields
         .iter()
         .map(|f| {
-            let criteria_attr = f.criteria.map(|c| format!(r#" criteria="{}""#, c)).unwrap_or_default();
+            let criteria_attr = f
+                .criteria
+                .map(|c| format!(r#" criteria="{}""#, c))
+                .unwrap_or_default();
             let desc = f.description.unwrap_or("");
             format!(
                 r#"  <field id="{}" type="{}" label="{}"{}>{}  </field>"#,
@@ -26,7 +29,12 @@ pub fn build_extraction_prompt(user_message: &str, fields: &[FieldInfo<'_>]) -> 
 
     let field_templates: String = fields
         .iter()
-        .map(|f| format!("  <{}>extracted value or omit if not found</{}>", f.id, f.id))
+        .map(|f| {
+            format!(
+                "  <{}>extracted value or omit if not found</{}>",
+                f.id, f.id
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -72,7 +80,7 @@ mod tests {
         ];
 
         let prompt = build_extraction_prompt("My name is John Doe", &fields);
-        
+
         assert!(prompt.contains("My name is John Doe"));
         assert!(prompt.contains("name"));
         assert!(prompt.contains("email"));
@@ -83,11 +91,10 @@ mod tests {
     fn test_build_creation_prompt() {
         let types = vec!["contact", "feedback", "survey"];
         let prompt = build_creation_prompt("I need a contact form", &types);
-        
+
         assert!(prompt.contains("I need a contact form"));
         assert!(prompt.contains("contact"));
         assert!(prompt.contains("feedback"));
         assert!(prompt.contains("survey"));
     }
 }
-

@@ -1,9 +1,6 @@
-//! Get feed action for the RSS plugin.
-
 use async_trait::async_trait;
 use serde_json::Value;
 
-/// Action trait for elizaOS compatibility.
 #[async_trait]
 pub trait Action: Send + Sync {
     fn name(&self) -> &'static str;
@@ -19,7 +16,6 @@ pub struct ActionExample {
     pub output: String,
 }
 
-/// Get feed action.
 pub struct GetFeedAction;
 
 #[async_trait]
@@ -37,7 +33,7 @@ impl Action for GetFeedAction {
     }
 
     async fn validate(&self, _message_text: &str) -> bool {
-        true // Always valid if RSS service is available
+        true
     }
 
     async fn handler(&self, params: Value) -> Result<Value, String> {

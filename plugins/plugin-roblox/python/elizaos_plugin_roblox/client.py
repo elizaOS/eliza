@@ -234,8 +234,8 @@ class RobloxClient:
             response = await self._request("GET", THUMBNAILS_API_BASE, endpoint, use_api_key=False)
             data = response.get("data", [])
             if data:
-                return data[0].get("imageUrl")  # type: ignore[no-any-return]
-        except Exception:  # noqa: S110, BLE001
+                return data[0].get("imageUrl")
+        except Exception:
             pass
 
         return None
@@ -273,8 +273,5 @@ class RobloxClient:
 
     def is_dry_run(self) -> bool:
         return self.config.dry_run
-
-
-
 
 

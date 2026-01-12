@@ -1,10 +1,8 @@
-"""Confirm todo action for Todo plugin."""
-
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from elizaos_plugin_todo.data_service import create_todo_data_service
@@ -30,8 +28,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ConfirmTodoResult:
-    """Result of a confirm todo action."""
-
     success: bool
     text: str
     todo_id: UUID | None = None
@@ -71,7 +67,6 @@ async def handle_confirm_todo(
             )
         return ConfirmTodoResult(success=False, text=error_msg, error=error_msg)
 
-    # Get pending todo from state
     pending_todo = None
     if state.data and isinstance(state.data, dict):
         pending_todo = state.data.get("pendingTodo")
@@ -100,7 +95,6 @@ async def handle_confirm_todo(
             )
         return ConfirmTodoResult(success=False, text=error_msg, error=error_msg)
 
-    # Extract confirmation intent from message
     message_text = message.content.text if message.content else ""
     is_confirmation = any(
         word in message_text.lower()
@@ -112,11 +106,10 @@ async def handle_confirm_todo(
     )
 
     if not is_confirmation:
-        # User said something unrelated to the confirmation
         pending_name = (
             pending_todo.get("name", "task") if isinstance(pending_todo, dict) else "task"
         )
-        error_msg = f'I'm still waiting for your confirmation on the task "{pending_name}". Would you like me to create it?'
+        error_msg = f"I'm still waiting for your confirmation on the task \"{pending_name}\". Would you like me to create it?"
         if callback:
             await callback(
                 {
@@ -128,7 +121,6 @@ async def handle_confirm_todo(
         return ConfirmTodoResult(success=False, text=error_msg)
 
     if not should_proceed:
-        # User rejected the task
         if state.data and isinstance(state.data, dict):
             state.data.pop("pendingTodo", None)
 
@@ -143,10 +135,8 @@ async def handle_confirm_todo(
             )
         return ConfirmTodoResult(success=False, text="Task creation cancelled")
 
-    # User confirmed - create the task
     data_service = create_todo_data_service(runtime.db if hasattr(runtime, "db") else None)
 
-    # Check for duplicates one more time
     filters = TodoFilters(
         entity_id=message.entity_id,
         room_id=message.room_id,
@@ -175,13 +165,11 @@ async def handle_confirm_todo(
             )
         return ConfirmTodoResult(success=False, text="Duplicate task found")
 
-    # Create the task
     room = await runtime.get_room(message.room_id) if hasattr(runtime, "get_room") else None
     world_id = (
         room.world_id if room and hasattr(room, "world_id") else message.world_id or runtime.agent_id
     )
 
-    # Extract pending todo data
     if isinstance(pending_todo, dict):
         task_type_str = pending_todo.get("taskType", "one-off")
         task_type = TaskType(task_type_str) if task_type_str in ["daily", "one-off", "aspirational"] else TaskType.ONE_OFF
@@ -189,7 +177,7 @@ async def handle_confirm_todo(
         priority = Priority(priority_val) if priority_val else (Priority.MEDIUM if task_type == TaskType.ONE_OFF else None)
         urgent = pending_todo.get("urgent", False)
         due_date_str = pending_todo.get("dueDate")
-        due_date = None  # Would parse from string in production
+        due_date = None
         tags = pending_todo.get("tags", [])
         metadata_dict = pending_todo.get("metadata", {})
     else:
@@ -220,11 +208,9 @@ async def handle_confirm_todo(
     if not created_todo_id:
         raise Exception("Failed to create todo")
 
-    # Clear the pending todo from state
     if state.data and isinstance(state.data, dict):
         state.data.pop("pendingTodo", None)
 
-    # Send success message
     if task_type == TaskType.DAILY:
         success_message = f'✅ Created daily task: "{pending_name}". Complete it regularly to build your streak!'
     elif task_type == TaskType.ONE_OFF:
@@ -249,23 +235,12 @@ async def handle_confirm_todo(
 async def validate_confirm_todo(
     runtime: IAgentRuntime, message: Memory, state: State | None = None
 ) -> bool:
-    """Validate if confirm todo action can be executed.
-
-    Args:
-        runtime: The agent runtime.
-        message: The message.
-        state: Optional state.
-
-    Returns:
-        True if there's a pending todo in the state.
-    """
     if not state or not state.data or not isinstance(state.data, dict):
         return False
     pending_todo = state.data.get("pendingTodo")
     return pending_todo is not None
 
 
-# Action definition for elizaOS integration
 CONFIRM_TODO_ACTION = {
     "name": "CONFIRM_TODO",
     "similes": ["CONFIRM_TASK", "APPROVE_TODO", "APPROVE_TASK", "TODO_CONFIRM"],

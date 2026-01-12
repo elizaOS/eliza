@@ -4,77 +4,38 @@ import { BaseDrizzleAdapter } from "../base";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
 import type { PGliteClientManager } from "./manager";
 
-/**
- * PgliteDatabaseAdapter class represents an adapter for interacting with a PgliteDatabase.
- * Extends BaseDrizzleAdapter.
- *
- * @constructor
- * @param {UUID} agentId - The ID of the agent.
- * @param {PGliteClientManager} manager - The manager for the Pglite client.
- *
- * @method withDatabase
- * @param {() => Promise<T>} operation - The operation to perform on the database.
- * @return {Promise<T>} - The result of the operation.
- *
- * @method init
- * @return {Promise<void>} - A Promise that resolves when the initialization is complete.
- *
- * @method close
- * @return {void} - A Promise that resolves when the database is closed.
- */
 export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   private manager: PGliteClientManager;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
 
-  /**
-   * Constructor for creating an instance of a class.
-   * @param {UUID} agentId - The unique identifier for the agent.
-   * @param {PGliteClientManager} manager - The manager for the Pglite client.
-   */
   constructor(agentId: UUID, manager: PGliteClientManager) {
     super(agentId);
     this.manager = manager;
-    // drizzle-orm/pglite expects PGlite instance directly
     this.db = drizzle(this.manager.getConnection());
   }
 
-  /**
-   * Execute a callback with entity context for Entity RLS
-   * PGLite: No RLS support, just execute the callback in a simple transaction
-   *
-   * This is a public method because it's part of the adapter's public API
-   * for operations that need entity-scoped database access.
-   */
   public async withEntityContext<T>(
     _entityId: UUID | null,
     callback: (tx: PgliteDatabase) => Promise<T>
   ): Promise<T> {
-    // PGLite doesn't support RLS, so just execute in a transaction without setting entity context
-    // The entityId parameter is ignored since PGLite doesn't support RLS
     return this.db.transaction(callback);
   }
 
-  // Methods required by TypeScript but not in base class
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
-    // Delegate to the correct method name
     return this.getEntitiesByIds(entityIds);
   }
 
   async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
-    // This method doesn't seem to exist in the base implementation
-    // Provide a basic implementation that returns empty array
     logger.warn({ src: "plugin:sql" }, "getMemoriesByServerId called but not implemented");
     return [];
   }
 
   async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
-    // Check if agent exists, create if not
     const existingAgent = await this.getAgent(this.agentId);
     if (existingAgent) {
       return existingAgent;
     }
 
-    // Create the agent with required fields
     const newAgent: Agent = {
       id: this.agentId,
       name: agent.name || "Unknown Agent",
@@ -92,14 +53,6 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return createdAgent;
   }
 
-  /**
-   * Asynchronously runs the provided database operation while checking if the database is currently shutting down.
-   * If the database is shutting down, an error is thrown to prevent operations on a closing database.
-   *
-   * @param {Function} operation - The database operation to be performed.
-   * @returns {Promise<T>} A promise that resolves with the result of the database operation.
-   * @throws {Error} If the database is shutting down.
-   */
   protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     if (this.manager.isShuttingDown()) {
       const error = new Error("Database is shutting down - operation rejected");
@@ -112,45 +65,22 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return operation();
   }
 
-  /**
-   * Asynchronously initializes the database by running migrations.
-   *
-   * @returns {Promise<void>} A Promise that resolves when the database initialization is complete.
-   */
   async init(): Promise<void> {
     logger.debug({ src: "plugin:sql" }, "PGliteDatabaseAdapter initialized");
   }
 
-  /**
-   * Checks if the database connection is ready and active.
-   * For PGLite, this checks if the client is not in a shutting down state.
-   * @returns {Promise<boolean>} A Promise that resolves to true if the connection is healthy.
-   */
   async isReady(): Promise<boolean> {
     return !this.manager.isShuttingDown();
   }
 
-  /**
-   * Asynchronously closes the database.
-   */
   async close() {
     await this.manager.close();
   }
 
-  /**
-   * Asynchronously retrieves the Drizzle database connection.
-   *
-   * @returns {Promise<PgliteDatabase>} A Promise that resolves with the Drizzle database.
-   */
   async getConnection(): Promise<PgliteDatabase> {
     return this.db as PgliteDatabase;
   }
 
-  /**
-   * Get the underlying PGlite client (for testing/advanced use).
-   *
-   * @returns {PGlite} The underlying PGlite client.
-   */
   getRawConnection() {
     return this.manager.getConnection();
   }

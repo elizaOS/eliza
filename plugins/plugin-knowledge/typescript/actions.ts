@@ -185,13 +185,13 @@ export const processKnowledgeAction: Action = {
       logger.error({ error }, "Error in PROCESS_KNOWLEDGE action");
 
       const errorResponse: Content = {
-        text: `I encountered an error while processing the knowledge: ${error instanceof Error ? error.message : "Unknown error"}`,
+        text: `I encountered an error while processing the knowledge: ${error instanceof Error ? error.message : String(error)}`,
       };
 
       if (callback) {
         await callback(errorResponse);
       }
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
 };
@@ -308,13 +308,13 @@ export const searchKnowledgeAction: Action = {
       logger.error({ error }, "Error in SEARCH_KNOWLEDGE action");
 
       const errorResponse: Content = {
-        text: `I encountered an error while searching the knowledge base: ${error instanceof Error ? error.message : "Unknown error"}`,
+        text: `I encountered an error while searching the knowledge base: ${error instanceof Error ? error.message : String(error)}`,
       };
 
       if (callback) {
         await callback(errorResponse);
       }
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
 };

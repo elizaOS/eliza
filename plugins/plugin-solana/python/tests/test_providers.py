@@ -9,16 +9,12 @@ from elizaos_plugin_solana.providers import (
 
 
 class TestWalletProvider:
-    """Tests for wallet provider."""
-
     def test_provider_metadata(self) -> None:
-        """Test provider has correct metadata."""
         assert WALLET_PROVIDER["name"] == "solana-wallet"
         assert WALLET_PROVIDER["description"]
         assert WALLET_PROVIDER["dynamic"] is True
 
     def test_wallet_provider_result_dataclass(self) -> None:
-        """Test WalletProviderResult dataclass."""
         from elizaos_plugin_solana.types import WalletPortfolio
 
         portfolio = WalletPortfolio(
@@ -59,7 +55,6 @@ class TestWalletProviderIntegration:
         async with SolanaClient(config) as client:
             result = await get_wallet_portfolio(client, "Test Agent")
 
-            # Verify structure
             assert result.text
             assert "Test Agent" in result.text
             assert "total_usd" in result.values

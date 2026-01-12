@@ -15,7 +15,6 @@ declare global {
   }
 }
 
-// Get the API base path from the injected configuration
 const getApiBase = () => {
   if (window.ELIZA_CONFIG?.apiBase) {
     return window.ELIZA_CONFIG.apiBase;
@@ -70,7 +69,6 @@ export function MemoryGraphOptimized({
   const [error, setError] = useState<string | null>(null);
   const [graphVersion, setGraphVersion] = useState(0);
 
-  // Update dimensions on resize
   useEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current) {
@@ -87,7 +85,6 @@ export function MemoryGraphOptimized({
     return () => window.removeEventListener("resize", updateDimensions);
   }, []);
 
-  // Fetch initial graph nodes (documents with fragments)
   const loadGraphNodes = useCallback(
     async (page = 1) => {
       setIsLoading(true);
@@ -98,7 +95,6 @@ export function MemoryGraphOptimized({
         params.append("agentId", agentId);
         params.append("page", page.toString());
         params.append("limit", "20");
-        // Don't specify type to get documents with fragments
 
         const apiBase = getApiBase();
         const response = await fetch(`${apiBase}/graph/nodes?${params.toString()}`);
@@ -112,7 +108,6 @@ export function MemoryGraphOptimized({
         if (result.success && result.data) {
           const { nodes, links, pagination } = result.data;
 
-          // Convert to graph nodes with initial properties
           const graphNodes: GraphNode[] = nodes.map(
             (node: { id: UUID; type: "document" | "fragment" }) => ({
               id: node.id,
@@ -124,24 +119,17 @@ export function MemoryGraphOptimized({
 
           if (page === 1) {
             setGraphData({ nodes: graphNodes, links });
-            setGraphVersion(1); // Reset version for initial load
+            setGraphVersion(1);
           } else {
-            // Append to existing nodes and deduplicate both nodes and links
             setGraphData((prev) => {
-              // Create a set of existing node IDs for fast lookup
               const existingNodeIds = new Set(prev.nodes.map((node: GraphNode) => node.id));
-
-              // Filter out duplicate nodes
               const newNodes = graphNodes.filter((node: GraphNode) => {
                 return !existingNodeIds.has(node.id);
               });
 
-              // Create a set of existing link IDs for fast lookup
               const existingLinkIds = new Set(
                 prev.links.map((link: GraphLink) => `${link.source}->${link.target}`)
               );
-
-              // Filter out duplicate links
               const newLinks = links.filter((link: GraphLink) => {
                 const linkId = `${link.source}->${link.target}`;
                 return !existingLinkIds.has(linkId);
@@ -152,7 +140,7 @@ export function MemoryGraphOptimized({
                 links: [...prev.links, ...newLinks],
               };
             });
-            setGraphVersion((prev) => prev + 1); // Increment for additions
+            setGraphVersion((prev) => prev + 1);
           }
 
           setPagination(pagination);
@@ -167,17 +155,14 @@ export function MemoryGraphOptimized({
     [agentId]
   );
 
-  // Load more documents
   const loadMore = useCallback(() => {
     if (pagination?.hasMore) {
       loadGraphNodes(pagination.currentPage + 1);
     }
   }, [pagination, loadGraphNodes]);
 
-  // Fetch full node details when clicked
   const fetchNodeDetails = useCallback(
     async (nodeId: UUID) => {
-      // Check cache first
       if (nodeDetails.has(nodeId)) {
         const memory = nodeDetails.get(nodeId);
         if (memory) {
@@ -186,7 +171,6 @@ export function MemoryGraphOptimized({
         }
       }
 
-      // Mark as loading
       setLoadingNodes((prev) => new Set(prev).add(nodeId));
 
       try {
@@ -207,7 +191,6 @@ export function MemoryGraphOptimized({
         const result = await response.json();
 
         if (result.success && result.data) {
-          // Convert to Memory format with all required fields
           const memory: Memory = {
             id: result.data.id,
             content: result.data.content,
@@ -219,10 +202,7 @@ export function MemoryGraphOptimized({
             worldId: result.data.worldId,
           };
 
-          // Cache the details
           setNodeDetails((prev) => new Map(prev).set(nodeId, memory));
-
-          // Trigger the callback
           onNodeClick(memory);
         } else {
           console.error("Invalid API response format:", result);
@@ -230,9 +210,7 @@ export function MemoryGraphOptimized({
         }
       } catch (err) {
         console.error("Error fetching node details:", err);
-        alert(
-          `Failed to load node details: ${err instanceof Error ? err.message : "Unknown error"}`
-        );
+        alert(`Failed to load node details: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         setLoadingNodes((prev) => {
           const newSet = new Set(prev);
@@ -244,36 +222,32 @@ export function MemoryGraphOptimized({
     [agentId, nodeDetails, onNodeClick]
   );
 
-  // Handle node click
   const handleNodeClick = useCallback(
     (node: GraphNode) => {
-      // Fetch details to show in sidebar
       fetchNodeDetails(node.id);
     },
     [fetchNodeDetails]
   );
 
-  // Initialize graph
   useEffect(() => {
     loadGraphNodes(1);
   }, [loadGraphNodes]);
 
-  // Node color based on state
   const getNodeColor = useCallback(
     (node: GraphNode) => {
       const isSelected = selectedMemoryId === node.id;
       const isLoading = loadingNodes.has(node.id);
 
       if (isLoading) {
-        return "hsl(210, 70%, 80%)"; // Light blue for loading
+        return "hsl(210, 70%, 80%)";
       }
 
       if (node.type === "document") {
         if (isSelected) return "hsl(30, 100%, 60%)";
-        return "hsl(30, 100%, 50%)"; // Orange
+        return "hsl(30, 100%, 50%)";
       } else {
         if (isSelected) return "hsl(200, 70%, 70%)";
-        return "hsl(200, 70%, 60%)"; // Light blue (matches blue-300)
+        return "hsl(200, 70%, 60%)";
       }
     },
     [selectedMemoryId, loadingNodes]
@@ -288,7 +262,6 @@ export function MemoryGraphOptimized({
     );
   }
 
-  // Render error state
   if (error) {
     return (
       <div className="w-full h-full flex items-center justify-center">
@@ -327,7 +300,6 @@ export function MemoryGraphOptimized({
         </div>
       )}
 
-      {/* Graph */}
       <ForceGraph2D
         key={`graph-${graphVersion}`}
         ref={graphRef}
@@ -360,18 +332,15 @@ export function MemoryGraphOptimized({
           const isSelected = selectedMemoryId === node.id;
           const isLoading = loadingNodes.has(node.id);
 
-          // Draw node circle
           ctx.beginPath();
           ctx.arc(node.x ?? 0, node.y ?? 0, size, 0, 2 * Math.PI);
           ctx.fillStyle = getNodeColor(node);
           ctx.fill();
 
-          // Border
           ctx.strokeStyle = isSelected ? "hsl(var(--primary))" : "hsl(var(--border))";
           ctx.lineWidth = isSelected ? 2 : 1;
           ctx.stroke();
 
-          // Loading indicator
           if (isLoading) {
             ctx.beginPath();
             ctx.arc(node.x ?? 0, node.y ?? 0, size * 1.5, 0, Math.PI * 2 * 0.3);
@@ -379,11 +348,8 @@ export function MemoryGraphOptimized({
             ctx.lineWidth = 2;
             ctx.stroke();
           }
-
-          // Don't draw labels - they will be shown on hover via nodeLabel
         }}
         onEngineStop={() => {
-          // Center the graph when physics settle
           if (graphRef.current) {
             graphRef.current.zoomToFit(400);
           }

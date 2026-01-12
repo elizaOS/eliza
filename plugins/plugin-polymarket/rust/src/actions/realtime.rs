@@ -108,7 +108,7 @@ pub fn handle_realtime_updates(
             let asset_ids = asset_ids.ok_or_else(|| {
                 PolymarketError::config_error("Asset IDs are required for subscription")
             })?;
-            
+
             if asset_ids.is_empty() {
                 return Err(PolymarketError::config_error(
                     "At least one asset ID is required for subscription",
@@ -127,7 +127,9 @@ pub fn handle_realtime_updates(
             })?;
             Ok(format!("Unsubscribed from {} channel", channel))
         }
-        "status" => Ok("WebSocket status: Use PolymarketService for actual connection management".to_string()),
+        "status" => Ok(
+            "WebSocket status: Use PolymarketService for actual connection management".to_string(),
+        ),
         _ => Err(PolymarketError::config_error(format!(
             "Invalid action: {action}. Valid actions are: subscribe, unsubscribe, status"
         ))),
@@ -136,7 +138,6 @@ pub fn handle_realtime_updates(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_setup_websocket_empty_url() {

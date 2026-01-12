@@ -171,11 +171,7 @@ impl PluginCreationClient {
 
         let jobs_to_remove: Vec<String> = jobs
             .iter()
-            .filter(|(_, job)| {
-                job.completed_at
-                    .map(|t| t < cutoff)
-                    .unwrap_or(false)
-            })
+            .filter(|(_, job)| job.completed_at.map(|t| t < cutoff).unwrap_or(false))
             .map(|(id, _)| id.clone())
             .collect();
 
@@ -330,7 +326,9 @@ impl PluginCreationClient {
 
         let (name, description, version, deps) = {
             let jobs = self.jobs.read().await;
-            let job = jobs.get(job_id).ok_or_else(|| N8nError::job_not_found(job_id))?;
+            let job = jobs
+                .get(job_id)
+                .ok_or_else(|| N8nError::job_not_found(job_id))?;
             (
                 job.specification.name.clone(),
                 job.specification.description.clone(),
@@ -367,9 +365,12 @@ impl PluginCreationClient {
                 "@biomejs/biome": "^2.3.11"
             }
         });
-        
+
         if let Some(obj) = package_json.as_object_mut() {
-            obj.insert("dependencies".to_string(), serde_json::Value::Object(deps_map));
+            obj.insert(
+                "dependencies".to_string(),
+                serde_json::Value::Object(deps_map),
+            );
         }
 
         tokio::fs::write(
@@ -404,7 +405,9 @@ impl PluginCreationClient {
     async fn generate_plugin_code(&self, job_id: &str) -> Result<()> {
         let (spec, iteration, errors) = {
             let jobs = self.jobs.read().await;
-            let job = jobs.get(job_id).ok_or_else(|| N8nError::job_not_found(job_id))?;
+            let job = jobs
+                .get(job_id)
+                .ok_or_else(|| N8nError::job_not_found(job_id))?;
             (
                 job.specification.clone(),
                 job.current_iteration,
@@ -586,7 +589,10 @@ impl PluginCreationClient {
             if let Some(job) = jobs.get_mut(job_id) {
                 job.test_results = Some(test_results.clone());
                 if test_results.failed > 0 {
-                    return Err(N8nError::Test(format!("{} tests failed", test_results.failed)));
+                    return Err(N8nError::Test(format!(
+                        "{} tests failed",
+                        test_results.failed
+                    )));
                 }
             }
         }
@@ -745,7 +751,3 @@ mod tests {
         );
     }
 }
-
-
-
-

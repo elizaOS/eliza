@@ -1,7 +1,3 @@
-"""
-Game state provider for the Roblox plugin.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,14 +5,12 @@ from dataclasses import dataclass
 
 @dataclass
 class ProviderParams:
-    """Parameters passed to the provider."""
     conversation_id: str
     agent_id: str
 
 
 @dataclass
 class ProviderResult:
-    """Result returned by the provider."""
     values: dict[str, str]
     text: str
     data: dict[str, object]
@@ -24,7 +18,6 @@ class ProviderResult:
 
 @dataclass
 class GameStateProvider:
-    """Provider that supplies Roblox game state to the agent context."""
 
     @property
     def name(self) -> str:
@@ -39,8 +32,6 @@ class GameStateProvider:
         return 50
 
     async def get(self, params: ProviderParams) -> ProviderResult:
-        """Get provider data."""
-        # Note: In actual elizaOS integration, this would use the runtime's RobloxService.
         values = {
             "universeId": "N/A",
             "placeId": "N/A",

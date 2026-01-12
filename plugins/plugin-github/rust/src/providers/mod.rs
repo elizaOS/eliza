@@ -4,7 +4,9 @@ pub mod repository_state;
 pub mod issue_context;
 
 pub use repository_state::RepositoryStateProvider;
+pub use repository_state::GitHubRepositoryStateProvider;
 pub use issue_context::IssueContextProvider;
+pub use issue_context::GitHubIssueContextProvider;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

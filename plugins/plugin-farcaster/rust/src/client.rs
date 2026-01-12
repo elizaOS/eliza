@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! Farcaster API client implementation.
-//!
-//! Handles communication with the Neynar API for Farcaster operations.
 
 use crate::config::FarcasterConfig;
 use crate::error::{FarcasterError, Result};
@@ -13,10 +10,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-/// Neynar API base URL
 const NEYNAR_API_URL: &str = "https://api.neynar.com/v2";
 
-/// Parse embed type from Neynar embed data.
 fn parse_embed_type(embed: &Value) -> EmbedType {
     if embed.get("cast").is_some() || embed.get("cast_id").is_some() {
         return EmbedType::Cast;
@@ -43,7 +38,6 @@ fn parse_embed_type(embed: &Value) -> EmbedType {
     EmbedType::Unknown
 }
 
-/// Convert a Neynar Cast JSON to internal Cast type.
 fn neynar_cast_to_cast(neynar_cast: &Value) -> Cast {
     let author = neynar_cast.get("author").unwrap_or(&Value::Null);
 
@@ -69,7 +63,6 @@ fn neynar_cast_to_cast(neynar_cast: &Value) -> Cast {
         url: None,
     };
 
-    // Parse embeds
     let embeds: Vec<CastEmbed> = neynar_cast
         .get("embeds")
         .and_then(|v| v.as_array())
@@ -93,7 +86,6 @@ fn neynar_cast_to_cast(neynar_cast: &Value) -> Cast {
         })
         .unwrap_or_default();
 
-    // Parse parent
     let in_reply_to = neynar_cast
         .get("parent_hash")
         .and_then(|v| v.as_str())
@@ -108,7 +100,6 @@ fn neynar_cast_to_cast(neynar_cast: &Value) -> Cast {
                 })
         });
 
-    // Parse stats
     let reactions = neynar_cast.get("reactions").unwrap_or(&Value::Null);
     let stats = CastStats {
         recasts: reactions
@@ -126,7 +117,6 @@ fn neynar_cast_to_cast(neynar_cast: &Value) -> Cast {
             .unwrap_or(0) as u32,
     };
 
-    // Parse timestamp
     let timestamp = neynar_cast
         .get("timestamp")
         .and_then(|v| v.as_str())
@@ -203,7 +193,6 @@ pub fn split_post_content(content: &str, max_length: usize) -> Vec<String> {
     posts
 }
 
-/// Split a paragraph into sentence-sized chunks.
 fn split_paragraph(paragraph: &str, max_length: usize) -> Vec<String> {
     let sentence_re = Regex::new(r"[^.!?]+[.!?]+|[^.!?]+$").unwrap();
     let sentences: Vec<&str> = sentence_re
@@ -236,7 +225,6 @@ fn split_paragraph(paragraph: &str, max_length: usize) -> Vec<String> {
             if sentence.len() <= max_length {
                 current_chunk = sentence.to_string();
             } else {
-                // Split by words
                 let words: Vec<&str> = sentence.split_whitespace().collect();
                 current_chunk.clear();
                 for word in words {
@@ -276,7 +264,6 @@ pub struct FarcasterClient {
 }
 
 impl FarcasterClient {
-    /// Create a new Farcaster client.
     pub fn new(config: FarcasterConfig) -> Result<Self> {
         config.validate()?;
 
@@ -353,14 +340,12 @@ impl FarcasterClient {
         response.json().await.map_err(FarcasterError::Network)
     }
 
-    /// Send a cast (potentially split into multiple if too long).
     pub async fn send_cast(&self, text: &str, in_reply_to: Option<CastId>) -> Result<Vec<Cast>> {
         let text = text.trim();
         if text.is_empty() {
             return Ok(vec![]);
         }
 
-        // Dry run mode
         if self.config.dry_run {
             let fake_cast = Cast {
                 hash: "dry_run_hash".to_string(),
@@ -387,7 +372,6 @@ impl FarcasterClient {
         Ok(sent)
     }
 
-    /// Publish a single cast.
     async fn publish_cast(&self, text: &str, parent_cast_id: Option<&CastId>) -> Result<Cast> {
         let mut payload = serde_json::json!({
             "signer_uuid": self.config.signer_uuid,
@@ -414,13 +398,11 @@ impl FarcasterClient {
             )));
         }
 
-        // Fetch the full cast data
         if let Some(hash) = result.get("cast").and_then(|c| c.get("hash")).and_then(|v| v.as_str())
         {
             return self.get_cast(hash).await;
         }
 
-        // Return minimal cast if we can't fetch full data
         Ok(Cast {
             hash: String::new(),
             author_fid: self.config.fid,
@@ -434,9 +416,7 @@ impl FarcasterClient {
         })
     }
 
-    /// Get a cast by hash.
     pub async fn get_cast(&self, cast_hash: &str) -> Result<Cast> {
-        // Check cache
         {
             let cache = self.cast_cache.read().map_err(|_| FarcasterError::cast("Cache lock error"))?;
             if let Some(cast) = cache.get(cast_hash) {
@@ -458,7 +438,6 @@ impl FarcasterClient {
             .map(neynar_cast_to_cast)
             .ok_or_else(|| FarcasterError::cast("Cast not found"))?;
 
-        // Update cache
         if let Ok(mut cache) = self.cast_cache.write() {
             let cache: &mut HashMap<String, Cast> = &mut *cache;
             cache.insert(cast_hash.to_string(), cast.clone());
@@ -467,7 +446,6 @@ impl FarcasterClient {
         Ok(cast)
     }
 
-    /// Get mentions for a FID.
     pub async fn get_mentions(&self, request: &FidRequest) -> Result<Vec<Cast>> {
         let result = self
             .make_request(
@@ -495,9 +473,7 @@ impl FarcasterClient {
         Ok(mentions)
     }
 
-    /// Get a user's profile by FID.
     pub async fn get_profile(&self, fid: u64) -> Result<Profile> {
-        // Check cache
         {
             let cache = self.profile_cache.read().map_err(|_| FarcasterError::profile("Cache lock error"))?;
             if let Some(profile) = cache.get(&fid) {
@@ -546,7 +522,6 @@ impl FarcasterClient {
             url: None,
         };
 
-        // Update cache
         if let Ok(mut cache) = self.profile_cache.write() {
             let cache: &mut HashMap<u64, Profile> = &mut *cache;
             cache.insert(fid, profile.clone());
@@ -555,7 +530,6 @@ impl FarcasterClient {
         Ok(profile)
     }
 
-    /// Get timeline for a FID.
     pub async fn get_timeline(&self, request: &FidRequest) -> Result<(Vec<Cast>, Option<String>)> {
         let result = self
             .make_request(
@@ -576,7 +550,6 @@ impl FarcasterClient {
                 arr.iter()
                     .map(|c| {
                         let cast: Cast = neynar_cast_to_cast(c);
-                        // Update cache
                         if let Ok(mut cache) = self.cast_cache.write() {
                             let cache: &mut HashMap<String, Cast> = &mut *cache;
                             cache.insert(cast.hash.clone(), cast.clone());
@@ -596,7 +569,6 @@ impl FarcasterClient {
         Ok((timeline, next_cursor))
     }
 
-    /// Clear all caches.
     pub fn clear_cache(&self) {
         if let Ok(mut cache) = self.profile_cache.write() {
             let cache: &mut HashMap<u64, Profile> = &mut *cache;

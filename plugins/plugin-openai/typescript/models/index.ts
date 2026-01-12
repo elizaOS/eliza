@@ -1,7 +1,3 @@
-/**
- * Model handler exports
- */
-
 export { handleTextToSpeech, handleTranscription } from "./audio";
 export { handleTextEmbedding } from "./embedding";
 export { handleImageDescription, handleImageGeneration } from "./image";

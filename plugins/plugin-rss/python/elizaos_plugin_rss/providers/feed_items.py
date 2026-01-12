@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass
 class ProviderParams:
-    """Parameters passed to the provider."""
     conversation_id: str
     agent_id: str
 
@@ -19,8 +18,6 @@ class ProviderResult:
 
 @dataclass
 class FeedItemsProvider:
-    """Feed items provider - provides recent feed items to agent context."""
-
     @property
     def name(self) -> str:
         return "FEEDITEMS"

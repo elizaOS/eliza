@@ -254,12 +254,6 @@ class GitHubService:
             raise self._map_exception(e, owner, repo_name) from e
 
     async def merge_pull_request(self, params: MergePullRequestParams) -> tuple[str, bool, str]:
-        """
-        Merge a pull request.
-
-        Returns:
-            Tuple of (sha, merged, message)
-        """
         client = self._get_client()
         owner, repo_name = self._resolve_repo_ref(params.owner, params.repo)
 
@@ -336,10 +330,8 @@ class GitHubService:
                 ref = repo.get_git_ref(f"heads/{params.from_ref}")
                 sha = ref.object.sha
             except GithubException:
-                # Try as commit SHA
                 sha = params.from_ref
 
-            # Create new branch
             repo.create_git_ref(f"refs/heads/{params.branch_name}", sha)
 
             return GitHubBranch(
@@ -370,7 +362,6 @@ class GitHubService:
     async def list_branches(
         self, owner: str, repo: str, per_page: int = 30, page: int = 1
     ) -> list[GitHubBranch]:
-        """List branches."""
         client = self._get_client()
         owner, repo_name = self._resolve_repo_ref(owner, repo)
 
@@ -462,12 +453,7 @@ class GitHubService:
         except GithubException as e:
             raise self._map_exception(e, owner, repo_name) from e
 
-    # ===========================================================================
-    # Commit Operations
-    # ===========================================================================
-
     async def create_commit(self, params: CreateCommitParams) -> GitHubCommit:
-        """Create a commit with multiple file changes."""
         client = self._get_client()
         owner, repo_name = self._resolve_repo_ref(params.owner, params.repo)
 
@@ -534,12 +520,7 @@ class GitHubService:
         except GithubException as e:
             raise self._map_exception(e, owner, repo_name) from e
 
-    # ===========================================================================
-    # User Operations
-    # ===========================================================================
-
     async def get_authenticated_user(self) -> GitHubUser:
-        """Get the authenticated user."""
         client = self._get_client()
         user = client.get_user()
         return self._map_user_from_named_user(user)
@@ -605,7 +586,6 @@ class GitHubService:
         )
 
     def _map_user_from_named_user(self, user: object) -> GitHubUser:
-        """Map named user to GitHubUser."""
         return GitHubUser(
             id=user.id,  # type: ignore
             login=user.login,  # type: ignore
@@ -715,7 +695,6 @@ class GitHubService:
         )
 
     def _map_review(self, review: PullRequestReview) -> GitHubReview:
-        """Map review to type."""
         return GitHubReview(
             id=review.id,
             user=self._map_user_from_named_user(review.user),

@@ -16,6 +16,8 @@ from .providers_list import providers_list_provider
 from .recent_messages import recent_messages_provider
 from .relationships import relationships_provider
 from .roles import roles_provider
+from .settings import settings_provider
+from .time import time_provider
 from .world import world_provider
 
 __all__ = [
@@ -37,6 +39,8 @@ __all__ = [
     "recent_messages_provider",
     "relationships_provider",
     "roles_provider",
+    "settings_provider",
+    "time_provider",
     "world_provider",
     "BASIC_PROVIDERS",
     "EXTENDED_PROVIDERS",
@@ -54,6 +58,7 @@ BASIC_PROVIDERS = [
     providers_list_provider,
     recent_messages_provider,
     current_time_provider,
+    time_provider,
     world_provider,
 ]
 
@@ -66,6 +71,7 @@ EXTENDED_PROVIDERS = [
     relationships_provider,
     roles_provider,
     agent_settings_provider,
+    settings_provider,
 ]
 
 ALL_PROVIDERS = BASIC_PROVIDERS + EXTENDED_PROVIDERS

@@ -1,7 +1,3 @@
-/**
- * Cast service for Farcaster operations.
- */
-
 import { createUniqueUuid, type IAgentRuntime, ModelType, type UUID } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import { type Cast, FARCASTER_SOURCE } from "../types";
@@ -17,8 +13,8 @@ interface FarcasterCast {
   text: string;
   timestamp: number;
   inReplyTo?: string;
-  media?: unknown[];
-  metadata?: Record<string, unknown>;
+  media?: Array<Record<string, string | number | boolean>>;
+  metadata?: Record<string, string | number | boolean>;
 }
 
 export interface CastServiceInterface {
@@ -112,9 +108,9 @@ export class FarcasterCastService implements CastServiceInterface {
         media: [],
         metadata: {
           castHash: cast.hash,
-          threadId: cast.threadId,
           authorFid: cast.authorFid,
           source: FARCASTER_SOURCE,
+          ...(cast.threadId ? { threadId: cast.threadId } : {}),
         },
       };
 
@@ -275,7 +271,7 @@ export class FarcasterCastService implements CastServiceInterface {
         entityId,
         content: {
           text: cast.text,
-          castHash: cast.metadata?.castHash as string,
+          castHash: String(cast.metadata?.castHash || ""),
           castId: cast.id,
           author: cast.username,
           timestamp: cast.timestamp,
@@ -303,10 +299,16 @@ export class FarcasterCastService implements CastServiceInterface {
       media: [],
       metadata: {
         castHash: cast.hash,
-        threadId: cast.threadId,
         authorFid: cast.authorFid,
         source: FARCASTER_SOURCE,
-        stats: cast.stats,
+        ...(cast.threadId ? { threadId: cast.threadId } : {}),
+        ...(cast.stats
+          ? {
+              recasts: cast.stats.recasts,
+              replies: cast.stats.replies,
+              likes: cast.stats.likes,
+            }
+          : {}),
       },
     };
   }

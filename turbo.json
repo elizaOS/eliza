@@ -288,7 +288,19 @@
     "lint:check": {
       "outputs": []
     },
+    "lint:rust": {
+      "outputs": []
+    },
     "typecheck": {
+      "outputs": []
+    },
+    "typecheck:rust": {
+      "outputs": []
+    },
+    "lint:python": {
+      "outputs": []
+    },
+    "typecheck:python": {
       "outputs": []
     },
     "format": {

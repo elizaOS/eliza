@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Merge Pull Request Action
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -9,7 +8,6 @@ use crate::error::Result;
 use crate::types::{MergePullRequestParams, MergeMethod};
 use crate::GitHubService;
 
-/// Action to merge a GitHub pull request
 pub struct MergePullRequestAction;
 
 #[async_trait]
@@ -100,10 +98,6 @@ impl GitHubAction for MergePullRequestAction {
         }
     }
 }
-
-
-
-
 
 
 

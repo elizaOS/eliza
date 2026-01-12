@@ -1,5 +1,3 @@
-"""Providers for the Solana plugin."""
-
 from elizaos_plugin_solana.providers.wallet import (
     WALLET_PROVIDER,
     WalletProviderResult,

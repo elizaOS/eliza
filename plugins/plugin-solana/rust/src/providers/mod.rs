@@ -1,7 +1,5 @@
-//! Providers for the Solana plugin.
-//!
-//! This module provides elizaOS provider implementations for Solana data.
+#![allow(missing_docs)]
 
 mod wallet;
 
-pub use wallet::WalletProvider;
+pub use wallet::{WalletProvider, WalletProviderResult};

@@ -1,7 +1,5 @@
 #![allow(missing_docs)]
-//! Entity schema for elizaOS database
 
-/// SQL for creating the entities table
 pub const CREATE_ENTITIES_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS entities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -13,7 +11,6 @@ CREATE TABLE IF NOT EXISTS entities (
 )
 "#;
 
-/// SQL for creating indexes on entities table
 pub const CREATE_ENTITIES_INDEXES: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_entities_agent_id ON entities (agent_id);
 "#;
@@ -30,7 +27,6 @@ pub struct EntityRecord {
 }
 
 impl EntityRecord {
-    /// Convert to elizaOS Entity type
     pub fn to_entity(&self) -> elizaos::Entity {
         use elizaos::{Entity, UUID};
 

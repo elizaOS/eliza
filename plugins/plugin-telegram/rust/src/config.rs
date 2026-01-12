@@ -1,52 +1,28 @@
-//! Telegram plugin configuration
-//!
-//! Configuration can be loaded from environment variables or constructed programmatically.
-
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, TelegramError};
 
-/// Telegram plugin configuration
-///
-/// Contains all settings required to connect to and operate a Telegram bot.
+/// Configuration options for the Telegram plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelegramConfig {
-    /// Bot token for Telegram API authentication (required)
+    /// Bot token in the `123456:ABC-DEF...` format.
     pub bot_token: String,
-
-    /// Optional custom API root URL
+    /// Optional alternate Telegram Bot API base URL (primarily for testing).
     pub api_root: Option<String>,
-
-    /// List of allowed chat IDs (empty = all chats allowed)
+    /// If non-empty, only messages from these chat IDs are processed.
     pub allowed_chat_ids: Vec<i64>,
-
-    /// Chat ID used for testing
+    /// Optional chat ID used by tests and example flows.
     pub test_chat_id: Option<i64>,
-
-    /// Whether to ignore messages from other bots
+    /// Whether to ignore messages sent by bots.
     pub should_ignore_bot_messages: bool,
-
-    /// Whether to only respond in groups when mentioned
+    /// Whether to respond only when the bot is explicitly mentioned.
     pub should_respond_only_to_mentions: bool,
-
-    /// Bot username (without @)
+    /// Optional bot username (without the `@`).
     pub bot_username: Option<String>,
 }
 
 impl TelegramConfig {
-    /// Create a new configuration with required fields only
-    ///
-    /// # Arguments
-    ///
-    /// * `bot_token` - Telegram bot token from BotFather
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use elizaos_plugin_telegram::TelegramConfig;
-    ///
-    /// let config = TelegramConfig::new("your-bot-token".to_string());
-    /// ```
+    /// Creates a new config with sensible defaults.
     pub fn new(bot_token: String) -> Self {
         Self {
             bot_token,
@@ -59,29 +35,22 @@ impl TelegramConfig {
         }
     }
 
-    /// Load configuration from environment variables
+    /// Loads configuration from environment variables.
     ///
-    /// # Required Variables
+    /// Required:
+    /// - `TELEGRAM_BOT_TOKEN`
     ///
-    /// - `TELEGRAM_BOT_TOKEN`: Bot token from BotFather
-    ///
-    /// # Optional Variables
-    ///
-    /// - `TELEGRAM_API_ROOT`: Custom API root URL
-    /// - `TELEGRAM_ALLOWED_CHATS`: JSON array of allowed chat IDs
-    /// - `TELEGRAM_TEST_CHAT_ID`: Chat ID for testing
-    /// - `TELEGRAM_SHOULD_IGNORE_BOT_MESSAGES`: "true" or "false"
-    /// - `TELEGRAM_SHOULD_RESPOND_ONLY_TO_MENTIONS`: "true" or "false"
-    /// - `TELEGRAM_BOT_USERNAME`: Bot username
-    ///
-    /// # Errors
-    ///
-    /// Returns `TelegramError::MissingSetting` if required variables are missing.
+    /// Optional:
+    /// - `TELEGRAM_API_ROOT`
+    /// - `TELEGRAM_ALLOWED_CHATS` (JSON array of `i64` chat IDs)
+    /// - `TELEGRAM_TEST_CHAT_ID`
+    /// - `TELEGRAM_SHOULD_IGNORE_BOT_MESSAGES` (`true`/`false`)
+    /// - `TELEGRAM_SHOULD_RESPOND_ONLY_TO_MENTIONS` (`true`/`false`)
+    /// - `TELEGRAM_BOT_USERNAME`
     pub fn from_env() -> Result<Self> {
         let bot_token = std::env::var("TELEGRAM_BOT_TOKEN")
             .map_err(|_| TelegramError::MissingSetting("TELEGRAM_BOT_TOKEN".to_string()))?;
 
-        // Validate token is not empty
         if bot_token.is_empty() {
             return Err(TelegramError::ConfigError(
                 "TELEGRAM_BOT_TOKEN cannot be empty".to_string(),
@@ -123,43 +92,43 @@ impl TelegramConfig {
         })
     }
 
-    /// Set API root URL (builder pattern)
+    /// Sets the Telegram Bot API base URL.
     pub fn with_api_root(mut self, url: String) -> Self {
         self.api_root = Some(url);
         self
     }
 
-    /// Set allowed chat IDs (builder pattern)
+    /// Sets the allowed chat IDs list (empty list means "allow all").
     pub fn with_allowed_chat_ids(mut self, ids: Vec<i64>) -> Self {
         self.allowed_chat_ids = ids;
         self
     }
 
-    /// Set test chat ID (builder pattern)
+    /// Sets the chat ID used by tests and example flows.
     pub fn with_test_chat_id(mut self, id: i64) -> Self {
         self.test_chat_id = Some(id);
         self
     }
 
-    /// Set whether to ignore bot messages (builder pattern)
+    /// Sets whether bot messages should be ignored.
     pub fn with_ignore_bot_messages(mut self, ignore: bool) -> Self {
         self.should_ignore_bot_messages = ignore;
         self
     }
 
-    /// Set whether to only respond to mentions (builder pattern)
+    /// Sets whether the bot should respond only to explicit mentions.
     pub fn with_respond_only_to_mentions(mut self, only_mentions: bool) -> Self {
         self.should_respond_only_to_mentions = only_mentions;
         self
     }
 
-    /// Set bot username (builder pattern)
+    /// Sets the bot username (without the `@`).
     pub fn with_bot_username(mut self, username: String) -> Self {
         self.bot_username = Some(username);
         self
     }
 
-    /// Validate configuration
+    /// Validates the configuration values.
     pub fn validate(&self) -> Result<()> {
         if self.bot_token.is_empty() {
             return Err(TelegramError::ConfigError(
@@ -167,7 +136,6 @@ impl TelegramConfig {
             ));
         }
 
-        // Validate bot token format (should contain a colon)
         if !self.bot_token.contains(':') {
             return Err(TelegramError::ConfigError(
                 "Bot token format is invalid (should contain ':')".to_string(),
@@ -177,7 +145,7 @@ impl TelegramConfig {
         Ok(())
     }
 
-    /// Check if a chat is allowed
+    /// Returns `true` if the given chat ID is allowed by the configuration.
     pub fn is_chat_allowed(&self, chat_id: i64) -> bool {
         self.allowed_chat_ids.is_empty() || self.allowed_chat_ids.contains(&chat_id)
     }

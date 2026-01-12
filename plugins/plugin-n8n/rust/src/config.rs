@@ -16,7 +16,6 @@ pub struct N8nConfig {
     pub rate_limit_per_hour: u32,
 }
 
-
 impl Default for N8nConfig {
     fn default() -> Self {
         Self {
@@ -40,8 +39,8 @@ impl N8nConfig {
     }
 
     pub fn from_env() -> Result<Self> {
-        let api_key = std::env::var("ANTHROPIC_API_KEY")
-            .map_err(|_| N8nError::api_key("ANTHROPIC"))?;
+        let api_key =
+            std::env::var("ANTHROPIC_API_KEY").map_err(|_| N8nError::api_key("ANTHROPIC"))?;
 
         let model = std::env::var("CLAUDE_MODEL")
             .ok()
@@ -130,7 +129,3 @@ mod tests {
         assert_eq!(config.get_plugins_dir(), PathBuf::from("/data/plugins"));
     }
 }
-
-
-
-

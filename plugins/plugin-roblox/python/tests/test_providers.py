@@ -1,5 +1,3 @@
-"""Tests for Roblox plugin providers."""
-
 import pytest
 
 from elizaos_plugin_roblox.providers import (
@@ -10,8 +8,6 @@ from elizaos_plugin_roblox.providers.game_state import ProviderParams
 
 
 class TestGameStateProvider:
-    """Tests for GameStateProvider."""
-
     @pytest.fixture
     def provider(self) -> GameStateProvider:
         return GameStateProvider()
@@ -40,8 +36,6 @@ class TestGameStateProvider:
 
 
 class TestProviderRegistry:
-    """Tests for provider registry functions."""
-
     def test_get_roblox_provider_names(self) -> None:
         names = get_roblox_provider_names()
         assert "roblox-game-state" in names

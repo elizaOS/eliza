@@ -64,14 +64,13 @@ pub use types::*;
 // Re-export action types
 pub use actions::{
     ActionContext, CaptureImageAction, DescribeSceneAction, IdentifyPersonAction,
-    KillAutonomousAction, NameEntityAction, SetVisionModeAction, TrackEntityAction,
-    VisionAction,
+    KillAutonomousAction, NameEntityAction, SetVisionModeAction, TrackEntityAction, VisionAction,
 };
 
 // Re-export provider types
 pub use providers::{
-    CameraInfoProvider, EntityTrackingProvider, ProviderContext, VisionProvider,
-    VisionStateProvider,
+    CameraInfoProvider, EntityTrackingProvider, ProviderContext, VisionPerceptionProvider,
+    VisionProvider, VisionStateProvider,
 };
 
 /// Plugin metadata

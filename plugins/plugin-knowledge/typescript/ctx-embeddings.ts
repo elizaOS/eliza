@@ -67,10 +67,6 @@ Create an enriched version of this chunk by adding critical surrounding context.
 
 Provide ONLY the enriched chunk text in your response:`;
 
-/**
- * Caching-optimized chunk prompt - separates document from instructions
- * This version doesn't include the document inline to support OpenRouter caching
- */
 export const CACHED_CHUNK_PROMPT_TEMPLATE = `
 Here is the chunk we want to situate within the whole document:
 <chunk>
@@ -110,9 +106,6 @@ Create an enriched version of this code chunk by adding critical surrounding con
 
 Provide ONLY the enriched code chunk in your response:`;
 
-/**
- * Caching-optimized math PDF chunk prompt
- */
 export const CACHED_MATH_PDF_PROMPT_TEMPLATE = `
 Here is the chunk we want to situate within the whole document:
 <chunk>
@@ -151,9 +144,6 @@ Create an enriched version of this chunk by adding critical surrounding context.
 
 Provide ONLY the enriched chunk text in your response:`;
 
-/**
- * Specialized prompt for PDF documents with mathematical content
- */
 export const MATH_PDF_PROMPT_TEMPLATE = `
 <document>
 {doc_content}
@@ -177,9 +167,6 @@ Create an enriched version of this chunk by adding critical surrounding context.
 
 Provide ONLY the enriched chunk text in your response:`;
 
-/**
- * Specialized prompt for code documents
- */
 export const CODE_PROMPT_TEMPLATE = `
 <document>
 {doc_content}
@@ -203,9 +190,6 @@ Create an enriched version of this code chunk by adding critical surrounding con
 
 Provide ONLY the enriched code chunk in your response:`;
 
-/**
- * Specialized prompt for technical documentation
- */
 export const TECHNICAL_PROMPT_TEMPLATE = `
 <document>
 {doc_content}
@@ -229,15 +213,6 @@ Create an enriched version of this chunk by adding critical surrounding context.
 
 Provide ONLY the enriched chunk text in your response:`;
 
-/**
- * Generates the full prompt string for requesting contextual enrichment from an LLM.
- *
- * @param docContent - The full content of the document.
- * @param chunkContent - The content of the specific chunk to be contextualized.
- * @param minTokens - Minimum target token length for the result.
- * @param maxTokens - Maximum target token length for the result.
- * @returns The formatted prompt string.
- */
 export function getContextualizationPrompt(
   docContent: string,
   chunkContent: string,
@@ -246,16 +221,12 @@ export function getContextualizationPrompt(
   promptTemplate = CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE
 ): string {
   if (!docContent || !chunkContent) {
-    console.warn("Document content or chunk content is missing for contextualization.");
     return "Error: Document or chunk content missing.";
   }
 
-  // Estimate if the chunk is already large relative to our target size
   const chunkTokens = Math.ceil(chunkContent.length / DEFAULT_CHARS_PER_TOKEN);
 
-  // If the chunk is already large, adjust the target max tokens to avoid excessive growth
   if (chunkTokens > maxTokens * 0.7) {
-    // Allow for only ~30% growth for large chunks
     maxTokens = Math.ceil(chunkTokens * 1.3);
     minTokens = chunkTokens;
   }
@@ -274,24 +245,18 @@ export function getCachingContextualizationPrompt(
   maxTokens = CONTEXT_TARGETS.DEFAULT.MAX_TOKENS
 ): { prompt: string; systemPrompt: string } {
   if (!chunkContent) {
-    console.warn("Chunk content is missing for contextualization.");
     return {
       prompt: "Error: Chunk content missing.",
       systemPrompt: SYSTEM_PROMPTS.DEFAULT,
     };
   }
 
-  // Estimate if the chunk is already large relative to our target size
   const chunkTokens = Math.ceil(chunkContent.length / DEFAULT_CHARS_PER_TOKEN);
 
-  // If the chunk is already large, adjust the target max tokens to avoid excessive growth
   if (chunkTokens > maxTokens * 0.7) {
-    // Allow for only ~30% growth for large chunks
     maxTokens = Math.ceil(chunkTokens * 1.3);
     minTokens = chunkTokens;
   }
-
-  // Determine content type and corresponding templates
   let promptTemplate = CACHED_CHUNK_PROMPT_TEMPLATE;
   let systemPrompt = SYSTEM_PROMPTS.DEFAULT;
 
@@ -343,18 +308,14 @@ export function getPromptForMimeType(
   let maxTokens = CONTEXT_TARGETS.DEFAULT.MAX_TOKENS;
   let promptTemplate = CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE;
 
-  // Determine document type and apply appropriate settings
   if (mimeType.includes("pdf")) {
-    // Check if PDF contains mathematical content
     if (containsMathematicalContent(docContent)) {
       minTokens = CONTEXT_TARGETS.MATH_PDF.MIN_TOKENS;
       maxTokens = CONTEXT_TARGETS.MATH_PDF.MAX_TOKENS;
       promptTemplate = MATH_PDF_PROMPT_TEMPLATE;
-      console.debug("Using mathematical PDF prompt template");
     } else {
       minTokens = CONTEXT_TARGETS.PDF.MIN_TOKENS;
       maxTokens = CONTEXT_TARGETS.PDF.MAX_TOKENS;
-      console.debug("Using standard PDF settings");
     }
   } else if (
     mimeType.includes("javascript") ||
@@ -367,7 +328,6 @@ export function getPromptForMimeType(
     minTokens = CONTEXT_TARGETS.CODE.MIN_TOKENS;
     maxTokens = CONTEXT_TARGETS.CODE.MAX_TOKENS;
     promptTemplate = CODE_PROMPT_TEMPLATE;
-    console.debug("Using code prompt template");
   } else if (
     isTechnicalDocumentation(docContent) ||
     mimeType.includes("markdown") ||
@@ -376,7 +336,6 @@ export function getPromptForMimeType(
     minTokens = CONTEXT_TARGETS.TECHNICAL.MIN_TOKENS;
     maxTokens = CONTEXT_TARGETS.TECHNICAL.MAX_TOKENS;
     promptTemplate = TECHNICAL_PROMPT_TEMPLATE;
-    // Using technical documentation prompt template
   }
 
   return getContextualizationPrompt(docContent, chunkContent, minTokens, maxTokens, promptTemplate);
@@ -388,8 +347,6 @@ export function getCachingPromptForMimeType(
 ): { prompt: string; systemPrompt: string } {
   let minTokens = CONTEXT_TARGETS.DEFAULT.MIN_TOKENS;
   let maxTokens = CONTEXT_TARGETS.DEFAULT.MAX_TOKENS;
-
-  // Determine appropriate token targets based on content type
   if (mimeType.includes("pdf")) {
     if (containsMathematicalContent(chunkContent)) {
       minTokens = CONTEXT_TARGETS.MATH_PDF.MIN_TOKENS;
@@ -510,9 +467,7 @@ function isTechnicalDocumentation(content: string): boolean {
 
 export function getChunkWithContext(chunkContent: string, generatedContext: string): string {
   if (!generatedContext || generatedContext.trim() === "") {
-    console.warn("Generated context is empty. Falling back to original chunk content.");
     return chunkContent;
   }
-
   return generatedContext.trim();
 }

@@ -1,5 +1,3 @@
-//! Integration tests for the Farcaster plugin.
-
 use elizaos_plugin_farcaster::{
     FarcasterClient, FarcasterConfig, FarcasterService, Cast, Profile,
     PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION,
@@ -52,7 +50,6 @@ fn test_service_creation() {
 async fn test_send_cast_dry_run() {
     let config = test_config();
     let client = FarcasterClient::new(config).unwrap();
-    
     let casts = client.send_cast("Hello Farcaster!", None).await.unwrap();
     assert_eq!(casts.len(), 1);
     assert_eq!(casts[0].hash, "dry_run_hash");
@@ -63,7 +60,6 @@ async fn test_send_cast_dry_run() {
 async fn test_send_empty_cast() {
     let config = test_config();
     let client = FarcasterClient::new(config).unwrap();
-    
     let casts = client.send_cast("", None).await.unwrap();
     assert!(casts.is_empty());
 }
@@ -72,7 +68,6 @@ async fn test_send_empty_cast() {
 async fn test_send_whitespace_cast() {
     let config = test_config();
     let client = FarcasterClient::new(config).unwrap();
-    
     let casts = client.send_cast("   ", None).await.unwrap();
     assert!(casts.is_empty());
 }
@@ -81,12 +76,9 @@ async fn test_send_whitespace_cast() {
 async fn test_service_start_stop() {
     let config = test_config();
     let service = FarcasterService::new(config).unwrap();
-    
     assert!(!service.is_running().await);
-    
     service.start().await.unwrap();
     assert!(service.is_running().await);
-    
     service.stop().await.unwrap();
     assert!(!service.is_running().await);
 }
@@ -94,14 +86,10 @@ async fn test_service_start_stop() {
 #[test]
 fn test_split_post_content() {
     use elizaos_plugin_farcaster::client::split_post_content;
-    
-    // Short content should stay as one chunk
     let short = "This is a short message.";
     let chunks = split_post_content(short, 320);
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0], short);
-    
-    // Long content should be split
     let long = "A".repeat(400);
     let chunks = split_post_content(&long, 320);
     assert!(chunks.len() > 1);

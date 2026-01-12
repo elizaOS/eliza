@@ -1,4 +1,3 @@
-"""TRANSFER_SOLANA action implementation."""
 
 from __future__ import annotations
 
@@ -15,8 +14,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TransferActionResult:
-    """Result of a transfer action."""
-
     success: bool
     text: str
     signature: str | None = None
@@ -31,17 +28,6 @@ async def handle_transfer(
     recipient: str,
     amount: Decimal,
 ) -> TransferActionResult:
-    """Execute a transfer (auto-detects SOL vs SPL token).
-
-    Args:
-        client: The Solana client.
-        token_mint: Optional token mint address. If None, transfers SOL.
-        recipient: Recipient's public key address.
-        amount: Amount to transfer.
-
-    Returns:
-        The transfer result.
-    """
     if token_mint is None:
         return await handle_sol_transfer(client, recipient, amount)
     return await handle_token_transfer(client, token_mint, recipient, amount)
@@ -52,19 +38,8 @@ async def handle_sol_transfer(
     recipient: str,
     amount: Decimal,
 ) -> TransferActionResult:
-    """Execute a SOL transfer.
-
-    Args:
-        client: The Solana client.
-        recipient: Recipient's public key address.
-        amount: Amount in SOL to transfer.
-
-    Returns:
-        The transfer result.
-    """
     logger.info("Executing SOL transfer: %s SOL to %s", amount, recipient)
 
-    # Validate recipient address
     try:
         recipient_pubkey = Pubkey.from_string(recipient)
     except Exception:
@@ -103,20 +78,8 @@ async def handle_token_transfer(
     recipient: str,
     amount: Decimal,
 ) -> TransferActionResult:
-    """Execute an SPL token transfer.
-
-    Args:
-        client: The Solana client.
-        token_mint: Token mint address.
-        recipient: Recipient's public key address.
-        amount: Amount in token units to transfer.
-
-    Returns:
-        The transfer result.
-    """
     logger.info("Executing token transfer: %s of %s to %s", amount, token_mint, recipient)
 
-    # Validate mint address
     try:
         mint_pubkey = Pubkey.from_string(token_mint)
     except Exception:
@@ -126,7 +89,6 @@ async def handle_token_transfer(
             error="Invalid token mint address",
         )
 
-    # Validate recipient address
     try:
         recipient_pubkey = Pubkey.from_string(recipient)
     except Exception:
@@ -162,7 +124,6 @@ async def handle_token_transfer(
         )
 
 
-# Action definition for elizaOS integration
 TRANSFER_ACTION = {
     "name": "TRANSFER_SOLANA",
     "similes": [

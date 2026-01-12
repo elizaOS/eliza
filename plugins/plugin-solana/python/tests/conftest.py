@@ -4,7 +4,6 @@ import os
 
 import pytest
 
-# Test constants
 DEVNET_RPC = "https://api.devnet.solana.com"
 SOL_MINT = "So11111111111111111111111111111111111111112"
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
@@ -12,23 +11,19 @@ USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 @pytest.fixture
 def devnet_rpc() -> str:
-    """Get devnet RPC URL."""
     return os.getenv("SOLANA_RPC_URL", DEVNET_RPC)
 
 
 @pytest.fixture
 def sol_mint() -> str:
-    """Get wrapped SOL mint address."""
     return SOL_MINT
 
 
 @pytest.fixture
 def usdc_mint() -> str:
-    """Get USDC mint address."""
     return USDC_MINT
 
 
 @pytest.fixture
 def test_pubkey() -> str:
-    """A well-known test public key (system program)."""
     return "11111111111111111111111111111111"

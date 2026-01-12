@@ -1,10 +1,8 @@
 #![allow(missing_docs)]
-//! Configuration utilities for Vercel AI Gateway plugin.
 
 use crate::error::{GatewayError, Result};
 use crate::types::GatewayConfig;
 
-/// Models that don't support temperature/sampling parameters (reasoning models).
 const NO_TEMPERATURE_MODELS: &[&str] = &[
     "o1",
     "o1-preview",
@@ -15,7 +13,6 @@ const NO_TEMPERATURE_MODELS: &[&str] = &[
     "gpt-5-mini",
 ];
 
-/// Check if a model supports temperature parameter.
 pub fn model_supports_temperature(model: &str) -> bool {
     let model_lower = model.to_lowercase();
     !NO_TEMPERATURE_MODELS
@@ -24,20 +21,6 @@ pub fn model_supports_temperature(model: &str) -> bool {
 }
 
 impl GatewayConfig {
-    /// Create configuration from environment variables.
-    ///
-    /// # Environment Variables
-    ///
-    /// - `AI_GATEWAY_API_KEY` or `AIGATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN`: API key (required)
-    /// - `AI_GATEWAY_BASE_URL`: Base URL
-    /// - `AI_GATEWAY_SMALL_MODEL`: Small model
-    /// - `AI_GATEWAY_LARGE_MODEL`: Large model
-    /// - `AI_GATEWAY_EMBEDDING_MODEL`: Embedding model
-    /// - `AI_GATEWAY_EMBEDDING_DIMENSIONS`: Embedding dimensions
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if no API key is found.
     pub fn from_env() -> Result<Self> {
         let api_key = std::env::var("AI_GATEWAY_API_KEY")
             .or_else(|_| std::env::var("AIGATEWAY_API_KEY"))
@@ -90,10 +73,6 @@ mod tests {
         assert!(model_supports_temperature("claude-3-sonnet"));
     }
 }
-
-
-
-
 
 
 

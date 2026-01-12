@@ -1,10 +1,6 @@
-//! Integration tests for simple-voice plugin.
-
+use eliza_plugin_simple_voice::types::{CallbackResult, Memory, MemoryContent, SAM_SERVICE_TYPE};
 use eliza_plugin_simple_voice::{
     SamTTSOptions, DEFAULT_SAM_OPTIONS, SPEECH_TRIGGERS, VOCALIZATION_PATTERNS,
-};
-use eliza_plugin_simple_voice::types::{
-    SAM_SERVICE_TYPE, MemoryContent, Memory, CallbackResult,
 };
 use std::collections::HashMap;
 
@@ -51,11 +47,11 @@ fn test_sam_tts_options_serialization() {
         throat: 150,
         mouth: 160,
     };
-    
+
     let json = serde_json::to_string(&options).unwrap();
     assert!(json.contains("100"));
     assert!(json.contains("80"));
-    
+
     let parsed: SamTTSOptions = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.speed, 100);
     assert_eq!(parsed.pitch, 80);
@@ -65,12 +61,12 @@ fn test_sam_tts_options_serialization() {
 fn test_memory_content_serialization() {
     let mut extra = HashMap::new();
     extra.insert("key".to_string(), serde_json::json!("value"));
-    
+
     let content = MemoryContent {
         text: "Hello world".to_string(),
         extra,
     };
-    
+
     let json = serde_json::to_string(&content).unwrap();
     assert!(json.contains("Hello world"));
     assert!(json.contains("key"));
@@ -89,7 +85,7 @@ fn test_memory_serialization() {
         },
         created_at: 1234567890,
     };
-    
+
     let json = serde_json::to_string(&memory).unwrap();
     assert!(json.contains("mem-1"));
     assert!(json.contains("agent-1"));
@@ -103,7 +99,7 @@ fn test_callback_result_serialization() {
         action: "speak".to_string(),
         audio_data: Some(vec![0, 1, 2, 3]),
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("Action completed"));
     assert!(json.contains("speak"));
@@ -116,7 +112,7 @@ fn test_callback_result_without_audio() {
         action: "speak".to_string(),
         audio_data: None,
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("Action completed"));
     assert!(!json.contains("audio_data"));

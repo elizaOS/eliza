@@ -39,3 +39,11 @@ class VoiceStateProvider:
         }
 
 
+class VoiceStateProviderCamel(VoiceStateProvider):
+    """TS-parity alias provider (camelCase name)."""
+
+    @property
+    def name(self) -> str:
+        return "voiceState"
+
+

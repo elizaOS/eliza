@@ -1,7 +1,3 @@
-"""
-List feeds action for the RSS plugin.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

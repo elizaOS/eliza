@@ -58,7 +58,7 @@ export const executeCommand: Action = {
     "APT_INSTALL",
   ],
   description:
-    "Execute ANY shell command in the terminal. Use this to run ANY command including: brew install, npm install, apt-get, system commands, file operations (create, write, delete), navigate directories, execute scripts, or perform any other shell operation. I CAN and SHOULD execute commands when asked. This includes brew, npm, git, ls, cd, echo, touch, cat, mkdir, system_profiler, and literally ANY other terminal command.",
+    "Execute shell commands including brew install, npm install, apt-get, system commands, file operations, directory navigation, and scripts.",
   validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
     const shellService = runtime.getService<ShellService>("shell");
     if (!shellService) {
@@ -123,13 +123,12 @@ export const executeCommand: Action = {
     if (!commandInfo?.command) {
       logger.error("Failed to extract command from message:", message.content.text);
       await callback({
-        text: "I couldn't understand which command you want to execute. Please specify a shell command.",
+        text: "Could not determine which command to execute. Please specify a shell command.",
         source: message.content.source,
       });
       return { success: false, error: "Could not extract command." };
     }
 
-    logger.info(`User request: "${message.content.text}"`);
     logger.info(`Extracted command: "${commandInfo.command}"`);
 
     try {
@@ -164,11 +163,12 @@ export const executeCommand: Action = {
       return { success: result.success, text: responseText };
     } catch (error) {
       logger.error("Error executing command:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       await callback({
-        text: `Failed to execute command: ${error instanceof Error ? error.message : "Unknown error"}`,
+        text: `Failed to execute command: ${errorMessage}`,
         source: message.content.source,
       });
-      return { success: false, error: (error as Error).message };
+      return { success: false, error: errorMessage };
     }
   },
   examples: [

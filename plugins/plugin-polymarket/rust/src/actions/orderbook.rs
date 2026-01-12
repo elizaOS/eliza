@@ -205,7 +205,3 @@ mod tests {
         assert_eq!(ask_depth, 0);
     }
 }
-
-
-
-

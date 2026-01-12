@@ -71,7 +71,6 @@ export function handleXError(context: string, error: unknown, throwError = false
       : {}),
   });
 
-  // Log based on error type
   switch (errorType) {
     case XErrorType.AUTH:
       logger.error(`[X Auth Error] ${context}:`, errorMessage);
@@ -103,14 +102,12 @@ export function isRetryableError(error: XError | unknown): boolean {
 }
 
 export function getRetryDelay(error: XError | unknown, attempt: number): number {
-  const baseDelay = 1000; // 1 second
-  const maxDelay = 60000; // 60 seconds
+  const baseDelay = 1000;
+  const maxDelay = 60000;
 
   if (error instanceof XError || getErrorType(error) === XErrorType.RATE_LIMIT) {
-    // For rate limits, use longer delays
     return Math.min(baseDelay * 2 ** attempt * 5, maxDelay);
   }
 
-  // Exponential backoff for other errors
   return Math.min(baseDelay * 2 ** attempt, maxDelay);
 }

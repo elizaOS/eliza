@@ -1,14 +1,7 @@
-/**
- * Thread provider for Farcaster.
- */
-
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { FarcasterService } from "../services/FarcasterService";
 import { FARCASTER_SERVICE_NAME, FARCASTER_SOURCE } from "../types";
 
-/**
- * Format timestamp for display.
- */
 const formatTimestamp = (timestamp: number): string => {
   return new Date(timestamp).toLocaleString("en-US", {
     hour: "2-digit",
@@ -24,7 +17,12 @@ export const farcasterThreadProvider: Provider = {
     "Provides thread context for Farcaster casts so the agent can reference the full conversation.",
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
-    const source = (message.content as Record<string, unknown>)?.source;
+    const contentForSource = message.content as Record<
+      string,
+      string | number | boolean | null | object | undefined
+    >;
+    const source =
+      typeof contentForSource.source === "string" ? contentForSource.source : undefined;
 
     if (source !== FARCASTER_SOURCE) {
       return {
@@ -46,14 +44,25 @@ export const farcasterThreadProvider: Provider = {
       };
     }
 
-    const content = message.content as Record<string, unknown>;
-    const messageMetadata = (message.metadata as Record<string, unknown> | undefined) ?? {};
+    const content = message.content as {
+      hash?: string;
+      castHash?: string;
+      metadata?: Record<string, string | undefined> | string;
+    };
+    const messageMetadata =
+      (message.metadata as Record<string, string | undefined> | undefined) ?? {};
+    const contentMetadata =
+      typeof content.metadata === "object" &&
+      content.metadata !== null &&
+      !Array.isArray(content.metadata)
+        ? content.metadata
+        : undefined;
     const castHash =
       content.hash ||
       content.castHash ||
-      (content?.metadata as Record<string, unknown>)?.castHash ||
+      contentMetadata?.castHash ||
       messageMetadata.castHash ||
-      (content?.metadata as Record<string, unknown>)?.parentHash ||
+      contentMetadata?.parentHash ||
       messageMetadata.parentHash;
 
     if (!castHash || typeof castHash !== "string") {

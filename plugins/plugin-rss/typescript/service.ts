@@ -128,7 +128,6 @@ export class RssService extends Service {
             continue;
           }
 
-          logger.debug({ url }, "Fetching feed");
           const feedData = await this.fetchUrl(url);
 
           if (!feedData || !feedData.items) {
@@ -207,7 +206,6 @@ export class RssService extends Service {
               "Found new items from feed"
             );
           } else {
-            logger.debug({ feed: feedData.title || url }, "No new items from feed");
           }
         } catch (error) {
           logger.error({ error, url: feed.content.url }, "Error checking feed");
@@ -224,7 +222,6 @@ export class RssService extends Service {
     const rssFeeds = this.runtime.getSetting("RSS_FEEDS");
 
     if (!rssFeeds) {
-      logger.debug("No RSS_FEEDS configured in environment");
       return;
     }
 
@@ -284,7 +281,6 @@ export class RssService extends Service {
     };
 
     this.runtime.registerTaskWorker(worker);
-    logger.info("Registered RSS_FEED_CHECK task worker");
   }
 
   async start(): Promise<void> {

@@ -1,8 +1,3 @@
-/**
- * Integration tests for the S3 Storage plugin.
- * Skip tests that require AWS credentials.
- */
-
 import { describe, expect, it } from "vitest";
 
 const HAS_AWS_CREDS = !!(
@@ -46,7 +41,7 @@ describe("S3 Storage Plugin Integration Tests", () => {
 
     it("should be a valid service class", async () => {
       const { AwsS3Service } = await import("../services/s3");
-      expect(AwsS3Service.serviceType).toBe("AWS_S3");
+      expect(AwsS3Service.serviceType).toBe("aws_s3");
     });
   });
 

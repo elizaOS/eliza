@@ -1,7 +1,3 @@
-"""
-Configuration for the Todo Plugin.
-"""
-
 import os
 from dataclasses import dataclass
 
@@ -10,51 +6,20 @@ from elizaos_plugin_todo.errors import ConfigError
 
 @dataclass
 class TodoConfig:
-    """Configuration for the Todo plugin."""
-
-    # Database configuration
     database_url: str | None = None
-
-    # Reminder settings
     enable_reminders: bool = True
-    reminder_interval_ms: int = 30000  # 30 seconds
-    min_reminder_interval_ms: int = 1800000  # 30 minutes between reminders per task
-
-    # Notification settings
+    reminder_interval_ms: int = 30000
+    min_reminder_interval_ms: int = 1800000
     enable_browser_notifications: bool = False
     enable_sound: bool = True
-    quiet_hours_start: int = 22  # 10 PM
-    quiet_hours_end: int = 8  # 8 AM
-
-    # Cache settings
+    quiet_hours_start: int = 22
+    quiet_hours_end: int = 8
     cache_max_size: int = 1000
-    cache_default_ttl_ms: int = 300000  # 5 minutes
-
-    # Integration settings
+    cache_default_ttl_ms: int = 300000
     enable_rolodex_integration: bool = True
 
     @classmethod
     def from_env(cls) -> "TodoConfig":
-        """
-        Create configuration from environment variables.
-
-        Environment variables:
-            DATABASE_URL: Database connection string
-            TODO_ENABLE_REMINDERS: Enable reminder notifications (default: true)
-            TODO_REMINDER_INTERVAL_MS: Reminder check interval (default: 30000)
-            TODO_MIN_REMINDER_INTERVAL_MS: Min interval between reminders (default: 1800000)
-            TODO_ENABLE_BROWSER_NOTIFICATIONS: Enable browser notifications (default: false)
-            TODO_QUIET_HOURS_START: Quiet hours start hour (default: 22)
-            TODO_QUIET_HOURS_END: Quiet hours end hour (default: 8)
-            TODO_CACHE_MAX_SIZE: Maximum cache entries (default: 1000)
-            TODO_ENABLE_ROLODEX: Enable rolodex integration (default: true)
-
-        Returns:
-            TodoConfig: Configured instance
-
-        Raises:
-            ConfigError: If required configuration is missing
-        """
         return cls(
             database_url=os.getenv("DATABASE_URL"),
             enable_reminders=os.getenv("TODO_ENABLE_REMINDERS", "true").lower() == "true",
@@ -73,12 +38,6 @@ class TodoConfig:
         )
 
     def validate(self) -> None:
-        """
-        Validate the configuration.
-
-        Raises:
-            ConfigError: If configuration is invalid
-        """
         if self.reminder_interval_ms < 1000:
             raise ConfigError("reminder_interval_ms must be at least 1000ms")
 

@@ -54,8 +54,14 @@ impl N8nProvider for PluginCreationStatusProvider {
                     .and_then(|s| s.get("name"))
                     .and_then(|n| n.as_str())
                     .unwrap_or("unknown");
-                let status = job.get("status").and_then(|s| s.as_str()).unwrap_or("unknown");
-                let phase = job.get("currentPhase").and_then(|p| p.as_str()).unwrap_or("unknown");
+                let status = job
+                    .get("status")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
+                let phase = job
+                    .get("currentPhase")
+                    .and_then(|p| p.as_str())
+                    .unwrap_or("unknown");
                 let progress = job.get("progress").and_then(|p| p.as_f64()).unwrap_or(0.0);
 
                 ProviderResult {

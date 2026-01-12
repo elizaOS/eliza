@@ -1,12 +1,10 @@
-//! Send message action for Telegram
-
 use async_trait::async_trait;
 use serde_json::Value;
 
 use super::{ActionContext, TelegramAction};
 use crate::error::Result;
 
-/// Action to send a message in Telegram
+/// Action that builds a JSON payload for sending a Telegram message.
 pub struct SendMessageAction;
 
 #[async_trait]
@@ -20,13 +18,11 @@ impl TelegramAction for SendMessageAction {
     }
 
     async fn validate(&self, context: &ActionContext) -> Result<bool> {
-        // Check if this is a Telegram message
         let source = context.message.get("source").and_then(|v| v.as_str());
         Ok(source == Some("telegram"))
     }
 
     async fn execute(&self, context: &ActionContext) -> Result<Value> {
-        // Get response text from state
         let response_text = context
             .state
             .get("response")

@@ -57,18 +57,9 @@ export class TEEService extends Service {
     keypair: PrivateKeyAccount;
     attestation: RemoteAttestationQuote;
   }> {
-    logger.debug("TEE Service: Deriving ECDSA keypair");
     return this.provider.deriveEcdsaKeypair(path, subject, agentId);
   }
 
-  /**
-   * Derive an Ed25519 keypair for Solana.
-   *
-   * @param path - The derivation path (e.g., secret salt).
-   * @param subject - The subject for the certificate chain (e.g., "solana").
-   * @param agentId - The agent ID for attestation.
-   * @returns The keypair and attestation.
-   */
   async deriveEd25519Keypair(
     path: string,
     subject: string,
@@ -77,12 +68,10 @@ export class TEEService extends Service {
     keypair: Keypair;
     attestation: RemoteAttestationQuote;
   }> {
-    logger.debug("TEE Service: Deriving Ed25519 keypair");
     return this.provider.deriveEd25519Keypair(path, subject, agentId);
   }
 
   async rawDeriveKey(path: string, subject: string): Promise<DeriveKeyResponse> {
-    logger.debug("TEE Service: Deriving raw key");
     return this.provider.rawDeriveKeyResponse(path, subject);
   }
 }

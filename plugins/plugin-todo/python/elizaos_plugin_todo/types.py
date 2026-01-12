@@ -1,7 +1,3 @@
-"""
-Type definitions for the Todo Plugin.
-"""
-
 from datetime import datetime
 from enum import Enum
 from uuid import UUID
@@ -10,16 +6,12 @@ from pydantic import BaseModel, Field
 
 
 class TaskType(str, Enum):
-    """Task types supported by the plugin."""
-
     DAILY = "daily"
     ONE_OFF = "one-off"
     ASPIRATIONAL = "aspirational"
 
 
 class Priority(int, Enum):
-    """Priority levels (1 = highest, 4 = lowest)."""
-
     CRITICAL = 1
     HIGH = 2
     MEDIUM = 3
@@ -27,16 +19,12 @@ class Priority(int, Enum):
 
 
 class RecurringPattern(str, Enum):
-    """Recurring patterns for daily tasks."""
-
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
 
 
 class NotificationType(str, Enum):
-    """Notification types."""
-
     OVERDUE = "overdue"
     UPCOMING = "upcoming"
     DAILY = "daily"
@@ -57,14 +45,10 @@ class TodoMetadata(BaseModel):
     points_awarded: int | None = None
 
     class Config:
-        """Pydantic config."""
-
         extra = "allow"
 
 
 class Todo(BaseModel):
-    """Core todo item structure."""
-
     id: UUID
     agent_id: UUID
     world_id: UUID
@@ -85,8 +69,6 @@ class Todo(BaseModel):
 
 
 class CreateTodoParams(BaseModel):
-    """Parameters for creating a new todo."""
-
     agent_id: UUID
     world_id: UUID
     room_id: UUID
@@ -102,8 +84,6 @@ class CreateTodoParams(BaseModel):
 
 
 class UpdateTodoParams(BaseModel):
-    """Parameters for updating a todo."""
-
     name: str | None = None
     description: str | None = None
     priority: Priority | None = None
@@ -115,8 +95,6 @@ class UpdateTodoParams(BaseModel):
 
 
 class TodoFilters(BaseModel):
-    """Filter parameters for querying todos."""
-
     agent_id: UUID | None = None
     world_id: UUID | None = None
     room_id: UUID | None = None
@@ -128,8 +106,6 @@ class TodoFilters(BaseModel):
 
 
 class ReminderMetadata(BaseModel):
-    """Metadata for reminder messages."""
-
     todo_id: UUID
     todo_name: str
     reminder_type: str
@@ -137,8 +113,6 @@ class ReminderMetadata(BaseModel):
 
 
 class ReminderMessage(BaseModel):
-    """Reminder message structure."""
-
     entity_id: UUID
     message: str
     priority: str  # 'low' | 'medium' | 'high'
@@ -147,16 +121,12 @@ class ReminderMessage(BaseModel):
 
 
 class TodoPluginConfig(BaseModel):
-    """Plugin configuration."""
-
     enable_reminders: bool = True
     reminder_interval: int = 30000  # milliseconds
     enable_integrations: bool = True
 
 
 class TaskSelection(BaseModel):
-    """Task selection from extraction."""
-
     task_id: str
     task_name: str
     is_found: bool
@@ -174,8 +144,6 @@ class TaskUpdate(BaseModel):
 
 
 class ConfirmationResponse(BaseModel):
-    """Confirmation response from user."""
-
     is_confirmation: bool
     should_proceed: bool
     modifications: str | None = None

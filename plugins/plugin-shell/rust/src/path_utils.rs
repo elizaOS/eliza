@@ -45,10 +45,7 @@ pub fn validate_path(
 
     let normalized = match resolved_path.canonicalize() {
         Ok(p) => p,
-        Err(_) => {
-            // If can't canonicalize, try to normalize manually
-            normalize_path(&resolved_path)
-        }
+        Err(_) => normalize_path(&resolved_path),
     };
 
     let normalized_allowed = match allowed_dir.canonicalize() {
@@ -86,18 +83,18 @@ fn normalize_path(path: &Path) -> PathBuf {
 
 pub fn is_safe_command(command: &str) -> bool {
     let path_traversal_patterns = [
-        r"\.\./",   // ../
-        r"\.\.\\",  // ..\
-        r"/\.\.",   // /..
+        r"\.\./",
+        r"\.\.\\",
+        r"/\.\.",
         r"\\\.\.",
     ];
 
     let dangerous_patterns = [
-        r"\$\(",        // Command substitution $(
-        r"`[^']*`",     // Command substitution ` (but allow in quotes)
-        r"\|\s*sudo",   // Pipe to sudo
-        r";\s*sudo",    // Chain with sudo
-        r"&\s*&",       // && chaining
+        r"\$\(",
+        r"`[^']*`",
+        r"\|\s*sudo",
+        r";\s*sudo",
+        r"&\s*&",
         r"\|\s*\|",
     ];
 

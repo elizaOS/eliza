@@ -20,6 +20,8 @@ mod providers_list;
 mod recent_messages;
 mod relationships;
 mod roles;
+mod settings;
+mod time;
 mod world;
 
 pub use action_state::ActionStateProvider;
@@ -40,6 +42,8 @@ pub use providers_list::ProvidersListProvider;
 pub use recent_messages::RecentMessagesProvider;
 pub use relationships::RelationshipsProvider;
 pub use roles::RolesProvider;
+pub use settings::SettingsProvider;
+pub use time::TimeProvider;
 pub use world::WorldProvider;
 
 use crate::error::PluginResult;
@@ -75,6 +79,7 @@ pub fn basic_providers() -> Vec<Box<dyn Provider>> {
     vec![
         Box::new(CharacterProvider),
         Box::new(CurrentTimeProvider),
+        Box::new(TimeProvider),
         Box::new(RecentMessagesProvider),
         Box::new(EntitiesProvider),
         Box::new(ActionStateProvider),
@@ -98,6 +103,7 @@ pub fn extended_providers() -> Vec<Box<dyn Provider>> {
         Box::new(RelationshipsProvider),
         Box::new(RolesProvider),
         Box::new(AgentSettingsProvider),
+        Box::new(SettingsProvider),
     ]
 }
 

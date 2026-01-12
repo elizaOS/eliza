@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! Twitter API v2 Client
-//!
-//! Async HTTP client for X platform using Twitter API v2 with reqwest.
 
 use base64::Engine;
 use chrono::{DateTime, Utc};
@@ -19,7 +16,6 @@ use tracing::debug;
 use crate::error::{Result, XAIError};
 use crate::types::*;
 
-/// Twitter API v2 client for X platform.
 pub struct TwitterClient {
     client: Client,
     config: TwitterConfig,
@@ -29,7 +25,6 @@ pub struct TwitterClient {
 impl TwitterClient {
     const API_BASE: &'static str = "https://api.x.com/2";
 
-    /// Create a new Twitter API client.
     pub fn new(config: TwitterConfig) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
@@ -41,10 +36,6 @@ impl TwitterClient {
             me: None,
         })
     }
-
-    // =========================================================================
-    // OAuth 1.0a Signing
-    // =========================================================================
 
     fn generate_nonce() -> String {
         let nonce: u64 = rand::thread_rng().gen();
@@ -151,11 +142,6 @@ impl TwitterClient {
         format!("{}{}", Self::API_BASE, endpoint)
     }
 
-    // =========================================================================
-    // User Methods
-    // =========================================================================
-
-    /// Get the authenticated user's profile.
     pub async fn me(&mut self) -> Result<Profile> {
         if let Some(ref profile) = self.me {
             return Ok(profile.clone());
@@ -242,15 +228,10 @@ impl TwitterClient {
         })
     }
 
-    /// Get a user's ID by username.
     pub async fn get_user_id(&self, username: &str) -> Result<String> {
         let profile = self.get_profile(username).await?;
         Ok(profile.id)
     }
-
-    // =========================================================================
-    // Helper Methods
-    // =========================================================================
 
     fn parse_profile(&self, user: &serde_json::Value) -> Result<Profile> {
         let metrics = &user["public_metrics"];
@@ -274,10 +255,6 @@ impl TwitterClient {
                 .map(|dt| dt.with_timezone(&Utc)),
         })
     }
-
-    // =========================================================================
-    // Post Methods
-    // =========================================================================
 
     fn parse_post(&self, post_data: &serde_json::Value, includes: &serde_json::Value) -> Post {
         let users: HashMap<String, &serde_json::Value> = includes["users"]
@@ -307,7 +284,6 @@ impl TwitterClient {
         let entities = &post_data["entities"];
         let attachments = &post_data["attachments"];
 
-        // Parse photos and videos
         let mut photos: Vec<Photo> = Vec::new();
         let mut videos: Vec<Video> = Vec::new();
 
@@ -383,7 +359,6 @@ impl TwitterClient {
             })
             .map(String::from);
 
-        // Parse mentions
         let mentions: Vec<Mention> = entities["mentions"]
             .as_array()
             .map(|arr| {
@@ -397,7 +372,6 @@ impl TwitterClient {
             })
             .unwrap_or_default();
 
-        // Parse hashtags
         let hashtags: Vec<String> = entities["hashtags"]
             .as_array()
             .map(|arr| {
@@ -465,7 +439,6 @@ impl TwitterClient {
         }
     }
 
-    /// Get a single post by ID.
     pub async fn get_post(&self, post_id: &str) -> Result<Option<Post>> {
         let url = self.url(&format!("/posts/{}", post_id));
         let headers = self.get_headers("GET", &url);
@@ -497,7 +470,6 @@ impl TwitterClient {
         }
     }
 
-    /// Create a new post.
     pub async fn create_post(&self, text: &str) -> Result<PostCreateResult> {
         if self.config.dry_run {
             debug!("Dry run: would post: {}", text);
@@ -529,7 +501,6 @@ impl TwitterClient {
         })
     }
 
-    /// Create a reply to a post.
     pub async fn create_reply(&self, text: &str, reply_to_id: &str) -> Result<PostCreateResult> {
         if self.config.dry_run {
             debug!("Dry run: would reply to {}: {}", reply_to_id, text);
@@ -566,7 +537,6 @@ impl TwitterClient {
         })
     }
 
-    /// Delete a post.
     pub async fn delete_post(&self, post_id: &str) -> Result<bool> {
         if self.config.dry_run {
             debug!("Dry run: would delete post: {}", post_id);
@@ -583,7 +553,6 @@ impl TwitterClient {
         Ok(data["data"]["deleted"].as_bool().unwrap_or(false))
     }
 
-    /// Like a post.
     pub async fn like_post(&mut self, post_id: &str) -> Result<bool> {
         if self.config.dry_run {
             debug!("Dry run: would like post: {}", post_id);
@@ -610,7 +579,6 @@ impl TwitterClient {
         Ok(data["data"]["liked"].as_bool().unwrap_or(false))
     }
 
-    /// Repost a post.
     pub async fn repost(&mut self, post_id: &str) -> Result<bool> {
         if self.config.dry_run {
             debug!("Dry run: would repost: {}", post_id);
@@ -655,7 +623,6 @@ impl TwitterClient {
         Ok(!data["data"]["liked"].as_bool().unwrap_or(true))
     }
 
-    /// Undo a repost.
     pub async fn unrepost(&mut self, post_id: &str) -> Result<bool> {
         if self.config.dry_run {
             debug!("Dry run: would unrepost: {}", post_id);
@@ -673,7 +640,6 @@ impl TwitterClient {
         Ok(!data["data"]["reposted"].as_bool().unwrap_or(true))
     }
 
-    /// Follow a user.
     pub async fn follow_user(&mut self, user_id: &str) -> Result<bool> {
         if self.config.dry_run {
             debug!("Dry run: would follow user: {}", user_id);
@@ -700,7 +666,6 @@ impl TwitterClient {
         Ok(data["data"]["following"].as_bool().unwrap_or(false))
     }
 
-    /// Unfollow a user.
     pub async fn unfollow_user(&mut self, user_id: &str) -> Result<bool> {
         if self.config.dry_run {
             debug!("Dry run: would unfollow user: {}", user_id);
@@ -718,7 +683,6 @@ impl TwitterClient {
         Ok(!data["data"]["following"].as_bool().unwrap_or(true))
     }
 
-    /// Get followers of a user.
     pub async fn get_followers(
         &self,
         user_id: &str,
@@ -752,7 +716,6 @@ impl TwitterClient {
         })
     }
 
-    /// Get users that a user is following.
     pub async fn get_following(
         &self,
         user_id: &str,
@@ -786,11 +749,6 @@ impl TwitterClient {
         })
     }
 
-    // =========================================================================
-    // Timeline Methods
-    // =========================================================================
-
-    /// Get the home timeline.
     pub async fn get_home_timeline(
         &mut self,
         max_results: u32,
@@ -835,7 +793,6 @@ impl TwitterClient {
         })
     }
 
-    /// Get a user's posts.
     pub async fn get_user_posts(
         &self,
         user_id: &str,
@@ -881,11 +838,6 @@ impl TwitterClient {
         })
     }
 
-    // =========================================================================
-    // Search Methods
-    // =========================================================================
-
-    /// Check if the client has valid authentication credentials.
     pub fn is_authenticated(&self) -> bool {
         !self.config.api_key.is_empty()
             && !self.config.api_secret.is_empty()
@@ -893,12 +845,10 @@ impl TwitterClient {
             && !self.config.access_token_secret.is_empty()
     }
 
-    /// Get the authenticated user's username if available.
     pub fn username(&self) -> Option<&str> {
         self.me.as_ref().map(|p| p.username.as_str())
     }
 
-    /// Search for posts matching a query.
     pub async fn search_posts(
         &self,
         query: &str,

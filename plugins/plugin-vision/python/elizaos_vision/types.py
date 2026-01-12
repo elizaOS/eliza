@@ -1,7 +1,3 @@
-"""
-Vision Plugin Type Definitions
-Complete type definitions for the ElizaOS vision plugin
-"""
 
 from __future__ import annotations
 
@@ -11,7 +7,6 @@ from typing import Literal
 
 
 class VisionMode(str, Enum):
-    """Vision processing modes"""
 
     OFF = "OFF"
     CAMERA = "CAMERA"
@@ -21,7 +16,6 @@ class VisionMode(str, Enum):
 
 @dataclass
 class Point2D:
-    """Point in 2D space"""
 
     x: float
     y: float
@@ -29,7 +23,6 @@ class Point2D:
 
 @dataclass
 class BoundingBox:
-    """Bounding box for detected objects"""
 
     x: float
     y: float
@@ -37,15 +30,12 @@ class BoundingBox:
     height: float
 
     def center(self) -> Point2D:
-        """Get the center point of the bounding box"""
         return Point2D(x=self.x + self.width / 2, y=self.y + self.height / 2)
 
     def area(self) -> float:
-        """Get the area of the bounding box"""
         return self.width * self.height
 
     def aspect_ratio(self) -> float:
-        """Get the aspect ratio (width/height)"""
         return self.width / self.height if self.height > 0 else 0
 
 
@@ -60,7 +50,6 @@ class CameraInfo:
 
 @dataclass
 class VisionFrame:
-    """Vision frame captured from camera"""
 
     timestamp: int
     width: int
@@ -81,7 +70,6 @@ class DetectedObject:
 
 @dataclass
 class Keypoint:
-    """Keypoint for pose detection"""
 
     part: str
     position: Point2D
@@ -102,7 +90,6 @@ class PersonInfo:
 
 @dataclass
 class SceneDescription:
-    """Scene description from vision analysis"""
 
     timestamp: int
     description: str
@@ -115,7 +102,6 @@ class SceneDescription:
 
 @dataclass
 class OCRBlock:
-    """OCR text block"""
 
     text: str
     bbox: BoundingBox
@@ -125,7 +111,6 @@ class OCRBlock:
 
 @dataclass
 class OCRWord:
-    """OCR word"""
 
     text: str
     bbox: BoundingBox
@@ -134,7 +119,6 @@ class OCRWord:
 
 @dataclass
 class OCRResult:
-    """OCR result from text extraction"""
 
     text: str
     blocks: list[OCRBlock]
@@ -143,7 +127,6 @@ class OCRResult:
 
 @dataclass
 class Florence2Result:
-    """Florence-2 model result"""
 
     caption: str | None = None
     objects: list[dict] = field(default_factory=list)
@@ -153,7 +136,6 @@ class Florence2Result:
 
 @dataclass
 class TileAnalysis:
-    """Analysis result for a screen tile"""
 
     timestamp: int
     florence2: Florence2Result | None = None
@@ -165,7 +147,6 @@ class TileAnalysis:
 
 @dataclass
 class ScreenTile:
-    """Screen tile for tiled processing"""
 
     id: str
     row: int
@@ -180,7 +161,6 @@ class ScreenTile:
 
 @dataclass
 class ScreenCapture:
-    """Screen capture result"""
 
     timestamp: int
     width: int
@@ -191,7 +171,6 @@ class ScreenCapture:
 
 @dataclass
 class ScreenAnalysis:
-    """Screen analysis data"""
 
     full_screen_ocr: str | None = None
     active_tile: TileAnalysis | None = None
@@ -202,7 +181,6 @@ class ScreenAnalysis:
 
 @dataclass
 class EnhancedSceneDescription(SceneDescription):
-    """Enhanced scene description with screen data"""
 
     screen_capture: ScreenCapture | None = None
     screen_analysis: ScreenAnalysis | None = None
@@ -210,7 +188,6 @@ class EnhancedSceneDescription(SceneDescription):
 
 @dataclass
 class EntityAppearance:
-    """Entity appearance record"""
 
     timestamp: int
     bounding_box: BoundingBox
@@ -221,17 +198,12 @@ class EntityAppearance:
 
 @dataclass
 class EntityAttributes:
-    """Entity attributes"""
-
-    # For people
     name: str | None = None
     face_embedding: list[float] | None = None
     face_id: str | None = None
     clothing: list[str] = field(default_factory=list)
     hair_color: str | None = None
     accessories: list[str] = field(default_factory=list)
-
-    # For objects
     object_type: str | None = None
     color: str | None = None
     size: Literal["small", "medium", "large"] | None = None
@@ -243,7 +215,6 @@ class EntityAttributes:
 
 @dataclass
 class TrackedEntity:
-    """Tracked entity"""
 
     id: str
     entity_type: Literal["person", "object", "pet"]
@@ -258,7 +229,6 @@ class TrackedEntity:
 
 @dataclass
 class RecentlyLeftEntity:
-    """Recently departed entity"""
 
     entity_id: str
     left_at: int
@@ -278,19 +248,12 @@ class WorldState:
 
 @dataclass
 class VisionConfig:
-    """Vision configuration"""
-
-    # Camera
     camera_name: str | None = None
     pixel_change_threshold: float = 50.0
     update_interval: int = 100
-
-    # Detection
     enable_pose_detection: bool = False
     enable_object_detection: bool = False
     enable_face_recognition: bool = False
-
-    # Update intervals
     tf_update_interval: int = 1000
     vlm_update_interval: int = 10000
     tf_change_threshold: float = 10.0
@@ -298,8 +261,6 @@ class VisionConfig:
 
     # Vision mode
     vision_mode: VisionMode = VisionMode.CAMERA
-
-    # Screen capture
     screen_capture_interval: int = 2000
     tile_size: int = 256
     tile_processing_order: Literal["sequential", "priority", "random"] = "priority"
@@ -308,8 +269,6 @@ class VisionConfig:
     display_index: int | None = None
     capture_all_displays: bool = False
     target_screen_fps: int | None = None
-
-    # Performance
     enable_gpu_acceleration: bool = True
     max_memory_usage_mb: int = 2000
 

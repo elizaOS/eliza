@@ -18,12 +18,10 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def agent_id() -> str:
-    """Generate a test agent ID."""
     return as_uuid(str(uuid.uuid4()))
 
 
 def get_database_url() -> str:
-    """Get database URL from environment or start testcontainer."""
     # Check for CI environment variable first
     env_url = os.environ.get("DATABASE_URL")
     if env_url:
@@ -33,7 +31,6 @@ def get_database_url() -> str:
 
 @pytest_asyncio.fixture
 async def postgres_connection_string() -> AsyncGenerator[str, None]:
-    """Get PostgreSQL connection string - from env or testcontainer."""
     env_url = get_database_url()
     if env_url:
         # Use environment-provided database (CI)
@@ -54,7 +51,6 @@ async def postgres_connection_string() -> AsyncGenerator[str, None]:
 async def postgres_adapter(
     postgres_connection_string: str, agent_id: str
 ) -> AsyncGenerator[PostgresAdapter, None]:
-    """Create a PostgreSQL adapter connected to database."""
     from elizaos_plugin_sql.adapters.postgres import PostgresAdapter
 
     adapter = PostgresAdapter(
@@ -70,7 +66,6 @@ async def postgres_adapter(
 async def migration_service(
     postgres_adapter: PostgresAdapter,
 ) -> AsyncGenerator[MigrationService, None]:
-    """Create a migration service connected to PostgreSQL."""
     from elizaos_plugin_sql.migration_service import MigrationService
 
     service = MigrationService(postgres_adapter.db)

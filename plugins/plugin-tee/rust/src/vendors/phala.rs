@@ -1,20 +1,14 @@
 #![allow(missing_docs)]
-//! Phala Network TEE Vendor implementation.
 
 use crate::vendors::types::{TeeVendorInterface, TeeVendorNames};
 
-/// Phala Network TEE Vendor.
-///
-/// Provides TEE capabilities using Phala Network's DStack SDK.
 pub struct PhalaVendor;
 
 impl PhalaVendor {
-    /// Create a new Phala vendor.
     pub fn new() -> Self {
         Self
     }
 }
-
 
 impl Default for PhalaVendor {
     fn default() -> Self {
@@ -43,7 +37,3 @@ impl TeeVendorInterface for PhalaVendor {
         vec!["phala-derive-key", "phala-remote-attestation"]
     }
 }
-
-
-
-

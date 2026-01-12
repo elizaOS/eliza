@@ -59,8 +59,6 @@ export async function handleTextSmall(
     const model = getSmallModel(runtime);
     logger.log(`[Ollama] Using TEXT_SMALL model: ${model}`);
     await ensureModelAvailable(model, baseURL, customFetch);
-    logger.log("generating text");
-    logger.log(prompt);
 
     return await generateOllamaText(ollama, model, {
       prompt,

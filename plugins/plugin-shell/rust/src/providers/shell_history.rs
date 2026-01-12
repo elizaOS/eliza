@@ -1,5 +1,3 @@
-//! Shell history provider for the shell plugin.
-
 use crate::{Provider, ProviderResult, ShellService};
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -8,10 +6,8 @@ use std::time::{Duration, UNIX_EPOCH};
 const MAX_OUTPUT_LENGTH: usize = 8000;
 const TRUNCATE_SEGMENT_LENGTH: usize = 4000;
 
-/// Provider that exposes shell command history and current working directory.
 pub struct ShellHistoryProvider;
 
-/// Format a timestamp (f64 seconds since epoch) as ISO 8601.
 fn format_timestamp(timestamp: f64) -> String {
     let duration = Duration::from_secs_f64(timestamp);
     let _datetime = UNIX_EPOCH + duration;
@@ -132,7 +128,6 @@ impl Provider for ShellHistoryProvider {
                 .join("\n\n")
         };
 
-        // Get recent file operations
         let recent_file_ops: Vec<_> = history
             .iter()
             .filter_map(|e| e.file_operations.as_ref())

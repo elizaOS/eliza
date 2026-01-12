@@ -1,11 +1,6 @@
-/**
- * Type definitions for plugin-xai
- */
-
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import type { Post as ClientPost } from "./client";
 
-// Re-export Post type
 export type { Post } from "./client";
 
 type Post = ClientPost;
@@ -19,9 +14,6 @@ export interface XClientConfig {
   accessSecret: string;
 }
 
-/**
- * X-specific event types
- */
 export enum XEventTypes {
   MENTION_RECEIVED = "X_MENTION_RECEIVED",
   THREAD_CREATED = "X_THREAD_CREATED",
@@ -31,9 +23,6 @@ export enum XEventTypes {
   QUOTE_RECEIVED = "X_QUOTE_RECEIVED",
 }
 
-/**
- * X interaction payload
- */
 export interface XInteractionPayload {
   id: string;
   type: "like" | "repost" | "quote";
@@ -46,9 +35,6 @@ export interface XInteractionPayload {
   repostId?: string;
 }
 
-/**
- * X interaction memory
- */
 export interface XInteractionMemory extends Memory {
   content: {
     type: string;
@@ -56,9 +42,6 @@ export interface XInteractionMemory extends Memory {
   };
 }
 
-/**
- * X memory
- */
 export interface XMemory extends Memory {
   content: {
     text: string;
@@ -66,9 +49,6 @@ export interface XMemory extends Memory {
   };
 }
 
-/**
- * X like received payload
- */
 export interface XLikeReceivedPayload {
   runtime: IAgentRuntime;
   post: Post;
@@ -80,9 +60,6 @@ export interface XLikeReceivedPayload {
   source: "x";
 }
 
-/**
- * X repost received payload
- */
 export interface XRepostReceivedPayload {
   runtime: IAgentRuntime;
   post: Post;
@@ -95,9 +72,6 @@ export interface XRepostReceivedPayload {
   source: "x";
 }
 
-/**
- * X quote received payload
- */
 export interface XQuoteReceivedPayload {
   runtime: IAgentRuntime;
   quotedPost: Post;
@@ -116,9 +90,6 @@ export interface XQuoteReceivedPayload {
   source: "x";
 }
 
-/**
- * Action response from X actions
- */
 export interface ActionResponse {
   text: string;
   actions: string[];
@@ -128,9 +99,6 @@ export interface ActionResponse {
   reply?: boolean;
 }
 
-/**
- * Media data for posts
- */
 export interface MediaData {
   data: Buffer | Uint8Array;
   type: string;
@@ -143,9 +111,6 @@ import type { XInteractionClient } from "./interactions";
 import type { XPostClient } from "./post";
 import type { XTimelineClient } from "./timeline";
 
-/**
- * X Client interface
- */
 export interface IXClient {
   client: ClientBase;
   post?: XPostClient;
@@ -154,10 +119,6 @@ export interface IXClient {
   discovery?: XDiscoveryClient;
 }
 
-/**
- * X API response structure - can have nested data structures
- * This covers various X API v2 response shapes
- */
 export interface PostResponse {
   id?: string;
   rest_id?: string;
@@ -178,10 +139,6 @@ export interface PostResponseData {
   };
 }
 
-/**
- * A type-safe accessor for extracting post IDs from various X API response shapes.
- * The X API can return data in multiple nested formats.
- */
 export interface XApiResultShape {
   id?: string;
   rest_id?: string;
@@ -200,48 +157,27 @@ export interface XApiResultShape {
   };
 }
 
-/**
- * Shape for objects that may have a json() method (Response-like)
- */
 export interface ResponseLike {
-  json?: () => Promise<unknown>;
+  json?: () => Promise<Record<string, unknown>>;
   clone?: () => ResponseLike;
   bodyUsed?: boolean;
 }
 
-/**
- * Utility type guard to check if value conforms to XApiResultShape
- */
 export function isXApiResult(value: unknown): value is XApiResultShape {
   return value !== null && typeof value === "object";
 }
 
-/**
- * Utility type guard to check if value is response-like
- */
 export function isResponseLike(value: unknown): value is ResponseLike {
   return value !== null && typeof value === "object" && "json" in value;
 }
 
-/**
- * Extract ID from various X API response shapes
- */
 export function extractIdFromResult(result: unknown): string | undefined {
   if (!isXApiResult(result)) return undefined;
 
-  // Direct ID
   if (result.id) return result.id;
-
-  // rest_id at root
   if (result.rest_id) return result.rest_id;
-
-  // Nested in data
   if (result.data?.id) return result.data.id;
-
-  // Double nested
   if (result.data?.data?.id) return result.data.data.id;
-
-  // Post creation response shape
   if (result.data?.create_post?.post_results?.result?.rest_id) {
     return result.data.create_post.post_results.result.rest_id;
   }
@@ -249,9 +185,6 @@ export function extractIdFromResult(result: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * Extract rest_id from X API response shapes
- */
 export function extractRestId(result: unknown): string | undefined {
   if (!isXApiResult(result)) return undefined;
 

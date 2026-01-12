@@ -62,7 +62,7 @@ const executeGameActionExamples: ActionExample[][] = [
 interface GameActionConfig {
   name: string;
   patterns: RegExp[];
-  extractParams: (match: RegExpMatchArray) => Record<string, unknown>;
+  extractParams: (match: RegExpMatchArray) => Record<string, string | number>;
 }
 
 const KNOWN_ACTIONS: GameActionConfig[] = [
@@ -100,7 +100,7 @@ const KNOWN_ACTIONS: GameActionConfig[] = [
 
 function parseGameAction(
   message: string
-): { actionName: string; parameters: Record<string, unknown> } | null {
+): { actionName: string; parameters: Record<string, string | number> } | null {
   for (const action of KNOWN_ACTIONS) {
     for (const pattern of action.patterns) {
       const match = message.match(pattern);
@@ -141,7 +141,7 @@ const executeGameAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
-    _options: Record<string, unknown>,
+    _options: Record<string, never>,
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
     try {
@@ -150,7 +150,7 @@ const executeGameAction: Action = {
         logger.error("Roblox service not found");
         if (callback) {
           callback({
-            text: "I couldn't connect to the Roblox service. Please make sure it's configured correctly.",
+            text: "Roblox service not available.",
             action: "EXECUTE_ROBLOX_ACTION",
           });
         }
@@ -169,7 +169,7 @@ const executeGameAction: Action = {
         logger.warn("Could not parse game action from message");
         if (callback) {
           callback({
-            text: "I'm not sure what action you want me to perform. Please be more specific.",
+            text: "Could not parse action from message.",
             action: "EXECUTE_ROBLOX_ACTION",
           });
         }
@@ -209,7 +209,7 @@ const executeGameAction: Action = {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       if (callback) {
         callback({
-          text: "I encountered an error executing the action in the game. Please try again.",
+          text: "Error executing action.",
           action: "EXECUTE_ROBLOX_ACTION",
         });
       }

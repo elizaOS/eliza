@@ -1,12 +1,10 @@
-/**
- * Message service for Farcaster operations.
- */
-
-import { createUniqueUuid, type UUID } from "@elizaos/core";
+import { createUniqueUuid, type IAgentRuntime, type UUID } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import { type Cast, FARCASTER_SOURCE, FarcasterEventTypes, FarcasterMessageType } from "../types";
 import { castUuid, neynarCastToCast } from "../utils";
 import { getFarcasterFid } from "../utils/config";
+
+type MessageMetadata = Record<string, string | number | boolean | null | undefined>;
 
 interface Message {
   id: string;
@@ -18,7 +16,7 @@ interface Message {
   type: FarcasterMessageType;
   timestamp: number;
   inReplyTo?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: MessageMetadata;
 }
 
 interface GetMessagesOptions {
@@ -33,7 +31,7 @@ interface SendMessageOptions {
   text: string;
   type: string;
   replyToId?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: MessageMetadata;
 }
 
 interface IMessageService {
@@ -45,29 +43,14 @@ interface IMessageService {
 export class FarcasterMessageService implements IMessageService {
   constructor(
     private client: FarcasterClient,
-    private runtime: {
-      getSetting: (key: string) => unknown;
-      logger: {
-        error: (obj: unknown, msg?: string) => void;
-        warn: (msg: string) => void;
-        debug: (msg: string) => void;
-      };
-      emitEvent: (event: string, payload: unknown) => Promise<void>;
-    }
+    private runtime: IAgentRuntime
   ) {}
 
-  private castToMessage(
-    cast: Cast,
-    agentId: UUID,
-    extraMetadata?: Record<string, unknown>
-  ): Message {
+  private castToMessage(cast: Cast, agentId: UUID, extraMetadata?: MessageMetadata): Message {
     return {
       id: castUuid({ hash: cast.hash, agentId }),
       agentId,
-      roomId: createUniqueUuid(
-        this.runtime as Parameters<typeof createUniqueUuid>[0],
-        cast.threadId || cast.hash
-      ),
+      roomId: createUniqueUuid(this.runtime, cast.threadId || cast.hash),
       userId: cast.profile.fid.toString(),
       username: cast.profile.username,
       text: cast.text,
@@ -88,7 +71,7 @@ export class FarcasterMessageService implements IMessageService {
     try {
       const { agentId, roomId, limit = 20 } = options;
 
-      const fid = getFarcasterFid(this.runtime as Parameters<typeof getFarcasterFid>[0]);
+      const fid = getFarcasterFid(this.runtime);
       if (!fid) {
         this.runtime.logger.error("[Farcaster] FARCASTER_FID is not configured");
         return [];
@@ -110,7 +93,8 @@ export class FarcasterMessageService implements IMessageService {
 
       return messages;
     } catch (error) {
-      this.runtime.logger.error({ error }, "[Farcaster] Error fetching messages");
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.runtime.logger.error(err, "[Farcaster] Error fetching messages");
       return [];
     }
   }
@@ -121,8 +105,11 @@ export class FarcasterMessageService implements IMessageService {
 
       let inReplyTo: { hash: string; fid: number } | undefined;
       if (replyToId && type === FarcasterMessageType.REPLY) {
-        const parentHash = (options.metadata?.parentHash as string) || replyToId;
-        const fid = getFarcasterFid(this.runtime as Parameters<typeof getFarcasterFid>[0]);
+        const parentHash =
+          typeof options.metadata?.parentHash === "string"
+            ? options.metadata.parentHash
+            : replyToId;
+        const fid = getFarcasterFid(this.runtime);
         if (!fid) {
           throw new Error("FARCASTER_FID is not configured");
         }
@@ -146,17 +133,24 @@ export class FarcasterMessageService implements IMessageService {
       message.roomId = roomId;
       message.type = type as FarcasterMessageType;
 
-      await this.runtime.emitEvent(FarcasterEventTypes.CAST_GENERATED, {
+      const castGeneratedPayload = {
         runtime: this.runtime,
+        source: FARCASTER_SOURCE,
         castHash: cast.hash,
-        message,
-        threadId: cast.threadId,
-      });
+        ...(cast.threadId ? { threadId: cast.threadId } : {}),
+        messageId: message.id,
+        roomId,
+      };
+      await this.runtime.emitEvent(
+        FarcasterEventTypes.CAST_GENERATED as string,
+        castGeneratedPayload
+      );
 
       return message;
     } catch (error) {
-      this.runtime.logger.error({ error }, "[Farcaster] Error sending message");
-      throw error;
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.runtime.logger.error(err, "[Farcaster] Error sending message");
+      throw err;
     }
   }
 
@@ -173,7 +167,8 @@ export class FarcasterMessageService implements IMessageService {
 
       return this.castToMessage(farcasterCast, agentId);
     } catch (error) {
-      this.runtime.logger.error({ error }, "[Farcaster] Error fetching message");
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.runtime.logger.error(err, "[Farcaster] Error fetching message");
       return null;
     }
   }
@@ -198,7 +193,8 @@ export class FarcasterMessageService implements IMessageService {
 
       return thread;
     } catch (error) {
-      this.runtime.logger.error({ error }, "[Farcaster] Error fetching thread");
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.runtime.logger.error(err, "[Farcaster] Error fetching thread");
       return [];
     }
   }

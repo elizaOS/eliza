@@ -6,7 +6,6 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tracing::info;
 
-/// CapSolver configuration
 #[derive(Debug, Clone)]
 pub struct CapSolverConfig {
     pub api_key: String,
@@ -319,8 +318,6 @@ impl CapSolverService {
     }
 }
 
-/// Detect CAPTCHA type from page HTML content
-/// Returns the captcha type and optionally the site key if found
 pub fn detect_captcha_type(page_content: &str) -> (CaptchaType, Option<String>) {
     // Check for Cloudflare Turnstile
     if page_content.contains("cf-turnstile") || page_content.contains("challenges.cloudflare.com/turnstile") {
@@ -347,7 +344,6 @@ pub fn detect_captcha_type(page_content: &str) -> (CaptchaType, Option<String>) 
     (CaptchaType::None, None)
 }
 
-/// Extract the data-sitekey attribute value from HTML content
 fn extract_data_sitekey(html: &str) -> Option<String> {
     // Pattern to match data-sitekey="..." or data-sitekey='...'
     let patterns = [
@@ -369,8 +365,6 @@ fn extract_data_sitekey(html: &str) -> Option<String> {
     None
 }
 
-/// Inject a CAPTCHA solution into the page
-/// This function returns JavaScript code that should be executed in the browser context
 pub fn generate_captcha_injection_script(captcha_type: &CaptchaType, solution: &str) -> String {
     let escaped_solution = solution.replace('\\', "\\\\").replace('"', "\\\"");
     

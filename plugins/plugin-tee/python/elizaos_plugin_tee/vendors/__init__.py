@@ -1,29 +1,12 @@
-"""
-TEE Vendor registry and exports.
-"""
-
 from elizaos_plugin_tee.vendors.phala import PhalaVendor
 from elizaos_plugin_tee.vendors.types import TeeVendorInterface, TeeVendorNames
 
-# Registered vendors
 _vendors: dict[str, TeeVendorInterface] = {
     TeeVendorNames.PHALA: PhalaVendor(),
 }
 
 
 def get_vendor(vendor_type: str) -> TeeVendorInterface:
-    """
-    Get a vendor by name.
-
-    Args:
-        vendor_type: The vendor type name.
-
-    Returns:
-        The vendor implementation.
-
-    Raises:
-        ValueError: If vendor is not supported.
-    """
     vendor = _vendors.get(vendor_type)
     if not vendor:
         raise ValueError(f"Unsupported TEE vendor: {vendor_type}")
@@ -36,8 +19,4 @@ __all__ = [
     "PhalaVendor",
     "get_vendor",
 ]
-
-
-
-
 

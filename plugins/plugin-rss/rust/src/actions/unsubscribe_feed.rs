@@ -1,10 +1,7 @@
-//! Unsubscribe feed action for the RSS plugin.
-
 use async_trait::async_trait;
 use serde_json::Value;
 use super::get_feed::{Action, ActionExample};
 
-/// Unsubscribe feed action.
 pub struct UnsubscribeFeedAction;
 
 impl UnsubscribeFeedAction {

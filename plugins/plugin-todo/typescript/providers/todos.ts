@@ -10,9 +10,6 @@ import {
 } from "@elizaos/core";
 import { createTodoDataService } from "../services/todoDataService";
 
-/**
- * The TodosProvider fetches and formats information about a user's tasks and points.
- */
 export const todosProvider: Provider = {
   name: "TODOS",
   description: "Information about the user's current tasks, completed tasks, and points",
@@ -38,7 +35,6 @@ export const todosProvider: Provider = {
       }
       logger.debug("TodosProvider - message:", JSON.stringify(message, null, 2));
 
-      // Fetch room details directly to get worldId
       const roomDetails = await runtime.getRoom(roomId);
       const _worldId =
         (roomDetails?.worldId as UUID | undefined) ||
@@ -46,20 +42,16 @@ export const todosProvider: Provider = {
         createUniqueUuid(runtime, message.entityId);
       logger.debug("TodosProvider - roomDetails:", JSON.stringify(roomDetails, null, 2));
 
-      // Get data service
       const dataService = createTodoDataService(runtime);
 
-      // Get ALL tasks for THIS ENTITY across all rooms/worlds
       const allEntityTodos = await dataService.getTodos({
         entityId: message.entityId as UUID,
       });
 
       logger.debug("TodosProvider - allEntityTodos:", JSON.stringify(allEntityTodos, null, 2));
 
-      // Filter out completed tasks from active
       const pendingTodos = allEntityTodos.filter((todo) => !todo.isCompleted);
 
-      // Get completed tasks in the last 7 days
       const completedTodos = allEntityTodos.filter((todo) => {
         if (!todo.isCompleted) return false;
 
@@ -68,17 +60,13 @@ export const todosProvider: Provider = {
           return todo.completedAt >= sevenDaysAgo;
         }
 
-        // If no completedAt, use updatedAt as fallback
         if (todo.updatedAt) {
           return todo.updatedAt >= sevenDaysAgo;
         }
 
-        return false; // No date info, exclude
+        return false;
       });
 
-      // --- Format different types of tasks ---
-
-      // Daily recurring tasks
       const dailyTodos = pendingTodos.filter((todo) => todo.type === "daily");
       const formattedDailyTasks = dailyTodos
         .map((todo) => {
@@ -87,7 +75,6 @@ export const todosProvider: Provider = {
         })
         .join("\n");
 
-      // One-off tasks with due dates
       const oneOffTodos = pendingTodos.filter((todo) => todo.type === "one-off");
       const formattedOneOffTasks = oneOffTodos
         .map((todo) => {
@@ -111,7 +98,6 @@ export const todosProvider: Provider = {
         })
         .join("\n");
 
-      // Recently completed tasks
       const formattedCompletedTasks = completedTodos
         .map((todo) => {
           let completedDateText = "recently";
@@ -127,30 +113,23 @@ export const todosProvider: Provider = {
         })
         .join("\n");
 
-      // Build the provider output
       let output = `# User's Todos (Tasks)\n\nThese are the tasks which the agent is managing for the user. This is the actual list of todos, any other is probably from previous conversations.\n\n`;
 
-      // Daily tasks
       output += `\n## Daily Todos\n`;
       output += formattedDailyTasks || "No daily todos.";
 
-      // One-off tasks
       output += `\n\n## One-off Todos\n`;
       output += formattedOneOffTasks || "No one-off todos.";
 
-      // Aspirational tasks
       output += `\n\n## Aspirational Todos\n`;
       output += formattedAspirationalTasks || "No aspirational todos.";
 
-      // Recently completed tasks
       output += `\n\n## Recently Completed (Last 7 Days)\n`;
       output += formattedCompletedTasks || "No todos completed in the last 7 days.";
 
       output +=
         "\n\nIMPORTANT: Do not tell the user that a task exists or has been added if it is not in the list above. As an AI, you may hallucinate, so it is important to ground your answer in the information above which we know to be true from the database.\n\n";
 
-      // Construct response object
-      // Convert TodoData arrays to ProviderValue-compatible format
       const result: ProviderResult = {
         data: {
           dailyTodos: dailyTodos.map((todo) => ({

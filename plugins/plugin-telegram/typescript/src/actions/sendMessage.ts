@@ -1,7 +1,3 @@
-/**
- * Send message action for Telegram.
- */
-
 import type {
   Action,
   ActionExample,
@@ -15,14 +11,8 @@ import type {
 import { TELEGRAM_SERVICE_NAME } from "../constants";
 import type { TelegramService } from "../service";
 
-/**
- * Action name constant.
- */
 export const SEND_MESSAGE_ACTION = "SEND_TELEGRAM_MESSAGE";
 
-/**
- * Send a message to a Telegram chat.
- */
 export const sendMessageAction: Action = {
   name: SEND_MESSAGE_ACTION,
   similes: [
@@ -35,7 +25,6 @@ export const sendMessageAction: Action = {
   description: "Send a message to a Telegram chat",
 
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    // Check if this is a Telegram message
     const source = message.content?.source;
     return source === "telegram";
   },
@@ -59,7 +48,6 @@ export const sendMessageAction: Action = {
       return { success: false, error: "Telegram service not initialized" };
     }
 
-    // Get response text from state
     const responseText = state.values?.response?.toString() || "";
     const chatId = message.content?.chatId;
 

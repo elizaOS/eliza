@@ -1,5 +1,3 @@
-"""Tests for Farcaster configuration."""
-
 from __future__ import annotations
 
 import os
@@ -12,7 +10,6 @@ from elizaos_plugin_farcaster.error import ConfigError
 
 
 def test_config_creation() -> None:
-    """Test creating a FarcasterConfig."""
     config = FarcasterConfig(
         fid=12345,
         signer_uuid="test-uuid",
@@ -26,7 +23,6 @@ def test_config_creation() -> None:
 
 
 def test_config_with_options() -> None:
-    """Test creating a FarcasterConfig with all options."""
     config = FarcasterConfig(
         fid=12345,
         signer_uuid="test-uuid",
@@ -45,7 +41,6 @@ def test_config_with_options() -> None:
 
 
 def test_config_from_env() -> None:
-    """Test loading config from environment variables."""
     env_vars = {
         "FARCASTER_FID": "12345",
         "FARCASTER_SIGNER_UUID": "test-uuid",
@@ -63,7 +58,6 @@ def test_config_from_env() -> None:
 
 
 def test_config_from_env_missing_fid() -> None:
-    """Test that missing FID raises ConfigError."""
     env_vars = {
         "FARCASTER_SIGNER_UUID": "test-uuid",
         "FARCASTER_NEYNAR_API_KEY": "test-key",
@@ -74,7 +68,6 @@ def test_config_from_env_missing_fid() -> None:
 
 
 def test_config_from_env_missing_signer() -> None:
-    """Test that missing signer UUID raises ConfigError."""
     env_vars = {
         "FARCASTER_FID": "12345",
         "FARCASTER_NEYNAR_API_KEY": "test-key",
@@ -96,7 +89,6 @@ def test_config_validate_invalid_fid() -> None:
 
 
 def test_config_validate_invalid_cast_length() -> None:
-    """Test validation with invalid cast length."""
     config = FarcasterConfig(
         fid=12345,
         signer_uuid="test-uuid",

@@ -23,8 +23,6 @@ export const analyzeInputAction: Action = {
     options?: Record<string, unknown>,
     _callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    console.log("[ChainExample] Analyzing input...");
-
     if ((options?.abortSignal as AbortSignal)?.aborted) {
       throw new Error("Analysis aborted");
     }
@@ -52,8 +50,6 @@ export const analyzeInputAction: Action = {
       timestamp: Date.now(),
     };
 
-    console.log("[ChainExample] Analysis complete:", analysis);
-
     return {
       success: true,
       data: analysis,
@@ -77,8 +73,6 @@ export const processAnalysisAction: Action = {
     options?: Record<string, unknown>,
     _callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    console.log("[ChainExample] Processing analysis...");
-
     const previousResults = options?.previousResults as ActionResult[] | undefined;
     const previousResult = previousResults?.[0];
     if (!previousResult?.data) {
@@ -108,8 +102,6 @@ export const processAnalysisAction: Action = {
       throw new Error("Processing aborted");
     }
 
-    console.log("[ChainExample] Processing complete:", decisions);
-
     return {
       success: true,
       data: {
@@ -137,8 +129,6 @@ export const executeFinalAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    console.log("[ChainExample] Executing final action...");
-
     const previousResults = options?.previousResults as ActionResult[] | undefined;
     const processingResult = previousResults?.find(
       (r) => (r.data as Record<string, unknown>)?.decisions !== undefined
@@ -166,8 +156,6 @@ export const executeFinalAction: Action = {
     };
 
     await new Promise((resolve) => setTimeout(resolve, 100));
-
-    console.log("[ChainExample] Execution complete:", execution);
 
     if (callback) {
       await callback({
@@ -215,8 +203,6 @@ export const createPlanAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
-      console.log("[CREATE_PLAN] Starting comprehensive plan creation...");
-
       const plan = {
         id: uuidv4(),
         name: "Comprehensive Project Plan",
@@ -316,8 +302,6 @@ Ready to begin execution when you are!`,
         });
       }
 
-      console.log("[CREATE_PLAN] Plan created successfully:", plan.name);
-
       return {
         success: true,
         data: {
@@ -329,8 +313,6 @@ Ready to begin execution when you are!`,
         text: `Created ${plan.phases.length}-phase plan with ${plan.phases.reduce((total, phase) => total + phase.tasks.length, 0)} tasks`,
       };
     } catch (error) {
-      console.error("[CREATE_PLAN] Error creating plan:", error);
-
       if (callback) {
         await callback({
           text: "I encountered an error while creating the comprehensive plan. Let me try a simpler approach.",

@@ -110,7 +110,6 @@ class SamEngine:
         t = np.arange(duration_samples) / self.sample_rate
         wave = np.zeros(duration_samples, dtype=np.float32)
 
-        # Generate harmonics
         for harmonic in range(1, 8):
             freq = fundamental_freq * harmonic
             amp = 1.0 / harmonic
@@ -131,7 +130,6 @@ class SamEngine:
 
         wave = wave * envelope
 
-        # Normalize
         max_val = np.max(np.abs(wave))
         if max_val > 0:
             wave = wave / max_val

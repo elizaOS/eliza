@@ -1,16 +1,3 @@
-"""
-elizaOS Farcaster Plugin - Python Implementation.
-
-Provides full Farcaster integration for elizaOS agents, including casting,
-mentions, timeline interactions, and webhook support via the Neynar API.
-
-Example:
-    >>> from elizaos_plugin_farcaster import FarcasterClient, FarcasterConfig
-    >>> config = FarcasterConfig.from_env()
-    >>> client = FarcasterClient(config)
-    >>> cast = await client.send_cast("Hello Farcaster!")
-"""
-
 from elizaos_plugin_farcaster.client import FarcasterClient
 from elizaos_plugin_farcaster.config import FarcasterConfig
 from elizaos_plugin_farcaster.error import (
@@ -36,7 +23,6 @@ from elizaos_plugin_farcaster.types import (
 
 __version__ = "1.0.0"
 
-# Plugin metadata
 PLUGIN_NAME = "farcaster"
 PLUGIN_DESCRIPTION = "Farcaster integration for elizaOS agents"
 
@@ -64,7 +50,6 @@ __all__ = [
     "FidRequest",
     "LastCast",
     "Profile",
-    # Metadata
     "PLUGIN_NAME",
     "PLUGIN_DESCRIPTION",
 ]

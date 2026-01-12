@@ -37,7 +37,3 @@ def test_embedding_params() -> None:
     params = EmbeddingParams(text="Test text for embedding")
     assert params.text == "Test text for embedding"
 
-
-
-
-

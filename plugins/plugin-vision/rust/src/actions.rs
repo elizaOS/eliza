@@ -13,19 +13,19 @@ use serde_json::json;
 pub trait VisionAction: Send + Sync {
     /// Action name
     fn name(&self) -> &'static str;
-    
+
     /// Action description
     fn description(&self) -> &'static str;
-    
+
     /// Action similes (alternative names)
     fn similes(&self) -> &'static [&'static str];
-    
+
     /// Whether action is enabled by default
     fn enabled(&self) -> bool;
-    
+
     /// Validate if action can execute
     async fn validate(&self, context: &ActionContext) -> bool;
-    
+
     /// Execute the action
     async fn handle(&self, context: &ActionContext) -> Result<ActionResult>;
 }
@@ -71,7 +71,8 @@ impl DescribeSceneAction {
     /// Action name constant
     pub const NAME: &'static str = "DESCRIBE_SCENE";
     /// Action description
-    pub const DESCRIPTION: &'static str = "Analyzes the current visual scene and provides a detailed description.";
+    pub const DESCRIPTION: &'static str =
+        "Analyzes the current visual scene and provides a detailed description.";
     /// Alternative action names
     pub const SIMILES: &'static [&'static str] = &[
         "DESCRIBE_SCENE",
@@ -87,23 +88,23 @@ impl VisionAction for DescribeSceneAction {
     fn name(&self) -> &'static str {
         Self::NAME
     }
-    
+
     fn description(&self) -> &'static str {
         Self::DESCRIPTION
     }
-    
+
     fn similes(&self) -> &'static [&'static str] {
         Self::SIMILES
     }
-    
+
     fn enabled(&self) -> bool {
         true
     }
-    
+
     async fn validate(&self, context: &ActionContext) -> bool {
         context.vision_available && context.vision_active
     }
-    
+
     async fn handle(&self, context: &ActionContext) -> Result<ActionResult> {
         if !context.vision_available || !context.vision_active {
             return Ok(ActionResult {
@@ -161,23 +162,23 @@ impl VisionAction for CaptureImageAction {
     fn name(&self) -> &'static str {
         Self::NAME
     }
-    
+
     fn description(&self) -> &'static str {
         Self::DESCRIPTION
     }
-    
+
     fn similes(&self) -> &'static [&'static str] {
         Self::SIMILES
     }
-    
+
     fn enabled(&self) -> bool {
         false // Privacy-sensitive
     }
-    
+
     async fn validate(&self, context: &ActionContext) -> bool {
         context.vision_available && context.vision_active
     }
-    
+
     async fn handle(&self, context: &ActionContext) -> Result<ActionResult> {
         if !context.vision_available || !context.vision_active {
             return Ok(ActionResult {
@@ -249,23 +250,23 @@ impl VisionAction for SetVisionModeAction {
     fn name(&self) -> &'static str {
         Self::NAME
     }
-    
+
     fn description(&self) -> &'static str {
         Self::DESCRIPTION
     }
-    
+
     fn similes(&self) -> &'static [&'static str] {
         Self::SIMILES
     }
-    
+
     fn enabled(&self) -> bool {
         true
     }
-    
+
     async fn validate(&self, context: &ActionContext) -> bool {
         context.vision_available
     }
-    
+
     async fn handle(&self, context: &ActionContext) -> Result<ActionResult> {
         if !context.vision_available {
             return Ok(ActionResult {
@@ -282,7 +283,7 @@ impl VisionAction for SetVisionModeAction {
         }
 
         let new_mode = Self::parse_mode(&context.message_text);
-        
+
         match new_mode {
             Some(mode) => Ok(ActionResult {
                 text: format!("Vision mode set to {}", mode),
@@ -335,23 +336,23 @@ impl VisionAction for NameEntityAction {
     fn name(&self) -> &'static str {
         Self::NAME
     }
-    
+
     fn description(&self) -> &'static str {
         Self::DESCRIPTION
     }
-    
+
     fn similes(&self) -> &'static [&'static str] {
         Self::SIMILES
     }
-    
+
     fn enabled(&self) -> bool {
         true
     }
-    
+
     async fn validate(&self, context: &ActionContext) -> bool {
         context.vision_available && context.vision_active
     }
-    
+
     async fn handle(&self, context: &ActionContext) -> Result<ActionResult> {
         if !context.vision_available || !context.vision_active {
             return Ok(ActionResult {
@@ -405,23 +406,23 @@ impl VisionAction for IdentifyPersonAction {
     fn name(&self) -> &'static str {
         Self::NAME
     }
-    
+
     fn description(&self) -> &'static str {
         Self::DESCRIPTION
     }
-    
+
     fn similes(&self) -> &'static [&'static str] {
         Self::SIMILES
     }
-    
+
     fn enabled(&self) -> bool {
         false // Privacy-sensitive
     }
-    
+
     async fn validate(&self, context: &ActionContext) -> bool {
         context.vision_available && context.vision_active
     }
-    
+
     async fn handle(&self, context: &ActionContext) -> Result<ActionResult> {
         if !context.vision_available || !context.vision_active {
             return Ok(ActionResult {
@@ -462,12 +463,8 @@ impl TrackEntityAction {
     /// Action description
     pub const DESCRIPTION: &'static str = "Start tracking a specific person or object in view";
     /// Alternative action names
-    pub const SIMILES: &'static [&'static str] = &[
-        "TRACK_ENTITY",
-        "track the",
-        "follow the",
-        "keep an eye on",
-    ];
+    pub const SIMILES: &'static [&'static str] =
+        &["TRACK_ENTITY", "track the", "follow the", "keep an eye on"];
 }
 
 #[async_trait]
@@ -475,23 +472,23 @@ impl VisionAction for TrackEntityAction {
     fn name(&self) -> &'static str {
         Self::NAME
     }
-    
+
     fn description(&self) -> &'static str {
         Self::DESCRIPTION
     }
-    
+
     fn similes(&self) -> &'static [&'static str] {
         Self::SIMILES
     }
-    
+
     fn enabled(&self) -> bool {
         false // Privacy-sensitive
     }
-    
+
     async fn validate(&self, context: &ActionContext) -> bool {
         context.vision_available && context.vision_active
     }
-    
+
     async fn handle(&self, context: &ActionContext) -> Result<ActionResult> {
         if !context.vision_available || !context.vision_active {
             return Ok(ActionResult {
@@ -544,23 +541,23 @@ impl VisionAction for KillAutonomousAction {
     fn name(&self) -> &'static str {
         Self::NAME
     }
-    
+
     fn description(&self) -> &'static str {
         Self::DESCRIPTION
     }
-    
+
     fn similes(&self) -> &'static [&'static str] {
         Self::SIMILES
     }
-    
+
     fn enabled(&self) -> bool {
         false // Potentially dangerous
     }
-    
+
     async fn validate(&self, _context: &ActionContext) -> bool {
         true // Always allow
     }
-    
+
     async fn handle(&self, _context: &ActionContext) -> Result<ActionResult> {
         Ok(ActionResult {
             text: "No autonomous loop was running.".to_string(),
@@ -597,11 +594,26 @@ mod tests {
 
     #[test]
     fn test_set_vision_mode_parse() {
-        assert_eq!(SetVisionModeAction::parse_mode("turn off vision"), Some(VisionMode::Off));
-        assert_eq!(SetVisionModeAction::parse_mode("disable"), Some(VisionMode::Off));
-        assert_eq!(SetVisionModeAction::parse_mode("use camera"), Some(VisionMode::Camera));
-        assert_eq!(SetVisionModeAction::parse_mode("screen capture"), Some(VisionMode::Screen));
-        assert_eq!(SetVisionModeAction::parse_mode("enable both"), Some(VisionMode::Both));
+        assert_eq!(
+            SetVisionModeAction::parse_mode("turn off vision"),
+            Some(VisionMode::Off)
+        );
+        assert_eq!(
+            SetVisionModeAction::parse_mode("disable"),
+            Some(VisionMode::Off)
+        );
+        assert_eq!(
+            SetVisionModeAction::parse_mode("use camera"),
+            Some(VisionMode::Camera)
+        );
+        assert_eq!(
+            SetVisionModeAction::parse_mode("screen capture"),
+            Some(VisionMode::Screen)
+        );
+        assert_eq!(
+            SetVisionModeAction::parse_mode("enable both"),
+            Some(VisionMode::Both)
+        );
         assert_eq!(SetVisionModeAction::parse_mode("hello"), None);
     }
 

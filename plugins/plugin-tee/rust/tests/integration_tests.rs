@@ -1,5 +1,3 @@
-//! Integration tests for the TEE plugin.
-
 use elizaos_plugin_tee::{
     bytes_to_hex, calculate_sha256, get_tee_endpoint, hex_to_bytes, TeeMode, TeeVendor,
 };
@@ -68,10 +66,6 @@ fn test_tee_vendor_parse() {
     assert_eq!(TeeVendor::parse("PHALA").unwrap(), TeeVendor::Phala);
     assert!(TeeVendor::parse("invalid").is_err());
 }
-
-
-
-
 
 
 

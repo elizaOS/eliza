@@ -3,7 +3,12 @@ from __future__ import annotations
 import logging
 
 from elizaos_plugin_knowledge.service import KnowledgeService
-from elizaos_plugin_knowledge.provider import KnowledgeProvider, DocumentsProvider
+from elizaos_plugin_knowledge.provider import (
+    AvailableDocumentsProvider,
+    DocumentsProvider,
+    KnowledgeProvider,
+    KnowledgeProviderTs,
+)
 from elizaos_plugin_knowledge.types import (
     AddKnowledgeOptions,
     KnowledgeConfig,
@@ -29,7 +34,9 @@ class KnowledgePlugin:
         self._config = config or KnowledgeConfig()
         self._service = KnowledgeService(config=self._config)
         self._knowledge_provider = KnowledgeProvider(self._service)
+        self._knowledge_provider_ts = KnowledgeProviderTs(self._service)
         self._documents_provider = DocumentsProvider(self._service)
+        self._available_documents_provider = AvailableDocumentsProvider(self._service)
         self._initialized = False
 
     @property
@@ -61,12 +68,7 @@ class KnowledgePlugin:
 
         knowledge_path = Path(self._config.knowledge_path)
 
-        if not knowledge_path.exists():
-            logger.debug(f"Knowledge path '{knowledge_path}' does not exist")
-            return
-
-        if not knowledge_path.is_dir():
-            logger.warning(f"Knowledge path '{knowledge_path}' is not a directory")
+        if not knowledge_path.exists() or not knowledge_path.is_dir():
             return
 
         supported_extensions = {
@@ -158,9 +160,19 @@ class KnowledgePlugin:
                 "handler": self._knowledge_provider.get_context,
             },
             {
+                "name": self._knowledge_provider_ts.name,
+                "description": self._knowledge_provider_ts.description,
+                "handler": self._knowledge_provider_ts.get_context,
+            },
+            {
                 "name": self._documents_provider.name,
                 "description": self._documents_provider.description,
                 "handler": self._documents_provider.get_documents,
+            },
+            {
+                "name": self._available_documents_provider.name,
+                "description": self._available_documents_provider.description,
+                "handler": self._available_documents_provider.get_documents,
             },
         ]
 
@@ -231,8 +243,3 @@ def create_knowledge_plugin(
 
 def get_knowledge_plugin() -> KnowledgePlugin | None:
     return _plugin_instance
-
-
-
-
-

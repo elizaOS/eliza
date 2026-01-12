@@ -13,8 +13,6 @@ export async function handleImageDescription(
   const openrouter = createOpenRouterProvider(runtime);
   const modelName = getImageModel(runtime);
 
-  logger.log(`[OpenRouter] Using IMAGE_DESCRIPTION model: ${modelName}`);
-
   const imageUrl = typeof params === "string" ? params : params.imageUrl;
   const prompt =
     typeof params === "string" ? "Describe this image" : params.prompt || "Describe this image";
@@ -54,8 +52,6 @@ export async function handleImageGeneration(
 ): Promise<{ imageUrl: string; caption?: string }> {
   const openrouter = createOpenRouterProvider(runtime);
   const modelName = getImageGenerationModel(runtime);
-
-  logger.log(`[OpenRouter] Using IMAGE generation model: ${modelName}`);
 
   try {
     const generateParams = {

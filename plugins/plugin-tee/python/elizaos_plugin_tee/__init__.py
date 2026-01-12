@@ -1,24 +1,4 @@
-"""
-elizaOS TEE Plugin - Trusted Execution Environment integration.
-
-This package provides TEE integration for secure key management and remote attestation.
-
-Features:
-- **Remote Attestation**: Prove the agent is running in a TEE
-- **Key Derivation**: Securely derive Ed25519 (Solana) and ECDSA (EVM) keys
-- **Vendor Support**: Extensible vendor system (currently supports Phala Network)
-
-Configuration:
-- TEE_MODE: LOCAL | DOCKER | PRODUCTION
-- WALLET_SECRET_SALT: Secret for key derivation
-- TEE_VENDOR: Vendor name (default: "phala")
-
-Example:
-    >>> from elizaos_plugin_tee import TEEService, TeeMode
-    >>> service = await TEEService.start(tee_mode="LOCAL")
-    >>> result = await service.derive_ed25519_keypair("salt", "solana", "agent-id")
-    >>> print(result.public_key)
-"""
+"""TEE plugin for secure key management and remote attestation."""
 
 from elizaos_plugin_tee.actions import (
     REMOTE_ATTESTATION_ACTION,
@@ -74,12 +54,8 @@ from elizaos_plugin_tee.vendors import (
 
 __version__ = "1.0.0"
 
-# Plugin metadata
 PLUGIN_NAME = "tee"
-PLUGIN_DESCRIPTION = (
-    "Trusted Execution Environment (TEE) integration plugin for "
-    "secure key management and remote attestation"
-)
+PLUGIN_DESCRIPTION = "TEE integration plugin for secure key management and remote attestation"
 
 __all__ = [
     # Version
@@ -134,8 +110,4 @@ __all__ = [
     "get_tee_endpoint",
     "upload_attestation_quote",
 ]
-
-
-
-
 

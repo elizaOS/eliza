@@ -1,7 +1,3 @@
-/**
- * Interaction source implementations for polling and webhook modes.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import type { FarcasterConfig, NeynarWebhookData } from "../types";
@@ -15,9 +11,6 @@ interface FarcasterInteractionSourceParams {
   processor: IInteractionProcessor;
 }
 
-/**
- * Abstract base class for Farcaster interaction sources.
- */
 export abstract class FarcasterInteractionSource {
   protected client: FarcasterClient;
   protected runtime: IAgentRuntime;
@@ -109,9 +102,6 @@ export class FarcasterPollingSource extends FarcasterInteractionSource {
   }
 }
 
-/**
- * Webhook-based interaction source.
- */
 export class FarcasterWebhookSource extends FarcasterInteractionSource {
   async start(): Promise<void> {
     this.runtime.logger.info("Starting Farcaster webhook mode");
@@ -142,9 +132,6 @@ export class FarcasterWebhookSource extends FarcasterInteractionSource {
   }
 }
 
-/**
- * Factory function to create the appropriate interaction source.
- */
 export function createFarcasterInteractionSource(
   params: FarcasterInteractionSourceParams
 ): FarcasterInteractionSource {

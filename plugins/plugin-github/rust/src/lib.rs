@@ -26,19 +26,19 @@ pub const PLUGIN_NAME: &str = "github";
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const PLUGIN_DESCRIPTION: &str = "GitHub integration for elizaOS agents";
 
+#[derive(Debug, Clone)]
+pub struct Plugin {
+    pub name: String,
+    pub description: String,
+    pub version: String,
+}
+
 pub fn plugin() -> Plugin {
     Plugin {
         name: PLUGIN_NAME.to_string(),
         description: PLUGIN_DESCRIPTION.to_string(),
         version: PLUGIN_VERSION.to_string(),
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Plugin {
-    pub name: String,
-    pub description: String,
-    pub version: String,
 }
 
 #[cfg(test)]

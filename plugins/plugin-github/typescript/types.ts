@@ -287,9 +287,6 @@ export interface CreateReviewParams extends RepositoryRef {
   comments?: ReviewCommentInput[];
 }
 
-/**
- * Review comment input
- */
 export interface ReviewCommentInput {
   /** File path */
   path: string;

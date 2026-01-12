@@ -6,6 +6,7 @@ pub mod constants;
 pub mod providers;
 pub mod actions;
 pub mod error;
+pub mod service;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
@@ -19,5 +20,6 @@ pub use actions::{
 };
 pub use providers::{WalletProvider, WalletProviderConfig};
 pub use types::SupportedChain;
+pub use service::{EVMService, EvmWalletData, EvmWalletChainData};
 
 

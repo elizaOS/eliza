@@ -8,17 +8,14 @@ import { SolanaService, SolanaWalletService } from "./service";
 
 function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
   const value = runtime.getSetting(key);
-  if (typeof value === "string") {
-    return value;
-  }
-  return null;
+  return typeof value === "string" ? value : null;
 }
 
 function parseBoolSetting(value: string | number | boolean | null): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
-  const str = value.toLowerCase().trim();
+  const str = String(value).toLowerCase().trim();
   return str === "true" || str === "1" || str === "yes";
 }
 
@@ -44,25 +41,20 @@ export const solanaPlugin: Plugin = {
     runtime.registerProvider(walletProvider);
 
     runtime
-      .getServiceLoadPromise("INTEL_CHAIN" as ServiceTypeName as string as ServiceTypeName)
+      .getServiceLoadPromise("INTEL_CHAIN" as ServiceTypeName)
       .then(() => {
-        const traderChainService = runtime.getService("INTEL_CHAIN") as unknown;
+        const traderChainService = runtime.getService("INTEL_CHAIN");
         if (
           traderChainService &&
           typeof traderChainService === "object" &&
           "registerChain" in traderChainService &&
-          typeof (traderChainService as { registerChain: unknown }).registerChain === "function"
+          typeof traderChainService.registerChain === "function"
         ) {
-          const me = {
+          traderChainService.registerChain({
             name: "Solana services",
             chain: "solana",
             service: SOLANA_SERVICE_NAME,
-          };
-          (
-            traderChainService as {
-              registerChain: (info: Record<string, string>) => void;
-            }
-          ).registerChain(me);
+          });
         }
       })
       .catch((error) => {
@@ -72,7 +64,6 @@ export const solanaPlugin: Plugin = {
 };
 export default solanaPlugin;
 
-// Export additional items for use by other plugins
 export { SOLANA_SERVICE_NAME } from "./constants";
 export type { SolanaService as ISolanaService } from "./service";
 export { SolanaService, SolanaWalletService } from "./service";

@@ -33,9 +33,7 @@ export const ollamaPlugin: Plugin = {
     if (!baseURL || baseURL === "http://localhost:11434/api") {
       const endpoint = runtime.getSetting("OLLAMA_API_ENDPOINT");
       if (!endpoint) {
-        logger.warn(
-          "OLLAMA_API_ENDPOINT is not set in environment - Ollama functionality will use default localhost:11434"
-        );
+        logger.warn("OLLAMA_API_ENDPOINT not set, using default localhost:11434");
       }
     }
 
@@ -46,23 +44,11 @@ export const ollamaPlugin: Plugin = {
       });
 
       if (!response.ok) {
-        logger.warn(`Ollama API endpoint validation failed: ${response.statusText}`);
-        logger.warn("Ollama functionality will be limited until a valid endpoint is provided");
-      } else {
-        const data = (await response.json()) as {
-          models?: Array<{ name: string }>;
-        };
-        const modelCount = data?.models?.length || 0;
-        logger.log(
-          `Ollama API endpoint validated successfully. Found ${modelCount} models available.`
-        );
+        logger.warn(`Ollama API validation failed: ${response.statusText}`);
       }
     } catch (fetchError: unknown) {
       const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
-      logger.warn(`Error validating Ollama API endpoint: ${message}`);
-      logger.warn(
-        `Ollama functionality will be limited until a valid endpoint is provided - Make sure Ollama is running at ${baseURL}`
-      );
+      logger.warn(`Ollama API validation error: ${message}`);
     }
   },
 
@@ -91,14 +77,14 @@ export const ollamaPlugin: Plugin = {
     [ModelType.OBJECT_SMALL]: async (
       runtime: IAgentRuntime,
       params: ObjectGenerationParams
-    ): Promise<Record<string, unknown>> => {
+    ): Promise<Record<string, string | number | boolean | null>> => {
       return handleObjectSmall(runtime, params);
     },
 
     [ModelType.OBJECT_LARGE]: async (
       runtime: IAgentRuntime,
       params: ObjectGenerationParams
-    ): Promise<Record<string, unknown>> => {
+    ): Promise<Record<string, string | number | boolean | null>> => {
       return handleObjectLarge(runtime, params);
     },
   },
@@ -113,12 +99,6 @@ export const ollamaPlugin: Plugin = {
             try {
               const apiBase = getApiBase(runtime);
               const response = await fetch(`${apiBase}/api/tags`);
-              const data = await response.json();
-              const modelCount =
-                data && typeof data === "object" && "models" in data && Array.isArray(data.models)
-                  ? data.models.length
-                  : 0;
-              logger.log(`Models Available: ${modelCount}`);
               if (!response.ok) {
                 logger.error(`Failed to validate Ollama API: ${response.statusText}`);
               }

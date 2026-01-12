@@ -25,12 +25,12 @@ export interface ObjectGenerationParams {
   prompt: string;
   system?: string;
   temperature?: number;
-  schema?: Record<string, unknown>;
+  schema?: Record<string, string | number | boolean | null>;
   maxTokens?: number;
 }
 
 export interface ObjectGenerationResponse {
-  object: Record<string, unknown>;
+  object: Record<string, string | number | boolean | null>;
   model: string;
 }
 

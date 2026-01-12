@@ -1,5 +1,3 @@
-"""Update todo action for Todo plugin."""
-
 from __future__ import annotations
 
 import logging
@@ -24,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class UpdateTodoResult:
-    """Result of an update todo action."""
-
     success: bool
     text: str
     todo_id: UUID | None = None
@@ -40,19 +36,6 @@ async def handle_update_todo(
     callback: HandlerCallback | None = None,
     responses: list[Memory] | None = None,
 ) -> UpdateTodoResult | None:
-    """Handle update todo action.
-
-    Args:
-        runtime: The agent runtime.
-        message: The message that triggered the action.
-        state: Optional state context.
-        options: Optional handler options.
-        callback: Optional callback for streaming responses.
-        responses: Optional previous responses.
-
-    Returns:
-        The action result.
-    """
     if not state:
         error_msg = "Unable to process request without state context."
         if callback:
@@ -98,13 +81,11 @@ async def handle_update_todo(
             )
         return UpdateTodoResult(success=False, text=error_msg)
 
-    # Extract which task to update
     task_id = None
     if options and options.parameters and "task_id" in options.parameters:
         task_id = UUID(str(options.parameters["task_id"]))
 
     if not task_id:
-        # Use first task as default
         task = available_tasks[0]
     else:
         task = next((t for t in available_tasks if t.id == task_id), None)
@@ -124,14 +105,10 @@ async def handle_update_todo(
                 )
             return UpdateTodoResult(success=False, text=error_msg, error="Task not found")
 
-    # Extract what updates to make from message
-    # For now, this is simplified - in production, use LLM to extract structured updates
     message_text = message.content.text if message.content else ""
     update_params = UpdateTodoParams()
 
-    # Simple keyword-based updates
     if "priority" in message_text.lower():
-        # Extract priority if mentioned
         if "high" in message_text.lower() or "1" in message_text:
             from elizaos_plugin_todo.types import Priority
 
@@ -144,7 +121,6 @@ async def handle_update_todo(
     if "urgent" in message_text.lower():
         update_params.is_urgent = True
 
-    # If no updates detected, return error
     if not any(
         [
             update_params.name,
@@ -166,12 +142,10 @@ async def handle_update_todo(
                     "source": message.content.source if message.content else None,
                 }
             )
-        return UpdateTodoResult(success=False, text=error_msg, error="Invalid update")
+            return UpdateTodoResult(success=False, text=error_msg, error="Invalid update")
 
-    # Apply the update
     await data_service.update_todo(task.id, update_params)
 
-    # Get updated task
     updated_task = await data_service.get_todo(task.id)
 
     if callback:
@@ -193,16 +167,6 @@ async def handle_update_todo(
 async def validate_update_todo(
     runtime: IAgentRuntime, message: Memory, state: State | None = None
 ) -> bool:
-    """Validate if update todo action can be executed.
-
-    Args:
-        runtime: The agent runtime.
-        message: The message.
-        state: Optional state.
-
-    Returns:
-        True if there are active todos to update.
-    """
     if not message.room_id:
         return False
 
@@ -215,7 +179,6 @@ async def validate_update_todo(
     return len(todos) > 0
 
 
-# Action definition for elizaOS integration
 UPDATE_TODO_ACTION = {
     "name": "UPDATE_TODO",
     "similes": ["EDIT_TODO", "MODIFY_TASK", "CHANGE_TASK", "MODIFY_TODO", "EDIT_TASK"],

@@ -1,5 +1,3 @@
-"""Tests for the Simple Voice plugin."""
-
 import pytest
 
 from eliza_plugin_simple_voice import (
@@ -11,8 +9,6 @@ from eliza_plugin_simple_voice import (
 
 
 class TestMemory:
-    """Test memory for testing."""
-
     def __init__(self, text: str):
         self._content = {"text": text}
 
@@ -22,8 +18,6 @@ class TestMemory:
 
 
 class TestRuntime:
-    """Test runtime for testing."""
-
     def __init__(self):
         self._services: dict[str, object] = {}
 

@@ -1,73 +1,50 @@
-"""
-Type definitions for the Polymarket plugin.
-
-All types are designed for fail-fast validation using Pydantic.
-"""
-
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# =============================================================================
-# Token Types
-# =============================================================================
-
 
 class Token(BaseModel):
-    """Token representing a binary outcome in a prediction market."""
-
     model_config = ConfigDict(frozen=True)
 
-    token_id: str = Field(description="ERC1155 token ID")
-    outcome: str = Field(description="Human readable outcome (e.g., YES, NO)")
-
-
-# =============================================================================
-# Market Types
-# =============================================================================
+    token_id: str
+    outcome: str
 
 
 class Rewards(BaseModel):
-    """Rewards configuration for a market."""
-
     model_config = ConfigDict(frozen=True)
 
-    min_size: float = Field(description="Minimum size of an order to score rewards")
-    max_spread: float = Field(description="Maximum spread from midpoint until order scores")
-    event_start_date: str = Field(description="String date when event starts")
-    event_end_date: str = Field(description="String date when event ends")
-    in_game_multiplier: float = Field(description="Reward multiplier while game started")
-    reward_epoch: int = Field(description="Current reward epoch")
+    min_size: float
+    max_spread: float
+    event_start_date: str
+    event_end_date: str
+    in_game_multiplier: float
+    reward_epoch: int
 
 
 class Market(BaseModel):
-    """Market object representing a Polymarket prediction market."""
-
     model_config = ConfigDict(frozen=True)
 
-    condition_id: str = Field(description="CTF condition ID")
-    question_id: str = Field(description="CTF question ID")
-    tokens: tuple[Token, Token] = Field(description="Binary token pair for market")
-    rewards: Rewards = Field(description="Rewards related data")
-    minimum_order_size: str = Field(description="Minimum limit order size")
-    minimum_tick_size: str = Field(description="Minimum tick size in implied probability")
-    category: str = Field(description="Market category")
-    end_date_iso: str = Field(description="ISO string of market end date")
-    game_start_time: str = Field(description="ISO string of game start time")
-    question: str = Field(description="Market question")
-    market_slug: str = Field(description="Slug of market")
-    min_incentive_size: str = Field(description="Minimum resting order size for incentives")
-    max_incentive_spread: str = Field(description="Max spread for incentive qualification")
-    active: bool = Field(description="Whether market is active/live")
-    closed: bool = Field(description="Whether market is closed")
-    seconds_delay: int = Field(description="Seconds of match delay for in-game trade")
-    icon: str = Field(description="Reference to market icon image")
-    fpmm: str = Field(description="Address of associated FPMM on Polygon")
+    condition_id: str
+    question_id: str
+    tokens: tuple[Token, Token]
+    rewards: Rewards
+    minimum_order_size: str
+    minimum_tick_size: str
+    category: str
+    end_date_iso: str
+    game_start_time: str
+    question: str
+    market_slug: str
+    min_incentive_size: str
+    max_incentive_spread: str
+    active: bool
+    closed: bool
+    seconds_delay: int
+    icon: str
+    fpmm: str
 
 
 class SimplifiedMarket(BaseModel):
-    """Simplified market with reduced fields."""
-
     model_config = ConfigDict(frozen=True)
 
     condition_id: str
@@ -79,30 +56,19 @@ class SimplifiedMarket(BaseModel):
     closed: bool
 
 
-# =============================================================================
-# Order Types
-# =============================================================================
-
-
 class OrderSide(str, Enum):
-    """Order side enumeration."""
-
     BUY = "BUY"
     SELL = "SELL"
 
 
 class OrderType(str, Enum):
-    """Order type enumeration."""
-
-    GTC = "GTC"  # Good Till Cancelled
-    FOK = "FOK"  # Fill Or Kill
-    GTD = "GTD"  # Good Till Date
-    FAK = "FAK"  # Fill And Kill
+    GTC = "GTC"
+    FOK = "FOK"
+    GTD = "GTD"
+    FAK = "FAK"
 
 
 class OrderStatus(str, Enum):
-    """Order status enumeration."""
-
     PENDING = "PENDING"
     OPEN = "OPEN"
     FILLED = "FILLED"
@@ -113,31 +79,26 @@ class OrderStatus(str, Enum):
 
 
 class OrderParams(BaseModel):
-    """Parameters for creating orders."""
-
     model_config = ConfigDict(frozen=True)
 
-    token_id: str = Field(min_length=1, description="Token ID to trade")
-    side: OrderSide = Field(description="Order side (BUY or SELL)")
-    price: float = Field(ge=0, le=1, description="Price per share (0-1.0)")
-    size: float = Field(gt=0, description="Order size")
-    order_type: OrderType = Field(default=OrderType.GTC, description="Order type")
-    fee_rate_bps: str = Field(default="0", description="Fee rate in basis points")
-    expiration: int | None = Field(default=None, description="Order expiration timestamp")
-    nonce: int | None = Field(default=None, description="Order nonce")
+    token_id: str = Field(min_length=1)
+    side: OrderSide
+    price: float = Field(ge=0, le=1)
+    size: float = Field(gt=0)
+    order_type: OrderType = Field(default=OrderType.GTC)
+    fee_rate_bps: str = Field(default="0")
+    expiration: int | None = Field(default=None)
+    nonce: int | None = Field(default=None)
 
     @field_validator("price")
     @classmethod
     def validate_price_range(cls, v: float) -> float:
-        """Validate price is in valid range."""
         if not 0 <= v <= 1:
             raise ValueError("Price must be between 0 and 1")
         return v
 
 
 class OrderResponse(BaseModel):
-    """Order response from CLOB API."""
-
     model_config = ConfigDict(frozen=True)
 
     success: bool
@@ -148,8 +109,6 @@ class OrderResponse(BaseModel):
 
 
 class OpenOrder(BaseModel):
-    """Open order details."""
-
     model_config = ConfigDict(frozen=True)
 
     order_id: str
@@ -167,14 +126,7 @@ class OpenOrder(BaseModel):
     updated_at: str
 
 
-# =============================================================================
-# Order Book Types
-# =============================================================================
-
-
 class BookEntry(BaseModel):
-    """Order book entry."""
-
     model_config = ConfigDict(frozen=True)
 
     price: str
@@ -182,8 +134,6 @@ class BookEntry(BaseModel):
 
 
 class OrderBook(BaseModel):
-    """Order book data."""
-
     model_config = ConfigDict(frozen=True)
 
     market: str
@@ -192,14 +142,7 @@ class OrderBook(BaseModel):
     asks: list[BookEntry]
 
 
-# =============================================================================
-# Trade Types
-# =============================================================================
-
-
 class TradeStatus(str, Enum):
-    """Trade status enumeration."""
-
     MATCHED = "MATCHED"
     MINED = "MINED"
     CONFIRMED = "CONFIRMED"
@@ -208,8 +151,6 @@ class TradeStatus(str, Enum):
 
 
 class Trade(BaseModel):
-    """Trade data."""
-
     model_config = ConfigDict(frozen=True)
 
     id: str
@@ -223,8 +164,6 @@ class Trade(BaseModel):
 
 
 class TradeEntry(BaseModel):
-    """Trade entry from history."""
-
     model_config = ConfigDict(frozen=True)
 
     trade_id: str
@@ -241,14 +180,7 @@ class TradeEntry(BaseModel):
     tx_hash: str
 
 
-# =============================================================================
-# Position Types
-# =============================================================================
-
-
 class Position(BaseModel):
-    """User position in a market."""
-
     model_config = ConfigDict(frozen=True)
 
     market: str
@@ -260,8 +192,6 @@ class Position(BaseModel):
 
 
 class Balance(BaseModel):
-    """User balance data."""
-
     model_config = ConfigDict(frozen=True)
 
     asset: str
@@ -270,28 +200,17 @@ class Balance(BaseModel):
     decimals: int
 
 
-# =============================================================================
-# API Key Types
-# =============================================================================
-
-
 class ApiKeyType(str, Enum):
-    """API key type."""
-
     READ_ONLY = "read_only"
     READ_WRITE = "read_write"
 
 
 class ApiKeyStatus(str, Enum):
-    """API key status."""
-
     ACTIVE = "active"
     REVOKED = "revoked"
 
 
 class ApiKeyCreds(BaseModel):
-    """API key credentials."""
-
     model_config = ConfigDict(frozen=True)
 
     key: str = Field(min_length=1)
@@ -300,8 +219,6 @@ class ApiKeyCreds(BaseModel):
 
 
 class ApiKey(BaseModel):
-    """API key details."""
-
     model_config = ConfigDict(frozen=True)
 
     key_id: str
@@ -313,14 +230,7 @@ class ApiKey(BaseModel):
     is_cert_whitelisted: bool
 
 
-# =============================================================================
-# Response Types
-# =============================================================================
-
-
 class MarketsResponse(BaseModel):
-    """Paginated response for markets API."""
-
     model_config = ConfigDict(frozen=True)
 
     limit: int
@@ -330,8 +240,6 @@ class MarketsResponse(BaseModel):
 
 
 class SimplifiedMarketsResponse(BaseModel):
-    """Paginated response for simplified markets."""
-
     model_config = ConfigDict(frozen=True)
 
     limit: int
@@ -341,22 +249,13 @@ class SimplifiedMarketsResponse(BaseModel):
 
 
 class TradesResponse(BaseModel):
-    """Paginated response for trades."""
-
     model_config = ConfigDict(frozen=True)
 
     data: list[TradeEntry]
     next_cursor: str
 
 
-# =============================================================================
-# Filter Types
-# =============================================================================
-
-
 class MarketFilters(BaseModel):
-    """Filter parameters for markets API."""
-
     model_config = ConfigDict(frozen=True)
 
     category: str | None = None
@@ -366,8 +265,6 @@ class MarketFilters(BaseModel):
 
 
 class GetTradesParams(BaseModel):
-    """Parameters for getting trades."""
-
     model_config = ConfigDict(frozen=True)
 
     user_address: str | None = None
@@ -379,14 +276,7 @@ class GetTradesParams(BaseModel):
     next_cursor: str | None = None
 
 
-# =============================================================================
-# Price Types
-# =============================================================================
-
-
 class TokenPrice(BaseModel):
-    """Token price data."""
-
     model_config = ConfigDict(frozen=True)
 
     token_id: str
@@ -394,8 +284,6 @@ class TokenPrice(BaseModel):
 
 
 class PriceHistoryEntry(BaseModel):
-    """Price history entry."""
-
     model_config = ConfigDict(frozen=True)
 
     timestamp: str

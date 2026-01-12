@@ -260,7 +260,6 @@ impl RssPlugin {
         output
     }
 
-    /// Get the plugin configuration.
     pub fn config(&self) -> &RssConfig {
         &self.config
     }

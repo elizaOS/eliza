@@ -14,7 +14,7 @@ export class ShellService extends Service {
   public static serviceType = "shell";
   private shellConfig: ShellConfig;
   private currentDirectory: string;
-  private commandHistory: Map<string, CommandHistoryEntry[]>; // conversationId -> history
+  private commandHistory: Map<string, CommandHistoryEntry[]>;
   private maxHistoryPerConversation = 100;
 
   constructor(runtime: IAgentRuntime) {

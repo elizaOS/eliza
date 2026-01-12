@@ -84,11 +84,6 @@ impl GitHubService {
         Ok(self.map_repository(repository))
     }
 
-    // ===========================================================================
-    // Issue Operations
-    // ===========================================================================
-
-    /// Create an issue.
     pub async fn create_issue(&self, params: CreateIssueParams) -> Result<GitHubIssue> {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
@@ -118,7 +113,6 @@ impl GitHubService {
         Ok(self.map_issue(issue))
     }
 
-    /// Get an issue by number.
     pub async fn get_issue(&self, owner: &str, repo: &str, issue_number: u64) -> Result<GitHubIssue> {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(owner), Some(repo))?;
@@ -173,11 +167,6 @@ impl GitHubService {
         Ok(issues)
     }
 
-    // ===========================================================================
-    // Pull Request Operations
-    // ===========================================================================
-
-    /// Create a pull request.
     pub async fn create_pull_request(&self, params: CreatePullRequestParams) -> Result<GitHubPullRequest> {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
@@ -218,7 +207,6 @@ impl GitHubService {
         Ok(self.map_pull_request(pr))
     }
 
-    /// Merge a pull request.
     pub async fn merge_pull_request(&self, params: MergePullRequestParams) -> Result<(String, bool, String)> {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
@@ -259,7 +247,6 @@ impl GitHubService {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
 
-        // Get the SHA of the source ref
         let sha = if params.from_ref.len() == 40 && params.from_ref.chars().all(|c| c.is_ascii_hexdigit()) {
             params.from_ref.clone()
         } else {
@@ -273,7 +260,6 @@ impl GitHubService {
                 octocrab::models::repos::Object::Commit { sha, .. } => sha.clone(),
                 octocrab::models::repos::Object::Tag { sha, .. } => sha.clone(),
                 _ => {
-                    // Fallback: This shouldn't happen for branch refs
                     return Err(GitHubError::BranchNotFound {
                         branch: params.from_ref.clone(),
                         owner: owner.clone(),
@@ -339,7 +325,6 @@ impl GitHubService {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
 
-        // Get the current branch ref to find the parent commit
         let branch_ref = client
             .repos(&owner, &repo)
             .get_ref(&octocrab::params::repos::Reference::Branch(params.branch.clone()))
@@ -387,7 +372,6 @@ impl GitHubService {
             ReviewEvent::Comment => "COMMENT",
         };
 
-        // Use the raw request API for creating reviews since octocrab may not have full support
         let review: serde_json::Value = client
             .post::<serde_json::Value, _>(
                 format!("/repos/{}/{}/pulls/{}/reviews", owner, repo, params.pull_number),

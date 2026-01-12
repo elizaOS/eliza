@@ -37,15 +37,8 @@ pub mod client;
 pub mod error;
 pub mod grok;
 pub mod models;
+pub mod services;
 pub mod types;
-
-// Import directly from submodules:
-// - actions::{PostAction, PostActionResult}
-// - client::TwitterClient
-// - error::{XAIError, Result}
-// - grok::{GrokClient, GrokConfig, TextGenerationParams, EmbeddingParams}
-// - models::{TextSmallHandler, TextLargeHandler, TextEmbeddingHandler}
-// - types::* for all types
 
 use anyhow::Result as AnyhowResult;
 
@@ -56,26 +49,19 @@ pub use crate::grok::{GrokClient, GrokConfig, TextGenerationParams, EmbeddingPar
 pub use crate::models::{TextSmallHandler, TextLargeHandler, TextEmbeddingHandler};
 pub use crate::types::TwitterConfig;
 
-/// Create a Twitter API client for X from environment variables.
+/// Build a Twitter/X API client from environment configuration.
 ///
-/// Required environment variables:
-/// - `X_API_KEY`: X API key
-/// - `X_API_SECRET`: X API secret
-/// - `X_ACCESS_TOKEN`: Access token
-/// - `X_ACCESS_TOKEN_SECRET`: Access token secret
+/// This reads [`TwitterConfig`] from the process environment and returns a ready-to-use
+/// [`TwitterClient`].
 pub fn get_x_client() -> AnyhowResult<TwitterClient> {
     let config = TwitterConfig::from_env()?;
     Ok(TwitterClient::new(config)?)
 }
 
-/// Create a Grok client from environment variables.
+/// Build a Grok (xAI) client from environment configuration.
 ///
-/// Required environment variables:
-/// - `XAI_API_KEY`: xAI API key
-///
-/// Optional environment variables:
-/// - `XAI_BASE_URL`: Custom API endpoint (default: https://api.x.ai/v1)
-/// - `XAI_MODEL`: Model to use (default: grok-3)
+/// This reads [`GrokConfig`] from the process environment and returns a ready-to-use
+/// [`GrokClient`].
 pub fn get_grok_client() -> AnyhowResult<GrokClient> {
     let config = GrokConfig::from_env()?;
     Ok(GrokClient::new(config)?)

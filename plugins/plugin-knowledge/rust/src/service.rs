@@ -165,7 +165,6 @@ impl KnowledgeService {
             return Ok(content.to_string());
         }
 
-        log::warn!("Unsupported content type for text extraction: {}", content_type);
         Ok(content.to_string())
     }
 
@@ -408,11 +407,7 @@ mod tests {
         let vec2 = vec![-1.0, 0.0, 0.0];
 
         let sim = KnowledgeService::cosine_similarity(&vec1, &vec2);
-        assert!((sim + 1.0).abs() < 0.001);
+            assert!((sim + 1.0).abs() < 0.001);
     }
 }
-
-
-
-
 

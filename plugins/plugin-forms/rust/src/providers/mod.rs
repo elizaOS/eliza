@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::types::{Form, FormStatus};
+use std::collections::HashMap;
 
 pub trait Provider: Send + Sync {
     fn name(&self) -> &'static str;
@@ -19,7 +19,7 @@ impl ProviderResult {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     pub fn with_text(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
@@ -36,26 +36,28 @@ impl FormsContextProvider {
         if forms.is_empty() {
             return ProviderResult::new();
         }
-        
+
         let mut context_text = String::from("[FORMS]\n");
         let mut serialized_forms = Vec::new();
-        
+
         for form in forms {
             let current_step = &form.steps[form.current_step_index];
-            context_text.push_str(&format!(
-                "\nActive Form: {} (ID: {})\n",
-                form.name, form.id
-            ));
+            context_text.push_str(&format!("\nActive Form: {} (ID: {})\n", form.name, form.id));
             context_text.push_str(&format!(
                 "Current Step: {}\n",
-                if current_step.name.is_empty() { &current_step.id } else { &current_step.name }
+                if current_step.name.is_empty() {
+                    &current_step.id
+                } else {
+                    &current_step.name
+                }
             ));
 
-            let completed_fields: Vec<_> = current_step.fields
+            let completed_fields: Vec<_> = current_step
+                .fields
                 .iter()
                 .filter(|f| f.value.is_some())
                 .collect();
-            
+
             if !completed_fields.is_empty() {
                 context_text.push_str("Completed fields:\n");
                 for field in &completed_fields {
@@ -67,37 +69,43 @@ impl FormsContextProvider {
                     context_text.push_str(&format!("  - {}: {}\n", field.label, display_value));
                 }
             }
-            
-            let remaining_required: Vec<_> = current_step.fields
+
+            let remaining_required: Vec<_> = current_step
+                .fields
                 .iter()
                 .filter(|f| !f.optional && f.value.is_none())
                 .collect();
-            
+
             if !remaining_required.is_empty() {
                 context_text.push_str("Required fields:\n");
                 for field in &remaining_required {
-                    let desc = field.description.as_ref()
+                    let desc = field
+                        .description
+                        .as_ref()
                         .map(|d| format!(" ({})", d))
                         .unwrap_or_default();
                     context_text.push_str(&format!("  - {}{}\n", field.label, desc));
                 }
             }
-            
-            let optional_fields: Vec<_> = current_step.fields
+
+            let optional_fields: Vec<_> = current_step
+                .fields
                 .iter()
                 .filter(|f| f.optional && f.value.is_none())
                 .collect();
-            
+
             if !optional_fields.is_empty() {
                 context_text.push_str("Optional fields:\n");
                 for field in &optional_fields {
-                    let desc = field.description.as_ref()
+                    let desc = field
+                        .description
+                        .as_ref()
                         .map(|d| format!(" ({})", d))
                         .unwrap_or_default();
                     context_text.push_str(&format!("  - {}{}\n", field.label, desc));
                 }
             }
-            
+
             context_text.push_str(&format!(
                 "Progress: Step {} of {}\n",
                 form.current_step_index + 1,
@@ -120,19 +128,19 @@ impl FormsContextProvider {
             });
             serialized_forms.push(serialized);
         }
-        
+
         let mut values = HashMap::new();
         values.insert(
             "activeFormsCount".to_string(),
             serde_json::Value::Number(forms.len().into()),
         );
-        
+
         let mut data = HashMap::new();
         data.insert(
             "forms".to_string(),
             serde_json::Value::Array(serialized_forms),
         );
-        
+
         ProviderResult {
             text: context_text,
             values,
@@ -145,15 +153,15 @@ impl Provider for FormsContextProvider {
     fn name(&self) -> &'static str {
         "FORMS_CONTEXT"
     }
-    
+
     fn description(&self) -> &'static str {
         "Provides context about active forms and their current state"
     }
-    
+
     fn dynamic(&self) -> bool {
         true
     }
-    
+
     fn position(&self) -> i32 {
         50
     }
@@ -166,7 +174,7 @@ pub fn get_providers() -> Vec<Box<dyn Provider>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{FormField, FormFieldType, FormStep, FieldValue};
+    use crate::types::{FieldValue, FormField, FormFieldType, FormStep};
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -248,7 +256,7 @@ mod tests {
     fn test_generate_context_with_forms() {
         let form = create_test_form();
         let result = FormsContextProvider::generate_context(&[&form]);
-        
+
         // Check text contains expected content
         assert!(result.text.contains("[FORMS]"));
         assert!(result.text.contains("test_form"));
@@ -256,13 +264,13 @@ mod tests {
         assert!(result.text.contains("John Doe"));
         assert!(result.text.contains("[SECRET]")); // Password should be masked
         assert!(result.text.contains("Email")); // Required field
-        
+
         // Check values
         assert_eq!(
             result.values.get("activeFormsCount"),
             Some(&serde_json::Value::Number(1.into()))
         );
-        
+
         // Check data contains forms array
         assert!(result.data.contains_key("forms"));
         if let Some(serde_json::Value::Array(forms)) = result.data.get("forms") {

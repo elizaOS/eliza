@@ -1,0 +1,79 @@
+{
+  "generatedAt": "2026-01-12T03:24:15.659Z",
+  "report": [
+    {
+      "plugin": "plugin-n8n",
+      "ts": {
+        "actions": 5,
+        "providers": 4,
+        "evaluators": 0
+      },
+      "rust": {
+        "exists": true,
+        "actions": [
+          "agent"
+        ],
+        "providers": [],
+        "evaluators": [],
+        "count": 1
+      },
+      "py": {
+        "exists": true,
+        "actions": [
+          "agent"
+        ],
+        "providers": [],
+        "evaluators": [],
+        "count": 1
+      }
+    },
+    {
+      "plugin": "plugin-knowledge",
+      "ts": {
+        "actions": 0,
+        "providers": 2,
+        "evaluators": 0
+      },
+      "rust": {
+        "exists": true,
+        "actions": [],
+        "providers": [],
+        "evaluators": [],
+        "count": 0
+      },
+      "py": {
+        "exists": true,
+        "actions": [],
+        "providers": [
+          "AVAILABLE_DOCUMENTS"
+        ],
+        "evaluators": [],
+        "count": 1
+      }
+    },
+    {
+      "plugin": "plugin-vision",
+      "ts": {
+        "actions": 0,
+        "providers": 1,
+        "evaluators": 0
+      },
+      "rust": {
+        "exists": true,
+        "actions": [],
+        "providers": [
+          "VISION_PERCEPTION"
+        ],
+        "evaluators": [],
+        "count": 1
+      },
+      "py": {
+        "exists": true,
+        "actions": [],
+        "providers": [],
+        "evaluators": [],
+        "count": 0
+      }
+    }
+  ]
+}

@@ -1,7 +1,3 @@
-/**
- * Cast manager for autonomous posting.
- */
-
 import { createUniqueUuid, type EventPayload, EventType, type IAgentRuntime } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import {
@@ -19,9 +15,6 @@ interface FarcasterCastParams {
   config: FarcasterConfig;
 }
 
-/**
- * Manager for autonomous cast generation.
- */
 export class FarcasterCastManager {
   client: FarcasterClient;
   runtime: IAgentRuntime;
@@ -109,7 +102,6 @@ export class FarcasterCastManager {
         },
       });
 
-      // Emit POST_GENERATED event with InvokePayload
       await this.runtime.emitEvent(EventType.POST_GENERATED, {
         runtime: this.runtime,
         callback,
@@ -119,8 +111,6 @@ export class FarcasterCastManager {
         source: FARCASTER_SOURCE,
       });
 
-      // Emit Farcaster-specific CAST_GENERATED event using string overload
-      // Cast to EventPayload-compatible type for custom events
       await this.runtime.emitEvent(
         FarcasterEventTypes.CAST_GENERATED as string,
         {

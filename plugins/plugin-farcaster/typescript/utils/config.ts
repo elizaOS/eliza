@@ -1,7 +1,3 @@
-/**
- * Configuration utilities for the Farcaster plugin.
- */
-
 import { type IAgentRuntime, parseBooleanFromText } from "@elizaos/core";
 import { z } from "zod";
 import {
@@ -13,18 +9,12 @@ import {
   FarcasterConfigSchema,
 } from "../types";
 
-/**
- * Safely parse an integer from a string value.
- */
 function safeParseInt(value: string | undefined | null, defaultValue: number): number {
   if (!value) return defaultValue;
   const parsed = Number.parseInt(value, 10);
   return Number.isNaN(parsed) ? defaultValue : Math.max(1, parsed);
 }
 
-/**
- * Get the Farcaster FID from runtime settings.
- */
 export function getFarcasterFid(runtime: IAgentRuntime): number | null {
   const fidStr = runtime.getSetting("FARCASTER_FID");
   if (!fidStr) return null;
@@ -32,9 +22,6 @@ export function getFarcasterFid(runtime: IAgentRuntime): number | null {
   return Number.isNaN(fid) ? null : fid;
 }
 
-/**
- * Check if Farcaster is properly configured.
- */
 export function hasFarcasterEnabled(runtime: IAgentRuntime): boolean {
   const fid = runtime.getSetting("FARCASTER_FID");
   const signerUuid = runtime.getSetting("FARCASTER_SIGNER_UUID");
@@ -47,9 +34,6 @@ export function hasFarcasterEnabled(runtime: IAgentRuntime): boolean {
   return !!(fid && signerUuid && apiKey);
 }
 
-/**
- * Validate and construct Farcaster configuration from runtime settings.
- */
 export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig {
   const fid = getFarcasterFid(runtime);
 

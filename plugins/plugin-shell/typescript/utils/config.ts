@@ -59,11 +59,7 @@ export function loadShellConfig(): ShellConfig {
 
   const parseResult = configSchema.safeParse(config);
   if (!parseResult.success) {
-    const zodError = parseResult.error as {
-      issues?: Array<{ message: string }>;
-      toString: () => string;
-    };
-    const errorMessage = zodError.issues?.[0]?.message || zodError.toString();
+    const errorMessage = parseResult.error.issues?.[0]?.message || parseResult.error.toString();
     throw new Error(`Shell plugin configuration error: ${errorMessage}`);
   }
 
@@ -77,7 +73,7 @@ export function loadShellConfig(): ShellConfig {
       config.allowedDirectory = path.resolve(allowedDirectory);
 
       logger.info(`Shell plugin enabled with allowed directory: ${config.allowedDirectory}`);
-    } catch (error: unknown) {
+    } catch (error) {
       if (
         error instanceof Error &&
         "code" in error &&

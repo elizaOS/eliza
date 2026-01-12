@@ -1,7 +1,3 @@
-"""
-OCR Service
-Text extraction from images with fallback support
-"""
 
 from __future__ import annotations
 
@@ -16,14 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 class OCRService:
-    """OCR service for text extraction"""
 
     def __init__(self):
         self._initialized = False
         self._tesseract_available = False
 
     async def initialize(self) -> None:
-        """Initialize the OCR service"""
         if self._initialized:
             return
 
@@ -33,7 +27,6 @@ class OCRService:
         try:
             import pytesseract
 
-            # Test if Tesseract is available
             pytesseract.get_tesseract_version()
             self._tesseract_available = True
             logger.info("[OCR] Tesseract OCR available")
@@ -45,7 +38,6 @@ class OCRService:
         logger.info("[OCR] OCR service initialized")
 
     async def extract_text(self, image_data: bytes) -> OCRResult:
-        """Extract text from image data"""
         if not self._initialized:
             await self.initialize()
 
@@ -58,23 +50,17 @@ class OCRService:
         return self._fallback_ocr()
 
     async def extract_from_tile(self, tile: ScreenTile) -> OCRResult:
-        """Extract text from a screen tile"""
         if not tile.data:
             return OCRResult(text="", blocks=[], full_text="")
         return await self.extract_text(tile.data)
 
     async def extract_from_image(self, image_data: bytes) -> OCRResult:
-        """Extract text from image data"""
         return await self.extract_text(image_data)
 
     async def _tesseract_ocr(self, image_data: bytes) -> OCRResult:
-        """Perform OCR using Tesseract"""
         import pytesseract
 
-        # Load image
         img = Image.open(BytesIO(image_data))
-
-        # Get detailed OCR data
         data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
 
         blocks: list[OCRBlock] = []
@@ -93,7 +79,6 @@ class OCRService:
                     if current_block_bbox is None:
                         current_block_bbox = BoundingBox(x=x, y=y, width=w, height=h)
                     else:
-                        # Expand bounding box
                         min_x = min(current_block_bbox.x, x)
                         min_y = min(current_block_bbox.y, y)
                         max_x = max(current_block_bbox.x + current_block_bbox.width, x + w)
@@ -118,7 +103,6 @@ class OCRService:
                     current_block = []
                     current_block_bbox = None
 
-        # Don't forget the last block
         if current_block and current_block_bbox:
             blocks.append(
                 OCRBlock(
@@ -133,13 +117,10 @@ class OCRService:
         return OCRResult(text=full_text, blocks=blocks, full_text=full_text)
 
     def _fallback_ocr(self) -> OCRResult:
-        """Fallback OCR implementation when Tesseract is not available"""
         logger.debug("[OCR] Using fallback OCR implementation")
         return OCRResult(text="", blocks=[], full_text="")
 
     async def extract_structured_data(self, image_data: bytes) -> dict[str, list[dict]]:
-        """Extract structured data (tables, forms, lists)"""
-        # Placeholder for structured data extraction
         return {
             "tables": [],
             "forms": [],
@@ -147,10 +128,8 @@ class OCRService:
         }
 
     def is_initialized(self) -> bool:
-        """Check if the service is initialized"""
         return self._initialized
 
     async def dispose(self) -> None:
-        """Dispose of resources"""
         self._initialized = False
         logger.info("[OCR] Service disposed")

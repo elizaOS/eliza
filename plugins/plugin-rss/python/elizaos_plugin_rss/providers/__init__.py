@@ -1,7 +1,3 @@
-"""
-RSS plugin providers module.
-"""
-
 from elizaos_plugin_rss.providers.feed_items import FeedItemsProvider
 
 __all__ = [

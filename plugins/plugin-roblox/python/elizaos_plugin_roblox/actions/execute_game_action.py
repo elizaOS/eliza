@@ -1,7 +1,3 @@
-"""
-Execute game action for the Roblox plugin.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,7 +6,13 @@ from elizaos_plugin_roblox.actions.send_game_message import ActionExample
 
 @dataclass
 class ExecuteGameActionAction:
-    """Action to execute a custom game action."""
+
+    AVAILABLE_GAME_ACTION_NAMES: tuple[str, ...] = (
+        "give_coins",
+        "teleport",
+        "spawn_entity",
+        "start_event",
+    )
 
     @property
     def name(self) -> str:

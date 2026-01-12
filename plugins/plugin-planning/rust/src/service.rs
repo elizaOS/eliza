@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Planning Service - Manages plan creation and execution.
 
 use async_trait::async_trait;
 use regex::Regex;
@@ -69,14 +68,9 @@ pub struct PlanningService {
 }
 
 impl PlanningService {
-    /// Service type identifier.
     pub const SERVICE_TYPE: &'static str = "planning";
+    pub const CAPABILITY_DESCRIPTION: &'static str = "Planning and action coordination";
 
-    /// Capability description.
-    pub const CAPABILITY_DESCRIPTION: &'static str =
-        "Provides comprehensive planning and action coordination capabilities";
-
-    /// Create a new planning service.
     pub fn new(config: PlanningConfig) -> Self {
         Self {
             config: RwLock::new(config),
@@ -86,7 +80,6 @@ impl PlanningService {
         }
     }
 
-    /// Create a new planning service with runtime.
     pub fn with_runtime(config: PlanningConfig, runtime: Arc<dyn Runtime>) -> Self {
         Self {
             config: RwLock::new(config),
@@ -112,8 +105,6 @@ impl PlanningService {
 
         let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> = self.active_plans.write().await;
         plans.clear();
-
-        info!("PlanningService stopped");
     }
 
     /// Create a simple plan for basic message handling.
@@ -123,7 +114,6 @@ impl PlanningService {
         _state: &HashMap<String, serde_json::Value>,
         response_content: Option<&serde_json::Value>,
     ) -> Result<Option<ActionPlan>> {
-        debug!("[PlanningService] Creating simple plan for message handling");
 
         let mut actions: Vec<String> = Vec::new();
 
@@ -225,7 +215,6 @@ impl PlanningService {
         Ok(Some(plan))
     }
 
-    /// Create a comprehensive multi-step plan using LLM planning.
     pub async fn create_comprehensive_plan(
         &self,
         context: &PlanningContext,
@@ -265,13 +254,6 @@ impl PlanningService {
 
         let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> = self.active_plans.write().await;
         plans.insert(enhanced_plan.id, enhanced_plan.clone());
-
-        info!(
-            "[PlanningService] Created comprehensive plan {} with {} steps",
-            enhanced_plan.id,
-            enhanced_plan.steps.len()
-        );
-
         Ok(enhanced_plan)
     }
 
@@ -298,8 +280,6 @@ impl PlanningService {
             let mut executions = self.plan_executions.write().await;
             executions.insert(plan.id, execution);
         }
-
-        info!("[PlanningService] Starting execution of plan {}", plan.id);
 
         let execution_result = match plan.execution_model {
             ExecutionModel::Sequential => {
@@ -354,7 +334,6 @@ impl PlanningService {
         Ok(result)
     }
 
-    /// Validate a plan before execution.
     pub async fn validate_plan(&self, plan: &ActionPlan) -> (bool, Option<Vec<String>>) {
         let mut issues: Vec<String> = Vec::new();
 
@@ -407,14 +386,12 @@ impl PlanningService {
         executions.get(&plan_id).map(|e| e.state.clone())
     }
 
-    /// Cancel plan execution.
     pub async fn cancel_plan(&self, plan_id: Uuid) -> bool {
         let mut executions = self.plan_executions.write().await;
         if let Some(execution) = executions.get_mut(&plan_id) {
             execution.cancelled = true;
             execution.state.status = "cancelled".to_string();
             execution.state.end_time = Some(chrono::Utc::now().timestamp_millis());
-            info!("[PlanningService] Plan {} cancelled", plan_id);
             true
         } else {
             false
@@ -567,7 +544,6 @@ Focus on:
 
         // If no steps found, create fallback
         if steps.is_empty() {
-            warn!("XML parsing failed, creating fallback plan");
             steps.push(ActionStep {
                 id: Uuid::new_v4(),
                 action_name: "ANALYZE_INPUT".to_string(),
@@ -818,9 +794,6 @@ Focus on:
         _message: &Message,
         _previous_results: &[ActionResult],
     ) -> Result<ActionResult> {
-        // Without runtime, simulate execution
-        debug!("[PlanningService] Executing step {}: {}", step.id, step.action_name);
-
         let result = ActionResult {
             text: format!("Executed {}", step.action_name),
             data: {

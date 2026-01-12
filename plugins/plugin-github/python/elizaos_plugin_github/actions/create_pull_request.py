@@ -35,7 +35,6 @@ class CreatePullRequestAction:
         context: ActionContext,
         service: object,
     ) -> ActionResult:
-        """Execute the action."""
         from elizaos_plugin_github.service import GitHubService
 
         if not isinstance(service, GitHubService):

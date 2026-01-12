@@ -17,8 +17,6 @@ class Runtime(Protocol):
 
 
 class SamTTSService:
-    """SAM TTS Service - Generates 8-bit audio using SAM synthesis."""
-
     service_type = "SAM_TTS"
 
     def __init__(self, runtime: Runtime | None = None):
@@ -33,7 +31,6 @@ class SamTTSService:
         logger.info("[SAM-TTS] Service stopped")
 
     def generate_audio(self, text: str, options: SamTTSOptions | None = None) -> bytes:
-        """Generate 8-bit audio from text."""
         opts = options or DEFAULT_SAM_OPTIONS
 
         logger.info(f'[SAM-TTS] Synthesizing: "{text[:50]}{"..." if len(text) > 50 else ""}"')

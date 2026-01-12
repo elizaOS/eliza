@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Issue Context Provider
 
 use serde_json::json;
 
@@ -8,7 +7,6 @@ use crate::error::Result;
 use crate::types::ListIssuesParams;
 use crate::GitHubService;
 
-/// Provider for issue context
 pub struct IssueContextProvider;
 
 impl GitHubProvider for IssueContextProvider {
@@ -85,9 +83,26 @@ impl GitHubProvider for IssueContextProvider {
     }
 }
 
+/// TS-parity alias provider (name: `GITHUB_ISSUE_CONTEXT`).
+pub struct GitHubIssueContextProvider;
 
+impl GitHubProvider for GitHubIssueContextProvider {
+    fn name(&self) -> &str {
+        "GITHUB_ISSUE_CONTEXT"
+    }
 
+    fn description(&self) -> &str {
+        "Provides information about issues in the repository"
+    }
 
+    fn get(
+        &self,
+        context: &ProviderContext,
+        service: &GitHubService,
+    ) -> impl std::future::Future<Output = Result<ProviderResult>> + Send {
+        IssueContextProvider.get(context, service)
+    }
+}
 
 
 

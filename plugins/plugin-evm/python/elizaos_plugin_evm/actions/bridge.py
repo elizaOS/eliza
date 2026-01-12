@@ -213,3 +213,9 @@ bridge_action = {
     ],
     "handler": execute_bridge,
 }
+
+# TS parity aliases (keep legacy names too)
+evm_bridge_tokens_action = {
+    **bridge_action,
+    "name": "EVM_BRIDGE_TOKENS",
+}

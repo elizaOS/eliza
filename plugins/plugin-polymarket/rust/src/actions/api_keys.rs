@@ -15,10 +15,7 @@ use crate::types::{ApiKey, ApiKeyCreds};
 /// # Errors
 ///
 /// Returns an error if API key creation fails
-pub async fn create_api_key(
-    client: &ClobClient,
-    base_url: &str,
-) -> Result<ApiKeyCreds> {
+pub async fn create_api_key(client: &ClobClient, base_url: &str) -> Result<ApiKeyCreds> {
     if !client.has_credentials() {
         // Try to derive existing key first
         if let Ok(creds) = derive_api_key(client, base_url).await {
@@ -28,7 +25,7 @@ pub async fn create_api_key(
 
     // Create new API key
     let _url = format!("{}/auth/api-key", base_url.trim_end_matches('/'));
-    
+
     // Build authentication headers
     let _timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -36,7 +33,7 @@ pub async fn create_api_key(
         .as_secs()
         .to_string();
     let _nonce = 0u64.to_string();
-    
+
     // Sign typed data for authentication
     // Note: This requires EIP-712 signing which should be implemented in the client
     // For now, we'll return an error indicating this needs to be implemented
@@ -56,10 +53,7 @@ pub async fn create_api_key(
 /// # Errors
 ///
 /// Returns an error if derivation fails
-pub async fn derive_api_key(
-    _client: &ClobClient,
-    _base_url: &str,
-) -> Result<ApiKeyCreds> {
+pub async fn derive_api_key(_client: &ClobClient, _base_url: &str) -> Result<ApiKeyCreds> {
     // This requires EIP-712 signing implementation
     Err(PolymarketError::new(
         crate::error::PolymarketErrorCode::AuthError,
@@ -101,10 +95,7 @@ pub async fn get_all_api_keys(client: &ClobClient) -> Result<Vec<ApiKey>> {
 /// # Errors
 ///
 /// Returns an error if revocation fails
-pub async fn revoke_api_key(
-    client: &ClobClient,
-    key_id: &str,
-) -> Result<()> {
+pub async fn revoke_api_key(client: &ClobClient, key_id: &str) -> Result<()> {
     if !client.has_credentials() {
         return Err(PolymarketError::new(
             crate::error::PolymarketErrorCode::AuthError,
@@ -125,7 +116,6 @@ pub async fn revoke_api_key(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_revoke_api_key_empty_id() {

@@ -1,9 +1,8 @@
 //! Integration tests for linear plugin.
 
 use elizaos_plugin_linear::types::{
-    LinearConfig, ResourceType, IssueInput,
-    SearchFilters, Team, User, WorkflowState, Label,
-    ActionResult, ProviderResult,
+    ActionResult, IssueInput, Label, LinearConfig, ProviderResult, ResourceType, SearchFilters,
+    Team, User, WorkflowState,
 };
 
 #[test]
@@ -13,7 +12,7 @@ fn test_linear_config_new() {
         workspace_id: Some("ws-123".to_string()),
         default_team_key: Some("ENG".to_string()),
     };
-    
+
     assert_eq!(config.api_key, "test-key");
     assert_eq!(config.workspace_id, Some("ws-123".to_string()));
     assert_eq!(config.default_team_key, Some("ENG".to_string()));
@@ -66,7 +65,7 @@ fn test_team_serialization() {
         key: "ENG".to_string(),
         description: Some("Engineering team".to_string()),
     };
-    
+
     let json = serde_json::to_string(&team).unwrap();
     assert!(json.contains("team-1"));
     assert!(json.contains("Engineering"));
@@ -80,7 +79,7 @@ fn test_user_serialization() {
         name: "John Doe".to_string(),
         email: "john@example.com".to_string(),
     };
-    
+
     let json = serde_json::to_string(&user).unwrap();
     assert!(json.contains("user-1"));
     assert!(json.contains("John Doe"));
@@ -95,7 +94,7 @@ fn test_workflow_state_serialization() {
         state_type: "started".to_string(),
         color: "#0000FF".to_string(),
     };
-    
+
     let json = serde_json::to_string(&state).unwrap();
     assert!(json.contains("In Progress"));
     assert!(json.contains("started"));
@@ -108,7 +107,7 @@ fn test_label_serialization() {
         name: "Bug".to_string(),
         color: "#FF0000".to_string(),
     };
-    
+
     let json = serde_json::to_string(&label).unwrap();
     assert!(json.contains("Bug"));
     assert!(json.contains("#FF0000"));

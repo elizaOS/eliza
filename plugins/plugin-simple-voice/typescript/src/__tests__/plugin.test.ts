@@ -98,7 +98,6 @@ describe("SamTTSService", () => {
       mouth: 128,
     });
 
-    // Different speeds produce different length audio
     expect(slow.length).not.toBe(fast.length);
   });
 

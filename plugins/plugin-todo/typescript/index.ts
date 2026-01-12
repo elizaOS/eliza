@@ -35,15 +35,14 @@ export const todoPlugin: Plugin = {
         logger.warn("No database instance available, operations will be limited");
       }
 
-      // Check for rolodex plugin availability
       const messageDeliveryService = runtime.getService("MESSAGE_DELIVERY" as never);
       if (messageDeliveryService) {
-        logger.info("Rolodex message delivery service available - external notifications enabled");
+        logger.info("Rolodex message delivery service available");
       } else {
         logger.warn("Rolodex not available - only in-app notifications will work");
       }
 
-      logger.info("TodoPlugin initialized with reminder and integration capabilities");
+      logger.info("TodoPlugin initialized");
     } catch (error) {
       logger.error(
         "Error initializing TodoPlugin:",

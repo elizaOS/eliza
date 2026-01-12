@@ -1,44 +1,28 @@
-//! Planning plugin providers module.
-
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// Provider trait for elizaOS compatibility.
 #[async_trait]
 pub trait Provider: Send + Sync {
-    /// Returns the unique name identifier for this provider.
     fn name(&self) -> &'static str;
-    /// Returns a human-readable description of what this provider does.
     fn description(&self) -> &'static str;
-    /// Returns the priority position for provider ordering (lower = earlier).
     fn position(&self) -> i32;
-    /// Retrieves provider data based on the given parameters.
     async fn get(&self, params: ProviderParams) -> ProviderResult;
 }
 
-/// Parameters passed to a provider when retrieving data.
 pub struct ProviderParams {
-    /// The ID of the current conversation.
     pub conversation_id: String,
-    /// The ID of the agent making the request.
     pub agent_id: String,
-    /// The text content of the message to process.
     pub message_text: String,
 }
 
-/// Result returned by a provider after processing.
 #[derive(Debug, Clone)]
 pub struct ProviderResult {
-    /// Key-value pairs of extracted data.
     pub values: HashMap<String, String>,
-    /// Human-readable summary text.
     pub text: String,
-    /// Structured JSON data.
     pub data: Value,
 }
 
-/// Message classifier provider.
 pub struct MessageClassifierProvider;
 
 impl MessageClassifierProvider {
@@ -105,7 +89,6 @@ impl Provider for MessageClassifierProvider {
     }
 }
 
-/// Get all planning plugin provider names.
 pub fn get_planning_provider_names() -> Vec<&'static str> {
     vec!["messageClassifier"]
 }

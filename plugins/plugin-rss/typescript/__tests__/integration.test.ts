@@ -1,8 +1,3 @@
-/**
- * Integration tests for the RSS plugin.
- * No API key required for these tests.
- */
-
 import { describe, expect, it } from "vitest";
 
 describe("RSS Plugin Integration Tests", () => {

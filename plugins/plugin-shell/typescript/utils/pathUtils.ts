@@ -21,21 +21,9 @@ export function validatePath(
 }
 
 export function isSafeCommand(command: string): boolean {
-  const pathTraversalPatterns = [
-    /\.\.\//g, // ../
-    /\.\.\\/g, // ..\
-    /\/\.\./g, // /..
-    /\\\.\./g,
-  ];
+  const pathTraversalPatterns = [/\.\.\//g, /\.\.\\/g, /\/\.\./g, /\\\.\./g];
 
-  const dangerousPatterns = [
-    /\$\(/g, // Command substitution $(
-    /`[^']*`/g, // Command substitution ` (but allow in quotes)
-    /\|\s*sudo/g, // Pipe to sudo
-    /;\s*sudo/g, // Chain with sudo
-    /&\s*&/g, // && chaining
-    /\|\s*\|/g,
-  ];
+  const dangerousPatterns = [/\$\(/g, /`[^']*`/g, /\|\s*sudo/g, /;\s*sudo/g, /&\s*&/g, /\|\s*\|/g];
 
   for (const pattern of pathTraversalPatterns) {
     if (pattern.test(command)) {

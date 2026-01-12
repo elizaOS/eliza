@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! OpenAI API Client
-//!
-//! Async HTTP client for OpenAI API interactions using reqwest.
 
 use bytes::Bytes;
 use futures::StreamExt;
@@ -17,19 +14,17 @@ use tracing::debug;
 use crate::error::{OpenAIError, Result};
 use crate::types::{
     ChatCompletionResponse, ChatMessage, EmbeddingParams, EmbeddingResponse,
-    ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams,
-    ImageGenerationResponse, ImageGenerationResult, ModelsResponse, OpenAIConfig,
-    TextGenerationParams, TextToSpeechParams, TranscriptionParams, TranscriptionResponse,
+    ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams, ImageGenerationResponse,
+    ImageGenerationResult, ModelsResponse, OpenAIConfig, TextGenerationParams, TextToSpeechParams,
+    TranscriptionParams, TranscriptionResponse,
 };
 
-/// OpenAI API client.
 pub struct OpenAIClient {
     client: Client,
     config: OpenAIConfig,
 }
 
 impl OpenAIClient {
-    /// Create a new OpenAI client.
     pub fn new(config: OpenAIConfig) -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -47,12 +42,10 @@ impl OpenAIClient {
         Ok(Self { client, config })
     }
 
-    /// Build URL for an endpoint.
     fn url(&self, endpoint: &str) -> String {
         format!("{}{}", self.config.base_url, endpoint)
     }
 
-    /// Check response for errors.
     async fn check_response(&self, response: Response) -> Result<Response> {
         if response.status().is_success() {
             return Ok(response);
@@ -73,11 +66,6 @@ impl OpenAIClient {
         Err(OpenAIError::ApiError { status, message })
     }
 
-    // =========================================================================
-    // Models
-    // =========================================================================
-
-    /// List available models.
     pub async fn list_models(&self) -> Result<ModelsResponse> {
         debug!("Listing OpenAI models");
         let response = self.client.get(self.url("/models")).send().await?;
@@ -85,11 +73,6 @@ impl OpenAIClient {
         Ok(response.json().await?)
     }
 
-    // =========================================================================
-    // Embeddings
-    // =========================================================================
-
-    /// Generate an embedding for text.
     pub async fn create_embedding(&self, params: &EmbeddingParams) -> Result<Vec<f32>> {
         let model = params
             .model
@@ -122,20 +105,11 @@ impl OpenAIClient {
             .ok_or(OpenAIError::EmptyResponse)
     }
 
-    // =========================================================================
-    // Text Generation
-    // =========================================================================
-
-    /// Check if model supports temperature/sampling parameters.
-    /// gpt-5 and gpt-5-mini (reasoning models) don't support these.
     fn model_supports_temperature(model: &str) -> bool {
         let model_lower = model.to_lowercase();
-        !model_lower.contains("gpt-5")
-            && !model_lower.contains("o1")
-            && !model_lower.contains("o3")
+        !model_lower.contains("gpt-5") && !model_lower.contains("o1") && !model_lower.contains("o3")
     }
 
-    /// Generate text using chat completions.
     pub async fn generate_text(&self, params: &TextGenerationParams) -> Result<String> {
         let model = params.model.as_deref().unwrap_or(&self.config.large_model);
         debug!("Generating text with model: {}", model);
@@ -158,8 +132,6 @@ impl OpenAIClient {
             "messages": messages,
         });
 
-        // Only add temperature/sampling params for models that support them
-        // gpt-5, gpt-5-mini, o1, o3 models don't support these
         if Self::model_supports_temperature(model) {
             if let Some(temp) = params.temperature {
                 body["temperature"] = serde_json::json!(temp);
@@ -176,11 +148,8 @@ impl OpenAIClient {
             if let Some(max) = params.max_tokens {
                 body["max_tokens"] = serde_json::json!(max);
             }
-        } else {
-            // Reasoning models (gpt-5, o1, o3) use max_completion_tokens instead of max_tokens
-            if let Some(max) = params.max_tokens {
-                body["max_completion_tokens"] = serde_json::json!(max);
-            }
+        } else if let Some(max) = params.max_tokens {
+            body["max_completion_tokens"] = serde_json::json!(max);
         }
 
         let response = self
@@ -199,7 +168,6 @@ impl OpenAIClient {
             .ok_or(OpenAIError::EmptyResponse)
     }
 
-    /// Stream text generation.
     pub async fn stream_text(
         &self,
         params: &TextGenerationParams,
@@ -226,8 +194,6 @@ impl OpenAIClient {
             "stream": true,
         });
 
-        // Only add temperature for models that support it
-        // gpt-5 models use max_completion_tokens instead of max_tokens
         if Self::model_supports_temperature(model) {
             if let Some(temp) = params.temperature {
                 body["temperature"] = serde_json::json!(temp);
@@ -235,11 +201,8 @@ impl OpenAIClient {
             if let Some(max) = params.max_tokens {
                 body["max_tokens"] = serde_json::json!(max);
             }
-        } else {
-            // Reasoning models use max_completion_tokens
-            if let Some(max) = params.max_tokens {
-                body["max_completion_tokens"] = serde_json::json!(max);
-            }
+        } else if let Some(max) = params.max_tokens {
+            body["max_completion_tokens"] = serde_json::json!(max);
         }
 
         let response = self
@@ -278,11 +241,6 @@ impl OpenAIClient {
         Ok(stream)
     }
 
-    // =========================================================================
-    // Image Generation
-    // =========================================================================
-
-    /// Generate images using DALL-E.
     pub async fn generate_image(
         &self,
         params: &ImageGenerationParams,
@@ -327,19 +285,15 @@ impl OpenAIClient {
             .collect())
     }
 
-    // =========================================================================
-    // Image Description
-    // =========================================================================
-
-    /// Describe/analyze an image using GPT-4 Vision.
     pub async fn describe_image(
         &self,
         params: &ImageDescriptionParams,
     ) -> Result<ImageDescriptionResult> {
         let model = params.model.as_deref().unwrap_or("gpt-5-mini");
-        let prompt = params.prompt.as_deref().unwrap_or(
-            "Please analyze this image and provide a title and detailed description.",
-        );
+        let prompt = params
+            .prompt
+            .as_deref()
+            .unwrap_or("Please analyze this image and provide a title and detailed description.");
         let max_tokens = params.max_tokens.unwrap_or(8192);
 
         debug!("Describing image with model: {}", model);
@@ -371,7 +325,6 @@ impl OpenAIClient {
             .and_then(|c| c.message.content.clone())
             .ok_or(OpenAIError::EmptyResponse)?;
 
-        // Parse title and description from response
         let title_regex = Regex::new(r"(?i)title[:\s]+(.+?)(?:\n|$)").ok();
         let title = title_regex
             .as_ref()
@@ -390,11 +343,6 @@ impl OpenAIClient {
         Ok(ImageDescriptionResult { title, description })
     }
 
-    // =========================================================================
-    // Audio Transcription
-    // =========================================================================
-
-    /// Get MIME type from filename extension.
     fn get_audio_mime_type(filename: &str) -> &'static str {
         let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
         match ext.as_str() {
@@ -404,11 +352,10 @@ impl OpenAIClient {
             "m4a" | "mp4" => "audio/mp4",
             "ogg" | "oga" => "audio/ogg",
             "webm" => "audio/webm",
-            _ => "audio/webm", // Default fallback
+            _ => "audio/webm",
         }
     }
 
-    /// Transcribe audio using Whisper.
     pub async fn transcribe_audio(
         &self,
         audio_data: Bytes,
@@ -429,7 +376,9 @@ impl OpenAIClient {
             .mime_str(mime_type)
             .map_err(|e| OpenAIError::ConfigError(e.to_string()))?;
 
-        let mut form = Form::new().text("model", model.to_string()).part("file", part);
+        let mut form = Form::new()
+            .text("model", model.to_string())
+            .part("file", part);
 
         if let Some(language) = &params.language {
             let lang_str: String = language.clone();
@@ -462,11 +411,6 @@ impl OpenAIClient {
         Ok(transcription.text)
     }
 
-    // =========================================================================
-    // Text-to-Speech
-    // =========================================================================
-
-    /// Convert text to speech.
     pub async fn text_to_speech(&self, params: &TextToSpeechParams) -> Result<Bytes> {
         let model = params.model.as_deref().unwrap_or(&self.config.tts_model);
         let voice = params.voice.unwrap_or(self.config.tts_voice);
@@ -496,25 +440,15 @@ impl OpenAIClient {
         Ok(response.bytes().await?)
     }
 
-    // =========================================================================
-    // Structured Output
-    // =========================================================================
-
-    /// Generate a structured JSON object.
-    ///
-    /// Convenience method that wraps `generate_text` with JSON-focused prompting.
-    /// Note: gpt-5 models don't support temperature, so it's not passed.
     pub async fn generate_object(
         &self,
         prompt: &str,
         _temperature: Option<f32>,
     ) -> Result<serde_json::Value> {
-        // Note: temperature is ignored for gpt-5 models (reasoning models)
         let params = TextGenerationParams::new(format!("Respond with only valid JSON. {}", prompt));
 
         let response = self.generate_text(&params).await?;
 
-        // Clean up potential markdown code blocks
         let cleaned = response
             .trim()
             .trim_start_matches("```json")
@@ -525,4 +459,3 @@ impl OpenAIClient {
         serde_json::from_str(cleaned).map_err(|e| OpenAIError::ParseError(e.to_string()))
     }
 }
-

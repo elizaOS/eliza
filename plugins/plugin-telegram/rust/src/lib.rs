@@ -1,41 +1,32 @@
-//! elizaOS Telegram Plugin
+//! Telegram integration plugin for elizaOS.
 //!
-//! This crate provides Telegram integration for elizaOS agents.
-//!
-//! # Features
-//!
-//! - `native`: Full Telegram client support using teloxide (default)
-//!
-//! # Example
-//!
-//! ```no_run
-//! use elizaos_plugin_telegram::{TelegramConfig, TelegramService};
-//!
-//! #[tokio::main]
-//! async fn main() {
-//!     let config = TelegramConfig::from_env().expect("Missing Telegram credentials");
-//!     let mut service = TelegramService::new(config);
-//!     service.start().await.expect("Failed to start Telegram service");
-//! }
-//! ```
+//! This crate contains:
+//! - Shared data types used by the Telegram plugin
+//! - Configuration and error types
+//! - A native (`tokio` + `teloxide`) service implementation when the `native` feature is enabled
 
 #![warn(missing_docs)]
 #![deny(unsafe_code)]
 
+/// Configuration types and helpers for the Telegram plugin.
 pub mod config;
+/// Error types returned by the Telegram plugin.
 pub mod error;
+/// Serializable types used for events and payloads.
 pub mod types;
 
 #[cfg(feature = "native")]
+/// Native Telegram service implementation (requires the `native` feature).
 pub mod service;
 
 #[cfg(feature = "native")]
+/// Action interfaces and built-in actions for the native Telegram service.
 pub mod actions;
 
 #[cfg(feature = "native")]
+/// Provider interfaces and built-in providers for the native Telegram service.
 pub mod providers;
 
-// Re-exports for convenience
 pub use config::TelegramConfig;
 pub use error::{Result, TelegramError};
 pub use types::*;
@@ -43,14 +34,14 @@ pub use types::*;
 #[cfg(feature = "native")]
 pub use service::TelegramService;
 
-/// Plugin metadata
+/// Canonical plugin name.
 pub const PLUGIN_NAME: &str = "telegram";
-/// Plugin version matching Cargo.toml
+/// Plugin version (from Cargo package metadata).
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
-/// Plugin description
+/// Human-friendly plugin description.
 pub const PLUGIN_DESCRIPTION: &str = "Telegram integration for elizaOS agents";
 
-/// Create the Telegram plugin instance
+/// Returns the plugin metadata used by the elizaOS plugin system.
 pub fn plugin() -> Plugin {
     Plugin {
         name: PLUGIN_NAME.to_string(),
@@ -59,14 +50,14 @@ pub fn plugin() -> Plugin {
     }
 }
 
-/// Plugin metadata structure
 #[derive(Debug, Clone)]
+/// Plugin metadata (name, description, and version).
 pub struct Plugin {
-    /// Plugin name
+    /// The plugin identifier (e.g. `"telegram"`).
     pub name: String,
-    /// Plugin description
+    /// A human-friendly description of the plugin.
     pub description: String,
-    /// Plugin version
+    /// The plugin version string.
     pub version: String,
 }
 

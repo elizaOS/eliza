@@ -1,7 +1,3 @@
-//! Telegram service implementation
-//!
-//! Provides the main TelegramService for connecting to Telegram and handling events.
-
 use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::{ChatId, MessageId, ReplyParameters};
@@ -14,13 +10,14 @@ use crate::types::{
     TelegramChannelType, TelegramChat, TelegramEventType, TelegramMessagePayload, TelegramUser,
 };
 
-/// Maximum message length for Telegram
+/// Telegram's maximum message length for `sendMessage` (nominally 4096 characters).
+///
+/// Note: this crate currently uses Rust `&str` byte length as an approximation when splitting.
 pub const MAX_MESSAGE_LENGTH: usize = 4096;
 
-/// Event callback type
+/// Callback invoked when the service emits a [`TelegramEventType`].
 pub type EventCallback = Box<dyn Fn(TelegramEventType, serde_json::Value) + Send + Sync>;
 
-/// Telegram service state
 #[derive(Default)]
 struct ServiceState {
     is_running: bool,
@@ -28,9 +25,7 @@ struct ServiceState {
     bot_username: Option<String>,
 }
 
-/// Telegram service for elizaOS
-///
-/// Manages connection to Telegram and handles all Telegram operations.
+/// Native Telegram Bot API service (powered by `teloxide`).
 pub struct TelegramService {
     config: TelegramConfig,
     state: Arc<RwLock<ServiceState>>,
@@ -38,7 +33,7 @@ pub struct TelegramService {
 }
 
 impl TelegramService {
-    /// Create a new Telegram service
+    /// Creates a new service from a validated [`TelegramConfig`].
     pub fn new(config: TelegramConfig) -> Self {
         Self {
             config,
@@ -47,22 +42,22 @@ impl TelegramService {
         }
     }
 
-    /// Get the configuration
+    /// Returns the service configuration.
     pub fn config(&self) -> &TelegramConfig {
         &self.config
     }
 
-    /// Check if the service is running
+    /// Returns whether the service is currently running.
     pub async fn is_running(&self) -> bool {
         self.state.read().await.is_running
     }
 
-    /// Get bot username
+    /// Returns the bot's username (without `@`) once the service has started.
     pub async fn bot_username(&self) -> Option<String> {
         self.state.read().await.bot_username.clone()
     }
 
-    /// Set the event callback
+    /// Sets a callback invoked for each emitted event.
     pub fn set_event_callback<F>(&mut self, callback: F)
     where
         F: Fn(TelegramEventType, serde_json::Value) + Send + Sync + 'static,
@@ -72,9 +67,8 @@ impl TelegramService {
         }
     }
 
-    /// Start the Telegram service
+    /// Starts the Telegram service and begins receiving updates.
     pub async fn start(&mut self) -> Result<()> {
-        // Check if already running
         {
             let state = self.state.read().await;
             if state.is_running {
@@ -82,15 +76,12 @@ impl TelegramService {
             }
         }
 
-        // Validate config
         self.config.validate()?;
 
         info!("Starting Telegram service...");
 
-        // Create bot
         let bot = Bot::new(&self.config.bot_token);
 
-        // Get bot info
         let me = bot
             .get_me()
             .await
@@ -98,17 +89,14 @@ impl TelegramService {
 
         let bot_username = me.username.clone();
 
-        // Store bot
         self.bot = Some(bot.clone());
 
-        // Update state
         {
             let mut state = self.state.write().await;
             state.is_running = true;
             state.bot_username = bot_username.clone();
         }
 
-        // Emit connected event
         {
             let state = self.state.read().await;
             if let Some(ref callback) = state.event_callback {
@@ -123,14 +111,16 @@ impl TelegramService {
             }
         }
 
-        // Start message handler in background
         let state_clone = self.state.clone();
         let config_clone = self.config.clone();
         let bot_clone = bot.clone();
 
         tokio::spawn(async move {
             let handler = Update::filter_message().endpoint(
-                |bot: Bot, msg: Message, state: Arc<RwLock<ServiceState>>, config: TelegramConfig| async move {
+                |bot: Bot,
+                 msg: Message,
+                 state: Arc<RwLock<ServiceState>>,
+                 config: TelegramConfig| async move {
                     handle_message(bot, msg, state, config).await
                 },
             );
@@ -147,14 +137,12 @@ impl TelegramService {
         Ok(())
     }
 
-    /// Stop the Telegram service
+    /// Stops the Telegram service.
     pub async fn stop(&mut self) -> Result<()> {
         info!("Stopping Telegram service...");
 
-        // Clear bot
         self.bot = None;
 
-        // Mark as not running
         {
             let mut state = self.state.write().await;
             state.is_running = false;
@@ -164,11 +152,15 @@ impl TelegramService {
         Ok(())
     }
 
-    /// Send a message to a chat
+    /// Sends a message to the given chat ID.
+    ///
+    /// If `text` exceeds [`MAX_MESSAGE_LENGTH`], it is split and sent as multiple messages.
     pub async fn send_message(&self, chat_id: i64, text: &str) -> Result<i32> {
-        let bot = self.bot.as_ref().ok_or(TelegramError::ClientNotInitialized)?;
+        let bot = self
+            .bot
+            .as_ref()
+            .ok_or(TelegramError::ClientNotInitialized)?;
 
-        // Split message if too long
         let parts = split_message(text);
 
         let mut last_message_id = None;
@@ -180,19 +172,20 @@ impl TelegramService {
             last_message_id = Some(msg.id.0);
         }
 
-        last_message_id.ok_or_else(|| TelegramError::InvalidArgument("No message content provided".to_string()))
+        last_message_id.ok_or_else(|| {
+            TelegramError::InvalidArgument("No message content provided".to_string())
+        })
     }
 
-    /// Reply to a message
-    pub async fn reply_to_message(
-        &self,
-        chat_id: i64,
-        message_id: i32,
-        text: &str,
-    ) -> Result<i32> {
-        let bot = self.bot.as_ref().ok_or(TelegramError::ClientNotInitialized)?;
+    /// Replies to a message in the given chat.
+    ///
+    /// If the reply text exceeds [`MAX_MESSAGE_LENGTH`], it is split into multiple messages.
+    pub async fn reply_to_message(&self, chat_id: i64, message_id: i32, text: &str) -> Result<i32> {
+        let bot = self
+            .bot
+            .as_ref()
+            .ok_or(TelegramError::ClientNotInitialized)?;
 
-        // Split message if too long
         let parts = split_message(text);
 
         let mut last_message_id = None;
@@ -210,12 +203,17 @@ impl TelegramService {
             last_message_id = Some(msg.id.0);
         }
 
-        last_message_id.ok_or_else(|| TelegramError::InvalidArgument("No message content provided".to_string()))
+        last_message_id.ok_or_else(|| {
+            TelegramError::InvalidArgument("No message content provided".to_string())
+        })
     }
 
-    /// Edit a message
+    /// Edits an existing message's text.
     pub async fn edit_message(&self, chat_id: i64, message_id: i32, text: &str) -> Result<()> {
-        let bot = self.bot.as_ref().ok_or(TelegramError::ClientNotInitialized)?;
+        let bot = self
+            .bot
+            .as_ref()
+            .ok_or(TelegramError::ClientNotInitialized)?;
 
         bot.edit_message_text(ChatId(chat_id), MessageId(message_id), text)
             .await
@@ -224,9 +222,12 @@ impl TelegramService {
         Ok(())
     }
 
-    /// Delete a message
+    /// Deletes a message from a chat.
     pub async fn delete_message(&self, chat_id: i64, message_id: i32) -> Result<()> {
-        let bot = self.bot.as_ref().ok_or(TelegramError::ClientNotInitialized)?;
+        let bot = self
+            .bot
+            .as_ref()
+            .ok_or(TelegramError::ClientNotInitialized)?;
 
         bot.delete_message(ChatId(chat_id), MessageId(message_id))
             .await
@@ -235,9 +236,12 @@ impl TelegramService {
         Ok(())
     }
 
-    /// Get chat info
+    /// Fetches basic chat information by ID.
     pub async fn get_chat(&self, chat_id: i64) -> Result<TelegramChat> {
-        let bot = self.bot.as_ref().ok_or(TelegramError::ClientNotInitialized)?;
+        let bot = self
+            .bot
+            .as_ref()
+            .ok_or(TelegramError::ClientNotInitialized)?;
 
         let chat = bot
             .get_chat(ChatId(chat_id))
@@ -250,26 +254,26 @@ impl TelegramService {
                 teloxide::types::ChatKind::Private(_) => TelegramChannelType::Private,
                 teloxide::types::ChatKind::Public(ref p) => match p.kind {
                     teloxide::types::PublicChatKind::Group(_) => TelegramChannelType::Group,
-                    teloxide::types::PublicChatKind::Supergroup(_) => TelegramChannelType::Supergroup,
+                    teloxide::types::PublicChatKind::Supergroup(_) => {
+                        TelegramChannelType::Supergroup
+                    }
                     teloxide::types::PublicChatKind::Channel(_) => TelegramChannelType::Channel,
                 },
             },
             title: chat.title().map(|s| s.to_string()),
             username: chat.username().map(|s| s.to_string()),
             first_name: chat.first_name().map(|s| s.to_string()),
-            is_forum: false, // Forum status not directly available in Chat
+            is_forum: false,
         })
     }
 }
 
-/// Handle incoming message
 async fn handle_message(
     _bot: Bot,
     msg: Message,
     state: Arc<RwLock<ServiceState>>,
     config: TelegramConfig,
 ) -> ResponseResult<()> {
-    // Get user from message
     let from_user = msg.from.as_ref().map(|u| TelegramUser {
         id: u.id.0 as i64,
         username: u.username.clone(),
@@ -278,7 +282,6 @@ async fn handle_message(
         is_bot: u.is_bot,
     });
 
-    // Skip bot messages if configured
     if let Some(ref user) = from_user {
         if user.is_bot && config.should_ignore_bot_messages {
             debug!("Ignoring bot message from {:?}", user.username);
@@ -286,13 +289,11 @@ async fn handle_message(
         }
     }
 
-    // Check if chat is allowed
     if !config.is_chat_allowed(msg.chat.id.0) {
         debug!("Ignoring message from non-allowed chat {}", msg.chat.id.0);
         return Ok(());
     }
 
-    // Build chat info
     let chat = TelegramChat {
         id: msg.chat.id.0,
         chat_type: match msg.chat.kind {
@@ -306,20 +307,18 @@ async fn handle_message(
         title: msg.chat.title().map(|s| s.to_string()),
         username: msg.chat.username().map(|s| s.to_string()),
         first_name: msg.chat.first_name().map(|s| s.to_string()),
-        is_forum: false, // Forum status not directly available in Message
+        is_forum: false,
     };
 
-    // Build payload
     let payload = TelegramMessagePayload {
         message_id: msg.id.0 as i64,
         chat,
         from_user,
         text: msg.text().map(|s| s.to_string()),
         date: msg.date.timestamp(),
-        thread_id: msg.thread_id.map(|t| i64::from(t.0.0)),
+        thread_id: msg.thread_id.map(|t| i64::from(t.0 .0)),
     };
 
-    // Emit event
     let state = state.read().await;
     if let Some(ref callback) = state.event_callback {
         callback(
@@ -331,7 +330,7 @@ async fn handle_message(
     Ok(())
 }
 
-/// Split a message into chunks that fit within Telegram's limit
+/// Splits a message into chunks that are each at most [`MAX_MESSAGE_LENGTH`] bytes.
 pub fn split_message(content: &str) -> Vec<String> {
     if content.len() <= MAX_MESSAGE_LENGTH {
         return vec![content.to_string()];
@@ -354,7 +353,6 @@ pub fn split_message(content: &str) -> Vec<String> {
             }
 
             if line.len() > MAX_MESSAGE_LENGTH {
-                // Split by words
                 let words: Vec<&str> = line.split_whitespace().collect();
                 for word in words {
                     let word_with_space = if current.is_empty() {

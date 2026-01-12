@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
 
 import httpx
 
 from elizaos_plugin_rss.parser import parse_rss_to_json
 from elizaos_plugin_rss.types import RssConfig, RssFeed
-
-if TYPE_CHECKING:
-    pass
 
 
 class RssClientError(Exception):
@@ -116,7 +112,7 @@ def _is_valid_url(url: str) -> bool:
 
         result = urlparse(url)
         return all([result.scheme, result.netloc])
-    except Exception:  # noqa: S110
+    except Exception:
         return False
 
 

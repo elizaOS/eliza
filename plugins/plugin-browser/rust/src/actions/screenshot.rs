@@ -5,17 +5,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
-/// Action metadata
 pub const SCREENSHOT_ACTION_NAME: &str = "BROWSER_SCREENSHOT";
 pub const SCREENSHOT_SIMILES: &[&str] = &["TAKE_SCREENSHOT", "CAPTURE_PAGE", "SCREENSHOT"];
 pub const SCREENSHOT_DESCRIPTION: &str = "Take a screenshot of the current page";
 
-/// Take a screenshot of the current page
 pub async fn browser_screenshot(
     service: Arc<BrowserService>,
     _message: &str,
 ) -> ActionResult {
-    // Get or create session
     let session = match service.get_or_create_session().await {
         Ok(s) => s,
         Err(e) => {

@@ -1,27 +1,14 @@
-/**
- * Embed manager for processing Farcaster embeds.
- */
-
 import { type IAgentRuntime, type Media, ModelType } from "@elizaos/core";
 import type { EmbedCast, EmbedUrl, Embed as NeynarEmbed } from "@neynar/nodejs-sdk/build/api";
 
-/**
- * Type guard to check if an embed is a URL embed.
- */
 export function isEmbedUrl(embed: NeynarEmbed): embed is EmbedUrl {
   return "url" in embed && typeof (embed as EmbedUrl).url === "string";
 }
 
-/**
- * Type guard to check if an embed is a cast embed.
- */
 export function isEmbedCast(embed: NeynarEmbed): embed is EmbedCast {
   return "cast" in embed && typeof (embed as EmbedCast).cast === "object";
 }
 
-/**
- * Determines the media type from a URL.
- */
 function getMediaTypeFromUrl(
   url: string,
   contentType?: string | null
@@ -44,9 +31,6 @@ function getMediaTypeFromUrl(
   return "webpage";
 }
 
-/**
- * Processed embed information.
- */
 export interface ProcessedEmbed {
   id: string;
   url: string;
@@ -66,9 +50,6 @@ export interface ProcessedEmbed {
   };
 }
 
-/**
- * Manager class for processing Farcaster embeds.
- */
 export class EmbedManager {
   private runtime: IAgentRuntime;
   private embedCache: Map<string, ProcessedEmbed> = new Map();
@@ -77,9 +58,6 @@ export class EmbedManager {
     this.runtime = runtime;
   }
 
-  /**
-   * Process all embeds from a cast and return Media objects.
-   */
   async processEmbeds(embeds: NeynarEmbed[]): Promise<Media[]> {
     if (embeds.length === 0) {
       return [];
@@ -117,9 +95,6 @@ export class EmbedManager {
     return processedMedia;
   }
 
-  /**
-   * Process a single embed.
-   */
   async processEmbed(embed: NeynarEmbed): Promise<ProcessedEmbed | null> {
     if (isEmbedUrl(embed)) {
       return this.processUrlEmbed(embed);

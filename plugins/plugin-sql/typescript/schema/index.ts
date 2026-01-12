@@ -8,7 +8,6 @@ export { entityTable } from "./entity";
 export { logTable } from "./log";
 export { memoryTable } from "./memory";
 export { messageTable } from "./message";
-// Central database tables
 export { messageServerTable } from "./messageServer";
 export { messageServerAgentsTable } from "./messageServerAgent";
 export { participantTable } from "./participant";

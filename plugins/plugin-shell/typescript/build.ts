@@ -4,7 +4,6 @@ import { build } from "bun";
 
 const distDir = join(import.meta.dir, "dist");
 
-// Clean dist directory
 try {
   rmSync(distDir, { recursive: true, force: true });
 } catch {

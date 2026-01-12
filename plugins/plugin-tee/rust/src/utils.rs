@@ -1,22 +1,8 @@
 #![allow(missing_docs)]
-//! Utility functions for the TEE plugin.
 
 use crate::error::{Result, TeeError};
 use sha2::{Digest, Sha256};
 
-/// Convert a hexadecimal string to bytes.
-///
-/// # Arguments
-///
-/// * `hex_str` - The hexadecimal string to convert.
-///
-/// # Returns
-///
-/// The resulting bytes.
-///
-/// # Errors
-///
-/// Returns an error if the hex string is invalid.
 pub fn hex_to_bytes(hex_str: &str) -> Result<Vec<u8>> {
     let hex_str = hex_str.trim().trim_start_matches("0x");
     if hex_str.is_empty() {
@@ -28,43 +14,16 @@ pub fn hex_to_bytes(hex_str: &str) -> Result<Vec<u8>> {
     hex::decode(hex_str).map_err(TeeError::from)
 }
 
-/// Convert bytes to a hexadecimal string (without 0x prefix).
-///
-/// # Arguments
-///
-/// * `bytes` - The bytes to convert.
-///
-/// # Returns
-///
-/// The hex string (without 0x prefix).
 pub fn bytes_to_hex(bytes: &[u8]) -> String {
     hex::encode(bytes)
 }
 
-/// Calculate the SHA256 hash of the input.
-///
-/// # Arguments
-///
-/// * `data` - The input bytes to hash.
-///
-/// # Returns
-///
-/// The calculated SHA256 hash as bytes.
 pub fn calculate_sha256(data: &[u8]) -> Vec<u8> {
     let mut hasher = Sha256::new();
     hasher.update(data);
     hasher.finalize().to_vec()
 }
 
-/// Calculate the Keccak256 hash of the input (for EVM compatibility).
-///
-/// # Arguments
-///
-/// * `data` - The input bytes to hash.
-///
-/// # Returns
-///
-/// The calculated Keccak256 hash as bytes.
 pub fn calculate_keccak256(data: &[u8]) -> Vec<u8> {
     use sha3::Keccak256;
     let mut hasher = Keccak256::new();
@@ -72,19 +31,6 @@ pub fn calculate_keccak256(data: &[u8]) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-/// Get TEE endpoint URL based on mode.
-///
-/// # Arguments
-///
-/// * `mode` - The TEE mode (LOCAL, DOCKER, PRODUCTION).
-///
-/// # Returns
-///
-/// The endpoint URL or None for production.
-///
-/// # Errors
-///
-/// Returns an error if the mode is invalid.
 pub fn get_tee_endpoint(mode: &str) -> Result<Option<String>> {
     match mode.to_uppercase().as_str() {
         "LOCAL" => Ok(Some("http://localhost:8090".to_string())),
@@ -94,7 +40,6 @@ pub fn get_tee_endpoint(mode: &str) -> Result<Option<String>> {
     }
 }
 
-/// Get the current timestamp in milliseconds.
 pub fn current_timestamp_ms() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -103,15 +48,6 @@ pub fn current_timestamp_ms() -> u64 {
         .as_millis() as u64
 }
 
-/// Format an EVM address from bytes.
-///
-/// # Arguments
-///
-/// * `bytes` - The 20-byte address.
-///
-/// # Returns
-///
-/// The checksummed address string (0x prefixed).
 pub fn format_evm_address(bytes: &[u8]) -> String {
     format!("0x{}", bytes_to_hex(bytes))
 }
@@ -169,10 +105,6 @@ mod tests {
         assert!(get_tee_endpoint("INVALID").is_err());
     }
 }
-
-
-
-
 
 
 

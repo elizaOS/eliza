@@ -3,9 +3,6 @@ import { parseBooleanFromText } from "@elizaos/core";
 import { z } from "zod";
 import type { DiscordSettings } from "./types";
 
-/**
- * Helper functions to get environment variables with proper defaults
- */
 function getEnvBoolean(name: string, fallback: boolean): boolean {
   const value = process.env?.[name];
   if (!value) {
@@ -25,9 +22,6 @@ function getEnvArray(name: string, fallback: string[]): string[] {
     .filter((item) => item.length > 0);
 }
 
-/**
- * Default values that can be overridden by environment variables
- */
 export const DISCORD_DEFAULTS = {
   SHOULD_IGNORE_BOT_MESSAGES: getEnvBoolean("DISCORD_SHOULD_IGNORE_BOT_MESSAGES", false),
   SHOULD_IGNORE_DIRECT_MESSAGES: getEnvBoolean("DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES", false),
@@ -37,12 +31,6 @@ export const DISCORD_DEFAULTS = {
 
 export const discordEnvSchema = z.object({
   DISCORD_API_TOKEN: z.string().min(1, "Discord API token is required"),
-  /**
-   * Comma-separated list of channel IDs to restrict the bot to.
-   * If not set, the bot operates in all channels as usual.
-   * These channels cannot be removed via the leaveChannel action.
-   * Additional channels can be added dynamically via the joinChannel action.
-   */
   CHANNEL_IDS: z
     .string()
     .nullish()
@@ -68,25 +56,12 @@ export const discordEnvSchema = z.object({
     .transform((val) => (val ? parseBooleanFromText(val) : undefined)),
 });
 
-/**
- * Represents the type of Discord configuration settings inferred from the discordEnvSchema.
- */
 export type DiscordConfig = z.infer<typeof discordEnvSchema>;
 
-/**
- * Get Discord settings with proper priority:
- * 1. Runtime settings (environment variables via getSetting)
- * 2. Character settings
- * 3. Default values
- *
- * @param runtime - ElizaOS agent runtime instance
- * @returns Merged Discord settings
- */
 export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
   const characterSettings =
     (runtime.character.settings && (runtime.character.settings.discord as DiscordSettings)) || {};
 
-  // Helper to resolve setting value with priority: runtime > character > default
   const resolveSetting = <T>(
     envKey: string,
     characterValue: T | undefined,
@@ -94,16 +69,13 @@ export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
     transform?: (value: string) => T
   ): T => {
     const runtimeValue = runtime.getSetting(envKey);
-    // Treat null the same as undefined (some runtimes return null for missing settings)
     if (runtimeValue !== undefined && runtimeValue !== null) {
-      // Coerce to string before transforming to handle non-string runtime values
       const normalized = typeof runtimeValue === "string" ? runtimeValue : String(runtimeValue);
       return transform ? transform(normalized) : (runtimeValue as T);
     }
     return characterValue ?? defaultValue;
   };
 
-  // Resolve allowedChannelIds separately to handle empty array case
   const resolvedAllowedChannelIds = resolveSetting<string[]>(
     "CHANNEL_IDS",
     characterSettings.allowedChannelIds,
@@ -138,19 +110,10 @@ export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
       parseBooleanFromText
     ),
 
-    // Collapse empty allow-lists back to undefined to keep default open behavior
     allowedChannelIds: resolvedAllowedChannelIds.length > 0 ? resolvedAllowedChannelIds : undefined,
   };
 }
 
-/**
- * Validates the Discord configuration by retrieving the Discord API token from the runtime settings
- * and parsing it with the Discord environment schema.
- *
- * @param {IAgentRuntime} runtime The agent runtime instance.
- * @returns {Promise<DiscordConfig>} A promise that resolves with the validated Discord configuration.
- * @throws {Error} If the Discord configuration validation fails, an error with detailed error messages is thrown.
- */
 export async function validateDiscordConfig(runtime: IAgentRuntime): Promise<DiscordConfig> {
   try {
     const config = {

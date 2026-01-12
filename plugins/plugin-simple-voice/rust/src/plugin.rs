@@ -27,7 +27,6 @@ impl SimpleVoicePlugin {
     }
 }
 
-
 impl Default for SimpleVoicePlugin {
     fn default() -> Self {
         Self::new()

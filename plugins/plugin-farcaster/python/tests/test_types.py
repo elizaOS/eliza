@@ -1,5 +1,3 @@
-"""Tests for Farcaster types."""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -17,7 +15,6 @@ from elizaos_plugin_farcaster.types import (
 
 
 def test_profile_creation() -> None:
-    """Test creating a Profile."""
     profile = Profile(
         fid=12345,
         name="Test User",
@@ -33,7 +30,6 @@ def test_profile_creation() -> None:
 
 
 def test_cast_creation() -> None:
-    """Test creating a Cast."""
     profile = Profile(fid=12345, name="Test", username="test")
     cast = Cast(
         hash="0xabc123",
@@ -66,7 +62,6 @@ def test_cast_with_reply() -> None:
 
 
 def test_cast_embed() -> None:
-    """Test CastEmbed creation."""
     embed = CastEmbed(
         type=EmbedType.IMAGE,
         url="https://example.com/image.jpg",
@@ -85,19 +80,16 @@ def test_embed_types() -> None:
 
 
 def test_message_types() -> None:
-    """Test message types."""
     assert FarcasterMessageType.CAST.value == "CAST"
     assert FarcasterMessageType.REPLY.value == "REPLY"
 
 
 def test_event_types() -> None:
-    """Test event types."""
     assert FarcasterEventType.CAST_GENERATED.value == "FARCASTER_CAST_GENERATED"
     assert FarcasterEventType.MENTION_RECEIVED.value == "FARCASTER_MENTION_RECEIVED"
 
 
 def test_cast_id() -> None:
-    """Test CastId creation."""
     cast_id = CastId(hash="0xabc", fid=12345)
     assert cast_id.hash == "0xabc"
     assert cast_id.fid == 12345

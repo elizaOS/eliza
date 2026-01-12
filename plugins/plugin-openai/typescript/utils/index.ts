@@ -1,7 +1,3 @@
-/**
- * Utility exports for OpenAI plugin
- */
-
 export * from "./audio";
 export * from "./config";
 export * from "./events";

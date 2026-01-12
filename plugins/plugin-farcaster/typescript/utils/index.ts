@@ -1,7 +1,3 @@
-/**
- * Utility functions for the Farcaster plugin.
- */
-
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
@@ -9,23 +5,14 @@ import { type Cast, FARCASTER_SOURCE } from "../types";
 
 export const MAX_CAST_LENGTH = 1024;
 
-/**
- * Generate a cast ID from hash and agent ID.
- */
 export function castId({ hash, agentId }: { hash: string; agentId: string }): string {
   return `${hash}-${agentId}`;
 }
 
-/**
- * Generate a UUID from a cast hash and agent ID.
- */
 export function castUuid(props: { hash: string; agentId: string }): UUID {
   return stringToUuid(castId(props));
 }
 
-/**
- * Split post content into chunks that fit within the max length.
- */
 export function splitPostContent(content: string, maxLength: number = MAX_CAST_LENGTH): string[] {
   const paragraphs = content.split("\n\n").map((p) => p.trim());
   const posts: string[] = [];
@@ -61,9 +48,6 @@ export function splitPostContent(content: string, maxLength: number = MAX_CAST_L
   return posts;
 }
 
-/**
- * Split a paragraph into sentence-sized chunks.
- */
 export function splitParagraph(paragraph: string, maxLength: number): string[] {
   const sentences = paragraph.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [paragraph];
   const chunks: string[] = [];
@@ -110,16 +94,10 @@ export function splitParagraph(paragraph: string, maxLength: number): string[] {
   return chunks;
 }
 
-/**
- * Generate cache key for last cast.
- */
 export function lastCastCacheKey(fid: number): string {
   return `farcaster/${fid}/lastCast`;
 }
 
-/**
- * Convert a Neynar Cast to internal Cast type.
- */
 export function neynarCastToCast(neynarCast: NeynarCast): Cast {
   return {
     hash: neynarCast.hash,
@@ -144,9 +122,6 @@ export function neynarCastToCast(neynarCast: NeynarCast): Cast {
   };
 }
 
-/**
- * Create a memory from a cast.
- */
 export function createCastMemory({
   roomId,
   senderId,
@@ -185,9 +160,6 @@ export function createCastMemory({
   };
 }
 
-/**
- * Format a cast timestamp for display.
- */
 export function formatCastTimestamp(timestamp: Date): string {
   return timestamp.toLocaleString("en-US", {
     hour: "2-digit",

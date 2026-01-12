@@ -7,9 +7,18 @@ Providers supply contextual information for agent decision-making.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from elizaos_plugin_discord.providers.channel_state import ChannelStateProvider
-from elizaos_plugin_discord.providers.guild_info import GuildInfoProvider
-from elizaos_plugin_discord.providers.voice_state import VoiceStateProvider
+from elizaos_plugin_discord.providers.channel_state import (
+    ChannelStateProvider,
+    ChannelStateProviderCamel,
+)
+from elizaos_plugin_discord.providers.guild_info import (
+    GuildInfoProvider,
+    GuildInfoProviderCamel,
+)
+from elizaos_plugin_discord.providers.voice_state import (
+    VoiceStateProvider,
+    VoiceStateProviderCamel,
+)
 
 
 @dataclass(frozen=True)
@@ -56,8 +65,11 @@ __all__ = [
     "ProviderContext",
     "DiscordProvider",
     "ChannelStateProvider",
+    "ChannelStateProviderCamel",
     "VoiceStateProvider",
+    "VoiceStateProviderCamel",
     "GuildInfoProvider",
+    "GuildInfoProviderCamel",
     "get_all_providers",
 ]
 

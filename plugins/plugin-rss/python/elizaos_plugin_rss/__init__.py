@@ -37,6 +37,7 @@ from elizaos_plugin_rss.providers import (
     FeedItemsProvider,
     get_rss_provider_names,
 )
+from elizaos_plugin_rss.service import RssService
 
 __version__ = "1.0.0"
 
@@ -76,4 +77,6 @@ __all__ = [
     "format_relative_time",
     "PLUGIN_NAME",
     "PLUGIN_DESCRIPTION",
+    # Service
+    "RssService",
 ]

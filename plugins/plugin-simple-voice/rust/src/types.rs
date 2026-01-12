@@ -11,7 +11,6 @@ pub struct SamTTSOptions {
     pub mouth: u8,
 }
 
-
 impl Default for SamTTSOptions {
     fn default() -> Self {
         DEFAULT_SAM_OPTIONS
@@ -28,19 +27,36 @@ pub const DEFAULT_SAM_OPTIONS: SamTTSOptions = SamTTSOptions {
 pub const SAM_SERVICE_TYPE: &str = "SAM_TTS";
 
 pub const SPEECH_TRIGGERS: &[&str] = &[
-    "say aloud", "speak", "read aloud", "say out loud", "voice",
-    "speak this", "say this", "read this", "announce", "proclaim",
-    "tell everyone", "speak up", "use your voice", "talk to me",
-    "higher voice", "lower voice", "change voice", "robotic voice", "retro voice",
+    "say aloud",
+    "speak",
+    "read aloud",
+    "say out loud",
+    "voice",
+    "speak this",
+    "say this",
+    "read this",
+    "announce",
+    "proclaim",
+    "tell everyone",
+    "speak up",
+    "use your voice",
+    "talk to me",
+    "higher voice",
+    "lower voice",
+    "change voice",
+    "robotic voice",
+    "retro voice",
 ];
 
-pub const VOCALIZATION_PATTERNS: &[&str] = &[
-    "can you say", "please say", "i want to hear", "let me hear",
-];
+pub const VOCALIZATION_PATTERNS: &[&str] =
+    &["can you say", "please say", "i want to hear", "let me hear"];
 
 #[async_trait::async_trait]
 pub trait HardwareBridge: Send + Sync {
-    async fn send_audio_data(&self, audio_buffer: &[u8]) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    async fn send_audio_data(
+        &self,
+        audio_buffer: &[u8],
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,7 +66,6 @@ pub struct MemoryContent {
     pub extra: HashMap<String, serde_json::Value>,
 }
 
-/// Memory structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Memory {
     pub id: String,

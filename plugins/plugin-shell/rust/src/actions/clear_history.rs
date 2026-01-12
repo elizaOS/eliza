@@ -1,10 +1,7 @@
-//! Clear history action for the shell plugin.
-
 use crate::{Action, ActionExample, ActionResult, ShellService};
 use async_trait::async_trait;
 use serde_json::Value;
 
-/// Action to clear shell command history.
 pub struct ClearHistoryAction;
 
 impl ClearHistoryAction {

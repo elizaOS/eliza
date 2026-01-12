@@ -76,3 +76,9 @@ transfer_action = {
     ],
     "handler": execute_transfer,
 }
+
+# TS parity aliases (keep legacy names too)
+evm_transfer_tokens_action = {
+    **transfer_action,
+    "name": "EVM_TRANSFER_TOKENS",
+}

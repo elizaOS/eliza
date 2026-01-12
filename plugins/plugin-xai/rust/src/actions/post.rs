@@ -1,27 +1,26 @@
-//! POST action implementation for X/Twitter.
-
 use tracing::{error, info};
 
 use crate::client::TwitterClient;
 
-/// Result of a post action.
 #[derive(Debug, Clone)]
+/// Result returned by the [`PostAction`] handler.
+///
+/// This is designed to be a small, serializable-ish payload that can be surfaced
+/// to an agent and/or logged by the runtime.
 pub struct PostActionResult {
-    /// Whether the action succeeded.
+    /// Whether the post was created successfully.
     pub success: bool,
-    /// Response text.
+    /// Human-readable message describing the outcome.
     pub text: String,
-    /// Post ID if successful.
+    /// The created post ID (if available).
     pub post_id: Option<String>,
-    /// Post URL if successful.
+    /// A canonical URL to the created post (if available).
     pub post_url: Option<String>,
-    /// Error message if failed.
+    /// Error message (if the action failed).
     pub error: Option<String>,
 }
 
-/// Post Action for X/Twitter.
-///
-/// Posts content on X (formerly Twitter).
+/// Action helper for posting content to X (formerly Twitter).
 pub struct PostAction;
 
 impl PostAction {
@@ -41,16 +40,18 @@ impl PostAction {
         "POST_TWEET",
     ];
 
-    /// Maximum post length.
+    /// Maximum allowed character length for an X post.
     pub const MAX_LENGTH: usize = 280;
 
-    /// Validate if the action can be executed.
+    /// Validate that a [`TwitterClient`] is authenticated and can post.
     pub fn validate(client: &TwitterClient) -> bool {
-        // Check if client is properly configured
         client.is_authenticated()
     }
 
-    /// Truncate text to fit within X's character limit.
+    /// Truncate input text to fit within [`Self::MAX_LENGTH`].
+    ///
+    /// Attempts to truncate on sentence boundaries; falls back to a hard cut with
+    /// an ellipsis when needed.
     pub fn truncate_text(text: &str) -> String {
         if text.len() <= Self::MAX_LENGTH {
             return text.to_string();
@@ -69,23 +70,13 @@ impl PostAction {
         }
 
         if truncated.is_empty() {
-            // No complete sentence fits, just truncate with ellipsis
             format!("{}...", &text[..Self::MAX_LENGTH.saturating_sub(3)])
         } else {
             truncated.trim().to_string()
         }
     }
 
-    /// Execute the post action.
-    ///
-    /// # Arguments
-    ///
-    /// * `client` - The Twitter client.
-    /// * `text` - The text to post.
-    ///
-    /// # Returns
-    ///
-    /// The post result.
+    /// Execute the POST action: validate input, truncate, and create the post.
     pub async fn handle(client: &TwitterClient, text: &str) -> PostActionResult {
         let text = text.trim();
         
@@ -99,7 +90,6 @@ impl PostAction {
             };
         }
 
-        // Truncate if needed
         let final_text = Self::truncate_text(text);
 
         info!("Executing POST action with text: {}", &final_text[..final_text.len().min(50)]);
@@ -134,7 +124,7 @@ impl PostAction {
     }
 }
 
-/// Example conversations for the post action.
+/// Example conversation snippets demonstrating how to invoke the POST action.
 pub const POST_EXAMPLES: &[&[(&str, &str)]] = &[
     &[
         ("{{user1}}", "Post about the weather today"),

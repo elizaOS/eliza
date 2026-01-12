@@ -1,8 +1,3 @@
-/**
- * Integration tests for the OpenRouter plugin.
- * These tests use real API calls and skip if OPENROUTER_API_KEY is not set.
- */
-
 import { describe, expect, it } from "vitest";
 
 const API_KEY = process.env.OPENROUTER_API_KEY;

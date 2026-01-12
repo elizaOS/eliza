@@ -43,22 +43,17 @@ class PdfClient:
                 )
             )
 
-            # Collapse spaces and tabs but preserve newlines
             cleaned = re.sub(r"[^\S\r\n]+", " ", filtered)
-            # Trim trailing spaces at end of lines
             cleaned = re.sub(r"[ \t]+(\r?\n)", r"\1", cleaned)
-            # Trim whitespace from start and end
             cleaned = cleaned.strip()
 
             return cleaned
         except Exception:
-            # Return original content if cleanup fails
             return content
 
     def _extract_text_sync(
         self, pdf_bytes: bytes, options: PdfExtractionOptions
     ) -> PdfConversionResult:
-        """Synchronous text extraction (runs in thread pool)."""
         try:
             reader = PdfReader(io.BytesIO(pdf_bytes))
             num_pages = len(reader.pages)
@@ -99,7 +94,7 @@ class PdfClient:
         )
 
         if not result.success:
-            raise PdfError(result.error or "Unknown error")
+            raise PdfError(result.error or "PDF extraction failed")
 
         return result.text or ""
 
@@ -128,11 +123,9 @@ class PdfClient:
         )
 
     def _get_document_info_sync(self, pdf_bytes: bytes) -> PdfDocumentInfo:
-        """Synchronous document info extraction (runs in thread pool)."""
         reader = PdfReader(io.BytesIO(pdf_bytes))
         num_pages = len(reader.pages)
 
-        # Extract metadata
         pdf_meta = reader.metadata
         metadata = PdfMetadata()
 
@@ -198,18 +191,6 @@ class PdfClient:
             return None
 
     async def get_document_info(self, pdf_bytes: bytes) -> PdfDocumentInfo:
-        """
-        Get full document information including metadata and per-page text.
-
-        Args:
-            pdf_bytes: The PDF file content as bytes.
-
-        Returns:
-            PdfDocumentInfo with all document information.
-
-        Raises:
-            PdfError: If extraction fails.
-        """
         try:
             return await self._loop.run_in_executor(
                 None, partial(self._get_document_info_sync, pdf_bytes)

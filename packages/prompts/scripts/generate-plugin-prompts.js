@@ -119,7 +119,7 @@ function generateTypeScript(prompts, outputBaseDir, sourcePath) {
   let output = `/**
  * Auto-generated prompt templates
  * DO NOT EDIT - Generated from ${relativeSourcePath}/*.txt
- * 
+ *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration

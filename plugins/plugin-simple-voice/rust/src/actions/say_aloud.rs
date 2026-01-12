@@ -1,11 +1,11 @@
 #![allow(missing_docs)]
 
-use std::sync::Arc;
 use regex::Regex;
+use std::sync::Arc;
 use tracing::info;
 
 use crate::services::SamTTSService;
-use crate::types::{SamTTSOptions, Memory, CallbackResult, SPEECH_TRIGGERS, VOCALIZATION_PATTERNS};
+use crate::types::{CallbackResult, Memory, SamTTSOptions, SPEECH_TRIGGERS, VOCALIZATION_PATTERNS};
 
 pub fn extract_text_to_speak(message_text: &str) -> String {
     let text = message_text.to_lowercase();
@@ -54,20 +54,31 @@ pub fn extract_text_to_speak(message_text: &str) -> String {
     text.trim().to_string()
 }
 
-/// Extract voice options from user message.
 pub fn extract_voice_options(message_text: &str) -> SamTTSOptions {
     let text = message_text.to_lowercase();
     let mut options = SamTTSOptions::default();
 
-    if ["higher voice", "high pitch", "squeaky"].iter().any(|p| text.contains(p)) {
+    if ["higher voice", "high pitch", "squeaky"]
+        .iter()
+        .any(|p| text.contains(p))
+    {
         options.pitch = 100;
-    } else if ["lower voice", "low pitch", "deep voice"].iter().any(|p| text.contains(p)) {
+    } else if ["lower voice", "low pitch", "deep voice"]
+        .iter()
+        .any(|p| text.contains(p))
+    {
         options.pitch = 30;
     }
 
-    if ["faster", "quickly", "speed up"].iter().any(|p| text.contains(p)) {
+    if ["faster", "quickly", "speed up"]
+        .iter()
+        .any(|p| text.contains(p))
+    {
         options.speed = 120;
-    } else if ["slower", "slowly", "slow down"].iter().any(|p| text.contains(p)) {
+    } else if ["slower", "slowly", "slow down"]
+        .iter()
+        .any(|p| text.contains(p))
+    {
         options.speed = 40;
     }
 
@@ -95,14 +106,17 @@ impl SayAloudAction {
         }
     }
 
-    /// Check if action should trigger.
     pub fn validate(&self, message: &Memory) -> bool {
         let text = message.content.text.to_lowercase();
 
         let has_trigger = SPEECH_TRIGGERS.iter().any(|t| text.contains(t));
         let has_intent = VOCALIZATION_PATTERNS.iter().any(|p| text.contains(p))
-            || Regex::new(r#"say ["'].*["']"#).map(|re| re.is_match(&text)).unwrap_or(false)
-            || Regex::new(r#"speak ["'].*["']"#).map(|re| re.is_match(&text)).unwrap_or(false);
+            || Regex::new(r#"say ["'].*["']"#)
+                .map(|re| re.is_match(&text))
+                .unwrap_or(false)
+            || Regex::new(r#"speak ["'].*["']"#)
+                .map(|re| re.is_match(&text))
+                .unwrap_or(false);
 
         has_trigger || has_intent
     }
@@ -115,7 +129,9 @@ impl SayAloudAction {
 
         info!("[SAY_ALOUD] Speaking: \"{}\"", text_to_speak);
 
-        let audio = service.speak_text(&text_to_speak, Some(voice_options)).await;
+        let audio = service
+            .speak_text(&text_to_speak, Some(voice_options))
+            .await;
 
         CallbackResult {
             text: format!("I spoke: \"{}\"", text_to_speak),
@@ -124,7 +140,6 @@ impl SayAloudAction {
         }
     }
 }
-
 
 impl Default for SayAloudAction {
     fn default() -> Self {
@@ -157,15 +172,27 @@ mod tests {
         let action = SayAloudAction::new();
 
         let trigger = Memory {
-            id: "1".into(), entity_id: "1".into(), agent_id: "1".into(), room_id: "1".into(),
-            content: MemoryContent { text: "say aloud hello".into(), extra: Default::default() },
+            id: "1".into(),
+            entity_id: "1".into(),
+            agent_id: "1".into(),
+            room_id: "1".into(),
+            content: MemoryContent {
+                text: "say aloud hello".into(),
+                extra: Default::default(),
+            },
             created_at: 0,
         };
         assert!(action.validate(&trigger));
 
         let non_trigger = Memory {
-            id: "1".into(), entity_id: "1".into(), agent_id: "1".into(), room_id: "1".into(),
-            content: MemoryContent { text: "hello world".into(), extra: Default::default() },
+            id: "1".into(),
+            entity_id: "1".into(),
+            agent_id: "1".into(),
+            room_id: "1".into(),
+            content: MemoryContent {
+                text: "hello world".into(),
+                extra: Default::default(),
+            },
             created_at: 0,
         };
         assert!(!action.validate(&non_trigger));

@@ -26,13 +26,11 @@ from sqlalchemy.orm import DeclarativeBase, relationship
 
 
 class Base(DeclarativeBase):
-    """Base class for all SQLAlchemy models."""
 
     pass
 
 
 class AgentTable(Base):
-    """Agents table - stores agent configurations."""
 
     __tablename__ = "agents"
 
@@ -57,7 +55,6 @@ class AgentTable(Base):
 
 
 class EntityTable(Base):
-    """Entities table - stores users and other entities."""
 
     __tablename__ = "entities"
 
@@ -79,7 +76,6 @@ class EntityTable(Base):
 
 
 class ComponentTable(Base):
-    """Components table - stores entity components."""
 
     __tablename__ = "components"
 
@@ -105,7 +101,6 @@ class ComponentTable(Base):
 
 
 class WorldTable(Base):
-    """Worlds table - stores world/server containers."""
 
     __tablename__ = "worlds"
 
@@ -127,7 +122,6 @@ class WorldTable(Base):
 
 
 class RoomTable(Base):
-    """Rooms table - stores conversation rooms."""
 
     __tablename__ = "rooms"
 
@@ -161,7 +155,6 @@ class RoomTable(Base):
 
 
 class ParticipantTable(Base):
-    """Participants table - stores room participants."""
 
     __tablename__ = "participants"
 
@@ -185,7 +178,6 @@ class ParticipantTable(Base):
 
 
 class MemoryTable(Base):
-    """Memories table - stores memories/messages."""
 
     __tablename__ = "memories"
 
@@ -212,7 +204,6 @@ class MemoryTable(Base):
 
 
 class EmbeddingTable(Base):
-    """Embeddings table - stores vector embeddings for memories."""
 
     __tablename__ = "embeddings"
 
@@ -236,7 +227,6 @@ class EmbeddingTable(Base):
 
 
 class RelationshipTable(Base):
-    """Relationships table - stores entity relationships."""
 
     __tablename__ = "relationships"
 
@@ -256,7 +246,6 @@ class RelationshipTable(Base):
 
 
 class TaskTable(Base):
-    """Tasks table - stores task queue."""
 
     __tablename__ = "tasks"
 
@@ -280,7 +269,6 @@ class TaskTable(Base):
 
 
 class CacheTable(Base):
-    """Cache table - stores key-value cache entries."""
 
     __tablename__ = "cache"
 
@@ -293,7 +281,6 @@ class CacheTable(Base):
 
 
 class LogTable(Base):
-    """Logs table - stores activity logs."""
 
     __tablename__ = "logs"
 

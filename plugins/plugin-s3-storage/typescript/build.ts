@@ -6,7 +6,7 @@ async function build(): Promise<void> {
   const totalStart = Date.now();
 
   const nodeStart = Date.now();
-  console.log("🔨 Building @elizaos/plugin-s3-storage for Node (ESM)...");
+  console.log("Building @elizaos/plugin-s3-storage for Node (ESM)...");
 
   const nodeResult = await Bun.build({
     entrypoints: ["index.node.ts"],
@@ -23,10 +23,10 @@ async function build(): Promise<void> {
     throw new Error("Node ESM build failed");
   }
 
-  console.log(`✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
+  console.log(`Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 
   const browserStart = Date.now();
-  console.log("🌐 Building @elizaos/plugin-s3-storage for Browser...");
+  console.log("Building @elizaos/plugin-s3-storage for Browser...");
 
   const browserResult = await Bun.build({
     entrypoints: ["index.browser.ts"],
@@ -43,10 +43,10 @@ async function build(): Promise<void> {
     throw new Error("Browser build failed");
   }
 
-  console.log(`✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`);
+  console.log(`Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`);
 
   const cjsStart = Date.now();
-  console.log("🧱 Building @elizaos/plugin-s3-storage for Node (CJS)...");
+  console.log("Building @elizaos/plugin-s3-storage for Node (CJS)...");
 
   const cjsResult = await Bun.build({
     entrypoints: ["index.node.ts"],
@@ -71,10 +71,10 @@ async function build(): Promise<void> {
     console.warn("CJS rename step warning:", e);
   }
 
-  console.log(`✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
+  console.log(`Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
 
   const dtsStart = Date.now();
-  console.log("📝 Generating TypeScript declarations...");
+  console.log("Generating TypeScript declarations...");
 
   const { mkdir, writeFile } = await import("node:fs/promises");
   const { $ } = await import("bun");
@@ -93,10 +93,10 @@ export { default } from '../index';
   await writeFile("dist/browser/index.d.ts", reexportDeclaration);
   await writeFile("dist/cjs/index.d.ts", reexportDeclaration);
 
-  console.log(`✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
+  console.log(`Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
 
   const totalTime = ((Date.now() - totalStart) / 1000).toFixed(2);
-  console.log(`🎉 All builds finished in ${totalTime}s`);
+  console.log(`All builds finished in ${totalTime}s`);
 }
 
 build().catch((err) => {

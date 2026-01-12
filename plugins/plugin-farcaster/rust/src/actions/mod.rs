@@ -1,19 +1,14 @@
 #![allow(missing_docs)]
-//! Farcaster actions for elizaOS agents.
 
 use crate::error::Result;
 use crate::service::FarcasterService;
 use crate::types::Cast;
 
-/// Action for sending a cast.
 #[derive(Debug, Clone)]
 pub struct SendCastAction {
-    /// Action name
     pub name: &'static str,
-    /// Action description
     pub description: &'static str,
 }
-
 
 impl Default for SendCastAction {
     fn default() -> Self {
@@ -22,7 +17,6 @@ impl Default for SendCastAction {
 }
 
 impl SendCastAction {
-    /// Create a new send cast action.
     pub fn new() -> Self {
         Self {
             name: "SEND_CAST",
@@ -30,7 +24,6 @@ impl SendCastAction {
         }
     }
 
-    /// Validate if this action should be executed.
     pub fn validate(&self, text: &str, service: Option<&FarcasterService>) -> bool {
         let keywords = ["post", "cast", "share", "announce", "farcaster", "post"];
         let text_lower = text.to_lowercase();
@@ -50,15 +43,11 @@ impl SendCastAction {
     }
 }
 
-/// Action for replying to a cast.
 #[derive(Debug, Clone)]
 pub struct ReplyCastAction {
-    /// Action name
     pub name: &'static str,
-    /// Action description
     pub description: &'static str,
 }
-
 
 impl Default for ReplyCastAction {
     fn default() -> Self {
@@ -67,7 +56,6 @@ impl Default for ReplyCastAction {
 }
 
 impl ReplyCastAction {
-    /// Create a new reply cast action.
     pub fn new() -> Self {
         Self {
             name: "REPLY_TO_CAST",
@@ -75,7 +63,6 @@ impl ReplyCastAction {
         }
     }
 
-    /// Validate if this action should be executed.
     pub fn validate(
         &self,
         text: &str,
@@ -96,7 +83,6 @@ impl ReplyCastAction {
         _parent_fid: u64,
         service: &FarcasterService,
     ) -> Result<Vec<Cast>> {
-        // Truncate if needed
         let text = if text.len() > 320 {
             format!("{}...", &text[..317])
         } else {
@@ -124,11 +110,7 @@ mod tests {
     #[test]
     fn test_reply_cast_action_validate() {
         let action = ReplyCastAction::new();
-        
-        // Without parent or service
         assert!(!action.validate("reply to this", None, None));
-        
-        // With parent but no service
         assert!(!action.validate("reply to this", Some("0xabc"), None));
     }
 }

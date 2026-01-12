@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from elizaos_plugin_s3_storage.client import S3StorageClient
+from elizaos_plugin_s3_storage.client import JsonValue, S3StorageClient
 from elizaos_plugin_s3_storage.types import (
     JsonUploadResult,
     S3StorageConfig,
@@ -74,7 +74,7 @@ class S3StoragePlugin:
 
     async def upload_json(
         self,
-        json_data: dict[str, object],
+        json_data: dict[str, JsonValue],
         *,
         file_name: str | None = None,
         sub_directory: str | None = None,
@@ -96,14 +96,21 @@ class S3StoragePlugin:
 
 
 def create_plugin(
-
-
-# Convenience function to create plugin
-def create_plugin(
     access_key_id: str | None = None,
-    **kwargs: object,
+    secret_access_key: str | None = None,
+    region: str | None = None,
+    bucket: str | None = None,
+    upload_path: str = "",
+    endpoint: str | None = None,
 ) -> S3StoragePlugin:
-    return S3StoragePlugin(access_key_id=access_key_id, **kwargs)  # type: ignore[arg-type]
+    return S3StoragePlugin(
+        access_key_id=access_key_id,
+        secret_access_key=secret_access_key,
+        region=region,
+        bucket=bucket,
+        upload_path=upload_path,
+        endpoint=endpoint,
+    )
 
 
 _s3_plugin_instance: S3StoragePlugin | None = None

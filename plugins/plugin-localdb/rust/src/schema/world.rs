@@ -1,7 +1,5 @@
 #![allow(missing_docs)]
-//! World schema for elizaOS database
 
-/// SQL for creating the worlds table
 pub const CREATE_WORLDS_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS worlds (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

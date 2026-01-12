@@ -54,11 +54,10 @@ export interface FeedItemMetadata {
 }
 
 export interface FeedSubscriptionMetadata {
-  type: "custom";
-  subscribedAt: number;
-  lastChecked: number;
-  lastItemCount: number;
-  [key: string]: unknown;
+  type?: "custom";
+  subscribedAt?: number;
+  lastChecked?: number;
+  lastItemCount?: number;
 }
 
 export interface RssPluginConfig {

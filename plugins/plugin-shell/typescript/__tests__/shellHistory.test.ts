@@ -2,7 +2,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ShellService } from "../services/shellService";
 
-// Mock the config module
 vi.mock("../utils/config", () => ({
   loadShellConfig: () => ({
     enabled: true,
@@ -13,12 +12,10 @@ vi.mock("../utils/config", () => ({
   DEFAULT_FORBIDDEN_COMMANDS: [],
 }));
 
-// Mock cross-spawn
 vi.mock("cross-spawn", () => ({
   default: vi.fn(),
 }));
 
-// Mock @elizaos/core
 vi.mock("@elizaos/core", async () => {
   const actual = await vi.importActual("@elizaos/core");
   return {
@@ -82,7 +79,6 @@ describe("Shell History Tracking", () => {
   it("should track command history per conversation", async () => {
     const conversationId = "test-conversation-1";
 
-    // Mock the runCommand method to return success
     vi.spyOn(shellService as never, "runCommand").mockResolvedValue({
       success: true,
       stdout: "file1.txt\nfile2.txt",
@@ -91,10 +87,7 @@ describe("Shell History Tracking", () => {
       executedIn: "/test/allowed",
     });
 
-    // Execute a command
     await shellService.executeCommand("ls", conversationId);
-
-    // Get history
     const history = shellService.getCommandHistory(conversationId);
 
     expect(history).toHaveLength(1);
@@ -116,10 +109,7 @@ describe("Shell History Tracking", () => {
       executedIn: "/test/allowed",
     });
 
-    // Execute file creation command
     await shellService.executeCommand("touch test.txt", conversationId);
-
-    // Get history
     const history = shellService.getCommandHistory(conversationId);
 
     expect(history).toHaveLength(1);
@@ -133,7 +123,6 @@ describe("Shell History Tracking", () => {
   it("should clear history for a specific conversation", async () => {
     const conversationId = "test-conversation-3";
 
-    // Mock the runCommand method
     vi.spyOn(shellService as never, "runCommand").mockResolvedValue({
       success: true,
       stdout: "output",
@@ -142,18 +131,13 @@ describe("Shell History Tracking", () => {
       executedIn: "/test/allowed",
     });
 
-    // Execute some commands
     await shellService.executeCommand("ls", conversationId);
     await shellService.executeCommand("pwd", conversationId);
 
-    // Verify history exists
     let history = shellService.getCommandHistory(conversationId);
     expect(history).toHaveLength(2);
 
-    // Clear history
     shellService.clearCommandHistory(conversationId);
-
-    // Verify history is cleared
     history = shellService.getCommandHistory(conversationId);
     expect(history).toHaveLength(0);
   });
@@ -162,7 +146,6 @@ describe("Shell History Tracking", () => {
     const conversation1 = "conv-1";
     const conversation2 = "conv-2";
 
-    // Mock the runCommand method
     vi.spyOn(shellService as never, "runCommand").mockResolvedValue({
       success: true,
       stdout: "output",
@@ -171,12 +154,10 @@ describe("Shell History Tracking", () => {
       executedIn: "/test/allowed",
     });
 
-    // Execute commands in different conversations
     await shellService.executeCommand("ls", conversation1);
     await shellService.executeCommand("pwd", conversation2);
     await shellService.executeCommand("echo test", conversation1);
 
-    // Check histories are separate
     const history1 = shellService.getCommandHistory(conversation1);
     const history2 = shellService.getCommandHistory(conversation2);
 
@@ -191,7 +172,6 @@ describe("Shell History Tracking", () => {
   it("should detect various file operations", async () => {
     const conversationId = "test-file-ops";
 
-    // Mock the runCommand method
     vi.spyOn(shellService as never, "runCommand").mockResolvedValue({
       success: true,
       stdout: "",
@@ -200,7 +180,6 @@ describe("Shell History Tracking", () => {
       executedIn: "/test/allowed",
     });
 
-    // Test different file operations
     const commands = [
       {
         cmd: "touch newfile.txt",

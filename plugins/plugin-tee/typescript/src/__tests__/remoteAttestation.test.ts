@@ -1,12 +1,7 @@
-/**
- * Tests for the Remote Attestation Provider.
- */
-
 import { TEEMode } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PhalaRemoteAttestationProvider } from "../providers/remoteAttestation";
 
-// Mock TappdClient
 const mockTdxQuote = vi.fn().mockResolvedValue({
   quote: "mock-quote-data",
   replayRtmrs: () => ["rtmr0", "rtmr1", "rtmr2", "rtmr3"],

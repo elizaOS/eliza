@@ -80,7 +80,7 @@ const getPlayerInfo: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
-    _options: Record<string, unknown>,
+    _options: Record<string, never>,
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
     try {

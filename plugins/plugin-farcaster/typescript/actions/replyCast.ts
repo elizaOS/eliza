@@ -1,7 +1,3 @@
-/**
- * Reply to cast action.
- */
-
 import type { Action, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { FarcasterService } from "../services/FarcasterService";
@@ -68,9 +64,10 @@ export const replyCastAction: Action = {
         return { success: false, error: "MessageService not available" };
       }
 
-      const parentCastHash =
-        (message.content.metadata as Record<string, unknown>)?.parentCastHash ||
-        state?.parentCastHash;
+      const metadata = message.content.metadata as Record<string, string | undefined> | undefined;
+      const stateParentCastHash =
+        typeof state?.parentCastHash === "string" ? state.parentCastHash : undefined;
+      const parentCastHash = metadata?.parentCastHash ?? stateParentCastHash;
 
       if (!parentCastHash) {
         runtime.logger.error("[REPLY_TO_CAST] No parent cast to reply to");
@@ -85,8 +82,7 @@ export const replyCastAction: Action = {
         const prompt = `Based on this request: "${message.content.text}", generate a helpful and engaging reply for a Farcaster cast (max 320 characters).`;
 
         const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-        replyContent =
-          typeof response === "string" ? response : (response as { text?: string }).text || "";
+        replyContent = typeof response === "string" ? response : String(response);
       }
 
       if (replyContent.length > 320) {
@@ -98,7 +94,7 @@ export const replyCastAction: Action = {
         roomId: message.roomId,
         text: replyContent,
         type: FarcasterMessageType.REPLY,
-        replyToId: parentCastHash as string,
+        replyToId: parentCastHash,
         metadata: {
           parentHash: parentCastHash,
         },

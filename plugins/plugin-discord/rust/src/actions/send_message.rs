@@ -1,5 +1,3 @@
-//! Send message action
-
 use async_trait::async_trait;
 
 use super::{ActionContext, ActionResult, DiscordAction};
@@ -7,7 +5,7 @@ use crate::error::{DiscordError, Result};
 use crate::types::Snowflake;
 use crate::DiscordService;
 
-/// Action to send a message to a Discord channel
+/// Action that sends a message to a Discord channel.
 pub struct SendMessageAction;
 
 #[async_trait]
@@ -32,7 +30,6 @@ impl DiscordAction for SendMessageAction {
     }
 
     async fn validate(&self, context: &ActionContext) -> Result<bool> {
-        // Check source is Discord
         let source = context
             .message
             .get("source")
@@ -43,10 +40,8 @@ impl DiscordAction for SendMessageAction {
             return Ok(false);
         }
 
-        // Check we have a valid channel ID
         Snowflake::new(context.channel_id.clone())?;
 
-        // Check we have content to send
         let has_content = context
             .message
             .get("content")

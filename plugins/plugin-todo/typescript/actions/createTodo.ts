@@ -16,7 +16,6 @@ import {
 } from "@elizaos/core";
 import { createTodoDataService } from "../services/todoDataService";
 
-// Interface for parsed task data
 interface TodoTaskInput {
   name: string;
   description?: string;
@@ -24,10 +23,9 @@ interface TodoTaskInput {
   priority?: 1 | 2 | 3 | 4; // 1=highest, 4=lowest priority
   urgent?: boolean;
   dueDate?: string; // ISO date string for one-off tasks
-  recurring?: "daily" | "weekly" | "monthly"; // For recurring tasks
+  recurring?: "daily" | "weekly" | "monthly";
 }
 
-// Type guard for TodoTaskInput
 function isValidTodoInput(
   obj: Record<string, unknown>
 ): obj is Record<string, unknown> & TodoTaskInput {
@@ -39,10 +37,6 @@ function isValidTodoInput(
 }
 
 import { composePrompt } from "@elizaos/core";
-/**
- * Template for extracting todo information from the user's message.
- * Auto-generated from prompts/extract_todo.txt
- */
 import { extractTodoTemplate as extractTodoTemplateBase } from "../generated/prompts/typescript/prompts.js";
 
 const extractTodoTemplate = (text: string, messageHistory: string) => {
@@ -55,9 +49,6 @@ const extractTodoTemplate = (text: string, messageHistory: string) => {
   });
 };
 
-/**
- * Extracts todo information from the user's message.
- */
 async function extractTodoInfo(
   runtime: IAgentRuntime,
   message: Memory,
@@ -77,13 +68,10 @@ async function extractTodoInfo(
 
   logger.debug("Extract todo result:", result);
 
-  // Parse XML from the text results
   const parsedResult: Record<string, unknown> | null = parseKeyValueXml(String(result));
 
   logger.debug(`Parsed XML Todo: ${JSON.stringify(parsedResult)}`);
 
-  // Validate the parsed todo
-  // First, check for explicit confirmation flag or intentionally empty response
   if (
     parsedResult &&
     (parsedResult.is_confirmation === "true" || Object.keys(parsedResult).length === 0)
@@ -92,16 +80,13 @@ async function extractTodoInfo(
     return null;
   }
 
-  // Now check if essential fields are missing for a *real* task
   if (!parsedResult || !isValidTodoInput(parsedResult)) {
     logger.error("Failed to extract valid todo information from XML (missing name or type)");
     return null;
   }
 
-  // Type is now narrowed via the type guard
   const validatedTodo = parsedResult;
 
-  // Convert specific fields from string if necessary and apply defaults
   const finalTodo: TodoTaskInput = {
     ...validatedTodo,
     name: String(validatedTodo.name),
@@ -134,7 +119,6 @@ export const createTodoAction: Action = {
     "Creates a new todo item from a user description (daily, one-off, or aspirational) immediately.",
 
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
-    // No validation needed if we create directly - let handler decide
     return true;
   },
 
@@ -157,11 +141,9 @@ export const createTodoAction: Action = {
       return;
     }
 
-    // Step 1: Compose state with relevant providers (use stateFromTrigger if available)
     const state =
       stateFromTrigger || (await runtime.composeState(message, ["TODOS", "RECENT_MESSAGES"]));
 
-    // Step 2: Extract todo info from the message using the composed state
     const todo = await extractTodoInfo(runtime, message, state);
 
     if (!todo) {
@@ -175,10 +157,8 @@ export const createTodoAction: Action = {
       return;
     }
 
-    // Step 3: Get the data service
     const dataService = createTodoDataService(runtime);
 
-    // Step 4: Duplicate Check
     const existingTodos = await dataService.getTodos({
       entityId: message.entityId,
       roomId: message.roomId,
@@ -201,7 +181,6 @@ export const createTodoAction: Action = {
       return { success: false, text: "Duplicate task found" };
     }
 
-    // Step 5: Create the task using the data service
     const tags = ["TODO"];
     if (todo.taskType === "daily") {
       tags.push("daily");
@@ -255,7 +234,6 @@ export const createTodoAction: Action = {
       throw new Error("Failed to create todo, dataService.createTodo returned null/undefined");
     }
 
-    // Step 6: Send success message
     let successMessage = "";
     if (todo.taskType === "daily") {
       successMessage = `✅ Added new daily task: "${todo.name}". This task will reset each day.`;

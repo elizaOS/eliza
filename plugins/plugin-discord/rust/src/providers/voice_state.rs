@@ -41,6 +41,24 @@ impl DiscordProvider for VoiceStateProvider {
     }
 }
 
+/// TS-parity alias provider (camelCase name).
+pub struct VoiceStateProviderCamel;
+
+#[async_trait]
+impl DiscordProvider for VoiceStateProviderCamel {
+    fn name(&self) -> &str {
+        "voiceState"
+    }
+
+    fn description(&self) -> &str {
+        "Provides information about voice channel state, including connected users and speaking status."
+    }
+
+    async fn get(&self, context: &ProviderContext) -> Value {
+        VoiceStateProvider.get(context).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -6,7 +6,7 @@ use crate::utils::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::error;
 
 pub const NAVIGATE_ACTION_NAME: &str = "BROWSER_NAVIGATE";
 pub const NAVIGATE_SIMILES: &[&str] = &["GO_TO_URL", "OPEN_WEBSITE", "VISIT_PAGE", "NAVIGATE_TO"];
@@ -16,7 +16,6 @@ pub async fn browser_navigate(
     service: Arc<BrowserService>,
     message: &str,
 ) -> ActionResult {
-    info!("Handling BROWSER_NAVIGATE action");
 
     let url = match extract_url(message) {
         Some(u) => u,
@@ -66,5 +65,3 @@ pub async fn browser_navigate(
         }
     }
 }
-
-

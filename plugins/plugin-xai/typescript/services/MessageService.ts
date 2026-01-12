@@ -14,15 +14,10 @@ import {
 export class XMessageService implements IMessageService {
   constructor(private client: ClientBase) {}
 
-  /**
-   * Extract ID from various X API response shapes
-   */
   private async extractResultId(result: PostResponse | unknown): Promise<string | undefined> {
-    // First try direct extraction using type-safe utility
     const directId = extractIdFromResult(result);
     if (directId) return directId;
 
-    // Check for rest_id
     const restId = extractRestId(result);
     if (restId) return restId;
 
@@ -45,8 +40,6 @@ export class XMessageService implements IMessageService {
 
   async getMessages(options: GetMessagesOptions): Promise<Message[]> {
     try {
-      // X doesn't have a direct way to get messages by room ID
-      // We'll need to use search to find related posts/DMs
       const username = this.client.profile?.username;
       if (!username) {
         logger.error("No X profile available");
@@ -62,7 +55,6 @@ export class XMessageService implements IMessageService {
 
       const messages: Message[] = searchResult.posts
         .filter((post) => {
-          // Filter by room ID if specified
           if (options.roomId && post.conversationId) {
             const postRoomId = createUniqueUuid(this.client.runtime, post.conversationId);
             return postRoomId === options.roomId;
@@ -117,11 +109,9 @@ export class XMessageService implements IMessageService {
           options.text
         );
       } else {
-        // Send post (reply, mention, or regular post)
         result = await this.client.xClient.sendPost(options.text, options.replyToId);
       }
 
-      // Extract the message ID using type-safe utilities
       const extractedId = await this.extractResultId(result);
       const messageId = extractedId || "";
 
@@ -206,8 +196,6 @@ export class XMessageService implements IMessageService {
   }
 
   async markAsRead(_messageIds: string[], _agentId: UUID): Promise<void> {
-    // X doesn't have a read/unread concept for posts
-    // This could be implemented by storing read status in local cache
     logger.debug("Marking messages as read is not implemented for X");
   }
 }

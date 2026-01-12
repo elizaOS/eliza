@@ -10,7 +10,7 @@ import { PlanningService } from "./services/planning-service";
 
 export const planningPlugin: Plugin = {
   name: "@elizaos/plugin-planning",
-  description: "Comprehensive planning and execution plugin with integrated planning service",
+  description: "Planning and execution plugin",
 
   providers: [messageClassifierProvider],
 

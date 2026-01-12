@@ -53,4 +53,3 @@ Return your response in XML format:
 </response>
 
 Be precise and extract only what is explicitly stated."#;
-

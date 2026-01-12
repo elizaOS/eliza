@@ -1,29 +1,24 @@
 import type { RssEnclosure, RssFeed, RssImage, RssItem } from "./types";
 
 function parseTag(tag: string, str: string): string[] {
-  try {
-    const regex = new RegExp(`<${tag}(?:\\s+[^>]*)?>(.*?)</${tag}>`, "gs");
-    const matches: string[] = [];
-    let match: RegExpExecArray | null = regex.exec(str);
-    while (match !== null) {
-      const content = match[1];
-      if (content !== undefined) {
-        const value = content
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&amp;/g, "&")
-          .replace(/&quot;/g, '"')
-          .replace(/&apos;/g, "'")
-          .trim();
-        matches.push(value);
-      }
-      match = regex.exec(str);
+  const regex = new RegExp(`<${tag}(?:\\s+[^>]*)?>(.*?)</${tag}>`, "gs");
+  const matches: string[] = [];
+  let match: RegExpExecArray | null = regex.exec(str);
+  while (match !== null) {
+    const content = match[1];
+    if (content !== undefined) {
+      const value = content
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .trim();
+      matches.push(value);
     }
-    return matches;
-  } catch (error) {
-    console.error(`Error parsing tag ${tag}:`, error);
-    return [];
+    match = regex.exec(str);
   }
+  return matches;
 }
 
 function parseCDATA(str: string | undefined): string {
@@ -115,8 +110,7 @@ export function parseRssToJson(xml: string): RssFeed {
     }
 
     return channel;
-  } catch (error) {
-    console.error("Error parsing RSS feed:", error);
+  } catch {
     return {
       title: "",
       description: "",

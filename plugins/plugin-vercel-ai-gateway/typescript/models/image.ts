@@ -1,7 +1,3 @@
-/**
- * Image model handlers for Vercel AI Gateway plugin.
- */
-
 import type {
   ImageDescriptionParams as CoreImageDescParams,
   ImageGenerationParams as CoreImageParams,
@@ -17,9 +13,6 @@ import type {
 } from "../types";
 import { buildConfig, getImageModel } from "../utils/config";
 
-/**
- * Handle IMAGE model requests (image generation).
- */
 export async function handleImageGeneration(
   runtime: IAgentRuntime,
   params: CoreImageParams
@@ -40,9 +33,6 @@ export async function handleImageGeneration(
   });
 }
 
-/**
- * Handle IMAGE_DESCRIPTION model requests.
- */
 export async function handleImageDescription(
   runtime: IAgentRuntime,
   params: CoreImageDescParams | string

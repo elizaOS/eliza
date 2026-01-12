@@ -1,7 +1,7 @@
 /**
  * Auto-generated prompt templates
  * DO NOT EDIT - Generated from ../../../prompts/*.txt
- * 
+ *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration
@@ -215,4 +215,3 @@ Respond with a JSON markdown block containing only the extracted values. Use nul
 \`\`\``;
 
 export const VOTE_TEMPLATE = voteTemplate;
-

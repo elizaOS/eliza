@@ -1,7 +1,3 @@
-"""
-Trading-related actions for Polymarket.
-"""
-
 from typing import Protocol
 
 from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
@@ -9,10 +5,7 @@ from elizaos_plugin_polymarket.providers import get_authenticated_clob_client, g
 
 
 class RuntimeProtocol(Protocol):
-    """Protocol for agent runtime."""
-
     def get_setting(self, key: str) -> str | None:
-        """Get a setting value."""
         ...
 
 
@@ -20,19 +13,6 @@ async def check_order_scoring(
     order_ids: list[str],
     runtime: RuntimeProtocol | None = None,
 ) -> dict[str, bool]:
-    """
-    Check if orders are scoring (eligible for rewards).
-
-    Args:
-        order_ids: List of order IDs to check
-        runtime: Optional agent runtime for settings
-
-    Returns:
-        Dictionary mapping order IDs to scoring status (True/False)
-
-    Raises:
-        PolymarketError: If checking scoring fails
-    """
     if not order_ids:
         raise PolymarketError(
             PolymarketErrorCode.INVALID_ORDER,
@@ -74,7 +54,7 @@ async def get_active_orders(
     runtime: RuntimeProtocol | None = None,
 ) -> list[dict]:
     """
-    Get active/open orders for the authenticated user.
+    Get active orders for the authenticated user.
 
     Args:
         market_id: Optional market condition ID filter
@@ -130,7 +110,7 @@ async def get_trade_history(
     asset_id: str | None = None,
     limit: int = 20,
     runtime: RuntimeProtocol | None = None,
-) -> dict[str, any]:
+) -> dict[str, object]:
     """
     Get trade history for the authenticated user.
 
@@ -150,7 +130,7 @@ async def get_trade_history(
         client = get_authenticated_clob_client(runtime)
 
         # Build parameters
-        params: dict[str, any] = {}
+        params: dict[str, object] = {}
         if market_id:
             params["market"] = market_id
         if asset_id:
@@ -202,7 +182,7 @@ async def get_price_history(
     end_ts: int | None = None,
     fidelity: int = 60,
     runtime: RuntimeProtocol | None = None,
-) -> list[dict[str, any]]:
+) -> list[dict[str, object]]:
     """
     Get price history for a specific token.
 

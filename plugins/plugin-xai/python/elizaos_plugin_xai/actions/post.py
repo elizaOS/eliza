@@ -1,9 +1,3 @@
-"""
-POST action for X (formerly Twitter).
-
-Allows the agent to post content on X.
-"""
-
 from __future__ import annotations
 
 import re
@@ -25,7 +19,6 @@ logger = None
 
 
 def _get_logger():
-    """Lazy import logger to avoid circular imports."""
     global logger
     if logger is None:
         from elizaos.logger import create_logger
@@ -36,8 +29,6 @@ def _get_logger():
 
 @dataclass
 class PostActionResult:
-    """Result of a POST action."""
-
     success: bool
     text: str | None = None
     error: str | None = None
@@ -50,7 +41,6 @@ async def validate_post(
     _message: Memory | None = None,
     _state: State | None = None,
 ) -> bool:
-    """Validate that the POST action can be executed."""
     try:
         service = runtime.get_service("x")
         return service is not None
@@ -66,30 +56,24 @@ async def handle_post(
     callback: HandlerCallback | None = None,
     _responses: list[Memory] | None = None,
 ) -> ActionResult:
-    """Handle the POST action - post content on X."""
     log = _get_logger()
     log.info("Executing POST action")
 
     try:
-        # Get X service
         service = runtime.get_service("x")
         if not service:
             raise RuntimeError("X service not available")
 
-        # Get Twitter client from service
-        # The service should have a client attribute
         if not hasattr(service, "client") or not isinstance(service.client, TwitterClient):
             raise RuntimeError("X client not available or invalid")
 
         client: TwitterClient = service.client
 
-        # Get profile to ensure client is initialized
         try:
             profile = await client.me()
         except Exception as e:
             raise RuntimeError(f"X client not initialized - {e}") from e
 
-        # Extract text from message
         text = ""
         if message.content:
             if isinstance(message.content, dict):
@@ -107,7 +91,6 @@ async def handle_post(
                 await callback({"text": error_msg, "action": "POST"})
             return {"success": False, "error": "No text provided"}
 
-        # Truncate if too long (280 characters)
         if len(text) > 280:
             sentences = re.findall(r"[^.!?]+[.!?]+", text) or [text]
             truncated = ""
@@ -118,7 +101,6 @@ async def handle_post(
                     break
             text = truncated.strip() or f"{text[:277]}..."
 
-        # Generate natural post if input is short/generic
         final_text = text
         if len(text) < 50 or "post" in text.lower():
             character = runtime.character
@@ -155,7 +137,6 @@ Post:"""
                 log.warning(f"Failed to generate post text: {e}, using original text")
                 final_text = text
 
-        # Post to X
         result = await client.create_post(final_text)
 
         if result and result.id:
@@ -164,7 +145,6 @@ Post:"""
 
             log.info(f"Posted: {post_id}")
 
-            # Create memory for the post
             from elizaos.types.memory import Content
 
             await runtime.create_memory(

@@ -1,5 +1,3 @@
-"""Shell history provider for the shell plugin."""
-
 from dataclasses import dataclass
 from typing import Optional
 
@@ -12,24 +10,18 @@ TRUNCATE_SEGMENT_LENGTH = 4000
 
 @dataclass
 class ProviderResult:
-    """Result of a provider execution."""
-
     values: dict
     text: str
     data: dict
 
 
 class ShellHistoryProvider:
-    """Provider that exposes shell command history and current working directory."""
-
     @property
     def name(self) -> str:
-        """Get the provider name."""
         return "SHELL_HISTORY"
 
     @property
     def description(self) -> str:
-        """Get provider description."""
         return (
             "Provides recent shell command history, current working directory, "
             "and file operations within the restricted environment"
@@ -37,7 +29,6 @@ class ShellHistoryProvider:
 
     @property
     def position(self) -> int:
-        """Get provider position (for ordering)."""
         return 99
 
     async def get(
@@ -46,7 +37,6 @@ class ShellHistoryProvider:
         state: dict,
         service: Optional[ShellService] = None,
     ) -> ProviderResult:
-        """Get provider data."""
         if service is None:
             return ProviderResult(
                 values={
@@ -109,7 +99,6 @@ class ShellHistoryProvider:
 
             history_text = "\n\n".join(history_entries)
 
-        # Get recent file operations
         recent_file_ops = []
         for entry in history:
             if entry.file_operations:

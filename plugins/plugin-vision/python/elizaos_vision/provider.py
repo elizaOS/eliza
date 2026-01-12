@@ -1,7 +1,3 @@
-"""
-Vision Provider
-Provides current visual perception data to the agent context
-"""
 
 from __future__ import annotations
 
@@ -15,8 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class RuntimeProtocol(Protocol):
-    """Protocol for runtime access"""
-
     def get_service(self, name: str) -> Any: ...
 
 
@@ -27,7 +21,6 @@ class MemoryProtocol(Protocol):
 
 
 class VisionProvider:
-    """Vision provider for agent context"""
 
     name = "VISION_PERCEPTION"
     description = (
@@ -43,7 +36,6 @@ class VisionProvider:
         message: MemoryProtocol,
         state: Any,
     ) -> dict[str, Any]:
-        """Get vision perception data"""
         vision_service = runtime.get_service("VISION")
 
         if not vision_service or not isinstance(vision_service, VisionService):

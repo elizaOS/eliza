@@ -1,7 +1,3 @@
-"""
-Screen Capture Service
-Cross-platform screen capture with tiled processing
-"""
 
 from __future__ import annotations
 
@@ -24,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 class ScreenCaptureService:
-    """Cross-platform screen capture service"""
 
     def __init__(self, config: VisionConfig):
         self._config = config
@@ -32,7 +27,6 @@ class ScreenCaptureService:
         self._last_capture: ScreenCapture | None = None
 
     async def get_screen_info(self) -> dict[str, int] | None:
-        """Get screen resolution info"""
         system = platform.system()
 
         try:
@@ -102,14 +96,12 @@ class ScreenCaptureService:
         return {"width": 1920, "height": 1080}
 
     async def capture_screen(self) -> ScreenCapture:
-        """Capture the screen and create tiles"""
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             temp_file = f.name
 
         try:
             await self._capture_screen_to_file(temp_file)
 
-            # Load and process the image
             with Image.open(temp_file) as img:
                 width, height = img.size
                 img_bytes = BytesIO()
@@ -139,7 +131,6 @@ class ScreenCaptureService:
                             )
                         )
 
-                # Select active tile based on processing order
                 if self._config.tile_processing_order == "priority":
                     col_count = math.ceil(width / tile_size)
                     center_row = len(tiles) // 2 // col_count
@@ -186,7 +177,6 @@ class ScreenCaptureService:
                 pass
 
     async def _capture_screen_to_file(self, output_path: str) -> None:
-        """Capture screen to a file"""
         system = platform.system()
 
         try:
@@ -250,7 +240,6 @@ class ScreenCaptureService:
             raise
 
     def get_active_tile(self) -> ScreenTile | None:
-        """Get the currently active tile"""
         if not self._last_capture:
             return None
         if 0 <= self._active_tile_index < len(self._last_capture.tiles):
@@ -258,11 +247,9 @@ class ScreenCaptureService:
         return None
 
     def get_all_tiles(self) -> list[ScreenTile]:
-        """Get all tiles from the last capture"""
         return self._last_capture.tiles if self._last_capture else []
 
     def get_processed_tiles(self) -> list[ScreenTile]:
-        """Get tiles that have been analyzed"""
         if not self._last_capture:
             return []
         return [t for t in self._last_capture.tiles if t.analysis]

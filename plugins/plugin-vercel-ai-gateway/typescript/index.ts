@@ -59,7 +59,7 @@ const pluginTests = [
             );
           }
 
-          const data = (await response.json()) as { data?: unknown[] };
+          const data = (await response.json()) as { data?: Array<Record<string, never>> };
           logger.info(`[Gateway Test] API connected. ${data.data?.length ?? 0} models available.`);
         },
       },

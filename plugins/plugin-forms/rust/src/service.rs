@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
 use async_trait::async_trait;
 use chrono::Utc;
 use regex::Regex;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{FormsError, FormsResult};
@@ -13,7 +13,11 @@ use crate::types::*;
 #[async_trait]
 pub trait Runtime: Send + Sync {
     fn agent_id(&self) -> Uuid;
-    async fn use_model(&self, model_type: &str, params: &HashMap<String, serde_json::Value>) -> FormsResult<String>;
+    async fn use_model(
+        &self,
+        model_type: &str,
+        params: &HashMap<String, serde_json::Value>,
+    ) -> FormsResult<String>;
 }
 
 pub fn parse_key_value_xml(text: &str) -> Option<HashMap<String, String>> {
@@ -32,14 +36,14 @@ pub fn parse_key_value_xml(text: &str) -> Option<HashMap<String, String>> {
     for caps in child_re.captures_iter(xml_content) {
         let key = caps.get(1)?.as_str().to_string();
         let mut value = caps.get(2)?.as_str().trim().to_string();
-        
+
         value = value
             .replace("&lt;", "<")
             .replace("&gt;", ">")
             .replace("&amp;", "&")
             .replace("&quot;", "\"")
             .replace("&apos;", "'");
-        
+
         result.insert(key, value);
     }
 
@@ -184,7 +188,7 @@ impl<R: Runtime> FormsService<R> {
                 field_validations.push((field.id.clone(), validation_result));
             }
         }
-        
+
         for (field_id, validation_result) in field_validations {
             if let Some(field) = current_step.fields.iter_mut().find(|f| f.id == field_id) {
                 match validation_result {
@@ -204,11 +208,7 @@ impl<R: Runtime> FormsService<R> {
             }
         }
 
-        let required_fields: Vec<_> = current_step
-            .fields
-            .iter()
-            .filter(|f| !f.optional)
-            .collect();
+        let required_fields: Vec<_> = current_step.fields.iter().filter(|f| !f.optional).collect();
         let filled_required: Vec<_> = required_fields
             .iter()
             .filter(|f| f.value.is_some())
@@ -255,7 +255,11 @@ impl<R: Runtime> FormsService<R> {
             success: true,
             form: Some(form_clone),
             updated_fields: Some(updated_fields),
-            errors: if errors.is_empty() { None } else { Some(errors) },
+            errors: if errors.is_empty() {
+                None
+            } else {
+                Some(errors)
+            },
             step_completed: Some(step_completed),
             form_completed: Some(form_completed),
             current_step: None,
@@ -302,16 +306,19 @@ impl<R: Runtime> FormsService<R> {
 
         let response = self.runtime.use_model("TEXT_SMALL", &params).await?;
 
-        parse_key_value_xml(&response).ok_or_else(|| FormsError::ParseError("Failed to parse XML response".to_string()))
+        parse_key_value_xml(&response)
+            .ok_or_else(|| FormsError::ParseError("Failed to parse XML response".to_string()))
     }
 
-    fn validate_field_value_static(value: &str, field_type: &FormFieldType) -> Result<FieldValue, String> {
+    fn validate_field_value_static(
+        value: &str,
+        field_type: &FormFieldType,
+    ) -> Result<FieldValue, String> {
         match field_type {
-            FormFieldType::Number => {
-                value.parse::<f64>()
-                    .map(FieldValue::Number)
-                    .map_err(|_| "Must be a valid number".to_string())
-            }
+            FormFieldType::Number => value
+                .parse::<f64>()
+                .map(FieldValue::Number)
+                .map_err(|_| "Must be a valid number".to_string()),
             FormFieldType::Email => {
                 let val = value.trim();
                 if val.contains('@') && val.contains('.') {
@@ -350,7 +357,7 @@ impl<R: Runtime> FormsService<R> {
         self.forms
             .values()
             .filter(|f| f.agent_id == self.runtime.agent_id())
-            .filter(|f| status.map_or(true, |s| f.status == s))
+            .filter(|f| status.is_none_or(|s| f.status == s))
             .collect()
     }
 
@@ -407,5 +414,3 @@ mod tests {
         assert_eq!(result.get("text"), Some(&"Hello & World".to_string()));
     }
 }
-
-

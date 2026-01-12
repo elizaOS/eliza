@@ -1,7 +1,3 @@
-"""
-High-performance caching manager with LRU eviction and TTL support.
-"""
-
 import asyncio
 import json
 import logging
@@ -18,8 +14,6 @@ T = TypeVar("T")
 
 @dataclass
 class CacheEntry:
-    """A cached entry with metadata."""
-
     data: object
     timestamp: float
     ttl: float
@@ -27,15 +21,12 @@ class CacheEntry:
     last_accessed: float = 0.0
 
     def __post_init__(self) -> None:
-        """Set last_accessed to timestamp if not set."""
         if self.last_accessed == 0.0:
             self.last_accessed = self.timestamp
 
 
 @dataclass
 class CacheStats:
-    """Cache statistics."""
-
     total_entries: int
     hit_rate: float
     miss_rate: float
@@ -47,28 +38,11 @@ class CacheStats:
 
 
 class CacheManager:
-    """
-    High-performance caching manager with LRU eviction and TTL support.
-
-    Features:
-    - Automatic expiration of stale entries
-    - LRU eviction when capacity is reached
-    - Pattern-based key operations
-    - Cache statistics and monitoring
-    """
-
     def __init__(
         self,
         max_size: int = 1000,
-        default_ttl_ms: int = 300000,  # 5 minutes
+        default_ttl_ms: int = 300000,
     ) -> None:
-        """
-        Initialize the cache manager.
-
-        Args:
-            max_size: Maximum number of entries
-            default_ttl_ms: Default TTL in milliseconds
-        """
         self._cache: dict[str, CacheEntry] = {}
         self._max_size = max_size
         self._default_ttl = default_ttl_ms / 1000.0  # Convert to seconds
@@ -79,12 +53,10 @@ class CacheManager:
         self._cleanup_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
-        """Start the cache manager and cleanup task."""
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         logger.info("CacheManager started")
 
     async def stop(self) -> None:
-        """Stop the cache manager."""
         if self._cleanup_task:
             self._cleanup_task.cancel()
             try:
@@ -95,7 +67,6 @@ class CacheManager:
         logger.info("CacheManager stopped")
 
     async def _cleanup_loop(self) -> None:
-        """Background cleanup loop."""
         while True:
             try:
                 await asyncio.sleep(60)  # Cleanup every minute
@@ -106,7 +77,6 @@ class CacheManager:
                 logger.error(f"Error in cache cleanup: {e}")
 
     def _cleanup(self) -> None:
-        """Remove expired entries."""
         now = datetime.utcnow().timestamp()
         to_delete = []
 
@@ -119,16 +89,14 @@ class CacheManager:
             self._expired += 1
 
         if to_delete:
-            logger.debug(f"Cleaned up {len(to_delete)} expired cache entries")
+                logger.debug(f"Cleaned up {len(to_delete)} expired cache entries")
 
     def _is_expired(self, entry: CacheEntry, now: float | None = None) -> bool:
-        """Check if an entry is expired."""
         if now is None:
             now = datetime.utcnow().timestamp()
         return now - entry.timestamp > entry.ttl
 
     def _evict_lru(self) -> None:
-        """Evict the least recently used entry."""
         if not self._cache:
             return
 
@@ -173,14 +141,6 @@ class CacheManager:
         data: object,
         ttl_ms: int | None = None,
     ) -> None:
-        """
-        Set a value in the cache.
-
-        Args:
-            key: Cache key
-            data: Value to cache
-            ttl_ms: Optional TTL in milliseconds
-        """
         now = datetime.utcnow().timestamp()
         ttl = (ttl_ms / 1000.0) if ttl_ms else self._default_ttl
 
@@ -212,15 +172,6 @@ class CacheManager:
         return False
 
     async def has(self, key: str) -> bool:
-        """
-        Check if a key exists and is not expired.
-
-        Args:
-            key: Cache key
-
-        Returns:
-            True if key exists and is valid
-        """
         entry = self._cache.get(key)
         if entry is None:
             return False
@@ -233,7 +184,6 @@ class CacheManager:
         return True
 
     async def clear(self) -> None:
-        """Clear all entries from the cache."""
         self._cache.clear()
         self._reset_stats()
 
@@ -243,17 +193,6 @@ class CacheManager:
         fetcher: Callable[[], object],
         ttl_ms: int | None = None,
     ) -> object:
-        """
-        Get a value from cache, or fetch and cache if missing.
-
-        Args:
-            key: Cache key
-            fetcher: Async function to fetch the value
-            ttl_ms: Optional TTL in milliseconds
-
-        Returns:
-            Cached or fetched value
-        """
         cached = await self.get(key)
         if cached is not None:
             return cached
@@ -288,26 +227,10 @@ class CacheManager:
         entries: dict[str, object],
         ttl_ms: int | None = None,
     ) -> None:
-        """
-        Set multiple values in the cache.
-
-        Args:
-            entries: Dictionary of key-value pairs
-            ttl_ms: Optional TTL in milliseconds
-        """
         for key, value in entries.items():
             await self.set(key, value, ttl_ms)
 
     async def delete_by_pattern(self, pattern: str) -> int:
-        """
-        Delete keys matching a pattern.
-
-        Args:
-            pattern: String pattern to match (simple contains match)
-
-        Returns:
-            Number of keys deleted
-        """
         import re
 
         regex = re.compile(pattern)
@@ -319,12 +242,6 @@ class CacheManager:
         return len(to_delete)
 
     def get_stats(self) -> CacheStats:
-        """
-        Get cache statistics.
-
-        Returns:
-            CacheStats with current metrics
-        """
         total_requests = self._hits + self._misses
         hit_rate = self._hits / total_requests if total_requests > 0 else 0.0
         miss_rate = self._misses / total_requests if total_requests > 0 else 0.0
@@ -353,13 +270,10 @@ class CacheManager:
         )
 
     def _reset_stats(self) -> None:
-        """Reset statistics counters."""
         self._hits = 0
         self._misses = 0
         self._evictions = 0
         self._expired = 0
-
-    # Specialized cache methods for todos
 
     async def cache_entity(
         self,
@@ -367,11 +281,9 @@ class CacheManager:
         entity: object,
         ttl_ms: int = 300000,
     ) -> None:
-        """Cache an entity."""
         await self.set(f"entity:{entity_id}", entity, ttl_ms)
 
     async def get_cached_entity(self, entity_id: UUID) -> object | None:
-        """Get a cached entity."""
         return await self.get(f"entity:{entity_id}")
 
     async def cache_reminder_recommendation(
@@ -380,11 +292,9 @@ class CacheManager:
         recommendation: object,
         ttl_ms: int = 600000,
     ) -> None:
-        """Cache a reminder recommendation."""
         await self.set(f"recommendation:{todo_id}", recommendation, ttl_ms)
 
     async def get_cached_reminder_recommendation(self, todo_id: UUID) -> object | None:
-        """Get a cached reminder recommendation."""
         return await self.get(f"recommendation:{todo_id}")
 
     async def cache_service_health(
@@ -393,11 +303,9 @@ class CacheManager:
         health: object,
         ttl_ms: int = 30000,
     ) -> None:
-        """Cache service health status."""
         await self.set(f"health:{service_name}", health, ttl_ms)
 
     async def get_cached_service_health(self, service_name: str) -> object | None:
-        """Get cached service health status."""
         return await self.get(f"health:{service_name}")
 
 

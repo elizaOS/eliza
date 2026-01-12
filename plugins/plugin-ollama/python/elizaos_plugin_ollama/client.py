@@ -148,11 +148,7 @@ class OllamaClient:
         if "```json" in params.prompt or "respond with valid JSON" in params.prompt:
             json_prompt = params.prompt
         else:
-            json_prompt = (
-                f"{params.prompt}\n"
-                "Please respond with valid JSON only, without any explanations, "
-                "markdown formatting, or additional text."
-            )
+            json_prompt = f"{params.prompt}\nPlease respond with valid JSON only, without any explanations, markdown formatting, or additional text."
 
         if params.system:
             system = f"{params.system}\nYou must respond with valid JSON only."

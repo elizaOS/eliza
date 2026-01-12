@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Create Comment Action
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -9,7 +8,6 @@ use crate::error::Result;
 use crate::types::CreateCommentParams;
 use crate::GitHubService;
 
-/// Action to create a comment on a GitHub issue or pull request
 pub struct CreateCommentAction;
 
 #[async_trait]
@@ -80,10 +78,6 @@ impl GitHubAction for CreateCommentAction {
         ))
     }
 }
-
-
-
-
 
 
 

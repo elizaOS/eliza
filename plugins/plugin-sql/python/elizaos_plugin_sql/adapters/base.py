@@ -1,9 +1,3 @@
-"""
-Base SQL adapter implementation.
-
-This module provides the abstract base class for SQL database adapters.
-"""
-
 from __future__ import annotations
 
 import uuid
@@ -42,15 +36,7 @@ from elizaos_plugin_sql.schema import (
 
 
 class BaseSQLAdapter(IDatabaseAdapter):
-    """
-    Base class for SQL database adapters.
-
-    Provides common implementation for database operations using SQLAlchemy.
-    Subclasses must implement database-specific connection handling.
-    """
-
     def __init__(self, agent_id: UUID) -> None:
-        """Initialize the adapter."""
         self._agent_id = agent_id
         self._engine: AsyncEngine | None = None
         self._session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -58,19 +44,16 @@ class BaseSQLAdapter(IDatabaseAdapter):
 
     @property
     def db(self) -> AsyncEngine:
-        """Get the database engine."""
         if not self._engine:
             raise RuntimeError("Database not initialized")
         return self._engine
 
     @abstractmethod
     async def _create_engine(self) -> AsyncEngine:
-        """Create the SQLAlchemy async engine. Must be implemented by subclasses."""
         ...
 
     async def initialize(self, config: dict[str, str | int | bool | None] | None = None) -> None:
-        """Initialize the database connection."""
-        _ = config  # Config handled elsewhere
+        _ = config
         self._engine = await self._create_engine()
         self._session_factory = async_sessionmaker(
             self._engine, class_=AsyncSession, expire_on_commit=False
@@ -78,22 +61,18 @@ class BaseSQLAdapter(IDatabaseAdapter):
         await self.init()
 
     async def init(self) -> None:
-        """Initialize database tables."""
         if not self._engine:
             raise RuntimeError("Database engine not created")
 
-        # Initialize migration service
         from elizaos_plugin_sql.migration_service import MigrationService
 
         migration_service = MigrationService(self._engine)
         await migration_service.initialize()
 
-        # Create tables using Alembic or direct creation
         async with self._engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
     async def is_ready(self) -> bool:
-        """Check if the database connection is ready."""
         if not self._engine:
             return False
         try:
@@ -104,26 +83,21 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return False
 
     async def close(self) -> None:
-        """Close the database connection."""
         if self._engine:
             await self._engine.dispose()
             self._engine = None
 
     async def get_connection(self) -> AsyncSession:
-        """Get a database session."""
         if not self._session_factory:
             raise RuntimeError("Database not initialized")
         return self._session_factory()
 
     def _get_session(self) -> AsyncSession:
-        """Get a new session from the factory."""
         if not self._session_factory:
             raise RuntimeError("Database not initialized")
         return self._session_factory()
 
-    # Agent methods
     async def get_agent(self, agent_id: UUID) -> dict[str, Any] | None:
-        """Get agent by ID."""
         async with self._get_session() as session:
             result = await session.execute(select(AgentTable).where(AgentTable.id == agent_id))
             agent = result.scalar_one_or_none()
@@ -132,14 +106,12 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return None
 
     async def get_agents(self) -> list[dict[str, Any]]:
-        """Get all agents."""
         async with self._get_session() as session:
             result = await session.execute(select(AgentTable))
             agents = result.scalars().all()
             return [self._agent_to_dict(a) for a in agents]
 
     async def create_agent(self, agent: dict[str, Any]) -> bool:
-        """Create a new agent."""
         async with self._get_session() as session:
             try:
                 db_agent = AgentTable(
@@ -161,7 +133,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
                 return False
 
     async def update_agent(self, agent_id: UUID, agent: dict[str, Any]) -> bool:
-        """Update an agent."""
         async with self._get_session() as session:
             try:
                 await session.execute(
@@ -176,7 +147,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
                 return False
 
     async def delete_agent(self, agent_id: UUID) -> bool:
-        """Delete an agent."""
         async with self._get_session() as session:
             try:
                 await session.execute(delete(AgentTable).where(AgentTable.id == agent_id))
@@ -187,12 +157,9 @@ class BaseSQLAdapter(IDatabaseAdapter):
                 return False
 
     async def ensure_embedding_dimension(self, dimension: int) -> None:
-        """Ensure embedding dimension is set."""
         self._embedding_dimension = dimension
 
-    # Entity methods
     async def get_entities_by_ids(self, entity_ids: list[UUID]) -> list[dict[str, Any]] | None:
-        """Get entities by IDs."""
         async with self._get_session() as session:
             result = await session.execute(
                 select(EntityTable).where(EntityTable.id.in_(entity_ids))
@@ -203,7 +170,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
     async def get_entities_for_room(
         self, room_id: UUID, include_components: bool = False
     ) -> list[dict[str, Any]]:
-        """Get entities for a room."""
         async with self._get_session() as session:
             result = await session.execute(
                 select(EntityTable)
@@ -214,7 +180,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return [self._entity_to_dict(e) for e in entities]
 
     async def create_entities(self, entities: list[dict[str, Any]]) -> bool:
-        """Create new entities."""
         async with self._get_session() as session:
             try:
                 for entity in entities:
@@ -232,7 +197,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
                 return False
 
     async def update_entity(self, entity: dict[str, Any]) -> None:
-        """Update an entity."""
         async with self._get_session() as session:
             await session.execute(
                 update(EntityTable)
@@ -244,7 +208,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             )
             await session.commit()
 
-    # Component methods
     async def get_component(
         self,
         entity_id: UUID,
@@ -252,7 +215,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
         world_id: UUID | None = None,
         source_entity_id: UUID | None = None,
     ) -> dict[str, Any] | None:
-        """Get component by entity ID and type."""
         async with self._get_session() as session:
             query = select(ComponentTable).where(
                 and_(
@@ -275,7 +237,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
         world_id: UUID | None = None,
         source_entity_id: UUID | None = None,
     ) -> list[dict[str, Any]]:
-        """Get all components for an entity."""
         async with self._get_session() as session:
             query = select(ComponentTable).where(ComponentTable.entity_id == entity_id)
             if world_id:
@@ -288,7 +249,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return [self._component_to_dict(c) for c in components]
 
     async def create_component(self, component: dict[str, Any]) -> bool:
-        """Create a component."""
         async with self._get_session() as session:
             try:
                 db_component = ComponentTable(
@@ -309,7 +269,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
                 return False
 
     async def update_component(self, component: dict[str, Any]) -> None:
-        """Update a component."""
         async with self._get_session() as session:
             await session.execute(
                 update(ComponentTable)
@@ -319,14 +278,12 @@ class BaseSQLAdapter(IDatabaseAdapter):
             await session.commit()
 
     async def delete_component(self, component_id: UUID) -> None:
-        """Delete a component."""
         async with self._get_session() as session:
             await session.execute(delete(ComponentTable).where(ComponentTable.id == component_id))
             await session.commit()
 
     # Memory methods
     async def get_memories(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        """Get memories matching criteria."""
         async with self._get_session() as session:
             query = select(MemoryTable)
 
@@ -351,7 +308,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return [self._memory_to_dict(m) for m in memories]
 
     async def get_memory_by_id(self, id: UUID) -> dict[str, Any] | None:
-        """Get memory by ID."""
         async with self._get_session() as session:
             result = await session.execute(select(MemoryTable).where(MemoryTable.id == id))
             memory = result.scalar_one_or_none()
@@ -360,14 +316,12 @@ class BaseSQLAdapter(IDatabaseAdapter):
     async def get_memories_by_ids(
         self, ids: list[UUID], table_name: str | None = None
     ) -> list[dict[str, Any]]:
-        """Get memories by IDs."""
         async with self._get_session() as session:
             result = await session.execute(select(MemoryTable).where(MemoryTable.id.in_(ids)))
             memories = result.scalars().all()
             return [self._memory_to_dict(m) for m in memories]
 
     async def get_memories_by_room_ids(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        """Get memories by room IDs."""
         async with self._get_session() as session:
             query = select(MemoryTable).where(MemoryTable.room_id.in_(params["roomIds"]))
             if "limit" in params:
@@ -378,12 +332,10 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return [self._memory_to_dict(m) for m in memories]
 
     async def get_cached_embeddings(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        """Get cached embeddings."""
         # This would require more complex implementation with vector search
         return []
 
     async def search_memories(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        """Search memories by embedding similarity."""
         # This would require pgvector or similar for production
         # For now, return empty - subclasses can override
         return []
@@ -391,7 +343,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
     async def create_memory(
         self, memory: dict[str, Any], table_name: str, unique: bool = False
     ) -> UUID:
-        """Create a memory."""
         async with self._get_session() as session:
             memory_id = memory.get("id") or uuid.uuid4()
             db_memory = MemoryTable(
@@ -420,7 +371,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return as_uuid(str(memory_id))
 
     async def update_memory(self, memory: dict[str, Any]) -> bool:
-        """Update a memory."""
         async with self._get_session() as session:
             try:
                 update_values: dict[str, Any] = {}
@@ -441,19 +391,16 @@ class BaseSQLAdapter(IDatabaseAdapter):
                 return False
 
     async def delete_memory(self, memory_id: UUID) -> None:
-        """Delete a memory."""
         async with self._get_session() as session:
             await session.execute(delete(MemoryTable).where(MemoryTable.id == memory_id))
             await session.commit()
 
     async def delete_many_memories(self, memory_ids: list[UUID]) -> None:
-        """Delete multiple memories."""
         async with self._get_session() as session:
             await session.execute(delete(MemoryTable).where(MemoryTable.id.in_(memory_ids)))
             await session.commit()
 
     async def delete_all_memories(self, room_id: UUID, table_name: str) -> None:
-        """Delete all memories for a room."""
         async with self._get_session() as session:
             await session.execute(delete(MemoryTable).where(MemoryTable.room_id == room_id))
             await session.commit()
@@ -461,7 +408,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
     async def count_memories(
         self, room_id: UUID, unique: bool = False, table_name: str | None = None
     ) -> int:
-        """Count memories for a room."""
         async with self._get_session() as session:
             query = (
                 select(func.count()).select_from(MemoryTable).where(MemoryTable.room_id == room_id)
@@ -474,7 +420,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
 
     # Logging methods
     async def log(self, params: dict[str, Any]) -> None:
-        """Log an entry."""
         async with self._get_session() as session:
             db_log = LogTable(
                 id=uuid.uuid4(),
@@ -487,7 +432,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             await session.commit()
 
     async def get_logs(self, params: dict[str, Any]) -> list[Log]:
-        """Get logs."""
         async with self._get_session() as session:
             query = select(LogTable)
 
@@ -510,14 +454,12 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return [self._log_to_model(log) for log in logs]
 
     async def delete_log(self, log_id: UUID) -> None:
-        """Delete a log."""
         async with self._get_session() as session:
             await session.execute(delete(LogTable).where(LogTable.id == log_id))
             await session.commit()
 
     # World methods
     async def create_world(self, world: dict[str, Any]) -> UUID:
-        """Create a world."""
         async with self._get_session() as session:
             world_id = world.get("id") or uuid.uuid4()
             db_world = WorldTable(
@@ -532,27 +474,23 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return as_uuid(str(world_id))
 
     async def get_world(self, id: UUID) -> dict[str, Any] | None:
-        """Get world by ID."""
         async with self._get_session() as session:
             result = await session.execute(select(WorldTable).where(WorldTable.id == id))
             world = result.scalar_one_or_none()
             return self._world_to_dict(world) if world else None
 
     async def remove_world(self, id: UUID) -> None:
-        """Remove a world."""
         async with self._get_session() as session:
             await session.execute(delete(WorldTable).where(WorldTable.id == id))
             await session.commit()
 
     async def get_all_worlds(self) -> list[dict[str, Any]]:
-        """Get all worlds."""
         async with self._get_session() as session:
             result = await session.execute(select(WorldTable))
             worlds = result.scalars().all()
             return [self._world_to_dict(w) for w in worlds]
 
     async def update_world(self, world: dict[str, Any]) -> None:
-        """Update a world."""
         async with self._get_session() as session:
             await session.execute(
                 update(WorldTable)
@@ -566,14 +504,12 @@ class BaseSQLAdapter(IDatabaseAdapter):
 
     # Room methods
     async def get_rooms_by_ids(self, room_ids: list[UUID]) -> list[dict[str, Any]] | None:
-        """Get rooms by IDs."""
         async with self._get_session() as session:
             result = await session.execute(select(RoomTable).where(RoomTable.id.in_(room_ids)))
             rooms = result.scalars().all()
             return [self._room_to_dict(r) for r in rooms] if rooms else None
 
     async def create_rooms(self, rooms: list[dict[str, Any]]) -> list[UUID]:
-        """Create rooms."""
         async with self._get_session() as session:
             created_ids: list[UUID] = []
             for room in rooms:
@@ -595,19 +531,16 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return created_ids
 
     async def delete_room(self, room_id: UUID) -> None:
-        """Delete a room."""
         async with self._get_session() as session:
             await session.execute(delete(RoomTable).where(RoomTable.id == room_id))
             await session.commit()
 
     async def delete_rooms_by_world_id(self, world_id: UUID) -> None:
-        """Delete rooms by world ID."""
         async with self._get_session() as session:
             await session.execute(delete(RoomTable).where(RoomTable.world_id == world_id))
             await session.commit()
 
     async def update_room(self, room: dict[str, Any]) -> None:
-        """Update a room."""
         async with self._get_session() as session:
             await session.execute(
                 update(RoomTable)
@@ -621,7 +554,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
 
     # Participant methods
     async def get_rooms_for_participant(self, entity_id: UUID) -> list[UUID]:
-        """Get rooms for a participant."""
         async with self._get_session() as session:
             result = await session.execute(
                 select(ParticipantTable.room_id).where(ParticipantTable.entity_id == entity_id)
@@ -629,7 +561,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return [as_uuid(str(r[0])) for r in result.fetchall()]
 
     async def get_rooms_for_participants(self, user_ids: list[UUID]) -> list[UUID]:
-        """Get rooms for participants."""
         async with self._get_session() as session:
             result = await session.execute(
                 select(ParticipantTable.room_id).where(ParticipantTable.entity_id.in_(user_ids))
@@ -637,14 +568,12 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return list({as_uuid(str(r[0])) for r in result.fetchall()})
 
     async def get_rooms_by_world(self, world_id: UUID) -> list[dict[str, Any]]:
-        """Get rooms by world."""
         async with self._get_session() as session:
             result = await session.execute(select(RoomTable).where(RoomTable.world_id == world_id))
             rooms = result.scalars().all()
             return [self._room_to_dict(r) for r in rooms]
 
     async def remove_participant(self, entity_id: UUID, room_id: UUID) -> bool:
-        """Remove a participant from a room."""
         async with self._get_session() as session:
             try:
                 await session.execute(
@@ -662,7 +591,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
                 return False
 
     async def get_participants_for_entity(self, entity_id: UUID) -> list[dict[str, Any]]:
-        """Get participants for an entity."""
         async with self._get_session() as session:
             result = await session.execute(
                 select(ParticipantTable).where(ParticipantTable.entity_id == entity_id)
@@ -671,7 +599,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return [self._participant_to_dict(p) for p in participants]
 
     async def get_participants_for_room(self, room_id: UUID) -> list[UUID]:
-        """Get participants for a room."""
         async with self._get_session() as session:
             result = await session.execute(
                 select(ParticipantTable.entity_id).where(ParticipantTable.room_id == room_id)
@@ -679,7 +606,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return [as_uuid(str(r[0])) for r in result.fetchall()]
 
     async def is_room_participant(self, room_id: UUID, entity_id: UUID) -> bool:
-        """Check if entity is a room participant."""
         async with self._get_session() as session:
             result = await session.execute(
                 select(func.count())
@@ -694,7 +620,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return (result.scalar() or 0) > 0
 
     async def add_participants_room(self, entity_ids: list[UUID], room_id: UUID) -> bool:
-        """Add participants to a room."""
         async with self._get_session() as session:
             try:
                 for entity_id in entity_ids:
@@ -711,7 +636,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
                 return False
 
     async def get_participant_user_state(self, room_id: UUID, entity_id: UUID) -> str | None:
-        """Get participant user state."""
         async with self._get_session() as session:
             result = await session.execute(
                 select(ParticipantTable.user_state).where(
@@ -727,7 +651,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
     async def set_participant_user_state(
         self, room_id: UUID, entity_id: UUID, state: str | None
     ) -> None:
-        """Set participant user state."""
         async with self._get_session() as session:
             await session.execute(
                 update(ParticipantTable)
@@ -743,7 +666,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
 
     # Relationship methods
     async def create_relationship(self, params: dict[str, Any]) -> bool:
-        """Create a relationship."""
         async with self._get_session() as session:
             try:
                 db_relationship = RelationshipTable(
@@ -762,7 +684,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
                 return False
 
     async def update_relationship(self, relationship: dict[str, Any]) -> None:
-        """Update a relationship."""
         async with self._get_session() as session:
             await session.execute(
                 update(RelationshipTable)
@@ -775,7 +696,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             await session.commit()
 
     async def get_relationship(self, params: dict[str, Any]) -> dict[str, Any] | None:
-        """Get a relationship."""
         async with self._get_session() as session:
             result = await session.execute(
                 select(RelationshipTable).where(
@@ -789,7 +709,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return self._relationship_to_dict(relationship) if relationship else None
 
     async def get_relationships(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        """Get relationships for an entity."""
         async with self._get_session() as session:
             query = select(RelationshipTable).where(
                 or_(
@@ -807,7 +726,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
 
     # Cache methods
     async def get_cache(self, key: str) -> Any | None:
-        """Get cached value."""
         async with self._get_session() as session:
             result = await session.execute(select(CacheTable).where(CacheTable.key == key))
             cache_entry = result.scalar_one_or_none()
@@ -819,7 +737,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return None
 
     async def set_cache(self, key: str, value: Any) -> bool:
-        """Set cached value."""
         async with self._get_session() as session:
             try:
                 # Try to update existing
@@ -839,7 +756,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
                 return False
 
     async def delete_cache(self, key: str) -> bool:
-        """Delete cached value."""
         async with self._get_session() as session:
             try:
                 await session.execute(delete(CacheTable).where(CacheTable.key == key))
@@ -851,7 +767,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
 
     # Task methods
     async def create_task(self, task: dict[str, Any]) -> UUID:
-        """Create a task."""
         async with self._get_session() as session:
             task_id = task.get("id") or uuid.uuid4()
             db_task = TaskTable(
@@ -870,7 +785,6 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return as_uuid(str(task_id))
 
     async def get_tasks(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        """Get tasks."""
         async with self._get_session() as session:
             query = select(TaskTable)
 
@@ -886,21 +800,18 @@ class BaseSQLAdapter(IDatabaseAdapter):
             return [self._task_to_dict(t) for t in tasks]
 
     async def get_task(self, id: UUID) -> dict[str, Any] | None:
-        """Get task by ID."""
         async with self._get_session() as session:
             result = await session.execute(select(TaskTable).where(TaskTable.id == id))
             task = result.scalar_one_or_none()
             return self._task_to_dict(task) if task else None
 
     async def get_tasks_by_name(self, name: str) -> list[dict[str, Any]]:
-        """Get tasks by name."""
         async with self._get_session() as session:
             result = await session.execute(select(TaskTable).where(TaskTable.name == name))
             tasks = result.scalars().all()
             return [self._task_to_dict(t) for t in tasks]
 
     async def update_task(self, id: UUID, task: dict[str, Any]) -> None:
-        """Update a task."""
         async with self._get_session() as session:
             update_values: dict[str, Any] = {}
             if "status" in task:
@@ -916,13 +827,11 @@ class BaseSQLAdapter(IDatabaseAdapter):
             await session.commit()
 
     async def delete_task(self, id: UUID) -> None:
-        """Delete a task."""
         async with self._get_session() as session:
             await session.execute(delete(TaskTable).where(TaskTable.id == id))
             await session.commit()
 
     async def get_memories_by_world_id(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        """Get memories by world ID."""
         async with self._get_session() as session:
             query = select(MemoryTable).where(MemoryTable.world_id == params["worldId"])
             if "count" in params:

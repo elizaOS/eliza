@@ -35,10 +35,12 @@
 pub mod client;
 pub mod error;
 pub mod types;
+pub mod service;
 
 pub use client::S3StorageClient;
 pub use error::{S3StorageError, Result};
 pub use types::*;
+pub use service::AwsS3Service;
 
 use anyhow::Result as AnyhowResult;
 

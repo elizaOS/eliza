@@ -1,9 +1,3 @@
-/**
- * Merge Pull Request Action
- *
- * Merges a GitHub pull request.
- */
-
 import {
   type Action,
   type ActionExample,

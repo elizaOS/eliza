@@ -75,9 +75,11 @@ class TestKnowledgePlugin:
         plugin = KnowledgePlugin()
         providers = plugin.get_providers()
 
-        assert len(providers) == 2
+        assert len(providers) >= 2
         assert any(p["name"] == "knowledge" for p in providers)
         assert any(p["name"] == "documents" for p in providers)
+        assert any(p["name"] == "KNOWLEDGE" for p in providers)
+        assert any(p["name"] == "AVAILABLE_DOCUMENTS" for p in providers)
 
     def test_get_actions(self) -> None:
         """Test getting plugin actions."""

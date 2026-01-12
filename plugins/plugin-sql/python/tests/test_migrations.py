@@ -15,17 +15,14 @@ if TYPE_CHECKING:
 
 
 class TestMigrationService:
-    """Tests for migration service with real PostgreSQL."""
 
     @pytest.mark.asyncio
     async def test_initialization(self, migration_service: MigrationService) -> None:
-        """Test migration service initialization."""
         # Service should be initialized without errors
         assert migration_service is not None
 
     @pytest.mark.asyncio
     async def test_record_migration(self, migration_service: MigrationService) -> None:
-        """Test recording a migration."""
         plugin_name = "@test/plugin-example"
         test_hash = hashlib.sha256(b"test schema").hexdigest()
         created_at = int(time.time() * 1000)
@@ -40,7 +37,6 @@ class TestMigrationService:
 
     @pytest.mark.asyncio
     async def test_save_and_get_snapshot(self, migration_service: MigrationService) -> None:
-        """Test saving and retrieving snapshots."""
         plugin_name = "@test/plugin-snapshot"
         snapshot = {
             "version": "0.0.1",
@@ -65,7 +61,6 @@ class TestMigrationService:
 
     @pytest.mark.asyncio
     async def test_hash_snapshot(self, migration_service: MigrationService) -> None:
-        """Test snapshot hashing."""
         snapshot1 = {"tables": {"a": 1, "b": 2}}
         snapshot2 = {"tables": {"b": 2, "a": 1}}  # Same content, different order
         snapshot3 = {"tables": {"a": 1, "c": 3}}  # Different content
@@ -81,7 +76,6 @@ class TestMigrationService:
 
     @pytest.mark.asyncio
     async def test_get_status(self, migration_service: MigrationService) -> None:
-        """Test getting migration status."""
         plugin_name = "@test/plugin-status-test"
 
         # Initial status (no migrations)
@@ -102,7 +96,6 @@ class TestMigrationService:
 
     @pytest.mark.asyncio
     async def test_multiple_migrations(self, migration_service: MigrationService) -> None:
-        """Test recording multiple migrations."""
         plugin_name = "@test/plugin-multi"
 
         # Record first migration
@@ -126,7 +119,6 @@ class TestMigrationService:
 
     @pytest.mark.asyncio
     async def test_multiple_plugins(self, migration_service: MigrationService) -> None:
-        """Test migrations for multiple plugins."""
         plugin1 = "@test/plugin-one"
         plugin2 = "@test/plugin-two"
 
@@ -148,10 +140,8 @@ class TestMigrationService:
 
 
 class TestPluginSchemaNamespacing:
-    """Tests for plugin schema namespacing."""
 
     def test_derive_schema_name(self) -> None:
-        """Test schema name derivation from plugin name."""
         # Core plugin uses public schema
         assert derive_schema_name("@elizaos/plugin-sql") == "public"
 
@@ -160,37 +150,30 @@ class TestPluginSchemaNamespacing:
         assert derive_schema_name("@elizaos/plugin-bootstrap") == "bootstrap"
 
     def test_simple_names(self) -> None:
-        """Test simple plugin names."""
         assert derive_schema_name("my-plugin") == "my_plugin"
         assert derive_schema_name("plugin-test") == "test"
 
     def test_special_characters_normalized(self) -> None:
-        """Test that special characters are properly sanitized."""
         assert derive_schema_name("@org/plugin.name!") == "plugin_name"
 
     def test_numeric_prefix_handled(self) -> None:
-        """Test that names starting with numbers get prefixed."""
         assert derive_schema_name("123plugin") == "p_123plugin"
 
     def test_lowercase_conversion(self) -> None:
-        """Test that schema names are lowercased."""
         assert derive_schema_name("@MyOrg/MyPlugin") == "myplugin"
         assert derive_schema_name("@MyOrg/plugin-MyPlugin") == "myplugin"
 
     def test_reserved_names_handled(self) -> None:
-        """Test that reserved names are handled properly."""
         # "public" alone would be reserved, so it gets prefixed
         result = derive_schema_name("@org/plugin-public")
         assert result.startswith("plugin_")
 
     def test_no_special_chars(self) -> None:
-        """Test plugin names with no special characters."""
         assert derive_schema_name("myplugin") == "myplugin"
         assert derive_schema_name("MyPlugin") == "myplugin"
 
     @pytest.mark.asyncio
     async def test_create_schema_for_plugin(self, migration_service: MigrationService) -> None:
-        """Test creating a schema for a plugin."""
         schema_name = "test_custom_schema"
 
         # The migration service should be able to create plugin schemas
@@ -207,7 +190,6 @@ class TestPluginSchemaNamespacing:
 
     @pytest.mark.asyncio
     async def test_invalid_schema_name_rejected(self, migration_service: MigrationService) -> None:
-        """Test that invalid schema names are rejected."""
         # Schema names with special characters should be rejected
         with pytest.raises(ValueError, match="Invalid schema name"):
             await migration_service.ensure_schema_exists("invalid-name")
@@ -220,17 +202,14 @@ class TestPluginSchemaNamespacing:
 
     @pytest.mark.asyncio
     async def test_public_schema_always_exists(self, migration_service: MigrationService) -> None:
-        """Test that public schema operation is a no-op."""
         # Should not raise any errors
         await migration_service.ensure_schema_exists("public")
 
 
 class TestMigrationEdgeCases:
-    """Tests for edge cases in migration handling."""
 
     @pytest.mark.asyncio
     async def test_empty_snapshot(self, migration_service: MigrationService) -> None:
-        """Test saving and retrieving empty snapshot."""
         plugin_name = "@test/empty-snapshot"
         empty_snapshot: dict[str, object] = {}
 
@@ -242,7 +221,6 @@ class TestMigrationEdgeCases:
 
     @pytest.mark.asyncio
     async def test_large_snapshot(self, migration_service: MigrationService) -> None:
-        """Test saving and retrieving large snapshot."""
         plugin_name = "@test/large-snapshot"
         # Create a large snapshot with many tables
         large_snapshot = {
@@ -258,7 +236,6 @@ class TestMigrationEdgeCases:
 
     @pytest.mark.asyncio
     async def test_unicode_in_snapshot(self, migration_service: MigrationService) -> None:
-        """Test snapshot with unicode characters."""
         plugin_name = "@test/unicode-snapshot"
         unicode_snapshot = {
             "description": "Unicode test: 你好世界 🚀 émojis 日本語",
@@ -273,7 +250,6 @@ class TestMigrationEdgeCases:
 
     @pytest.mark.asyncio
     async def test_timestamp_ordering(self, migration_service: MigrationService) -> None:
-        """Test that migrations are ordered by timestamp correctly."""
         plugin_name = "@test/timestamp-order"
         base_time = int(time.time() * 1000)
 
@@ -289,7 +265,6 @@ class TestMigrationEdgeCases:
 
     @pytest.mark.asyncio
     async def test_get_expected_schema_name(self, migration_service: MigrationService) -> None:
-        """Test getting expected schema name for plugins."""
         schema = await migration_service.get_expected_schema_name("@elizaos/plugin-sql")
         assert schema == "public"
 

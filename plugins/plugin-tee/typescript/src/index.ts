@@ -32,8 +32,7 @@ const defaultVendor = getVendor(TeeVendorNames.PHALA);
 
 export const teePlugin: Plugin = {
   name: "tee",
-  description:
-    "Trusted Execution Environment (TEE) integration plugin for secure key management and remote attestation",
+  description: "TEE integration plugin for secure key management and remote attestation",
 
   config: {
     TEE_MODE: process.env.TEE_MODE,

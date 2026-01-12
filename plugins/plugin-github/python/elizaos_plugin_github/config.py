@@ -59,7 +59,6 @@ class GitHubConfig(BaseModel):
         return resolved_owner, resolved_repo
 
     def has_app_auth(self) -> bool:
-        """Check if GitHub App authentication is configured."""
         return bool(self.app_id and self.app_private_key)
 
     def validate_all(self) -> None:

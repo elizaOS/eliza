@@ -1,14 +1,10 @@
-//! Execute command action for the shell plugin.
-
 use crate::{Action, ActionExample, ActionResult, ShellService};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-/// Action to execute shell commands.
 pub struct ExecuteCommandAction;
 
 impl ExecuteCommandAction {
-    /// Command keywords that indicate a shell command request.
     const COMMAND_KEYWORDS: &'static [&'static str] = &[
         "run", "execute", "command", "shell", "install", "brew", "npm",
         "create", "file", "directory", "folder", "list", "show", "system",
@@ -59,9 +55,8 @@ impl Action for ExecuteCommandAction {
     }
 
     fn description(&self) -> &str {
-        "Execute ANY shell command in the terminal. Use this to run ANY command including: \
-         brew install, npm install, apt-get, system commands, file operations (create, write, delete), \
-         navigate directories, execute scripts, or perform any other shell operation."
+        "Execute shell commands including brew install, npm install, apt-get, \
+         system commands, file operations, directory navigation, and scripts."
     }
 
     async fn validate(&self, message: &Value, _state: &Value) -> bool {
@@ -98,13 +93,12 @@ impl Action for ExecuteCommandAction {
             .and_then(|t| t.as_str())
             .unwrap_or("");
 
-        // Extract command from text (simplified - in production, use LLM)
         let command = extract_command_from_text(text);
 
         if command.is_empty() {
             return ActionResult {
                 success: false,
-                text: "I couldn't understand which command you want to execute. Please specify a shell command.".to_string(),
+                text: "Could not determine which command to execute. Please specify a shell command.".to_string(),
                 data: None,
                 error: Some("Could not extract command".to_string()),
             };
@@ -130,7 +124,7 @@ impl Action for ExecuteCommandAction {
                 } else {
                     let exit_code_str = result.exit_code
                         .map(|c| c.to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
+                        .unwrap_or_else(|| String::from("unknown"));
                     let mut msg = format!(
                         "Command failed with exit code {} in {}\n\n",
                         exit_code_str, result.executed_in
@@ -184,12 +178,9 @@ impl Action for ExecuteCommandAction {
     }
 }
 
-/// Simple command extraction from text.
-/// In production, this would use an LLM for better extraction.
 fn extract_command_from_text(text: &str) -> String {
     let lower = text.to_lowercase();
 
-    // Direct command patterns
     let direct_commands = [
         "ls", "cd", "pwd", "echo", "cat", "mkdir", "rm", "mv", "cp", "git", "npm", "brew", "apt",
     ];
@@ -206,7 +197,6 @@ fn extract_command_from_text(text: &str) -> String {
         }
     }
 
-    // Check for "run <command>" or "execute <command>" patterns
     if let Some(pos) = lower.find("run ") {
         return text[pos + 4..].trim().to_string();
     }
@@ -214,7 +204,6 @@ fn extract_command_from_text(text: &str) -> String {
         return text[pos + 8..].trim().to_string();
     }
 
-    // Common request patterns
     if lower.contains("list") && (lower.contains("file") || lower.contains("director")) {
         return "ls -la".to_string();
     }

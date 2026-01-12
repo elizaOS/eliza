@@ -1,7 +1,3 @@
-/**
- * Webhook route handler for Farcaster.
- */
-
 import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 
 export const farcasterWebhookRoutes: Route[] = [
@@ -19,7 +15,7 @@ export const farcasterWebhookRoutes: Route[] = [
             get?: (id: string) => {
               interactions?: {
                 mode?: string;
-                processWebhookData?: (data: unknown) => Promise<void>;
+                processWebhookData?: (data: { type?: string }) => Promise<void>;
               };
             };
           };
@@ -30,16 +26,9 @@ export const farcasterWebhookRoutes: Route[] = [
 
           if (agentManager?.interactions) {
             if (agentManager.interactions.mode === "webhook") {
-              console.log("Processing webhook through FarcasterInteractionManager...");
               await agentManager.interactions.processWebhookData?.(webhookData);
-            } else {
-              console.warn(`Agent is in ${agentManager.interactions.mode} mode, not webhook mode`);
             }
-          } else {
-            console.warn(`FarcasterAgentManager not found for agent ${runtime.agentId}`);
           }
-        } else {
-          console.warn("FarcasterService not found - webhook data logged only");
         }
 
         res.status(200).json({
@@ -49,7 +38,12 @@ export const farcasterWebhookRoutes: Route[] = [
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
-        console.error("Webhook processing error:", error);
+        if (runtime.logger) {
+          runtime.logger.error(
+            error instanceof Error ? error : new Error(String(error)),
+            "Webhook processing error"
+          );
+        }
         res.status(500).json({
           success: false,
           error: "Internal server error",

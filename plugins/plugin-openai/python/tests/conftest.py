@@ -1,7 +1,3 @@
-"""
-Pytest configuration and fixtures for OpenAI plugin tests.
-"""
-
 import os
 
 import pytest
@@ -19,13 +15,11 @@ def get_api_key() -> str:
 
 @pytest.fixture
 def api_key() -> str:
-    """Fixture that provides the API key."""
     return get_api_key()
 
 
 @pytest.fixture
 def openai_config(api_key: str) -> OpenAIConfig:
-    """Create an OpenAI config for testing."""
     return OpenAIConfig(
         api_key=api_key,
         small_model="gpt-5-mini",
@@ -37,7 +31,6 @@ def openai_config(api_key: str) -> OpenAIConfig:
 
 @pytest.fixture
 async def plugin(api_key: str) -> OpenAIPlugin:
-    """Create an OpenAI plugin for testing."""
     plugin = OpenAIPlugin(api_key=api_key)
     yield plugin
     await plugin.close()

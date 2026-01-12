@@ -1,5 +1,3 @@
-"""Send message action."""
-
 from typing import TYPE_CHECKING
 
 from elizaos_plugin_discord.error import InvalidArgumentError
@@ -11,8 +9,6 @@ if TYPE_CHECKING:
 
 
 class SendMessageAction:
-    """Action to send a message to a Discord channel."""
-
     @property
     def name(self) -> str:
         return "SEND_MESSAGE"
@@ -33,19 +29,15 @@ class SendMessageAction:
         ]
 
     async def validate(self, context: "ActionContext") -> bool:
-        """Validate the action can be executed."""
-        # Check source is Discord
         source = context.message.get("source", "")
         if source != "discord":
             return False
 
-        # Check we have a valid channel ID
         try:
             Snowflake(context.channel_id)
         except Exception:
             return False
 
-        # Check we have content to send
         content = context.message.get("content", {})
         text = content.get("text", "") if isinstance(content, dict) else ""
         return bool(text)
@@ -55,7 +47,6 @@ class SendMessageAction:
         context: "ActionContext",
         service: "DiscordService",
     ) -> "ActionResult":
-        """Execute the action."""
         from elizaos_plugin_discord.actions import ActionResult
 
         content = context.message.get("content", {})

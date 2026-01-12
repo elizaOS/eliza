@@ -86,9 +86,6 @@ export class CapSolverService {
     throw new Error("CapSolver task timeout");
   }
 
-  /**
-   * Solve Cloudflare Turnstile
-   */
   async solveTurnstile(
     websiteURL: string,
     websiteKey: string,
@@ -122,9 +119,6 @@ export class CapSolverService {
     return solution.token ?? "";
   }
 
-  /**
-   * Solve reCAPTCHA v2
-   */
   async solveRecaptchaV2(
     websiteURL: string,
     websiteKey: string,
@@ -187,9 +181,6 @@ export class CapSolverService {
     return solution.gRecaptchaResponse ?? "";
   }
 
-  /**
-   * Solve hCaptcha
-   */
   async solveHCaptcha(websiteURL: string, websiteKey: string, proxy?: string): Promise<string> {
     logger.info("Solving hCaptcha");
 
@@ -216,7 +207,7 @@ export class CapSolverService {
 }
 
 export async function detectCaptchaType(page: {
-  $: (selector: string) => Promise<unknown>;
+  $: (selector: string) => Promise<Element | null>;
   evaluate: <T>(fn: () => T) => Promise<T>;
 }): Promise<{
   type: CaptchaType;
@@ -234,9 +225,11 @@ export async function detectCaptchaType(page: {
     const recaptchaElement = await page.$("[data-sitekey], .g-recaptcha");
     if (recaptchaElement) {
       const isV3 = await page.evaluate(() => {
-        const grecaptcha = (globalThis as Record<string, unknown>).grecaptcha as
-          | Record<string, unknown>
-          | undefined;
+        const grecaptcha = (
+          globalThis as typeof globalThis & {
+            grecaptcha?: { execute?: () => void };
+          }
+        ).grecaptcha;
         return typeof grecaptcha?.execute === "function";
       });
       return { type: isV3 ? "recaptcha-v3" : "recaptcha-v2" };
@@ -263,11 +256,10 @@ export async function injectCaptchaSolution(
   switch (captchaType) {
     case "turnstile":
       await page.evaluate((token: string) => {
-        interface GlobalWithDocument {
+        const doc = globalThis as typeof globalThis & {
           document: Document;
           turnstileCallback?: (token: string) => void;
-        }
-        const doc = globalThis as GlobalWithDocument;
+        };
         const textarea = doc.document.querySelector(
           '[name="cf-turnstile-response"]'
         ) as HTMLTextAreaElement | null;
@@ -281,11 +273,10 @@ export async function injectCaptchaSolution(
     case "recaptcha-v2":
     case "recaptcha-v3":
       await page.evaluate((token: string) => {
-        interface GlobalWithDocument {
+        const doc = globalThis as typeof globalThis & {
           document: Document;
           onRecaptchaSuccess?: (token: string) => void;
-        }
-        const doc = globalThis as GlobalWithDocument;
+        };
         const textarea = doc.document.querySelector(
           '[name="g-recaptcha-response"]'
         ) as HTMLTextAreaElement | null;
@@ -299,11 +290,10 @@ export async function injectCaptchaSolution(
 
     case "hcaptcha":
       await page.evaluate((token: string) => {
-        interface GlobalWithDocument {
+        const doc = globalThis as typeof globalThis & {
           document: Document;
           hcaptchaCallback?: (token: string) => void;
-        }
-        const doc = globalThis as GlobalWithDocument;
+        };
         const textarea = doc.document.querySelector(
           '[name="h-captcha-response"]'
         ) as HTMLTextAreaElement | null;

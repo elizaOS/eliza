@@ -59,7 +59,10 @@ impl N8nAction for CreatePluginAction {
 
         match spec_result {
             Ok(spec) => {
-                let name = spec.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                let name = spec
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("unknown");
 
                 Ok(ActionResult {
                     success: true,

@@ -27,9 +27,6 @@ import {
 } from "./types";
 import { cleanText, convertMarkdownToTelegram, convertToTelegramButtons } from "./utils";
 
-/**
- * Interface for structured document processing results.
- */
 interface DocumentProcessingResult {
   title: string;
   fullText: string;
@@ -53,10 +50,9 @@ export enum MediaType {
   ANIMATION = "animation",
 }
 
-const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
+const MAX_MESSAGE_LENGTH = 4096;
 
 const getChannelType = (chat: Chat): ChannelType => {
-  // Use a switch statement for clarity and exhaustive checks
   switch (chat.type) {
     case "private":
       return ChannelType.DM;
@@ -65,38 +61,21 @@ const getChannelType = (chat: Chat): ChannelType => {
     case "channel":
       return ChannelType.GROUP;
     default: {
-      // Exhaustive check - if we reach here, TypeScript should know chat.type is never
       const _exhaustive: never = chat;
       throw new Error(`Unrecognized Telegram chat type: ${JSON.stringify(chat)}`);
     }
   }
 };
 
-/**
- * Class representing a message manager.
- * @class
- */
 export class MessageManager {
   public bot: Telegraf<Context>;
   protected runtime: IAgentRuntime;
 
-  /**
-   * Constructor for creating a new instance of a BotAgent.
-   *
-   * @param {Telegraf<Context>} bot - The Telegraf instance used for interacting with the bot platform.
-   * @param {IAgentRuntime} runtime - The runtime environment for the agent.
-   */
   constructor(bot: Telegraf<Context>, runtime: IAgentRuntime) {
     this.bot = bot;
     this.runtime = runtime;
   }
 
-  /**
-   * Process an image from a Telegram message to extract the image URL and description.
-   *
-   * @param {Message} message - The Telegram message object containing the image.
-   * @returns {Promise<{ description: string } | null>} The description of the processed image or null if no image found.
-   */
   async processImage(message: Message): Promise<{ description: string } | null> {
     let imageUrl: string | null = null;
 
@@ -126,13 +105,6 @@ export class MessageManager {
     return null;
   }
 
-  /**
-   * Process a document from a Telegram message to extract the document URL and description.
-   * Handles PDFs and other document types by converting them to text when possible.
-   *
-   * @param {Message} message - The Telegram message object containing the document.
-   * @returns {Promise<{ description: string } | null>} The description of the processed document or null if no document found.
-   */
   async processDocument(message: Message): Promise<DocumentProcessingResult | null> {
     if (!("document" in message) || !message.document) {
       return null;
@@ -146,13 +118,11 @@ export class MessageManager {
       `Processing document: ${document.file_name} (${document.mime_type}, ${document.file_size} bytes)`
     );
 
-    // Centralized document processing based on MIME type
     const documentProcessor = this.getDocumentProcessor(document.mime_type);
     if (documentProcessor) {
       return await documentProcessor(document, documentUrl);
     }
 
-    // Generic fallback for unsupported types
     return {
       title: `Document: ${document.file_name || "Unknown Document"}`,
       fullText: "",
@@ -163,9 +133,6 @@ export class MessageManager {
     };
   }
 
-  /**
-   * Get the appropriate document processor based on MIME type.
-   */
   private getDocumentProcessor(
     mimeType?: string
   ): ((document: Document, url: string) => Promise<DocumentProcessingResult>) | null {
@@ -173,7 +140,7 @@ export class MessageManager {
 
     const processors = {
       "application/pdf": this.processPdfDocument.bind(this),
-      "text/": this.processTextDocument.bind(this), // covers text/plain, text/csv, text/markdown, etc.
+      "text/": this.processTextDocument.bind(this),
       "application/json": this.processTextDocument.bind(this),
     };
 
@@ -186,9 +153,6 @@ export class MessageManager {
     return null;
   }
 
-  /**
-   * Process PDF documents by converting them to text.
-   */
   private async processPdfDocument(
     document: Document,
     documentUrl: string
@@ -226,9 +190,6 @@ export class MessageManager {
     };
   }
 
-  /**
-   * Process text documents by fetching their content.
-   */
   private async processTextDocument(
     document: Document,
     documentUrl: string
@@ -251,27 +212,18 @@ export class MessageManager {
     };
   }
 
-  /**
-   * Processes the message content, documents, and images to generate
-   * processed content and media attachments.
-   *
-   * @param {Message} message The message to process
-   * @returns {Promise<{ processedContent: string; attachments: Media[] }>} Processed content and media attachments
-   */
   async processMessage(
     message: Message
   ): Promise<{ processedContent: string; attachments: Media[] }> {
     let processedContent = "";
     const attachments: Media[] = [];
 
-    // Get message text
     if ("text" in message && message.text) {
       processedContent = message.text;
     } else if ("caption" in message && message.caption) {
       processedContent = message.caption as string;
     }
 
-    // Process documents
     if ("document" in message && message.document) {
       const document = message.document;
       const documentInfo = await this.processDocument(message);
@@ -280,11 +232,9 @@ export class MessageManager {
         try {
           const fileLink = await this.bot.telegram.getFileLink(document.file_id);
 
-          // Use structured data directly instead of regex parsing
           const title = documentInfo.title;
           const fullText = documentInfo.fullText;
 
-          // Add document content to processedContent so agent can access it
           if (fullText) {
             const documentContent = `\n\n--- DOCUMENT CONTENT ---\nTitle: ${title}\n\nFull Content:\n${fullText}\n--- END DOCUMENT ---\n\n`;
             processedContent += documentContent;
@@ -301,7 +251,6 @@ export class MessageManager {
           logger.info(`Document processed successfully: ${documentInfo.fileName}`);
         } catch (error) {
           logger.error({ error }, `Error processing document ${documentInfo.fileName}`);
-          // Add a fallback attachment even if processing failed
           attachments.push({
             id: document.file_id,
             url: "",
@@ -324,7 +273,6 @@ export class MessageManager {
       }
     }
 
-    // Process images
     if ("photo" in message && message.photo?.length > 0) {
       const imageInfo = await this.processImage(message);
       if (imageInfo) {
@@ -348,14 +296,6 @@ export class MessageManager {
     return { processedContent, attachments };
   }
 
-  /**
-   * Sends a message in chunks, handling attachments and splitting the message if necessary
-   *
-   * @param {Context} ctx - The context object representing the current state of the bot
-   * @param {TelegramContent} content - The content of the message to be sent
-   * @param {number} [replyToMessageId] - The ID of the message to reply to, if any
-   * @returns {Promise<Message.TextMessage[]>} - An array of TextMessage objects representing the messages sent
-   */
   async sendMessageInChunks(
     ctx: Context,
     content: TelegramContent,
@@ -421,16 +361,6 @@ export class MessageManager {
     }
   }
 
-  /**
-   * Sends media to a chat using the Telegram API.
-   *
-   * @param {Context} ctx - The context object containing information about the current chat.
-   * @param {string} mediaPath - The path to the media to be sent, either a URL or a local file path.
-   * @param {MediaType} type - The type of media being sent (PHOTO, VIDEO, DOCUMENT, AUDIO, or ANIMATION).
-   * @param {string} [caption] - Optional caption for the media being sent.
-   *
-   * @returns {Promise<void>} A Promise that resolves when the media is successfully sent.
-   */
   async sendMedia(
     ctx: Context,
     mediaPath: string,
@@ -458,10 +388,8 @@ export class MessageManager {
       }
 
       if (isUrl) {
-        // Handle HTTP URLs
         await sendFunction(ctx.chat.id, mediaPath, { caption });
       } else {
-        // Handle local file paths
         if (!fs.existsSync(mediaPath)) {
           throw new Error(`File not found at path: ${mediaPath}`);
         }
@@ -487,12 +415,6 @@ export class MessageManager {
     }
   }
 
-  /**
-   * Splits a given text into an array of strings based on the maximum message length.
-   *
-   * @param {string} text - The text to split into chunks.
-   * @returns {string[]} An array of strings with each element representing a chunk of the original text.
-   */
   private splitMessage(text: string): string[] {
     const chunks: string[] = [];
     if (!text) return chunks;
@@ -512,18 +434,11 @@ export class MessageManager {
     return chunks;
   }
 
-  /**
-   * Handle incoming messages from Telegram and process them accordingly.
-   * @param {Context} ctx - The context object containing information about the message.
-   * @returns {Promise<void>}
-   */
   public async handleMessage(ctx: Context): Promise<void> {
-    // Type guard to ensure message exists
     if (!ctx.message || !ctx.from) return;
 
     const message = ctx.message as Message.TextMessage;
 
-    // Convert IDs to UUIDs
     const entityId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
 
     const threadId =
@@ -531,22 +446,18 @@ export class MessageManager {
         ? message.message_thread_id?.toString()
         : undefined;
 
-    // Add null check for ctx.chat
     if (!ctx.chat) {
       logger.error("handleMessage: ctx.chat is undefined");
       return;
     }
-    // Generate room ID based on whether this is in a forum topic
+
     const telegramRoomid = threadId ? `${ctx.chat.id}-${threadId}` : ctx.chat.id.toString();
     const roomId = createUniqueUuid(this.runtime, telegramRoomid) as UUID;
 
-    // Get message ID (unique to channel)
     const messageId = createUniqueUuid(this.runtime, message?.message_id?.toString());
 
-    // Process message content and attachments
     const { processedContent, attachments } = await this.processMessage(message);
 
-    // Clean processedContent and attachments to avoid NULL characters
     const cleanedContent = cleanText(processedContent);
     const cleanedAttachments = attachments.map((att) => ({
       ...att,
@@ -559,7 +470,6 @@ export class MessageManager {
       return;
     }
 
-    // Get chat type and determine channel type
     const chat = message.chat as Chat;
     const channelType = getChannelType(chat);
 
@@ -578,7 +488,6 @@ export class MessageManager {
       worldName: telegramRoomid,
     });
 
-    // Create the memory object
     const memory: Memory = {
       id: messageId,
       entityId,
@@ -601,10 +510,7 @@ export class MessageManager {
         entityName: ctx.from.first_name,
         entityUserName: ctx.from.username,
         fromBot: ctx.from.is_bot,
-        // include very technical/exact reference to this user for security reasons
-        // don't remove or change this, spartan needs this
         fromId: chat.id,
-        // scope: `shared`, `private`, or `room`
       } as MessageMetadata & {
         entityName?: string;
         entityUserName?: string;
@@ -614,17 +520,13 @@ export class MessageManager {
       createdAt: message.date * 1000,
     };
 
-    // Create callback for handling responses
     const callback: HandlerCallback = async (content: Content, _files?: string[]) => {
-      // If response is from reasoning do not send it.
       if (!content.text) return [];
 
       let sentMessages: boolean | Message.TextMessage[] = false;
-      // channelType target === 'telegram'
       if (content?.channelType === "DM") {
         sentMessages = [];
         if (ctx.from) {
-          // FIXME split on 4096 chars
           const res = await this.bot.telegram.sendMessage(ctx.from.id, content.text);
           sentMessages.push(res);
         }
@@ -660,8 +562,6 @@ export class MessageManager {
       return memories;
     };
 
-    // Call the message handler directly instead of emitting events
-    // This provides a clearer, more traceable flow for message processing
     if (!this.runtime.messageService) {
       logger.error("Message service is not available");
       throw new Error(
@@ -679,7 +579,6 @@ export class MessageManager {
   public async handleReaction(
     ctx: NarrowedContext<Context<Update>, Update.MessageReactionUpdate>
   ): Promise<void> {
-    // Ensure we have the necessary data
     if (!ctx.update.message_reaction || !ctx.from) return;
 
     const reaction = ctx.update.message_reaction;
@@ -703,7 +602,6 @@ export class MessageManager {
       `${reaction.message_id}-${ctx.from.id}-${Date.now()}`
     );
 
-    // Create reaction memory
     const memory: Memory = {
       id: reactionId,
       entityId,
@@ -737,19 +635,17 @@ export class MessageManager {
       return [responseMemory];
     };
 
-    // Let the bootstrap plugin handle the reaction
     this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
       runtime: this.runtime,
       message: memory,
       callback,
       source: "telegram",
       ctx,
-      originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
+      originalMessage: originalMessagePlaceholder as Message,
       reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
       originalReaction: reaction.new_reaction[0] as ReactionType,
     } as TelegramReactionReceivedPayload);
 
-    // Also emit the platform-specific event
     this.runtime.emitEvent(TelegramEventTypes.REACTION_RECEIVED, {
       runtime: this.runtime,
       message: memory,
@@ -774,7 +670,6 @@ export class MessageManager {
     content: Content,
     replyToMessageId?: number
   ): Promise<Message.TextMessage[]> {
-    // Create a context-like object for sending
     const ctx = {
       chat: { id: chatId },
       telegram: this.bot.telegram,
@@ -811,8 +706,6 @@ export class MessageManager {
       memories.push(memory);
     }
 
-    // Emit both generic and platform-specific message sent events
-    // Use the first memory if available, otherwise create a minimal one
     if (memories.length > 0) {
       this.runtime.emitEvent(EventType.MESSAGE_SENT, {
         runtime: this.runtime,
@@ -821,7 +714,6 @@ export class MessageManager {
       });
     }
 
-    // Also emit platform-specific event
     this.runtime.emitEvent(
       TelegramEventTypes.MESSAGE_SENT as string,
       {

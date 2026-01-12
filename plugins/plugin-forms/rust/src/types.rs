@@ -8,7 +8,9 @@ use uuid::Uuid;
 /// Possible types for form fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum FormFieldType {
+    #[default]
     Text,
     Number,
     Email,
@@ -22,27 +24,15 @@ pub enum FormFieldType {
     Datetime,
 }
 
-
-impl Default for FormFieldType {
-    fn default() -> Self {
-        Self::Text
-    }
-}
-
 /// Possible statuses for a form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum FormStatus {
+    #[default]
     Active,
     Completed,
     Cancelled,
-}
-
-
-impl Default for FormStatus {
-    fn default() -> Self {
-        Self::Active
-    }
 }
 
 /// Value types that can be stored in form fields.
@@ -308,5 +298,3 @@ impl FormUpdateResult {
         }
     }
 }
-
-

@@ -1,29 +1,21 @@
-"""Integration tests for the RSS plugin."""
-
 import pytest
 
 
 class TestRssPluginStructure:
-    """Tests for plugin structure."""
-
     def test_import_plugin(self) -> None:
-        """Test that plugin can be imported."""
         from elizaos_plugin_rss import RssPlugin
         assert RssPlugin is not None
 
     def test_import_client(self) -> None:
-        """Test that client can be imported."""
         from elizaos_plugin_rss import RssClient
         assert RssClient is not None
 
     def test_import_parser(self) -> None:
-        """Test that parser can be imported."""
         from elizaos_plugin_rss import parse_rss_to_json, create_empty_feed
         assert parse_rss_to_json is not None
         assert create_empty_feed is not None
 
     def test_import_types(self) -> None:
-        """Test that types can be imported."""
         from elizaos_plugin_rss import (
             RssConfig,
             RssFeed,
@@ -37,17 +29,13 @@ class TestRssPluginStructure:
 
 
 class TestRssPluginCreation:
-    """Tests for plugin creation."""
-
     def test_create_plugin(self) -> None:
-        """Test creating a plugin instance."""
         from elizaos_plugin_rss import RssPlugin
         
         plugin = RssPlugin()
         assert plugin is not None
 
     def test_get_rss_plugin(self) -> None:
-        """Test get_rss_plugin helper."""
         from elizaos_plugin_rss import get_rss_plugin
         
         plugin = get_rss_plugin()
@@ -66,7 +54,6 @@ class TestRssParser:
         assert feed.items == []
 
     def test_parse_basic_rss(self) -> None:
-        """Test parsing basic RSS."""
         from elizaos_plugin_rss import parse_rss_to_json
         
         xml = """<?xml version="1.0"?>
@@ -90,7 +77,6 @@ class TestRssParser:
         assert feed.items[0].title == "Test Article"
 
     def test_parse_rss_with_multiple_items(self) -> None:
-        """Test parsing RSS with multiple items."""
         from elizaos_plugin_rss import parse_rss_to_json
         
         xml = """<?xml version="1.0"?>
@@ -108,10 +94,7 @@ class TestRssParser:
 
 
 class TestRssUtils:
-    """Tests for RSS utilities."""
-
     def test_extract_urls(self) -> None:
-        """Test URL extraction from text."""
         from elizaos_plugin_rss import extract_urls
         
         text = "Check out https://example.com and http://test.com for more."
@@ -121,7 +104,6 @@ class TestRssUtils:
         assert any("example.com" in u for u in urls)
 
     def test_format_relative_time(self) -> None:
-        """Test relative time formatting."""
         from elizaos_plugin_rss import format_relative_time
         import time
         

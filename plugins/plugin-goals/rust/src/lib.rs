@@ -45,7 +45,7 @@ pub use error::{GoalError, Result};
 pub use types::*;
 
 #[cfg(feature = "native")]
-pub use service::GoalService;
+pub use service::{GoalDataServiceWrapper, GoalService};
 
 /// The name identifier for this plugin.
 pub const PLUGIN_NAME: &str = "goals";

@@ -1,7 +1,3 @@
-"""
-Send game message action for the Roblox plugin.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,14 +5,12 @@ from dataclasses import dataclass
 
 @dataclass
 class ActionExample:
-    """An action example."""
     input: str
     output: str
 
 
 @dataclass
 class SendGameMessageAction:
-    """Action to send a message to Roblox game players."""
 
     @property
     def name(self) -> str:

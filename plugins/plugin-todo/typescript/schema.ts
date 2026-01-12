@@ -11,9 +11,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-/**
- * Todos table - stores the main todo items
- */
 export const todosTable = pgTable(
   "todos",
   {
@@ -21,11 +18,11 @@ export const todosTable = pgTable(
     agentId: uuid("agent_id").notNull(),
     worldId: uuid("world_id").notNull(),
     roomId: uuid("room_id").notNull(),
-    entityId: uuid("entity_id").notNull(), // User who created the todo
+    entityId: uuid("entity_id").notNull(),
     name: text("name").notNull(),
     description: text("description"),
-    type: text("type").notNull(), // 'daily', 'one-off', 'aspirational'
-    priority: integer("priority").default(4), // 1-4, where 1 is highest
+    type: text("type").notNull(),
+    priority: integer("priority").default(4),
     isUrgent: boolean("is_urgent").default(false),
     isCompleted: boolean("is_completed").default(false),
     dueDate: timestamp("due_date"),
@@ -46,9 +43,6 @@ export const todosTable = pgTable(
   })
 );
 
-/**
- * Todo tags table - stores tags associated with todos
- */
 export const todoTagsTable = pgTable(
   "todo_tags",
   {
@@ -68,9 +62,6 @@ export const todoTagsTable = pgTable(
   })
 );
 
-/**
- * Relations
- */
 export const todosRelations = relations(todosTable, ({ many }) => ({
   tags: many(todoTagsTable),
 }));
@@ -82,13 +73,9 @@ export const todoTagsRelations = relations(todoTagsTable, ({ one }) => ({
   }),
 }));
 
-/**
- * Export the complete schema
- */
 export const todoSchema = {
   todosTable,
   todoTagsTable,
-  // Also include the original structure for compatibility
   tables: {
     todos: todosTable,
     todoTags: todoTagsTable,

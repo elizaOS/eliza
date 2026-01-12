@@ -1,5 +1,3 @@
-"""Integration tests for Vercel AI Gateway plugin."""
-
 import pytest
 
 from elizaos_plugin_gateway import GatewayConfig, GatewayPlugin
@@ -7,7 +5,6 @@ from elizaos_plugin_gateway import GatewayConfig, GatewayPlugin
 
 @pytest.mark.asyncio
 async def test_text_generation(api_key: str) -> None:
-    """Test text generation."""
     GatewayConfig(api_key=api_key)
     async with GatewayPlugin(api_key=api_key) as plugin:
         response = await plugin.generate_text_small("Say hello in 5 words.")
@@ -27,7 +24,6 @@ async def test_embedding_generation(api_key: str) -> None:
 
 @pytest.mark.asyncio
 async def test_object_generation(api_key: str) -> None:
-    """Test structured object generation."""
     async with GatewayPlugin(api_key=api_key) as plugin:
         result = await plugin.generate_object(
             "Return a JSON object with name (string) and age (number)"
@@ -45,8 +41,4 @@ async def test_streaming(api_key: str) -> None:
         assert len(chunks) > 0
         result = "".join(chunks)
         assert len(result) > 0
-
-
-
-
 

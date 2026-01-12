@@ -1,6 +1,4 @@
-//! Actions for the Solana plugin.
-//!
-//! This module provides elizaOS action implementations for Solana operations.
+#![allow(missing_docs)]
 
 mod swap;
 mod transfer;

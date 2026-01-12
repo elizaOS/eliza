@@ -1,12 +1,13 @@
-mod status;
 mod capabilities;
-mod registry;
 mod exists;
+mod registry;
+mod status;
 
-pub use status::PluginCreationStatusProvider;
 pub use capabilities::PluginCreationCapabilitiesProvider;
-pub use registry::PluginRegistryProvider;
+pub use exists::PluginExistsCheckProvider;
 pub use exists::PluginExistsProvider;
+pub use registry::PluginRegistryProvider;
+pub use status::PluginCreationStatusProvider;
 
 use async_trait::async_trait;
 use serde_json::Value;

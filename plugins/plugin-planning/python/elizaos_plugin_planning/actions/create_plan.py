@@ -1,7 +1,3 @@
-"""
-Create plan action for the planning plugin.
-"""
-
 from __future__ import annotations
 
 import uuid
@@ -11,7 +7,6 @@ from elizaos_plugin_planning.actions.analyze_input import ActionExample
 
 @dataclass
 class CreatePlanAction:
-    """Action to create a comprehensive project plan."""
 
     @property
     def name(self) -> str:

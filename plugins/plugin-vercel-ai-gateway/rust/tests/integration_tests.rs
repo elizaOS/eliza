@@ -1,5 +1,3 @@
-//! Integration tests for Vercel AI Gateway plugin.
-
 use elizaos_plugin_gateway::{
     get_gateway_plugin, GatewayConfig, GatewayPlugin, TextGenerationParams,
 };

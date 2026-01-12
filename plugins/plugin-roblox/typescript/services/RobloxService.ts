@@ -1,6 +1,6 @@
 import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import { RobloxClient } from "../client/RobloxClient";
-import { ROBLOX_SERVICE_NAME, type RobloxConfig } from "../types";
+import { type ManagerHealthStatus, ROBLOX_SERVICE_NAME, type RobloxConfig } from "../types";
 import { hasRobloxEnabled, validateRobloxConfig } from "../utils/config";
 
 class RobloxAgentManager {
@@ -64,9 +64,7 @@ class RobloxAgentManager {
     }
   }
 
-  private async poll(): Promise<void> {
-    this.runtime.logger.debug("Polling Roblox for updates...");
-  }
+  private async poll(): Promise<void> {}
 
   async sendMessage(content: string, targetPlayerIds?: number[]): Promise<void> {
     await this.client.sendAgentMessage({
@@ -86,7 +84,7 @@ class RobloxAgentManager {
 
   async executeAction(
     actionName: string,
-    parameters: Record<string, unknown>,
+    parameters: Record<string, string | number | boolean | null>,
     targetPlayerIds?: number[]
   ): Promise<void> {
     await this.client.sendAgentMessage({
@@ -200,7 +198,7 @@ export class RobloxService extends Service {
   async executeAction(
     agentId: UUID,
     actionName: string,
-    parameters: Record<string, unknown>,
+    parameters: Record<string, string | number | boolean | null>,
     targetPlayerIds?: number[]
   ): Promise<void> {
     const manager = this.managers.get(agentId);
@@ -212,9 +210,12 @@ export class RobloxService extends Service {
 
   async healthCheck(): Promise<{
     healthy: boolean;
-    details: Record<string, unknown>;
+    details: {
+      activeManagers: number;
+      managerStatuses: Record<string, ManagerHealthStatus>;
+    };
   }> {
-    const managerStatuses: Record<string, unknown> = {};
+    const managerStatuses: Record<string, ManagerHealthStatus> = {};
     let overallHealthy = true;
 
     for (const [agentId, manager] of Array.from(this.managers.entries())) {

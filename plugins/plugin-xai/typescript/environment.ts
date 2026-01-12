@@ -2,9 +2,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { z } from "zod";
 import { getSetting } from "./utils/settings";
 
-/**
- * Get setting with X_ prefix
- */
 function getXSetting(runtime: IAgentRuntime, key: string): string {
   return getSetting(runtime, key) || "";
 }

@@ -1,22 +1,3 @@
-"""
-elizaOS Plugin Planning - Comprehensive planning and execution for AI agents.
-
-This plugin provides:
-- Message classification by complexity
-- Simple and comprehensive plan creation
-- Multiple execution models (sequential, parallel, DAG)
-- Plan validation and adaptation
-- REALM-Bench and API-Bank benchmarking
-
-Actions:
-- ANALYZE_INPUT: Analyzes user input and extracts key information
-- PROCESS_ANALYSIS: Processes analysis results and makes decisions
-- EXECUTE_FINAL: Executes the final action based on processing results
-- CREATE_PLAN: Creates a comprehensive project plan
-
-Providers:
-- messageClassifier: Classifies messages by complexity and planning requirements
-"""
 
 from elizaos_plugin_planning.types import (
     StrategySpec,
@@ -47,12 +28,10 @@ __version__ = "1.0.0"
 
 # Plugin metadata
 PLUGIN_NAME = "planning"
-PLUGIN_DESCRIPTION = "Comprehensive planning and execution plugin with integrated planning service"
+PLUGIN_DESCRIPTION = "Planning and execution plugin"
 
 
 class PlanningPlugin:
-    """Planning Plugin for elizaOS."""
-
     name = PLUGIN_NAME
     description = PLUGIN_DESCRIPTION
     version = __version__
@@ -69,11 +48,9 @@ class PlanningPlugin:
         self.evaluators: list[object] = []
 
     async def initialize(self, runtime: object) -> None:
-        """Initialize the plugin with runtime context."""
         await self.service.start(runtime)
 
     async def shutdown(self) -> None:
-        """Cleanup plugin resources."""
         await self.service.stop()
 
 

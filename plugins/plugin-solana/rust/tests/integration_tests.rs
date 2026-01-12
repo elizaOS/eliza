@@ -1,8 +1,3 @@
-//! Integration tests for the Solana plugin.
-//!
-//! These tests require a running Solana devnet connection.
-//! Set SOLANA_RPC_URL=https://api.devnet.solana.com to run.
-
 use elizaos_plugin_solana::{
     actions::{SwapAction, TransferAction},
     keypair::{KeypairUtils, WalletConfig},
@@ -25,7 +20,6 @@ const USDC_MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 #[tokio::test]
 async fn test_read_only_wallet_balance() {
-    // Use a known devnet faucet address (may or may not have balance)
     let config =
         WalletConfig::read_only(DEVNET_RPC.to_string(), "11111111111111111111111111111111")
             .expect("config should be valid");
@@ -47,7 +41,6 @@ async fn test_invalid_address_balance() {
 
     let _client = SolanaClient::new(config).expect("client should be created");
 
-    // Query balance for an invalid address
     let invalid_pubkey = Pubkey::from_str("invalid");
     assert!(invalid_pubkey.is_err());
 }
@@ -91,10 +84,7 @@ async fn test_keypair_generation_and_validation() {
 
 #[tokio::test]
 async fn test_pubkey_detection_in_text() {
-    let text = r#"
-        Please send tokens to So11111111111111111111111111111111111111112 
-        or to EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-    "#;
+    let text = "Please send tokens to So11111111111111111111111111111111111111112 or to EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
     let keys = KeypairUtils::detect_pubkeys_in_text(text, false);
     assert_eq!(keys.len(), 2);
@@ -145,8 +135,6 @@ async fn test_wallet_config_builder() {
     assert_eq!(config.birdeye_api_key, Some("bird_key".to_string()));
 }
 
-/// Integration test that requires a funded devnet wallet.
-/// Skip in CI unless SOLANA_PRIVATE_KEY is set.
 #[tokio::test]
 #[ignore = "Requires funded devnet wallet"]
 async fn test_swap_quote_devnet() {
@@ -161,13 +149,12 @@ async fn test_swap_quote_devnet() {
     let params = elizaos_plugin_solana::SwapQuoteParams {
         input_mint: SOL_MINT.to_string(),
         output_mint: USDC_MINT.to_string(),
-        amount: "1000000".to_string(), // 0.001 SOL in lamports
+        amount: "1000000".to_string(),
         slippage_bps: 100,
     };
 
     let result = client.get_swap_quote(&params).await;
 
-    // Note: Quote may fail on devnet due to liquidity, that's ok
     match result {
         Ok(quote) => {
             assert!(!quote.out_amount.is_empty());
@@ -193,13 +180,9 @@ async fn test_sol_transfer_devnet() {
 
     let client = SolanaClient::new(config).expect("client should be created");
 
-    // Generate a new random recipient
     let recipient = KeypairUtils::generate().pubkey();
 
-    // Transfer a tiny amount
-    let result = client
-        .transfer_sol(&recipient, Decimal::new(1, 6)) // 0.000001 SOL
-        .await;
+    let result = client.transfer_sol(&recipient, Decimal::new(1, 6)).await;
 
     match result {
         Ok(tx) => {
@@ -213,10 +196,6 @@ async fn test_sol_transfer_devnet() {
         Err(e) => panic!("Unexpected error: {:?}", e),
     }
 }
-
-// ============================================================================
-// Action Tests
-// ============================================================================
 
 #[test]
 fn test_swap_action_metadata() {
@@ -262,10 +241,6 @@ async fn test_transfer_action_validate() {
     assert!(TransferAction::validate(&client));
 }
 
-// ============================================================================
-// Provider Tests
-// ============================================================================
-
 #[test]
 #[allow(clippy::assertions_on_constants)]
 fn test_wallet_provider_metadata() {
@@ -291,12 +266,9 @@ async fn test_wallet_provider_get() {
 
     let provider_result = result.expect("should have result");
 
-    // Verify structure
     assert!(!provider_result.text.is_empty());
     assert!(provider_result.values.contains_key("total_usd"));
     assert!(provider_result.values.contains_key("total_sol"));
-
-    // Check text contains agent name
     assert!(provider_result.text.contains("Test Agent"));
 }
 
@@ -311,26 +283,14 @@ async fn test_transfer_action_handle() {
 
     let client = SolanaClient::new(config).expect("client should be created");
 
-    // Generate a new random recipient
     let recipient = KeypairUtils::generate().pubkey().to_string();
 
-    // Use the action handler
-    let result = TransferAction::handle(
-        &client,
-        None, // SOL transfer
-        &recipient,
-        Decimal::new(1, 6), // 0.000001 SOL
-    )
-    .await;
+    let result = TransferAction::handle(&client, None, &recipient, Decimal::new(1, 6)).await;
 
     if result.success {
         assert!(result.signature.is_some());
         assert!(result.amount.is_some());
         assert!(result.recipient.is_some());
-        println!("Transfer via action successful: {:?}", result.signature);
-    } else {
-        // Might fail due to insufficient balance, which is ok
-        println!("Transfer failed (may be expected): {}", result.text);
     }
 }
 
@@ -345,21 +305,9 @@ async fn test_swap_action_handle() {
 
     let client = SolanaClient::new(config).expect("client should be created");
 
-    // Use the action handler
-    let result = SwapAction::handle(
-        &client,
-        SOL_MINT,
-        USDC_MINT,
-        Decimal::new(1, 3), // 0.001 SOL
-        Some(100),          // 1% slippage
-    )
-    .await;
+    let result =
+        SwapAction::handle(&client, SOL_MINT, USDC_MINT, Decimal::new(1, 3), Some(100)).await;
 
-    // Swap may fail on devnet due to liquidity, but we verify the structure
-    println!(
-        "Swap result: success={}, text={}",
-        result.success, result.text
-    );
     if result.success {
         assert!(result.signature.is_some());
     }

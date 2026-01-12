@@ -17,24 +17,12 @@ const githubPlugin: Plugin = {
     const repo = runtime.getSetting("GITHUB_REPO");
     const branch = runtime.getSetting("GITHUB_BRANCH") ?? "main";
 
-    logger.info("╔══════════════════════════════════════════════════════════╗");
-    logger.info("║                    GitHub Plugin                         ║");
-    logger.info("╠══════════════════════════════════════════════════════════╣");
     logger.info(
-      `║  Token:    ${token ? "✓ Configured" : "✗ Not configured"}                             ║`
+      `GitHub Plugin - Token: ${token ? "configured" : "not configured"}, Owner: ${owner ?? "not set"}, Repo: ${repo ?? "not set"}, Branch: ${branch}`
     );
-    logger.info(`${`║  Owner:    ${owner ?? "Not set"}`.padEnd(62)}║`);
-    logger.info(`${`║  Repo:     ${repo ?? "Not set"}`.padEnd(62)}║`);
-    logger.info(`${`║  Branch:   ${branch}`.padEnd(62)}║`);
-    logger.info("╚══════════════════════════════════════════════════════════╝");
 
     if (!token) {
-      logger.warn(
-        "GitHub API Token not provided - GitHub plugin is loaded but will not be functional"
-      );
-      logger.warn(
-        "To enable GitHub functionality, please provide GITHUB_API_TOKEN in your environment"
-      );
+      logger.warn("GitHub API Token not provided - plugin will not be functional");
     }
   },
 };

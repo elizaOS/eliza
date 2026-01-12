@@ -1,14 +1,7 @@
-/**
- * Text generation model handlers for Vercel AI Gateway plugin.
- */
-
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { GatewayClient } from "../providers/client";
 import { buildConfig, getLargeModel, getSmallModel } from "../utils/config";
 
-/**
- * Handle TEXT_SMALL model requests.
- */
 export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams
@@ -18,7 +11,6 @@ export async function handleTextSmall(
 
   const model = getSmallModel(runtime);
 
-  // Handle streaming if requested
   if (params.stream && params.onStreamChunk) {
     const chunks: string[] = [];
     for await (const chunk of client.streamText({
@@ -59,7 +51,6 @@ export async function handleTextLarge(
 
   const model = getLargeModel(runtime);
 
-  // Handle streaming if requested
   if (params.stream && params.onStreamChunk) {
     const chunks: string[] = [];
     for await (const chunk of client.streamText({

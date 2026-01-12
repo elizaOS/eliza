@@ -1,5 +1,5 @@
 import type { GenerateTextParams, IAgentRuntime, TextStreamResult } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { generateText, streamText } from "ai";
 
 import { createOpenRouterProvider } from "../providers";
@@ -44,10 +44,8 @@ function handleStreamingGeneration(
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
   generateParams: Record<string, unknown>,
   prompt: string,
-  modelLabel: string
+  _modelLabel: string
 ): TextStreamResult {
-  logger.debug(`[OpenRouter] Streaming text with ${modelLabel} model`);
-
   // @ts-expect-error - AI SDK type compatibility issue with OpenRouter provider
   const streamResult = streamText(generateParams);
 
@@ -76,13 +74,12 @@ async function generateTextWithModel(
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  const { generateParams, modelName, modelLabel, prompt } = buildGenerateParams(
-    runtime,
-    modelType,
-    params
-  );
-
-  logger.debug(`[OpenRouter] Generating text with ${modelLabel} model: ${modelName}`);
+  const {
+    generateParams,
+    modelName: _modelName,
+    modelLabel,
+    prompt,
+  } = buildGenerateParams(runtime, modelType, params);
 
   if (params.stream) {
     return handleStreamingGeneration(runtime, modelType, generateParams, prompt, modelLabel);

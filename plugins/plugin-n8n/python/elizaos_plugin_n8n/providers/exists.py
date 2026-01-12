@@ -37,3 +37,12 @@ class PluginExistsProvider:
 
 
 plugin_exists_provider = PluginExistsProvider()
+
+
+class PluginExistsCheckProvider(PluginExistsProvider):
+    """TS-parity alias provider (name: `plugin_exists_check`)."""
+
+    name = "plugin_exists_check"
+
+
+plugin_exists_check_provider = PluginExistsCheckProvider()

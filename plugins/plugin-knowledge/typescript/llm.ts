@@ -40,7 +40,7 @@ export async function generateTextEmbedding(
 
     throw new Error(`Unsupported embedding provider: ${config.EMBEDDING_PROVIDER}`);
   } catch (error) {
-    logger.error({ error }, `[Document Processor] ${config.EMBEDDING_PROVIDER} embedding error`);
+    logger.error({ error }, `${config.EMBEDDING_PROVIDER} embedding error`);
     throw error;
   }
 }
@@ -52,7 +52,6 @@ export async function generateTextEmbeddingsBatch(
 ): Promise<
   Array<{ embedding: number[] | null; success: boolean; error?: unknown; index: number }>
 > {
-  const _config = validateModelConfig(runtime);
   const results: Array<{
     embedding: number[] | null;
     success: boolean;
@@ -60,17 +59,9 @@ export async function generateTextEmbeddingsBatch(
     index: number;
   }> = [];
 
-  logger.debug(
-    `[Document Processor] Processing ${texts.length} embeddings in batches of ${batchSize}`
-  );
-
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
     const batchStartIndex = i;
-
-    logger.debug(
-      `[Document Processor] Batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(texts.length / batchSize)} (${batch.length} items)`
-    );
 
     const batchPromises = batch.map(async (text, batchIndex) => {
       const globalIndex = batchStartIndex + batchIndex;
@@ -82,7 +73,7 @@ export async function generateTextEmbeddingsBatch(
           index: globalIndex,
         };
       } catch (error) {
-        logger.error({ error }, `[Document Processor] Embedding error for item ${globalIndex}`);
+        logger.error({ error }, `Embedding error for item ${globalIndex}`);
         return {
           embedding: null,
           success: false,
@@ -99,13 +90,6 @@ export async function generateTextEmbeddingsBatch(
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
-
-  const successCount = results.filter((r) => r.success).length;
-  const failureCount = results.length - successCount;
-
-  logger.debug(
-    `[Document Processor] Embedding batch complete: ${successCount} success, ${failureCount} failures`
-  );
 
   return results;
 }
@@ -141,17 +125,13 @@ async function generateOpenAIEmbedding(
   const { embedding, usage } = await embed(embedOptions);
 
   const totalTokens = (usage as { totalTokens?: number })?.totalTokens;
-  const usageMessage = totalTokens ? `${totalTokens} total tokens` : "Usage details N/A";
   logger.debug(
-    `[Document Processor] OpenAI embedding ${config.TEXT_EMBEDDING_MODEL}${embedOptions.dimensions ? ` (${embedOptions.dimensions}D)` : ""}: ${usageMessage}`
+    `OpenAI embedding ${config.TEXT_EMBEDDING_MODEL}${embedOptions.dimensions ? ` (${embedOptions.dimensions}D)` : ""}: ${totalTokens || 0} tokens`
   );
 
   return { embedding };
 }
 
-/**
- * Generates an embedding using Google
- */
 async function generateGoogleEmbedding(
   text: string,
   config: ModelConfig
@@ -169,10 +149,7 @@ async function generateGoogleEmbedding(
   });
 
   const totalTokens = (usage as { totalTokens?: number })?.totalTokens;
-  const usageMessage = totalTokens ? `${totalTokens} total tokens` : "Usage details N/A";
-  logger.debug(
-    `[Document Processor] Google embedding ${config.TEXT_EMBEDDING_MODEL}: ${usageMessage}`
-  );
+  logger.debug(`Google embedding ${config.TEXT_EMBEDDING_MODEL}: ${totalTokens || 0} tokens`);
 
   return { embedding };
 }
@@ -216,7 +193,7 @@ export async function generateText(
         throw new Error(`Unsupported text provider: ${provider}`);
     }
   } catch (error) {
-    logger.error({ error }, `[Document Processor] ${provider} ${modelName} error`);
+    logger.error({ error }, `${provider} ${modelName} error`);
     throw error;
   }
 }
@@ -237,21 +214,14 @@ async function generateAnthropicText(
   const maxRetries = 3;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const result = await aiGenerateText({
+      return await aiGenerateText({
         model: modelInstance,
         prompt: prompt,
         system: system,
         temperature: 0.3,
         maxOutputTokens: maxTokens,
       });
-
-      const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
-      logger.debug(
-        `[Document Processor] ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
-      );
-
-      return result;
-    } catch (error: unknown) {
+    } catch (error) {
       const errorObj = error as { status?: number; message?: string } | null;
       const isRateLimit =
         errorObj?.status === 429 ||
@@ -260,9 +230,6 @@ async function generateAnthropicText(
 
       if (isRateLimit && attempt < maxRetries - 1) {
         const delay = 2 ** (attempt + 1) * 1000;
-        logger.warn(
-          `[Document Processor] Rate limit hit (${modelName}): attempt ${attempt + 1}/${maxRetries}, retrying in ${Math.round(delay / 1000)}s`
-        );
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
@@ -296,11 +263,6 @@ async function generateOpenAIText(
     maxOutputTokens: maxTokens,
   });
 
-  const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
-  logger.debug(
-    `[Document Processor] OpenAI ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
-  );
-
   return result;
 }
 
@@ -325,11 +287,6 @@ async function generateGoogleText(
     temperature: 0.3,
     maxOutputTokens: maxTokens,
   });
-
-  const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
-  logger.debug(
-    `[Document Processor] Google ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
-  );
 
   return result;
 }
@@ -362,9 +319,6 @@ async function generateOpenRouterText(
     const docMatch = prompt.match(/<document>([\s\S]*?)<\/document>/);
     if (docMatch?.[1]) {
       documentForCaching = docMatch[1].trim();
-      logger.debug(
-        `[Document Processor] Auto-detected document for caching (${documentForCaching.length} chars)`
-      );
     }
   }
 
@@ -396,8 +350,6 @@ async function generateOpenRouterText(
     }
   }
 
-  // Standard request without caching
-  logger.debug("[Document Processor] Using standard request without caching");
   return await generateStandardOpenRouterText(
     prompt,
     system,
@@ -415,8 +367,6 @@ async function generateClaudeWithCaching(
   maxTokens: number,
   documentForCaching: string
 ): Promise<TextGenerationResult> {
-  logger.debug(`[Document Processor] Using explicit prompt caching with Claude ${modelName}`);
-
   const messages = [
     system
       ? {
@@ -485,9 +435,8 @@ async function generateClaudeWithCaching(
   logCacheMetrics(result);
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
   logger.debug(
-    `[Document Processor] OpenRouter ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
+    `OpenRouter ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
   );
-
   return result;
 }
 
@@ -498,16 +447,8 @@ async function generateGeminiWithCaching(
   modelName: string,
   maxTokens: number,
   documentForCaching: string,
-  isGemini25Model: boolean
+  _isGemini25Model: boolean
 ): Promise<TextGenerationResult> {
-  const usingImplicitCaching = isGemini25Model;
-  const _estimatedDocTokens = Math.ceil(documentForCaching.length / 4);
-  const _minTokensForImplicitCache = modelName.toLowerCase().includes("flash") ? 1028 : 2048;
-
-  if (usingImplicitCaching) {
-    logger.debug(`[Document Processor] Using Gemini 2.5 implicit caching with ${modelName}`);
-  }
-
   const geminiSystemPrefix = system ? `${system}\n\n` : "";
   const geminiPrompt = `${geminiSystemPrefix}${documentForCaching}\n\n${promptText}`;
 
@@ -528,9 +469,8 @@ async function generateGeminiWithCaching(
   logCacheMetrics(result);
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
   logger.debug(
-    `[Document Processor] OpenRouter ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
+    `OpenRouter ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
   );
-
   return result;
 }
 
@@ -558,17 +498,9 @@ async function generateStandardOpenRouterText(
 
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
   logger.debug(
-    `[Document Processor] OpenRouter ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
+    `OpenRouter ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
   );
-
   return result;
 }
 
-function logCacheMetrics(result: TextGenerationResult): void {
-  const usage = result.usage as { cacheTokens?: number; cacheDiscount?: number } | undefined;
-  if (usage?.cacheTokens !== undefined) {
-    logger.debug(
-      `[Document Processor] Cache metrics - tokens: ${usage.cacheTokens}, discount: ${usage.cacheDiscount ?? 0}`
-    );
-  }
-}
+function logCacheMetrics(_result: TextGenerationResult): void {}

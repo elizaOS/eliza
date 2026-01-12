@@ -178,9 +178,7 @@ export class BrowserProcessManager {
 
         logger.info("Browser server is ready");
         return;
-      } catch {
-        // Server not ready yet
-      }
+      } catch {}
 
       await new Promise((resolve) => setTimeout(resolve, delay));
     }

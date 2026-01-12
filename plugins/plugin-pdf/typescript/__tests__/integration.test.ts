@@ -1,8 +1,3 @@
-/**
- * Integration tests for the PDF plugin.
- * No API key required for these tests.
- */
-
 import { describe, expect, it } from "vitest";
 
 describe("PDF Plugin Integration Tests", () => {

@@ -31,7 +31,6 @@ export class TelegramService extends Service {
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
-    logger.log("📱 Constructing new TelegramService...");
 
     const botToken = runtime.getSetting("TELEGRAM_BOT_TOKEN") as string;
     if (!botToken || botToken.trim() === "") {
@@ -52,15 +51,11 @@ export class TelegramService extends Service {
 
     this.bot = new Telegraf(botToken, this.options);
     this.messageManager = new MessageManager(this.bot, this.runtime);
-    logger.log("✅ TelegramService constructor completed");
   }
 
   static async start(runtime: IAgentRuntime): Promise<TelegramService> {
-    // Remove validateTelegramConfig call to allow service to start without token
-
     const service = new TelegramService(runtime);
 
-    // If bot is not initialized (no token), return the service without further initialization
     if (!service.bot) {
       logger.warn("Telegram service started without bot functionality - no bot token provided");
       return service;
@@ -72,20 +67,11 @@ export class TelegramService extends Service {
 
     while (retryCount < maxRetries) {
       try {
-        logger.success(
-          `✅ Telegram client successfully started for character ${runtime.character.name}`
-        );
+        logger.success(`Telegram client started for character ${runtime.character.name}`);
 
-        logger.log("🚀 Starting Telegram bot...");
         await service.initializeBot();
-
-        // Set up middlewares before message handlers to ensure proper preprocessing
         service.setupMiddlewares();
-
-        // Set up message handlers after middlewares
         service.setupMessageHandlers();
-
-        // Wait for bot to be ready by testing getMe()
         await service.bot?.telegram.getMe();
 
         return service;
@@ -97,7 +83,7 @@ export class TelegramService extends Service {
         retryCount++;
 
         if (retryCount < maxRetries) {
-          const delay = 2 ** retryCount * 1000; // Exponential backoff
+          const delay = 2 ** retryCount * 1000;
           logger.info(`Retrying Telegram initialization in ${delay / 1000} seconds...`);
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
@@ -108,35 +94,20 @@ export class TelegramService extends Service {
       `Telegram initialization failed after ${maxRetries} attempts. Last error: ${lastError?.message}. Service will continue without Telegram functionality.`
     );
 
-    // Return the service even if initialization failed, to prevent server crash
     return service;
   }
 
-  /**
-   * Stops the agent runtime.
-   * @param {IAgentRuntime} runtime - The agent runtime to stop
-   */
   static async stop(runtime: IAgentRuntime) {
-    // Implement shutdown if necessary
     const tgClient = runtime.getService(TELEGRAM_SERVICE_NAME);
     if (tgClient) {
       await tgClient.stop();
     }
   }
 
-  /**
-   * Asynchronously stops the bot.
-   *
-   * @returns A Promise that resolves once the bot has stopped.
-   */
   async stop(): Promise<void> {
     this.bot?.stop();
   }
 
-  /**
-   * Initializes the Telegram bot by launching it, getting bot info, and setting up message manager.
-   * @returns {Promise<void>} A Promise that resolves when the initialization is complete.
-   */
   private async initializeBot(): Promise<void> {
     this.bot?.start((ctx) => {
       this.runtime.emitEvent(
@@ -153,133 +124,64 @@ export class TelegramService extends Service {
       allowedUpdates: ["message", "message_reaction"],
     });
 
-    // Get bot info for identification purposes
     const botInfo = await this.bot?.telegram.getMe();
     logger.log(`Bot info: ${JSON.stringify(botInfo)}`);
 
-    // Handle sigint and sigterm signals to gracefully stop the bot
     process.once("SIGINT", () => this.bot?.stop("SIGINT"));
     process.once("SIGTERM", () => this.bot?.stop("SIGTERM"));
   }
 
-  /**
-   * Sets up the middleware chain for preprocessing messages before they reach handlers.
-   * This critical method establishes a sequential processing pipeline that:
-   *
-   * 1. Authorization - Verifies if a chat is allowed to interact with the bot based on configured settings
-   * 2. Chat Discovery - Ensures chat entities and worlds exist in the runtime, creating them if needed
-   * 3. Forum Topics - Handles Telegram forum topics as separate rooms for better conversation management
-   * 4. Entity Synchronization - Ensures message senders are properly synchronized as entities
-   *
-   * The middleware chain runs in sequence for each message, with each step potentially
-   * enriching the context or stopping processing if conditions aren't met.
-   * This preprocessing is essential for maintaining consistent state before message handlers execute.
-   *
-   * @private
-   */
   private setupMiddlewares(): void {
-    // Register the authorization middleware
     this.bot?.use(this.authorizationMiddleware.bind(this));
-
-    // Register the chat and entity management middleware
     this.bot?.use(this.chatAndEntityMiddleware.bind(this));
   }
 
-  /**
-   * Authorization middleware - checks if chat is allowed to interact with the bot
-   * based on the TELEGRAM_ALLOWED_CHATS configuration.
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @param {Function} next - The function to call to proceed to the next middleware
-   * @returns {Promise<void>}
-   * @private
-   */
   private async authorizationMiddleware(ctx: Context, next: () => Promise<void>): Promise<void> {
     if (!(await this.isGroupAuthorized(ctx))) {
-      // Skip further processing if chat is not authorized
       logger.debug("Chat not authorized, skipping message processing");
       return;
     }
     await next();
   }
 
-  /**
-   * Chat and entity management middleware - handles new chats, forum topics, and entity synchronization.
-   * This middleware implements decision logic to determine which operations are needed based on
-   * the chat type and whether we've seen this chat before.
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @param {Function} next - The function to call to proceed to the next middleware
-   * @returns {Promise<void>}
-   * @private
-   */
   private async chatAndEntityMiddleware(ctx: Context, next: () => Promise<void>): Promise<void> {
     if (!ctx.chat) return next();
 
     const chatId = ctx.chat.id.toString();
 
-    // If we haven't seen this chat before, process it as a new chat
     if (!this.knownChats.has(chatId)) {
-      // Process the new chat - creates world, room, topic room (if applicable) and entities
       await this.handleNewChat(ctx);
-      // Skip entity synchronization for new chats and proceed to the next middleware
       return next();
     }
 
-    // For existing chats, determine the required operations based on chat type
     await this.processExistingChat(ctx);
-
     await next();
   }
 
-  /**
-   * Process an existing chat based on chat type and message properties.
-   * Different chat types require different processing steps.
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @returns {Promise<void>}
-   * @private
-   */
   private async processExistingChat(ctx: Context): Promise<void> {
     if (!ctx.chat) return;
 
     const chat = ctx.chat;
 
-    // Handle forum topics for supergroups with forums
     if (chat.type === "supergroup" && chat.is_forum && ctx.message?.message_thread_id) {
       await this.handleForumTopic(ctx);
     }
 
-    // For non-private chats, synchronize entity information
     if (ctx.from && ctx.chat.type !== "private") {
       await this.syncEntity(ctx);
     }
   }
 
-  /**
-   * Sets up message and reaction handlers for the bot.
-   * Configures event handlers to process incoming messages and reactions.
-   *
-   * @private
-   */
   private setupMessageHandlers(): void {
-    // Regular message handler
     this.bot?.on("message", async (ctx) => {
-      // Message handling is now simplified since all preprocessing is done by middleware
       await this.messageManager?.handleMessage(ctx);
     });
 
-    // Reaction handler
     this.bot?.on("message_reaction", async (ctx) => {
       await this.messageManager?.handleReaction(ctx);
     });
   }
 
-  /**
-   * Checks if a group is authorized, based on the TELEGRAM_ALLOWED_CHATS setting.
-   * @param {Context} ctx - The context of the incoming update.
-   * @returns {Promise<boolean>} A Promise that resolves with a boolean indicating if the group is authorized.
-   */
   private async isGroupAuthorized(ctx: Context): Promise<boolean> {
     const chatId = ctx.chat?.id.toString();
     if (!chatId) return false;
@@ -298,17 +200,6 @@ export class TelegramService extends Service {
     }
   }
 
-  /**
-   * Synchronizes an entity from a message context with the runtime system.
-   * This method handles three cases:
-   * 1. Message sender - most common case
-   * 2. New chat member - when a user joins the chat
-   * 3. Left chat member - when a user leaves the chat
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @returns {Promise<void>}
-   * @private
-   */
   private async syncEntity(ctx: Context): Promise<void> {
     if (!ctx.chat) return;
 
@@ -322,30 +213,17 @@ export class TelegramService extends Service {
         : ctx.chat.id.toString()
     ) as UUID;
 
-    // Handle all three entity sync cases separately for clarity
     await this.syncMessageSender(ctx, worldId, roomId, chatId);
     await this.syncNewChatMember(ctx, worldId, roomId, chatId);
     await this.syncLeftChatMember(ctx);
   }
 
-  /**
-   * Synchronizes the message sender entity with the runtime system.
-   * This is the most common entity sync case.
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @param {UUID} worldId - The ID of the world
-   * @param {UUID} roomId - The ID of the room
-   * @param {string} chatId - The ID of the chat
-   * @returns {Promise<void>}
-   * @private
-   */
   private async syncMessageSender(
     ctx: Context,
     worldId: UUID,
     roomId: UUID,
     chatId: string
   ): Promise<void> {
-    // Handle message sender
     if (ctx.from && !this.syncedEntityIds.has(ctx.from.id.toString())) {
       const telegramId = ctx.from.id.toString();
       const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
@@ -367,33 +245,19 @@ export class TelegramService extends Service {
     }
   }
 
-  /**
-   * Synchronizes a new chat member entity with the runtime system.
-   * Triggered when a user joins the chat.
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @param {UUID} worldId - The ID of the world
-   * @param {UUID} roomId - The ID of the room
-   * @param {string} chatId - The ID of the chat
-   * @returns {Promise<void>}
-   * @private
-   */
   private async syncNewChatMember(
     ctx: Context,
     worldId: UUID,
     roomId: UUID,
     chatId: string
   ): Promise<void> {
-    // Handle new chat member
     if (ctx.message && "new_chat_member" in ctx.message) {
       const newMember = ctx.message.new_chat_member as User;
       const telegramId = newMember.id.toString();
       const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
 
-      // Skip if we've already synced this entity
       if (this.syncedEntityIds.has(telegramId)) return;
 
-      // We call ensure connection here for this user.
       await this.runtime.ensureConnection({
         entityId,
         roomId: roomId,
@@ -423,15 +287,7 @@ export class TelegramService extends Service {
     }
   }
 
-  /**
-   * Updates entity status when a user leaves the chat.
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @returns {Promise<void>}
-   * @private
-   */
   private async syncLeftChatMember(ctx: Context): Promise<void> {
-    // Handle left chat member
     if (ctx.message && "left_chat_member" in ctx.message) {
       const leftMember = ctx.message.left_chat_member as User;
       const telegramId = leftMember.id.toString();
@@ -449,14 +305,6 @@ export class TelegramService extends Service {
     }
   }
 
-  /**
-   * Handles forum topics by creating appropriate rooms in the runtime system.
-   * This enables proper conversation management for Telegram's forum feature.
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @returns {Promise<void>}
-   * @private
-   */
   private async handleForumTopic(ctx: Context): Promise<void> {
     if (!ctx.chat || !ctx.message?.message_thread_id) return;
 
@@ -470,9 +318,6 @@ export class TelegramService extends Service {
     await this.runtime.ensureRoomExists(room);
   }
 
-  /**
-   * Builds entity for message sender
-   */
   private buildMsgSenderEntity(from: User): Entity | null {
     if (!from) return null;
 
@@ -493,25 +338,14 @@ export class TelegramService extends Service {
     };
   }
 
-  /**
-   * Handles new chat discovery and emits WORLD_JOINED event.
-   * This is a critical function that ensures new chats are properly
-   * registered in the runtime system and appropriate events are emitted.
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @returns {Promise<void>}
-   * @private
-   */
   private async handleNewChat(ctx: Context): Promise<void> {
     if (!ctx.chat) return;
 
     const chat = ctx.chat;
     const chatId = chat.id.toString();
 
-    // Mark this chat as known
     this.knownChats.set(chatId, chat);
 
-    // Get chat title and channel type
     const { chatTitle, channelType } = this.getChatTypeInfo(chat);
 
     const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
@@ -525,7 +359,6 @@ export class TelegramService extends Service {
       ? (createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID)
       : null;
 
-    // Fetch admin information for proper role assignment
     let admins: (ChatMemberOwner | ChatMemberAdministrator)[] = [];
     let owner: ChatMemberOwner | null = null;
     if (chat.type === "group" || chat.type === "supergroup" || chat.type === "channel") {
@@ -543,7 +376,6 @@ export class TelegramService extends Service {
       ownerId = createUniqueUuid(this.runtime, String(owner.user.id)) as UUID;
     }
 
-    // Build world representation
     const world: World = {
       id: worldId,
       name: chatTitle,
@@ -562,10 +394,8 @@ export class TelegramService extends Service {
       },
     };
 
-    // Directly ensure world exists instead of using syncTelegram
     await this.runtime.ensureWorldExists(world);
 
-    // Create the main room for the chat
     const generalRoom: Room = {
       id: createUniqueUuid(this.runtime, chatId) as UUID,
       name: chatTitle,
@@ -576,13 +406,10 @@ export class TelegramService extends Service {
       worldId,
     };
 
-    // Directly ensure room exists instead of using syncTelegram
     await this.runtime.ensureRoomExists(generalRoom);
 
-    // Prepare the rooms array starting with the main room
     const rooms = [generalRoom];
 
-    // If this is a message in a forum topic, add the topic room as well
     if (chat.type === "supergroup" && chat.is_forum && ctx.message?.message_thread_id) {
       const topicRoom = await this.buildForumTopicRoom(ctx, worldId);
       if (topicRoom) {
@@ -591,10 +418,8 @@ export class TelegramService extends Service {
       }
     }
 
-    // Build entities from chat
     const entities = await this.buildStandardizedEntities(chat);
 
-    // Add sender if not already in entities
     if (ctx.from) {
       const senderEntity = this.buildMsgSenderEntity(ctx.from);
       if (senderEntity?.id && !entities.some((e) => e.id === senderEntity.id)) {
@@ -603,7 +428,6 @@ export class TelegramService extends Service {
       }
     }
 
-    // Use the new batch processing method for entities
     if (generalRoom.id && generalRoom.channelId && generalRoom.messageServerId) {
       await this.batchProcessEntities(
         entities,
@@ -615,7 +439,6 @@ export class TelegramService extends Service {
       );
     }
 
-    // Create payload for world events
     const telegramWorldPayload: TelegramWorldPayload = {
       runtime: this.runtime,
       world,
@@ -626,12 +449,10 @@ export class TelegramService extends Service {
       botUsername: this.bot?.botInfo?.username,
     };
 
-    // Emit telegram-specific world joined event
     if (chat.type !== "private") {
       await this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
     }
 
-    // Finally emit the standard WORLD_JOINED event
     await this.runtime.emitEvent(EventType.WORLD_JOINED, {
       runtime: this.runtime,
       world,
@@ -641,18 +462,6 @@ export class TelegramService extends Service {
     });
   }
 
-  /**
-   * Processes entities in batches to prevent overwhelming the system.
-   *
-   * @param {Entity[]} entities - The entities to process
-   * @param {UUID} roomId - The ID of the room to connect entities to
-   * @param {string} channelId - The channel ID
-   * @param {string} serverId - The server ID
-   * @param {ChannelType} roomType - The type of the room
-   * @param {UUID} worldId - The ID of the world
-   * @returns {Promise<void>}
-   * @private
-   */
   private async batchProcessEntities(
     entities: Entity[],
     roomId: UUID,
@@ -666,7 +475,6 @@ export class TelegramService extends Service {
     for (let i = 0; i < entities.length; i += batchSize) {
       const entityBatch = entities.slice(i, i + batchSize);
 
-      // Process each entity in the batch concurrently
       await Promise.all(
         entityBatch.map(async (entity: Entity) => {
           if (entity.id) {
@@ -696,20 +504,12 @@ export class TelegramService extends Service {
         })
       );
 
-      // Add a small delay between batches if not the last batch
       if (i + batchSize < entities.length) {
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
     }
   }
 
-  /**
-   * Gets chat title and channel type based on Telegram chat type.
-   * Maps Telegram-specific chat types to standardized system types.
-   *
-   * @param chat - The Telegram chat object
-   * @returns Object containing chatTitle and channelType
-   */
   private getChatTypeInfo(chat: Chat): {
     chatTitle: string;
     channelType: ChannelType;
@@ -742,17 +542,9 @@ export class TelegramService extends Service {
     return { chatTitle, channelType };
   }
 
-  /**
-   * Builds standardized entity representations from Telegram chat data.
-   * Transforms Telegram-specific user data into system-standard Entity objects.
-   *
-   * @param chat - The Telegram chat object
-   * @returns Array of standardized Entity objects
-   */
   private async buildStandardizedEntities(chat: Chat): Promise<Entity[]> {
     const entities: Entity[] = [];
 
-    // For private chats, add the user
     if (chat.type === "private" && chat.id) {
       const userId = createUniqueUuid(this.runtime, chat.id.toString()) as UUID;
       entities.push({
@@ -770,8 +562,6 @@ export class TelegramService extends Service {
       });
       this.syncedEntityIds.add(userId);
     } else if (chat.type === "group" || chat.type === "supergroup") {
-      // For groups and supergroups, try to get member information
-      // Get chat administrators (this is what's available through the Bot API)
       const admins = await this.bot?.telegram.getChatAdministrators(chat.id);
 
       if (admins && admins.length > 0) {
@@ -801,15 +591,6 @@ export class TelegramService extends Service {
     return entities;
   }
 
-  /**
-   * Extracts and builds the room object for a forum topic from a message context.
-   * This refactored method can be used both in middleware and when handling new chats.
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @param {UUID} worldId - The ID of the world the topic belongs to
-   * @returns {Promise<Room | null>} A Promise that resolves with the room or null if not a topic
-   * @private
-   */
   private async buildForumTopicRoom(ctx: Context, worldId: UUID): Promise<Room | null> {
     if (!ctx.chat || !ctx.message?.message_thread_id) return null;
     if (ctx.chat.type !== "supergroup" || !ctx.chat.is_forum) return null;
@@ -819,13 +600,10 @@ export class TelegramService extends Service {
     const threadId = ctx.message.message_thread_id.toString();
     const roomId = createUniqueUuid(this.runtime, `${chatId}-${threadId}`) as UUID;
 
-    // Ensure the message object is fully initialized
     const replyMessage = JSON.parse(JSON.stringify(ctx.message));
 
-    // Default topic name
     let topicName = `Topic #${threadId}`;
 
-    // Check if forum_topic_created exists directly in the message
     if (
       replyMessage &&
       typeof replyMessage === "object" &&
@@ -836,9 +614,7 @@ export class TelegramService extends Service {
       if (topicCreated && typeof topicCreated === "object" && "name" in topicCreated) {
         topicName = topicCreated.name;
       }
-    }
-    // Check if forum_topic_created exists in reply_to_message
-    else if (
+    } else if (
       replyMessage &&
       typeof replyMessage === "object" &&
       "reply_to_message" in replyMessage &&
@@ -853,7 +629,6 @@ export class TelegramService extends Service {
       }
     }
 
-    // Create a room for this topic
     const room: Room = {
       id: roomId,
       name: topicName,
@@ -897,22 +672,14 @@ export class TelegramService extends Service {
 
     let chatId: number | string | undefined;
 
-    // Determine the target chat ID
     if (target.channelId) {
-      // Use channelId directly if provided (might be string like chat_id-thread_id or just chat_id)
-      // We might need to parse this depending on how room IDs are stored vs Telegram IDs
       chatId = target.channelId;
     } else if (target.roomId) {
-      // Fallback: Try to use roomId if channelId isn't available
-      // This assumes roomId maps directly to Telegram chat ID or requires lookup
-      // Placeholder - requires logic to map roomId -> telegram chat ID if different
       const room = await runtime.getRoom(target.roomId);
-      chatId = room?.channelId; // Assuming channelId on Room IS the telegram ID
+      chatId = room?.channelId;
       if (!chatId)
         throw new Error(`Could not resolve Telegram chat ID from roomId ${target.roomId}`);
     } else if (target.entityId) {
-      // Sending DMs via entityId requires looking up the entity's Telegram metadata
-      // which contains their Telegram User ID. This is not yet implemented.
       logger.error("[Telegram SendHandler] Sending DMs via entityId not implemented yet.");
       throw new Error(
         "Sending DMs via entityId is not yet supported for Telegram. Use channelId or roomId instead."
@@ -927,8 +694,6 @@ export class TelegramService extends Service {
       );
     }
 
-    // Use existing MessageManager method, pass chatId and content
-    // Assuming sendMessage handles splitting, markdown, etc.
     await this.messageManager.sendMessage(chatId, content);
     logger.info(`[Telegram SendHandler] Message sent to chat ID: ${chatId}`);
   }

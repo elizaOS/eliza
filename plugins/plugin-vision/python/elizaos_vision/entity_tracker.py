@@ -1,7 +1,3 @@
-"""
-Entity Tracking System
-Tracks people and objects across frames with persistent IDs
-"""
 
 from __future__ import annotations
 
@@ -26,11 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 class EntityTracker:
-    """Tracks entities across frames with persistent IDs"""
-
-    POSITION_THRESHOLD = 100  # pixels
-    MISSING_THRESHOLD = 5000  # 5 seconds
-    CLEANUP_THRESHOLD = 60000  # 1 minute
+    POSITION_THRESHOLD = 100
+    MISSING_THRESHOLD = 5000
+    CLEANUP_THRESHOLD = 60000
 
     def __init__(self, world_id: str):
         self._world_state = WorldState(
@@ -48,12 +42,10 @@ class EntityTracker:
         face_profiles: dict[str, str] | None = None,
         runtime: Any = None,
     ) -> list[TrackedEntity]:
-        """Update tracked entities with new detections"""
         current_time = int(time.time() * 1000)
         frame_entities: list[TrackedEntity] = []
         seen_entity_ids: set[str] = set()
 
-        # Process detected people
         for person in people:
             face_profile_id = face_profiles.get(person.id) if face_profiles else None
             entity = self._track_person(person, face_profile_id, current_time)
@@ -67,7 +59,6 @@ class EntityTracker:
                 frame_entities.append(entity)
                 seen_entity_ids.add(entity.id)
 
-        # Update world state
         self._update_world_state(seen_entity_ids, current_time)
 
         return frame_entities
@@ -78,11 +69,9 @@ class EntityTracker:
         face_profile_id: str | None,
         timestamp: int,
     ) -> TrackedEntity:
-        """Track a person entity"""
         matched_entity = self._find_matching_entity(person.bounding_box, "person", face_profile_id)
 
         if matched_entity:
-            # Update existing entity
             matched_entity.last_seen = timestamp
             matched_entity.last_position = person.bounding_box
 
@@ -97,13 +86,11 @@ class EntityTracker:
             if face_profile_id and not matched_entity.attributes.face_id:
                 matched_entity.attributes.face_id = face_profile_id
 
-            # Keep only last 100 appearances
             if len(matched_entity.appearances) > 100:
                 matched_entity.appearances = matched_entity.appearances[-100:]
 
             return matched_entity
 
-        # Create new entity
         entity_id = f"person-{timestamp}-{secrets.token_hex(4)}"
         new_entity = TrackedEntity(
             id=entity_id,
@@ -129,7 +116,6 @@ class EntityTracker:
         return new_entity
 
     def _track_object(self, obj: DetectedObject, timestamp: int) -> TrackedEntity:
-        """Track an object entity"""
         matched_entity = self._find_matching_entity(obj.bounding_box, "object")
 
         if matched_entity:
@@ -177,7 +163,6 @@ class EntityTracker:
         entity_type: str,
         face_profile_id: str | None = None,
     ) -> TrackedEntity | None:
-        """Find matching entity by position or face ID"""
         current_time = int(time.time() * 1000)
         best_match: TrackedEntity | None = None
         min_distance = float("inf")
@@ -189,7 +174,6 @@ class EntityTracker:
             if current_time - entity.last_seen > self.MISSING_THRESHOLD:
                 continue
 
-            # Direct face match for people
             if entity_type == "person" and face_profile_id and entity.attributes.face_id:
                 if entity.attributes.face_id == face_profile_id:
                     return entity
@@ -203,18 +187,15 @@ class EntityTracker:
         return best_match
 
     def _calculate_distance(self, box1: BoundingBox, box2: BoundingBox) -> float:
-        """Calculate distance between box centers"""
         center1 = box1.center()
         center2 = box2.center()
         return math.sqrt((center1.x - center2.x) ** 2 + (center1.y - center2.y) ** 2)
 
     def _update_world_state(self, seen_entity_ids: set[str], timestamp: int) -> None:
-        """Update world state with current detections"""
         previous_active = set(self._world_state.active_entities)
         self._world_state.active_entities = list(seen_entity_ids)
         self._world_state.last_update = timestamp
 
-        # Check for entities that left
         for entity_id in previous_active:
             if entity_id not in seen_entity_ids:
                 entity = self._world_state.entities.get(entity_id)
@@ -235,7 +216,6 @@ class EntityTracker:
             if timestamp - entry.left_at < self.CLEANUP_THRESHOLD
         ]
 
-        # Clean up very old entities
         entities_to_remove = [
             entity_id
             for entity_id, entity in self._world_state.entities.items()
@@ -245,14 +225,10 @@ class EntityTracker:
             del self._world_state.entities[entity_id]
             logger.debug(f"[EntityTracker] Cleaned up old entity: {entity_id}")
 
-    # Public API
-
     def get_world_state(self) -> WorldState:
-        """Get the current world state"""
         return self._world_state
 
     def get_active_entities(self) -> list[TrackedEntity]:
-        """Get currently active entities"""
         return [
             entity
             for entity_id in self._world_state.active_entities
@@ -260,11 +236,9 @@ class EntityTracker:
         ]
 
     def get_entity(self, entity_id: str) -> TrackedEntity | None:
-        """Get a specific entity by ID"""
         return self._world_state.entities.get(entity_id)
 
     def get_recently_left(self) -> list[tuple[TrackedEntity, int]]:
-        """Get recently departed entities with their departure time"""
         result = []
         for entry in self._world_state.recently_left:
             entity = self._world_state.entities.get(entry.entity_id)
@@ -273,7 +247,6 @@ class EntityTracker:
         return result
 
     def assign_name_to_entity(self, entity_id: str, name: str) -> bool:
-        """Assign a name to an entity"""
         entity = self._world_state.entities.get(entity_id)
         if entity:
             entity.attributes.name = name
@@ -282,7 +255,6 @@ class EntityTracker:
         return False
 
     def get_statistics(self) -> dict[str, int]:
-        """Get tracking statistics"""
         entities = list(self._world_state.entities.values())
         return {
             "total_entities": len(entities),

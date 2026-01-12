@@ -1,11 +1,9 @@
-//! Process knowledge action
 
 use async_trait::async_trait;
 use serde_json::Value;
 
 use super::{ActionContext, ActionResult, KnowledgeAction};
 
-/// Keywords that indicate knowledge processing intent
 const KNOWLEDGE_KEYWORDS: &[&str] = &[
     "process",
     "add",
@@ -19,7 +17,6 @@ const KNOWLEDGE_KEYWORDS: &[&str] = &[
     "file",
 ];
 
-/// Action to process and store knowledge
 pub struct ProcessKnowledgeAction;
 
 #[async_trait]
@@ -41,10 +38,7 @@ impl KnowledgeAction for ProcessKnowledgeAction {
             .unwrap_or("")
             .to_lowercase();
 
-        // Check for knowledge keywords
         let has_keyword = KNOWLEDGE_KEYWORDS.iter().any(|keyword| text.contains(keyword));
-
-        // Check for file path pattern
         let has_path = text.contains('/') && !text.contains("http");
 
         Ok(has_keyword || has_path)
@@ -58,14 +52,12 @@ impl KnowledgeAction for ProcessKnowledgeAction {
             .and_then(|t| t.as_str())
             .unwrap_or("");
 
-        // Check for file path in text
         let path_regex_pattern = r"(?:/[\w.\-]+)+|(?:[a-zA-Z]:[/\\][\w\s.\-]+(?:[/\\][\w\s.\-]+)*)";
         let path_match = regex::Regex::new(path_regex_pattern)
             .ok()
             .and_then(|re| re.find(text).map(|m| m.as_str().to_string()));
 
         if let Some(file_path) = path_match {
-            // File processing mode
             Ok(serde_json::json!({
                 "action": self.name(),
                 "mode": "file",
@@ -77,7 +69,6 @@ impl KnowledgeAction for ProcessKnowledgeAction {
                 "message": format!("Processing document at {}", file_path)
             }))
         } else {
-            // Text content mode
             let knowledge_content = text
                 .to_string()
                 .trim_start_matches(|c: char| c.is_whitespace())

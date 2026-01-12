@@ -166,19 +166,19 @@ impl TodosProvider {
         let mut data = HashMap::new();
         data.insert(
             "dailyTodos".to_string(),
-            serde_json::json!(daily_todos.iter().map(|t| todo_to_json(t)).collect::<Vec<_>>()),
+            serde_json::json!(daily_todos.iter().map(todo_to_json).collect::<Vec<_>>()),
         );
         data.insert(
             "oneOffTodos".to_string(),
-            serde_json::json!(one_off_todos.iter().map(|t| todo_to_json(t)).collect::<Vec<_>>()),
+            serde_json::json!(one_off_todos.iter().map(todo_to_json).collect::<Vec<_>>()),
         );
         data.insert(
             "aspirationalTodos".to_string(),
-            serde_json::json!(aspirational_todos.iter().map(|t| todo_to_json(t)).collect::<Vec<_>>()),
+            serde_json::json!(aspirational_todos.iter().map(todo_to_json).collect::<Vec<_>>()),
         );
         data.insert(
             "completedTodos".to_string(),
-            serde_json::json!(completed_todos.iter().map(|t| todo_to_json(t)).collect::<Vec<_>>()),
+            serde_json::json!(completed_todos.iter().map(todo_to_json).collect::<Vec<_>>()),
         );
 
         TodosProviderResult { text, values, data }
