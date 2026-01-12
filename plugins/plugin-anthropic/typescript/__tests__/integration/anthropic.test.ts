@@ -60,7 +60,7 @@ beforeAll(async () => {
 describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
   describe("Text Generation", () => {
     it("should generate text with small model", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createTestRuntime();
       const anthropic = createAnthropicClientWithTopPSupport(runtime as never);
       const modelName = getSmallModel(runtime as never);
 
@@ -79,7 +79,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
     });
 
     it("should generate text with large model", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createTestRuntime();
       const anthropic = createAnthropicClientWithTopPSupport(runtime as never);
       const modelName = getLargeModel(runtime as never);
 
@@ -97,7 +97,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
     });
 
     it("should respect system prompt", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createTestRuntime();
       const anthropic = createAnthropicClient(runtime as never);
       const modelName = getSmallModel(runtime as never);
 
@@ -115,7 +115,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
     });
 
     it("should handle stop sequences", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createTestRuntime();
       const anthropic = createAnthropicClient(runtime as never);
       const modelName = getSmallModel(runtime as never);
 
@@ -135,7 +135,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
 
   describe("Object Generation", () => {
     it("should generate valid JSON objects with small model", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createTestRuntime();
       const anthropic = createAnthropicClient(runtime as never);
       const modelName = getSmallModel(runtime as never);
 
@@ -158,7 +158,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
     });
 
     it("should generate complex nested objects", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createTestRuntime();
       const anthropic = createAnthropicClient(runtime as never);
       const modelName = getLargeModel(runtime as never);
 
@@ -194,7 +194,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
     });
 
     it("should handle JSON in code blocks", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createTestRuntime();
       const anthropic = createAnthropicClient(runtime as never);
       const modelName = getSmallModel(runtime as never);
 
@@ -214,7 +214,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
 
   describe("Error Handling", () => {
     it("should throw error when both temperature and topP are set", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createTestRuntime();
       const anthropic = createAnthropicClientWithTopPSupport(runtime as never);
       const modelName = getSmallModel(runtime as never);
       // AI SDK or wrapper should handle this - test verifies the behavior
@@ -234,7 +234,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
 
   describe("Token Usage", () => {
     it("should report accurate token usage", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createTestRuntime();
       const anthropic = createAnthropicClient(runtime as never);
       const modelName = getSmallModel(runtime as never);
 

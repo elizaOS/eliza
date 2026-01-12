@@ -831,7 +831,7 @@ export class KnowledgeTestSuite implements TestSuite {
       name: "Should process character knowledge on startup",
       fn: async (_runtime: IAgentRuntime) => {
         // Create runtime with character knowledge
-        const knowledgeRuntime = createMockRuntime({
+        const knowledgeRuntime = createTestRuntime({
           character: {
             name: "Knowledge Agent",
             bio: ["Agent with knowledge"],
