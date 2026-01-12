@@ -168,6 +168,45 @@ describe('Memory Integration Tests', () => {
       expect(createdMemory?.embedding?.length).toBe(384);
     });
 
+    it('should be idempotent - calling createMemory with existing ID does not modify embedding', async () => {
+      const memoryId = v4() as UUID;
+      const originalEmbedding = Array.from({ length: 384 }, (_, i) => i / 384);
+
+      // Create initial memory with embedding
+      const originalMemory: Memory = {
+        id: memoryId,
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+        content: { text: 'original content' },
+        createdAt: new Date().getTime(),
+        embedding: originalEmbedding,
+      };
+      await adapter.createMemory(originalMemory, 'memories');
+
+      // Verify original embedding
+      const afterFirst = await adapter.getMemoryById(memoryId);
+      expect(afterFirst?.embedding).toEqual(originalEmbedding);
+
+      // Try to create again with different embedding (should be ignored due to ON CONFLICT DO NOTHING)
+      const differentEmbedding = Array.from({ length: 384 }, () => 0.5);
+      const duplicateMemory: Memory = {
+        id: memoryId,
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+        content: { text: 'different content' },
+        createdAt: new Date().getTime(),
+        embedding: differentEmbedding,
+      };
+      await adapter.createMemory(duplicateMemory, 'memories');
+
+      // Verify embedding was NOT changed
+      const afterSecond = await adapter.getMemoryById(memoryId);
+      expect(afterSecond?.embedding).toEqual(originalEmbedding);
+      expect(afterSecond?.content.text).toBe('original content');
+    });
+
     it('should perform partial updates without affecting other fields', async () => {
       // Create a complete memory first with content, metadata and embedding
       const memory = {

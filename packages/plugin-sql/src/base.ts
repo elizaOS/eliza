@@ -2313,9 +2313,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
-   * Asynchronously creates a new room in the database based on the provided parameters.
-   * @param {Room} room - The room object to create.
-   * @returns {Promise<UUID>} A Promise that resolves to the ID of the created room.
+   * Creates rooms in the database. Uses ON CONFLICT DO NOTHING for idempotency.
+   *
+   * @param rooms - Array of room objects to create.
+   * @returns IDs of all rooms (both newly created and already existing).
    */
   async createRooms(rooms: Room[]): Promise<UUID[]> {
     return this.withDatabase(async () => {
