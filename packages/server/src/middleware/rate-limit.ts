@@ -114,7 +114,7 @@ export const createChannelValidationRateLimit = () => {
       const channelId = req.params.channelId;
       if (channelId) {
         const clientIp = req.ip || 'unknown';
-        const validatedChannelId = validateChannelId(channelId, clientIp);
+        const validatedChannelId = validateChannelId(String(channelId), clientIp);
         return !!validatedChannelId; // Skip if valid
       }
       return false; // Apply rate limiting for invalid attempts
