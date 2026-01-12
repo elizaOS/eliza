@@ -7,6 +7,10 @@
 //! - Memory CRUD operations
 //! - Event handling
 //! - Plugin registration
+//!
+//! Note: These tests require the native feature (tokio runtime).
+
+#![cfg(feature = "native")]
 
 use anyhow::Result;
 use async_trait::async_trait;

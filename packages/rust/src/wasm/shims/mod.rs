@@ -29,6 +29,6 @@
 
 mod model_handler;
 
-pub use model_handler::JsModelHandler;
+pub use model_handler::{create_mock_model_handler, JsModelHandler};
 
 

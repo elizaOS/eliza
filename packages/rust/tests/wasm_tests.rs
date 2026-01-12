@@ -72,7 +72,7 @@ mod shim_tests {
     use super::*;
     use elizaos::wasm::shims::JsModelHandler;
     use js_sys::Object;
-    use wasm_bindgen::JsValue;
+    use wasm_bindgen::JsCast;
 
     #[wasm_bindgen_test]
     fn test_js_model_handler_creation() {
@@ -111,7 +111,7 @@ mod shim_tests {
 
     #[wasm_bindgen_test]
     fn test_create_mock_model_handler() {
-        let handler = elizaos::wasm::shims::model_handler::create_mock_model_handler();
+        let handler = elizaos::wasm::shims::create_mock_model_handler();
         assert!(handler.is_ok());
     }
 }
@@ -123,7 +123,7 @@ mod shim_tests {
 mod type_tests {
     use super::*;
     use elizaos::wasm::{
-        WasmCharacter, WasmMemory, WasmState, WasmUUID,
+        WasmCharacter, WasmState, WasmUUID,
         generate_uuid, string_to_uuid, validate_uuid,
     };
 

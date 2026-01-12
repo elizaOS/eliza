@@ -22,15 +22,15 @@ echo "Running WASM tests with $BROWSER..."
 case "$BROWSER" in
     chrome)
         RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
-            wasm-pack test --headless --chrome
+            wasm-pack test --headless --chrome -- --no-default-features --features wasm
         ;;
     firefox)
         RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
-            wasm-pack test --headless --firefox
+            wasm-pack test --headless --firefox -- --no-default-features --features wasm
         ;;
     node)
         RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
-            wasm-pack test --node
+            wasm-pack test --node -- --no-default-features --features wasm
         ;;
     *)
         echo "Unknown browser: $BROWSER"
