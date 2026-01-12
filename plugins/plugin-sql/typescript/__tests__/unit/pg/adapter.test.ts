@@ -23,6 +23,11 @@ interface TestablePgAdapter extends PgDatabaseAdapter {
   embeddingDimension: string;
 }
 
+// Helper function to access private properties for testing
+function getTestableAdapter(adapter: PgDatabaseAdapter): TestablePgAdapter {
+  return adapter as TestablePgAdapter;
+}
+
 describe("PgDatabaseAdapter", () => {
   let adapter: PgDatabaseAdapter;
   let mockManager: Partial<PostgresConnectionManager>;
@@ -56,13 +61,13 @@ describe("PgDatabaseAdapter", () => {
   describe("constructor", () => {
     it("should initialize with correct agentId and manager", () => {
       expect(adapter).toBeDefined();
-      const testAdapter = adapter as unknown as TestablePgAdapter;
+      const testAdapter = getTestableAdapter(adapter);
       expect(testAdapter.agentId).toBe(agentId);
       expect(testAdapter.manager).toBe(mockManager);
     });
 
     it("should set embeddingDimension to default 384", () => {
-      const testAdapter = adapter as unknown as TestablePgAdapter;
+      const testAdapter = getTestableAdapter(adapter);
       expect(testAdapter.embeddingDimension).toBe("dim384");
     });
   });
@@ -124,7 +129,7 @@ describe("PgDatabaseAdapter", () => {
     it("should handle database operation errors", async () => {
       // Test that the adapter properly initializes with the manager
       expect(adapter).toBeDefined();
-      const testAdapter = adapter as unknown as TestablePgAdapter;
+      const testAdapter = getTestableAdapter(adapter);
       expect(testAdapter.manager).toBe(mockManager);
     });
 

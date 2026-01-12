@@ -25,6 +25,37 @@ interface TestableEmbeddingService {
   processQueue(): Promise<void>;
 }
 
+// Factory function to create a properly typed mock runtime
+function createMockRuntime(
+  registeredHandlers: Map<string, (params: EventPayload) => Promise<void>>,
+  emittedEvents: Array<{ event: string; payload: EventPayload }>,
+): Partial<IAgentRuntime> {
+  return {
+    agentId: "test-agent" as UUID,
+    registerEvent: vi.fn(
+      (event: string, handler: (params: EventPayload) => Promise<void>) => {
+        registeredHandlers.set(event, handler);
+      },
+    ),
+    emitEvent: vi.fn(async (event: string, payload: EventPayload) => {
+      emittedEvents.push({ event, payload });
+    }),
+    useModel: vi.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
+    getModel: vi
+      .fn()
+      .mockReturnValue(vi.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5])),
+    updateMemory: vi.fn().mockResolvedValue(undefined),
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+    // Add log method used by EmbeddingGenerationService
+    log: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 describe("EmbeddingGenerationService - Queue Management", () => {
   let service: EmbeddingGenerationService | null;
   let agentRuntime: IAgentRuntime;
@@ -36,37 +67,17 @@ describe("EmbeddingGenerationService - Queue Management", () => {
     emittedEvents = [];
     registeredHandlers = new Map();
 
-    // Create mock runtime
-    agentRuntime = {
-      agentId: "test-agent" as UUID,
-      registerEvent: vi.fn(
-        (event: string, handler: (params: EventPayload) => Promise<void>) => {
-          registeredHandlers.set(event, handler);
-        },
-      ),
-      emitEvent: vi.fn(async (event: string, payload: EventPayload) => {
-        emittedEvents.push({ event, payload });
-      }),
-      useModel: vi.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
-      getModel: vi
-        .fn()
-        .mockReturnValue(vi.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5])),
-      updateMemory: vi.fn().mockResolvedValue(undefined),
-      logger: {
-        debug: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-      },
-      // Add log method used by EmbeddingGenerationService
-      log: vi.fn().mockResolvedValue(undefined),
-    } as unknown as IAgentRuntime;
+    // Create mock runtime using factory function
+    agentRuntime = createMockRuntime(
+      registeredHandlers,
+      emittedEvents,
+    ) as IAgentRuntime;
   });
 
   afterEach(async () => {
     if (service) {
       // Stop the processing interval before cleanup
-      const testService = service as unknown as TestableEmbeddingService;
+      const testService = service as TestableEmbeddingService;
       if (testService.processingInterval) {
         clearInterval(testService.processingInterval);
         testService.processingInterval = null;
@@ -87,7 +98,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       expect(handler).toBeDefined();
 
       // Set a smaller queue size for testing
-      (service as unknown as TestableEmbeddingService).maxQueueSize = 10;
+      (service as TestableEmbeddingService).maxQueueSize = 10;
 
       // Fill the queue with mixed priority items
       for (let i = 0; i < 10; i++) {
@@ -133,7 +144,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         EventType.EMBEDDING_GENERATION_REQUESTED,
       );
 
-      (service as unknown as TestableEmbeddingService).maxQueueSize = 5;
+      (service as TestableEmbeddingService).maxQueueSize = 5;
 
       // Add items with timestamps
       const timestamps: number[] = [];
@@ -184,7 +195,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         EventType.EMBEDDING_GENERATION_REQUESTED,
       );
 
-      (service as unknown as TestableEmbeddingService).maxQueueSize = 100;
+      (service as TestableEmbeddingService).maxQueueSize = 100;
 
       // Fill the queue
       for (let i = 0; i < 100; i++) {
@@ -250,7 +261,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         });
       }
 
-      const queue = (service as unknown as TestableEmbeddingService).queue;
+      const queue = (service as TestableEmbeddingService).queue;
 
       // Check order: high items first, then normal, then low
       expect(queue[0].memory.id).toBe("high-1" as UUID);
@@ -286,7 +297,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         });
       }
 
-      const queue = (service as unknown as TestableEmbeddingService).queue;
+      const queue = (service as TestableEmbeddingService).queue;
 
       // High priority should be at the front
       expect(queue[0].memory.id).toBe("high-1" as UUID);
@@ -315,7 +326,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         }
       }
 
-      const queue = (service as unknown as TestableEmbeddingService).queue;
+      const queue = (service as TestableEmbeddingService).queue;
 
       // Check FIFO order within normal priority
       for (let i = 0; i < 5; i++) {
@@ -334,7 +345,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       );
 
       // Stop automatic processing
-      const testService = service as unknown as TestableEmbeddingService;
+      const testService = service as TestableEmbeddingService;
       if (testService.processingInterval) {
         clearInterval(testService.processingInterval);
         testService.processingInterval = null;
@@ -363,10 +374,10 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       }
 
       // Manually trigger processing
-      await (service as unknown as TestableEmbeddingService).processQueue();
+      await (service as TestableEmbeddingService).processQueue();
 
       // Check that item was retried
-      const queue = (service as unknown as TestableEmbeddingService).queue;
+      const queue = (service as TestableEmbeddingService).queue;
       const retriedItem = queue.find(
         (item) => item.memory.id === ("retry-memory" as UUID),
       );
@@ -385,7 +396,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       );
 
       // Stop automatic processing
-      const testService = service as unknown as TestableEmbeddingService;
+      const testService = service as TestableEmbeddingService;
       if (testService.processingInterval) {
         clearInterval(testService.processingInterval);
         testService.processingInterval = null;
@@ -410,7 +421,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
       // Manually process queue multiple times to trigger retries
       for (let i = 0; i <= 3; i++) {
-        await (service as unknown as TestableEmbeddingService).processQueue();
+        await (service as TestableEmbeddingService).processQueue();
       }
 
       // Check that failure event was emitted
@@ -476,7 +487,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       );
 
       // Stop automatic processing
-      const testService = service as unknown as TestableEmbeddingService;
+      const testService = service as TestableEmbeddingService;
       if (testService.processingInterval) {
         clearInterval(testService.processingInterval);
         testService.processingInterval = null;
@@ -498,7 +509,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       expect(service.getQueueSize()).toBe(5);
 
       // Manually trigger processing
-      await (service as unknown as TestableEmbeddingService).processQueue();
+      await (service as TestableEmbeddingService).processQueue();
 
       // Queue should be smaller after processing (or empty if batch size >= 5)
       expect(service.getQueueSize()).toBeLessThanOrEqual(5);
@@ -557,7 +568,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         EventType.EMBEDDING_GENERATION_REQUESTED,
       );
 
-      (service as unknown as TestableEmbeddingService).maxQueueSize = 10000;
+      (service as TestableEmbeddingService).maxQueueSize = 10000;
 
       const startTime = Date.now();
 

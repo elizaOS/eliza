@@ -285,10 +285,12 @@ export async function injectCaptchaSolution(
   switch (captchaType) {
     case "turnstile":
       await page.evaluate((token: string) => {
-        const doc = globalThis as unknown as {
+        // Type-safe access to global document and callbacks
+        interface GlobalWithDocument {
           document: Document;
           turnstileCallback?: (token: string) => void;
-        };
+        }
+        const doc = globalThis as GlobalWithDocument;
         const textarea = doc.document.querySelector(
           '[name="cf-turnstile-response"]'
         ) as HTMLTextAreaElement | null;
@@ -302,10 +304,12 @@ export async function injectCaptchaSolution(
     case "recaptcha-v2":
     case "recaptcha-v3":
       await page.evaluate((token: string) => {
-        const doc = globalThis as unknown as {
+        // Type-safe access to global document and callbacks
+        interface GlobalWithDocument {
           document: Document;
           onRecaptchaSuccess?: (token: string) => void;
-        };
+        }
+        const doc = globalThis as GlobalWithDocument;
         const textarea = doc.document.querySelector(
           '[name="g-recaptcha-response"]'
         ) as HTMLTextAreaElement | null;
@@ -319,10 +323,12 @@ export async function injectCaptchaSolution(
 
     case "hcaptcha":
       await page.evaluate((token: string) => {
-        const doc = globalThis as unknown as {
+        // Type-safe access to global document and callbacks
+        interface GlobalWithDocument {
           document: Document;
           hcaptchaCallback?: (token: string) => void;
-        };
+        }
+        const doc = globalThis as GlobalWithDocument;
         const textarea = doc.document.querySelector(
           '[name="h-captcha-response"]'
         ) as HTMLTextAreaElement | null;

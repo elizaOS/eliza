@@ -155,8 +155,48 @@ async function loadWasmModule(
     };
   }
 
+  // Type guard to validate exports match WasmPluginExports interface
+  const exports = instance.exports as WebAssembly.Exports;
+  const typedExports: WasmPluginExports = {
+    get_manifest: exports.get_manifest as () => string,
+    init: exports.init as (config_json: string) => void,
+    validate_action: exports.validate_action as (
+      action: string,
+      memory_json: string,
+      state_json: string,
+    ) => boolean,
+    invoke_action: exports.invoke_action as (
+      action: string,
+      memory_json: string,
+      state_json: string,
+      options_json: string,
+    ) => string,
+    get_provider: exports.get_provider as (
+      provider: string,
+      memory_json: string,
+      state_json: string,
+    ) => string,
+    validate_evaluator: exports.validate_evaluator as (
+      evaluator: string,
+      memory_json: string,
+      state_json: string,
+    ) => boolean,
+    invoke_evaluator: exports.invoke_evaluator as (
+      evaluator: string,
+      memory_json: string,
+      state_json: string,
+    ) => string,
+    handle_route: exports.handle_route as (
+      path: string,
+      method: string,
+      request_json: string,
+    ) => string,
+    alloc: exports.alloc as (size: number) => number,
+    dealloc: exports.dealloc as (ptr: number, size: number) => void,
+  };
+
   return {
-    exports: instance.exports as unknown as WasmPluginExports,
+    exports: typedExports,
     memory: { buffer: memory.buffer },
   };
 }

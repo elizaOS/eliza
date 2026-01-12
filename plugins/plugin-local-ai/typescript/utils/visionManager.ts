@@ -217,7 +217,8 @@ export class VisionManager {
           }) as ProgressCallback,
         });
 
-        this.model = model as unknown as Florence2ForConditionalGeneration;
+        // Model is already correctly typed from from_pretrained
+        this.model = model;
         logger.success("Florence2 model loaded successfully");
       } catch (error) {
         logger.error("Failed to load Florence2 model:", {

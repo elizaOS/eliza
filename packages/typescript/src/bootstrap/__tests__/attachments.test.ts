@@ -26,15 +26,12 @@ describe("processAttachments", () => {
   });
 
   it("should return empty array for no attachments", async () => {
-    const result = await processAttachments([], runtime as IAgentRuntime);
+    const result = await processAttachments([], runtime);
     expect(result).toEqual([]);
   });
 
   it("should return empty array for null/undefined attachments", async () => {
-    const result = await processAttachments(
-      null as unknown as Media[],
-      runtime as IAgentRuntime,
-    );
+    const result = await processAttachments(null, runtime);
     expect(result).toEqual([]);
   });
 
@@ -55,7 +52,7 @@ describe("processAttachments", () => {
 
     const result = await processAttachments(
       [imageAttachment],
-      runtime as IAgentRuntime,
+      runtime,
     );
 
     expect(result).toHaveLength(1);
@@ -88,7 +85,7 @@ describe("processAttachments", () => {
 
     const result = await processAttachments(
       [imageWithDescription],
-      runtime as IAgentRuntime,
+      runtime,
     );
 
     expect(result).toHaveLength(1);
@@ -106,7 +103,7 @@ describe("processAttachments", () => {
 
     const result = await processAttachments(
       [pdfAttachment],
-      runtime as IAgentRuntime,
+      runtime,
     );
 
     expect(result).toHaveLength(1);
@@ -144,7 +141,7 @@ describe("processAttachments", () => {
 
     const result = await processAttachments(
       attachments,
-      runtime as IAgentRuntime,
+      runtime,
     );
 
     expect(result).toHaveLength(3);
@@ -172,7 +169,7 @@ describe("processAttachments", () => {
 
     const result = await processAttachments(
       [imageAttachment],
-      runtime as IAgentRuntime,
+      runtime,
     );
 
     expect(result).toHaveLength(1);
@@ -194,7 +191,7 @@ describe("processAttachments", () => {
 
     const result = await processAttachments(
       [imageAttachment],
-      runtime as IAgentRuntime,
+      runtime,
     );
 
     expect(result).toHaveLength(1);
@@ -232,7 +229,7 @@ describe("processAttachments", () => {
 
     const result = await processAttachments(
       attachments,
-      runtime as IAgentRuntime,
+      runtime,
     );
 
     expect(result).toHaveLength(2);
@@ -282,7 +279,7 @@ describe("processAttachments", () => {
 
     const result = await processAttachments(
       attachments,
-      runtime as IAgentRuntime,
+      runtime,
     );
 
     expect(result).toHaveLength(3);
@@ -310,7 +307,7 @@ describe("processAttachments", () => {
 
     const result = await processAttachments(
       [imageAttachment],
-      runtime as IAgentRuntime,
+      runtime,
     );
 
     expect(result).toHaveLength(1);

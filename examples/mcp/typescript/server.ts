@@ -181,19 +181,21 @@ async function main(): Promise<void> {
     },
   );
 
+  // Helper to handle Zod schema type compatibility
+  // Due to Zod version differences between MCP SDK and project dependencies
+  type RequestSchema = Parameters<typeof server.setRequestHandler>[0];
+
   // Handle tool listing
-  // Type assertion via unknown needed due to Zod version incompatibility between MCP SDK and project
   server.setRequestHandler(
-    ListToolsRequestSchema as unknown as Parameters<typeof server.setRequestHandler>[0],
+    ListToolsRequestSchema as RequestSchema,
     async (): Promise<ListToolsResult> => ({
       tools: TOOLS,
     }),
   );
 
   // Handle tool calls
-  // Type assertion via unknown needed due to Zod version incompatibility between MCP SDK and project
   server.setRequestHandler(
-    CallToolRequestSchema as unknown as Parameters<typeof server.setRequestHandler>[0],
+    CallToolRequestSchema as RequestSchema,
     async (request: CallToolRequest): Promise<CallToolResult> => {
       const { name, arguments: args } = request.params;
 

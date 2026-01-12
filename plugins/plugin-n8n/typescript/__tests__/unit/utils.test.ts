@@ -6,15 +6,22 @@ import type { Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { isValidJsonSpecification, validatePrompt } from "../../utils/validation";
 
-const createMockMemory = (text: string): Memory =>
-  ({
+// Helper function to create a mock Memory with partial data
+function createMockMemory(text: string): Memory {
+  return {
     id: crypto.randomUUID(),
     content: { text },
     userId: "test-user",
     roomId: "test-room",
     entityId: "test-entity",
     createdAt: Date.now(),
-  }) as Memory;
+  } as Partial<Memory> as Memory;
+}
+
+// Helper function to create an invalid Memory for testing edge cases
+function createInvalidMemory(content: unknown): Memory {
+  return { content } as Partial<Memory> as Memory;
+}
 
 describe("validatePrompt", () => {
   it("should return true for valid message", () => {
@@ -33,12 +40,12 @@ describe("validatePrompt", () => {
   });
 
   it("should return false for null content", () => {
-    const message = { content: null } as unknown as Memory;
+    const message = createInvalidMemory(null);
     expect(validatePrompt(message)).toBe(false);
   });
 
   it("should return false for undefined message", () => {
-    expect(validatePrompt(undefined as unknown as Memory)).toBe(false);
+    expect(validatePrompt(undefined as Memory)).toBe(false);
   });
 });
 

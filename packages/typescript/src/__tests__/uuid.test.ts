@@ -47,13 +47,10 @@ describe("UUID Module", () => {
       });
 
       it("should throw TypeError for invalid input types", () => {
-        expect(() => stringToUuid(undefined as unknown as string)).toThrow(
-          TypeError,
-        );
-        expect(() => stringToUuid(null as unknown as string)).toThrow(
-          TypeError,
-        );
-        expect(() => stringToUuid({} as unknown as string)).toThrow(TypeError);
+        // Intentionally testing with invalid types
+        expect(() => stringToUuid(undefined as string)).toThrow(TypeError);
+        expect(() => stringToUuid(null as string)).toThrow(TypeError);
+        expect(() => stringToUuid({} as string)).toThrow(TypeError);
       });
 
       it("should handle empty string input", () => {

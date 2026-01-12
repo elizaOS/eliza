@@ -3,26 +3,118 @@ import { createLogger } from "../logger";
 import { getEnvironment } from "../utils/environment";
 
 /**
- * Test type definitions
+ * Test type definitions for mocking globals
  */
-// These types are kept for potential future use in tests
-// biome-ignore lint/correctness/noUnusedVariables: Reserved for future test use
+
+/**
+ * Mock Process type for Node.js environment testing
+ */
 interface MockProcess {
   versions?: {
     node?: string;
   };
   env?: Record<string, string | undefined>;
+  platform?: string;
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: Reserved for future test use
+/**
+ * Mock Console type for browser environment testing
+ */
+interface MockConsole {
+  log?: ReturnType<typeof vi.fn>;
+  info?: ReturnType<typeof vi.fn>;
+  warn?: ReturnType<typeof vi.fn>;
+  error?: ReturnType<typeof vi.fn>;
+  debug?: ReturnType<typeof vi.fn>;
+  trace?: ReturnType<typeof vi.fn>;
+  clear?: ReturnType<typeof vi.fn>;
+}
+
+/**
+ * Mock Document type for browser environment testing
+ */
+interface MockDocument {
+  // Minimal document interface - can be extended as needed
+}
+
+/**
+ * Mock Location type for browser environment testing
+ */
+interface MockLocation {
+  hostname?: string;
+  href?: string;
+  protocol?: string;
+  host?: string;
+  pathname?: string;
+  search?: string;
+  hash?: string;
+}
+
+/**
+ * Mock Window type for browser environment testing
+ */
 interface MockWindow {
-  document?: Partial<Document>;
-  console?: Partial<Console>;
-  location?: Partial<Location>;
+  document?: MockDocument;
+  console?: MockConsole;
+  location?: MockLocation;
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: Reserved for future test use
-type MockDocument = Partial<typeof globalThis.document>;
+/**
+ * Factory function to create a mock Process object
+ */
+function createMockProcess(overrides?: Partial<MockProcess>): MockProcess {
+  return {
+    versions: { node: "20.0.0" },
+    env: {},
+    platform: "darwin",
+    ...overrides,
+  };
+}
+
+/**
+ * Factory function to create a mock Console object
+ */
+function createMockConsole(overrides?: Partial<MockConsole>): MockConsole {
+  return {
+    log: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    trace: vi.fn(),
+    clear: vi.fn(),
+    ...overrides,
+  };
+}
+
+/**
+ * Factory function to create a mock Document object
+ */
+function createMockDocument(): MockDocument {
+  return {};
+}
+
+/**
+ * Factory function to create a mock Location object
+ */
+function createMockLocation(overrides?: Partial<MockLocation>): MockLocation {
+  return {
+    hostname: "localhost",
+    ...overrides,
+  };
+}
+
+/**
+ * Factory function to create a mock Window object
+ */
+function createMockWindow(overrides?: Partial<MockWindow>): MockWindow {
+  return {
+    document: createMockDocument(),
+    console: createMockConsole(),
+    location: createMockLocation(),
+    ...overrides,
+  };
+}
 
 /**
  * Type for objects that can have circular references
@@ -97,10 +189,10 @@ describe("Logger - Cross-Environment Tests", () => {
   describe("Environment Detection", () => {
     it("should detect Node.js environment correctly", () => {
       // Ensure we're in Node.js environment
-      globalThis.process = {
+      globalThis.process = createMockProcess({
         versions: { node: "20.0.0" },
         env: { LOG_LEVEL: "info" },
-      } as unknown as typeof process;
+      }) as typeof process;
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.window;
       // @ts-expect-error - Intentionally removing for test cleanup
@@ -121,18 +213,9 @@ describe("Logger - Cross-Environment Tests", () => {
 
     it("should detect browser environment correctly", () => {
       // Simulate browser environment
-      globalThis.window = {
-        document: {} as unknown as Document,
-        console: {
-          log: vi.fn(),
-          info: vi.fn(),
-          warn: vi.fn(),
-          error: vi.fn(),
-          debug: vi.fn(),
-          trace: vi.fn(),
-        } as unknown as Console,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {} as unknown as Document;
+      const mockWindow = createMockWindow();
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
 
@@ -156,20 +239,10 @@ describe("Logger - Cross-Environment Tests", () => {
       getEnvironment().clearCache();
 
       // Mock browser environment
-      globalThis.window = {
-        document: {} as unknown as Document,
-        console: {
-          log: vi.fn(),
-          info: vi.fn(),
-          warn: vi.fn(),
-          error: vi.fn(),
-          debug: vi.fn(),
-          trace: vi.fn(),
-          clear: vi.fn(),
-        } as unknown as Console,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {} as unknown as Document;
-      globalThis.console = globalThis.window.console as unknown as Console;
+      const mockWindow = createMockWindow();
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
+      globalThis.console = mockWindow.console as Console;
 
       // Clear cache again after setting up environment
       getEnvironment().clearCache();
@@ -205,22 +278,13 @@ describe("Logger - Cross-Environment Tests", () => {
       // Ensure we're in browser environment
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
-      globalThis.window = {
-        document: {} as unknown as Document,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {} as unknown as Document;
+      const mockWindow = createMockWindow();
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
 
       // Mock console methods
-      const mockConsole = {
-        log: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-        trace: vi.fn(),
-        clear: vi.fn(),
-      };
-      globalThis.console = mockConsole as unknown as Console;
+      const mockConsole = createMockConsole();
+      globalThis.console = mockConsole as Console;
 
       // Create browser logger with debug level to ensure all levels are logged
       const browserLogger = createLogger({
@@ -245,20 +309,12 @@ describe("Logger - Cross-Environment Tests", () => {
       // Ensure we're in browser environment
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
-      globalThis.window = {
-        document: {} as unknown as Document,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {} as unknown as Document;
+      const mockWindow = createMockWindow();
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
 
-      const mockConsole = {
-        info: vi.fn(),
-        log: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-        trace: vi.fn(),
-      };
-      globalThis.console = mockConsole as unknown as Console;
+      const mockConsole = createMockConsole();
+      globalThis.console = mockConsole as Console;
 
       // Create logger with debug level to ensure all levels are logged
       const browserLogger = createLogger({
@@ -285,20 +341,12 @@ describe("Logger - Cross-Environment Tests", () => {
       // Ensure we're in browser environment
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
-      globalThis.window = {
-        document: {} as unknown as Document,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {} as unknown as Document;
+      const mockWindow = createMockWindow();
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
 
-      const mockConsole = {
-        trace: vi.fn(),
-        debug: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        log: vi.fn(),
-      };
-      globalThis.console = mockConsole as unknown as Console;
+      const mockConsole = createMockConsole();
+      globalThis.console = mockConsole as Console;
 
       // Clear cache to detect browser environment
       getEnvironment().clearCache();
@@ -344,16 +392,15 @@ describe("Logger - Cross-Environment Tests", () => {
       // Ensure we're in browser environment
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
-      globalThis.window = {
-        document: {} as unknown as Document,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {} as unknown as Document;
+      const mockWindow = createMockWindow();
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
 
-      const mockConsole = {
+      const mockConsole = createMockConsole({
         info: vi.fn(),
         log: vi.fn(),
-      };
-      globalThis.console = mockConsole as unknown as Console;
+      });
+      globalThis.console = mockConsole as Console;
 
       // Clear cache to detect browser environment
       getEnvironment().clearCache();
@@ -379,10 +426,7 @@ describe("Logger - Cross-Environment Tests", () => {
       // Restore Node.js environment
       globalThis.process =
         originalProcess ||
-        ({
-          versions: { node: "20.0.0" },
-          env: {},
-        } as typeof process);
+        (createMockProcess() as typeof process);
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.window;
       // @ts-expect-error - Intentionally removing for test cleanup
@@ -442,11 +486,11 @@ describe("Logger - Cross-Environment Tests", () => {
       const nodeLogger = createLogger();
 
       // Test browser logger
-      globalThis.window = {
-        document: {} as unknown as Document,
-        console: globalThis.console,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {} as unknown as Document;
+      const mockWindow = createMockWindow({
+        console: globalThis.console as MockConsole,
+      });
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
       const browserLogger = createLogger();
@@ -486,16 +530,16 @@ describe("Logger - Cross-Environment Tests", () => {
       // Test in Node.js
       globalThis.process =
         originalProcess ||
-        ({ versions: { node: "20.0.0" }, env: {} } as typeof process);
+        (createMockProcess() as typeof process);
       const nodeLogger = createLogger();
       expect(() => nodeLogger.info(testData, "Complex object")).not.toThrow();
 
       // Test in browser
-      globalThis.window = {
-        document: {} as unknown as Document,
-        console: { info: vi.fn() } as unknown as Console,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {};
+      const mockWindow = createMockWindow({
+        console: createMockConsole({ info: vi.fn() }),
+      });
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
       const browserLogger = createLogger({ __forceType: "browser" });
@@ -511,17 +555,17 @@ describe("Logger - Cross-Environment Tests", () => {
       // Node.js
       globalThis.process =
         originalProcess ||
-        ({ versions: { node: "20.0.0" }, env: {} } as typeof process);
+        (createMockProcess() as typeof process);
       const nodeLogger = createLogger();
       expect(() => nodeLogger.error(error)).not.toThrow();
       expect(() => nodeLogger.error({ error }, "Error occurred")).not.toThrow();
 
       // Browser
-      globalThis.window = {
-        document: {} as unknown as Document,
-        console: { error: vi.fn() } as unknown as Console,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {};
+      const mockWindow = createMockWindow({
+        console: createMockConsole({ error: vi.fn() }),
+      });
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
       const browserLogger = createLogger({ __forceType: "browser" });
@@ -534,15 +578,14 @@ describe("Logger - Cross-Environment Tests", () => {
 
   describe("Edge Cases and Error Handling", () => {
     it("should handle undefined console methods in browser", () => {
-      globalThis.window = {
-        document: {} as unknown as Document,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {} as unknown as Document;
+      const mockWindow = createMockWindow();
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
       // Create a partial console mock - missing methods will fallback to console.log
-      globalThis.console = {
+      globalThis.console = createMockConsole({
         log: vi.fn(),
         // Missing other methods - logger will fallback to console.log
-      } as unknown as Console;
+      }) as Console;
 
       const browserLogger = createLogger({ __forceType: "browser" });
 
@@ -576,11 +619,12 @@ describe("Logger - Cross-Environment Tests", () => {
 
     it("should handle null and undefined values", () => {
       const browserLogger = createLogger({ __forceType: "browser" });
+      // Testing with null/undefined as string parameters (intentional type test)
       expect(() =>
-        browserLogger.info("Null value", null as unknown as string),
+        browserLogger.info("Null value", null as string),
       ).not.toThrow();
       expect(() =>
-        browserLogger.info("Undefined value", undefined as unknown as string),
+        browserLogger.info("Undefined value", undefined as string),
       ).not.toThrow();
       expect(() => browserLogger.info({ value: null })).not.toThrow();
       expect(() => browserLogger.info({ value: undefined })).not.toThrow();
@@ -590,11 +634,11 @@ describe("Logger - Cross-Environment Tests", () => {
   describe("Memory Management", () => {
     it("should limit in-memory log storage", () => {
       // Setup browser environment first
-      globalThis.window = {
-        document: {} as unknown as Document,
-        console: globalThis.console,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {};
+      const mockWindow = createMockWindow({
+        console: globalThis.console as MockConsole,
+      });
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
 
@@ -611,11 +655,11 @@ describe("Logger - Cross-Environment Tests", () => {
 
     it("should respect custom maxMemoryLogs option", () => {
       // Setup browser environment
-      globalThis.window = {
-        document: {} as unknown as Document,
-        console: globalThis.console,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {};
+      const mockWindow = createMockWindow({
+        console: globalThis.console as MockConsole,
+      });
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
 
@@ -638,15 +682,15 @@ describe("Logger - Cross-Environment Tests", () => {
     it("should clear logs properly in both environments", () => {
       // Browser
       const mockClear = vi.fn();
-      globalThis.window = {
-        document: {} as unknown as Document,
-        console: { clear: mockClear } as unknown as Console,
-      } as unknown as Window & typeof globalThis;
-      globalThis.document = {} as unknown as Document;
+      const mockWindow = createMockWindow({
+        console: createMockConsole({ clear: mockClear }),
+      });
+      globalThis.window = mockWindow as Window & typeof globalThis;
+      globalThis.document = mockWindow.document as Document;
       globalThis.console = {
         ...globalThis.console,
         clear: mockClear,
-      } as unknown as Console;
+      } as Console;
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.process;
 
@@ -657,7 +701,7 @@ describe("Logger - Cross-Environment Tests", () => {
       // Node.js
       globalThis.process =
         originalProcess ||
-        ({ versions: { node: "20.0.0" }, env: {} } as typeof process);
+        (createMockProcess() as typeof process);
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.window;
       const nodeLogger = createLogger();
@@ -913,22 +957,12 @@ describe("Logger - Cross-Environment Tests", () => {
         savedProcess = globalThis.process;
 
         // Mock browser environment
-        globalThis.window = {
-          document: {} as unknown as Document,
-          console: {
-            log: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-            debug: vi.fn(),
-            trace: vi.fn(),
-            clear: vi.fn(),
-          } as unknown as Console,
-          location: {
-            hostname: "localhost",
-          } as unknown as Location,
-        } as unknown as Window & typeof globalThis;
-        globalThis.document = {} as unknown as Document;
+        const mockWindow = createMockWindow({
+          console: createMockConsole(),
+          location: createMockLocation({ hostname: "localhost" }),
+        });
+        globalThis.window = mockWindow as Window & typeof globalThis;
+        globalThis.document = mockWindow.document as Document;
         // @ts-expect-error - Intentionally removing for test cleanup
         delete globalThis.process;
         getEnvironment().clearCache();
@@ -986,10 +1020,11 @@ describe("Logger - Cross-Environment Tests", () => {
         delete globalThis.process;
 
         // Test with window.location.hostname
-        globalThis.window = {
-          ...globalThis.window,
-          location: { hostname: "test-browser-host" } as unknown as Location,
-        };
+        const existingWindow = globalThis.window as MockWindow;
+        globalThis.window = createMockWindow({
+          ...existingWindow,
+          location: createMockLocation({ hostname: "test-browser-host" }),
+        }) as Window & typeof globalThis;
 
         expect(() => {
           const logger = createLogger({ __forceType: "browser" });
@@ -1009,11 +1044,11 @@ describe("Logger - Cross-Environment Tests", () => {
         delete globalThis.process;
 
         // Remove location to test fallback
-        const globalThisWindow = globalThis.window;
-        globalThis.window = {
-          document: {} as unknown as Document,
-          console: (globalThisWindow?.console || {}) as unknown as Console,
-        } as unknown as Window & typeof globalThis;
+        const globalThisWindow = globalThis.window as MockWindow;
+        globalThis.window = createMockWindow({
+          document: createMockDocument(),
+          console: (globalThisWindow?.console || createMockConsole()) as MockConsole,
+        }) as Window & typeof globalThis;
 
         expect(() => {
           const logger = createLogger({ __forceType: "browser" });
@@ -1109,12 +1144,12 @@ describe("Logger - Cross-Environment Tests", () => {
         }).not.toThrow();
 
         // Test Browser
-        globalThis.window = {
-          document: {},
-          console: { info: vi.fn() },
-          location: { hostname: "browser-host" } as unknown as Location,
-        };
-        globalThis.document = {};
+        const mockWindow = createMockWindow({
+          console: createMockConsole({ info: vi.fn() }),
+          location: createMockLocation({ hostname: "browser-host" }),
+        });
+        globalThis.window = mockWindow as Window & typeof globalThis;
+        globalThis.document = mockWindow.document as Document;
         // @ts-expect-error - Intentionally removing for test cleanup
         delete globalThis.process;
 
@@ -1154,11 +1189,11 @@ describe("Logger - Cross-Environment Tests", () => {
         }).not.toThrow();
 
         // Browser
-        globalThis.window = {
-          document: {} as unknown as Document,
-          console: { error: vi.fn() } as unknown as Console,
-        } as unknown as Window & typeof globalThis;
-        globalThis.document = {} as unknown as Document;
+        const mockWindow = createMockWindow({
+          console: createMockConsole({ error: vi.fn() }),
+        });
+        globalThis.window = mockWindow as Window & typeof globalThis;
+        globalThis.document = mockWindow.document as Document;
         // @ts-expect-error - Intentionally removing for test cleanup
         delete globalThis.process;
 
@@ -1199,18 +1234,11 @@ describe("Logger - Cross-Environment Tests", () => {
         }).not.toThrow();
 
         // Browser
-        globalThis.window = {
-          document: {} as unknown as Document,
-          console: {
-            log: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-            debug: vi.fn(),
-            trace: vi.fn(),
-          } as unknown as Console,
-        } as unknown as Window & typeof globalThis;
-        globalThis.document = {} as unknown as Document;
+        const mockWindow = createMockWindow({
+          console: createMockConsole(),
+        });
+        globalThis.window = mockWindow as Window & typeof globalThis;
+        globalThis.document = mockWindow.document as Document;
         // @ts-expect-error - Intentionally removing for test cleanup
         delete globalThis.process;
 

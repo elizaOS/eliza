@@ -22,16 +22,29 @@ type FaceApiEnv = {
   ImageData: typeof ImageData;
 };
 
+/**
+ * Adapter type for node-canvas Canvas to HTMLCanvasElement.
+ * Runtime-compatible but TypeScript types differ.
+ */
+type CanvasAdapter = import("canvas").Canvas & HTMLCanvasElement;
+
+/**
+ * Adapter type for node-canvas Image to HTMLImageElement.
+ * Runtime-compatible but TypeScript types differ.
+ */
+type ImageAdapter = import("canvas").Image & HTMLImageElement;
+
 function asCanvasEnv(canvas: typeof import("canvas")): FaceApiEnv {
   return {
-    Canvas: canvas.Canvas as unknown as typeof HTMLCanvasElement,
-    Image: canvas.Image as unknown as typeof HTMLImageElement,
+    Canvas: canvas.Canvas as typeof HTMLCanvasElement,
+    Image: canvas.Image as typeof HTMLImageElement,
     ImageData: canvas.ImageData as typeof ImageData,
   };
 }
 
 function asHTMLCanvasElement(canvas: import("canvas").Canvas): HTMLCanvasElement {
-  return canvas as unknown as HTMLCanvasElement;
+  // node-canvas Canvas is runtime-compatible with HTMLCanvasElement
+  return canvas as CanvasAdapter as HTMLCanvasElement;
 }
 
 async function initializeCanvas() {

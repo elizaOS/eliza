@@ -42,6 +42,7 @@ pub mod wasm;
 pub use client::OllamaClient;
 pub use config::OllamaConfig;
 pub use error::{OllamaError, Result};
+pub use types::{EmbeddingParams, ObjectGenerationParams, TextGenerationParams};
 
 /// Create an Ollama client from environment variables.
 ///

@@ -699,12 +699,13 @@ function setupModelHandlers(runtime: IAgentRuntime) {
   // Store original method
   const originalUseModel = runtime.useModel.bind(runtime);
 
+  // Helper interface for runtime with useModel override
+  interface TestableRuntime {
+    useModel: (modelType: ModelType, params: GenerateTextParams) => Promise<string>;
+  }
+
   // Override useModel to handle TEXT_SMALL
-  (
-    runtime as unknown as {
-      useModel: (modelType: ModelType, params: GenerateTextParams) => Promise<string>;
-    }
-  ).useModel = async (modelType: ModelType, params: GenerateTextParams) => {
+  (runtime as TestableRuntime).useModel = async (modelType: ModelType, params: GenerateTextParams) => {
     console.log("Mock useModel called:", modelType, params);
 
     if (modelType === ModelType.TEXT_SMALL || modelType === "TEXT_SMALL") {

@@ -99,10 +99,10 @@ export class ServiceBuilder<TService extends Service = Service> {
       configurable: false,
     });
 
-    // The class now conforms to ServiceClass<TService> interface
+    // The class now conforms to TypedServiceBuilder<TService> interface
     // We use a type assertion here that is safe because we've explicitly
     // set up the class to match the interface requirements
-    return ServiceClassImpl as ServiceClass<TService>;
+    return ServiceClassImpl as TypedServiceBuilder<TService>;
   }
 }
 
@@ -129,11 +129,11 @@ export interface ServiceDefinition<T extends Service = Service> {
 
 /**
  * Define a service with type safety.
- * Returns a ServiceClass that can be instantiated and started.
+ * Returns a TypedServiceBuilder that can be instantiated and started.
  */
 export function defineService<T extends Service = Service>(
   definition: ServiceDefinition<T>,
-): ServiceClass<T> {
+): TypedServiceBuilder<T> {
   return createService<T>(definition.serviceType)
     .withDescription(definition.description)
     .withStart(definition.start)

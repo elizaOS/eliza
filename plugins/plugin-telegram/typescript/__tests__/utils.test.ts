@@ -168,12 +168,13 @@ describe("Telegram Utils", () => {
 
     // THE BUG WE FIXED: Unknown button kinds should not crash
     it("should handle unknown button kinds with default fallback", () => {
+      // Helper to create a button with invalid kind for testing
+      const createButtonWithInvalidKind = (kind: string, text: string, url: string): Button => {
+        return { kind: kind as Button["kind"], text, url } as Button;
+      };
+
       const buttons: Button[] = [
-        {
-          kind: "unknown" as unknown as Button["kind"],
-          text: "Unknown Type",
-          url: "https://example.com",
-        } as Button,
+        createButtonWithInvalidKind("unknown", "Unknown Type", "https://example.com"),
       ];
 
       const result = convertToTelegramButtons(buttons as Button[]);

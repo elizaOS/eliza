@@ -718,13 +718,18 @@ describe("Planning Integration Tests", () => {
       });
       const state = createTestState();
 
-      const malformedContext = {
-        goal: "", // Empty goal
-        constraints: null as unknown as PlanningContext["constraints"], // Invalid constraints
-        availableActions: undefined as unknown as PlanningContext["availableActions"], // Missing actions
-        availableProviders: [],
-        preferences: {} as PlanningContext["preferences"], // Missing required preferences
-      };
+      // Helper function to create malformed context for testing
+      function createMalformedContext(): PlanningContext {
+        return {
+          goal: "", // Empty goal
+          constraints: null as PlanningContext["constraints"], // Invalid constraints
+          availableActions: undefined as PlanningContext["availableActions"], // Missing actions
+          availableProviders: [],
+          preferences: {} as PlanningContext["preferences"], // Missing required preferences
+        };
+      }
+
+      const malformedContext = createMalformedContext();
 
       await expect(
         planningService.createComprehensivePlan(runtime, malformedContext, message, state)

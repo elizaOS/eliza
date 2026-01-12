@@ -78,7 +78,17 @@ export const rustPluginStarter: Plugin = {
     const wasmBindgenModule = await import(wasmModulePath);
 
     // Initialize the WASM module (wasm-bindgen does this automatically, but we may need to call init)
-    wasmModule = wasmBindgenModule as unknown as WasmBindgenModule;
+    // Type assertion needed because wasm-bindgen generates dynamic exports
+    if (
+      typeof wasmBindgenModule === "object" &&
+      wasmBindgenModule !== null &&
+      "get_manifest" in wasmBindgenModule &&
+      typeof wasmBindgenModule.get_manifest === "function"
+    ) {
+      wasmModule = wasmBindgenModule as WasmBindgenModule;
+    } else {
+      throw new Error("Invalid WASM module: missing required exports");
+    }
 
     // Get the manifest
     const manifestJson = wasmModule.get_manifest();

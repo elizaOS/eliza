@@ -13,6 +13,11 @@ interface TestRuntime {
   deleteCache: (key: string) => Promise<boolean>;
 }
 
+// Helper function to convert TestRuntime to IAgentRuntime for testing
+function asIAgentRuntime(runtime: TestRuntime): IAgentRuntime {
+  return runtime as IAgentRuntime;
+}
+
 /**
  * Integration tests for token stores.
  * FileTokenStore tests use the real filesystem.
@@ -83,7 +88,7 @@ describe("token-store", () => {
 
     it("saves and loads via runtime cache", async () => {
       // TestRuntime satisfies the runtime interface requirements
-      const store = new RuntimeCacheTokenStore(runtime as unknown as IAgentRuntime);
+      const store = new RuntimeCacheTokenStore(asIAgentRuntime(runtime));
       const tokens = {
         access_token: "a",
         refresh_token: "r",
@@ -96,7 +101,7 @@ describe("token-store", () => {
     });
 
     it("clear removes the cached value", async () => {
-      const store = new RuntimeCacheTokenStore(runtime as unknown as IAgentRuntime);
+      const store = new RuntimeCacheTokenStore(asIAgentRuntime(runtime));
       await store.save({
         access_token: "a",
         refresh_token: "r",
@@ -109,14 +114,14 @@ describe("token-store", () => {
     });
 
     it("returns null when no tokens stored", async () => {
-      const store = new RuntimeCacheTokenStore(runtime as unknown as IAgentRuntime);
+      const store = new RuntimeCacheTokenStore(asIAgentRuntime(runtime));
       const loaded = await store.load();
       expect(loaded).toBeNull();
     });
 
     it("uses custom key when provided", async () => {
       const customKey = "custom/token/path";
-      const store = new RuntimeCacheTokenStore(runtime as unknown as IAgentRuntime, customKey);
+      const store = new RuntimeCacheTokenStore(asIAgentRuntime(runtime), customKey);
 
       await store.save({
         access_token: "test",

@@ -65,12 +65,11 @@ describe("stringToUuid SHA-1 implementation", () => {
   });
 
   it("should throw for invalid inputs", () => {
-    expect(() => stringToUuid(null as unknown as string)).toThrow(TypeError);
-    expect(() => stringToUuid(undefined as unknown as string)).toThrow(
-      TypeError,
-    );
-    expect(() => stringToUuid({} as unknown as string)).toThrow(TypeError);
-    expect(() => stringToUuid([] as unknown as string)).toThrow(TypeError);
+    // Intentionally testing with invalid types
+    expect(() => stringToUuid(null as string)).toThrow(TypeError);
+    expect(() => stringToUuid(undefined as string)).toThrow(TypeError);
+    expect(() => stringToUuid({} as string)).toThrow(TypeError);
+    expect(() => stringToUuid([] as string)).toThrow(TypeError);
   });
 
   it("should set correct UUID format bits", () => {

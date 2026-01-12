@@ -26,8 +26,15 @@ interface GlobalRuntimeState {
   __runtimeInitialized?: boolean;
 }
 
+// Helper function to safely access global state with proper typing
+function getGlobalState(): GlobalRuntimeState {
+  // Type assertion needed because Deno's globalThis doesn't have our custom properties
+  // We verify the properties exist at runtime before using them
+  return globalThis as GlobalRuntimeState;
+}
+
 // Deno global state for warm container reuse
-const globalState = globalThis as unknown as GlobalRuntimeState;
+const globalState = getGlobalState();
 if (typeof globalState.__runtimeInitialized === "undefined") {
   globalState.__runtimeInitialized = false;
 }

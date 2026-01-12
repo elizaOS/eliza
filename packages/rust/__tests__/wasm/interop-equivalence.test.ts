@@ -171,10 +171,10 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
     it("should handle bio as string or array", () => {
       if (!wasm) return;
 
-      // Bio as string
+      // Bio as string (Character.bio is string | string[])
       const charWithStringBio: Character = {
         name: "Agent1",
-        bio: "A simple bio" as unknown as string[],
+        bio: "A simple bio",
         messageExamples: [],
         postExamples: [],
       };
@@ -333,14 +333,17 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
     it("should handle null values", () => {
       if (!wasm) return;
 
-      const memory: Memory = {
+      // Content.source is optional (string | undefined), but JSON.stringify converts undefined to null
+      // Create a memory object with source explicitly set to null via JSON parsing
+      const memoryJson = JSON.stringify({
         entityId: "entity-123",
         roomId: "room-456",
         content: {
           text: "test",
-          source: null as unknown as string,
+          source: null,
         },
-      };
+      });
+      const memory: Memory = JSON.parse(memoryJson);
 
       // Should not throw
       expect(() => wasm.parseMemory(JSON.stringify(memory))).not.toThrow();

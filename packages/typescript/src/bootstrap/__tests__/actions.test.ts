@@ -23,6 +23,7 @@ import {
   cleanupTestRuntime,
   createTestMemory,
   setupActionTest,
+  stringToUuid,
 } from "./test-utils";
 
 // Spy on commonly used methods for logging
@@ -165,7 +166,7 @@ describe("Follow Room Action", () => {
     vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
     vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
-      "memory-id" as unknown as UUID,
+      stringToUuid("memory-id"),
     );
 
     const result = await followRoomAction.handler(
@@ -291,7 +292,7 @@ describe("Ignore Action", () => {
 
     // Spy on createMemory
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
-      "memory-id" as unknown as UUID,
+      stringToUuid("memory-id"),
     );
 
     // Call handler with responses
@@ -352,7 +353,7 @@ describe("Mute Room Action", () => {
     vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
     vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
-      "memory-id" as unknown as UUID,
+      stringToUuid("memory-id"),
     );
 
     await muteRoomAction.handler(runtime, message, state, {}, callback);
@@ -490,7 +491,7 @@ describe("Unmute Room Action", () => {
     vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
     vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
-      "memory-id" as unknown as UUID,
+      stringToUuid("memory-id"),
     );
 
     await unmuteRoomAction.handler(runtime, message, state, {}, callback);
@@ -629,7 +630,7 @@ describe("Unfollow Room Action", () => {
     vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
     vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
-      "memory-id" as unknown as UUID,
+      stringToUuid("memory-id"),
     );
 
     await unfollowRoomAction.handler(runtime, message, state, {}, callback);
@@ -1222,7 +1223,7 @@ describe("Send Message Action (Extended)", () => {
 
     // Spy on createMemory
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
-      "memory-id" as unknown as UUID,
+      stringToUuid("memory-id"),
     );
 
     // Create custom implementation that closely follows the actual handler

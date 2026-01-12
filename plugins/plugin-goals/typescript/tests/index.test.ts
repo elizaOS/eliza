@@ -25,13 +25,18 @@ describe("GoalsPlugin", () => {
     expect(actionNames).toContain("CANCEL_GOAL");
   });
 
-  it("should initialize without errors", async () => {
-    const agentRuntime = {
+  // Helper function to create a minimal mock runtime for testing
+  function createMockRuntime(): IAgentRuntime {
+    return {
       agentId: "test-agent-uuid-1234-5678-abcd",
       db: {
         execute: vi.fn(),
       },
-    } as unknown as IAgentRuntime;
+    } as Partial<IAgentRuntime> as IAgentRuntime;
+  }
+
+  it("should initialize without errors", async () => {
+    const agentRuntime = createMockRuntime();
 
     const config = {};
     if (GoalsPlugin.init) {

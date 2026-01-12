@@ -10,7 +10,10 @@ import * as logger_module from "../logger";
 import type { Entity, Memory, State, UUID } from "../types";
 import type { IAgentRuntime } from "../types/runtime";
 import * as utils from "../utils";
-import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
+import {
+  cleanupTestRuntime,
+  createTestRuntime,
+} from "../bootstrap/__tests__/test-utils";
 
 describe("entities", () => {
   let runtime: IAgentRuntime;

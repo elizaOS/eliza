@@ -23,12 +23,32 @@ type ArrayElement = number | bigint | boolean | string | Date | object | ArrayEl
 /**
  * Internal Drizzle types for working with SQL expressions and indexes.
  * These types aren't exported from drizzle-orm but are needed for snapshot generation.
+ * 
+ * Note: Drizzle's SQL.toQuery() accepts a config object with specific properties.
+ * Since these are internal to Drizzle, we define compatible types here.
  */
 interface SqlToQueryConfig {
   escapeName: () => never;
   escapeParam: () => never;
   escapeString: () => never;
-  casing?: Record<string, string>;
+  casing?: undefined; // We don't use casing transformation
+}
+
+/**
+ * Internal Drizzle column config interface.
+ * PgColumn has internal properties not exposed in the public type definition.
+ */
+interface DrizzleColumnWithConfig {
+  name: string;
+  notNull: boolean;
+  primary: boolean;
+  getSQLType: () => string;
+  default?: unknown;
+  isUnique?: boolean;
+  config?: {
+    uniqueName?: string;
+    uniqueType?: string;
+  };
 }
 
 /**
@@ -71,7 +91,15 @@ function buildArrayString(array: ArrayElement[], sqlType: string): string {
   return `{${values}}`;
 }
 
-const sqlToStr = (sql: SQL, casing: string | undefined) => {
+/**
+ * Convert a Drizzle SQL expression to a string.
+ * This is used for extracting default values from column definitions.
+ * 
+ * Note: We use a type assertion here because SQL.toQuery() expects internal
+ * Drizzle types that aren't publicly exported. Our config is compatible
+ * at runtime but TypeScript can't verify this.
+ */
+const sqlToStr = (sql: SQL, _casing: string | undefined) => {
   const config: SqlToQueryConfig = {
     escapeName: () => {
       throw new Error("we don't support params for `sql` default values");
@@ -82,9 +110,11 @@ const sqlToStr = (sql: SQL, casing: string | undefined) => {
     escapeString: () => {
       throw new Error("we don't support params for `sql` default values");
     },
-    casing: casing ? (casing as unknown as Record<string, string>) : undefined,
+    casing: undefined, // We don't use casing transformation in this context
   };
-  return sql.toQuery(config as unknown as Parameters<SQL["toQuery"]>[0]).sql;
+  // Type assertion needed: SQL.toQuery expects internal Drizzle types
+  type ToQueryParam = Parameters<SQL["toQuery"]>[0];
+  return sql.toQuery(config as ToQueryParam).sql;
 };
 
 /**
@@ -139,23 +169,6 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
     const uniqueConstraintObject: Record<string, SchemaUniqueConstraint> = {};
     const checksObject: Record<string, SchemaCheckConstraint> = {};
 
-    // Drizzle column config interface
-    interface ColumnConfig {
-      uniqueName?: string;
-      uniqueType?: string;
-    }
-
-    // Extended PgColumn with config
-    interface PgColumnWithConfig {
-      name: string;
-      notNull: boolean;
-      primary: boolean;
-      getSQLType: () => string;
-      default?: unknown;
-      isUnique?: boolean;
-      config?: ColumnConfig;
-    }
-
     // Process columns - EXACT copy of Drizzle's logic
     columns.forEach((column: PgColumn) => {
       const name = column.name;
@@ -203,7 +216,8 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       // Handle column-level unique constraints
       // IMPORTANT: Check isUnique, not just uniqueName presence!
       // Drizzle sets uniqueName for all columns but only unique ones should have constraints
-      const columnWithConfig = column as unknown as PgColumnWithConfig;
+      // Type assertion: accessing internal Drizzle column properties not in public types
+      const columnWithConfig = column as DrizzleColumnWithConfig;
       const columnConfig = columnWithConfig.config;
       if (columnWithConfig.isUnique && columnConfig && columnConfig.uniqueName) {
         uniqueConstraintObject[columnConfig.uniqueName] = {

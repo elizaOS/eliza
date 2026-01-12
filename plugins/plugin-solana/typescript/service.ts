@@ -385,12 +385,25 @@ export class SolanaService extends Service {
     // shouldn't even be here...
     runtime.getServiceLoadPromise("JUPITER_SERVICE" as ServiceTypeName).then(async () => {
       // now we have jupiter lets register our services
-      this.jupiterService =
-        (runtime.getService(
-          "JUPITER_SERVICE" as ServiceTypeName
-        ) as unknown as ExtendedJupiterServiceInterface | null) ?? null;
+      const service = runtime.getService("JUPITER_SERVICE" as ServiceTypeName);
+      if (this.isJupiterService(service)) {
+        this.jupiterService = service as unknown as ExtendedJupiterServiceInterface;
+      } else {
+        this.jupiterService = null;
+      }
     });
     this.subscriptions = new Map();
+  }
+
+  /**
+   * Type guard to check if a service implements ExtendedJupiterServiceInterface.
+   * Uses duck typing to check for the getQuote method without unsafe casts.
+   */
+  private isJupiterService(service: Service | null): service is Service & ExtendedJupiterServiceInterface {
+    if (service === null) return false;
+    // Duck type check: verify getQuote method exists and is callable
+    const maybeJupiter = service as { getQuote?: (...args: unknown[]) => unknown };
+    return typeof maybeJupiter.getQuote === "function";
   }
 
   /**
@@ -935,13 +948,13 @@ export class SolanaService extends Service {
     }
 
     // Try MetadataPointer extension
-    const ptrExt = getExtensionData(ExtensionType.MetadataPointer, mintData) as unknown as {
-      authority: Uint8Array;
-      metadataAddress: Uint8Array;
-    } | null;
-
-    if (ptrExt?.metadataAddress) {
-      return { symbol: null, ptr: new PublicKey(ptrExt.metadataAddress) };
+    // getExtensionData returns Buffer | null
+    // MetadataPointer layout: 32 bytes authority + 32 bytes metadataAddress
+    const ptrExtBuffer = getExtensionData(ExtensionType.MetadataPointer, mintData);
+    if (ptrExtBuffer && ptrExtBuffer.length >= 64) {
+      // Extract metadataAddress (last 32 bytes)
+      const metadataAddress = ptrExtBuffer.subarray(32, 64);
+      return { symbol: null, ptr: new PublicKey(metadataAddress) };
     }
 
     return { symbol: null };

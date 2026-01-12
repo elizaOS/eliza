@@ -3,28 +3,33 @@ import { describe, expect, it } from "vitest";
 import GoalsPlugin from "../index";
 import { createGoalDataService } from "../services/goalDataService";
 
+// Helper function to create a minimal mock runtime for testing
+function createMockRuntime(): IAgentRuntime {
+  return {
+    agentId: "test-agent-uuid-1234-5678-abcd" as UUID,
+    db: {
+      execute: () => Promise.resolve([]),
+      select: () => ({
+        from: () => ({
+          where: () => Promise.resolve([]),
+        }),
+      }),
+      insert: () => ({
+        values: () => ({
+          returning: () => Promise.resolve([{ id: "test-id" }]),
+        }),
+      }),
+    },
+    getService: () => null,
+    useModel: () => Promise.resolve("Mock response"),
+    composeState: () => Promise.resolve({ data: {} }),
+    getRoom: () => Promise.resolve(null),
+    emitEvent: () => Promise.resolve(),
+  } as Partial<IAgentRuntime> as IAgentRuntime;
+}
+
 // Mock runtime for testing
-const agentRuntime = {
-  agentId: "test-agent-uuid-1234-5678-abcd" as UUID,
-  db: {
-    execute: () => Promise.resolve([]),
-    select: () => ({
-      from: () => ({
-        where: () => Promise.resolve([]),
-      }),
-    }),
-    insert: () => ({
-      values: () => ({
-        returning: () => Promise.resolve([{ id: "test-id" }]),
-      }),
-    }),
-  },
-  getService: () => null,
-  useModel: () => Promise.resolve("Mock response"),
-  composeState: () => Promise.resolve({ data: {} }),
-  getRoom: () => Promise.resolve(null),
-  emitEvent: () => Promise.resolve(),
-} as unknown as IAgentRuntime;
+const agentRuntime = createMockRuntime();
 
 describe("Goals Plugin E2E Simple Tests", () => {
   it("should initialize plugin successfully", async () => {

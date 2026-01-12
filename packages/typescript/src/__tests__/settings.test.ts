@@ -30,7 +30,10 @@ import type {
   WorldSettings,
 } from "../types";
 import { getEnvironment } from "../utils/environment";
-import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
+import {
+  cleanupTestRuntime,
+  createTestRuntime,
+} from "../bootstrap/__tests__/test-utils";
 
 // Remove global module mocks - they interfere with other tests
 
@@ -211,28 +214,26 @@ describe("settings utilities", () => {
 
     it("should return undefined/null values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(
-        encryptStringValue(undefined as unknown as string, salt),
-      ).toBeUndefined();
-      expect(encryptStringValue(null as unknown as string, salt)).toBeNull();
+      expect(encryptStringValue(undefined as string, salt)).toBeUndefined();
+      expect(encryptStringValue(null as string, salt)).toBeNull();
     });
 
     it("should return boolean values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(encryptStringValue(true as unknown as string, salt)).toBe(true);
-      expect(encryptStringValue(false as unknown as string, salt)).toBe(false);
+      expect(encryptStringValue(true as string, salt)).toBe(true);
+      expect(encryptStringValue(false as string, salt)).toBe(false);
     });
 
     it("should return number values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(encryptStringValue(123 as unknown as string, salt)).toBe(123);
-      expect(encryptStringValue(0 as unknown as string, salt)).toBe(0);
+      expect(encryptStringValue(123 as string, salt)).toBe(123);
+      expect(encryptStringValue(0 as string, salt)).toBe(0);
     });
 
     it("should return non-string objects as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
       const obj = { key: "value" };
-      expect(encryptStringValue(obj as unknown as string, salt)).toBe(obj);
+      expect(encryptStringValue(obj as string, salt)).toBe(obj);
     });
 
     it("should not re-encrypt already encrypted values", () => {
@@ -289,27 +290,25 @@ describe("settings utilities", () => {
 
     it("should return undefined/null values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(
-        decryptStringValue(undefined as unknown as string, salt),
-      ).toBeUndefined();
-      expect(decryptStringValue(null as unknown as string, salt)).toBeNull();
+      expect(decryptStringValue(undefined as string, salt)).toBeUndefined();
+      expect(decryptStringValue(null as string, salt)).toBeNull();
     });
 
     it("should return boolean values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(decryptStringValue(true as unknown as string, salt)).toBe(true);
-      expect(decryptStringValue(false as unknown as string, salt)).toBe(false);
+      expect(decryptStringValue(true as string, salt)).toBe(true);
+      expect(decryptStringValue(false as string, salt)).toBe(false);
     });
 
     it("should return number values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(decryptStringValue(123 as unknown as string, salt)).toBe(123);
+      expect(decryptStringValue(123 as string, salt)).toBe(123);
     });
 
     it("should return non-string objects as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
       const obj = { key: "value" };
-      expect(decryptStringValue(obj as unknown as string, salt)).toBe(obj);
+      expect(decryptStringValue(obj as string, salt)).toBe(obj);
     });
 
     it("should return original value if not in encrypted format", () => {

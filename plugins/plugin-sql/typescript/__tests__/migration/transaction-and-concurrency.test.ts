@@ -5,6 +5,28 @@ import { RuntimeMigrator } from "../../runtime-migrator";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabaseForMigration } from "../test-helpers";
 
+// Helper types for database query result rows
+interface CountRow {
+  count: string | number;
+}
+
+// Helper interface for accessing private methods
+interface TestableRuntimeMigrator extends RuntimeMigrator {
+  getAdvisoryLockId(pluginName: string): bigint;
+  validateBigInt(value: bigint): boolean;
+}
+
+// Helper function to access private methods for testing
+function getTestableMigrator(migrator: RuntimeMigrator): TestableRuntimeMigrator {
+  return migrator as TestableRuntimeMigrator;
+}
+
+// Helper function to create an invalid table reference for testing invalid schemas
+function createInvalidTableReference(): { id: ReturnType<typeof uuid> } {
+  // This intentionally returns null to create an invalid reference for testing
+  return null as { id: ReturnType<typeof uuid> };
+}
+
 describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
   let db: DrizzleDatabase;
   let migrator: RuntimeMigrator;
@@ -138,7 +160,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
           id: uuid("id").primaryKey().defaultRandom(),
           // Reference to non-existent table will fail
           fake_ref: uuid("fake_ref").references(
-            () => (null as unknown as { id: ReturnType<typeof uuid> }).id
+            () => createInvalidTableReference().id
           ),
         }),
       };
@@ -206,7 +228,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
             id: uuid("id").primaryKey().defaultRandom(),
             // This will create invalid foreign key reference
             invalid_ref: uuid("invalid_ref").references(
-              () => (undefined as unknown as { id: ReturnType<typeof uuid> }).id
+              () => createInvalidTableReference().id
             ),
           }),
         };
@@ -521,7 +543,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
           id: uuid("id").primaryKey().defaultRandom(),
           // This will cause an error during migration due to invalid reference
           bad_ref: uuid("bad_ref").references(
-            () => (null as unknown as { id: ReturnType<typeof uuid> }).id
+            () => createInvalidTableReference().id
           ),
         }),
       };
@@ -578,12 +600,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
 
       for (const pluginName of testPlugins) {
         // Access private method for testing
-        interface TestableRuntimeMigrator extends RuntimeMigrator {
-          getAdvisoryLockId(pluginName: string): bigint;
-        }
-        const lockId = (migrator as unknown as TestableRuntimeMigrator).getAdvisoryLockId(
-          pluginName
-        );
+        const lockId = getTestableMigrator(migrator).getAdvisoryLockId(pluginName);
 
         // Verify it's a bigint
         expect(typeof lockId).toBe("bigint");
@@ -603,10 +620,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
       const pluginName = "@elizaos/advisory-lock-test";
 
       // Generate lock ID multiple times
-      interface TestableRuntimeMigrator extends RuntimeMigrator {
-        getAdvisoryLockId(pluginName: string): bigint;
-      }
-      const testMigrator = migrator as unknown as TestableRuntimeMigrator;
+      const testMigrator = getTestableMigrator(migrator);
       const lockId1 = testMigrator.getAdvisoryLockId(pluginName);
       const lockId2 = testMigrator.getAdvisoryLockId(pluginName);
       const lockId3 = testMigrator.getAdvisoryLockId(pluginName);
@@ -620,10 +634,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
       const plugin1 = "@elizaos/lock-plugin-1";
       const plugin2 = "@elizaos/lock-plugin-2";
 
-      interface TestableRuntimeMigrator extends RuntimeMigrator {
-        getAdvisoryLockId(pluginName: string): bigint;
-      }
-      const testMigrator = migrator as unknown as TestableRuntimeMigrator;
+      const testMigrator = getTestableMigrator(migrator);
       const lockId1 = testMigrator.getAdvisoryLockId(plugin1);
       const lockId2 = testMigrator.getAdvisoryLockId(plugin2);
 
@@ -632,10 +643,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
     });
 
     it("should correctly validate PostgreSQL bigint values", async () => {
-      interface TestableRuntimeMigrator extends RuntimeMigrator {
-        validateBigInt(value: bigint): boolean;
-      }
-      const testMigrator = migrator as unknown as TestableRuntimeMigrator;
+      const testMigrator = getTestableMigrator(migrator);
       const validateBigInt = testMigrator.validateBigInt.bind(testMigrator);
 
       // Valid values
@@ -663,10 +671,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
       };
 
       // Get the lock ID that would be used
-      interface TestableRuntimeMigrator extends RuntimeMigrator {
-        getAdvisoryLockId(pluginName: string): bigint;
-      }
-      const testMigrator = migrator as unknown as TestableRuntimeMigrator;
+      const testMigrator = getTestableMigrator(migrator);
       const lockId = testMigrator.getAdvisoryLockId("@elizaos/lock-security-test");
 
       // Verify it's a valid bigint
@@ -682,10 +687,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
 
     it("should reject migration if invalid lock ID is generated", async () => {
       // Save original method
-      interface TestableRuntimeMigrator extends RuntimeMigrator {
-        getAdvisoryLockId(pluginName: string): bigint;
-      }
-      const testMigrator = migrator as unknown as TestableRuntimeMigrator;
+      const testMigrator = getTestableMigrator(migrator);
       const originalGetLockId = testMigrator.getAdvisoryLockId.bind(testMigrator);
 
       try {

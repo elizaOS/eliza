@@ -36,6 +36,19 @@ import { isStreamableModelType, MemoryType, ModelType } from "../types";
 
 const stringToUuid = (id: string): UUID => id as UUID;
 
+/**
+ * Helper type for creating EventPayload objects in tests
+ */
+type TestEventPayload = import("../types/events").EventPayload;
+
+/**
+ * Helper type for model handler functions that can be registered
+ */
+type ModelHandlerFunction = (
+  runtime: IAgentRuntime,
+  params: Record<string, unknown>,
+) => Promise<unknown>;
+
 // --- Mocks ---
 
 // Use hoisted for prompts mock
@@ -876,11 +889,11 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       const handler = vi.fn();
       const eventName =
         "testEvent" as keyof import("../types/events").EventPayloadMap;
-      const eventData = {
+      const eventData: TestEventPayload = {
         runtime,
         source: "test",
         info: "data",
-      } as unknown as import("../types/events").EventPayload;
+      } as TestEventPayload;
 
       runtime.on(eventName, handler);
       runtime.emit(eventName, eventData);
@@ -900,7 +913,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         runtime,
         source: "test",
         info: "data",
-      } as unknown as import("../types/events").EventPayload);
+      } as TestEventPayload);
 
       expect(handler).not.toHaveBeenCalled();
     });
@@ -1002,10 +1015,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         // Register the mock model
         runtimeWithSettings.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 
@@ -1087,10 +1097,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
         runtime.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 
@@ -1122,10 +1129,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
         runtime.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 
@@ -1157,10 +1161,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
         runtime.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 
@@ -1371,10 +1372,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
         runtime.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 
@@ -1419,10 +1417,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         // Register a model type that doesn't have specific configuration support
         runtime.registerModel(
           ModelType.TEXT_REASONING_SMALL,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 
@@ -1470,10 +1465,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
         runtime.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 
@@ -1522,10 +1514,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         const mockHandler = vi.fn().mockResolvedValue("Non-streaming response");
         runtime.registerModel(
           ModelType.TEXT_LARGE,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 
@@ -1542,10 +1531,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         const mockHandler = vi.fn().mockResolvedValue("Direct response");
         runtime.registerModel(
           ModelType.TEXT_LARGE,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 
@@ -1585,10 +1571,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         const mockHandler = vi.fn().mockResolvedValue(mockStreamResult);
         runtime.registerModel(
           ModelType.TEXT_LARGE,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 
@@ -1656,10 +1639,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
         runtime.registerModel(
           ModelType.TEXT_LARGE,
-          mockHandler as unknown as (
-            runtime: IAgentRuntime,
-            params: Record<string, unknown>,
-          ) => Promise<unknown>,
+          mockHandler as ModelHandlerFunction,
           "test-provider",
         );
 

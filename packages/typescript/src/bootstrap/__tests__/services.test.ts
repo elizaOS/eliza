@@ -122,12 +122,12 @@ describe("TaskService", () => {
     const service = await startPromise;
     expect(service).toBeDefined();
     expect(service).toBeInstanceOf(TaskService);
-    expect((service as unknown as TestableTaskService).runtime).toBe(runtime);
+    expect((service as TestableTaskService).runtime).toBe(runtime);
   });
 
   it("should retrieve pending tasks correctly", async () => {
     const checkTasksMethod = (
-      taskService as unknown as TestableTaskService
+      taskService as TestableTaskService
     ).checkTasks.bind(taskService);
 
     await checkTasksMethod();
@@ -151,7 +151,7 @@ describe("TaskService", () => {
     vi.spyOn(runtime, "getTasks").mockResolvedValue([pastTask as never]);
 
     const executeTaskMethod = (
-      taskService as unknown as TestableTaskService
+      taskService as TestableTaskService
     ).executeTask.bind(taskService);
 
     const mockWorkerExecute = vi.fn().mockResolvedValue(undefined);
@@ -203,7 +203,7 @@ describe("TaskService", () => {
     );
 
     const executeTaskMethod = (
-      taskService as unknown as TestableTaskService
+      taskService as TestableTaskService
     ).executeTask.bind(taskService);
 
     await expect(executeTaskMethod(testTask)).rejects.toThrow(

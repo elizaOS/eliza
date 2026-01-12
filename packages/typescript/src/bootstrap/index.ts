@@ -177,7 +177,7 @@ export async function fetchMediaData(
  * @returns {Promise<Media[]>} - Returns a new array of processed attachments with added description, title, and text properties
  */
 export async function processAttachments(
-  attachments: Media[],
+  attachments: Media[] | null | undefined,
   runtime: IAgentRuntime,
 ): Promise<Media[]> {
   if (!attachments || attachments.length === 0) {

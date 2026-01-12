@@ -14,16 +14,22 @@ describe("RuntimeMigrator - Database Detection", () => {
     isRealPostgresDatabase(url: string): boolean;
   }
 
+  // Helper function to access private method
+  function getTestableMigrator(migrator: RuntimeMigrator): TestableRuntimeMigrator {
+    return migrator as TestableRuntimeMigrator;
+  }
+
   class TestRuntimeMigrator extends RuntimeMigrator {
     constructor() {
       // Pass a dummy db object since we're only testing the detection logic
-      // Use unknown cast since we're not actually using the db for this test
-      super({} as unknown as DrizzleDB);
+      // Create a minimal mock that satisfies DrizzleDB interface
+      const mockDb: Partial<DrizzleDB> = {};
+      super(mockDb as DrizzleDB);
     }
 
     // Expose the private method for testing
     public testIsRealPostgresDatabase(url: string): boolean {
-      return (this as unknown as TestableRuntimeMigrator).isRealPostgresDatabase(url);
+      return getTestableMigrator(this).isRealPostgresDatabase(url);
     }
   }
 
