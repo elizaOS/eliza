@@ -1129,7 +1129,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .from(memoryTable)
         .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
         .where(and(...conditions))
-        .orderBy(desc(memoryTable.createdAt));
+        .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
       // Apply limit and offset for pagination
       // Build query conditionally to maintain proper types
@@ -1200,7 +1200,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         })
         .from(memoryTable)
         .where(and(...conditions))
-        .orderBy(desc(memoryTable.createdAt));
+        .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
       const rows = params.limit ? await query.limit(params.limit) : await query;
 
@@ -1279,7 +1279,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .from(memoryTable)
         .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
         .where(and(...conditions))
-        .orderBy(desc(memoryTable.createdAt));
+        .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
       return rows.map((row) => ({
         id: row.memory.id as UUID,
