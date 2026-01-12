@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from elizaos import Plugin
 
 from elizaos_plugin_openai.client import OpenAIClient
 from elizaos_plugin_openai.tokenization import (
@@ -446,7 +450,7 @@ def create_plugin(
 # ============================================================================
 
 
-def create_openai_elizaos_plugin() -> ElizaOSPlugin:
+def create_openai_elizaos_plugin() -> Plugin:
     """
     Create an elizaOS-compatible plugin for OpenAI.
 

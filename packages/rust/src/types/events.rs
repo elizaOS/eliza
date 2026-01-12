@@ -5,7 +5,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{Content, Entity, Memory, Room, World, UUID};
+use super::environment::{Entity, Room, World};
+use super::memory::Memory;
+use super::primitives::{Content, UUID};
 
 /// Standard event types across all platforms
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]

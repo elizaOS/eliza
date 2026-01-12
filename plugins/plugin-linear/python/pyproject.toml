@@ -54,10 +54,12 @@ packages = ["src/elizaos_plugin_linear"]
 [tool.ruff]
 target-version = "py310"
 line-length = 100
-select = ["E", "F", "I", "N", "W", "UP"]
-ignore = []
 
-[tool.ruff.isort]
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]  # line too long (handled by formatter)
+
+[tool.ruff.lint.isort]
 known-first-party = ["elizaos_plugin_linear"]
 
 [tool.mypy]

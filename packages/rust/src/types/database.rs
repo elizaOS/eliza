@@ -5,7 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{MemoryMetadata, UUID};
+use super::memory::MemoryMetadata;
+use super::primitives::UUID;
 
 /// Base log body type with common properties
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

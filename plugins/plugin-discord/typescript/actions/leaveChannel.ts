@@ -23,7 +23,6 @@ import { leaveChannelTemplate } from "../generated/prompts/typescript/prompts.js
 import type { DiscordService } from "../service";
 import type { VoiceManager } from "../voice";
 
-
 /**
  * Get channel information from the user's request
  * @param {IAgentRuntime} runtime - The runtime object to interact with the agent.

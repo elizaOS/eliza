@@ -5,7 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{ActionPlan, ActionResult, Entity, Room, World};
+use super::components::{ActionPlan, ActionResult};
+use super::environment::{Entity, Room, World};
 
 /// Working memory entry for multi-step action execution
 #[derive(Clone, Debug, Serialize, Deserialize)]

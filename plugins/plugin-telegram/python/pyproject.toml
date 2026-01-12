@@ -94,5 +94,9 @@ ignore = [
     "S101",  # use of assert
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Test files use test tokens that are not real credentials
+"tests/*" = ["S105", "S106"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["elizaos_plugin_telegram"]

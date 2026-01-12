@@ -8,11 +8,6 @@ import {
 import { messageClassifierProvider } from "./providers/message-classifier";
 import { PlanningService } from "./services/planning-service";
 
-export * from "./actions/chain-example";
-export * from "./providers/message-classifier";
-export * from "./services/planning-service";
-export * from "./types";
-
 export const planningPlugin: Plugin = {
   name: "@elizaos/plugin-planning",
   description: "Comprehensive planning and execution plugin with unified planning service",

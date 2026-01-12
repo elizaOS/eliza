@@ -62,7 +62,6 @@ async def handler(
         content = message.get("content", {}).get("text", "")
         name_filter: str | None = None
         specific_team: str | None = None
-        include_details = False
 
         # Use LLM to parse the request
         if content:
@@ -77,7 +76,7 @@ async def handler(
 
                     name_filter = parsed.get("nameFilter")
                     specific_team = parsed.get("specificTeam")
-                    include_details = parsed.get("includeDetails", False)
+                    parsed.get("includeDetails", False)
 
                 except json.JSONDecodeError:
                     logger.warning("Failed to parse team filters")

@@ -2,11 +2,18 @@
 //!
 //! This module provides the core runtime for elizaOS agents.
 
-use crate::types::{
-    ActionHandler, ActionResult, Agent, Character, Entity, EvaluatorHandler, EventPayload,
-    EventType, GetMemoriesParams, HandlerOptions, Memory, Plugin, ProviderHandler, Room,
-    RuntimeSettings, SearchMemoriesParams, SettingValue, State, Task, World, UUID,
-};
+use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
+use crate::types::components::{ActionHandler, ActionResult, EvaluatorHandler, HandlerOptions, ProviderHandler};
+use crate::types::database::{GetMemoriesParams, SearchMemoriesParams};
+use crate::types::environment::{Entity, Room, World};
+use crate::types::events::{EventPayload, EventType};
+use crate::types::memory::Memory;
+use crate::types::plugin::Plugin;
+use crate::types::model::LLMMode;
+use crate::types::primitives::{string_to_uuid, UUID};
+use crate::types::settings::{RuntimeSettings, SettingValue};
+use crate::types::state::State;
+use crate::types::task::Task;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -155,7 +162,7 @@ pub struct RuntimeOptions {
     /// When Some(LLMMode::Small), all text generation model calls use TEXT_SMALL.
     /// When Some(LLMMode::Large), all text generation model calls use TEXT_LARGE.
     /// When Some(LLMMode::Default) or None, uses the model type specified in the call.
-    pub llm_mode: Option<crate::types::LLMMode>,
+    pub llm_mode: Option<LLMMode>,
     /// Enable or disable the shouldRespond evaluation.
     /// When Some(true) (default), the agent evaluates whether to respond to each message.
     /// When Some(false), the agent always responds (ChatGPT mode).
@@ -303,7 +310,7 @@ pub struct AgentRuntime {
     /// Action planning option (None means check settings at runtime)
     action_planning_option: Option<bool>,
     /// LLM mode option (None means check settings at runtime)
-    llm_mode_option: Option<crate::types::LLMMode>,
+    llm_mode_option: Option<LLMMode>,
     /// Check should respond option (None means check settings at runtime)
     check_should_respond_option: Option<bool>,
 }
@@ -329,7 +336,7 @@ impl AgentRuntime {
                 let counter = ANONYMOUS_AGENT_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
                 let character = Character {
                     name: format!("Agent-{}", counter),
-                    bio: crate::types::Bio::Single("An anonymous agent".to_string()),
+                    bio: Bio::Single("An anonymous agent".to_string()),
                     ..Default::default()
                 };
                 (character, true)
@@ -340,7 +347,7 @@ impl AgentRuntime {
             .id
             .clone()
             .or(opts.agent_id)
-            .unwrap_or_else(|| crate::types::string_to_uuid(&character.name));
+            .unwrap_or_else(|| string_to_uuid(&character.name));
 
         let log_level = opts.log_level;
         info!("Creating AgentRuntime for agent: {} with log level {:?}", agent_id, log_level);
@@ -414,7 +421,7 @@ impl AgentRuntime {
     /// - `LLMMode::Large`: Override all text generation model calls to use TEXT_LARGE
     /// 
     /// Priority: constructor option > character setting LLM_MODE > default (Default)
-    pub async fn get_llm_mode(&self) -> crate::types::LLMMode {
+    pub async fn get_llm_mode(&self) -> LLMMode {
         // Constructor option takes precedence
         if let Some(mode) = self.llm_mode_option {
             return mode;
@@ -422,11 +429,11 @@ impl AgentRuntime {
 
         // Check character settings
         if let Some(SettingValue::String(s)) = self.get_setting("LLM_MODE").await {
-            return crate::types::LLMMode::parse(&s);
+            return LLMMode::parse(&s);
         }
 
         // Default to Default (no override)
-        crate::types::LLMMode::Default
+        LLMMode::Default
     }
 
     /// Check if the shouldRespond evaluation is enabled.
@@ -654,7 +661,7 @@ impl AgentRuntime {
             {
                 let mut character = self.character.write().await;
                 if character.secrets.is_none() {
-                    character.secrets = Some(crate::types::CharacterSecrets::default());
+                    character.secrets = Some(CharacterSecrets::default());
                 }
                 if let Some(secrets) = &mut character.secrets {
                     secrets
@@ -666,7 +673,7 @@ impl AgentRuntime {
             {
                 let mut character = self.character.write().unwrap();
                 if character.secrets.is_none() {
-                    character.secrets = Some(crate::types::CharacterSecrets::default());
+                    character.secrets = Some(CharacterSecrets::default());
                 }
                 if let Some(secrets) = &mut character.secrets {
                     secrets
@@ -681,7 +688,7 @@ impl AgentRuntime {
         {
             let mut character = self.character.write().await;
             if character.settings.is_none() {
-                character.settings = Some(crate::types::CharacterSettings::default());
+                character.settings = Some(CharacterSettings::default());
             }
             if let Some(settings) = &mut character.settings {
                 settings
@@ -693,7 +700,7 @@ impl AgentRuntime {
         {
             let mut character = self.character.write().unwrap();
             if character.settings.is_none() {
-                character.settings = Some(crate::types::CharacterSettings::default());
+                character.settings = Some(CharacterSettings::default());
             }
             if let Some(settings) = &mut character.settings {
                 settings
@@ -933,11 +940,11 @@ impl AgentRuntime {
     /// })).await?;
     /// ```
     pub async fn use_model(&self, model_type: &str, params: serde_json::Value) -> Result<String> {
-        use crate::types::model_type;
+        use crate::types::model::model_type;
 
         // Apply LLM mode override for text generation models
         let llm_mode = self.get_llm_mode().await;
-        let effective_model_type = if llm_mode != crate::types::LLMMode::Default {
+        let effective_model_type = if llm_mode != LLMMode::Default {
             // List of text generation model types that can be overridden
             let text_generation_models = [
                 model_type::TEXT_SMALL,
@@ -949,9 +956,9 @@ impl AgentRuntime {
 
             if text_generation_models.contains(&model_type) {
                 let override_model = match llm_mode {
-                    crate::types::LLMMode::Small => model_type::TEXT_SMALL,
-                    crate::types::LLMMode::Large => model_type::TEXT_LARGE,
-                    crate::types::LLMMode::Default => model_type,
+                    LLMMode::Small => model_type::TEXT_SMALL,
+                    LLMMode::Large => model_type::TEXT_LARGE,
+                    LLMMode::Default => model_type,
                 };
                 if model_type != override_model {
                     debug!(

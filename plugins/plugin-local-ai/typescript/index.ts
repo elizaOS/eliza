@@ -33,17 +33,6 @@ import { TranscribeManager } from "./utils/transcribeManager";
 import { TTSManager } from "./utils/ttsManager";
 import { VisionManager } from "./utils/visionManager";
 
-// Re-export XML utilities for users
-export {
-  buildXmlResponse,
-  escapeXml,
-  extractXmlTag,
-  parseSimpleXml,
-  sanitizeForXml,
-  unescapeXml,
-  wrapInCdata,
-} from "./utils/xmlParser";
-
 // Words to punish in LLM responses
 /**
  * Array containing words that should trigger a punishment when used in a message.

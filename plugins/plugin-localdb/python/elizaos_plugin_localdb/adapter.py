@@ -361,7 +361,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
         logs = await self._storage.get_where(COLLECTIONS["LOGS"], predicate)
 
         # Sort by createdAt descending
-        logs.sort(key=lambda l: l.get("createdAt", ""), reverse=True)
+        logs.sort(key=lambda log: log.get("createdAt", ""), reverse=True)
 
         offset = params.get("offset", 0)
         count = params.get("count")

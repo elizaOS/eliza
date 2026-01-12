@@ -28,3 +28,4 @@ export function getVendor(type: TeeVendorName): TeeVendorInterface {
 }
 
 export { PhalaVendor } from "./phala";
+export { type TeeVendorInterface, type TeeVendorName, TeeVendorNames } from "./types";

@@ -36,7 +36,6 @@ import {
 } from "./providers";
 import { PluginCreationService } from "./services/plugin-creation-service";
 
-
 /**
  * Plugin configuration object structure
  */

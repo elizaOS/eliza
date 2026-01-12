@@ -44,12 +44,13 @@ pub mod config;
 pub mod error;
 pub mod types;
 
-// Import directly from submodules:
-// - client::GatewayClient
-// - config::model_supports_temperature
-// - error::{GatewayError, Result}
-// - types::* for all types
-// - futures for stream handling
+// Re-export commonly used types for convenience
+pub use client::GatewayClient;
+pub use error::{GatewayError, Result};
+pub use types::{
+    EmbeddingParams, GatewayConfig, ImageDescriptionParams, ImageDescriptionResult,
+    ImageGenerationParams, ImageGenerationResult, TextGenerationParams,
+};
 
 use anyhow::Result as AnyhowResult;
 

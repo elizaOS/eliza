@@ -246,7 +246,7 @@ class ScreenCaptureService:
             if system == "Linux" and "command not found" in str(e):
                 raise RuntimeError(
                     "Screen capture tool not found. Install with: sudo apt-get install scrot"
-                )
+                ) from e
             raise
 
     def get_active_tile(self) -> ScreenTile | None:

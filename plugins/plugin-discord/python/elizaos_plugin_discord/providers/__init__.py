@@ -5,8 +5,7 @@ Providers supply contextual information for agent decision-making.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from elizaos_plugin_discord.providers.channel_state import ChannelStateProvider
 from elizaos_plugin_discord.providers.guild_info import GuildInfoProvider

@@ -1,7 +1,7 @@
 """Telegram service implementation."""
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters

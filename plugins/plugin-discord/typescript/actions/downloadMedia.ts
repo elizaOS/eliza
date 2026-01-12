@@ -19,7 +19,6 @@ import {
 } from "@elizaos/core";
 import { mediaUrlTemplate } from "../generated/prompts/typescript/prompts.js";
 
-
 /**
  * Get a media URL from the user through text input using the provided runtime and state.
  * @param {IAgentRuntime} runtime - The runtime object to interact with the agent.

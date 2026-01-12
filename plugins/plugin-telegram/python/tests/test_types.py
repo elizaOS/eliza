@@ -1,6 +1,5 @@
 """Tests for Telegram types."""
 
-import pytest
 
 from elizaos_plugin_telegram.types import (
     Button,

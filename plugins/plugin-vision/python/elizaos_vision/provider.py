@@ -157,7 +157,7 @@ class VisionProvider:
                         )
 
                 if scene_description.objects:
-                    object_types = list(set(o.type for o in scene_description.objects))
+                    object_types = list({o.type for o in scene_description.objects})
                     perception_text += f"\n\nObjects detected: {', '.join(object_types)}"
 
                 if scene_description.scene_changed:

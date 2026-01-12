@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use super::Metadata;
+use super::primitives::Metadata;
 
 /// Core service type names
 pub mod service_type {

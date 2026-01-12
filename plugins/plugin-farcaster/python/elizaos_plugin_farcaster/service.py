@@ -76,9 +76,9 @@ class FarcasterService:
                 await self._check_mentions()
             except FarcasterError as e:
                 # Log error but continue polling
-                print(f"Error checking mentions: {e}")
-            except Exception as e:
-                print(f"Unexpected error in poll loop: {e}")
+                logger.debug(f"Farcaster error during mention check: {e}")
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Unexpected error during mention check: {e}")
 
             await asyncio.sleep(self.config.poll_interval)
 
