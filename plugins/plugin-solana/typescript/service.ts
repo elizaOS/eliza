@@ -387,7 +387,8 @@ export class SolanaService extends Service {
       // now we have jupiter lets register our services
       const service = runtime.getService("JUPITER_SERVICE" as ServiceTypeName);
       if (this.isJupiterService(service)) {
-        this.jupiterService = service as unknown as ExtendedJupiterServiceInterface;
+        // Type guard narrows service to Service & ExtendedJupiterServiceInterface
+        this.jupiterService = service;
       } else {
         this.jupiterService = null;
       }
