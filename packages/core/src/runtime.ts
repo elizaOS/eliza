@@ -2525,24 +2525,31 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
-  async ensureEmbeddingDimension() {
+  async ensureEmbeddingDimension(): Promise<void> {
     if (!this.adapter) {
       throw new Error('Database adapter not initialized before ensureEmbeddingDimension');
     }
-    const model = this.getModel(ModelType.TEXT_EMBEDDING);
-    if (!model) {
+    if (!this.getModel(ModelType.TEXT_EMBEDDING)) {
       throw new Error('No TEXT_EMBEDDING model registered');
     }
 
-    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, { text: '' });
-    if (!embedding || !embedding.length) {
-      throw new Error('Invalid embedding received');
+    // Check if dimension is provided via settings (skips expensive ~500ms API call)
+    const providedDimension = this.getSetting('EMBEDDING_DIMENSION');
+    const parsedDimension = Number(providedDimension);
+    const useProvidedDimension = parsedDimension > 0;
+
+    const dimension = useProvidedDimension
+      ? parsedDimension
+      : (await this.useModel(ModelType.TEXT_EMBEDDING, { text: '' }))?.length;
+
+    if (!dimension) {
+      throw new Error('Invalid embedding dimension');
     }
 
-    await this.adapter.ensureEmbeddingDimension(embedding.length);
+    await this.adapter.ensureEmbeddingDimension(dimension);
     this.logger.debug(
-      { src: 'agent', agentId: this.agentId, dimension: embedding.length },
-      'Embedding dimension set'
+      { src: 'agent', agentId: this.agentId, dimension },
+      useProvidedDimension ? 'Embedding dimension set from config' : 'Embedding dimension set via API call'
     );
   }
 
