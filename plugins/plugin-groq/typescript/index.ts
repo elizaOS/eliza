@@ -3,10 +3,7 @@ import type { IAgentRuntime, ObjectGenerationParams, Plugin } from "@elizaos/cor
 import { type GenerateTextParams, logger, ModelType } from "@elizaos/core";
 import { generateObject, generateText } from "ai";
 
-// Disable AI SDK warning logging by default (can be overridden by setting to true)
 (globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
-
-// Default models
 const DEFAULT_SMALL_MODEL = "llama-3.1-8b-instant";
 const DEFAULT_LARGE_MODEL = "llama-3.3-70b-versatile";
 const DEFAULT_TTS_MODEL = "playai-tts";
@@ -38,9 +35,6 @@ function createGroqClient(runtime: IAgentRuntime) {
   });
 }
 
-/**
- * Extract retry delay from Groq rate limit error message
- */
 function extractRetryDelay(message: string): number {
   const match = message.match(/try again in (\d+\.?\d*)s/i);
   if (match?.[1]) {
@@ -49,9 +43,6 @@ function extractRetryDelay(message: string): number {
   return 10000; // Default 10 seconds
 }
 
-/**
- * Generate text with automatic rate limit retry
- */
 async function generateWithRetry(
   groq: ReturnType<typeof createGroq>,
   model: string,
@@ -161,7 +152,6 @@ export const groqPlugin: Plugin = {
     },
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {
-      // Type guard for audio data params
       function hasAudioData(obj: unknown): obj is { audioData: Buffer } {
         return (
           typeof obj === "object" &&

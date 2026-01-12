@@ -1,5 +1,3 @@
-"""Tests for the Groq client."""
-
 import pytest
 
 from elizaos_plugin_groq.client import GroqClient, _extract_json

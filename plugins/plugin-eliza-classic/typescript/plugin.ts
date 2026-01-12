@@ -1,18 +1,7 @@
-/**
- * ELIZA Classic Plugin Definition
- */
-
 import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { handleTextLarge, handleTextSmall } from "./models";
 
-/**
- * Classic ELIZA plugin for elizaOS.
- *
- * Provides model handlers for TEXT_LARGE and TEXT_SMALL that use
- * the original ELIZA pattern matching algorithm. No external API calls
- * or LLM services required.
- */
 export const elizaClassicPlugin: Plugin = {
   name: "eliza-classic",
   description: "Classic ELIZA pattern matching psychotherapist - no LLM required",
@@ -84,7 +73,6 @@ export const elizaClassicPlugin: Plugin = {
               throw new Error("Response should be non-empty string");
             }
 
-            // Should mention family
             logger.info(`[ELIZA Test] Family response: "${response}"`);
           },
         },

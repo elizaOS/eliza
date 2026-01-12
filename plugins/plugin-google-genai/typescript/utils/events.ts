@@ -1,13 +1,6 @@
 import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 
-/**
- * Emits a model usage event
- * @param runtime The runtime context
- * @param type The model type
- * @param prompt The prompt used
- * @param usage The usage data
- */
 export function emitModelUsageEvent(
   runtime: IAgentRuntime,
   type: ModelTypeName,

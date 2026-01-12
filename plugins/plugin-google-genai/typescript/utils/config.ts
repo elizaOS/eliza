@@ -2,14 +2,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from "@google/genai";
 
-/**
- * Retrieves a configuration setting from the runtime, falling back to environment variables or a default value if not found.
- *
- * @param runtime - The runtime context.
- * @param key - The name of the setting to retrieve.
- * @param defaultValue - The value to return if the setting is not found in the runtime or environment.
- * @returns The resolved setting value as a string, or {@link defaultValue} if not found.
- */
 export function getSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -26,22 +18,10 @@ export function getSetting(
   return defaultValue;
 }
 
-/**
- * Helper function to get the API key for Google AI
- *
- * @param runtime The runtime context
- * @returns The configured API key
- */
 export function getApiKey(runtime: IAgentRuntime): string | undefined {
   return getSetting(runtime, "GOOGLE_GENERATIVE_AI_API_KEY");
 }
 
-/**
- * Helper function to get the small model name with fallbacks
- *
- * @param runtime The runtime context
- * @returns The configured small model name
- */
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_SMALL_MODEL") ??
@@ -50,12 +30,6 @@ export function getSmallModel(runtime: IAgentRuntime): string {
   );
 }
 
-/**
- * Helper function to get the large model name with fallbacks
- *
- * @param runtime The runtime context
- * @returns The configured large model name
- */
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_LARGE_MODEL") ??
@@ -64,12 +38,6 @@ export function getLargeModel(runtime: IAgentRuntime): string {
   );
 }
 
-/**
- * Helper function to get the image model name with fallbacks
- *
- * @param runtime The runtime context
- * @returns The configured image model name
- */
 export function getImageModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_IMAGE_MODEL") ??
@@ -78,12 +46,6 @@ export function getImageModel(runtime: IAgentRuntime): string {
   );
 }
 
-/**
- * Helper function to get the embedding model name with fallbacks
- *
- * @param runtime The runtime context
- * @returns The configured embedding model name
- */
 export function getEmbeddingModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_EMBEDDING_MODEL", "text-embedding-004") ?? "text-embedding-004"
@@ -106,9 +68,6 @@ export function createGoogleGenAI(runtime: IAgentRuntime): GoogleGenAI | null {
   return new GoogleGenAI({ apiKey });
 }
 
-/**
- * Convert safety settings to Google format
- */
 export function getSafetySettings() {
   return [
     {

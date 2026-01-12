@@ -1,12 +1,8 @@
-"""Error types for the Groq plugin."""
-
 import re
 from enum import Enum
 
 
 class GroqErrorCode(str, Enum):
-    """Error codes for Groq operations."""
-
     INVALID_API_KEY = "INVALID_API_KEY"
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
     INVALID_REQUEST = "INVALID_REQUEST"
@@ -15,8 +11,6 @@ class GroqErrorCode(str, Enum):
 
 
 class GroqError(Exception):
-    """Main error type for Groq operations."""
-
     def __init__(
         self,
         message: str,
@@ -32,12 +26,10 @@ class GroqError(Exception):
 
     @property
     def is_retryable(self) -> bool:
-        """Check if retryable."""
         return self.code == GroqErrorCode.RATE_LIMIT_EXCEEDED
 
     @property
     def retry_delay_ms(self) -> int | None:
-        """Get retry delay in milliseconds."""
         if self.retry_after:
             return int(self.retry_after * 1000) + 1000
         if self.code == GroqErrorCode.RATE_LIMIT_EXCEEDED:
@@ -46,7 +38,6 @@ class GroqError(Exception):
 
     @classmethod
     def from_response(cls, status_code: int, body: str) -> "GroqError":
-        """Create error from HTTP response."""
         if status_code == 401:
             return cls(
                 message="Invalid API key",
@@ -68,7 +59,6 @@ class GroqError(Exception):
 
 
 def _extract_retry_delay(message: str) -> float | None:
-    """Extract retry delay from error message."""
     match = re.search(r"try again in (\d+\.?\d*)s", message, re.IGNORECASE)
     if match:
         return float(match.group(1))

@@ -1,9 +1,3 @@
-/**
- * @elizaos/plugin-evm Transfer Action
- *
- * Handles native token and ERC20 token transfers on EVM chains.
- */
-
 import {
   type Action,
   type ActionResult,
@@ -28,18 +22,10 @@ import {
   type TransferParams,
 } from "../types";
 
-/**
- * Transfer action executor
- */
 export class TransferAction {
   constructor(private readonly walletProvider: WalletProvider) {}
 
-  /**
-   * Execute a token transfer
-   * @throws EVMError on failure
-   */
   async transfer(params: TransferParams): Promise<Transaction> {
-    // Normalize empty or invalid data field to '0x'
     let data: Hex = "0x";
     if (params.data && params.data !== "0x") {
       data = params.data;

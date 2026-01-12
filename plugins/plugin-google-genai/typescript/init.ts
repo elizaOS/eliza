@@ -2,9 +2,6 @@ import { type IAgentRuntime, logger } from "@elizaos/core";
 import { GoogleGenAI } from "@google/genai";
 import { getApiKey } from "./utils/config";
 
-/**
- * Plugin configuration object structure
- */
 export interface PluginConfig {
   readonly GOOGLE_GENERATIVE_AI_API_KEY?: string;
   readonly GOOGLE_SMALL_MODEL?: string;
@@ -31,7 +28,6 @@ export function initializeGoogleGenAI(_config: PluginConfig, runtime: IAgentRunt
         return;
       }
 
-      // Test the API key by listing models
       try {
         const genAI = new GoogleGenAI({ apiKey });
         const modelList = await genAI.models.list();

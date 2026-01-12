@@ -6,6 +6,21 @@ import { revokeApiKeyAction } from "../actions/revokeApiKey";
 vi.mock("../utils/clobClient");
 vi.mock("../utils/llmHelpers");
 
+// Mock @elizaos/core to avoid real runtime initialization
+vi.mock("@elizaos/core", async () => {
+  const actual = await vi.importActual("@elizaos/core");
+  return {
+    ...actual,
+    logger: {
+      log: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  };
+});
+
 // Type definitions for mocked modules
 type MockedLLMHelpers = {
   callLLMWithTimeout: ReturnType<typeof vi.fn>;
@@ -16,32 +31,23 @@ type MockedClobClient = {
 };
 
 /**
- * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ * Creates a mock AgentRuntime for testing.
  */
-async function createTestRuntime(settings: Record<string, string | undefined> = {}): Promise<{
-  runtime: IAgentRuntime;
-  cleanup: () => Promise<void>;
-}> {
-  const sqlPlugin = await import("@elizaos/plugin-sql");
-  const { AgentRuntime } = await import("@elizaos/core");
-  const { v4: uuidv4 } = await import("uuid");
+function createMockRuntime(settings: Record<string, string | undefined> = {}): IAgentRuntime {
+  const secrets: Record<string, string | undefined> = {
+    WALLET_PRIVATE_KEY: settings.WALLET_PRIVATE_KEY ?? "test-private-key",
+    CLOB_API_URL: settings.CLOB_API_URL ?? "https://clob.polymarket.com",
+  };
 
-  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
-  await adapter.init();
-
-  const runtime = new AgentRuntime({
-    agentId,
+  return {
+    agentId: "test-agent-id" as `${string}-${string}-${string}-${string}-${string}`,
     character: {
       name: "Test Agent",
       bio: ["A test agent for Polymarket"],
       system: "You are a helpful assistant.",
       plugins: [],
       settings: {
-        secrets: {
-          WALLET_PRIVATE_KEY: settings.WALLET_PRIVATE_KEY ?? "test-private-key",
-          CLOB_API_URL: settings.CLOB_API_URL ?? "https://clob.polymarket.com",
-        },
+        secrets,
       },
       messageExamples: [],
       postExamples: [],
@@ -49,39 +55,31 @@ async function createTestRuntime(settings: Record<string, string | undefined> = 
       adjectives: ["helpful"],
       style: { all: [], chat: [], post: [] },
     },
-    adapter,
-    plugins: [],
-  });
-
-  await runtime.initialize();
-
-  const cleanup = async () => {
-    try {
-      await runtime.stop();
-      await adapter.close();
-    } catch {
-      // Ignore cleanup errors
-    }
-  };
-
-  return { runtime, cleanup };
+    getSetting: vi.fn((key: string) => secrets[key]),
+    setSetting: vi.fn((key: string, value: string) => {
+      secrets[key] = value;
+    }),
+    getService: vi.fn(),
+    registerService: vi.fn(),
+    useModel: vi.fn(),
+    emitEvent: vi.fn(),
+    composeState: vi.fn().mockResolvedValue({}),
+    updateRecentMessageState: vi.fn().mockResolvedValue({}),
+  } as unknown as IAgentRuntime;
 }
 
 describe("revokeApiKeyAction", () => {
   let runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
   let testMessage: Memory;
   let testState: State;
   let testCallback: (result: unknown) => void;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
 
-    // Create real runtime
-    const result = await createTestRuntime();
-    runtime = result.runtime;
-    cleanup = result.cleanup;
+    // Create mock runtime
+    runtime = createMockRuntime();
 
     // Test message
     testMessage = {
@@ -103,8 +101,8 @@ describe("revokeApiKeyAction", () => {
     testCallback = vi.fn();
   });
 
-  afterEach(async () => {
-    await cleanup();
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   describe("validate", () => {
@@ -114,16 +112,14 @@ describe("revokeApiKeyAction", () => {
     });
 
     it("should return false when no private key is available", async () => {
-      const resultWithoutKey = await createTestRuntime({
+      const runtimeWithoutKey = createMockRuntime({
         WALLET_PRIVATE_KEY: undefined,
       });
 
-      vi.spyOn(resultWithoutKey.runtime, "getSetting").mockReturnValue(undefined);
+      vi.spyOn(runtimeWithoutKey, "getSetting").mockReturnValue(undefined);
 
-      const result = await revokeApiKeyAction.validate(resultWithoutKey.runtime, testMessage);
+      const result = await revokeApiKeyAction.validate(runtimeWithoutKey, testMessage);
       expect(result).toBe(false);
-
-      await resultWithoutKey.cleanup();
     });
   });
 
@@ -320,25 +316,25 @@ describe("revokeApiKeyAction", () => {
 
   describe("action properties", () => {
     it("should have correct action name", () => {
-      expect(revokeApiKeyAction.name).toBe("DELETE_API_KEY");
+      expect(revokeApiKeyAction.name).toBe("POLYMARKET_REVOKE_API_KEY");
     });
 
     it("should have appropriate similes", () => {
-      expect(revokeApiKeyAction.similes).toContain("REVOKE_API_KEY");
-      expect(revokeApiKeyAction.similes).toContain("DELETE_POLYMARKET_API_KEY");
-      expect(revokeApiKeyAction.similes).toContain("REMOVE_API_CREDENTIALS");
+      expect(revokeApiKeyAction.similes).toContain("POLYMARKET_DELETE_API_KEY");
+      expect(revokeApiKeyAction.similes).toContain("POLYMARKET_REMOVE_API_KEY");
+      expect(revokeApiKeyAction.similes).toContain("POLYMARKET_DISABLE_API_KEY");
     });
 
     it("should have proper description", () => {
-      expect(revokeApiKeyAction.description).toContain("Revoke/delete");
+      expect(revokeApiKeyAction.description).toContain("Revoke");
       expect(revokeApiKeyAction.description).toContain("API key");
-      expect(revokeApiKeyAction.description).toContain("CLOB authentication");
+      expect(revokeApiKeyAction.description).toContain("Polymarket");
     });
 
     it("should have example conversations", () => {
       expect(revokeApiKeyAction.examples).toHaveLength(2);
       expect(revokeApiKeyAction.examples[0][0].content.text).toContain("Revoke API key");
-      expect(revokeApiKeyAction.examples[1][0].content.text).toContain("Delete my CLOB");
+      expect(revokeApiKeyAction.examples[1][0].content.text).toContain("Delete my old Polymarket");
     });
   });
 });

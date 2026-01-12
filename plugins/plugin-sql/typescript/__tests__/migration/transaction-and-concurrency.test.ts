@@ -159,9 +159,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         testTable2: pgTable("test_should_rollback", {
           id: uuid("id").primaryKey().defaultRandom(),
           // Reference to non-existent table will fail
-          fake_ref: uuid("fake_ref").references(
-            () => createInvalidTableReference().id
-          ),
+          fake_ref: uuid("fake_ref").references(() => createInvalidTableReference().id),
         }),
       };
 
@@ -227,9 +225,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
           testTable: pgTable("test_invalid_table", {
             id: uuid("id").primaryKey().defaultRandom(),
             // This will create invalid foreign key reference
-            invalid_ref: uuid("invalid_ref").references(
-              () => createInvalidTableReference().id
-            ),
+            invalid_ref: uuid("invalid_ref").references(() => createInvalidTableReference().id),
           }),
         };
 
@@ -542,9 +538,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         testTable: pgTable("test_invalid_concurrent", {
           id: uuid("id").primaryKey().defaultRandom(),
           // This will cause an error during migration due to invalid reference
-          bad_ref: uuid("bad_ref").references(
-            () => createInvalidTableReference().id
-          ),
+          bad_ref: uuid("bad_ref").references(() => createInvalidTableReference().id),
         }),
       };
 

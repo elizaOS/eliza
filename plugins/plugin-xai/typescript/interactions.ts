@@ -944,7 +944,7 @@ Response (YES/NO):`;
       typeof message.metadata === "object" && !Array.isArray(message.metadata)
         ? message.metadata
         : { type: MemoryType.CUSTOM };
-    
+
     // Create properly typed CustomMetadata with X-specific properties
     // CustomMetadata allows additional properties via index signature
     message.metadata = {

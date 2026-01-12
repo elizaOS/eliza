@@ -63,8 +63,9 @@ function buildSendTxParams(params: {
   gas?: bigint;
   gasPrice?: bigint;
 }): SendTransactionParameters {
-  // Construct the transaction parameters object with explicit typing
-  const txParams: SendTransactionParameters = {
+  // Construct the transaction parameters object
+  // Using partial typing to avoid strict viem union constraints on optional fields
+  const txParams: Partial<SendTransactionParameters> & Pick<SendTransactionParameters, 'account' | 'to'> = {
     account: params.account,
     to: params.to,
   };
@@ -86,7 +87,7 @@ function buildSendTxParams(params: {
     txParams.gasPrice = params.gasPrice;
   }
 
-  return txParams;
+  return txParams as SendTransactionParameters;
 }
 
 /**
@@ -268,13 +269,12 @@ export class SwapAction {
       fromTokenDecimals = chainConfig.nativeCurrency.decimals;
     } else {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
-      // Type-safe readContract call - viem's type system requires explicit typing
-      const readContractParams = {
+      // @ts-expect-error - viem type narrowing issue with readContract union types
+      fromTokenDecimals = Number(await publicClient.readContract({
         address: params.fromToken as Address,
         abi: decimalsAbi,
-        functionName: "decimals" as const,
-      } as const;
-      fromTokenDecimals = Number(await publicClient.readContract(readContractParams));
+        functionName: "decimals",
+      }));
     }
 
     const quotesPromises: Promise<SwapQuote | undefined>[] = [

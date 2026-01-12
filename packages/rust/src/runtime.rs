@@ -217,14 +217,7 @@ fn normalize_setting_value(value: SettingValue) -> SettingValue {
     }
 }
 
-/// Model handler function type for runtime
-/// 
-/// This type represents an async function that takes model parameters (as JSON)
-/// and returns a string result. It is used to register model handlers that can
-/// be called via `runtime.use_model()`.
-/// 
-/// For native builds, handlers must be Send + Sync for multi-threaded async.
-/// For WASM builds, this constraint is relaxed since WASM is single-threaded.
+/// Model handler for native builds (Send + Sync)
 #[cfg(not(feature = "wasm"))]
 pub type RuntimeModelHandler = Box<
     dyn Fn(serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>> + Send>>

@@ -1,10 +1,3 @@
-"""
-elizaOS Groq Plugin - Fast LLM inference via Groq's LPU.
-
-Provides text generation with Llama and other models, audio transcription,
-and text-to-speech synthesis.
-"""
-
 __version__ = "1.0.4"
 
 from elizaos_plugin_groq.client import GroqClient

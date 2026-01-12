@@ -1,5 +1,3 @@
-"""Groq API client."""
-
 import asyncio
 import json
 import logging
@@ -62,7 +60,6 @@ class GroqClient:
         await self.close()
 
     async def close(self) -> None:
-        """Close the client."""
         await self._client.aclose()
 
     async def generate_text_small(self, params: GenerateTextParams) -> str:
@@ -70,7 +67,6 @@ class GroqClient:
         return await self._generate_text(self.config.small_model, params)
 
     async def generate_text_large(self, params: GenerateTextParams) -> str:
-        """Generate text with large model."""
         return await self._generate_text(self.config.large_model, params)
 
     async def _generate_text(self, model: str, params: GenerateTextParams) -> str:
@@ -101,7 +97,6 @@ class GroqClient:
         return response.choices[0].message.content
 
     async def generate_object(self, params: GenerateObjectParams) -> dict[str, Any]:
-        """Generate JSON object."""
         text = await self._generate_text(
             self.config.large_model,
             GenerateTextParams(prompt=params.prompt, temperature=params.temperature),
@@ -112,7 +107,6 @@ class GroqClient:
         return result
 
     async def transcribe(self, params: TranscriptionParams) -> str:
-        """Transcribe audio."""
         async with httpx.AsyncClient(
             base_url=self.config.base_url,
             headers={"Authorization": f"Bearer {self.config.api_key}"},
@@ -130,7 +124,6 @@ class GroqClient:
             return TranscriptionResponse.model_validate(response.json()).text
 
     async def text_to_speech(self, params: TextToSpeechParams) -> bytes:
-        """Generate speech from text."""
         voice = params.voice or self.config.tts_voice
 
         response = await self._client.post(
@@ -144,12 +137,10 @@ class GroqClient:
         return response.content
 
     async def list_models(self) -> list[ModelInfo]:
-        """List available models."""
         data = await self._request("GET", "/models")
         return ModelsResponse.model_validate(data).data
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
-        """Make request with retry on rate limit."""
         for attempt in range(3):
             try:
                 response = await self._client.request(method, path, **kwargs)
@@ -178,13 +169,10 @@ class GroqClient:
 
 
 def _extract_json(text: str) -> str:
-    """Extract JSON from text."""
-    # Code blocks
     if match := re.search(r"```json\s*([\s\S]*?)\s*```", text):
         return match.group(1).strip()
     if match := re.search(r"```\w*\s*([\s\S]*?)\s*```", text):
         return match.group(1).strip()
-    # Direct JSON
     if match := re.search(r"\{[\s\S]*\}", text):
         return match.group(0)
     if match := re.search(r"\[[\s\S]*\]", text):

@@ -9,36 +9,42 @@ import { callLLMWithTimeout } from "../utils/llmHelpers";
 vi.mock("../utils/clobClient");
 vi.mock("../utils/llmHelpers");
 
+// Mock @elizaos/core to avoid real runtime initialization
+vi.mock("@elizaos/core", async () => {
+  const actual = await vi.importActual("@elizaos/core");
+  return {
+    ...actual,
+    logger: {
+      log: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  };
+});
+
 const mockInitializeClobClient = initializeClobClient as Mock;
 const mockCallLLMWithTimeout = callLLMWithTimeout as Mock;
 
 /**
- * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ * Creates a mock AgentRuntime for testing.
  */
-async function createTestRuntime(settings: Record<string, string | undefined> = {}): Promise<{
-  runtime: IAgentRuntime;
-  cleanup: () => Promise<void>;
-}> {
-  const sqlPlugin = await import("@elizaos/plugin-sql");
-  const { AgentRuntime } = await import("@elizaos/core");
-  const { v4: uuidv4 } = await import("uuid");
+function createMockRuntime(settings: Record<string, string | undefined> = {}): IAgentRuntime {
+  const secrets: Record<string, string | undefined> = {
+    CLOB_API_URL: settings.CLOB_API_URL ?? "https://clob.polymarket.com",
+    CLOB_API_KEY: settings.CLOB_API_KEY ?? "test-api-key",
+  };
 
-  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
-  await adapter.init();
-
-  const runtime = new AgentRuntime({
-    agentId,
+  return {
+    agentId: "test-agent-id" as `${string}-${string}-${string}-${string}-${string}`,
     character: {
       name: "Test Agent",
       bio: ["A test agent for Polymarket"],
       system: "You are a helpful assistant.",
       plugins: [],
       settings: {
-        secrets: {
-          CLOB_API_URL: settings.CLOB_API_URL ?? "https://clob.polymarket.com",
-          CLOB_API_KEY: settings.CLOB_API_KEY ?? "test-api-key",
-        },
+        secrets,
       },
       messageExamples: [],
       postExamples: [],
@@ -46,22 +52,17 @@ async function createTestRuntime(settings: Record<string, string | undefined> = 
       adjectives: ["helpful"],
       style: { all: [], chat: [], post: [] },
     },
-    adapter,
-    plugins: [],
-  });
-
-  await runtime.initialize();
-
-  const cleanup = async () => {
-    try {
-      await runtime.stop();
-      await adapter.close();
-    } catch {
-      // Ignore cleanup errors
-    }
-  };
-
-  return { runtime, cleanup };
+    getSetting: vi.fn((key: string) => secrets[key]),
+    setSetting: vi.fn((key: string, value: string) => {
+      secrets[key] = value;
+    }),
+    getService: vi.fn(),
+    registerService: vi.fn(),
+    useModel: vi.fn(),
+    emitEvent: vi.fn(),
+    composeState: vi.fn().mockResolvedValue({}),
+    updateRecentMessageState: vi.fn().mockResolvedValue({}),
+  } as unknown as IAgentRuntime;
 }
 
 // Sample simplified market data for testing
@@ -100,16 +101,15 @@ const mockSimplifiedMarketsResponse: SimplifiedMarketsResponse = {
 
 describe("getSimplifiedMarketsAction", () => {
   let runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
   let testMemory: Memory;
   let testState: State;
 
-  beforeEach(async () => {
+  beforeEach(() => {
+    // Reset all mocks
     vi.clearAllMocks();
 
-    const result = await createTestRuntime();
-    runtime = result.runtime;
-    cleanup = result.cleanup;
+    // Create mock runtime
+    runtime = createMockRuntime();
 
     testMemory = {
       id: "test-memory-id" as `${string}-${string}-${string}-${string}-${string}`,
@@ -151,8 +151,8 @@ describe("getSimplifiedMarketsAction", () => {
     } as State;
   });
 
-  afterEach(async () => {
-    await cleanup();
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   describe("validation", () => {
@@ -163,21 +163,19 @@ describe("getSimplifiedMarketsAction", () => {
     });
 
     it("should fail validation when CLOB_API_URL is not provided", async () => {
-      const resultWithoutUrl = await createTestRuntime({
+      const runtimeWithoutUrl = createMockRuntime({
         CLOB_API_URL: undefined,
       });
 
-      vi.spyOn(resultWithoutUrl.runtime, "getSetting").mockReturnValue(undefined);
+      vi.spyOn(runtimeWithoutUrl, "getSetting").mockReturnValue(undefined);
 
       const result = await getSimplifiedMarketsAction.validate(
-        resultWithoutUrl.runtime,
+        runtimeWithoutUrl,
         testMemory,
         testState
       );
 
       expect(result).toBe(false);
-
-      await resultWithoutUrl.cleanup();
     });
   });
 
@@ -291,17 +289,15 @@ describe("getSimplifiedMarketsAction", () => {
     });
 
     it("should handle missing CLOB_API_URL", async () => {
-      const resultWithoutUrl = await createTestRuntime({
+      const runtimeWithoutUrl = createMockRuntime({
         CLOB_API_URL: undefined,
       });
 
-      vi.spyOn(resultWithoutUrl.runtime, "getSetting").mockReturnValue(undefined);
+      vi.spyOn(runtimeWithoutUrl, "getSetting").mockReturnValue(undefined);
 
       await expect(
-        getSimplifiedMarketsAction.handler(resultWithoutUrl.runtime, testMemory, testState)
+        getSimplifiedMarketsAction.handler(runtimeWithoutUrl, testMemory, testState)
       ).rejects.toThrow("CLOB_API_URL is required in configuration.");
-
-      await resultWithoutUrl.cleanup();
     });
 
     it("should handle callback if provided", async () => {
