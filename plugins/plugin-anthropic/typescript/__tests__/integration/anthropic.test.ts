@@ -19,8 +19,8 @@ let getSmallModel: typeof import("../../utils/config").getSmallModel;
 let getLargeModel: typeof import("../../utils/config").getLargeModel;
 let generateText: typeof import("ai").generateText;
 
-// Mock runtime for testing
-const createMockRuntime = () => ({
+// Test runtime for testing
+const createTestRuntime = () => ({
   getSetting: (key: string) => {
     switch (key) {
       case "ANTHROPIC_API_KEY":

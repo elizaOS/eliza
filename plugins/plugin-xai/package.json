@@ -61,7 +61,8 @@
     "rust"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "twitter-api-v2": "^1.17.2"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

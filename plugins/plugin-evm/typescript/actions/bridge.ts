@@ -41,6 +41,31 @@ import {
 export { bridgeTemplate };
 
 /**
+ * Type helpers for LiFi SDK callbacks.
+ * The SDK has strict callback types that don't always align with our implementations.
+ */
+type LiFiGetWalletClient = Parameters<typeof EVM>[0]["getWalletClient"];
+type LiFiSwitchChain = Parameters<typeof EVM>[0]["switchChain"];
+
+function _asLiFiGetWalletClient(
+  fn: () => Promise<ReturnType<WalletProvider["getWalletClient"]>>
+): LiFiGetWalletClient {
+  return fn as LiFiGetWalletClient;
+}
+
+function _asLiFiSwitchChain(
+  fn: (chainId: number) => Promise<ReturnType<WalletProvider["getWalletClient"]>>
+): LiFiSwitchChain {
+  return fn as LiFiSwitchChain;
+}
+
+function _asExecutionSwitchChainHook(
+  fn: (chainId: number) => Promise<ReturnType<WalletProvider["getWalletClient"]>>
+): ExecutionOptions["switchChainHook"] {
+  return fn as ExecutionOptions["switchChainHook"];
+}
+
+/**
  * Bridge execution status
  */
 interface BridgeExecutionStatus {

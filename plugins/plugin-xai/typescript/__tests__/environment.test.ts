@@ -1,27 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shouldTargetUser, validateXConfig, xEnvSchema } from "../environment";
-
-// Local type definitions for testing
-type UUID = `${string}-${string}-${string}-${string}-${string}`;
-
-interface MockRuntime {
-  agentId: UUID;
-  getSetting: (key: string) => string | null | undefined;
-}
-
-// Mock runtime for testing
-function createMockRuntime(): MockRuntime {
-  return {
-    getSetting: vi.fn(),
-    agentId: "test-agent" as UUID,
-  };
-}
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 describe("Environment Configuration", () => {
-  let mockRuntime: MockRuntime;
+  let runtime: IAgentRuntime;
 
   beforeEach(async () => {
-    mockRuntime = createMockRuntime();
+    runtime = await createTestRuntime();
 
     // Clear environment variables
     vi.stubEnv("X_API_KEY", "");
@@ -32,6 +18,11 @@ describe("Environment Configuration", () => {
     vi.stubEnv("X_CLIENT_ID", "");
     vi.stubEnv("X_REDIRECT_URI", "");
     vi.stubEnv("X_BROKER_URL", "");
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   describe("shouldTargetUser", () => {
@@ -75,7 +66,7 @@ describe("Environment Configuration", () => {
 
   describe("validateXConfig", () => {
     it("should validate config with all required API credentials", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockImplementation((key: string) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           X_API_KEY: "test-api-key",
           X_API_SECRET: "test-api-secret",
@@ -85,7 +76,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime as never);
+      const config = await validateXConfig(runtime);
 
       expect(config.X_API_KEY).toBe("test-api-key");
       expect(config.X_API_SECRET).toBe("test-api-secret");
@@ -94,13 +85,13 @@ describe("Environment Configuration", () => {
     });
 
     it("should throw error when required credentials are missing", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockReturnValue(null);
+      vi.spyOn(runtime, "getSetting").mockReturnValue(undefined);
 
-      await expect(validateXConfig(mockRuntime as never)).rejects.toThrow("X env auth requires");
+      await expect(validateXConfig(runtime)).rejects.toThrow("X env auth requires");
     });
 
     it("should validate oauth mode without legacy env credentials", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockImplementation((key: string) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           X_AUTH_MODE: "oauth",
           X_CLIENT_ID: "client-id",
@@ -109,14 +100,14 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime as never);
+      const config = await validateXConfig(runtime);
       expect(config.X_AUTH_MODE).toBe("oauth");
       expect(config.X_CLIENT_ID).toBe("client-id");
       expect(config.X_REDIRECT_URI).toBe("http://127.0.0.1:8080/callback");
     });
 
     it("should throw when oauth mode is missing required fields", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockImplementation((key: string) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           X_AUTH_MODE: "oauth",
           X_CLIENT_ID: "client-id",
@@ -125,22 +116,22 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      await expect(validateXConfig(mockRuntime as never)).rejects.toThrow("X OAuth requires");
+      await expect(validateXConfig(runtime)).rejects.toThrow("X OAuth requires");
     });
 
     it("should throw when broker mode is missing broker url", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockImplementation((key: string) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           X_AUTH_MODE: "broker",
         };
         return settings[key];
       });
 
-      await expect(validateXConfig(mockRuntime as never)).rejects.toThrow("X bearer auth requires");
+      await expect(validateXConfig(runtime)).rejects.toThrow("X bearer auth requires");
     });
 
     it("should use default values for optional settings", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockImplementation((key: string) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           X_API_KEY: "test-api-key",
           X_API_SECRET: "test-api-secret",
@@ -150,7 +141,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime as never);
+      const config = await validateXConfig(runtime);
 
       // Check default values
       expect(config.X_RETRY_LIMIT).toBe("5");
@@ -161,7 +152,7 @@ describe("Environment Configuration", () => {
     });
 
     it("should parse boolean settings correctly", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockImplementation((key: string) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           X_API_KEY: "test-api-key",
           X_API_SECRET: "test-api-secret",
@@ -173,14 +164,14 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime as never);
+      const config = await validateXConfig(runtime);
 
       expect(config.X_ENABLE_POST).toBe("true");
       expect(config.X_DRY_RUN).toBe("false");
     });
 
     it("should handle partial config override", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockImplementation((key: string) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           X_API_KEY: "runtime-api-key",
           X_API_SECRET: "runtime-api-secret",
@@ -191,14 +182,14 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime as never);
+      const config = await validateXConfig(runtime);
 
       // Should use runtime value
       expect(config.X_API_KEY).toBe("runtime-api-key");
     });
 
     it("should parse target users correctly", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockImplementation((key: string) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           X_API_KEY: "test-api-key",
           X_API_SECRET: "test-api-secret",
@@ -209,16 +200,16 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime as never);
+      const config = await validateXConfig(runtime);
 
       expect(config.X_TARGET_USERS).toBe("alice,bob,charlie");
     });
 
     it("should handle zod validation errors", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockReturnValue(null);
+      vi.spyOn(runtime, "getSetting").mockReturnValue(undefined);
 
       // Create a scenario that will fail zod validation
-      await expect(validateXConfig(mockRuntime as never)).rejects.toThrow();
+      await expect(validateXConfig(runtime)).rejects.toThrow();
     });
   });
 
