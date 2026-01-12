@@ -1155,7 +1155,9 @@ export class DefaultMessageService implements IMessageService {
 
       // Total timeout for all providers running in parallel (configurable via PROVIDERS_TOTAL_TIMEOUT_MS env var)
       // Since providers run in parallel, this is the max wall-clock time allowed
-      const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(String(runtime.getSetting('PROVIDERS_TOTAL_TIMEOUT_MS') || '1000'));
+      const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
+        String(runtime.getSetting('PROVIDERS_TOTAL_TIMEOUT_MS') || '1000')
+      );
 
       // Track which providers have completed (for timeout diagnostics)
       const completedProviders = new Set<string>();
@@ -1216,7 +1218,9 @@ export class DefaultMessageService implements IMessageService {
       // Check if providers took too long - abort pipeline and notify user
       if (raceResult === 'timeout') {
         // Identify which providers were still pending when timeout hit
-        const allProviderNames = providersArray.filter((name): name is string => typeof name === 'string');
+        const allProviderNames = providersArray.filter(
+          (name): name is string => typeof name === 'string'
+        );
         const pendingProviders = allProviderNames.filter((name) => !completedProviders.has(name));
 
         runtime.logger.error(

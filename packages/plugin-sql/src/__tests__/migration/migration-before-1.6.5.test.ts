@@ -6,14 +6,14 @@
  *
  * Works with both PGLite (default) and PostgreSQL (when POSTGRES_URL is set).
  */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
-import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrateToEntityRLS } from "../../migrations";
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { PGlite } from '@electric-sql/pglite';
+import { vector } from '@electric-sql/pglite/vector';
+import { sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/pglite';
+import { migrateToEntityRLS } from '../../migrations';
 
-describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
+describe('migrateToEntityRLS (pre-1.6.5 migration)', () => {
   let pgClient: PGlite;
   let db: any;
   let mockAdapter: any;
@@ -33,8 +33,8 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
     await pgClient.close();
   });
 
-  describe("Flow 1: Fresh install (no tables)", () => {
-    it("should return early when rooms table does not exist", async () => {
+  describe('Flow 1: Fresh install (no tables)', () => {
+    it('should return early when rooms table does not exist', async () => {
       // No tables created - should return early without error
       await migrateToEntityRLS(mockAdapter);
 
@@ -46,12 +46,12 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
 
       // Only system tables should exist (if any)
       const tableNames = tablesResult.rows.map((r: any) => r.table_name);
-      expect(tableNames).not.toContain("rooms");
-      expect(tableNames).not.toContain("memories");
+      expect(tableNames).not.toContain('rooms');
+      expect(tableNames).not.toContain('memories');
     });
   });
 
-  describe("Flow 2: Migration from pre-1.6.5 (camelCase columns)", () => {
+  describe('Flow 2: Migration from pre-1.6.5 (camelCase columns)', () => {
     beforeEach(async () => {
       // Create tables with camelCase columns (simulating pre-1.6.5)
       await db.execute(sql`
@@ -98,7 +98,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
     });
 
-    it("should rename camelCase columns to snake_case", async () => {
+    it('should rename camelCase columns to snake_case', async () => {
       // Run migration
       await migrateToEntityRLS(mockAdapter);
 
@@ -110,17 +110,17 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
       const roomColumnNames = roomsColumns.rows.map((r: any) => r.column_name);
 
-      expect(roomColumnNames).toContain("agent_id");
-      expect(roomColumnNames).toContain("world_id");
-      expect(roomColumnNames).toContain("channel_id");
-      expect(roomColumnNames).toContain("created_at");
-      expect(roomColumnNames).not.toContain("agentId");
-      expect(roomColumnNames).not.toContain("worldId");
-      expect(roomColumnNames).not.toContain("channelId");
-      expect(roomColumnNames).not.toContain("createdAt");
+      expect(roomColumnNames).toContain('agent_id');
+      expect(roomColumnNames).toContain('world_id');
+      expect(roomColumnNames).toContain('channel_id');
+      expect(roomColumnNames).toContain('created_at');
+      expect(roomColumnNames).not.toContain('agentId');
+      expect(roomColumnNames).not.toContain('worldId');
+      expect(roomColumnNames).not.toContain('channelId');
+      expect(roomColumnNames).not.toContain('createdAt');
     });
 
-    it("should rename memories camelCase columns to snake_case", async () => {
+    it('should rename memories camelCase columns to snake_case', async () => {
       await migrateToEntityRLS(mockAdapter);
 
       const memoriesColumns = await db.execute(sql`
@@ -128,21 +128,19 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'memories'
         ORDER BY column_name
       `);
-      const memoryColumnNames = memoriesColumns.rows.map(
-        (r: any) => r.column_name,
-      );
+      const memoryColumnNames = memoriesColumns.rows.map((r: any) => r.column_name);
 
-      expect(memoryColumnNames).toContain("agent_id");
-      expect(memoryColumnNames).toContain("room_id");
-      expect(memoryColumnNames).toContain("entity_id");
-      expect(memoryColumnNames).toContain("created_at");
-      expect(memoryColumnNames).toContain("world_id");
-      expect(memoryColumnNames).not.toContain("agentId");
-      expect(memoryColumnNames).not.toContain("roomId");
-      expect(memoryColumnNames).not.toContain("entityId");
+      expect(memoryColumnNames).toContain('agent_id');
+      expect(memoryColumnNames).toContain('room_id');
+      expect(memoryColumnNames).toContain('entity_id');
+      expect(memoryColumnNames).toContain('created_at');
+      expect(memoryColumnNames).toContain('world_id');
+      expect(memoryColumnNames).not.toContain('agentId');
+      expect(memoryColumnNames).not.toContain('roomId');
+      expect(memoryColumnNames).not.toContain('entityId');
     });
 
-    it("should rename worlds.serverId to message_server_id", async () => {
+    it('should rename worlds.serverId to message_server_id', async () => {
       await migrateToEntityRLS(mockAdapter);
 
       const worldsColumns = await db.execute(sql`
@@ -150,19 +148,17 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'worlds'
         ORDER BY column_name
       `);
-      const worldColumnNames = worldsColumns.rows.map(
-        (r: any) => r.column_name,
-      );
+      const worldColumnNames = worldsColumns.rows.map((r: any) => r.column_name);
 
-      expect(worldColumnNames).toContain("message_server_id");
-      expect(worldColumnNames).not.toContain("serverId");
-      expect(worldColumnNames).not.toContain("server_id");
+      expect(worldColumnNames).toContain('message_server_id');
+      expect(worldColumnNames).not.toContain('serverId');
+      expect(worldColumnNames).not.toContain('server_id');
     });
 
-    it("should preserve data during column renames", async () => {
+    it('should preserve data during column renames', async () => {
       // Insert test data before migration
-      const agentId = "123e4567-e89b-12d3-a456-426614174000";
-      const roomId = "223e4567-e89b-12d3-a456-426614174000";
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const roomId = '223e4567-e89b-12d3-a456-426614174000';
 
       await db.execute(sql`
         INSERT INTO agents (id, name) VALUES (${agentId}::uuid, 'Test Agent')
@@ -182,26 +178,22 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       await migrateToEntityRLS(mockAdapter);
 
       // Verify data is preserved
-      const agents = await db.execute(
-        sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`,
-      );
-      expect(agents.rows[0].name).toBe("Test Agent");
+      const agents = await db.execute(sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`);
+      expect(agents.rows[0].name).toBe('Test Agent');
 
-      const rooms = await db.execute(
-        sql`SELECT * FROM rooms WHERE id = ${roomId}::uuid`,
-      );
-      expect(rooms.rows[0].name).toBe("Test Room");
+      const rooms = await db.execute(sql`SELECT * FROM rooms WHERE id = ${roomId}::uuid`);
+      expect(rooms.rows[0].name).toBe('Test Room');
       expect(rooms.rows[0].agent_id).toBe(agentId);
 
       const memories = await db.execute(
-        sql`SELECT * FROM memories WHERE agent_id = ${agentId}::uuid`,
+        sql`SELECT * FROM memories WHERE agent_id = ${agentId}::uuid`
       );
       expect(memories.rows).toHaveLength(1);
       expect(memories.rows[0].room_id).toBe(roomId);
     });
   });
 
-  describe("Flow 3: Already migrated (snake_case columns exist)", () => {
+  describe('Flow 3: Already migrated (snake_case columns exist)', () => {
     beforeEach(async () => {
       // Create tables with snake_case columns (already migrated)
       await db.execute(sql`
@@ -236,7 +228,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
     });
 
-    it("should skip schema migration but still run RLS cleanup", async () => {
+    it('should skip schema migration but still run RLS cleanup', async () => {
       // This test verifies RLS cleanup when data isolation is DISABLED
       // Save and unset ENABLE_DATA_ISOLATION to test cleanup behavior
       const savedEnableDataIsolation = process.env.ENABLE_DATA_ISOLATION;
@@ -264,7 +256,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         // Verify data is still intact
         const rooms = await db.execute(sql`SELECT * FROM rooms`);
         expect(rooms.rows).toHaveLength(1);
-        expect(rooms.rows[0].name).toBe("Test Room");
+        expect(rooms.rows[0].name).toBe('Test Room');
       } finally {
         // Restore environment
         if (savedEnableDataIsolation !== undefined) {
@@ -273,7 +265,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       }
     });
 
-    it("should not modify existing snake_case columns", async () => {
+    it('should not modify existing snake_case columns', async () => {
       await migrateToEntityRLS(mockAdapter);
 
       const roomsColumns = await db.execute(sql`
@@ -284,13 +276,13 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       const roomColumnNames = roomsColumns.rows.map((r: any) => r.column_name);
 
       // Should still have snake_case columns
-      expect(roomColumnNames).toContain("agent_id");
-      expect(roomColumnNames).toContain("world_id");
-      expect(roomColumnNames).toContain("channel_id");
-      expect(roomColumnNames).toContain("created_at");
+      expect(roomColumnNames).toContain('agent_id');
+      expect(roomColumnNames).toContain('world_id');
+      expect(roomColumnNames).toContain('channel_id');
+      expect(roomColumnNames).toContain('created_at');
     });
 
-    it("should NOT disable RLS when ENABLE_DATA_ISOLATION=true (avoid wasteful cycle)", async () => {
+    it('should NOT disable RLS when ENABLE_DATA_ISOLATION=true (avoid wasteful cycle)', async () => {
       // Enable RLS on rooms table
       await db.execute(sql`ALTER TABLE rooms ENABLE ROW LEVEL SECURITY`);
 
@@ -302,7 +294,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
 
       // Set ENABLE_DATA_ISOLATION=true
       const originalEnv = process.env.ENABLE_DATA_ISOLATION;
-      process.env.ENABLE_DATA_ISOLATION = "true";
+      process.env.ENABLE_DATA_ISOLATION = 'true';
 
       try {
         // Run migration (should NOT disable RLS because ENABLE_DATA_ISOLATION=true)
@@ -317,7 +309,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         // Verify data is still intact
         const rooms = await db.execute(sql`SELECT * FROM rooms`);
         expect(rooms.rows).toHaveLength(1);
-        expect(rooms.rows[0].name).toBe("Test Room");
+        expect(rooms.rows[0].name).toBe('Test Room');
       } finally {
         // Restore original env
         if (originalEnv === undefined) {
@@ -329,8 +321,8 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
     });
   });
 
-  describe("Flow 4: serverId to message_server_id migration", () => {
-    it("should convert TEXT serverId to UUID message_server_id with valid UUID", async () => {
+  describe('Flow 4: serverId to message_server_id migration', () => {
+    it('should convert TEXT serverId to UUID message_server_id with valid UUID', async () => {
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS agents (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -352,7 +344,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
 
       // Insert with valid UUID as text
-      const serverId = "323e4567-e89b-12d3-a456-426614174000";
+      const serverId = '323e4567-e89b-12d3-a456-426614174000';
       await db.execute(sql`
         INSERT INTO rooms (id, "serverId", name, source, type)
         VALUES ('223e4567-e89b-12d3-a456-426614174000'::uuid, ${serverId}, 'Test Room', 'test', 'general')
@@ -367,14 +359,14 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
 
       expect(roomsColumns.rows).toHaveLength(1);
-      expect(roomsColumns.rows[0].data_type).toBe("uuid");
+      expect(roomsColumns.rows[0].data_type).toBe('uuid');
 
       // Verify data was preserved
       const rooms = await db.execute(sql`SELECT message_server_id FROM rooms`);
       expect(rooms.rows[0].message_server_id).toBe(serverId);
     });
 
-    it("should convert non-UUID TEXT serverId to md5 UUID", async () => {
+    it('should convert non-UUID TEXT serverId to md5 UUID', async () => {
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS agents (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -408,11 +400,11 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       expect(rooms.rows[0].message_server_id).toBeDefined();
       // The value should be a valid UUID (md5 hash)
       expect(rooms.rows[0].message_server_id).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
       );
     });
 
-    it("should handle NULL serverId values", async () => {
+    it('should handle NULL serverId values', async () => {
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS agents (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -447,8 +439,8 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
     });
   });
 
-  describe("Flow 5: owner_id to server_id migration (agents table)", () => {
-    it("should rename agents.owner_id to server_id", async () => {
+  describe('Flow 5: owner_id to server_id migration (agents table)', () => {
+    it('should rename agents.owner_id to server_id', async () => {
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS agents (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -470,7 +462,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         )
       `);
 
-      const ownerId = "423e4567-e89b-12d3-a456-426614174000";
+      const ownerId = '423e4567-e89b-12d3-a456-426614174000';
       await db.execute(sql`
         INSERT INTO agents (id, name, owner_id)
         VALUES ('123e4567-e89b-12d3-a456-426614174000'::uuid, 'Test Agent', ${ownerId}::uuid)
@@ -484,12 +476,10 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'agents'
         ORDER BY column_name
       `);
-      const agentColumnNames = agentsColumns.rows.map(
-        (r: any) => r.column_name,
-      );
+      const agentColumnNames = agentsColumns.rows.map((r: any) => r.column_name);
 
-      expect(agentColumnNames).toContain("server_id");
-      expect(agentColumnNames).not.toContain("owner_id");
+      expect(agentColumnNames).toContain('server_id');
+      expect(agentColumnNames).not.toContain('owner_id');
 
       // Verify data was preserved
       const agents = await db.execute(sql`SELECT server_id FROM agents`);
@@ -497,7 +487,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
     });
   });
 
-  describe("Flow 6: Other plugin tables in public schema", () => {
+  describe('Flow 6: Other plugin tables in public schema', () => {
     beforeEach(async () => {
       // Create plugin-sql required tables with camelCase columns (pre-1.6.5)
       await db.execute(sql`
@@ -541,9 +531,9 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
     });
 
-    it("should DROP server_id from unknown plugin tables (current behavior - potential issue)", async () => {
+    it('should DROP server_id from unknown plugin tables (current behavior - potential issue)', async () => {
       // Insert test data in custom_plugin_data
-      const serverId = "523e4567-e89b-12d3-a456-426614174000";
+      const serverId = '523e4567-e89b-12d3-a456-426614174000';
       await db.execute(sql`
         INSERT INTO custom_plugin_data (id, server_id, data)
         VALUES ('623e4567-e89b-12d3-a456-426614174000'::uuid, ${serverId}::uuid, '{"key": "value"}'::jsonb)
@@ -562,10 +552,10 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
 
       // CURRENT BEHAVIOR: migrations.ts DROPS server_id from tables not in exclusion list
       // This is DOCUMENTED BEHAVIOR - other plugins should NOT use server_id column name
-      expect(columnNames).not.toContain("server_id"); // server_id is DROPPED
+      expect(columnNames).not.toContain('server_id'); // server_id is DROPPED
     });
 
-    it("should preserve other plugin tables with their data intact", async () => {
+    it('should preserve other plugin tables with their data intact', async () => {
       // Insert test data
       await db.execute(sql`
         INSERT INTO twitter_posts (id, tweet_id, author_id, content)
@@ -578,15 +568,13 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       // Verify twitter_posts table and data are intact
       const tweets = await db.execute(sql`SELECT * FROM twitter_posts`);
       expect(tweets.rows).toHaveLength(1);
-      expect(tweets.rows[0].content).toBe("Hello Twitter!");
-      expect(tweets.rows[0].tweet_id).toBe("12345");
+      expect(tweets.rows[0].content).toBe('Hello Twitter!');
+      expect(tweets.rows[0].tweet_id).toBe('12345');
     });
 
-    it("should disable RLS on other plugin tables during migration", async () => {
+    it('should disable RLS on other plugin tables during migration', async () => {
       // Enable RLS on twitter_posts
-      await db.execute(
-        sql`ALTER TABLE twitter_posts ENABLE ROW LEVEL SECURITY`,
-      );
+      await db.execute(sql`ALTER TABLE twitter_posts ENABLE ROW LEVEL SECURITY`);
 
       // Verify RLS is enabled
       const beforeRls = await db.execute(sql`
@@ -604,7 +592,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       expect(afterRls.rows[0].relrowsecurity).toBe(false);
     });
 
-    it("should NOT rename columns in other plugin tables", async () => {
+    it('should NOT rename columns in other plugin tables', async () => {
       // Insert test data
       await db.execute(sql`
         INSERT INTO twitter_posts (id, tweet_id, author_id, content)
@@ -622,13 +610,13 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
       const columnNames = columns.rows.map((r: any) => r.column_name);
 
-      expect(columnNames).toContain("tweet_id");
-      expect(columnNames).toContain("author_id");
-      expect(columnNames).toContain("created_at");
+      expect(columnNames).toContain('tweet_id');
+      expect(columnNames).toContain('author_id');
+      expect(columnNames).toContain('created_at');
     });
   });
 
-  describe("Flow 7: Tables in non-public schemas", () => {
+  describe('Flow 7: Tables in non-public schemas', () => {
     beforeEach(async () => {
       // Create plugin-sql required tables
       await db.execute(sql`
@@ -665,10 +653,10 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
     });
 
-    it("should NOT touch tables in non-public schemas", async () => {
+    it('should NOT touch tables in non-public schemas', async () => {
       // Insert test data
-      const serverId = "823e4567-e89b-12d3-a456-426614174000";
-      const agentId = "923e4567-e89b-12d3-a456-426614174000";
+      const serverId = '823e4567-e89b-12d3-a456-426614174000';
+      const agentId = '923e4567-e89b-12d3-a456-426614174000';
       await db.execute(sql`
         INSERT INTO other_schema.custom_table (id, server_id, "agentId", data)
         VALUES ('a23e4567-e89b-12d3-a456-426614174000'::uuid, ${serverId}::uuid, ${agentId}::uuid, '{"key": "value"}'::jsonb)
@@ -686,24 +674,20 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       const columnNames = columns.rows.map((r: any) => r.column_name);
 
       // server_id should still exist (not dropped)
-      expect(columnNames).toContain("server_id");
+      expect(columnNames).toContain('server_id');
       // agentId should NOT be renamed to agent_id
-      expect(columnNames).toContain("agentId");
-      expect(columnNames).not.toContain("agent_id");
+      expect(columnNames).toContain('agentId');
+      expect(columnNames).not.toContain('agent_id');
 
       // Verify data is intact
-      const data = await db.execute(
-        sql`SELECT * FROM other_schema.custom_table`,
-      );
+      const data = await db.execute(sql`SELECT * FROM other_schema.custom_table`);
       expect(data.rows).toHaveLength(1);
       expect(data.rows[0].server_id).toBe(serverId);
     });
 
-    it("should NOT disable RLS on tables in non-public schemas", async () => {
+    it('should NOT disable RLS on tables in non-public schemas', async () => {
       // Enable RLS on other_schema.custom_table
-      await db.execute(
-        sql`ALTER TABLE other_schema.custom_table ENABLE ROW LEVEL SECURITY`,
-      );
+      await db.execute(sql`ALTER TABLE other_schema.custom_table ENABLE ROW LEVEL SECURITY`);
 
       // Verify RLS is enabled
       const beforeRls = await db.execute(sql`
@@ -726,7 +710,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
     });
   });
 
-  describe("Flow 8: Indexes from other plugins", () => {
+  describe('Flow 8: Indexes from other plugins', () => {
     beforeEach(async () => {
       // Create plugin-sql required tables
       await db.execute(sql`
@@ -759,15 +743,11 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
 
       // Create custom indexes on the analytics table
-      await db.execute(
-        sql`CREATE INDEX idx_analytics_event_type ON analytics_events(event_type)`,
-      );
-      await db.execute(
-        sql`CREATE INDEX idx_analytics_user_id ON analytics_events(user_id)`,
-      );
+      await db.execute(sql`CREATE INDEX idx_analytics_event_type ON analytics_events(event_type)`);
+      await db.execute(sql`CREATE INDEX idx_analytics_user_id ON analytics_events(user_id)`);
     });
 
-    it("should drop ALL indexes in public schema including other plugins (current behavior)", async () => {
+    it('should drop ALL indexes in public schema including other plugins (current behavior)', async () => {
       // Insert test data
       await db.execute(sql`
         INSERT INTO analytics_events (id, event_type, user_id)
@@ -800,8 +780,8 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
     });
   });
 
-  describe("Idempotency", () => {
-    it("should be safe to run multiple times", async () => {
+  describe('Idempotency', () => {
+    it('should be safe to run multiple times', async () => {
       // Create tables with camelCase
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS agents (
@@ -835,7 +815,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       // Verify data is still intact
       const rooms = await db.execute(sql`SELECT * FROM rooms`);
       expect(rooms.rows).toHaveLength(1);
-      expect(rooms.rows[0].name).toBe("Test Room");
+      expect(rooms.rows[0].name).toBe('Test Room');
 
       // Verify columns are correct
       const roomsColumns = await db.execute(sql`
@@ -845,8 +825,8 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
       const roomColumnNames = roomsColumns.rows.map((r: any) => r.column_name);
 
-      expect(roomColumnNames).toContain("agent_id");
-      expect(roomColumnNames).toContain("created_at");
+      expect(roomColumnNames).toContain('agent_id');
+      expect(roomColumnNames).toContain('created_at');
     });
   });
 });

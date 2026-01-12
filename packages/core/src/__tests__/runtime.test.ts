@@ -1410,7 +1410,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       // Register a mock embedding model
       const embeddingHandler = mock().mockResolvedValue([0.1, 0.2, 0.3]);
-      runtimeWithDimension.registerModel(ModelType.TEXT_EMBEDDING, embeddingHandler, 'test-provider');
+      runtimeWithDimension.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        embeddingHandler,
+        'test-provider'
+      );
 
       // Reset mock call counts
       (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
@@ -1432,7 +1436,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       // Register a mock embedding model that returns a 768-dim vector
       const embeddingHandler = mock().mockResolvedValue(new Array(768).fill(0.1));
-      runtimeWithoutDimension.registerModel(ModelType.TEXT_EMBEDDING, embeddingHandler, 'test-provider');
+      runtimeWithoutDimension.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        embeddingHandler,
+        'test-provider'
+      );
 
       // Reset mock call counts
       (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
@@ -1461,7 +1469,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       // Register a mock embedding model
       const embeddingHandler = mock().mockResolvedValue(new Array(512).fill(0.1));
-      runtimeWithInvalidDimension.registerModel(ModelType.TEXT_EMBEDDING, embeddingHandler, 'test-provider');
+      runtimeWithInvalidDimension.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        embeddingHandler,
+        'test-provider'
+      );
 
       // Reset mock call counts
       (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
@@ -1489,7 +1501,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       // Register a mock embedding model
       const embeddingHandler = mock().mockResolvedValue([0.1]);
-      runtimeWithStringDimension.registerModel(ModelType.TEXT_EMBEDDING, embeddingHandler, 'test-provider');
+      runtimeWithStringDimension.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        embeddingHandler,
+        'test-provider'
+      );
 
       // Reset mock call counts
       (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
