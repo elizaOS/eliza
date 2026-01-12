@@ -30,7 +30,10 @@ import type {
   WorldSettings,
 } from "../types";
 import { getEnvironment } from "../utils/environment";
-import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
+import {
+  cleanupTestRuntime,
+  createTestRuntime,
+} from "../bootstrap/__tests__/test-utils";
 
 // Remove global module mocks - they interfere with other tests
 

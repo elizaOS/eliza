@@ -59,7 +59,7 @@ describe("Bridge Action", () => {
 
     testChains = getTestChains();
     const pk = TEST_PRIVATE_KEY as `0x${string}`;
-    const agentRuntime = createMockRuntime();
+    const runtime = createTestRuntime();
 
     // Initialize with multiple testnets for bridging
     const customChains = {
@@ -68,7 +68,7 @@ describe("Bridge Action", () => {
       optimismSepolia: testChains.optimismSepolia,
     };
 
-    wp = new WalletProvider(pk, agentRuntime, customChains);
+    wp = new WalletProvider(pk, runtime, customChains);
   });
 
   afterEach(() => {
@@ -325,7 +325,7 @@ describe("Bridge Action", () => {
       // Create wallet provider with funded wallet
       const fundedWp = new WalletProvider(
         FUNDED_TEST_WALLET as `0x${string}`,
-        createMockRuntime(),
+        createTestRuntime(),
         {
           sepolia: testChains.sepolia,
           baseSepolia: testChains.baseSepolia,

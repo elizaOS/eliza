@@ -19,7 +19,10 @@ import {
   truncateToCompleteSentence,
   validateUuid,
 } from "../utils";
-import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
+import {
+  cleanupTestRuntime,
+  createTestRuntime,
+} from "../bootstrap/__tests__/test-utils";
 
 describe("Utils Comprehensive Tests", () => {
   describe("parseBooleanFromText", () => {

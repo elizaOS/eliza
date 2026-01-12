@@ -3,7 +3,10 @@ import * as entities from "../entities";
 import * as logger_module from "../logger";
 import { findWorldsForOwner, getUserServerRole } from "../roles";
 import { type IAgentRuntime, Role, type UUID, type World } from "../types";
-import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
+import {
+  cleanupTestRuntime,
+  createTestRuntime,
+} from "../bootstrap/__tests__/test-utils";
 
 describe("roles utilities", () => {
   let runtime: IAgentRuntime;

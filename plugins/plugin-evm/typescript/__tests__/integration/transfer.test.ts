@@ -47,7 +47,7 @@ describe("Transfer Action", () => {
 
     testChains = getTestChains();
     const pk = TEST_PRIVATE_KEY as `0x${string}`;
-    const agentRuntime = createMockRuntime();
+    const runtime = createTestRuntime();
 
     // Initialize with Sepolia and Base Sepolia testnets
     const customChains = {
@@ -55,7 +55,7 @@ describe("Transfer Action", () => {
       baseSepolia: testChains.baseSepolia,
     };
 
-    wp = new WalletProvider(pk, agentRuntime, customChains);
+    wp = new WalletProvider(pk, runtime, customChains);
   });
 
   afterEach(() => {
@@ -168,7 +168,7 @@ describe("Transfer Action", () => {
     let anvilTa: TransferAction;
 
     beforeEach(() => {
-      anvilWp = new WalletProvider(ANVIL_PRIVATE_KEY, createMockRuntime(), getAnvilChain());
+      anvilWp = new WalletProvider(ANVIL_PRIVATE_KEY, createTestRuntime(), getAnvilChain());
       anvilTa = new TransferAction(anvilWp);
     });
 
