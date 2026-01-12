@@ -47,6 +47,11 @@ pub mod providers;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
+// Re-export commonly used types
+pub use client::FarcasterClient;
+pub use config::FarcasterConfig;
+pub use error::{FarcasterError, Result};
+
 // Import directly from submodules:
 // - client::FarcasterClient
 // - config::FarcasterConfig

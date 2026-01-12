@@ -53,7 +53,7 @@ export { swapTemplate };
  * Build send transaction parameters for viem.
  * Viem's type system is strict about transaction parameters.
  */
-function buildSendTxParams(params: {
+function _buildSendTxParams(params: {
   account: Account;
   to: Address;
   value?: bigint;

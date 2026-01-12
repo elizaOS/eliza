@@ -282,7 +282,7 @@ pub struct Content {
     pub attachments: Option<Vec<Media>>,
     /// Channel type where this content was sent
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub channel_type: Option<super::ChannelType>,
+    pub channel_type: Option<super::environment::ChannelType>,
     /// Platform-provided metadata about mentions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mention_context: Option<MentionContext>,

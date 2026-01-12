@@ -3,18 +3,18 @@ import type {
   MediaObjectV2,
   PlaceV2,
   PollV2,
-  TweetV2,
+  ReferencedTweetV2,
   TTweetv2Expansion,
   TTweetv2MediaField,
   TTweetv2PlaceField,
   TTweetv2PollField,
   TTweetv2TweetField,
   TTweetv2UserField,
-  UserV2,
   TweetEntityHashtagV2,
   TweetEntityMentionV2,
   TweetEntityUrlV2,
-  ReferencedTweetV2,
+  TweetV2,
+  UserV2,
 } from "twitter-api-v2";
 import type { XAuth } from "./auth";
 import { getEntityIdByScreenName } from "./profile";
@@ -473,12 +473,22 @@ export function parsePostV2ToV1(postV2: PostV2, includes?: ApiV2Includes): Post 
     timestamp: postV2.created_at ? new Date(postV2.created_at).getTime() / 1000 : Date.now() / 1000,
     permanentUrl: `https://x.com/i/status/${postV2.id}`,
     // Check for referenced posts
-    isReply: postV2.referenced_tweets?.some((ref: ReferencedTweetV2) => ref.type === "replied_to") ?? false,
-    isRepost: postV2.referenced_tweets?.some((ref: ReferencedTweetV2) => ref.type === "retweeted") ?? false,
-    isQuoted: postV2.referenced_tweets?.some((ref: ReferencedTweetV2) => ref.type === "quoted") ?? false,
-    inReplyToStatusId: postV2.referenced_tweets?.find((ref: ReferencedTweetV2) => ref.type === "replied_to")?.id,
-    quotedStatusId: postV2.referenced_tweets?.find((ref: ReferencedTweetV2) => ref.type === "quoted")?.id,
-    repostedStatusId: postV2.referenced_tweets?.find((ref: ReferencedTweetV2) => ref.type === "retweeted")?.id,
+    isReply:
+      postV2.referenced_tweets?.some((ref: ReferencedTweetV2) => ref.type === "replied_to") ??
+      false,
+    isRepost:
+      postV2.referenced_tweets?.some((ref: ReferencedTweetV2) => ref.type === "retweeted") ?? false,
+    isQuoted:
+      postV2.referenced_tweets?.some((ref: ReferencedTweetV2) => ref.type === "quoted") ?? false,
+    inReplyToStatusId: postV2.referenced_tweets?.find(
+      (ref: ReferencedTweetV2) => ref.type === "replied_to"
+    )?.id,
+    quotedStatusId: postV2.referenced_tweets?.find(
+      (ref: ReferencedTweetV2) => ref.type === "quoted"
+    )?.id,
+    repostedStatusId: postV2.referenced_tweets?.find(
+      (ref: ReferencedTweetV2) => ref.type === "retweeted"
+    )?.id,
   };
 
   // Process Polls

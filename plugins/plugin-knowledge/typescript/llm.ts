@@ -29,7 +29,6 @@ interface TextGenerationResult {
 import { validateModelConfig } from "./config";
 import type { ModelConfig, TextGenerationOptions } from "./types";
 
-
 /**
  * Generates text embeddings using the configured provider
  * @param text The text to embed

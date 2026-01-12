@@ -6,7 +6,8 @@ All data is ephemeral and lost on process restart or close().
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from elizaos_plugin_inmemorydb.types import IStorage
 

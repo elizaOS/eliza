@@ -8,7 +8,7 @@ from elizaos_plugin_gateway import GatewayConfig, GatewayPlugin
 @pytest.mark.asyncio
 async def test_text_generation(api_key: str) -> None:
     """Test text generation."""
-    config = GatewayConfig(api_key=api_key)
+    GatewayConfig(api_key=api_key)
     async with GatewayPlugin(api_key=api_key) as plugin:
         response = await plugin.generate_text_small("Say hello in 5 words.")
         assert isinstance(response, str)

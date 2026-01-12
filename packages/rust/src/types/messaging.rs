@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Content, UUID};
+use super::primitives::{Content, UUID};
 
 /// Target information for sending messages
 #[derive(Clone, Debug, Serialize, Deserialize)]

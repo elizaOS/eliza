@@ -10,32 +10,10 @@
 //! These are the single source of truth for cross-language interoperability.
 //! For new code, prefer using types from `generated` for better compatibility.
 
-//! Core types for elizaOS
-//!
-//! Import directly from submodules:
-//! - agent for Agent, Character, etc.
-//! - components for Action, Provider, Evaluator types
-//! - database for database types
-//! - environment for Channel, Entity, Room types
-//! - events for event types
-//! - knowledge for knowledge types
-//! - memory for Memory types
-//! - messaging for messaging types
-//! - model for model types
-//! - plugin for Plugin types
-//! - primitives for UUID, Content, Media types
-//! - service for Service types
-//! - settings for Settings types
-//! - state for State types
-//! - streaming for streaming types
-//! - task for Task types
-//! - tee for TEE types
-//! - testing for test types
-
 // Proto-generated types (single source of truth)
 pub mod generated;
 
-// Type modules - import directly from these
+// Type modules
 pub mod agent;
 pub mod components;
 pub mod database;
@@ -55,3 +33,82 @@ pub mod streaming;
 pub mod task;
 pub mod tee;
 pub mod testing;
+
+// Re-export commonly used types at the module level for convenience
+
+// From primitives
+pub use primitives::{
+    as_uuid, string_to_uuid, Content, ContentType, Media, MentionContext, MentionType, Metadata,
+    UUID, UUIDError, DEFAULT_UUID_STR,
+};
+
+// From agent
+pub use agent::{
+    Agent, AgentStatus, Bio, Character, CharacterSecrets, CharacterSettings, DirectoryItem,
+    KnowledgeItem, MessageExample, StyleConfig, TemplateType,
+};
+
+// From components
+pub use components::{
+    ActionContext, ActionDefinition, ActionExample, ActionHandler, ActionParameter,
+    ActionParameterSchema, ActionPlan, ActionPlanStep, ActionResult, ActionStepStatus,
+    EvaluationExample, EvaluatorDefinition, EvaluatorHandler, HandlerCallback, HandlerOptions,
+    ProviderDefinition, ProviderHandler, ProviderResult,
+};
+
+// From memory
+pub use memory::{
+    BaseMetadata, DescriptionMetadata, DocumentMetadata, FragmentMetadata, Memory,
+    MemoryMetadata, MemoryScope, MemoryType, MessageMemory, MessageMetadata,
+};
+
+// From environment
+pub use environment::{
+    ChannelType, Component, Entity, Participant, Relationship, Role, Room, World, WorldMetadata,
+    WorldOwnership,
+};
+
+// From events
+pub use events::{
+    ActionEventPayload, ChannelClearedPayload, EmbeddingGenerationPayload, EmbeddingPriority,
+    EntityEventMetadata, EntityPayload, EvaluatorEventPayload, EventPayload, EventType,
+    InvokePayload, MessagePayload, ModelEventPayload, PlatformPrefix, RunEventPayload,
+    RunStatus as EventRunStatus, TokenUsage, WorldPayload,
+};
+
+// From state
+pub use state::{State, StateData, WorkingMemoryEntry};
+
+// From database
+pub use database::{
+    ActionLogBody, ActionLogContent, ActionLogResult, AgentRunCounts, AgentRunSummary,
+    AgentRunSummaryResult, BaseLogBody, EmbeddingLogBody, EmbeddingSearchResult, EvaluatorLogBody,
+    GetMemoriesParams, Log, LogBody, MemoryRetrievalOptions, MemorySearchOptions, ModelActionContext,
+    ModelLogBody, PromptLogEntry, RunStatus, SearchMemoriesParams, vector_dims,
+};
+
+// From model
+pub use model::{
+    DetokenizeTextParams, GenerateTextOptions, GenerateTextParams, GenerateTextResult,
+    ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams, LLMMode,
+    ModelHandlerInfo, ObjectGenerationParams, ObjectOutputType, ResponseFormat, ResponseFormatType,
+    TextEmbeddingParams, TextStreamChunk, TextToSpeechParams, TokenUsageInfo, TokenizeTextParams,
+    TranscriptionParams, model_settings, model_type,
+};
+
+// From plugin
+pub use plugin::{
+    ComponentTypeDefinition, HttpMethod, ModelHandlerFn, Plugin, PluginDefinition,
+    ProjectAgentDefinition, ProjectDefinition, RouteDefinition,
+};
+
+// From task
+pub use task::{GetTasksParams, Task, TaskStatus, TaskWorkerDefinition};
+
+// From settings
+pub use settings::{EnvironmentConfig, RuntimeSettings, SettingValue};
+
+// From testing
+pub use testing::{
+    TestCase, TestCaseDefinition, TestError, TestResults, TestSuite, TestSuiteDefinition,
+};

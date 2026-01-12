@@ -112,7 +112,7 @@ class SimpleHNSW:
             id=id,
             vector=vector,
             level=level,
-            neighbors={l: set() for l in range(level + 1)},
+            neighbors={lvl: set() for lvl in range(level + 1)},
         )
 
         if self.entry_point is None:
@@ -125,28 +125,28 @@ class SimpleHNSW:
         current = self.entry_point
 
         # Search from top level down
-        for l in range(self.max_level, level, -1):
-            closest = self._search_layer(vector, current, 1, l)
+        for lvl in range(self.max_level, level, -1):
+            closest = self._search_layer(vector, current, 1, lvl)
             if closest:
                 current = closest[0][0]
 
         # Insert at each level
-        for l in range(min(level, self.max_level), -1, -1):
-            neighbors = self._search_layer(vector, current, self.ef_construction, l)
+        for lvl in range(min(level, self.max_level), -1, -1):
+            neighbors = self._search_layer(vector, current, self.ef_construction, lvl)
             selected = [n[0] for n in neighbors[: self.m]]
 
             for neighbor_id in selected:
-                new_node.neighbors[l].add(neighbor_id)
+                new_node.neighbors[lvl].add(neighbor_id)
 
                 if neighbor_id in self.nodes:
                     neighbor_node = self.nodes[neighbor_id]
-                    if l not in neighbor_node.neighbors:
-                        neighbor_node.neighbors[l] = set()
-                    neighbor_node.neighbors[l].add(id)
+                    if lvl not in neighbor_node.neighbors:
+                        neighbor_node.neighbors[lvl] = set()
+                    neighbor_node.neighbors[lvl].add(id)
 
                     # Prune if over limit
-                    if len(neighbor_node.neighbors[l]) > self.m:
-                        neighbor_node.neighbors[l] = set(
+                    if len(neighbor_node.neighbors[lvl]) > self.m:
+                        neighbor_node.neighbors[lvl] = set(
                             n
                             for n, _ in sorted(
                                 [
@@ -156,7 +156,7 @@ class SimpleHNSW:
                                             neighbor_node.vector, self.nodes[nid].vector
                                         ),
                                     )
-                                    for nid in neighbor_node.neighbors[l]
+                                    for nid in neighbor_node.neighbors[lvl]
                                     if nid in self.nodes
                                 ],
                                 key=lambda x: x[1],
@@ -272,8 +272,8 @@ class SimpleHNSW:
         current = self.entry_point
 
         # Search from top to level 1
-        for l in range(self.max_level, 0, -1):
-            closest = self._search_layer(query, current, 1, l)
+        for lvl in range(self.max_level, 0, -1):
+            closest = self._search_layer(query, current, 1, lvl)
             if closest:
                 current = closest[0][0]
 
@@ -310,8 +310,8 @@ class SimpleHNSW:
                     "vector": node.vector,
                     "level": node.level,
                     "neighbors": {
-                        str(l): list(neighbors)
-                        for l, neighbors in node.neighbors.items()
+                        str(lvl): list(neighbors)
+                        for lvl, neighbors in node.neighbors.items()
                     },
                 }
                 for nid, node in self.nodes.items()
@@ -334,8 +334,8 @@ class SimpleHNSW:
                 vector=node_data["vector"],
                 level=node_data["level"],
                 neighbors={
-                    int(l): set(neighbors)
-                    for l, neighbors in node_data.get("neighbors", {}).items()
+                    int(lvl): set(neighbors)
+                    for lvl, neighbors in node_data.get("neighbors", {}).items()
                 },
             )
 

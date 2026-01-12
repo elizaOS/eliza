@@ -6,10 +6,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::{
-    ActionDefinition, ActionHandler, Character, EvaluatorDefinition, EvaluatorHandler,
-    ProviderDefinition, ProviderHandler, TestSuite,
+use super::agent::Character;
+use super::components::{
+    ActionDefinition, ActionHandler, EvaluatorDefinition, EvaluatorHandler, ProviderDefinition,
+    ProviderHandler,
 };
+use super::testing::TestSuite;
 
 /// HTTP method types for routes
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

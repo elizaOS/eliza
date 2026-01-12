@@ -40,13 +40,13 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Import directly from submodules:
-// - character for character utilities
-// - plugin for plugin utilities
-// - runtime for AgentRuntime
-// - services for message services
-// - settings for settings utilities
-// - types for type definitions
+// Re-export commonly used items at the crate root for convenience
+pub use character::{
+    build_character_plugins, merge_character_defaults, parse_character, validate_character,
+};
+pub use runtime::AgentRuntime;
+pub use types::agent::{Agent, AgentStatus, Bio, Character};
+pub use types::primitives::UUID;
 
 /// Initialize the library (sets up panic hooks for WASM, logging, etc.)
 pub fn init() {

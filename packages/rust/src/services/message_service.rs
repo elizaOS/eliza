@@ -4,7 +4,9 @@
 //! and generates responses using the agent's character, providers, and model handlers.
 
 use crate::runtime::AgentRuntime;
-use crate::types::{Content, Memory, State, UUID};
+use crate::types::memory::Memory;
+use crate::types::primitives::{Content, UUID};
+use crate::types::state::State;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;

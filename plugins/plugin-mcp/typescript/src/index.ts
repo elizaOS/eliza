@@ -4,7 +4,6 @@ import { readResourceAction } from "./actions/readResourceAction";
 import { provider } from "./provider";
 import { McpService } from "./service";
 
-
 const mcpPlugin: Plugin = {
   name: "mcp",
   description: "Plugin for connecting to MCP (Model Context Protocol) servers",

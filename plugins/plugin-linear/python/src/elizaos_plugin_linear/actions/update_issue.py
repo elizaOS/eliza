@@ -157,7 +157,8 @@ async def handler(
                 for label_name in parsed_updates["labels"]:
                     if label_name:
                         label = next(
-                            (l for l in labels if l["name"].lower() == label_name.lower()), None
+                            (lbl for lbl in labels if lbl["name"].lower() == label_name.lower()),
+                            None,
                         )
                         if label:
                             label_ids.append(label["id"])
