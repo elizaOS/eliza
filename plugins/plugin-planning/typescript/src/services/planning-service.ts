@@ -111,7 +111,7 @@ class PlanWorkingMemory {
 
 /**
  * Production-Ready Planning Service Implementation
- * Provides unified planning capabilities with full runtime integration
+ * Provides comprehensive planning capabilities with full runtime integration
  */
 export class PlanningService extends Service {
   static serviceType = "planning";

@@ -251,7 +251,7 @@ pub struct ExecutionResult {
 /// Classification result from message classifier.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassificationResult {
-    /// Legacy classification
+    /// Message classification category
     pub classification: String,
     /// Confidence score
     pub confidence: f64,

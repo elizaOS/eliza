@@ -20,8 +20,8 @@
     "allowImportingTsExtensions": true,
     "baseUrl": "../../../",
     "paths": {
-      "@elizaos/core": ["packages/typescript/src/index.node.ts"],
-      "@elizaos/core/*": ["packages/typescript/src/*"]
+      "@elizaos/core": ["packages/typescript/dist/node"],
+      "@elizaos/core/*": ["packages/typescript/dist/*"]
     }
   },
   "include": ["./**/*.ts"],

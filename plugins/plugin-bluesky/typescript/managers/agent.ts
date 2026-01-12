@@ -103,13 +103,10 @@ export class BlueSkyAgentManager {
 
     const event = eventMap[notification.reason];
     if (event) {
-      void this.runtime.emitEvent(
-        event as string,
-        {
-          source: "bluesky",
-          data: { notification },
-        } as unknown as Parameters<typeof this.runtime.emitEvent>[1]
-      );
+      void this.runtime.emitEvent(event, {
+        source: "bluesky",
+        data: { notification },
+      });
     }
   }
 
@@ -127,13 +124,10 @@ export class BlueSkyAgentManager {
 
     for (const notification of notifications) {
       if (notification.reason === "mention" || notification.reason === "reply") {
-        void this.runtime.emitEvent(
-          "bluesky.should_respond" as string,
-          {
-            source: "bluesky",
-            data: { notification },
-          } as unknown as Parameters<typeof this.runtime.emitEvent>[1]
-        );
+        void this.runtime.emitEvent("bluesky.should_respond", {
+          source: "bluesky",
+          data: { notification },
+        });
       }
     }
   }
@@ -158,12 +152,9 @@ export class BlueSkyAgentManager {
   }
 
   private createAutomatedPost(): void {
-    void this.runtime.emitEvent(
-      "bluesky.create_post" as string,
-      {
-        source: "bluesky",
-        data: { automated: true },
-      } as unknown as Parameters<typeof this.runtime.emitEvent>[1]
-    );
+    void this.runtime.emitEvent("bluesky.create_post", {
+      source: "bluesky",
+      data: { automated: true },
+    });
   }
 }

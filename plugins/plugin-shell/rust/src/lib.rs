@@ -5,22 +5,25 @@
 //! with command history tracking and file operation detection.
 
 mod error;
-mod types;
 mod path_utils;
 mod service;
+mod types;
 
-// Import directly from submodules:
-// - error::{ShellError, Result}
-// - types::{CommandResult, CommandHistoryEntry, FileOperation, etc.}
-// - path_utils::{validate_path, is_safe_command, etc.}
-// - service::ShellService
+// Re-export public API
+pub use error::{Result, ShellError};
+pub use path_utils::{
+    extract_base_command, is_forbidden_command, is_safe_command, validate_path,
+    DEFAULT_FORBIDDEN_COMMANDS,
+};
+pub use service::ShellService;
+pub use types::{
+    CommandHistoryEntry, CommandResult, FileOperation, FileOperationType, ShellConfig,
+    ShellConfigBuilder,
+};
 
-/// Prelude module - import directly from specific modules
-pub mod prelude {}
-
-
-
-
-
-
-
+/// Prelude module - convenient re-exports
+pub mod prelude {
+    pub use crate::error::{Result, ShellError};
+    pub use crate::service::ShellService;
+    pub use crate::types::{CommandHistoryEntry, CommandResult, FileOperation, ShellConfig};
+}

@@ -1,6 +1,6 @@
 # elizaOS xAI Plugin
 
-Unified xAI Grok and X (formerly Twitter) API integration for elizaOS agents.
+xAI Grok and X (formerly Twitter) API integration for elizaOS agents.
 
 ## Features
 

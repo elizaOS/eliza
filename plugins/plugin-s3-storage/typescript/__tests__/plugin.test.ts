@@ -6,7 +6,9 @@ describe("Storage S3 Plugin", () => {
     const { storageS3Plugin } = await import("..");
     expect(storageS3Plugin).toBeDefined();
     expect(storageS3Plugin.name).toBe("storage-s3");
-    expect(storageS3Plugin.description).toBe("Plugin for storage in S3");
+    expect(storageS3Plugin.description).toBe(
+      "Plugin for file storage in AWS S3 and S3-compatible services"
+    );
   });
 
   it("should export the AwsS3Service", async () => {

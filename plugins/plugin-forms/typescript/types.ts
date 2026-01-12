@@ -1,6 +1,22 @@
 import type { UUID } from "@elizaos/core";
 
 /**
+ * Information about a form field used for prompt generation
+ */
+export interface PromptFieldInfo {
+  /** Unique identifier for the field */
+  id: string;
+  /** Field type */
+  type: string;
+  /** Display label for the field */
+  label: string;
+  /** Optional field description */
+  description?: string;
+  /** Optional validation criteria */
+  criteria?: string;
+}
+
+/**
  * Possible types for form fields
  */
 export type FormFieldType =

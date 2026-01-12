@@ -55,13 +55,5 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     (monoPath ? path.join(monoPath, ".eliza", ".elizadb") : undefined) ??
     path.join(process.cwd(), ".eliza", ".elizadb");
 
-  const resolved = expandTildePath(base);
-  const legacyPath = path.join(process.cwd(), ".elizadb");
-  if (resolved === legacyPath) {
-    const newPath = path.join(process.cwd(), ".eliza", ".elizadb");
-    process.env.PGLITE_DATA_DIR = newPath;
-    return newPath;
-  }
-
-  return resolved;
+  return expandTildePath(base);
 }

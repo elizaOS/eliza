@@ -4,15 +4,11 @@
  * Tests for bootstrap evaluators using REAL AgentRuntime instances.
  */
 
-import {
-  composePrompt,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  ModelType,
-  type State,
-} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../../logger.ts";
+import type { IAgentRuntime, Memory, State } from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
+import { composePrompt } from "../../utils.ts";
 import {
   cleanupTestRuntime,
   createTestMemory,

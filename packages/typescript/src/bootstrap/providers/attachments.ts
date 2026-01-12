@@ -1,5 +1,10 @@
-import type { IAgentRuntime, Media, Memory, Provider } from "@elizaos/core";
-import { addHeader } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Media,
+  Memory,
+  Provider,
+} from "../../types/index.ts";
+import { addHeader } from "../../utils.ts";
 
 /**
  * Provides a list of attachments in the current conversation.

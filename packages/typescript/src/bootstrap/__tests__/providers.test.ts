@@ -4,17 +4,16 @@
  * Tests for bootstrap providers using REAL AgentRuntime instances.
  */
 
-import {
-  ChannelType,
-  type IAgentRuntime,
-  logger,
-  type Media,
-  type Memory,
-  MemoryType,
-  type State,
-  type UUID,
-} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../../logger.ts";
+import type {
+  IAgentRuntime,
+  Media,
+  Memory,
+  State,
+  UUID,
+} from "../../types/index.ts";
+import { ChannelType, MemoryType } from "../../types/index.ts";
 import { attachmentsProvider } from "../providers/attachments";
 import choiceProvider from "../providers/choice";
 import { factsProvider } from "../providers/facts";

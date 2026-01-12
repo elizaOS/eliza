@@ -106,7 +106,7 @@ pub fn as_uuid(id: &str) -> Result<UUID, UUIDError> {
 /// - If the input is already a UUID, it is returned as-is (normalized to lowercase).
 /// - Otherwise, `encodeURIComponent` is applied to the input string.
 /// - The UUID is derived from the first 16 bytes of SHA-1(escapedStr).
-/// - RFC4122 variant bits are set, and the version nibble is set to `0x0` (legacy/custom).
+/// - RFC4122 variant bits are set, and the version nibble is set to `0x0` (custom).
 pub fn string_to_uuid<T: ToString>(target: T) -> UUID {
     let s = target.to_string();
 

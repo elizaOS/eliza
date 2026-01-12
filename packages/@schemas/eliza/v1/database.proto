@@ -59,8 +59,7 @@ message ActionLogBody {
   repeated google.protobuf.Struct responses = 6;
   optional ActionLogContent content = 7;
   optional ActionLogResult result = 8;
-  optional bool is_legacy_return = 9;
-  repeated ActionLogPrompt prompts = 10;
+  repeated ActionLogPrompt prompts = 9;
   optional int32 prompt_count = 11;
   optional string plan_step = 12;
   optional string plan_thought = 13;

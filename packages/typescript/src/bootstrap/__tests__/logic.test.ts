@@ -1,19 +1,16 @@
-import {
-  type ActionEventPayload,
-  ChannelType,
-  type Content,
-  type EntityPayload,
-  type EvaluatorEventPayload,
-  EventType,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type MessagePayload,
-  ModelType,
-  type UUID,
-} from "@elizaos/core";
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  ActionEventPayload,
+  Content,
+  EntityPayload,
+  EvaluatorEventPayload,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  MessagePayload,
+  UUID,
+} from "../../types/index.ts";
+import { ChannelType, EventType, ModelType } from "../../types/index.ts";
 import { createBootstrapPlugin } from "../index";
 import {
   cleanupTestRuntime,

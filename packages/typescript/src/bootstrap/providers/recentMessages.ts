@@ -1,17 +1,15 @@
-import {
-  addHeader,
-  ChannelType,
-  type CustomMetadata,
-  type Entity,
-  formatMessages,
-  formatPosts,
-  getEntityDetails,
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type State,
-  type UUID,
-} from "@elizaos/core";
+import { getEntityDetails } from "../../entities.ts";
+import type {
+  CustomMetadata,
+  Entity,
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
+  UUID,
+} from "../../types/index.ts";
+import { ChannelType } from "../../types/index.ts";
+import { addHeader, formatMessages, formatPosts } from "../../utils.ts";
 
 // Move getRecentInteractions outside the provider
 /**

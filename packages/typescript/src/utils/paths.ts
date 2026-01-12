@@ -1,6 +1,6 @@
 /**
  * elizaOS data directory paths configuration
- * This module provides a unified interface for accessing data directory paths
+ * This module provides a standard interface for accessing data directory paths
  * that can be customized via environment variables.
  */
 

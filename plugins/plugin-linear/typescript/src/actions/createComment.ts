@@ -11,7 +11,7 @@ import {
 } from "@elizaos/core";
 import { createCommentTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
-import { type CreateCommentParameters, isCreateCommentParameters } from "../types/index.js";
+import type { CreateCommentParameters } from "../types/index.js";
 
 export const createCommentAction: Action = {
   name: "CREATE_LINEAR_COMMENT",

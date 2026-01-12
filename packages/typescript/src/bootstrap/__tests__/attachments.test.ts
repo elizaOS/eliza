@@ -1,10 +1,6 @@
-import {
-  ContentType,
-  type IAgentRuntime,
-  type Media,
-  ModelType,
-} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { IAgentRuntime, Media } from "../../types/index.ts";
+import { ContentType, ModelType } from "../../types/index.ts";
 import { processAttachments } from "../index";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 

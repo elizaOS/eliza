@@ -2,6 +2,72 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
 import { createMcpToolCompatibility, detectModelProvider } from "./index";
 
+/**
+ * Minimal mock runtime for testing model detection.
+ * Extends IAgentRuntime with model information properties.
+ */
+interface MockRuntime extends IAgentRuntime {
+  modelProvider?: string;
+  model?: string;
+}
+
+/**
+ * Creates a minimal mock runtime with model information for testing.
+ */
+function createMockRuntime(modelProvider: string, model: string): MockRuntime {
+  const base: Partial<IAgentRuntime> = {
+    agentId: "test-agent-id" as IAgentRuntime["agentId"],
+    character: {
+      name: "Test Agent",
+      bio: "Test",
+      settings: {
+        MODEL_PROVIDER: modelProvider,
+        MODEL: model,
+      },
+    } as IAgentRuntime["character"],
+    providers: [],
+    actions: [],
+    evaluators: [],
+    plugins: [],
+    services: new Map(),
+    events: {},
+    routes: [],
+    logger: {
+      trace: () => {},
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      fatal: () => {},
+    } as IAgentRuntime["logger"],
+    stateCache: new Map(),
+    messageService: null,
+    initPromise: Promise.resolve(),
+    getSetting: () => null,
+    setSetting: () => {},
+    getConversationLength: () => 0,
+    registerPlugin: async () => {},
+    initialize: async () => {},
+    getConnection: async () => ({}),
+    getService: () => null,
+    getServicesByType: () => [],
+    getAllServices: () => new Map(),
+    registerService: async () => {},
+    getServiceLoadPromise: async () => {
+      throw new Error("Not implemented in mock");
+    },
+    getRegisteredServiceTypes: () => [],
+    hasService: () => false,
+    registerDatabaseAdapter: () => {},
+  };
+
+  return {
+    ...base,
+    modelProvider,
+    model,
+  } as MockRuntime;
+}
+
 // Example MCP tool schema with various constraints that cause problems
 const problematicToolSchema: JSONSchema7 = {
   type: "object",
@@ -46,20 +112,11 @@ export async function demonstrateToolCompatibility() {
 
   // Test with different mock runtimes (minimal mocks for testing purposes)
   const testRuntimes = [
-    { modelProvider: "openai", model: "gpt-4" } as unknown as IAgentRuntime,
-    { modelProvider: "openai", model: "o3-mini" } as unknown as IAgentRuntime, // Reasoning model
-    {
-      modelProvider: "anthropic",
-      model: "claude-3",
-    } as unknown as IAgentRuntime,
-    {
-      modelProvider: "google",
-      model: "gemini-pro",
-    } as unknown as IAgentRuntime,
-    {
-      modelProvider: "unknown",
-      model: "some-other-model",
-    } as unknown as IAgentRuntime,
+    createMockRuntime("openai", "gpt-4"),
+    createMockRuntime("openai", "o3-mini"), // Reasoning model
+    createMockRuntime("anthropic", "claude-3"),
+    createMockRuntime("google", "gemini-pro"),
+    createMockRuntime("unknown", "some-other-model"),
   ];
 
   console.log("Original problematic schema:");
@@ -67,8 +124,10 @@ export async function demonstrateToolCompatibility() {
   console.log(`\n${"=".repeat(50)}\n`);
 
   for (const runtime of testRuntimes) {
-    const runtimeAny = runtime as unknown as Record<string, string>;
-    console.log(`Testing with: ${runtimeAny.modelProvider} - ${runtimeAny.model}`);
+    const mockRuntime = runtime as MockRuntime;
+    const modelProvider = mockRuntime.modelProvider ?? "unknown";
+    const model = mockRuntime.model ?? "unknown";
+    console.log(`Testing with: ${modelProvider} - ${model}`);
     console.log("-".repeat(30));
 
     // Detect model info
@@ -142,10 +201,7 @@ function findSchemaChanges(original: JSONSchema7, transformed: JSONSchema7): str
 // Example of how to use in practice
 export async function exampleUsage() {
   // In your MCP action, you would do something like this:
-  const agentRuntime = {
-    modelProvider: "openai",
-    model: "o3-mini",
-  } as unknown as IAgentRuntime;
+  const agentRuntime = createMockRuntime("openai", "o3-mini");
   const compatibility = await createMcpToolCompatibility(agentRuntime);
 
   // Original MCP tool schema from server

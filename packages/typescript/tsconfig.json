@@ -7,6 +7,9 @@
     "typeRoots": ["../../node_modules/@types"],
     "types": ["node", "bun"],
     "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
     "skipLibCheck": true,
     "paths": {
       "@elizaos/core": ["./packages/typescript/src/index.node.ts"],

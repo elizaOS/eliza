@@ -6,3 +6,9 @@ cache/
 coverage/
 *.tsbuildinfo
 :memory:
+
+# Prevent generated files in src directory
+src/**/*.js
+src/**/*.d.ts
+src/**/*.d.ts.map
+!src/**/*.test.js

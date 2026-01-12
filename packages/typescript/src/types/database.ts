@@ -83,7 +83,6 @@ export interface ActionLogBody extends BaseLogBody {
   responses?: Array<Record<string, LogBodyValue>>;
   content?: ActionLogContent;
   result?: ActionLogResult;
-  isLegacyReturn?: boolean;
   isVoidReturn?: boolean;
   prompts?: ActionLogPrompt[];
   promptCount?: number;
@@ -553,12 +552,12 @@ export interface MultiRoomMemoryOptions {
 }
 
 /**
- * Unified options pattern for memory operations
+ * Standard options pattern for memory operations
  * Provides a simpler, more consistent interface
  */
-export interface UnifiedMemoryOptions {
+export interface StandardMemoryOptions {
   roomId: UUID;
-  limit?: number; // Unified naming (replacing 'count')
+  limit?: number; // Standard naming (replacing 'count')
   agentId?: UUID; // Common optional parameter
   unique?: boolean; // Common flag for duplication control
   start?: number; // Pagination start
@@ -568,7 +567,7 @@ export interface UnifiedMemoryOptions {
 /**
  * Specialized memory search options
  */
-export interface UnifiedSearchOptions extends UnifiedMemoryOptions {
+export interface MemorySearchParams extends StandardMemoryOptions {
   embedding: number[];
   similarity?: number; // Clearer name than 'match_threshold'
 }

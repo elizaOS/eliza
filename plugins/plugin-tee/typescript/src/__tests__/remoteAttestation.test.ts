@@ -3,40 +3,53 @@
  */
 
 import { TEEMode } from "@elizaos/core";
-import { TappdClient } from "@phala/dstack-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PhalaRemoteAttestationProvider } from "../providers/remoteAttestation";
 
 // Mock TappdClient
-vi.mock("@phala/dstack-sdk", () => ({
-  TappdClient: vi.fn().mockImplementation(() => ({
-    tdxQuote: vi.fn().mockResolvedValue({
-      quote: "mock-quote-data",
-      replayRtmrs: () => ["rtmr0", "rtmr1", "rtmr2", "rtmr3"],
-    }),
-    deriveKey: vi.fn(),
-  })),
-}));
+const mockTdxQuote = vi.fn().mockResolvedValue({
+  quote: "mock-quote-data",
+  replayRtmrs: () => ["rtmr0", "rtmr1", "rtmr2", "rtmr3"],
+});
+const mockDeriveKey = vi.fn();
+const mockConstructorCalls: Array<string | undefined> = [];
+
+vi.mock("@phala/dstack-sdk", () => {
+  return {
+    TappdClient: class MockTappdClient {
+      tdxQuote = mockTdxQuote;
+      deriveKey = mockDeriveKey;
+      constructor(endpoint?: string) {
+        mockConstructorCalls.push(endpoint);
+      }
+    },
+  };
+});
 
 describe("PhalaRemoteAttestationProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConstructorCalls.length = 0;
+    mockTdxQuote.mockResolvedValue({
+      quote: "mock-quote-data",
+      replayRtmrs: () => ["rtmr0", "rtmr1", "rtmr2", "rtmr3"],
+    });
   });
 
   describe("constructor", () => {
     it("should initialize with LOCAL mode", () => {
       const _provider = new PhalaRemoteAttestationProvider(TEEMode.LOCAL);
-      expect(TappdClient).toHaveBeenCalledWith("http://localhost:8090");
+      expect(mockConstructorCalls).toContain("http://localhost:8090");
     });
 
     it("should initialize with DOCKER mode", () => {
       const _provider = new PhalaRemoteAttestationProvider(TEEMode.DOCKER);
-      expect(TappdClient).toHaveBeenCalledWith("http://host.docker.internal:8090");
+      expect(mockConstructorCalls).toContain("http://host.docker.internal:8090");
     });
 
     it("should initialize with PRODUCTION mode", () => {
       const _provider = new PhalaRemoteAttestationProvider(TEEMode.PRODUCTION);
-      expect(TappdClient).toHaveBeenCalledWith();
+      expect(mockConstructorCalls).toContain(undefined);
     });
 
     it("should throw error for invalid mode", () => {
@@ -63,13 +76,7 @@ describe("PhalaRemoteAttestationProvider", () => {
 
     it("should handle errors during attestation generation", async () => {
       const mockError = new Error("TDX Quote generation failed");
-      vi.mocked(TappdClient).mockImplementationOnce(
-        () =>
-          ({
-            tdxQuote: vi.fn().mockRejectedValue(mockError),
-            deriveKey: vi.fn(),
-          }) as unknown as TappdClient
-      );
+      mockTdxQuote.mockRejectedValueOnce(mockError);
 
       const errorProvider = new PhalaRemoteAttestationProvider(TEEMode.LOCAL);
       await expect(errorProvider.generateAttestation("test-data")).rejects.toThrow(
@@ -82,8 +89,7 @@ describe("PhalaRemoteAttestationProvider", () => {
       const hashAlgorithm = "raw";
       await provider.generateAttestation(reportData, hashAlgorithm);
 
-      const client = vi.mocked(TappdClient).mock.results[0].value;
-      expect(client.tdxQuote).toHaveBeenCalledWith(reportData, hashAlgorithm);
+      expect(mockTdxQuote).toHaveBeenCalledWith(reportData, hashAlgorithm);
     });
   });
 });

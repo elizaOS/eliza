@@ -244,3 +244,6 @@ plugins/**/rust/Cargo.lock
 
 # Build-generated examples copy (source is /examples/)
 packages/elizaos/examples/
+
+:memory:
+.next/

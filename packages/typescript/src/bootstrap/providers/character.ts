@@ -1,5 +1,11 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { addHeader, ChannelType } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
+} from "../../types/index.ts";
+import { ChannelType } from "../../types/index.ts";
+import { addHeader } from "../../utils.ts";
 
 /**
  * Character provider object.

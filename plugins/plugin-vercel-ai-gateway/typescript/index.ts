@@ -8,7 +8,7 @@
  * - Image description (Vision models)
  * - Object/JSON generation
  *
- * The Vercel AI Gateway provides a unified endpoint with zero markup
+ * The Vercel AI Gateway provides a single endpoint with zero markup
  * for accessing models from OpenAI, Anthropic, Google, and more.
  */
 

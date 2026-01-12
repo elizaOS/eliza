@@ -1,5 +1,5 @@
 """
-elizaOS Vercel AI Gateway Plugin - Unified AI Gateway integration.
+elizaOS Vercel AI Gateway Plugin - AI Gateway integration.
 
 This package provides a type-safe async client for Vercel AI Gateway APIs,
 supporting text generation, embeddings, image generation, and more.

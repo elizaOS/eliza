@@ -1,13 +1,13 @@
-import {
-  ChannelType,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type State,
-  type UUID,
-} from "@elizaos/core";
+import { logger } from "../../logger.ts";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+  UUID,
+} from "../../types/index.ts";
+import { ChannelType } from "../../types/index.ts";
 
 /**
  * Role provider that retrieves roles in the server based on the provided runtime, message, and state.

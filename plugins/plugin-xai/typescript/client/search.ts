@@ -207,23 +207,3 @@ export async function* searchQuotedPosts(
 
   yield* searchPosts(query, maxPosts, SearchMode.Latest, auth);
 }
-
-// Compatibility exports
-export const fetchSearchPosts = async (
-  _query: string,
-  _maxPosts: number,
-  _searchMode: SearchMode,
-  _auth: XAuth,
-  _cursor?: string
-) => {
-  throw new Error("fetchSearchPosts is deprecated. Use searchPosts generator instead.");
-};
-
-export const fetchSearchProfiles = async (
-  _query: string,
-  _maxProfiles: number,
-  _auth: XAuth,
-  _cursor?: string
-) => {
-  throw new Error("fetchSearchProfiles is deprecated. Use searchProfiles generator instead.");
-};

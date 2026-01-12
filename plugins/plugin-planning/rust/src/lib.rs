@@ -54,7 +54,7 @@ pub mod wasm;
 pub const PLUGIN_NAME: &str = "planning";
 /// Plugin description
 pub const PLUGIN_DESCRIPTION: &str =
-    "Comprehensive planning and execution plugin with unified planning service";
+    "Comprehensive planning and execution plugin with integrated planning service";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
 

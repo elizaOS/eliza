@@ -16,7 +16,6 @@ use crate::types::{
 };
 
 /// CLOB Client for Polymarket
-#[allow(dead_code)]
 pub struct ClobClient {
     /// HTTP client
     http: Client,
@@ -24,8 +23,6 @@ pub struct ClobClient {
     base_url: String,
     /// Chain ID (137 for Polygon)
     chain_id: u64,
-    /// Wallet signer
-    signer: PrivateKeySigner,
     /// Wallet address
     address: Address,
     /// API credentials (optional)
@@ -71,7 +68,6 @@ impl ClobClient {
             http,
             base_url,
             chain_id: POLYGON_CHAIN_ID,
-            signer,
             address,
             creds: None,
         })

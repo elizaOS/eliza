@@ -33,6 +33,11 @@ export interface ElizaBuildOptions {
   isCli?: boolean;
   /** Whether to generate TypeScript declarations (using tsc separately) */
   generateDts?: boolean;
+  /**
+   * The name of the package being built (e.g., "@elizaos/core").
+   * When set, this package will NOT be added to externals to avoid self-referential imports.
+   */
+  selfPackageName?: string;
 }
 
 /**
@@ -69,6 +74,7 @@ export async function createElizaBuildConfig(
     plugins = [],
     format = "esm",
     assets: _assets = [],
+    selfPackageName,
   } = options;
 
   // Resolve paths relative to root
@@ -115,13 +121,14 @@ export async function createElizaBuildConfig(
       : [];
 
   // elizaOS workspace packages that should typically be external
+  // Filter out the package being built to avoid self-referential imports
   const elizaExternals = [
     "@elizaos/core",
     "@elizaos/server",
     "@elizaos/client",
     "@elizaos/api-client",
     "@elizaos/plugin-*",
-  ];
+  ].filter((pkg) => pkg !== selfPackageName);
 
   // Filter out empty strings and clean up the external array
   const cleanExternals = [...external].filter(

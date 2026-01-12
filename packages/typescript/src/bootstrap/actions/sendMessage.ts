@@ -1,22 +1,21 @@
 // action: SEND_MESSAGE
 // send message to a user or room (other than this room we are in)
 
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  type Content,
-  composePromptFromState,
-  findEntityByName,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  ModelType,
-  parseKeyValueXml,
-  type State,
-} from "@elizaos/core";
+import { findEntityByName } from "../../entities.ts";
+import { logger } from "../../logger.ts";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  Content,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
+import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 /** Shape of the target extraction XML response */
 interface TargetExtractionResult {

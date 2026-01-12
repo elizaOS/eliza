@@ -1,12 +1,37 @@
 import {
   type IAgentRuntime,
-  IWalletService,
   logger,
   Service,
   ServiceType,
   type ServiceTypeName,
-  type WalletPortfolio as siWalletPortfolio,
 } from "@elizaos/core";
+
+/**
+ * Represents a single asset in a wallet portfolio.
+ */
+interface WalletAsset {
+  /** Token contract address */
+  address: string;
+  /** Token symbol (e.g., 'SOL', 'USDC') */
+  symbol: string;
+  /** User-friendly balance (decimal-adjusted) */
+  balance: string;
+  /** Token decimals */
+  decimals: number;
+  /** Value in USD */
+  valueUsd: number;
+}
+
+/**
+ * Represents the entire portfolio of assets in a wallet.
+ */
+interface WalletPortfolioType {
+  /** Total portfolio value in USD */
+  totalValueUsd: number;
+  /** Array of assets in the portfolio */
+  assets: WalletAsset[];
+}
+
 import {
   AccountLayout,
   ExtensionType,
@@ -129,7 +154,11 @@ export interface ISolanaPluginServiceAPI extends Service {
 
 // split out off to keep this wrapper simple, so we can move it out of here
 // it's a single unit focused on one thing (reduce scope of main service)
-export class SolanaWalletService extends IWalletService {
+export class SolanaWalletService extends Service {
+  static override readonly serviceType: string = ServiceType.WALLET;
+  public readonly capabilityDescription =
+    "Provides standardized access to Solana wallet balances and portfolios.";
+
   private _solanaService: SolanaService | null = null;
 
   constructor(runtime?: IAgentRuntime) {
@@ -152,7 +181,7 @@ export class SolanaWalletService extends IWalletService {
    * @param owner - Optional: The specific wallet address/owner to query.
    * @returns A promise that resolves to the wallet's portfolio.
    */
-  public async getPortfolio(owner?: string): Promise<siWalletPortfolio> {
+  public async getPortfolio(owner?: string): Promise<WalletPortfolioType> {
     const publicKey = await this.solanaService.getPublicKey();
     const publicKeyBase58 = publicKey?.toBase58();
     if (owner && publicKeyBase58 && owner !== publicKeyBase58) {
@@ -161,7 +190,7 @@ export class SolanaWalletService extends IWalletService {
       );
     }
     const wp: WalletPortfolio = await this.solanaService.updateWalletData(true);
-    const out: siWalletPortfolio = {
+    const out: WalletPortfolioType = {
       totalValueUsd: parseFloat(wp.totalUsd),
       assets: wp.items.map((i) => ({
         address: i.address,
@@ -540,21 +569,6 @@ export class SolanaService extends Service {
     return nacl.sign.detached.verify(messageUint8, signature, publicKeyBytes);
   }
 
-  // Solana should be here, it's already in the class/service name
-  // deprecate
-  verifySolanaSignature({
-    message,
-    signatureBase64,
-    publicKeyBase58,
-  }: {
-    message: string;
-    signatureBase64: string;
-    publicKeyBase58: string;
-  }): boolean {
-    this.runtime.logger.warn("verifySolanaSignature is deprecated, use verifySignature");
-    return this.verifySignature({ message, signatureBase64, publicKeyBase58 });
-  }
-
   //
   // MARK: Addresses
   //
@@ -569,13 +583,6 @@ export class SolanaService extends Service {
     } catch {
       return false;
     }
-  }
-
-  // Solana should be here, it's already in the class/service name
-  // deprecate
-  public isValidSolanaAddress(address: string, onCurveOnly = false): boolean {
-    this.runtime.logger.warn("isValidSolanaAddress is deprecated, use isValidAddress");
-    return this.isValidAddress(address, onCurveOnly);
   }
 
   /**
@@ -2212,21 +2219,6 @@ export class SolanaService extends Service {
     return out;
   }
 
-  // deprecated
-  /*
-  public async getBalanceByAddr(walletAddressStr: string): Promise<number> {
-    try {
-      const publicKey = new PublicKey(walletAddressStr)
-      console.log('getBalanceByAddr - getBalance')
-      const lamports = await this.connection.getBalance(publicKey);
-      return lamports * SolanaService.LAMPORTS2SOL
-    } catch (error) {
-      this.runtime.logger.error('solSrv:getBalanceByAddr - Error fetching wallet balance:', error);
-      return -1;
-    }
-  }
-  */
-
   // only get SOL balance
   public async getBalancesByAddrs(walletAddressArr: string[]): Promise<Record<string, number>> {
     try {
@@ -2327,13 +2319,13 @@ export class SolanaService extends Service {
 
     // 1) Derive ATAs for both programs
     const ataPairs = mints.map((mint) => {
-      const ataLegacy = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_PROGRAM_ID);
+      const ataTokenV1 = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_PROGRAM_ID);
       const ata2022 = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_2022_PROGRAM_ID);
-      return { mint, ataLegacy, ata2022 };
+      return { mint, ataTokenV1, ata2022 };
     });
 
     // 2) Batch fetch token accounts (both program ATAs)
-    const allAtaAddrs = ataPairs.flatMap((p) => [p.ataLegacy, p.ata2022]);
+    const allAtaAddrs = ataPairs.flatMap((p) => [p.ataTokenV1, p.ata2022]);
     const ataInfos = await this.batchGetMultipleAccountsInfo(allAtaAddrs, "getWalletBalances");
 
     // 3) Batch fetch mint accounts (for decimals)
@@ -2360,10 +2352,10 @@ export class SolanaService extends Service {
       byAddress.set(ata.toBase58(), AccountLayout.decode(info.data));
     });
 
-    // 5) Assemble balances; prefer legacy program over 2022 if both exist
+    // 5) Assemble balances; prefer Token Program V1 over 2022 if both exist
     const out: Record<string, MintBalance | null> = {};
 
-    for (const { mint, ataLegacy, ata2022 } of ataPairs) {
+    for (const { mint, ataTokenV1, ata2022 } of ataPairs) {
       const mintStr = mint.toBase58();
       const decimals = mintDecimals.get(mintStr);
       // If we don’t know decimals (mint account not found), we can’t compute uiAmount
@@ -2372,11 +2364,11 @@ export class SolanaService extends Service {
         continue;
       }
 
-      const legacy = byAddress.get(ataLegacy.toBase58());
+      const tokenV1 = byAddress.get(ataTokenV1.toBase58());
       const tok2022 = byAddress.get(ata2022.toBase58());
 
       // Choose which token account to use:
-      const chosen = legacy ?? tok2022;
+      const chosen = tokenV1 ?? tok2022;
       if (!chosen) {
         out[mintStr] = null; // ATA doesn’t exist → zero balance
         continue;

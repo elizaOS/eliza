@@ -6,7 +6,7 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from "@elizaos/core";
+} from "../../types/index.ts";
 
 /**
  * Action representing the IGNORE action. This action is used when ignoring the user in a conversation.

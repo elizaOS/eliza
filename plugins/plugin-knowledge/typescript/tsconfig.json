@@ -21,5 +21,5 @@
     "jsx": "react-jsx"
   },
   "include": ["**/*.ts", "**/*.tsx", "types/**/*.d.ts"],
-  "exclude": ["node_modules", "dist", "__tests__"]
+  "exclude": ["node_modules", "dist", "__tests__", "tests.ts", "**/*.test.ts"]
 }

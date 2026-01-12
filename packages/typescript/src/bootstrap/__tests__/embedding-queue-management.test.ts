@@ -1,12 +1,12 @@
-import {
-  type EventPayload,
-  EventType,
-  type IAgentRuntime,
-  type Memory,
-  type UUID,
-} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EmbeddingGenerationService } from "../../services/embedding";
+import type {
+  EventPayload,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "../../types/index.ts";
+import { EventType } from "../../types/index.ts";
 
 // Test interface for accessing private properties
 interface EmbeddingQueueItem {

@@ -1,10 +1,11 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { Account, Address, Chain } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { BridgeAction } from "../actions/bridge";
 import { WalletProvider } from "../providers/wallet";
+import { cleanupTestRuntime, createTestRuntime } from "../test-utils";
 import type { SupportedChain } from "../types";
 import { getTestChains } from "./custom-chain";
 
@@ -30,36 +31,15 @@ const TESTNET_TOKENS = {
   OP_USDC: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7" as `0x${string}`,
 };
 
-// Create a test runtime for testing
-function createTestRuntime(): IAgentRuntime {
-  return {
-    agentId: "test-agent-id" as IAgentRuntime["agentId"],
-    getCache: vi.fn().mockResolvedValue(null),
-    setCache: vi.fn().mockResolvedValue(undefined),
-    getSetting: vi.fn().mockReturnValue(null),
-    setSetting: vi.fn(),
-    getService: vi.fn().mockReturnValue(null),
-    registerService: vi.fn(),
-    logger: {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-      log: vi.fn(),
-    },
-  } as IAgentRuntime;
-}
-
 describe("Bridge Action", () => {
   let wp: WalletProvider;
   let testChains: Record<string, Chain>;
+  let runtime: IAgentRuntime;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-
+    runtime = await createTestRuntime();
     testChains = getTestChains();
     const pk = TEST_PRIVATE_KEY as `0x${string}`;
-    const agentRuntime = createMockRuntime();
 
     // Initialize with multiple testnets for bridging
     const customChains = {
@@ -68,11 +48,13 @@ describe("Bridge Action", () => {
       optimismSepolia: testChains.optimismSepolia,
     };
 
-    wp = new WalletProvider(pk, agentRuntime, customChains);
+    wp = new WalletProvider(pk, runtime, customChains);
   });
 
-  afterEach(() => {
-    // Remove vi.clearAllTimers() as it's not needed in Bun test runner
+  afterEach(async () => {
+    if (runtime) {
+      await cleanupTestRuntime(runtime);
+    }
   });
 
   describe("Constructor", () => {
@@ -323,14 +305,10 @@ describe("Bridge Action", () => {
       }
 
       // Create wallet provider with funded wallet
-      const fundedWp = new WalletProvider(
-        FUNDED_TEST_WALLET as `0x${string}`,
-        createMockRuntime(),
-        {
-          sepolia: testChains.sepolia,
-          baseSepolia: testChains.baseSepolia,
-        }
-      );
+      const fundedWp = new WalletProvider(FUNDED_TEST_WALLET as `0x${string}`, runtime, {
+        sepolia: testChains.sepolia,
+        baseSepolia: testChains.baseSepolia,
+      });
       const fundedBridgeAction = new BridgeAction(fundedWp);
 
       const balance = await fundedWp.getWalletBalanceForChain("sepolia");

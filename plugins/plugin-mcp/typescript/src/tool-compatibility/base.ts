@@ -261,14 +261,52 @@ export abstract class McpToolCompatibility {
   protected abstract getUnsupportedObjectProperties(): readonly string[];
 }
 
-interface RuntimeWithModel {
+/**
+ * Extended runtime interface for model information access.
+ * Some runtime implementations may have modelProvider or model properties
+ * that aren't part of the base IAgentRuntime interface.
+ */
+interface RuntimeWithModel extends IAgentRuntime {
   modelProvider?: string;
   model?: string;
 }
 
+/**
+ * Type guard to check if runtime has model information properties
+ */
+function hasModelInfo(runtime: IAgentRuntime): runtime is RuntimeWithModel {
+  return (
+    typeof runtime === "object" &&
+    runtime !== null &&
+    ("modelProvider" in runtime || "model" in runtime)
+  );
+}
+
+/**
+ * Safely extracts model provider or model string from runtime
+ */
+function getModelString(runtime: IAgentRuntime): string {
+  if (hasModelInfo(runtime)) {
+    return runtime.modelProvider ?? runtime.model ?? "";
+  }
+  // Fallback: try to get from character settings
+  if (
+    runtime.character &&
+    typeof runtime.character === "object" &&
+    "settings" in runtime.character &&
+    runtime.character.settings &&
+    typeof runtime.character.settings === "object"
+  ) {
+    const settings = runtime.character.settings as Record<string, unknown>;
+    const modelProvider = settings.MODEL_PROVIDER ?? settings.modelProvider;
+    const model = settings.MODEL ?? settings.model;
+    return String(modelProvider ?? model ?? "");
+  }
+  return "";
+}
+
 export function detectModelProvider(runtime: IAgentRuntime): ModelInfo {
-  const runtimeWithModel = runtime as unknown as RuntimeWithModel;
-  const modelString = runtimeWithModel.modelProvider ?? runtimeWithModel.model ?? "";
+  const modelString = getModelString(runtime);
   const modelId = String(modelString).toLowerCase();
 
   let provider: ModelProvider = "unknown";

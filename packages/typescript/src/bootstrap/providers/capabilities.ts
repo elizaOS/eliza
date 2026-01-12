@@ -3,7 +3,7 @@ import type {
   Memory,
   Provider,
   ProviderResult,
-} from "@elizaos/core";
+} from "../../types/index.ts";
 
 /**
  * Provider that collects capability descriptions from all registered services

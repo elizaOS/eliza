@@ -1,5 +1,11 @@
-import type { Entity, IAgentRuntime, Memory, Provider } from "@elizaos/core";
-import { addHeader, formatEntities, getEntityDetails } from "@elizaos/core";
+import { formatEntities, getEntityDetails } from "../../entities.ts";
+import type {
+  Entity,
+  IAgentRuntime,
+  Memory,
+  Provider,
+} from "../../types/index.ts";
+import { addHeader } from "../../utils.ts";
 
 /**
  * Provider for fetching entities related to the current conversation.

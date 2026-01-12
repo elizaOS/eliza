@@ -231,7 +231,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 ### plugin-eliza-classic
 
 - **Status**: ⏳ Not started
-- **Notes**: Legacy plugin
+- **Notes**: Classic ELIZA chatbot plugin
 - **Estimated Prompts**: TBD
 
 ### plugin-elizacloud

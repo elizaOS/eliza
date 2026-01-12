@@ -1,6 +1,6 @@
 import type { IAgentRuntime, ImageDescriptionParams } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { GoogleGenAIImageDescriptionResult } from "../types";
+import type { ImageDescriptionResponse } from "../types";
 import { createGoogleGenAI, getImageModel, getSafetySettings } from "../utils/config";
 
 // Use global fetch for cross-platform compatibility
@@ -9,7 +9,7 @@ const crossFetch = typeof globalThis.fetch === "function" ? globalThis.fetch : f
 export async function handleImageDescription(
   runtime: IAgentRuntime,
   params: ImageDescriptionParams | string
-): Promise<GoogleGenAIImageDescriptionResult> {
+): Promise<ImageDescriptionResponse> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");

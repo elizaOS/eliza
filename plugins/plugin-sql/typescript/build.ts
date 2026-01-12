@@ -15,7 +15,7 @@ async function buildAll() {
     packageName: "@elizaos/plugin-sql",
     buildOptions: {
       entrypoints: ["index.node.ts"],
-      outdir: "../dist/node",
+      outdir: "dist/node",
       target: "node",
       format: "esm",
       external: [
@@ -51,7 +51,7 @@ async function buildAll() {
     packageName: "@elizaos/plugin-sql",
     buildOptions: {
       entrypoints: ["index.browser.ts"],
-      outdir: "../dist/browser",
+      outdir: "dist/browser",
       target: "browser",
       format: "esm",
       // Keep core external to avoid bundling workspace deps; avoid Node externals

@@ -1,12 +1,12 @@
-import {
-  type Content,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  type State,
-  type UUID,
-} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  Content,
+  IAgentRuntime,
+  Memory,
+  State,
+  UUID,
+} from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 // Mock the internal functions we need to test

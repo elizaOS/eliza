@@ -1,13 +1,13 @@
-import {
-  addHeader,
-  ChannelType,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type State,
-} from "@elizaos/core";
+import { logger } from "../../logger.ts";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "../../types/index.ts";
+import { ChannelType } from "../../types/index.ts";
+import { addHeader } from "../../utils.ts";
 
 /**
  * Provider that exposes relevant world/environment information to agents.

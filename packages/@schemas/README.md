@@ -80,7 +80,7 @@ All schemas are under `eliza/v1/`. When breaking changes are needed, create `eli
 
 ### 2. JSON Compatibility
 
-Proto3 has first-class JSON mapping. All messages can be serialized to JSON for debugging or legacy compatibility:
+Proto3 has first-class JSON mapping. All messages can be serialized to JSON for debugging:
 
 - `snake_case` in proto → `camelCase` in JSON (automatic)
 - Use `google.protobuf.Struct` for dynamic/unknown fields

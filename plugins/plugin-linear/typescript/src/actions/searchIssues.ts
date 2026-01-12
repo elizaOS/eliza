@@ -11,7 +11,7 @@ import {
 } from "@elizaos/core";
 import { searchIssuesTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
-import type { LinearSearchFilters } from "../types";
+import type { LinearSearchFilters, SearchIssuesParameters } from "../types/index.js";
 
 const searchTemplate = searchIssuesTemplate;
 
@@ -106,11 +106,10 @@ export const searchIssuesAction: Action = {
 
       let filters: LinearSearchFilters = {};
 
-      // Check if we have explicit filters in options
-      const params = _options?.parameters;
-      const paramFilters = params?.filters;
-      if (paramFilters && typeof paramFilters === "object") {
-        filters = paramFilters as LinearSearchFilters;
+      // Check if we have explicit filters in options with type-safe access
+      const params = _options?.parameters as SearchIssuesParameters | undefined;
+      if (params?.filters) {
+        filters = params.filters;
       } else {
         // Use LLM to extract search filters
         const prompt = searchTemplate.replace("{{userMessage}}", content);
@@ -238,9 +237,7 @@ export const searchIssuesAction: Action = {
         }
       }
 
-      const paramLimit = params?.limit;
-      filters.limit =
-        (typeof paramLimit === "number" ? paramLimit : undefined) || filters.limit || 10;
+      filters.limit = params?.limit ?? filters.limit ?? 10;
 
       const issues = await linearService.searchIssues(filters);
 

@@ -1180,13 +1180,15 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
     describe("model settings from character configuration", () => {
       it("should support per-model-type configuration with proper fallback chain", async () => {
-        // Create character with mixed settings: defaults, model-specific, and legacy
+        // Create character with mixed settings: defaults and model-specific
         const characterWithMixedSettings: Character = {
           ...mockCharacter,
           settings: {
             // Default settings (apply to all models)
             DEFAULT_TEMPERATURE: 0.7,
             DEFAULT_MAX_TOKENS: 2048,
+            DEFAULT_FREQUENCY_PENALTY: 0.7,
+            DEFAULT_PRESENCE_PENALTY: 0.8,
 
             // Model-specific settings (override defaults)
             TEXT_SMALL_TEMPERATURE: 0.5,
@@ -1195,12 +1197,6 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
             TEXT_LARGE_FREQUENCY_PENALTY: 0.5,
             OBJECT_SMALL_TEMPERATURE: 0.3,
             OBJECT_LARGE_PRESENCE_PENALTY: 0.6,
-
-            // Legacy settings (should be lowest priority)
-            MODEL_TEMPERATURE: 0.9,
-            MODEL_MAX_TOKEN: 4096,
-            MODEL_FREQ_PENALTY: 0.7,
-            MODEL_PRESENCE_PENALTY: 0.8,
           },
         };
 
@@ -1292,7 +1288,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           "test-provider",
         );
 
-        // Test 1: TEXT_SMALL - should use model-specific settings, fall back to defaults/legacy
+        // Test 1: TEXT_SMALL - should use model-specific settings, fall back to defaults
         await runtimeWithMixedSettings.useModel(ModelType.TEXT_SMALL, {
           prompt: "test text small",
         });
@@ -1303,8 +1299,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         const textSmallParams = capturedTextSmall;
         expect(textSmallParams.temperature).toBe(0.5); // Model-specific
         expect(textSmallParams.maxTokens).toBe(1024); // Model-specific
-        expect(textSmallParams.frequencyPenalty).toBe(0.7); // Legacy fallback
-        expect(textSmallParams.presencePenalty).toBe(0.8); // Legacy fallback
+        expect(textSmallParams.frequencyPenalty).toBe(0.7); // Default fallback
+        expect(textSmallParams.presencePenalty).toBe(0.8); // Default fallback
 
         // Test 2: TEXT_LARGE - mixed model-specific and defaults
         await runtimeWithMixedSettings.useModel(ModelType.TEXT_LARGE, {
@@ -1318,9 +1314,9 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         expect(textLargeParams.temperature).toBe(0.8); // Model-specific
         expect(textLargeParams.maxTokens).toBe(2048); // Default fallback
         expect(textLargeParams.frequencyPenalty).toBe(0.5); // Model-specific
-        expect(textLargeParams.presencePenalty).toBe(0.8); // Legacy fallback
+        expect(textLargeParams.presencePenalty).toBe(0.8); // Default fallback
 
-        // Test 3: OBJECT_SMALL - some model-specific, rest from defaults/legacy
+        // Test 3: OBJECT_SMALL - some model-specific, rest from defaults
         await runtimeWithMixedSettings.useModel(ModelType.OBJECT_SMALL, {
           prompt: "test object small",
         });
@@ -1450,11 +1446,10 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
             // Mix of valid and invalid values at different levels
             DEFAULT_TEMPERATURE: "not-a-number",
             DEFAULT_MAX_TOKENS: 2048,
+            DEFAULT_PRESENCE_PENALTY: 0.8,
             TEXT_SMALL_TEMPERATURE: 0.5,
             TEXT_SMALL_MAX_TOKENS: "invalid",
             TEXT_SMALL_FREQUENCY_PENALTY: 0.5,
-            MODEL_TEMPERATURE: 0.8,
-            MODEL_PRESENCE_PENALTY: 0.8,
           },
         };
 
@@ -1494,7 +1489,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         expect(params9.temperature).toBe(0.5); // Valid model-specific
         expect(params9.maxTokens).toBe(2048); // Valid default (model-specific was invalid)
         expect(params9.frequencyPenalty).toBe(0.5); // Valid model-specific
-        expect(params9.presencePenalty).toBe(0.8); // Valid legacy
+        expect(params9.presencePenalty).toBe(0.8); // Valid default
       });
     });
   });

@@ -1,20 +1,18 @@
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  ContentType,
-  composePromptFromState,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  imageGenerationTemplate,
-  logger,
-  type Memory,
-  ModelType,
-  parseKeyValueXml,
-  type State,
-} from "@elizaos/core";
 import { v4 } from "uuid";
+import { logger } from "../../logger.ts";
+import { imageGenerationTemplate } from "../../prompts.ts";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "../../types/index.ts";
+import { ContentType, ModelType } from "../../types/index.ts";
+import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 /**
  * Represents an action that allows the agent to generate an image using a generated prompt.

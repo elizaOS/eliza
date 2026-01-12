@@ -1,6 +1,6 @@
 # @elizaos/plugin-gateway
 
-Vercel AI Gateway plugin for elizaOS. Provides unified access to AI models through the Vercel AI Gateway with zero markup.
+Vercel AI Gateway plugin for elizaOS. Provides access to AI models through the Vercel AI Gateway with zero markup.
 
 ## Features
 

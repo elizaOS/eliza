@@ -117,16 +117,6 @@ pub mod model_settings {
     pub const DEFAULT_FREQUENCY_PENALTY: &str = "DEFAULT_FREQUENCY_PENALTY";
     /// Default presence penalty setting key
     pub const DEFAULT_PRESENCE_PENALTY: &str = "DEFAULT_PRESENCE_PENALTY";
-
-    // Legacy keys
-    /// Legacy model max token setting key
-    pub const MODEL_MAX_TOKEN: &str = "MODEL_MAX_TOKEN";
-    /// Legacy model temperature setting key
-    pub const MODEL_TEMPERATURE: &str = "MODEL_TEMPERATURE";
-    /// Legacy model frequency penalty setting key
-    pub const MODEL_FREQ_PENALTY: &str = "MODEL_FREQ_PENALTY";
-    /// Legacy model presence penalty setting key
-    pub const MODEL_PRESENCE_PENALTY: &str = "MODEL_PRESENCE_PENALTY";
 }
 
 /// Parameters for generating text

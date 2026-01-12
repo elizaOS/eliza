@@ -68,7 +68,7 @@ def string_to_uuid(target: str | int | uuid_module.UUID) -> str:
     - If the input is already a UUID string, it is returned unchanged.
     - Otherwise, `encodeURIComponent` is applied to the input string.
     - The UUID is derived from the first 16 bytes of SHA-1(escapedStr).
-    - RFC4122 variant bits are set, and the version nibble is set to `0x0` (legacy/custom).
+    - RFC4122 variant bits are set, and the version nibble is set to `0x0` (custom).
     """
 
     if isinstance(target, uuid_module.UUID):

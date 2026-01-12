@@ -1,5 +1,10 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { addHeader } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
+} from "../../types/index.ts";
+import { addHeader } from "../../utils.ts";
 
 /**
  * Provider for retrieving list of all data providers available for the agent to use.

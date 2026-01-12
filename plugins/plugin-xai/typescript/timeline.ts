@@ -62,7 +62,7 @@ export class XTimelineClient {
         return;
       }
 
-      // Use unified engagement interval
+      // Use standard engagement interval
       const engagementIntervalMinutes = parseInt(
         (typeof this.state?.X_ENGAGEMENT_INTERVAL === "string"
           ? this.state.X_ENGAGEMENT_INTERVAL

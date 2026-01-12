@@ -4,7 +4,7 @@ import type {
   ActionResult,
   IAgentRuntime,
   Memory,
-} from "@elizaos/core";
+} from "../../types/index.ts";
 
 /**
  * Represents the none action.

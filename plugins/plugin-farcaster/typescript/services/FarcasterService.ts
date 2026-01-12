@@ -96,13 +96,6 @@ export class FarcasterService extends Service {
     return this.messageServices.get(agentId);
   }
 
-  /**
-   * @deprecated Use getCastService() instead.
-   */
-  getPostService(agentId: UUID): FarcasterCastService | undefined {
-    return this.castServices.get(agentId);
-  }
-
   getCastService(agentId: UUID): FarcasterCastService | undefined {
     return this.castServices.get(agentId);
   }

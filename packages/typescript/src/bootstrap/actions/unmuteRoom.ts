@@ -1,15 +1,15 @@
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  composePromptFromState,
-  type HandlerCallback,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  ModelType,
-  type State,
-} from "@elizaos/core";
+import { logger } from "../../logger.ts";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
+import { composePromptFromState } from "../../utils.ts";
 
 // Inline to avoid circular import issues
 const booleanFooter = "Respond with only a YES or a NO.";

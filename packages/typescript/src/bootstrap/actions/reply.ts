@@ -1,18 +1,17 @@
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  composePromptFromState,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  ModelType,
-  parseKeyValueXml,
-  replyTemplate,
-  type State,
-} from "@elizaos/core";
+import { logger } from "../../logger.ts";
+import { replyTemplate } from "../../prompts.ts";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
+import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 /**
  * Represents an action that allows the agent to reply to the current conversation with a generated message.

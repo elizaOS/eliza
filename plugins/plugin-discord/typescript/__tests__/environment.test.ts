@@ -9,7 +9,8 @@ import { validateDiscordConfig } from "../environment";
 describe("Discord Environment Configuration", () => {
   // Create a minimal runtime that returns settings from a map
   function createRuntimeWithSettings(settings: Record<string, string | null>): IAgentRuntime {
-    return {
+    // Create a partial runtime mock that satisfies the IAgentRuntime interface
+    const partialRuntime: Partial<IAgentRuntime> = {
       getSetting: (key: string) => settings[key] ?? null,
       character: { name: "Test Agent" },
       logger: {
@@ -18,7 +19,9 @@ describe("Discord Environment Configuration", () => {
         warn: console.warn,
         error: console.error,
       },
-    } as unknown as IAgentRuntime;
+    };
+    // Type assertion is safe here because we're only using the required properties
+    return partialRuntime as IAgentRuntime;
   }
 
   it("should validate correct configuration", async () => {

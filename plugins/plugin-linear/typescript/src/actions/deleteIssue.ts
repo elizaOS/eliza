@@ -11,6 +11,7 @@ import {
 } from "@elizaos/core";
 import { deleteIssueTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
+import type { DeleteIssueParameters } from "../types/index.js";
 
 export const deleteIssueAction: Action = {
   name: "DELETE_LINEAR_ISSUE",
@@ -103,11 +104,10 @@ export const deleteIssueAction: Action = {
 
       let issueId: string;
 
-      // Check if we have issueId in options
-      const params = _options?.parameters;
-      const paramIssueId = params?.issueId;
-      if (typeof paramIssueId === "string" && paramIssueId) {
-        issueId = paramIssueId;
+      // Check if we have issueId in options with type-safe access
+      const params = _options?.parameters as DeleteIssueParameters | undefined;
+      if (params?.issueId) {
+        issueId = params.issueId;
       } else {
         // Use LLM to extract issue ID
         const prompt = deleteIssueTemplate.replace("{{userMessage}}", content);

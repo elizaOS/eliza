@@ -1,47 +1,48 @@
-import {
-  type ActionEventPayload,
-  type ActionLogBody,
-  type BaseLogBody,
-  ChannelType,
-  type Content,
-  ContentType,
-  type ControlMessagePayload,
-  composePromptFromState,
-  createUniqueUuid,
-  type EntityPayload,
-  type EvaluatorEventPayload,
-  EventType,
-  getLocalServerUrl,
-  type IAgentRuntime,
-  type IMessageBusService,
-  type InvokePayload,
-  imageDescriptionTemplate,
-  logger,
-  type Media,
-  type Memory,
-  MemoryType,
-  type MentionContext,
-  type MessageMetadata,
-  type MessagePayload,
-  ModelType,
-  messageHandlerTemplate,
-  type Plugin,
-  type PluginEvents,
-  parseKeyValueXml,
-  postCreationTemplate,
-  Role,
-  type Room,
-  type RunEventPayload,
-  type UUID,
-  type WorldPayload,
-} from "@elizaos/core";
+// Import from relative paths to avoid self-referential package imports during builds
 
 import { v4 } from "uuid";
+import { createUniqueUuid } from "../entities.ts";
+import { logger } from "../logger.ts";
+import {
+  imageDescriptionTemplate,
+  messageHandlerTemplate,
+  postCreationTemplate,
+} from "../prompts.ts";
 import { EmbeddingGenerationService } from "../services/embedding.ts";
 import { FollowUpService } from "../services/followUp.ts";
 import { RolodexService } from "../services/rolodex.ts";
 import { TaskService } from "../services/task.ts";
+import { Role } from "../types/environment.ts";
+import { EventType } from "../types/events.ts";
+import type {
+  ActionEventPayload,
+  ActionLogBody,
+  BaseLogBody,
+  Content,
+  ControlMessagePayload,
+  EntityPayload,
+  EvaluatorEventPayload,
+  IAgentRuntime,
+  IMessageBusService,
+  InvokePayload,
+  Media,
+  Memory,
+  MentionContext,
+  MessageMetadata,
+  MessagePayload,
+  Plugin,
+  PluginEvents,
+  Room,
+  RunEventPayload,
+  UUID,
+  WorldPayload,
+} from "../types/index.ts";
+import { MemoryType } from "../types/memory.ts";
+import { ModelType } from "../types/model.ts";
 import type { ServiceClass } from "../types/plugin.ts";
+import { ChannelType, ContentType } from "../types/primitives.ts";
+import { getLocalServerUrl } from "../utils/node.ts";
+import { composePromptFromState, parseKeyValueXml } from "../utils.ts";
 import * as actions from "./actions/index.ts";
 import * as autonomy from "./autonomy/index.ts";
 import * as evaluators from "./evaluators/index.ts";
@@ -404,14 +405,11 @@ export function shouldRespond(
   const alwaysRespondSources = ["client_chat"];
 
   // Support runtime-configurable overrides via env settings
-  // Accepts both new and legacy setting names for backwards compatibility
   const customChannels = normalizeEnvList(
-    runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ||
-      runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
+    runtime.getSetting("ALWAYS_RESPOND_CHANNELS"),
   );
   const customSources = normalizeEnvList(
-    runtime.getSetting("ALWAYS_RESPOND_SOURCES") ||
-      runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
+    runtime.getSetting("ALWAYS_RESPOND_SOURCES"),
   );
 
   const respondChannels = new Set(

@@ -1,4 +1,9 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
+} from "../../types/index.ts";
 
 /**
  * Time provider function that retrieves the current date and time in UTC

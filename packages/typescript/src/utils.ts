@@ -877,7 +877,7 @@ export function stringToUuid(target: string | number): UUID {
 
   // Set RFC4122 variant bits: 10xxxxxx
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  // Set custom version nibble to 0x0 to indicate legacy/custom (matches prior tests expecting '0')
+  // Set custom version nibble to 0x0 (custom elizaOS UUID format)
   bytes[6] = (bytes[6] & 0x0f) | 0x00;
 
   return bytesToUuid(bytes) as UUID;

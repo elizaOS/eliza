@@ -46,14 +46,9 @@ pub mod types;
 pub mod utils;
 pub mod vendors;
 
-// Import directly from submodules:
-// - client::{upload_attestation_quote, TeeClient}
-// - error::{Result, TeeError}
-// - providers::{DeriveKeyProvider, PhalaDeriveKeyProvider, etc.}
-// - services::TEEService
-// - types::{DeriveKeyAttestationData, TeeMode, TeeType, etc.}
-// - utils::{bytes_to_hex, calculate_keccak256, etc.}
-// - vendors::{get_vendor, PhalaVendor, TeeVendorInterface, etc.}
+// Re-export commonly used types and functions for convenience
+pub use types::{TeeMode, TeeVendor};
+pub use utils::{bytes_to_hex, calculate_sha256, get_tee_endpoint, hex_to_bytes};
 
 /// Plugin name.
 pub const PLUGIN_NAME: &str = "tee";

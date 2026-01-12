@@ -1,15 +1,15 @@
-import {
-  type ActionResult,
-  type Entity,
-  type Evaluator,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  type State,
-  stringToUuid,
-  type UUID,
-} from "@elizaos/core";
+import { logger } from "../../logger.ts";
 import type { RolodexService } from "../../services/rolodex.ts";
+import type {
+  ActionResult,
+  Entity,
+  Evaluator,
+  IAgentRuntime,
+  Memory,
+  State,
+  UUID,
+} from "../../types/index.ts";
+import { stringToUuid } from "../../utils.ts";
 
 interface PlatformIdentity {
   platform: string;

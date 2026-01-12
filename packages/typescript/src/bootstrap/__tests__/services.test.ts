@@ -4,14 +4,11 @@
  * Tests for bootstrap services using REAL AgentRuntime instances.
  */
 
-import {
-  type IAgentRuntime,
-  logger,
-  type Service,
-  ServiceType,
-} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../../logger.ts";
 import { TaskService } from "../../services/task";
+import type { IAgentRuntime, Service } from "../../types/index.ts";
+import { ServiceType } from "../../types/index.ts";
 import { createBootstrapPlugin } from "../index";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 

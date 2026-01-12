@@ -4,7 +4,7 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from "@elizaos/core";
+} from "../../types/index.ts";
 
 // Define an interface for option objects
 /**

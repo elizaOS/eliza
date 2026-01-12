@@ -48,7 +48,6 @@ import {
  *    ID to the hash, ensuring each agent has its own unique namespace for the same Discord server.
  *
  * 3. `messageServerId` - The correct property name for server IDs on Room and World objects.
- *    The deprecated `serverId` property should not be used.
  *
  * 4. Discord-specific events (e.g., DiscordEventTypes.VOICE_STATE_UPDATE) are not in core's
  *    EventPayloadMap. When emitting these events, cast to `string[]` and payload to `any`
@@ -2496,45 +2495,13 @@ export class DiscordService extends Service implements IDiscordService {
      * DISCORD_REGISTER_COMMANDS event handler
      *
      * Delegates to registerSlashCommands() method.
-     * Also handles deprecated allowAllChannels parameter for backward compatibility.
      *
      * @param params.commands - Array of commands to register
-     * @param params.allowAllChannels - (Deprecated) Map of command names to bypass flags
      */
     this.runtime.registerEvent(
       "DISCORD_REGISTER_COMMANDS",
       async (params: DiscordRegisterCommandsPayload) => {
-        // Delegate to the public method first - it handles registration and bypassChannelWhitelist
         await this.registerSlashCommands(params.commands);
-
-        // Handle deprecated allowAllChannels flags AFTER successful registration (backward compatibility)
-        // The deprecated API can only ADD bypasses, not remove them - bypassChannelWhitelist on
-        // the command definition is authoritative. This prevents legacy code from accidentally
-        // overriding the new API's bypass settings.
-        //
-        // To survive subsequent registerSlashCommands calls (which rebuild allowAllSlashCommands
-        // from this.slashCommands), we also update the command definition itself.
-        const allowAllChannelsMap = params.allowAllChannels ?? {};
-        for (const [commandName, shouldBypass] of Object.entries(allowAllChannelsMap)) {
-          if (shouldBypass) {
-            this.allowAllSlashCommands.add(commandName);
-            // Also update the command definition so bypass survives rebuild
-            const cmd = this.slashCommands.find((c) => c.name === commandName);
-            if (cmd) {
-              cmd.bypassChannelWhitelist = true;
-            }
-            this.runtime.logger.debug(
-              {
-                src: "plugin:discord",
-                agentId: this.runtime.agentId,
-                commandName,
-              },
-              "[DiscordService] Command registered with allowAllChannels bypass (deprecated - use bypassChannelWhitelist instead)"
-            );
-          }
-          // Intentionally ignoring shouldBypass === false - deprecated allowAllChannels API
-          // should not remove bypasses set by bypassChannelWhitelist (authoritative).
-        }
       }
     );
 

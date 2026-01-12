@@ -31,7 +31,7 @@ import {
   extractUrls,
   getAttachmentFileName,
   getMessageService,
-  getUnifiedMessagingAPI,
+  getMessagingAPI,
   sendMessageInChunks,
 } from "./utils";
 
@@ -433,17 +433,17 @@ export class MessageManager {
         }
       };
 
-      // Use unified messaging API if available, otherwise fall back to direct message service
+      // Use messaging API if available, otherwise fall back to direct message service
       // This provides a clearer, more traceable flow for message processing
-      const unifiedAPI = getUnifiedMessagingAPI(this.runtime);
+      const messagingAPI = getMessagingAPI(this.runtime);
       const messageService = getMessageService(this.runtime);
 
-      if (unifiedAPI) {
+      if (messagingAPI) {
         this.runtime.logger.debug(
           { src: "plugin:discord", agentId: this.runtime.agentId },
-          "Using unified messaging API"
+          "Using messaging API"
         );
-        await unifiedAPI.sendMessage(this.runtime.agentId, newMessage, {
+        await messagingAPI.sendMessage(this.runtime.agentId, newMessage, {
           onResponse: callback,
         });
       } else if (messageService) {

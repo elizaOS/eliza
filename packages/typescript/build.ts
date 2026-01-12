@@ -58,6 +58,7 @@ async function buildNode() {
       sourcemap: true,
       minify: false,
       generateDts: false, // We'll generate declarations separately for all entry points
+      selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
     },
   });
 
@@ -87,6 +88,7 @@ async function buildBrowser() {
       generateDts: false, // Use the same .d.ts files from Node build
       // No additional browser resolver plugins; avoid pulling large node-polyfill trees
       plugins: [],
+      selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
     },
   });
 
@@ -114,6 +116,7 @@ async function buildTesting() {
       sourcemap: true,
       minify: false,
       generateDts: false,
+      selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
     },
   });
 
@@ -130,14 +133,13 @@ async function buildAll() {
   console.log("🚀 Starting dual build process for @elizaos/core");
   const totalStart = Date.now();
 
-  // Build everything in parallel for maximum speed
-  // TypeScript declarations can be generated while JS is being built
-  const [_nodeResult, _browserResult, _testingResult, _] = await Promise.all([
-    buildNode(),
-    buildBrowser(),
-    buildTesting(),
-    generateTypeScriptDeclarations(), // Run in parallel, not sequentially
-  ]);
+  // Build JS in parallel first
+  await Promise.all([buildNode(), buildBrowser(), buildTesting()]);
+
+  // Generate TypeScript declarations AFTER JS builds complete
+  // This prevents race conditions where buildNode() might clean dist/node
+  // after generateTypeScriptDeclarations() creates the index.d.ts file
+  await generateTypeScriptDeclarations();
 
   const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
   console.log(`\n🎉 All builds complete in ${totalDuration}s`);

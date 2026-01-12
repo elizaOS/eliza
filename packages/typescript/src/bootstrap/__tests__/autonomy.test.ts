@@ -17,7 +17,7 @@ import type {
   State,
   UUID,
 } from "../../types";
-import { ChannelType, EventType } from "../../types";
+import { ChannelType } from "../../types";
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,

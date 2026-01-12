@@ -1,17 +1,16 @@
-import {
-  type Action,
-  type ActionResult,
-  composePromptFromState,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  ModelType,
-  parseKeyValueXml,
-  type State,
-} from "@elizaos/core";
+import { logger } from "../../logger.ts";
 import type { RolodexService } from "../../services/rolodex.ts";
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
+import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 interface RemoveContactXmlResult {
   contactName?: string;

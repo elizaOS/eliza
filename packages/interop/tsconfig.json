@@ -1,17 +1,23 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": ".",
-    "types": ["node"],
-    "noEmit": false,
-    "allowImportingTsExtensions": false,
-    "declaration": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
     "skipLibCheck": true,
+    "outDir": "./dist",
+    "rootDir": "../..",
+    "types": ["node"],
+    "noEmit": true,
+    "declaration": true,
+    "allowImportingTsExtensions": true,
+    "composite": false,
+    "baseUrl": "../..",
     "paths": {
-      "@elizaos/core": ["../typescript/src/index.ts"]
-    },
-    "baseUrl": "../.."
+      "@elizaos/core": ["packages/typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["packages/typescript/src/*"]
+    }
   },
   "include": ["typescript/**/*.ts"],
   "exclude": ["typescript/**/*.test.ts", "node_modules", "dist"]

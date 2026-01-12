@@ -5,7 +5,11 @@
  * Run with: ANTHROPIC_API_KEY=your-key npx vitest run typescript/__tests__/integration/
  */
 
-import { beforeAll, describe, expect, it } from "vitest";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createTestDatabaseAdapter } from "../../../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
 
 // Check if we have an API key before running tests
 const API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -19,25 +23,31 @@ let getSmallModel: typeof import("../../utils/config").getSmallModel;
 let getLargeModel: typeof import("../../utils/config").getLargeModel;
 let generateText: typeof import("ai").generateText;
 
-// Test runtime for testing
-const createTestRuntime = () => ({
-  getSetting: (key: string) => {
-    switch (key) {
-      case "ANTHROPIC_API_KEY":
-        return API_KEY;
-      case "ANTHROPIC_SMALL_MODEL":
-        return process.env.ANTHROPIC_SMALL_MODEL;
-      case "ANTHROPIC_LARGE_MODEL":
-        return process.env.ANTHROPIC_LARGE_MODEL;
-      default:
-        return undefined;
-    }
-  },
-  character: {
-    system: undefined,
-  },
-  emitEvent: () => {},
-});
+// Create a real runtime for testing
+async function createTestRuntime(): Promise<IAgentRuntime> {
+  const agentId = uuidv4() as UUID;
+  const adapter = createTestDatabaseAdapter(agentId);
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: "Anthropic Test Agent",
+      bio: ["Test agent for Anthropic integration tests"],
+      system: "You are a helpful assistant.",
+      settings: {
+        secrets: {
+          ANTHROPIC_API_KEY: API_KEY,
+        },
+      },
+    },
+    adapter,
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+let runtime: IAgentRuntime;
 
 beforeAll(async () => {
   if (!shouldSkip) {
@@ -58,11 +68,20 @@ beforeAll(async () => {
 });
 
 describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+  });
+
+  afterEach(async () => {
+    if (runtime) {
+      await runtime.stop();
+    }
+  });
+
   describe("Text Generation", () => {
     it("should generate text with small model", async () => {
-      const runtime = createMockRuntime();
-      const anthropic = createAnthropicClientWithTopPSupport(runtime as never);
-      const modelName = getSmallModel(runtime as never);
+      const anthropic = createAnthropicClientWithTopPSupport(runtime);
+      const modelName = getSmallModel(runtime);
 
       const { text, usage } = await generateText({
         model: anthropic(modelName),
@@ -79,9 +98,8 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
     });
 
     it("should generate text with large model", async () => {
-      const runtime = createMockRuntime();
-      const anthropic = createAnthropicClientWithTopPSupport(runtime as never);
-      const modelName = getLargeModel(runtime as never);
+      const anthropic = createAnthropicClientWithTopPSupport(runtime);
+      const modelName = getLargeModel(runtime);
 
       const { text, usage } = await generateText({
         model: anthropic(modelName),
@@ -97,9 +115,8 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
     });
 
     it("should respect system prompt", async () => {
-      const runtime = createMockRuntime();
-      const anthropic = createAnthropicClient(runtime as never);
-      const modelName = getSmallModel(runtime as never);
+      const anthropic = createAnthropicClient(runtime);
+      const modelName = getSmallModel(runtime);
 
       const { text } = await generateText({
         model: anthropic(modelName),
@@ -115,9 +132,8 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
     });
 
     it("should handle stop sequences", async () => {
-      const runtime = createMockRuntime();
-      const anthropic = createAnthropicClient(runtime as never);
-      const modelName = getSmallModel(runtime as never);
+      const anthropic = createAnthropicClient(runtime);
+      const modelName = getSmallModel(runtime);
 
       const { text } = await generateText({
         model: anthropic(modelName),
@@ -135,9 +151,8 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
 
   describe("Object Generation", () => {
     it("should generate valid JSON objects with small model", async () => {
-      const runtime = createMockRuntime();
-      const anthropic = createAnthropicClient(runtime as never);
-      const modelName = getSmallModel(runtime as never);
+      const anthropic = createAnthropicClient(runtime);
+      const modelName = getSmallModel(runtime);
 
       const { text } = await generateText({
         model: anthropic(modelName),
@@ -158,9 +173,8 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
     });
 
     it("should generate complex nested objects", async () => {
-      const runtime = createMockRuntime();
-      const anthropic = createAnthropicClient(runtime as never);
-      const modelName = getLargeModel(runtime as never);
+      const anthropic = createAnthropicClient(runtime);
+      const modelName = getLargeModel(runtime);
 
       const prompt = `Create a JSON object representing a blog post with:
         - id: a UUID string
@@ -194,9 +208,8 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
     });
 
     it("should handle JSON in code blocks", async () => {
-      const runtime = createMockRuntime();
-      const anthropic = createAnthropicClient(runtime as never);
-      const modelName = getSmallModel(runtime as never);
+      const anthropic = createAnthropicClient(runtime);
+      const modelName = getSmallModel(runtime);
 
       // Intentionally ask for JSON that might come in a code block
       const { text } = await generateText({
@@ -214,9 +227,8 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
 
   describe("Error Handling", () => {
     it("should throw error when both temperature and topP are set", async () => {
-      const runtime = createMockRuntime();
-      const anthropic = createAnthropicClientWithTopPSupport(runtime as never);
-      const modelName = getSmallModel(runtime as never);
+      const anthropic = createAnthropicClientWithTopPSupport(runtime);
+      const modelName = getSmallModel(runtime);
       // AI SDK or wrapper should handle this - test verifies the behavior
       try {
         await generateText({
@@ -224,7 +236,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
           prompt: "Hello",
           temperature: 0.5,
           topP: 0.9,
-        } as never);
+        } as Parameters<typeof generateText>[0]);
         // If no error, the SDK may handle it differently
       } catch (error) {
         expect(error).toBeDefined();
@@ -234,9 +246,8 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
 
   describe("Token Usage", () => {
     it("should report accurate token usage", async () => {
-      const runtime = createMockRuntime();
-      const anthropic = createAnthropicClient(runtime as never);
-      const modelName = getSmallModel(runtime as never);
+      const anthropic = createAnthropicClient(runtime);
+      const modelName = getSmallModel(runtime);
 
       const { usage } = await generateText({
         model: anthropic(modelName),

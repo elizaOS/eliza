@@ -61,9 +61,7 @@ message World {
   optional string name = 2;
   string agent_id = 3;
   optional string message_server_id = 4;
-  // Deprecated: Use message_server_id instead
-  optional string server_id = 5 [deprecated = true];
-  optional WorldMetadata metadata = 6;
+  optional WorldMetadata metadata = 5;
 }
 
 // Room metadata (dynamic key-value pairs)
@@ -80,10 +78,8 @@ message Room {
   ChannelType type = 5;
   optional string channel_id = 6;
   optional string message_server_id = 7;
-  // Deprecated: Use message_server_id instead
-  optional string server_id = 8 [deprecated = true];
-  optional string world_id = 9;
-  optional RoomMetadata metadata = 10;
+  optional string world_id = 8;
+  optional RoomMetadata metadata = 9;
 }
 
 // Room participant with entity details
