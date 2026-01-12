@@ -1,12 +1,8 @@
-"""Create Branch Action."""
-
 from elizaos_plugin_github.actions.create_issue import ActionContext, ActionResult
 from elizaos_plugin_github.types import CreateBranchParams
 
 
 class CreateBranchAction:
-    """Action to create a new branch in a GitHub repository."""
-
     @property
     def name(self) -> str:
         return "CREATE_GITHUB_BRANCH"
@@ -25,7 +21,6 @@ class CreateBranchAction:
         ]
 
     async def validate(self, context: ActionContext) -> bool:
-        """Validate the action can be executed."""
         content = context.message.get("content", {})
         text = ""
         if isinstance(content, dict):
@@ -38,7 +33,6 @@ class CreateBranchAction:
         context: ActionContext,
         service: object,
     ) -> ActionResult:
-        """Execute the action."""
         from elizaos_plugin_github.service import GitHubService
 
         if not isinstance(service, GitHubService):
@@ -66,8 +60,3 @@ class CreateBranchAction:
             )
         except Exception as e:
             return ActionResult.error_result(f"Failed to create branch: {e}")
-
-
-
-
-

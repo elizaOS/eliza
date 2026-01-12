@@ -1,12 +1,8 @@
-"""Create Pull Request Action."""
-
 from elizaos_plugin_github.actions.create_issue import ActionContext, ActionResult
 from elizaos_plugin_github.types import CreatePullRequestParams
 
 
 class CreatePullRequestAction:
-    """Action to create a new pull request in a GitHub repository."""
-
     @property
     def name(self) -> str:
         return "CREATE_GITHUB_PULL_REQUEST"
@@ -27,7 +23,6 @@ class CreatePullRequestAction:
         ]
 
     async def validate(self, context: ActionContext) -> bool:
-        """Validate the action can be executed."""
         content = context.message.get("content", {})
         text = ""
         if isinstance(content, dict):
@@ -52,7 +47,6 @@ class CreatePullRequestAction:
             if isinstance(content, dict):
                 text = str(content.get("text", ""))
 
-            # Extract from context - in real impl, use LLM
             head = str(context.message.get("head", "feature"))
             base = str(context.message.get("base", "main"))
 
@@ -78,8 +72,3 @@ class CreatePullRequestAction:
             )
         except Exception as e:
             return ActionResult.error_result(f"Failed to create pull request: {e}")
-
-
-
-
-

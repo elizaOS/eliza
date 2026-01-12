@@ -9,24 +9,18 @@ import type {
 import { logger } from "@elizaos/core";
 import type { FormsService } from "../services/forms-service";
 
-/**
- * CreateFormAction initializes a new form from a template or custom definition.
- */
 export const createFormAction: Action = {
   name: "CREATE_FORM",
   similes: ["START_FORM", "NEW_FORM", "INIT_FORM", "BEGIN_FORM"],
   description: "Creates a new form from a template or custom definition",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
-    // Check if forms service is available
     const formsService = runtime.getService<FormsService>("forms");
     if (!formsService) {
       return false;
     }
 
     const text = message.content.text?.toLowerCase() || "";
-
-    // Check if user wants to create a form
     const wantsForm =
       text.includes("form") ||
       text.includes("fill out") ||
@@ -51,20 +45,17 @@ export const createFormAction: Action = {
       throw new Error("Forms service not available");
     }
 
-    // Extract form type from message or options
     const text = message.content.text?.toLowerCase() || "";
     const params = options?.parameters as Record<string, unknown> | undefined;
-    const templateName = (params?.template as string) || extractFormType(text) || "contact"; // Default to contact form
+    const templateName = (params?.template as string) || extractFormType(text) || "contact";
 
     logger.debug(`Creating form with template: ${templateName}`);
 
-    // Create the form
     const form = await formsService.createForm(templateName, {
       source: "user_request",
       requestedAt: Date.now(),
     });
 
-    // Get first step information
     const firstStep = form.steps[0];
     const requiredFields = firstStep?.fields.filter((f) => !f.optional) || [];
 
@@ -131,9 +122,6 @@ Please provide the following information:
   ],
 };
 
-/**
- * Extract form type from user message
- */
 function extractFormType(text: string): string | null {
   const formTypes: Record<string, string[]> = {
     contact: ["contact", "reach out", "get in touch", "message"],

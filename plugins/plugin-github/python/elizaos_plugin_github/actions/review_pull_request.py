@@ -1,12 +1,8 @@
-"""Review Pull Request Action."""
-
 from elizaos_plugin_github.actions.create_issue import ActionContext, ActionResult
 from elizaos_plugin_github.types import CreateReviewParams, ReviewEvent
 
 
 class ReviewPullRequestAction:
-    """Action to create a review on a GitHub pull request."""
-
     @property
     def name(self) -> str:
         return "REVIEW_GITHUB_PULL_REQUEST"
@@ -27,7 +23,6 @@ class ReviewPullRequestAction:
         ]
 
     async def validate(self, context: ActionContext) -> bool:
-        """Validate the action can be executed."""
         content = context.message.get("content", {})
         text = ""
         if isinstance(content, dict):
@@ -40,7 +35,6 @@ class ReviewPullRequestAction:
         context: ActionContext,
         service: object,
     ) -> ActionResult:
-        """Execute the action."""
         from elizaos_plugin_github.service import GitHubService
 
         if not isinstance(service, GitHubService):
@@ -52,7 +46,6 @@ class ReviewPullRequestAction:
             if isinstance(content, dict):
                 text = str(content.get("text", "")).lower()
 
-            # Determine review event type
             event = ReviewEvent.COMMENT
             if "approve" in text or "lgtm" in text or "looks good" in text:
                 event = ReviewEvent.APPROVE
@@ -89,8 +82,3 @@ class ReviewPullRequestAction:
             )
         except Exception as e:
             return ActionResult.error_result(f"Failed to create review: {e}")
-
-
-
-
-

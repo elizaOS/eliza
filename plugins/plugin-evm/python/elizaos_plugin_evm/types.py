@@ -1,9 +1,3 @@
-"""
-Type definitions for the EVM plugin.
-
-All types are designed for fail-fast validation using Pydantic.
-"""
-
 from enum import Enum
 from typing import Annotated
 
@@ -11,8 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SupportedChain(str, Enum):
-    """Supported EVM chain identifier."""
-
     MAINNET = "mainnet"
     SEPOLIA = "sepolia"
     BASE = "base"
@@ -30,7 +22,6 @@ class SupportedChain(str, Enum):
 
     @property
     def chain_id(self) -> int:
-        """Get the chain ID for this chain."""
         chain_ids = {
             SupportedChain.MAINNET: 1,
             SupportedChain.SEPOLIA: 11155111,
@@ -51,7 +42,6 @@ class SupportedChain(str, Enum):
 
     @property
     def native_symbol(self) -> str:
-        """Get the native currency symbol for this chain."""
         symbols = {
             SupportedChain.MAINNET: "ETH",
             SupportedChain.SEPOLIA: "ETH",
@@ -72,7 +62,6 @@ class SupportedChain(str, Enum):
 
     @property
     def default_rpc(self) -> str:
-        """Get the default RPC URL for this chain."""
         rpcs = {
             SupportedChain.MAINNET: "https://eth.llamarpc.com",
             SupportedChain.SEPOLIA: "https://ethereum-sepolia-rpc.publicnode.com",
@@ -93,7 +82,6 @@ class SupportedChain(str, Enum):
 
     @property
     def is_testnet(self) -> bool:
-        """Check if this is a testnet."""
         return self in {SupportedChain.SEPOLIA, SupportedChain.BASE_SEPOLIA}
 
 
@@ -105,8 +93,6 @@ PositiveAmount = Annotated[str, Field(pattern=r"^\d+\.?\d*$")]
 
 
 class Transaction(BaseModel):
-    """Represents a completed transaction."""
-
     model_config = ConfigDict(frozen=True)
 
     hash: TxHash
@@ -118,8 +104,6 @@ class Transaction(BaseModel):
 
 
 class TokenInfo(BaseModel):
-    """Token information."""
-
     model_config = ConfigDict(frozen=True)
 
     address: Address
@@ -131,8 +115,6 @@ class TokenInfo(BaseModel):
 
 
 class WalletBalance(BaseModel):
-    """Wallet balance for a specific chain."""
-
     model_config = ConfigDict(frozen=True)
 
     chain: SupportedChain
@@ -142,8 +124,6 @@ class WalletBalance(BaseModel):
 
 
 class TokenWithBalance(BaseModel):
-    """Token with balance information."""
-
     model_config = ConfigDict(frozen=True)
 
     token: TokenInfo
@@ -154,8 +134,6 @@ class TokenWithBalance(BaseModel):
 
 
 class TransferParams(BaseModel):
-    """Parameters for a token transfer."""
-
     model_config = ConfigDict(frozen=True)
 
     from_chain: SupportedChain
@@ -175,15 +153,12 @@ class TransferParams(BaseModel):
     @field_validator("to_address")
     @classmethod
     def validate_not_zero_address(cls, v: str) -> str:
-        """Validate that address is not zero."""
         if v == "0x0000000000000000000000000000000000000000":
             raise ValueError("Recipient address cannot be zero")
         return v
 
 
 class SwapParams(BaseModel):
-    """Parameters for a token swap."""
-
     model_config = ConfigDict(frozen=True)
 
     chain: SupportedChain
@@ -195,7 +170,6 @@ class SwapParams(BaseModel):
     @field_validator("amount")
     @classmethod
     def validate_amount_positive(cls, v: str) -> str:
-        """Validate that amount is positive."""
         if float(v) <= 0:
             raise ValueError("Amount must be positive")
         return v
@@ -203,7 +177,6 @@ class SwapParams(BaseModel):
     @field_validator("to_token")
     @classmethod
     def validate_different_tokens(cls, v: str, info) -> str:
-        """Validate that from and to tokens are different."""
         from_token = info.data.get("from_token")
         if from_token and v.lower() == from_token.lower():
             raise ValueError("From and to tokens must be different")
@@ -211,8 +184,6 @@ class SwapParams(BaseModel):
 
 
 class SwapQuote(BaseModel):
-    """Swap quote from aggregator."""
-
     model_config = ConfigDict(frozen=True)
 
     aggregator: str
@@ -224,8 +195,6 @@ class SwapQuote(BaseModel):
 
 
 class BridgeParams(BaseModel):
-    """Parameters for a cross-chain bridge."""
-
     model_config = ConfigDict(frozen=True)
 
     from_chain: SupportedChain
@@ -238,7 +207,6 @@ class BridgeParams(BaseModel):
     @field_validator("amount")
     @classmethod
     def validate_amount_positive(cls, v: str) -> str:
-        """Validate that amount is positive."""
         if float(v) <= 0:
             raise ValueError("Amount must be positive")
         return v
@@ -246,7 +214,6 @@ class BridgeParams(BaseModel):
     @field_validator("to_chain")
     @classmethod
     def validate_different_chains(cls, v: SupportedChain, info) -> SupportedChain:
-        """Validate that source and destination chains are different."""
         from_chain = info.data.get("from_chain")
         if from_chain and v == from_chain:
             raise ValueError("Source and destination chains must be different")
@@ -254,16 +221,12 @@ class BridgeParams(BaseModel):
 
 
 class BridgeStatusType(str, Enum):
-    """Bridge status type."""
-
     PENDING = "PENDING"
     DONE = "DONE"
     FAILED = "FAILED"
 
 
 class BridgeStatus(BaseModel):
-    """Bridge execution status."""
-
     model_config = ConfigDict(frozen=True)
 
     status: BridgeStatusType
@@ -273,19 +236,48 @@ class BridgeStatus(BaseModel):
 
 
 class VoteType(int, Enum):
-    """Vote type for governance."""
-
     AGAINST = 0
     FOR = 1
     ABSTAIN = 2
 
 
 class VoteParams(BaseModel):
-    """Parameters for casting a vote."""
-
     model_config = ConfigDict(frozen=True)
 
     chain: SupportedChain
     governor: Address
     proposal_id: str
-    support: VoteType
+    support: int
+
+
+class ProposeParams(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    chain: SupportedChain
+    governor: Address
+    targets: list[str]
+    values: list[int]
+    calldatas: list[str]
+    description: str
+
+
+class QueueParams(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    chain: SupportedChain
+    governor: Address
+    targets: list[str]
+    values: list[int]
+    calldatas: list[str]
+    description_hash: str
+
+
+class ExecuteParams(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    chain: SupportedChain
+    governor: Address
+    targets: list[str]
+    values: list[int]
+    calldatas: list[str]
+    description_hash: str

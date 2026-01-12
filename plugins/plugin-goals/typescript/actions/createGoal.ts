@@ -20,23 +20,18 @@ import {
 } from "../generated/prompts/typescript/prompts.js";
 import { createGoalDataService } from "../services/goalDataService";
 
-// Interface for parsed goal data
 interface GoalInput {
   name: string;
   description?: string;
   ownerType: "agent" | "entity";
 }
 
-// Interface for similarity check result
 interface SimilarityCheckResult {
   hasSimilar: boolean;
   similarGoalName?: string;
   confidence: number;
 }
 
-/**
- * Extracts goal information from the user's message.
- */
 async function extractGoalInfo(
   runtime: IAgentRuntime,
   message: Memory,
@@ -82,9 +77,6 @@ async function extractGoalInfo(
   }
 }
 
-/**
- * Checks if a similar goal already exists
- */
 interface ExistingGoal {
   name: string;
   description?: string;
@@ -100,7 +92,6 @@ async function checkForSimilarGoal(
       return { hasSimilar: false, confidence: 0 };
     }
 
-    // Format existing goals
     const existingGoalsText = existingGoals
       .map((goal) => `- ${goal.name}: ${goal.description || "No description"}`)
       .join("\n");
@@ -136,16 +127,12 @@ async function checkForSimilarGoal(
   }
 }
 
-/**
- * The CREATE_GOAL action allows the agent to create a new goal.
- */
 export const createGoalAction: Action = {
   name: "CREATE_GOAL",
   similes: ["ADD_GOAL", "NEW_GOAL", "SET_GOAL", "TRACK_GOAL"],
   description: "Creates a new long-term achievable goal for the agent or a user.",
 
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
-    // Always allow validation, we'll check limits in the handler
     return true;
   },
 
@@ -157,10 +144,7 @@ export const createGoalAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
-      // Step 1: Compose state if needed
       const currentState = state || (await runtime.composeState(message, ["GOALS"]));
-
-      // Step 2: Extract goal info from the message
       const goalInfo = await extractGoalInfo(runtime, message, currentState);
 
       if (!goalInfo) {
@@ -177,13 +161,8 @@ export const createGoalAction: Action = {
         };
       }
 
-      // Step 3: Get the data service
       const dataService = createGoalDataService(runtime);
-
-      // Determine the owner
       const ownerId = goalInfo.ownerType === "agent" ? runtime.agentId : (message.entityId as UUID);
-
-      // Step 4: Check goal count
       const activeGoalCount = await dataService.countGoals(goalInfo.ownerType, ownerId, false);
 
       if (activeGoalCount >= 10) {
@@ -197,7 +176,6 @@ export const createGoalAction: Action = {
         return { success: false, error: "Goal limit reached" };
       }
 
-      // Step 5: Check for similar goals
       const existingGoals = await dataService.getAllGoalsForOwner(goalInfo.ownerType, ownerId);
       const similarityCheck = await checkForSimilarGoal(runtime, goalInfo, existingGoals);
 
@@ -212,7 +190,6 @@ export const createGoalAction: Action = {
         return { success: false, error: "Similar goal exists" };
       }
 
-      // Step 6: Create the goal
       const tags = ["GOAL"];
       if (goalInfo.ownerType === "agent") {
         tags.push("agent-goal");
@@ -238,7 +215,6 @@ export const createGoalAction: Action = {
         throw new Error("Failed to create goal");
       }
 
-      // Step 7: Send success message with guidance based on goal count
       let successMessage = `✅ New goal created: "${goalInfo.name}"`;
 
       if (activeGoalCount >= 4) {

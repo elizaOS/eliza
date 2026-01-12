@@ -1,16 +1,5 @@
-/**
- * ELIZA Classic Text Generation
- *
- * Implements the original ELIZA pattern matching algorithm
- * from Joseph Weizenbaum's 1966 program.
- */
-
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import type { ElizaPattern, ElizaRule } from "../types";
-
-// ============================================================================
-// ELIZA Pattern Database
-// ============================================================================
 
 const elizaPatterns: ElizaPattern[] = [
   {
@@ -588,10 +577,6 @@ const defaultResponses = [
   "Interesting. Please go on.",
 ];
 
-// ============================================================================
-// Response History (for avoiding repetition)
-// ============================================================================
-
 const responseHistory: string[] = [];
 const MAX_HISTORY = 10;
 
@@ -608,10 +593,6 @@ function getRandomResponse(responses: string[]): string {
 
   return response;
 }
-
-// ============================================================================
-// Pronoun Reflection
-// ============================================================================
 
 const reflections: Record<string, string> = {
   am: "are",
@@ -633,25 +614,12 @@ const reflections: Record<string, string> = {
   "i'm": "you are",
 };
 
-/**
- * Reflect pronouns in text (I → you, my → your, etc.)
- */
 export function reflect(text: string): string {
   const words = text.toLowerCase().split(/\s+/);
   const reflected = words.map((word) => reflections[word] ?? word);
   return reflected.join(" ");
 }
 
-// ============================================================================
-// Core ELIZA Response Generation
-// ============================================================================
-
-/**
- * Generate an ELIZA response for the given input.
- *
- * @param input - The user's input text
- * @returns The ELIZA response
- */
 export function generateElizaResponse(input: string): string {
   const normalizedInput = input.toLowerCase().trim();
 
@@ -659,7 +627,6 @@ export function generateElizaResponse(input: string): string {
     return "I didn't catch that. Could you please repeat?";
   }
 
-  // Find all matching patterns
   const matches: Array<{ pattern: ElizaPattern; rule: ElizaRule }> = [];
 
   for (const pattern of elizaPatterns) {
@@ -673,14 +640,11 @@ export function generateElizaResponse(input: string): string {
   }
 
   if (matches.length > 0) {
-    // Sort by weight (higher weight = higher priority)
     matches.sort((a, b) => b.pattern.weight - a.pattern.weight);
     const best = matches[0];
 
-    // Get a random response template
     let response = getRandomResponse(best.rule.responses);
 
-    // Extract captured groups and substitute
     const match = normalizedInput.match(best.rule.pattern);
     if (match) {
       for (let i = 1; i < match.length; i++) {
@@ -689,40 +653,23 @@ export function generateElizaResponse(input: string): string {
       }
     }
 
-    // Clean up any remaining placeholders
     response = response.replace(/\$\d+/g, "that");
 
     return response;
   }
 
-  // No pattern matched, use default response
   return getRandomResponse(defaultResponses);
 }
 
-/**
- * Get the initial ELIZA greeting message.
- */
 export function getElizaGreeting(): string {
   return "Hello. I am ELIZA, a Rogerian psychotherapist simulation. How are you feeling today?";
 }
 
-// ============================================================================
-// Model Handlers
-// ============================================================================
-
-/**
- * Extract user message from prompt.
- * The prompt may contain context, but we only care about the user's input.
- */
 function extractUserMessage(prompt: string): string {
-  // Look for common patterns that indicate user input
-  const userMessageMatch = prompt.match(/(?:User|Human|You):\s*(.+?)(?:\n|$)/i);
-  return userMessageMatch ? userMessageMatch[1].trim() : prompt.trim();
+  const match = prompt.match(/(?:User|Human|You):\s*(.+?)(?:\n|$)/i);
+  return match ? match[1].trim() : prompt.trim();
 }
 
-/**
- * TEXT_LARGE model handler that uses classic ELIZA pattern matching.
- */
 export async function handleTextLarge(
   _runtime: IAgentRuntime,
   params: GenerateTextParams
@@ -731,9 +678,6 @@ export async function handleTextLarge(
   return generateElizaResponse(input);
 }
 
-/**
- * TEXT_SMALL model handler - same as TEXT_LARGE for ELIZA.
- */
 export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams

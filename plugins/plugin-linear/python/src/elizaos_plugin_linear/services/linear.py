@@ -1,4 +1,3 @@
-"""Linear API service for ElizaOS."""
 
 import uuid
 from datetime import datetime
@@ -25,14 +24,10 @@ from elizaos_plugin_linear.types import (
 
 
 class RuntimeProtocol(Protocol):
-    """Protocol for ElizaOS runtime."""
-
     def get_setting(self, key: str) -> str | None:
-        """Get a setting value."""
         ...
 
 
-# GraphQL queries
 VIEWER_QUERY = """
 query Viewer {
     viewer {
@@ -263,22 +258,12 @@ query WorkflowStates($filter: WorkflowStateFilter) {
 
 
 class LinearService:
-    """Service for interacting with the Linear API."""
-
     service_type = "linear"
     capability_description = (
         "Linear API integration for issue tracking, project management, and team collaboration"
     )
 
     def __init__(self, runtime: RuntimeProtocol) -> None:
-        """Initialize the Linear service.
-
-        Args:
-            runtime: The ElizaOS runtime for accessing settings.
-
-        Raises:
-            LinearAuthenticationError: If no API key is provided.
-        """
         api_key = runtime.get_setting("LINEAR_API_KEY")
         if not api_key:
             raise LinearAuthenticationError("Linear API key is required")
@@ -305,48 +290,26 @@ class LinearService:
 
     @classmethod
     async def start(cls, runtime: RuntimeProtocol) -> "LinearService":
-        """Start the Linear service.
-
-        Args:
-            runtime: The ElizaOS runtime.
-
-        Returns:
-            An initialized LinearService instance.
-        """
         service = cls(runtime)
         await service._validate_connection()
         return service
 
     async def stop(self) -> None:
-        """Stop the service and clean up resources."""
         self._activity_log = []
         await self._client.aclose()
 
     async def _validate_connection(self) -> None:
-        """Validate the API connection by fetching the current user."""
         try:
             await self.get_current_user()
         except Exception as e:
-            raise LinearAuthenticationError(f"Failed to authenticate with Linear API: {e}")
+            raise LinearAuthenticationError(f"Failed to authenticate with Linear API: {e}") from e
 
     async def _execute_query(
         self,
         query: str,
-        variables: dict[str, object] | None = None,
-    ) -> dict[str, object]:
-        """Execute a GraphQL query against the Linear API.
-
-        Args:
-            query: The GraphQL query string.
-            variables: Optional query variables.
-
-        Returns:
-            The query response data.
-
-        Raises:
-            LinearAPIError: If the request fails.
-        """
-        payload: dict[str, object] = {"query": query}
+        variables: dict[str, str | int | float | bool | list | dict | None] | None = None,
+    ) -> dict[str, str | int | float | bool | list | dict | None]:
+        payload: dict[str, str | dict] = {"query": query}
         if variables:
             payload["variables"] = variables
 
@@ -371,11 +334,10 @@ class LinearService:
         action: str,
         resource_type: str,
         resource_id: str,
-        details: dict[str, object],
+        details: dict[str, str | int | float | bool | None],
         success: bool,
         error: str | None = None,
     ) -> None:
-        """Log an activity item."""
         activity = LinearActivityItem(
             id=f"{int(datetime.now().timestamp() * 1000)}-{uuid.uuid4().hex[:9]}",
             timestamp=datetime.now().isoformat(),
@@ -389,7 +351,6 @@ class LinearService:
 
         self._activity_log.append(activity)
 
-        # Keep only last 1000 activities
         if len(self._activity_log) > 1000:
             self._activity_log = self._activity_log[-1000:]
 
@@ -398,15 +359,6 @@ class LinearService:
         limit: int = 100,
         filter_by: dict[str, object] | None = None,
     ) -> list[LinearActivityItem]:
-        """Get the activity log.
-
-        Args:
-            limit: Maximum number of items to return.
-            filter_by: Optional filter criteria.
-
-        Returns:
-            List of activity items.
-        """
         filtered = list(self._activity_log)
 
         if filter_by:
@@ -416,16 +368,9 @@ class LinearService:
         return filtered[-limit:]
 
     def clear_activity_log(self) -> None:
-        """Clear the activity log."""
         self._activity_log = []
 
-    # Team operations
     async def get_teams(self) -> list[TeamData]:
-        """Get all teams.
-
-        Returns:
-            List of teams.
-        """
         try:
             data = await self._execute_query(TEAMS_QUERY)
             teams = data.get("teams", {}).get("nodes", [])
@@ -436,14 +381,6 @@ class LinearService:
             raise LinearAPIError(f"Failed to fetch teams: {e}")
 
     async def get_team(self, team_id: str) -> TeamData:
-        """Get a specific team.
-
-        Args:
-            team_id: The team ID.
-
-        Returns:
-            Team data.
-        """
         try:
             data = await self._execute_query(TEAM_QUERY, {"id": team_id})
             team = data.get("team", {})
@@ -453,16 +390,7 @@ class LinearService:
             self._log_activity("get_team", "team", team_id, {}, False, str(e))
             raise LinearAPIError(f"Failed to fetch team: {e}")
 
-    # Issue operations
     async def create_issue(self, input_data: LinearIssueInput) -> IssueData:
-        """Create a new issue.
-
-        Args:
-            input_data: The issue input data.
-
-        Returns:
-            The created issue.
-        """
         try:
             variables = {
                 "input": {
@@ -511,14 +439,6 @@ class LinearService:
             raise LinearAPIError(f"Failed to create issue: {e}")
 
     async def get_issue(self, issue_id: str) -> IssueData:
-        """Get a specific issue.
-
-        Args:
-            issue_id: The issue ID or identifier (e.g., ENG-123).
-
-        Returns:
-            Issue data.
-        """
         try:
             data = await self._execute_query(ISSUE_QUERY, {"id": issue_id})
             issue = data.get("issue", {})
@@ -537,17 +457,8 @@ class LinearService:
     async def update_issue(
         self,
         issue_id: str,
-        updates: dict[str, object],
+        updates: dict[str, str | int | float | bool | list[str] | None],
     ) -> IssueData:
-        """Update an issue.
-
-        Args:
-            issue_id: The issue ID.
-            updates: The fields to update.
-
-        Returns:
-            The updated issue.
-        """
         try:
             variables = {"id": issue_id, "input": updates}
             data = await self._execute_query(UPDATE_ISSUE_MUTATION, variables)
@@ -564,11 +475,6 @@ class LinearService:
             raise LinearAPIError(f"Failed to update issue: {e}")
 
     async def delete_issue(self, issue_id: str) -> None:
-        """Archive an issue (Linear doesn't support permanent deletion).
-
-        Args:
-            issue_id: The issue ID.
-        """
         try:
             data = await self._execute_query(ARCHIVE_ISSUE_MUTATION, {"id": issue_id})
             result = data.get("issueArchive", {})
@@ -584,16 +490,8 @@ class LinearService:
             raise LinearAPIError(f"Failed to archive issue: {e}")
 
     async def search_issues(self, filters: LinearSearchFilters) -> list[IssueData]:
-        """Search for issues.
-
-        Args:
-            filters: Search filters.
-
-        Returns:
-            List of matching issues.
-        """
         try:
-            filter_obj: dict[str, object] = {}
+            filter_obj: dict[str, str | int | list | dict] = {}
 
             if filters.query:
                 filter_obj["or"] = [
@@ -644,16 +542,7 @@ class LinearService:
             )
             raise LinearAPIError(f"Failed to search issues: {e}")
 
-    # Comment operations
     async def create_comment(self, input_data: LinearCommentInput) -> CommentData:
-        """Create a comment on an issue.
-
-        Args:
-            input_data: The comment input data.
-
-        Returns:
-            The created comment.
-        """
         try:
             variables = {
                 "input": {
@@ -684,16 +573,7 @@ class LinearService:
             )
             raise LinearAPIError(f"Failed to create comment: {e}")
 
-    # Project operations
     async def get_projects(self, team_id: str | None = None) -> list[ProjectData]:
-        """Get projects.
-
-        Args:
-            team_id: Optional team ID to filter by.
-
-        Returns:
-            List of projects.
-        """
         try:
             data = await self._execute_query(PROJECTS_QUERY, {"first": 100})
             projects = data.get("projects", {}).get("nodes", [])
@@ -717,14 +597,6 @@ class LinearService:
             raise LinearAPIError(f"Failed to fetch projects: {e}")
 
     async def get_project(self, project_id: str) -> ProjectData:
-        """Get a specific project.
-
-        Args:
-            project_id: The project ID.
-
-        Returns:
-            Project data.
-        """
         try:
             projects = await self.get_projects()
             project = next((p for p in projects if p["id"] == project_id), None)
@@ -741,13 +613,7 @@ class LinearService:
             self._log_activity("get_project", "project", project_id, {}, False, str(e))
             raise LinearAPIError(f"Failed to fetch project: {e}")
 
-    # User operations
     async def get_users(self) -> list[UserData]:
-        """Get all users.
-
-        Returns:
-            List of users.
-        """
         try:
             data = await self._execute_query(USERS_QUERY)
             users = data.get("users", {}).get("nodes", [])
@@ -758,11 +624,6 @@ class LinearService:
             raise LinearAPIError(f"Failed to fetch users: {e}")
 
     async def get_current_user(self) -> UserData:
-        """Get the current authenticated user.
-
-        Returns:
-            Current user data.
-        """
         try:
             data = await self._execute_query(VIEWER_QUERY)
             user = data.get("viewer", {})
@@ -778,16 +639,7 @@ class LinearService:
             self._log_activity("get_current_user", "user", "current", {}, False, str(e))
             raise LinearAPIError(f"Failed to fetch current user: {e}")
 
-    # Label operations
     async def get_labels(self, team_id: str | None = None) -> list[LabelData]:
-        """Get issue labels.
-
-        Args:
-            team_id: Optional team ID to filter by.
-
-        Returns:
-            List of labels.
-        """
         try:
             filter_obj = None
             if team_id:
@@ -805,16 +657,7 @@ class LinearService:
             self._log_activity("list_labels", "label", "all", {"teamId": team_id}, False, str(e))
             raise LinearAPIError(f"Failed to fetch labels: {e}")
 
-    # Workflow state operations
     async def get_workflow_states(self, team_id: str) -> list[StateData]:
-        """Get workflow states for a team.
-
-        Args:
-            team_id: The team ID.
-
-        Returns:
-            List of workflow states.
-        """
         try:
             data = await self._execute_query(
                 WORKFLOW_STATES_QUERY, {"filter": {"team": {"id": {"eq": team_id}}}}
@@ -829,8 +672,3 @@ class LinearService:
         except Exception as e:
             self._log_activity("list_workflow_states", "team", team_id, {}, False, str(e))
             raise LinearAPIError(f"Failed to fetch workflow states: {e}")
-
-
-
-
-

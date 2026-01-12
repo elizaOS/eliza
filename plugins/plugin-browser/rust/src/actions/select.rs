@@ -1,5 +1,3 @@
-//! Browser Select Action
-
 use crate::services::BrowserService;
 use crate::types::ActionResult;
 use crate::utils::{action_error, parse_select_action, session_error};
@@ -7,12 +5,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
-/// Action metadata
 pub const SELECT_ACTION_NAME: &str = "BROWSER_SELECT";
 pub const SELECT_SIMILES: &[&str] = &["SELECT_OPTION", "CHOOSE", "PICK"];
 pub const SELECT_DESCRIPTION: &str = "Select an option from a dropdown on the webpage";
 
-/// Select an option from a dropdown
 pub async fn browser_select(
     service: Arc<BrowserService>,
     message: &str,
@@ -57,10 +53,5 @@ pub async fn browser_select(
         }
     }
 }
-
-
-
-
-
 
 

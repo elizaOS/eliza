@@ -1,6 +1,3 @@
-//! Integration tests for the Google GenAI plugin.
-//!
-//! These tests require a valid GOOGLE_GENERATIVE_AI_API_KEY environment variable.
 
 use elizaos_plugin_google_genai::{
     EmbeddingParams, GoogleGenAIClient, GoogleGenAIConfig, ObjectGenerationParams,
@@ -106,10 +103,3 @@ async fn test_generate_object_with_schema() {
     assert!(response.object.get("name").is_some());
     assert!(response.object.get("age").is_some());
 }
-
-
-
-
-
-
-

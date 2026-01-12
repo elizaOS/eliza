@@ -1,8 +1,7 @@
 //! Integration tests for inmemorydb plugin.
 
-use elizaos_plugin_inmemorydb::{
-    VectorSearchResult, COLLECTIONS, StorageError,
-};
+use elizaos_plugin_inmemorydb::{VectorSearchResult, COLLECTIONS};
+use elizaos_plugin_inmemorydb::types::StorageError;
 
 #[test]
 fn test_collections_constants() {

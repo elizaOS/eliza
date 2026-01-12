@@ -1,10 +1,3 @@
-/**
- * JSON extraction and parsing utilities.
- *
- * These utilities handle extracting valid JSON from LLM responses that may
- * contain markdown, code blocks, or other non-JSON content.
- */
-
 import { logger } from "@elizaos/core";
 import { jsonrepair } from "jsonrepair";
 import type {
@@ -17,10 +10,6 @@ import type {
   UnstructuredResponse,
 } from "../types";
 
-/**
- * Ensure reflection response has all required properties.
- * Only processes if isReflection is true.
- */
 export function ensureReflectionProperties(
   obj: ExtractedJSON,
   isReflection: boolean
@@ -30,7 +19,6 @@ export function ensureReflectionProperties(
   }
 
   if (obj !== null && typeof obj === "object" && !("type" in obj)) {
-    // It's a JsonObject, add reflection properties
     const jsonObj = obj as JsonObject;
     return {
       ...jsonObj,
@@ -47,9 +35,6 @@ export function ensureReflectionProperties(
   return obj;
 }
 
-/**
- * Recursively restore code blocks in a parsed object.
- */
 function restoreCodeBlocks(
   obj: JsonValue,
   placeholders: readonly CodeBlockPlaceholder[]
@@ -77,9 +62,6 @@ function restoreCodeBlocks(
   return obj;
 }
 
-/**
- * Try to parse JSON directly.
- */
 function tryDirectParse(text: string): JsonObject | null {
   try {
     const parsed: unknown = JSON.parse(text);
@@ -92,9 +74,6 @@ function tryDirectParse(text: string): JsonObject | null {
   }
 }
 
-/**
- * Try to repair and parse JSON.
- */
 function tryRepairParse(text: string): JsonObject | null {
   try {
     const repaired = jsonrepair(text);
@@ -108,17 +87,12 @@ function tryRepairParse(text: string): JsonObject | null {
   }
 }
 
-/**
- * Extract JSON from code blocks.
- */
 function extractFromCodeBlocks(text: string): string | null {
-  // First priority: explicit JSON code blocks
   const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
   if (jsonBlockMatch?.[1]) {
     return jsonBlockMatch[1].trim();
   }
 
-  // Second priority: any code block with JSON-like content
   const anyBlockRegex = /```(?:\w*)\s*([\s\S]*?)\s*```/g;
   let match: RegExpExecArray | null = anyBlockRegex.exec(text);
   while (match !== null) {
@@ -132,20 +106,14 @@ function extractFromCodeBlocks(text: string): string | null {
   return null;
 }
 
-/**
- * Extract JSON-like content from text.
- */
 function extractJsonContent(text: string): string | null {
-  // Try to find JSON-like content
   const jsonContentMatch = text.match(/(^|\n)\s*(\{[\s\S]*\})\s*($|\n)/);
   if (jsonContentMatch?.[2]) {
     return jsonContentMatch[2].trim();
   }
 
-  // Find the largest JSON-like structure
   const jsonMatches = text.match(/\{[\s\S]*?\}/g);
   if (jsonMatches && jsonMatches.length > 0) {
-    // Sort by length descending and return the largest
     const sorted = [...jsonMatches].sort((a, b) => b.length - a.length);
     return sorted[0] ?? null;
   }
@@ -153,9 +121,6 @@ function extractJsonContent(text: string): string | null {
   return null;
 }
 
-/**
- * Try to manually extract thought/message structure.
- */
 function extractThoughtMessage(text: string): ReconstructedResponse | ReflectionResponse | null {
   const thoughtPattern = /"thought"\s*:\s*"([^"]*?)(?:"|$)/;
   const messagePattern = /"message"\s*:\s*"([^"]*?)(?:"|$)/;
@@ -178,7 +143,6 @@ function extractThoughtMessage(text: string): ReconstructedResponse | Reflection
     if (messageMatch?.[1]) {
       result.message = messageMatch[1].replace(/\\n/g, "\n");
     } else if (thoughtMatch) {
-      // Extract code blocks and remaining content
       let remainingContent = text.replace(thoughtPattern, "");
       const codeBlocks: Array<{ language: string; code: string }> = [];
       const codeBlockRegex = /```([\w]*)\n([\s\S]*?)```/g;
@@ -203,7 +167,6 @@ function extractThoughtMessage(text: string): ReconstructedResponse | Reflection
     return result as ReconstructedResponse;
   }
 
-  // Check for reflection schema pattern
   if (text.includes("thought") || text.includes("facts") || text.includes("relationships")) {
     logger.debug("Attempting to extract reflection schema components");
 
@@ -222,9 +185,6 @@ function extractThoughtMessage(text: string): ReconstructedResponse | Reflection
   return null;
 }
 
-/**
- * Handle JSON with embedded code blocks.
- */
 function handleJsonWithCodeBlocks(text: string): JsonObject | null {
   const isJsonWithCodeBlocks =
     text.trim().startsWith("{") && text.trim().endsWith("}") && text.includes("```");
@@ -264,19 +224,7 @@ function handleJsonWithCodeBlocks(text: string): JsonObject | null {
   return null;
 }
 
-/**
- * Extract and parse JSON from LLM responses.
- *
- * This function handles various response formats including:
- * - Direct JSON
- * - JSON in markdown code blocks
- * - JSON with embedded code blocks
- * - Mixed markdown and JSON
- *
- * @throws Never - always returns a valid ExtractedJSON type
- */
 export function extractAndParseJSON(text: string): ExtractedJSON {
-  // First attempt: Direct JSON parsing
   const directResult = tryDirectParse(text);
   if (directResult) {
     return directResult;
@@ -284,7 +232,6 @@ export function extractAndParseJSON(text: string): ExtractedJSON {
 
   logger.debug("Initial JSON parse failed, attempting alternative extraction");
 
-  // Try JSONRepair
   const repairedResult = tryRepairParse(text);
   if (repairedResult) {
     return repairedResult;
@@ -292,13 +239,11 @@ export function extractAndParseJSON(text: string): ExtractedJSON {
 
   logger.debug("JSONRepair failed, proceeding with manual extraction");
 
-  // Handle JSON with embedded code blocks
   const codeBlockResult = handleJsonWithCodeBlocks(text);
   if (codeBlockResult) {
     return codeBlockResult;
   }
 
-  // Try extracting from code blocks
   const extractedBlock = extractFromCodeBlocks(text);
   if (extractedBlock) {
     const blockParsed = tryDirectParse(extractedBlock) ?? tryRepairParse(extractedBlock);
@@ -307,7 +252,6 @@ export function extractAndParseJSON(text: string): ExtractedJSON {
     }
   }
 
-  // Try extracting JSON-like content
   const extractedJson = extractJsonContent(text);
   if (extractedJson) {
     const jsonParsed = tryDirectParse(extractedJson) ?? tryRepairParse(extractedJson);
@@ -316,13 +260,11 @@ export function extractAndParseJSON(text: string): ExtractedJSON {
     }
   }
 
-  // Try manual structure extraction
   const manualResult = extractThoughtMessage(text);
   if (manualResult) {
     return manualResult;
   }
 
-  // Last resort: Return unstructured response
   logger.debug("All JSON extraction methods failed, returning unstructured response");
   const unstructured: UnstructuredResponse = {
     type: "unstructured_response",

@@ -1,13 +1,9 @@
 #![allow(missing_docs)]
-//! Type definitions for plugin-inmemorydb
-//!
-//! Pure in-memory, ephemeral storage - no persistence.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Error type for storage operations
 #[derive(Debug, Error)]
 pub enum StorageError {
     #[error("Storage not ready")]
@@ -22,89 +18,52 @@ pub enum StorageError {
     Other(String),
 }
 
-/// Result type for storage operations
 pub type StorageResult<T> = Result<T, StorageError>;
 
-/// Predicate function type for filtering
 pub type PredicateFn = Box<dyn Fn(&serde_json::Value) -> bool + Send + Sync + 'static>;
 
-/// Storage interface for in-memory data
 #[async_trait]
 pub trait IStorage: Send + Sync {
-    /// Initialize the storage
     async fn init(&self) -> StorageResult<()>;
-
-    /// Close the storage (clears all data)
     async fn close(&self) -> StorageResult<()>;
-
-    /// Check if storage is ready
     async fn is_ready(&self) -> bool;
-
-    /// Get an item by collection and id
     async fn get(&self, collection: &str, id: &str) -> StorageResult<Option<serde_json::Value>>;
-
-    /// Get all items in a collection
     async fn get_all(&self, collection: &str) -> StorageResult<Vec<serde_json::Value>>;
-
-    /// Get items by a filter function
     async fn get_where(
         &self,
         collection: &str,
         predicate: PredicateFn,
     ) -> StorageResult<Vec<serde_json::Value>>;
-
-    /// Set an item in a collection
     async fn set(&self, collection: &str, id: &str, data: serde_json::Value) -> StorageResult<()>;
-
-    /// Delete an item from a collection
     async fn delete(&self, collection: &str, id: &str) -> StorageResult<bool>;
-
-    /// Delete multiple items from a collection
     async fn delete_many(&self, collection: &str, ids: &[String]) -> StorageResult<()>;
-
-    /// Delete all items in a collection matching a predicate
     async fn delete_where(
         &self,
         collection: &str,
         predicate: PredicateFn,
     ) -> StorageResult<()>;
-
-    /// Count items in a collection
     async fn count(
         &self,
         collection: &str,
         predicate: Option<PredicateFn>,
     ) -> StorageResult<usize>;
-
-    /// Clear all data from all collections
     async fn clear(&self) -> StorageResult<()>;
 }
 
-/// Vector storage interface for HNSW-based similarity search
 #[async_trait]
 pub trait IVectorStorage: Send + Sync {
-    /// Initialize the vector storage
     async fn init(&self, dimension: usize) -> StorageResult<()>;
-
-    /// Add a vector with associated id
     async fn add(&self, id: &str, vector: &[f32]) -> StorageResult<()>;
-
-    /// Remove a vector by id
     async fn remove(&self, id: &str) -> StorageResult<()>;
-
-    /// Search for nearest neighbors
     async fn search(
         &self,
         query: &[f32],
         k: usize,
         threshold: f32,
     ) -> StorageResult<Vec<VectorSearchResult>>;
-
-    /// Clear all vectors from the index
     async fn clear(&self) -> StorageResult<()>;
 }
 
-/// Result of a vector similarity search
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VectorSearchResult {
     pub id: String,
@@ -112,7 +71,6 @@ pub struct VectorSearchResult {
     pub similarity: f32,
 }
 
-/// Collections used by the adapter
 pub struct COLLECTIONS;
 
 impl COLLECTIONS {

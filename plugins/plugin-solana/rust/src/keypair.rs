@@ -151,8 +151,8 @@ impl WalletConfig {
     where
         F: Fn(&str, &str, bool),
     {
-        let rpc_url = std::env::var("SOLANA_RPC_URL")
-            .unwrap_or_else(|_| crate::DEFAULT_RPC_URL.to_string());
+        let rpc_url =
+            std::env::var("SOLANA_RPC_URL").unwrap_or_else(|_| crate::DEFAULT_RPC_URL.to_string());
 
         // Try to get private key first
         let private_key = std::env::var("SOLANA_PRIVATE_KEY")
@@ -164,8 +164,8 @@ impl WalletConfig {
             (kp.pubkey(), Some(kp.to_bytes()))
         } else {
             // Check for public key only
-            let pubkey_result = std::env::var("SOLANA_PUBLIC_KEY")
-                .or_else(|_| std::env::var("WALLET_PUBLIC_KEY"));
+            let pubkey_result =
+                std::env::var("SOLANA_PUBLIC_KEY").or_else(|_| std::env::var("WALLET_PUBLIC_KEY"));
 
             if let Ok(pubkey_str) = pubkey_result {
                 (Pubkey::from_str(&pubkey_str)?, None)
@@ -183,16 +183,10 @@ impl WalletConfig {
                 }
 
                 // Log warnings about the auto-generated keypair
-                tracing::warn!(
-                    "⚠️  No Solana wallet found. Generated new wallet automatically."
-                );
+                tracing::warn!("⚠️  No Solana wallet found. Generated new wallet automatically.");
                 tracing::warn!("📍 New Solana wallet address: {}", public_key_base58);
-                tracing::warn!(
-                    "🔐 Private key has been stored securely in agent settings."
-                );
-                tracing::warn!(
-                    "💡 Fund this wallet to enable SOL and token transfers."
-                );
+                tracing::warn!("🔐 Private key has been stored securely in agent settings.");
+                tracing::warn!("💡 Fund this wallet to enable SOL and token transfers.");
 
                 (public_key, Some(kp.to_bytes()))
             }
@@ -242,8 +236,7 @@ impl WalletConfig {
         self.keypair_bytes
             .as_ref()
             .map(|bytes| {
-                Keypair::try_from(bytes.as_slice())
-                    .expect("stored keypair bytes should be valid")
+                Keypair::try_from(bytes.as_slice()).expect("stored keypair bytes should be valid")
             })
             .ok_or_else(|| {
                 SolanaError::Config("Private key not configured - read-only wallet".to_string())
@@ -335,8 +328,8 @@ impl KeypairUtils {
     /// A vector of detected public key strings.
     pub fn detect_pubkeys_in_text(text: &str, check_curve: bool) -> Vec<String> {
         let mut results = Vec::new();
-        let re = regex::Regex::new(r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b")
-            .expect("regex should be valid");
+        let re =
+            regex::Regex::new(r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b").expect("regex should be valid");
 
         for cap in re.captures_iter(text) {
             let s = &cap[0];
@@ -373,8 +366,8 @@ impl KeypairUtils {
         let mut results = Vec::new();
 
         // Base58 private key pattern (86-90 chars for 64 bytes)
-        let base58_re = regex::Regex::new(r"\b[1-9A-HJ-NP-Za-km-z]{86,90}\b")
-            .expect("regex should be valid");
+        let base58_re =
+            regex::Regex::new(r"\b[1-9A-HJ-NP-Za-km-z]{86,90}\b").expect("regex should be valid");
 
         for cap in base58_re.captures_iter(text) {
             let s = &cap[0];
@@ -386,8 +379,7 @@ impl KeypairUtils {
         }
 
         // Hex private key pattern (128 hex chars for 64 bytes)
-        let hex_re = regex::Regex::new(r"\b[a-fA-F0-9]{128}\b")
-            .expect("regex should be valid");
+        let hex_re = regex::Regex::new(r"\b[a-fA-F0-9]{128}\b").expect("regex should be valid");
 
         for cap in hex_re.captures_iter(text) {
             let s = &cap[0];
@@ -475,7 +467,7 @@ mod tests {
         let kp = KeypairUtils::generate();
         let base58_key = KeypairUtils::to_base58(&kp);
         let text = format!("My private key is {}", base58_key);
-        
+
         let keys = KeypairUtils::detect_private_keys_in_text(&text);
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].0, "base58");
@@ -488,7 +480,7 @@ mod tests {
         let kp = KeypairUtils::generate();
         let hex_key = hex::encode(kp.to_bytes());
         let text = format!("Hex key: {}", hex_key);
-        
+
         let keys = KeypairUtils::detect_private_keys_in_text(&text);
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].0, "hex");
@@ -502,4 +494,3 @@ mod tests {
         assert!(keys.is_empty());
     }
 }
-

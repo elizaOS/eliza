@@ -43,6 +43,8 @@ pub mod cache_manager;
 pub mod notification_manager;
 pub mod reminder_service;
 pub mod client;
+pub mod actions;
+pub mod providers;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
@@ -50,6 +52,7 @@ pub mod wasm;
 // Re-export commonly used types for convenience
 pub use client::TodoClient;
 pub use config::TodoConfig;
+pub use data_service::{create_todo_data_service, TodoDataService};
 pub use error::{Result, TodoError};
 
 /// Create a TodoClient from environment variables.

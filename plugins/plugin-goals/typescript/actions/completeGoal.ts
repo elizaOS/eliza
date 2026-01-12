@@ -11,9 +11,6 @@ import {
 } from "@elizaos/core";
 import { createGoalDataService } from "../services/goalDataService.js";
 
-/**
- * The COMPLETE_GOAL action allows users to mark a goal as achieved.
- */
 export const completeGoalAction: Action = {
   name: "COMPLETE_GOAL",
   similes: ["ACHIEVE_GOAL", "FINISH_GOAL", "CHECK_OFF_GOAL", "ACCOMPLISH_GOAL"],
@@ -24,7 +21,6 @@ export const completeGoalAction: Action = {
       return false;
     }
 
-    // Try to extract goal reference from the message
     const messageText = message.content?.text?.toLowerCase() || "";
     const hasCompleteIntent =
       messageText.includes("complete") ||
@@ -59,20 +55,13 @@ export const completeGoalAction: Action = {
         return { success: false, text: errorMessage };
       }
 
-      // Create data service
       const dataService = createGoalDataService(runtime);
-
-      // Determine owner context (entity vs agent)
       const isEntityMessage = message.entityId && message.entityId !== runtime.agentId;
       const ownerType = isEntityMessage ? "entity" : "agent";
       const ownerId = asUUID(isEntityMessage ? message.entityId : runtime.agentId);
       const ownerText = isEntityMessage ? "User" : "Agent";
-
-      // Extract goal information from the message
       const messageText = message.content?.text || "";
-      const _lowerText = messageText.toLowerCase();
 
-      // Try to find which goal to complete
       const activeGoals = await dataService.getGoals({
         ownerType,
         ownerId,
@@ -90,7 +79,6 @@ export const completeGoalAction: Action = {
         return { success: true, text: responseText };
       }
 
-      // Use Claude to find the best matching goal
       const matchPrompt = `Given this completion request: "${messageText}"
       
 Which of these active goals best matches the request? Return only the number.
@@ -121,8 +109,6 @@ If none match well, return 0.`;
       }
 
       const goal = activeGoals[matchIndex];
-
-      // Mark the goal as completed
       await dataService.updateGoal(goal.id, {
         isCompleted: true,
         completedAt: new Date(),

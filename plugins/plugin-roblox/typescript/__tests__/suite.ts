@@ -1,14 +1,7 @@
-/**
- * Test suite for Roblox plugin
- */
-
 import type { IAgentRuntime, TestCase, TestSuite } from "@elizaos/core";
 import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME } from "../types";
 
-/**
- * Test suite for Roblox plugin functionality
- */
 export class RobloxTestSuite implements TestSuite {
   name = "roblox";
   description = "Test suite for Roblox plugin";
@@ -19,7 +12,6 @@ export class RobloxTestSuite implements TestSuite {
       fn: async (runtime: IAgentRuntime) => {
         const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
 
-        // Service might be undefined if not configured
         const apiKey = runtime.getSetting("ROBLOX_API_KEY");
         const universeId = runtime.getSetting("ROBLOX_UNIVERSE_ID");
 
@@ -61,8 +53,6 @@ export class RobloxTestSuite implements TestSuite {
     {
       name: "Actions registered",
       fn: async (runtime: IAgentRuntime) => {
-        // Check that actions are properly registered
-        // This is a basic sanity check
         runtime.logger.info("Roblox actions registration check passed");
       },
     },

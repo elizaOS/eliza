@@ -11,7 +11,7 @@ import type {
   UUID,
 } from "../../types/index.ts";
 import { ChannelType, EventType, ModelType } from "../../types/index.ts";
-import { createBootstrapPlugin } from "../index";
+import { createBootstrapPlugin, shouldRespond } from "../index";
 import {
   cleanupTestRuntime,
   createTestMemory,
@@ -162,9 +162,7 @@ describe("Reaction Events", () => {
 
   it("should store reaction messages correctly", async () => {
     // Spy on createMemory
-    vi.spyOn(runtime, "createMemory").mockResolvedValue(
-      mockReaction.id,
-    );
+    vi.spyOn(runtime, "createMemory").mockResolvedValue(mockReaction.id);
 
     // Get the REACTION_RECEIVED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
@@ -498,8 +496,6 @@ describe("shouldRespond with mentionContext", () => {
   });
 
   it("should skip evaluation and respond for DM channels", () => {
-    const { shouldRespond } = require("../index");
-
     const room = { type: ChannelType.DM };
     const result = shouldRespond(runtime, mockMessage, room);
 
@@ -509,8 +505,6 @@ describe("shouldRespond with mentionContext", () => {
   });
 
   it("should skip evaluation and respond for platform mentions (isMention=true)", () => {
-    const { shouldRespond } = require("../index");
-
     const room = { type: ChannelType.GROUP };
     const mentionContext = {
       isMention: true,
@@ -527,8 +521,6 @@ describe("shouldRespond with mentionContext", () => {
   });
 
   it("should skip evaluation and respond for replies to bot (isReply=true)", () => {
-    const { shouldRespond } = require("../index");
-
     const room = { type: ChannelType.GROUP };
     const mentionContext = {
       isMention: false,
@@ -545,8 +537,6 @@ describe("shouldRespond with mentionContext", () => {
   });
 
   it("should NOT skip evaluation for regular messages without mention", () => {
-    const { shouldRespond } = require("../index");
-
     const room = { type: ChannelType.GROUP };
     const mentionContext = {
       isMention: false,
@@ -562,8 +552,6 @@ describe("shouldRespond with mentionContext", () => {
   });
 
   it("should skip evaluation and respond for client_chat source", () => {
-    const { shouldRespond } = require("../index");
-
     const room = { type: ChannelType.GROUP };
     const messageWithClientChat = createTestMemory({
       content: {
@@ -580,8 +568,6 @@ describe("shouldRespond with mentionContext", () => {
   });
 
   it("should be platform agnostic (works for any platform)", () => {
-    const { shouldRespond } = require("../index");
-
     const room = { type: ChannelType.GROUP };
 
     // Test with different platform sources

@@ -1,10 +1,3 @@
-"""
-Evaluators Provider - Lists available evaluators.
-
-This provider returns a list of all registered evaluators
-that can be used to assess agent behavior.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,12 +13,6 @@ async def get_evaluators(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get available evaluators.
-
-    Returns a list of evaluators registered with the runtime
-    that can be used to assess agent performance.
-    """
     evaluator_info: list[dict[str, str]] = []
 
     for evaluator in runtime.evaluators:
@@ -39,12 +26,8 @@ async def get_evaluators(
     if not evaluator_info:
         return ProviderResult(
             text="No evaluators available.",
-            values={
-                "evaluatorCount": 0,
-            },
-            data={
-                "evaluators": [],
-            },
+            values={"evaluatorCount": 0},
+            data={"evaluators": []},
         )
 
     formatted_evaluators = "\n".join(f"- {e['name']}: {e['description']}" for e in evaluator_info)
@@ -63,7 +46,6 @@ async def get_evaluators(
     )
 
 
-# Create the provider instance
 evaluators_provider = Provider(
     name="EVALUATORS",
     description="Available evaluators for assessing agent behavior",

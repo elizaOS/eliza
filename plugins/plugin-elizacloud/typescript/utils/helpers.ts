@@ -2,9 +2,6 @@ import { logger } from "@elizaos/core";
 import { JSONParseError } from "ai";
 import type { ImageDescriptionResult } from "../types";
 
-/**
- * Returns a function to repair JSON text
- */
 export function getJsonRepairFunction(): (params: {
   text: string;
   error: unknown;
@@ -17,7 +14,7 @@ export function getJsonRepairFunction(): (params: {
         return cleanedText;
       }
       return null;
-    } catch (jsonError: unknown) {
+    } catch (jsonError) {
       const message =
         jsonError instanceof Error ? jsonError.message : String(jsonError);
       logger.warn(`Failed to repair JSON text: ${message}`);
@@ -26,18 +23,11 @@ export function getJsonRepairFunction(): (params: {
   };
 }
 
-/**
- * Detects audio MIME type from buffer by checking magic bytes (file signature)
- * @param buffer The audio buffer to analyze
- * @returns The detected MIME type or 'application/octet-stream' if unknown
- */
 export function detectAudioMimeType(buffer: Buffer): string {
   if (buffer.length < 12) {
     return "application/octet-stream";
   }
 
-  // Check magic bytes for common audio formats
-  // WAV: "RIFF" + size + "WAVE"
   if (
     buffer[0] === 0x52 &&
     buffer[1] === 0x49 &&
@@ -51,7 +41,6 @@ export function detectAudioMimeType(buffer: Buffer): string {
     return "audio/wav";
   }
 
-  // MP3: ID3 tag or MPEG frame sync
   if (
     (buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) || // ID3
     (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0) // MPEG sync
@@ -59,7 +48,6 @@ export function detectAudioMimeType(buffer: Buffer): string {
     return "audio/mpeg";
   }
 
-  // OGG: "OggS"
   if (
     buffer[0] === 0x4f &&
     buffer[1] === 0x67 &&
@@ -69,7 +57,6 @@ export function detectAudioMimeType(buffer: Buffer): string {
     return "audio/ogg";
   }
 
-  // FLAC: "fLaC"
   if (
     buffer[0] === 0x66 &&
     buffer[1] === 0x4c &&
@@ -79,7 +66,6 @@ export function detectAudioMimeType(buffer: Buffer): string {
     return "audio/flac";
   }
 
-  // M4A/MP4: "ftyp" at offset 4
   if (
     buffer[4] === 0x66 &&
     buffer[5] === 0x74 &&
@@ -89,7 +75,6 @@ export function detectAudioMimeType(buffer: Buffer): string {
     return "audio/mp4";
   }
 
-  // WebM: EBML header
   if (
     buffer[0] === 0x1a &&
     buffer[1] === 0x45 &&
@@ -99,23 +84,16 @@ export function detectAudioMimeType(buffer: Buffer): string {
     return "audio/webm";
   }
 
-  // Unknown format - let API try to detect
   logger.warn(
     "Could not detect audio format from buffer, using generic binary type",
   );
   return "application/octet-stream";
 }
 
-/**
- * Converts a Web ReadableStream to a Node.js Readable stream
- * Handles both browser and Node.js environments
- * Uses dynamic import to avoid bundling node:stream in browser builds
- */
 export async function webStreamToNodeStream(
   webStream: ReadableStream<Uint8Array>,
 ) {
   try {
-    // Dynamic import to avoid browser bundling issues
     const { Readable } = await import("node:stream");
     const reader = webStream.getReader();
 
@@ -126,7 +104,6 @@ export async function webStreamToNodeStream(
           if (done) {
             this.push(null);
           } else {
-            // Push the Uint8Array directly; Node.js Readable can handle it
             this.push(value);
           }
         } catch (error) {
@@ -146,9 +123,6 @@ export async function webStreamToNodeStream(
   }
 }
 
-/**
- * Parses image description response from text format
- */
 export function parseImageDescriptionResponse(
   responseText: string,
 ): ImageDescriptionResult {

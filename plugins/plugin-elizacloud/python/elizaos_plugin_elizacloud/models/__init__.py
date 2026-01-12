@@ -1,5 +1,3 @@
-"""Model handlers for elizaOS Cloud Plugin."""
-
 from elizaos_plugin_elizacloud.models.embeddings import (
     handle_batch_text_embedding,
     handle_text_embedding,
@@ -18,22 +16,16 @@ from elizaos_plugin_elizacloud.models.tokenization import (
 from elizaos_plugin_elizacloud.models.transcription import handle_transcription
 
 __all__ = [
-    # Text generation
     "handle_text_small",
     "handle_text_large",
-    # Object generation
     "handle_object_small",
     "handle_object_large",
-    # Embeddings
     "handle_text_embedding",
     "handle_batch_text_embedding",
-    # Image
     "handle_image_generation",
     "handle_image_description",
-    # Audio
     "handle_text_to_speech",
     "handle_transcription",
-    # Tokenization
     "handle_tokenizer_encode",
     "handle_tokenizer_decode",
 ]

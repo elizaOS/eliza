@@ -1,48 +1,10 @@
 #![allow(missing_docs)]
-//! Cross-language Interop Support for ELIZA Classic Plugin
-//!
-//! This module provides WASM, FFI, and IPC bindings so the Rust plugin can be
-//! loaded by TypeScript, Python, or any other runtime.
-//!
-//! ## Interop Methods
-//!
-//! | Method | Host Runtime | Binding |
-//! |--------|-------------|---------|
-//! | WASM   | TypeScript  | wasm-bindgen exports |
-//! | FFI    | Python      | C ABI exports via ctypes |
-//! | IPC    | Any         | JSON-RPC over stdin/stdout |
-//!
-//! ## Actions
-//!
-//! The plugin exports a single action:
-//! - `generate-response`: Generate an ELIZA response for user input
-//!
-//! ## Usage from TypeScript
-//!
-//! ```typescript
-//! import { loadWasmPlugin } from '@elizaos/interop';
-//! const plugin = await loadWasmPlugin('./eliza_classic.wasm');
-//! const result = await plugin.actions[0].handler(runtime, memory, state, {});
-//! ```
-//!
-//! ## Usage from Python
-//!
-//! ```python
-//! from elizaos.interop import load_rust_plugin
-//! plugin = load_rust_plugin('./libelizaos_plugin_eliza_classic.so')
-//! result = plugin.actions[0].handler(runtime, memory, state, {})
-//! ```
 
 use crate::{ElizaClassicPlugin, generate_response, reflect};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-// ============================================================================
-// Plugin Manifest
-// ============================================================================
-
-/// Plugin manifest for interop discovery
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginManifest {
@@ -110,10 +72,6 @@ impl Default for PluginManifest {
     }
 }
 
-// ============================================================================
-// Action/Provider Results
-// ============================================================================
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionResult {
@@ -157,24 +115,17 @@ pub struct ProviderResult {
     pub data: Option<HashMap<String, serde_json::Value>>,
 }
 
-// ============================================================================
-// Global Plugin Instance
-// ============================================================================
-
 lazy_static::lazy_static! {
     static ref PLUGIN_INSTANCE: Mutex<ElizaClassicPlugin> = Mutex::new(ElizaClassicPlugin::new());
 }
 
-/// Get the plugin manifest as JSON
 pub fn get_manifest_json() -> String {
     serde_json::to_string(&PluginManifest::default()).unwrap_or_else(|e| {
         format!(r#"{{"error": "{}"}}"#, e)
     })
 }
 
-/// Initialize the plugin with configuration
 pub fn init_plugin(config_json: &str) -> Result<(), String> {
-    // Parse config if provided
     if !config_json.is_empty() && config_json != "null" && config_json != "{}" {
         if let Ok(config) = serde_json::from_str::<crate::ElizaConfig>(config_json) {
             let mut instance = PLUGIN_INSTANCE.lock().map_err(|e| e.to_string())?;
@@ -184,12 +135,10 @@ pub fn init_plugin(config_json: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate an action (always returns true for generate-response)
 pub fn validate_action(name: &str, _memory_json: &str, _state_json: &str) -> bool {
     name == "generate-response"
 }
 
-/// Invoke an action
 pub fn invoke_action(
     name: &str,
     memory_json: &str,
@@ -216,7 +165,6 @@ pub fn invoke_action(
     ActionResult::success_with_text(&response)
 }
 
-/// Get provider data
 pub fn get_provider(name: &str, _memory_json: &str, _state_json: &str) -> ProviderResult {
     if name == "eliza-greeting" {
         let instance = match PLUGIN_INSTANCE.lock() {
@@ -233,22 +181,15 @@ pub fn get_provider(name: &str, _memory_json: &str, _state_json: &str) -> Provid
     }
 }
 
-/// Validate an evaluator (no evaluators in this plugin)
 pub fn validate_evaluator(_name: &str, _memory_json: &str, _state_json: &str) -> bool {
     false
 }
 
-/// Invoke an evaluator (no evaluators in this plugin)
 pub fn invoke_evaluator(_name: &str, _memory_json: &str, _state_json: &str) -> Option<ActionResult> {
     None
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
 fn extract_user_input(memory_json: &str, options_json: &str) -> String {
-    // Try to get input from options first
     if let Ok(options) = serde_json::from_str::<serde_json::Value>(options_json) {
         if let Some(input) = options.get("input").and_then(|v| v.as_str()) {
             return input.to_string();
@@ -261,7 +202,6 @@ fn extract_user_input(memory_json: &str, options_json: &str) -> String {
         }
     }
 
-    // Try to get from memory (message content)
     if let Ok(memory) = serde_json::from_str::<serde_json::Value>(memory_json) {
         if let Some(content) = memory.get("content") {
             if let Some(text) = content.get("text").and_then(|v| v.as_str()) {
@@ -272,10 +212,6 @@ fn extract_user_input(memory_json: &str, options_json: &str) -> String {
 
     String::new()
 }
-
-// ============================================================================
-// WASM Exports (feature = "wasm")
-// ============================================================================
 
 #[cfg(feature = "wasm")]
 pub mod wasm {
@@ -334,19 +270,16 @@ pub mod wasm {
         }
     }
 
-    /// Direct response generation for simple WASM usage
     #[wasm_bindgen]
     pub fn generate_eliza_response(input: &str) -> String {
         generate_response(input)
     }
 
-    /// Pronoun reflection utility
     #[wasm_bindgen]
     pub fn reflect_pronouns(text: &str) -> String {
         reflect(text)
     }
 
-    /// Memory allocation for complex string passing
     #[wasm_bindgen]
     pub fn alloc(size: usize) -> *mut u8 {
         let mut buf = Vec::with_capacity(size);
@@ -355,15 +288,18 @@ pub mod wasm {
         ptr
     }
 
+    /// Deallocates memory previously allocated by `alloc`.
+    ///
+    /// # Safety
+    ///
+    /// - `ptr` must have been allocated by `alloc` with the same `size`.
+    /// - `ptr` must not have been previously deallocated.
+    /// - The memory must not be accessed after this call.
     #[wasm_bindgen]
     pub unsafe fn dealloc(ptr: *mut u8, size: usize) {
         let _ = Vec::from_raw_parts(ptr, 0, size);
     }
 }
-
-// ============================================================================
-// FFI Exports (feature = "ffi")
-// ============================================================================
 
 #[cfg(feature = "ffi")]
 pub mod ffi {
@@ -493,21 +429,26 @@ pub mod ffi {
         }
     }
 
-    /// Direct response generation for simple FFI usage
     #[no_mangle]
     pub extern "C" fn eliza_generate_response(input: *const c_char) -> *mut c_char {
         let input = cstr_to_string(input).unwrap_or_default();
         string_to_cstr(generate_response(&input))
     }
 
-    /// Pronoun reflection utility
     #[no_mangle]
     pub extern "C" fn eliza_reflect(text: *const c_char) -> *mut c_char {
         let text = cstr_to_string(text).unwrap_or_default();
         string_to_cstr(reflect(&text))
     }
 
-    /// Free a string returned by this library
+    /// Frees a string that was allocated and returned by this library.
+    ///
+    /// # Safety
+    ///
+    /// - `ptr` must have been returned by one of the `elizaos_*` functions
+    ///   that return `*mut c_char` (e.g., `elizaos_get_manifest`).
+    /// - `ptr` must not have been previously freed.
+    /// - The string must not be accessed after this call.
     #[no_mangle]
     pub unsafe extern "C" fn elizaos_free_string(ptr: *mut c_char) {
         if !ptr.is_null() {
@@ -516,11 +457,6 @@ pub mod ffi {
     }
 }
 
-// ============================================================================
-// IPC Protocol Types (feature = "ipc")
-// ============================================================================
-
-/// JSON-RPC request for IPC
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IpcRequest {
@@ -530,7 +466,6 @@ pub struct IpcRequest {
     pub params: serde_json::Value,
 }
 
-/// JSON-RPC response for IPC
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IpcResponse {
@@ -551,7 +486,6 @@ impl IpcResponse {
     }
 }
 
-/// Handle an IPC request and return a response
 pub fn handle_ipc_request(request: &IpcRequest) -> IpcResponse {
     match request.method.as_str() {
         "getManifest" => {
@@ -605,7 +539,6 @@ pub fn handle_ipc_request(request: &IpcRequest) -> IpcResponse {
                 None => IpcResponse::success(request.id, serde_json::Value::Null),
             }
         }
-        // Direct utility methods
         "generateResponse" => {
             let input = request.params.get("input").and_then(|v| v.as_str()).unwrap_or("");
             let response = generate_response(input);

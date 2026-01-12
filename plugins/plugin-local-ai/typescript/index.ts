@@ -33,12 +33,6 @@ import { TranscribeManager } from "./utils/transcribeManager";
 import { TTSManager } from "./utils/ttsManager";
 import { VisionManager } from "./utils/visionManager";
 
-// Words to punish in LLM responses
-/**
- * Array containing words that should trigger a punishment when used in a message.
- * This array includes words like "please", "feel", "free", punctuation marks, and various topic-related words.
- * @type {string[]}
- */
 const wordsToPunish = [
   " please",
   " feel",
@@ -90,17 +84,6 @@ const wordsToPunish = [
   " Therefore",
 ];
 
-/**
- * Class representing a LocalAIManager.
- * @property {LocalAIManager | null} instance - The static instance of LocalAIManager.
- * @property {Llama | undefined} llama - The llama object.
- * @property {LlamaModel | undefined} smallModel - The small LlamaModel object.
- * @property {LlamaModel | undefined} mediumModel - The medium LlamaModel object.
- * @property {LlamaContext | undefined} ctx - The LlamaContext object.
- * @property {LlamaContextSequence | undefined} sequence - The LlamaContextSequence object.
- * @property {LlamaChatSession | undefined} chatSession - The LlamaChatSession object.
- * @property {string} modelPath - The path to the model.
- */
 class LocalAIManager {
   private static instance: LocalAIManager | null = null;
   private llama: Llama | undefined;
@@ -122,51 +105,38 @@ class LocalAIManager {
   private embeddingModelConfig: EmbeddingModelSpec;
   private transcribeManager!: TranscribeManager;
   private ttsManager!: TTSManager;
-  private config: Config | null = null; // Store validated config
+  private config: Config | null = null;
 
-  // Initialization state flag
   private smallModelInitialized = false;
   private mediumModelInitialized = false;
   private embeddingInitialized = false;
   private visionInitialized = false;
   private transcriptionInitialized = false;
   private ttsInitialized = false;
-  private environmentInitialized = false; // Add flag for environment initialization
+  private environmentInitialized = false;
 
-  // Initialization promises to prevent duplicate initialization
   private smallModelInitializingPromise: Promise<void> | null = null;
   private mediumModelInitializingPromise: Promise<void> | null = null;
   private embeddingInitializingPromise: Promise<void> | null = null;
   private visionInitializingPromise: Promise<void> | null = null;
   private transcriptionInitializingPromise: Promise<void> | null = null;
   private ttsInitializingPromise: Promise<void> | null = null;
-  private environmentInitializingPromise: Promise<void> | null = null; // Add promise for environment
+  private environmentInitializingPromise: Promise<void> | null = null;
 
   private modelsDir!: string;
 
-  /**
-   * Private constructor function to initialize base managers and paths.
-   * Model paths are set after environment initialization.
-   */
   private constructor() {
     this.config = validateConfig();
 
     this._setupCacheDir();
 
-    // Initialize active model config (default)
     this.activeModelConfig = MODEL_SPECS.small;
-    // Initialize embedding model config (spec details)
     this.embeddingModelConfig = MODEL_SPECS.embedding;
   }
 
-  /**
-   * Post-validation initialization steps that require config to be set.
-   * Called after config validation in initializeEnvironment.
-   */
   private _postValidateInit(): void {
     this._setupModelsDir();
 
-    // Initialize managers that depend on modelsDir
     this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
     this.tokenizerManager = TokenizerManager.getInstance(this.cacheDir, this.modelsDir);
     this.visionManager = VisionManager.getInstance(this.cacheDir);
@@ -174,12 +144,7 @@ class LocalAIManager {
     this.ttsManager = TTSManager.getInstance(this.cacheDir);
   }
 
-  /**
-   * Sets up the models directory, reading from config or environment variables,
-   * and ensures the directory exists.
-   */
   private _setupModelsDir(): void {
-    // Set up models directory consistently, similar to cacheDir
     const modelsDirEnv = this.config?.MODELS_DIR?.trim() || process.env.MODELS_DIR?.trim();
     if (modelsDirEnv) {
       this.modelsDir = path.resolve(modelsDirEnv);
@@ -192,7 +157,6 @@ class LocalAIManager {
       );
     }
 
-    // Ensure models directory exists
     if (!fs.existsSync(this.modelsDir)) {
       fs.mkdirSync(this.modelsDir, { recursive: true });
       logger.debug("Ensured models directory exists (created):", this.modelsDir);
@@ -201,19 +165,13 @@ class LocalAIManager {
     }
   }
 
-  /**
-   * Sets up the cache directory, reading from config or environment variables,
-   * and ensures the directory exists.
-   */
   private _setupCacheDir(): void {
-    // Set up cache directory
     const cacheDirEnv = this.config?.CACHE_DIR?.trim() || process.env.CACHE_DIR?.trim();
     if (cacheDirEnv) {
       this.cacheDir = path.resolve(cacheDirEnv);
       logger.info("Using cache directory from CACHE_DIR environment variable:", this.cacheDir);
     } else {
       const cacheDir = path.join(os.homedir(), ".eliza", "cache");
-      // Ensure cache directory exists
       if (!fs.existsSync(cacheDir)) {
         fs.mkdirSync(cacheDir, { recursive: true });
         logger.debug("Ensuring cache directory exists (created):", cacheDir);
@@ -224,7 +182,6 @@ class LocalAIManager {
         this.cacheDir
       );
     }
-    // Ensure cache directory exists if specified via env var but not yet created
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
       logger.debug("Ensured cache directory exists (created):", this.cacheDir);
@@ -233,10 +190,6 @@ class LocalAIManager {
     }
   }
 
-  /**
-   * Retrieves the singleton instance of LocalAIManager. If an instance does not already exist, a new one is created and returned.
-   * @returns {LocalAIManager} The singleton instance of LocalAIManager
-   */
   public static getInstance(): LocalAIManager {
     if (!LocalAIManager.instance) {
       LocalAIManager.instance = new LocalAIManager();
@@ -244,14 +197,7 @@ class LocalAIManager {
     return LocalAIManager.instance;
   }
 
-  /**
-   * Initializes the environment by validating the configuration and setting model paths.
-   * Now public to be callable from plugin init and model handlers.
-   *
-   * @returns {Promise<void>} A Promise that resolves once the environment has been successfully initialized.
-   */
   public async initializeEnvironment(): Promise<void> {
-    // Prevent duplicate initialization
     if (this.environmentInitialized) return;
     if (this.environmentInitializingPromise) {
       await this.environmentInitializingPromise;
@@ -261,16 +207,13 @@ class LocalAIManager {
     this.environmentInitializingPromise = (async () => {
       logger.info("Initializing environment configuration...");
 
-      // Re-validate config to ensure it's up to date
       this.config = await validateConfig();
 
-      // Initialize components that depend on validated config
       this._postValidateInit();
 
-      // Set model paths based on validated config
       this.modelPath = path.join(this.modelsDir, this.config.LOCAL_SMALL_MODEL);
       this.mediumModelPath = path.join(this.modelsDir, this.config.LOCAL_LARGE_MODEL);
-      this.embeddingModelPath = path.join(this.modelsDir, this.config.LOCAL_EMBEDDING_MODEL); // Set embedding path
+      this.embeddingModelPath = path.join(this.modelsDir, this.config.LOCAL_EMBEDDING_MODEL);
 
       logger.info("Using small model path:", basename(this.modelPath));
       logger.info("Using medium model path:", basename(this.mediumModelPath));
@@ -285,14 +228,6 @@ class LocalAIManager {
     await this.environmentInitializingPromise;
   }
 
-  /**
-   * Downloads the model based on the modelPath provided.
-   * Determines the model spec and path based on the model type.
-   *
-   * @param {ModelTypeName} modelType - The type of model to download
-   * @param {ModelSpec} [customModelSpec] - Optional custom model spec to use instead of the default
-   * @returns A Promise that resolves to a boolean indicating whether the model download was successful.
-   */
   private async downloadModel(
     modelType: ModelTypeName,
     customModelSpec?: ModelSpec
@@ -300,12 +235,10 @@ class LocalAIManager {
     let modelSpec: ModelSpec;
     let modelPathToDownload: string;
 
-    // Ensure environment is initialized to have correct paths
     await this.initializeEnvironment();
 
     if (customModelSpec) {
       modelSpec = customModelSpec;
-      // Use appropriate path based on model type, now read from instance properties
       modelPathToDownload =
         modelType === ModelType.TEXT_EMBEDDING
           ? this.embeddingModelPath
@@ -324,13 +257,6 @@ class LocalAIManager {
     // Pass the determined path to the download manager
     return await this.downloadManager.downloadModel(modelSpec, modelPathToDownload);
   }
-
-  /**
-   * Asynchronously checks the platform capabilities.
-   *
-   * @returns {Promise<void>} A promise that resolves once the platform capabilities have been checked.
-   */
-  public async checkPlatformCapabilities(): Promise<void> {
     const platformManager = getPlatformManager();
     await platformManager.initialize();
     const capabilities = platformManager.getCapabilities();
@@ -343,14 +269,8 @@ class LocalAIManager {
     });
   }
 
-  /**
-   * Initializes the LocalAI Manager for a given model type.
-   *
-   * @param {ModelTypeName} modelType - The type of model to initialize (default: ModelType.TEXT_SMALL)
-   * @returns {Promise<void>} A promise that resolves when initialization is complete or rejects if an error occurs
-   */
   async initialize(modelType: ModelTypeName = ModelType.TEXT_SMALL): Promise<void> {
-    await this.initializeEnvironment(); // Ensure environment is initialized first
+    await this.initializeEnvironment();
     if (modelType === ModelType.TEXT_LARGE) {
       await this.lazyInitMediumModel();
     } else {
@@ -358,43 +278,32 @@ class LocalAIManager {
     }
   }
 
-  /**
-   * Asynchronously initializes the embedding model.
-   *
-   * @returns {Promise<void>} A promise that resolves once the initialization is complete.
-   */
   public async initializeEmbedding(): Promise<void> {
     try {
-      await this.initializeEnvironment(); // Ensure environment/paths are ready
+      await this.initializeEnvironment();
       logger.info("Initializing embedding model...");
       logger.info("Models directory:", this.modelsDir);
 
-      // Ensure models directory exists
       if (!fs.existsSync(this.modelsDir)) {
         logger.warn("Models directory does not exist, creating it:", this.modelsDir);
         fs.mkdirSync(this.modelsDir, { recursive: true });
       }
 
-      // Download the embedding model using the common downloadModel function
-      // This will now use the correct embeddingModelPath
       await this.downloadModel(ModelType.TEXT_EMBEDDING);
 
-      // Initialize the llama instance if not already done
       if (!this.llama) {
         this.llama = await getLlama();
       }
 
-      // Load the embedding model
       if (!this.embeddingModel) {
-        logger.info("Loading embedding model:", this.embeddingModelPath); // Use the correct path
+        logger.info("Loading embedding model:", this.embeddingModelPath);
 
         this.embeddingModel = await this.llama.loadModel({
-          modelPath: this.embeddingModelPath, // Use the correct path
-          gpuLayers: 0, // Embedding models are typically small enough to run on CPU
+          modelPath: this.embeddingModelPath,
+          gpuLayers: 0,
           vocabOnly: false,
         });
 
-        // Create context for embeddings
         this.embeddingContext = await this.embeddingModel.createEmbeddingContext({
           contextSize: this.embeddingModelConfig.contextSize,
           batchSize: 512,
@@ -408,11 +317,7 @@ class LocalAIManager {
     }
   }
 
-  /**
-   * Generate embeddings using the proper LlamaContext.getEmbedding method.
-   */
   async generateEmbedding(text: string): Promise<number[]> {
-    // Lazy initialize embedding model
     await this.lazyInitEmbedding();
 
     if (!this.embeddingModel || !this.embeddingContext) {
@@ -421,13 +326,10 @@ class LocalAIManager {
 
     logger.info("Generating embedding for text", { textLength: text.length });
 
-    // Use the native getEmbedding method
     const embeddingResult = await this.embeddingContext.getEmbeddingFor(text);
 
-    // Convert readonly array to mutable array
     const mutableEmbedding = [...embeddingResult.vector];
 
-    // Normalize the embedding if needed (may already be normalized)
     const normalizedEmbedding = this.normalizeEmbedding(mutableEmbedding);
 
     logger.info("Embedding generation complete", {
@@ -436,54 +338,37 @@ class LocalAIManager {
     return normalizedEmbedding;
   }
 
-  /**
-   * Normalizes an embedding vector using L2 normalization
-   *
-   * @param {number[]} embedding - The embedding vector to normalize
-   * @returns {number[]} - The normalized embedding vector
-   */
   private normalizeEmbedding(embedding: number[]): number[] {
-    // Calculate the L2 norm (Euclidean norm)
     const squareSum = embedding.reduce((sum, val) => sum + val * val, 0);
     const norm = Math.sqrt(squareSum);
 
-    // Avoid division by zero
     if (norm === 0) {
       return embedding;
     }
 
-    // Normalize each component
     return embedding.map((val) => val / norm);
   }
 
-  /**
-   * Lazy initialize the embedding model
-   */
   private async lazyInitEmbedding(): Promise<void> {
     if (this.embeddingInitialized) return;
 
     if (!this.embeddingInitializingPromise) {
       this.embeddingInitializingPromise = (async () => {
         try {
-          // Ensure environment is initialized first to get correct paths
           await this.initializeEnvironment();
 
-          // Download model if needed (uses the correct path now)
           await this.downloadModel(ModelType.TEXT_EMBEDDING);
 
-          // Initialize the llama instance if not already done
           if (!this.llama) {
             this.llama = await getLlama();
           }
 
-          // Load the embedding model (uses the correct path)
           this.embeddingModel = await this.llama.loadModel({
             modelPath: this.embeddingModelPath,
-            gpuLayers: 0, // Embedding models are typically small enough to run on CPU
+            gpuLayers: 0,
             vocabOnly: false,
           });
 
-          // Create context for embeddings
           this.embeddingContext = await this.embeddingModel.createEmbeddingContext({
             contextSize: this.embeddingModelConfig.contextSize,
             batchSize: 512,
@@ -502,19 +387,13 @@ class LocalAIManager {
     await this.embeddingInitializingPromise;
   }
 
-  /**
-   * Asynchronously generates text based on the provided parameters.
-   * Now uses lazy initialization for models
-   */
   async generateText(params: GenerateTextParams): Promise<string> {
-    // Call LlamaContext.dispose() to free GPU memory.
     if (this.ctx) {
       this.ctx.dispose();
       this.ctx = undefined;
     }
-    await this.initializeEnvironment(); // Ensure environment is initialized
+    await this.initializeEnvironment();
     logger.info("Generating text with model:", params.modelType);
-    // Lazy initialize the appropriate model
     if (params.modelType === ModelType.TEXT_LARGE) {
       await this.lazyInitMediumModel();
 
@@ -525,7 +404,6 @@ class LocalAIManager {
       this.activeModelConfig = MODEL_SPECS.medium;
       const mediumModel = this.mediumModel;
 
-      // Create fresh context
       this.ctx = await mediumModel.createContext({
         contextSize: MODEL_SPECS.medium.contextSize,
       });
@@ -539,7 +417,6 @@ class LocalAIManager {
       this.activeModelConfig = MODEL_SPECS.small;
       const smallModel = this.smallModel;
 
-      // Create fresh context
       this.ctx = await smallModel.createContext({
         contextSize: MODEL_SPECS.small.contextSize,
       });
@@ -549,11 +426,8 @@ class LocalAIManager {
       throw new Error("Failed to create prompt");
     }
 
-    // QUICK TEST FIX: Always get fresh sequence
     this.sequence = this.ctx.getSequence();
 
-    // QUICK TEST FIX: Create new session each time without maintaining state
-    // Only use valid options for LlamaChatSession
     this.chatSession = new LlamaChatSession({
       contextSequence: this.sequence,
     });
@@ -562,7 +436,6 @@ class LocalAIManager {
       throw new Error("Failed to create chat session");
     }
     logger.info("Created new chat session for model:", params.modelType);
-    // Log incoming prompt for debugging
     logger.info("Incoming prompt structure:", {
       contextLength: params.prompt.length,
       hasAction: params.prompt.includes("action"),
@@ -573,10 +446,9 @@ class LocalAIManager {
     const tokens = await this.tokenizerManager.encode(params.prompt, this.activeModelConfig);
     logger.info("Input tokens:", { count: tokens.length });
 
-    // QUICK TEST FIX: Add system message to reset prompt
     const systemMessage = "You are a helpful AI assistant. Respond to the current request only.";
     await this.chatSession.prompt(systemMessage, {
-      maxTokens: 1, // Minimal tokens for system message
+      maxTokens: 1,
       temperature: 0.0,
     });
 
@@ -593,57 +465,41 @@ class LocalAIManager {
       },
     });
 
-    // Log raw response for debugging
     logger.info("Raw response structure:", {
       responseLength: response.length,
       hasAction: response.includes("action"),
       hasThinkTag: response.includes("<think>"),
     });
 
-    // Clean think tags if present
     if (response.includes("<think>")) {
       logger.info("Cleaning think tags from response");
       response = response.replace(/<think>[\s\S]*?<\/think>\n?/g, "");
       logger.info("Think tags removed from response");
     }
 
-    // Return the raw response and let the framework handle JSON parsing and action validation
     return response;
   }
 
-  /**
-   * Describe image with lazy vision model initialization
-   */
   public async describeImage(
     imageData: Buffer,
     mimeType: string
   ): Promise<{ title: string; description: string }> {
-    // Lazy initialize vision model
     await this.lazyInitVision();
 
-    // Convert buffer to data URL
     const base64 = imageData.toString("base64");
     const dataUrl = `data:${mimeType};base64,${base64}`;
     return await this.visionManager.processImage(dataUrl);
   }
 
-  /**
-   * Transcribe audio with lazy transcription model initialization
-   */
   public async transcribeAudio(audioBuffer: Buffer): Promise<string> {
-    // Lazy initialize transcription model
     await this.lazyInitTranscription();
 
     const result = await this.transcribeManager.transcribe(audioBuffer);
     return result.text;
   }
 
-  /**
-   * Generate speech with lazy TTS model initialization
-   */
   public async generateSpeech(text: string): Promise<Readable> {
     try {
-      // Lazy initialize TTS model
       await this.lazyInitTTS();
 
       return await this.ttsManager.generateSpeech(text);
@@ -656,45 +512,29 @@ class LocalAIManager {
     }
   }
 
-  /**
-   * Returns the TokenizerManager associated with this object.
-   *
-   * @returns {TokenizerManager} The TokenizerManager object.
-   */
   public getTokenizerManager(): TokenizerManager {
     return this.tokenizerManager;
   }
 
-  /**
-   * Returns the active model configuration.
-   * @returns {ModelSpec} The active model configuration.
-   */
   public getActiveModelConfig(): ModelSpec {
     return this.activeModelConfig;
   }
 
-  /**
-   * Lazy initialize the small text model
-   */
   private async lazyInitSmallModel(): Promise<void> {
     if (this.smallModelInitialized) return;
 
     if (!this.smallModelInitializingPromise) {
       this.smallModelInitializingPromise = (async () => {
-        await this.initializeEnvironment(); // Ensure environment is initialized first
+        await this.initializeEnvironment();
         await this.checkPlatformCapabilities();
 
-        // Download model if needed
-        // Pass the correct model path determined during environment init
         await this.downloadModel(ModelType.TEXT_SMALL);
 
-        // Initialize Llama and small model
-        // Use getLlama helper instead of directly creating
         this.llama = await getLlama();
 
         const smallModel = await this.llama.loadModel({
           gpuLayers: 43,
-          modelPath: this.modelPath, // Use the potentially overridden path
+          modelPath: this.modelPath,
           vocabOnly: false,
         });
 
@@ -705,7 +545,7 @@ class LocalAIManager {
         });
 
         this.ctx = ctx;
-        this.sequence = undefined; // Reset sequence to create a new one
+        this.sequence = undefined;
         this.smallModelInitialized = true;
         logger.info("Small model initialized successfully");
       })();
@@ -714,31 +554,21 @@ class LocalAIManager {
     await this.smallModelInitializingPromise;
   }
 
-  /**
-   * Lazy initialize the medium text model
-   */
   private async lazyInitMediumModel(): Promise<void> {
     if (this.mediumModelInitialized) return;
 
     if (!this.mediumModelInitializingPromise) {
       this.mediumModelInitializingPromise = (async () => {
-        await this.initializeEnvironment(); // Ensure environment is initialized first
-        // Make sure llama is initialized first (implicitly done by small model init if needed)
+        await this.initializeEnvironment();
         if (!this.llama) {
-          // Attempt to initialize small model first to get llama instance
-          // This might download the small model even if only medium is requested,
-          // but ensures llama is ready.
           await this.lazyInitSmallModel();
         }
 
-        // Download model if needed
-        // Pass the correct model path determined during environment init
         await this.downloadModel(ModelType.TEXT_LARGE);
 
-        // Initialize medium model
         const mediumModel = await this.llama?.loadModel({
           gpuLayers: 43,
-          modelPath: this.mediumModelPath, // Use the potentially overridden path
+          modelPath: this.mediumModelPath,
           vocabOnly: false,
         });
 
@@ -751,18 +581,12 @@ class LocalAIManager {
     await this.mediumModelInitializingPromise;
   }
 
-  /**
-   * Lazy initialize the vision model
-   */
   private async lazyInitVision(): Promise<void> {
     if (this.visionInitialized) return;
 
     if (!this.visionInitializingPromise) {
       this.visionInitializingPromise = (async () => {
         try {
-          // Initialize vision model directly
-          // Use existing initialization code from the file
-          // ...
           this.visionInitialized = true;
           logger.info("Vision model initialized successfully");
         } catch (error) {
@@ -776,40 +600,25 @@ class LocalAIManager {
     await this.visionInitializingPromise;
   }
 
-  /**
-   * Lazy initialize the transcription model
-   */
   private async lazyInitTranscription(): Promise<void> {
     if (this.transcriptionInitialized) return;
 
     if (!this.transcriptionInitializingPromise) {
       this.transcriptionInitializingPromise = (async () => {
         try {
-          // Ensure environment is initialized first
           await this.initializeEnvironment();
 
-          // Initialize TranscribeManager if not already done
           if (!this.transcribeManager) {
             this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
           }
 
           // Ensure FFmpeg is available
-          const ffmpegReady = await this.transcribeManager.ensureFFmpeg();
+          const ffmpegReady =           await this.transcribeManager.ensureFFmpeg();
           if (!ffmpegReady) {
-            // FFmpeg is not available, log instructions and throw
-            // The TranscribeManager's ensureFFmpeg or initializeFFmpeg would have already logged instructions.
-            logger.error(
-              "FFmpeg is not available or not configured correctly. Cannot proceed with transcription."
-            );
-            // No need to call logFFmpegInstallInstructions here as ensureFFmpeg/initializeFFmpeg already does.
-            throw new Error(
-              "FFmpeg is required for transcription but is not available. Please see server logs for installation instructions."
-            );
+            logger.error("FFmpeg is not available or not configured correctly. Cannot proceed with transcription.");
+            throw new Error("FFmpeg is required for transcription but is not available. Please see server logs for installation instructions.");
           }
 
-          // Proceed with transcription model initialization if FFmpeg is ready
-          // (Assuming TranscribeManager handles its own specific model init if any,
-          // or that nodewhisper handles it internally)
           this.transcriptionInitialized = true;
           logger.info("Transcription prerequisites (FFmpeg) checked and ready.");
           logger.info("Transcription model initialized successfully");
@@ -824,17 +633,11 @@ class LocalAIManager {
     await this.transcriptionInitializingPromise;
   }
 
-  /**
-   * Lazy initialize the TTS model
-   */
   private async lazyInitTTS(): Promise<void> {
     if (this.ttsInitialized) return;
 
     if (!this.ttsInitializingPromise) {
       this.ttsInitializingPromise = (async () => {
-        // Initialize TTS model directly
-        // Use existing initialization code from the file
-        // Get the TTSManager instance (ensure environment is initialized for cacheDir)
         await this.initializeEnvironment();
         this.ttsManager = TTSManager.getInstance(this.cacheDir);
         this.ttsInitialized = true;
@@ -846,13 +649,8 @@ class LocalAIManager {
   }
 }
 
-// Create manager instance
 const localAIManager = LocalAIManager.getInstance();
 
-/**
- * Plugin that provides functionality for local AI using LLaMA models.
- * @type {Plugin}
- */
 export const localAiPlugin: Plugin = {
   name: "local-ai",
   description: "Local AI plugin using LLaMA models",
@@ -860,11 +658,9 @@ export const localAiPlugin: Plugin = {
   async init(_config: Record<string, unknown> | undefined, _runtime: IAgentRuntime) {
     logger.info("🚀 Initializing Local AI plugin...");
 
-    // Initialize environment and validate configuration
     await localAIManager.initializeEnvironment();
     const config = validateConfig();
 
-    // Check for critical configuration
     if (!config.LOCAL_SMALL_MODEL || !config.LOCAL_LARGE_MODEL || !config.LOCAL_EMBEDDING_MODEL) {
       logger.warn("⚠️ Local AI plugin: Model configuration is incomplete");
       logger.warn("Please ensure the following environment variables are set:");
@@ -874,7 +670,6 @@ export const localAiPlugin: Plugin = {
       logger.warn("Example: LOCAL_SMALL_MODEL=llama-3.2-1b-instruct-q8_0.gguf");
     }
 
-    // Check if models directory is accessible
     const modelsDir = config.MODELS_DIR || path.join(os.homedir(), ".eliza", "models");
     if (!fs.existsSync(modelsDir)) {
       logger.warn(`⚠️ Models directory does not exist: ${modelsDir}`);
@@ -882,13 +677,10 @@ export const localAiPlugin: Plugin = {
       logger.warn("Visit https://huggingface.co/models to download compatible GGUF models");
     }
 
-    // Perform a basic initialization test
     logger.info("🔍 Testing Local AI initialization...");
 
-    // Check platform capabilities
     await localAIManager.checkPlatformCapabilities();
 
-    // Test if we can get the llama instance
     const llamaInstance = await getLlama();
     if (llamaInstance) {
       logger.success("✅ Local AI: llama.cpp library loaded successfully");
@@ -896,7 +688,6 @@ export const localAiPlugin: Plugin = {
       throw new Error("Failed to load llama.cpp library");
     }
 
-    // Check if at least one model file exists
     const smallModelPath = path.join(modelsDir, config.LOCAL_SMALL_MODEL);
     const largeModelPath = path.join(modelsDir, config.LOCAL_LARGE_MODEL);
     const embeddingModelPath = path.join(modelsDir, config.LOCAL_EMBEDDING_MODEL);
@@ -927,7 +718,6 @@ export const localAiPlugin: Plugin = {
       runtime: IAgentRuntime,
       { prompt, stopSequences = [] }: GenerateTextParams
     ) => {
-      // Ensure environment is initialized before generating text (now public)
       await localAIManager.initializeEnvironment();
       return await localAIManager.generateText({
         prompt,
@@ -941,7 +731,6 @@ export const localAiPlugin: Plugin = {
       runtime: IAgentRuntime,
       { prompt, stopSequences = [] }: GenerateTextParams
     ) => {
-      // Ensure environment is initialized before generating text (now public)
       await localAIManager.initializeEnvironment();
       return await localAIManager.generateText({
         prompt,
@@ -953,18 +742,15 @@ export const localAiPlugin: Plugin = {
 
     [ModelType.TEXT_EMBEDDING]: async (_runtime: IAgentRuntime, params: TextEmbeddingParams) => {
       const text = params?.text;
-      // Handle null/undefined/empty text
       if (!text) {
         logger.debug("Null or empty text input for embedding, returning zero vector");
         return new Array(384).fill(0);
       }
 
-      // Pass the raw text directly to the framework without any manipulation
       return await localAIManager.generateEmbedding(text);
     },
 
     [ModelType.OBJECT_SMALL]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
-      // Ensure environment is initialized (now public)
       await localAIManager.initializeEnvironment();
       logger.info("OBJECT_SMALL handler - Processing request:", {
         prompt: params.prompt,
@@ -995,7 +781,6 @@ Example response format:
 <text>Your response text here</text>
 </response>`;
 
-      // Directly generate text using the local small model
       const textResponse = await localAIManager.generateText({
         prompt: xmlPrompt,
         stopSequences: params.stopSequences,
@@ -1003,11 +788,9 @@ Example response format:
         modelType: ModelType.TEXT_SMALL,
       });
 
-      // Parse XML from the text response
       try {
         logger.debug("Raw model response:", textResponse.substring(0, 500));
 
-        // Use the robust XML parser from core
         const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
 
         if (parsedXml) {
@@ -1025,13 +808,10 @@ Example response format:
           return parsedXml;
         }
 
-        // Fallback: Try to extract structured data manually
         logger.warn("parseKeyValueXml returned null, attempting manual extraction");
         const result: Record<string, unknown> = {};
 
-        // Extract content from common XML tags
         const extractTag = (text: string, tagName: string): string | null => {
-          // Handle CDATA sections
           const cdataPattern = new RegExp(
             `<${tagName}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
             "i"
@@ -1100,7 +880,6 @@ Example response format:
     },
 
     [ModelType.OBJECT_LARGE]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
-      // Ensure environment is initialized (now public)
       await localAIManager.initializeEnvironment();
       logger.info("OBJECT_LARGE handler - Processing request:", {
         prompt: params.prompt,
@@ -1131,7 +910,6 @@ Example response format:
 <text>Your response text here</text>
 </response>`;
 
-      // Directly generate text using the local large model
       const textResponse = await localAIManager.generateText({
         prompt: xmlPrompt,
         stopSequences: params.stopSequences,
@@ -1139,11 +917,9 @@ Example response format:
         modelType: ModelType.TEXT_LARGE,
       });
 
-      // Parse XML from the text response
       try {
         logger.debug("Raw model response:", textResponse.substring(0, 500));
 
-        // Use the robust XML parser from core
         const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
 
         if (parsedXml) {
@@ -1161,13 +937,10 @@ Example response format:
           return parsedXml;
         }
 
-        // Fallback: Try to extract structured data manually
         logger.warn("parseKeyValueXml returned null, attempting manual extraction");
         const result: Record<string, unknown> = {};
 
-        // Extract content from common XML tags with CDATA support
         const extractTag = (text: string, tagName: string): string | null => {
-          // Handle CDATA sections
           const cdataPattern = new RegExp(
             `<${tagName}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
             "i"
@@ -1256,7 +1029,6 @@ Example response format:
     [ModelType.IMAGE_DESCRIPTION]: async (_runtime: IAgentRuntime, imageUrl: string) => {
       logger.info("Processing image from URL:", imageUrl);
 
-      // Fetch the image from URL
       const response = await fetch(imageUrl);
       if (!response.ok) {
         throw new Error(`Failed to fetch image: ${response.statusText}`);
@@ -1264,7 +1036,6 @@ Example response format:
 
       const buffer = Buffer.from(await response.arrayBuffer());
       const mimeType = response.headers.get("content-type") || "image/jpeg";
-
       return await localAIManager.describeImage(buffer, mimeType);
     },
 
@@ -1290,7 +1061,6 @@ Example response format:
             try {
               logger.info("Starting initialization test");
 
-              // Test TEXT_SMALL model initialization
               const result = await runtime.useModel(ModelType.TEXT_SMALL, {
                 prompt:
                   "Debug Mode: Test initialization. Respond with 'Initialization successful' if you can read this.",
@@ -1355,7 +1125,6 @@ Example response format:
             try {
               logger.info("Starting TEXT_EMBEDDING test");
 
-              // Test with normal text
               const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
                 text: "This is a test of the text embedding model.",
               });
@@ -1396,7 +1165,6 @@ Example response format:
             try {
               logger.info("Starting TEXT_TOKENIZER_ENCODE test");
               const text = "Hello tokenizer test!";
-
               const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, { text });
               logger.info("Encoded tokens:", { count: tokens.length });
 
@@ -1428,13 +1196,11 @@ Example response format:
             try {
               logger.info("Starting TEXT_TOKENIZER_DECODE test");
 
-              // First encode some text
               const originalText = "Hello tokenizer test!";
               const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
                 text: originalText,
               });
 
-              // Then decode it back
               const decodedText = await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
                 tokens,
               });
@@ -1463,7 +1229,6 @@ Example response format:
             try {
               logger.info("Starting IMAGE_DESCRIPTION test");
 
-              // Use a more stable test image URL
               const imageUrl =
                 "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/320px-Cat03.jpg";
               const result = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, imageUrl);
@@ -1498,8 +1263,6 @@ Example response format:
             try {
               logger.info("Starting TRANSCRIPTION test");
 
-              // Create a proper WAV file header and minimal audio data
-              // WAV file format: RIFF header + fmt chunk + data chunk
               const channels = 1;
               const sampleRate = 16000;
               const bitsPerSample = 16;
@@ -1507,30 +1270,25 @@ Example response format:
               const numSamples = Math.floor(sampleRate * duration);
               const dataSize = numSamples * channels * (bitsPerSample / 8);
 
-              // Create the WAV header
               const buffer = Buffer.alloc(44 + dataSize);
 
-              // RIFF header
               buffer.write("RIFF", 0);
-              buffer.writeUInt32LE(36 + dataSize, 4); // File size - 8
+              buffer.writeUInt32LE(36 + dataSize, 4);
               buffer.write("WAVE", 8);
 
-              // fmt chunk
               buffer.write("fmt ", 12);
-              buffer.writeUInt32LE(16, 16); // fmt chunk size
-              buffer.writeUInt16LE(1, 20); // Audio format (1 = PCM)
-              buffer.writeUInt16LE(channels, 22); // Number of channels
-              buffer.writeUInt32LE(sampleRate, 24); // Sample rate
-              buffer.writeUInt32LE(sampleRate * channels * (bitsPerSample / 8), 28); // Byte rate
-              buffer.writeUInt16LE(channels * (bitsPerSample / 8), 32); // Block align
-              buffer.writeUInt16LE(bitsPerSample, 34); // Bits per sample
+              buffer.writeUInt32LE(16, 16);
+              buffer.writeUInt16LE(1, 20);
+              buffer.writeUInt16LE(channels, 22);
+              buffer.writeUInt32LE(sampleRate, 24);
+              buffer.writeUInt32LE(sampleRate * channels * (bitsPerSample / 8), 28);
+              buffer.writeUInt16LE(channels * (bitsPerSample / 8), 32);
+              buffer.writeUInt16LE(bitsPerSample, 34);
 
-              // data chunk
               buffer.write("data", 36);
-              buffer.writeUInt32LE(dataSize, 40); // Data size
+              buffer.writeUInt32LE(dataSize, 40);
 
-              // Generate a simple sine wave tone (440Hz) instead of silence
-              const frequency = 440; // A4 note
+              const frequency = 440;
               for (let i = 0; i < numSamples; i++) {
                 const sample = Math.sin((2 * Math.PI * frequency * i) / sampleRate) * 0.1 * 32767;
                 buffer.writeInt16LE(Math.floor(sample), 44 + i * 2);
@@ -1543,7 +1301,6 @@ Example response format:
                 throw new Error("Transcription result is not a string");
               }
 
-              // Accept empty string as valid result (for non-speech audio)
               logger.info("Transcription completed (may be empty for non-speech audio)");
 
               logger.success("TRANSCRIPTION test completed successfully");
@@ -1572,7 +1329,6 @@ Example response format:
                 throw new Error("TTS output is not a readable stream");
               }
 
-              // Test stream readability
               let dataReceived = false;
               audioStream.on("data", () => {
                 dataReceived = true;

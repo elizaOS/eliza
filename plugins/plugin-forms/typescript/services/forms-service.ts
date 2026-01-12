@@ -23,12 +23,10 @@ import { buildExtractionPrompt } from "../utils/prompt-builders.js";
 
 const FORMS_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
 
-// Type guard interface for runtime with database access
 interface RuntimeWithDatabase {
   getDatabase?: () => Promise<unknown> | unknown;
 }
 
-// Helper function to safely get database from runtime
 function getDatabaseFromRuntime(runtime: IAgentRuntime): Promise<unknown> | unknown | null {
   const runtimeWithDb = runtime as RuntimeWithDatabase;
   if (!runtimeWithDb.getDatabase || typeof runtimeWithDb.getDatabase !== "function") {
@@ -37,7 +35,6 @@ function getDatabaseFromRuntime(runtime: IAgentRuntime): Promise<unknown> | unkn
   return runtimeWithDb.getDatabase();
 }
 
-// Zod schemas for validation
 const FormStatusSchema = z.enum(["active", "completed", "cancelled"]);
 
 const FormFieldTypeSchema = z.enum([
@@ -60,7 +57,6 @@ const FormStepSchema = z.object({
   completed: z.boolean().optional().default(false),
 });
 
-/** Database step type without fields (fields are stored separately) */
 type DatabaseFormStep = z.infer<typeof FormStepSchema>;
 
 const DatabaseFormRowSchema = z.object({
@@ -113,7 +109,6 @@ const DatabaseFormRowSchema = z.object({
     }),
 });
 
-// Raw schema for database rows (before decryption)
 const DatabaseFieldRowSchema = z.object({
   field_id: z.string(),
   step_id: z.string(),
@@ -138,7 +133,6 @@ const DatabaseFieldRowSchema = z.object({
     }),
 });
 
-// Schema for validating decrypted field values
 const createFieldValueSchema = (type: FormFieldType) => {
   switch (type) {
     case "email":
@@ -160,10 +154,6 @@ const createFieldValueSchema = (type: FormFieldType) => {
   }
 };
 
-/**
- * FormsService manages form lifecycle and state.
- * It provides methods to create, update, list, and cancel forms.
- */
 export class FormsService extends Service {
   static serviceName = "forms";
   static serviceType = "forms";
@@ -190,10 +180,8 @@ export class FormsService extends Service {
   async initialize(_runtime: IAgentRuntime): Promise<void> {
     this.registerDefaultTemplates();
 
-    // Check if database tables exist
     await this.checkDatabaseTables();
 
-    // Restore persisted forms only if tables exist
     if (this.tablesExist) {
       await this.restorePersistedForms();
     } else {
@@ -202,19 +190,16 @@ export class FormsService extends Service {
       );
     }
 
-    // Set up auto-persistence with batch processing
     this.persistenceTimer = setInterval(() => {
       this.persistFormsBatch().catch((err) => logger.error("Failed to persist forms:", err));
-    }, 30000); // Every 30 seconds
+    }, 30000);
 
-    // Set up cleanup of completed/expired forms
     this.cleanupTimer = setInterval(() => {
       this.cleanupOldForms().catch((err) => logger.error("Failed to cleanup forms:", err));
     }, FORMS_CLEANUP_INTERVAL);
   }
 
   private registerDefaultTemplates() {
-    // Basic contact form template
     this.templates.set("contact", {
       name: "contact",
       description: "Basic contact information form",
@@ -250,20 +235,12 @@ export class FormsService extends Service {
     });
   }
 
-  /**
-   * Force immediate persistence of all forms
-   * Uses batch transaction for efficiency and safety
-   */
   async forcePersist(): Promise<void> {
     if (this.tablesExist) {
       await this.persistFormsBatch();
     }
   }
 
-  /**
-   * Wait for database tables to be available
-   * This can be called by plugins that depend on forms persistence
-   */
   async waitForTables(maxAttempts = 10, delayMs = 1000): Promise<boolean> {
     for (let i = 0; i < maxAttempts; i++) {
       if (!this.tablesChecked) {
@@ -277,7 +254,7 @@ export class FormsService extends Service {
       if (i < maxAttempts - 1) {
         logger.debug(`Waiting for forms tables... attempt ${i + 1}/${maxAttempts}`);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
-        this.tablesChecked = false; // Force recheck
+        this.tablesChecked = false;
       }
     }
 
@@ -285,16 +262,10 @@ export class FormsService extends Service {
     return false;
   }
 
-  /**
-   * Check if persistence is available
-   */
   isPersistenceAvailable(): boolean {
     return this.tablesExist;
   }
 
-  /**
-   * Create a new form from a template or custom definition
-   */
   async createForm(
     templateOrForm: string | Partial<Form>,
     metadata?: Record<string, unknown>
@@ -302,7 +273,6 @@ export class FormsService extends Service {
     let form: Form;
 
     if (typeof templateOrForm === "string") {
-      // Create from template
       const template = this.templates.get(templateOrForm);
       if (!template) {
         throw new Error(`Template "${templateOrForm}" not found`);
@@ -316,7 +286,7 @@ export class FormsService extends Service {
         steps: template.steps.map((step) => ({
           ...step,
           completed: false,
-          fields: step.fields.map((field) => ({ ...field })), // Deep copy fields
+          fields: step.fields.map((field) => ({ ...field })),
         })),
         currentStepIndex: 0,
         status: "active",
@@ -325,7 +295,6 @@ export class FormsService extends Service {
         metadata: metadata || {},
       };
     } else {
-      // Create from custom form
       form = {
         id: asUUID(uuidv4()),
         agentId: this.runtime.agentId,
@@ -347,9 +316,6 @@ export class FormsService extends Service {
     return form;
   }
 
-  /**
-   * Update form with extracted values from user message
-   */
   async updateForm(formId: UUID, message: Memory): Promise<FormUpdateResult> {
     const form = this.forms.get(formId);
     if (!form) {
@@ -374,19 +340,15 @@ export class FormsService extends Service {
       };
     }
 
-    // Extract values from message using LLM
     const extractionResult = await this.extractFormValues(
       message.content.text || "",
       currentStep.fields.filter((f) => {
-        // Check if field already has a valid value
         const hasValue = f.value !== undefined && f.value !== null && f.value !== "";
         if (hasValue) return false;
 
-        // For optional fields, only process if mentioned in message
         if (f.optional) {
           const messageText = message.content.text?.toLowerCase() || "";
           const fieldLabel = f.label.toLowerCase();
-          // More flexible matching for optional fields
           return (
             messageText.includes(fieldLabel) ||
             messageText.includes(fieldLabel.replace(/\s+/g, "")) ||
@@ -394,7 +356,6 @@ export class FormsService extends Service {
           );
         }
 
-        // Required fields should always be processed
         return true;
       })
     );
@@ -402,16 +363,12 @@ export class FormsService extends Service {
     const updatedFields: string[] = [];
     const errors: Array<{ fieldId: string; message: string }> = [];
 
-    // Update field values
     for (const [fieldId, value] of Object.entries(extractionResult.values)) {
       const field = currentStep.fields.find((f) => f.id === fieldId);
       if (field) {
-        // Accept all values including falsy ones (false, 0, empty string)
         if (value !== null && value !== undefined) {
-          // Additional type validation
           const validatedValue = this.validateFieldValue(value, field);
           if (validatedValue.isValid) {
-            // Encrypt secret fields before storing
             if (field.secret && typeof validatedValue.value === "string") {
               const salt = getSalt();
               field.value = encryptStringValue(validatedValue.value, salt);
@@ -436,7 +393,6 @@ export class FormsService extends Service {
       }
     }
 
-    // Check if all required fields in current step are filled
     const requiredFields = currentStep.fields.filter((f) => !f.optional);
     const filledRequiredFields = requiredFields.filter(
       (f) => f.value !== undefined && f.value !== null
@@ -449,28 +405,23 @@ export class FormsService extends Service {
     if (stepCompleted) {
       currentStep.completed = true;
 
-      // Execute step callback if defined
       if (currentStep.onComplete) {
         await currentStep.onComplete(form, currentStep.id);
       }
 
-      // Move to next step or complete form
       if (form.currentStepIndex < form.steps.length - 1) {
         form.currentStepIndex++;
         responseMessage = `Step "${currentStep.name}" completed. Moving to step "${form.steps[form.currentStepIndex].name}".`;
       } else {
-        // All steps completed
         form.status = "completed";
         formCompleted = true;
         responseMessage = "Form completed successfully!";
 
-        // Execute form completion callback if defined
         if (form.onComplete) {
           await form.onComplete(form);
         }
       }
     } else {
-      // Prepare message about missing fields
       const missingRequired = requiredFields.filter((f) => !f.value);
       if (missingRequired.length > 0) {
         responseMessage = `Please provide: ${missingRequired.map((f) => f.label).join(", ")}`;
@@ -490,9 +441,6 @@ export class FormsService extends Service {
     };
   }
 
-  /**
-   * Extract form values from text using LLM with XML-based prompts
-   */
   private async extractFormValues(
     text: string,
     fields: FormField[]
@@ -501,7 +449,6 @@ export class FormsService extends Service {
       return { values: {} };
     }
 
-    // Build prompt using the shared prompt builder
     const prompt = buildExtractionPrompt(
       text,
       fields.map((f) => ({
@@ -518,7 +465,6 @@ export class FormsService extends Service {
         prompt,
       });
 
-      // Parse the XML response using the core utility
       const parsedXml = parseKeyValueXml<Record<string, string>>(response);
 
       if (!parsedXml) {
@@ -526,7 +472,6 @@ export class FormsService extends Service {
         return { values: {} };
       }
 
-      // Transform and validate the extracted values
       const values: Record<string, string | number | boolean> = {};
 
       for (const field of fields) {
@@ -535,7 +480,6 @@ export class FormsService extends Service {
           continue;
         }
 
-        // Transform based on field type
         switch (field.type) {
           case "number": {
             const numVal = Number(rawValue);
@@ -577,13 +521,9 @@ export class FormsService extends Service {
     }
   }
 
-  /**
-   * List all forms
-   */
   async listForms(status?: FormStatus): Promise<Form[]> {
     const forms: Form[] = [];
 
-    // Directly iterate over the Map instead of converting to array first
     for (const form of this.forms.values()) {
       if (form.agentId === this.runtime.agentId) {
         if (!status || form.status === status) {
@@ -595,17 +535,11 @@ export class FormsService extends Service {
     return forms;
   }
 
-  /**
-   * Get a specific form
-   */
   async getForm(formId: UUID): Promise<Form | null> {
     const form = this.forms.get(formId);
     return form && form.agentId === this.runtime.agentId ? form : null;
   }
 
-  /**
-   * Cancel a form
-   */
   async cancelForm(formId: UUID): Promise<boolean> {
     const form = this.forms.get(formId);
     if (!form || form.agentId !== this.runtime.agentId) {
@@ -619,24 +553,15 @@ export class FormsService extends Service {
     return true;
   }
 
-  /**
-   * Register a form template
-   */
   registerTemplate(template: FormTemplate): void {
     this.templates.set(template.name, template);
     logger.debug(`Registered form template: ${template.name}`);
   }
 
-  /**
-   * Get all registered templates
-   */
   getTemplates(): FormTemplate[] {
     return Array.from(this.templates.values());
   }
 
-  /**
-   * Clean up old completed/cancelled forms
-   */
   async cleanup(olderThanMs: number = 24 * 60 * 60 * 1000): Promise<number> {
     const now = Date.now();
     let removed = 0;
@@ -644,14 +569,11 @@ export class FormsService extends Service {
     for (const [id, form] of this.forms.entries()) {
       const age = now - form.updatedAt;
 
-      // Remove completed forms older than 1 hour
       if (form.status === "completed" && age > 60 * 60 * 1000) {
         this.forms.delete(id);
         removed++;
         logger.info(`Cleaned up completed form ${id}`);
-      }
-      // Remove cancelled or other non-active forms older than specified time
-      else if (form.status !== "active" && age > olderThanMs) {
+      } else if (form.status !== "active" && age > olderThanMs) {
         this.forms.delete(id);
         removed++;
         logger.info(`Cleaned up old form ${id}`);
@@ -667,10 +589,8 @@ export class FormsService extends Service {
   }
 
   async stop(): Promise<void> {
-    // Persist forms before stopping using batch method
     await this.persistFormsBatch();
 
-    // Clear timers
     if (this.persistenceTimer) {
       clearInterval(this.persistenceTimer);
       this.persistenceTimer = undefined;
@@ -696,7 +616,6 @@ export class FormsService extends Service {
       return;
     }
 
-    // Check if forms table exists
     try {
       const result = await database.get(`
         SELECT EXISTS (
@@ -708,7 +627,6 @@ export class FormsService extends Service {
       this.tablesExist = result?.exists || false;
 
       if (!this.tablesExist) {
-        // Try with schema prefix
         const schemaResult = await database.get(`
           SELECT EXISTS (
             SELECT FROM information_schema.tables 
@@ -718,7 +636,6 @@ export class FormsService extends Service {
         this.tablesExist = schemaResult?.exists || false;
       }
     } catch (error: unknown) {
-      // If the query fails, assume tables don't exist
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.debug("Could not check for forms tables:", errorMessage);
       this.tablesExist = false;
@@ -729,7 +646,6 @@ export class FormsService extends Service {
   }
 
   private async persistFormsBatch(): Promise<void> {
-    // Skip if tables don't exist
     if (!this.tablesExist) {
       return;
     }
@@ -744,7 +660,6 @@ export class FormsService extends Service {
       return;
     }
 
-    // Collect all forms to persist
     const formsToPersist: Array<{ form: Form; formId: UUID }> = [];
     for (const [formId, form] of this.forms.entries()) {
       if (form.agentId === this.runtime.agentId) {
@@ -756,11 +671,9 @@ export class FormsService extends Service {
       return;
     }
 
-    // Use a single transaction for all forms
     try {
       await database.run("BEGIN");
 
-      // Batch insert/update all forms
       for (const { form } of formsToPersist) {
         const formData = {
           id: form.id,
@@ -809,7 +722,6 @@ export class FormsService extends Service {
           ]
         );
 
-        // Batch insert/update all fields for this form
         for (const step of form.steps) {
           for (const field of step.fields) {
             const fieldData = {
@@ -855,11 +767,9 @@ export class FormsService extends Service {
         }
       }
 
-      // Commit all changes at once
       await database.run("COMMIT");
       logger.debug(`Successfully persisted ${formsToPersist.length} forms in batch`);
     } catch (error: unknown) {
-      // Rollback entire batch on any error
       await database.run("ROLLBACK");
 
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -869,27 +779,18 @@ export class FormsService extends Service {
         return;
       }
 
-      // If batch fails, fall back to individual transactions
       logger.warn(
         "Batch persistence failed, falling back to individual transactions:",
         errorMessage
       );
-      await this.persistFormsIndividual();
+      await this.persistForms();
     }
-  }
-
-  private async persistFormsIndividual(): Promise<void> {
-    // Original implementation with individual transactions
-    await this.persistForms();
   }
 
   private async persistForms(): Promise<void> {
     try {
-      // Skip if tables don't exist
       if (!this.tablesExist) {
-        // Periodically recheck in case tables were created
         if (!this.tablesChecked || Math.random() < 0.1) {
-          // Check 10% of the time
           await this.checkDatabaseTables();
         }
         if (!this.tablesExist) {
@@ -910,15 +811,12 @@ export class FormsService extends Service {
         return;
       }
 
-      // Persist each form to the database
       for (const [formId, form] of this.forms.entries()) {
         if (form.agentId !== this.runtime.agentId) continue;
 
-        // Wrap each form's persistence in a transaction
         try {
           await database.run("BEGIN");
 
-          // Serialize form data for database storage
           const formData = {
             id: form.id,
             agentId: form.agentId,
@@ -940,7 +838,6 @@ export class FormsService extends Service {
             metadata: JSON.stringify(form.metadata || {}),
           };
 
-          // Use raw SQL for compatibility with different database adapters
           try {
             await database.run(
               `
@@ -978,7 +875,6 @@ export class FormsService extends Service {
             throw dbError;
           }
 
-          // Persist form fields
           for (const step of form.steps) {
             for (const field of step.fields) {
               const fieldData = {
@@ -1034,10 +930,8 @@ export class FormsService extends Service {
             }
           }
 
-          // Commit the transaction if all operations succeeded
           await database.run("COMMIT");
         } catch (error: unknown) {
-          // Rollback on any error
           await database.run("ROLLBACK");
           const errorMsg = error instanceof Error ? error.message : String(error);
           logger.error(`Error persisting form ${formId}:`, errorMsg);
@@ -1069,7 +963,6 @@ export class FormsService extends Service {
       return;
     }
 
-    // Restore forms from database
     let formsResult: Array<Record<string, unknown>>;
     try {
       formsResult = await database.all(
@@ -1096,17 +989,14 @@ export class FormsService extends Service {
     }
 
     for (const formRow of formsResult) {
-      // Validate and sanitize form data
       const validatedForm = this.validateAndSanitizeFormData(formRow);
       if (!validatedForm) {
         logger.warn(`Skipping invalid form ${formRow.id}`);
         continue;
       }
 
-      // Parse steps from validated form
       const steps = validatedForm.steps;
 
-      // Restore form fields
       let fieldsResult: Array<Record<string, unknown>>;
       try {
         fieldsResult = await database.all(
@@ -1127,7 +1017,6 @@ export class FormsService extends Service {
         throw error;
       }
 
-      // Group fields by step
       const fieldsByStep = new Map<string, typeof fieldsResult>();
       for (const fieldRow of fieldsResult) {
         const stepId = String(fieldRow.step_id);
@@ -1137,7 +1026,6 @@ export class FormsService extends Service {
         fieldsByStep.get(stepId)?.push(fieldRow);
       }
 
-      // Reconstruct form with validated fields
       const form: Form = {
         ...validatedForm,
         steps: steps.map((step: DatabaseFormStep) => ({
@@ -1152,7 +1040,6 @@ export class FormsService extends Service {
                 return null;
               }
 
-              // Decrypt first if needed
               let fieldValue: string | number | boolean | undefined =
                 fieldRow.value !== null
                   ? this.parseFieldValue(
@@ -1162,7 +1049,6 @@ export class FormsService extends Service {
                     )
                   : undefined;
 
-              // Validate decrypted value
               if (fieldValue !== undefined) {
                 const valueSchema = createFieldValueSchema(validatedField.type);
                 const valueResult = valueSchema.safeParse(fieldValue);
@@ -1172,9 +1058,9 @@ export class FormsService extends Service {
                     `Invalid field value after decryption for ${fieldRow.field_id}:`,
                     JSON.stringify(valueResult.error.format())
                   );
-                  fieldValue = undefined; // Clear invalid values
+                  fieldValue = undefined;
                 } else {
-                  fieldValue = valueResult.data as string | number | boolean; // Use validated value
+                  fieldValue = valueResult.data as string | number | boolean;
                 }
               }
 
@@ -1187,7 +1073,6 @@ export class FormsService extends Service {
         })),
       };
 
-      // Only add form if it has at least one valid step with fields
       const hasValidSteps = form.steps.some((step) => step.fields.length > 0);
       if (hasValidSteps) {
         this.forms.set(form.id, form);
@@ -1255,7 +1140,6 @@ export class FormsService extends Service {
     type: string,
     isSecret: boolean = false
   ): string | number | boolean {
-    // Decrypt secret values first
     let processedValue = value;
     if (isSecret && type !== "number" && type !== "checkbox") {
       const salt = getSalt();
@@ -1321,7 +1205,6 @@ export class FormsService extends Service {
         return { isValid: true, value: Boolean(value) };
 
       default:
-        // For text, textarea, choice - accept strings
         if (value === null || value === undefined) {
           return { isValid: false, error: "Value is required" };
         }
@@ -1330,7 +1213,6 @@ export class FormsService extends Service {
   }
 
   private async cleanupOldForms(): Promise<void> {
-    // Use the public cleanup method with default 24 hour expiration
     await this.cleanup(24 * 60 * 60 * 1000);
   }
 }

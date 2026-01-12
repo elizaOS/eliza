@@ -3,7 +3,6 @@ import { logger } from "@elizaos/core";
 import type { ImageDescriptionResponse } from "../types";
 import { createGoogleGenAI, getImageModel, getSafetySettings } from "../utils/config";
 
-// Use global fetch for cross-platform compatibility
 const crossFetch = typeof globalThis.fetch === "function" ? globalThis.fetch : fetch;
 
 export async function handleImageDescription(
@@ -30,7 +29,6 @@ export async function handleImageDescription(
   }
 
   try {
-    // Fetch image data using cross-platform fetch
     const imageResponse = await crossFetch(imageUrl);
     if (!imageResponse.ok) {
       throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
@@ -38,8 +36,6 @@ export async function handleImageDescription(
 
     const imageData = await imageResponse.arrayBuffer();
     const base64Image = Buffer.from(imageData).toString("base64");
-
-    // Determine MIME type from URL or response headers
     const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
 
     const response = await genAI.models.generateContent({
@@ -69,24 +65,18 @@ export async function handleImageDescription(
 
     const responseText = response.text || "";
 
-    logger.log("Received response for image description");
-
-    // Try to parse the response as JSON first
     try {
-      const jsonResponse = JSON.parse(responseText) as Record<string, unknown>;
+      const jsonResponse = JSON.parse(responseText) as { title?: string; description?: string };
       if (typeof jsonResponse.title === "string" && typeof jsonResponse.description === "string") {
         return {
           title: jsonResponse.title,
           description: jsonResponse.description,
         };
       }
-    } catch (e) {
-      // If not valid JSON, process as text
-      logger.debug(`Parsing as JSON failed, processing as text: ${e}`);
+    } catch {
+      // Fall through to text parsing
     }
 
-    // Extract title and description from text format
-    // For custom prompts, use the full response as description
     const titleMatch = responseText.match(/title[:\s]+(.+?)(?:\n|$)/i);
     const title = titleMatch?.[1]?.trim() || "Image Analysis";
     const description = titleMatch
@@ -94,7 +84,7 @@ export async function handleImageDescription(
       : responseText.trim();
 
     return { title, description };
-  } catch (error: unknown) {
+  } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error analyzing image: ${message}`);
     return {

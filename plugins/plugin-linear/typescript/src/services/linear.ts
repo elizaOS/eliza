@@ -10,6 +10,8 @@ import {
   type WorkflowState,
 } from "@linear/sdk";
 import type {
+  ActivityDetailObject,
+  ActivityDetailValue,
   LinearActivityItem,
   LinearCommentInput,
   LinearConfig,
@@ -32,7 +34,6 @@ export class LinearService extends Service {
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
 
-    // Get config from runtime settings
     const apiKey = runtime?.getSetting("LINEAR_API_KEY") as string;
     const workspaceId = runtime?.getSetting("LINEAR_WORKSPACE_ID") as string;
 
@@ -78,12 +79,11 @@ export class LinearService extends Service {
     }
   }
 
-  // Log activity
   private logActivity(
     action: string,
     resourceType: LinearActivityItem["resource_type"],
     resourceId: string,
-    details: Record<string, unknown>,
+    details: Record<string, ActivityDetailValue>,
     success: boolean,
     error?: string
   ): void {
@@ -100,7 +100,6 @@ export class LinearService extends Service {
 
     this.activityLog.push(activity);
 
-    // Keep only last 1000 activities
     if (this.activityLog.length > 1000) {
       this.activityLog = this.activityLog.slice(-1000);
     }
@@ -125,7 +124,6 @@ export class LinearService extends Service {
     logger.info("Linear activity log cleared");
   }
 
-  // Team operations
   async getTeams(): Promise<Team[]> {
     const teams = await this.client.teams();
     const teamList = await teams.nodes;
@@ -222,7 +220,7 @@ export class LinearService extends Service {
   }
 
   async searchIssues(filters: LinearSearchFilters): Promise<Issue[]> {
-    const filterObject: Record<string, unknown> = {};
+    const filterObject: Record<string, string | number | boolean | object | null | undefined> = {};
 
     if (filters.query) {
       filterObject.or = [
@@ -231,9 +229,7 @@ export class LinearService extends Service {
       ];
     }
 
-    // Add team filter
     if (filters.team) {
-      // First try to find the team by key or name
       const teams = await this.getTeams();
       const team = teams.find(
         (t) =>
@@ -263,7 +259,6 @@ export class LinearService extends Service {
       }
     }
 
-    // Add priority filter
     if (filters.priority && filters.priority.length > 0) {
       filterObject.priority = { number: { in: filters.priority } };
     }
@@ -275,7 +270,6 @@ export class LinearService extends Service {
       };
     }
 
-    // Add label filter
     if (filters.label && filters.label.length > 0) {
       filterObject.labels = {
         some: {
@@ -297,7 +291,7 @@ export class LinearService extends Service {
       "issue",
       "search",
       {
-        filters,
+        filters: { ...filters } as ActivityDetailObject,
         count: issueList.length,
       },
       true
@@ -332,6 +326,7 @@ export class LinearService extends Service {
   }
 
   async getProjects(teamId?: string): Promise<Project[]> {
+    // Linear SDK v51 requires manual team filtering on projects
     const query = this.client.projects({
       first: 100,
     });
@@ -339,7 +334,6 @@ export class LinearService extends Service {
     const projects = await query;
     let projectList = await projects.nodes;
 
-    // Manual filtering by team if teamId is provided
     if (teamId) {
       const filteredProjects = await Promise.all(
         projectList.map(async (project) => {
@@ -430,7 +424,6 @@ export class LinearService extends Service {
     return teamList;
   }
 
-  // Label operations
   async getLabels(teamId?: string): Promise<IssueLabel[]> {
     const query = this.client.issueLabels({
       first: 100,
@@ -458,7 +451,6 @@ export class LinearService extends Service {
     return labelList;
   }
 
-  // Workflow state operations
   async getWorkflowStates(teamId: string): Promise<WorkflowState[]> {
     const states = await this.client.workflowStates({
       filter: {

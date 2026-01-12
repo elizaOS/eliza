@@ -1,9 +1,5 @@
 #!/usr/bin/env bun
 
-/**
- * Dual build script for @elizaos/plugin-localdb (Node + Browser)
- */
-
 import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -16,14 +12,12 @@ const nodeDir = join(distDir, "node");
 async function buildAll() {
   console.log("🔨 Building @elizaos/plugin-localdb...\n");
 
-  // Clean dist directory
   if (existsSync(distDir)) {
     await rm(distDir, { recursive: true, force: true });
   }
   await mkdir(browserDir, { recursive: true });
   await mkdir(nodeDir, { recursive: true });
 
-  // Node build (server): File-based storage
   console.log("📦 Building Node ESM...");
   const nodeResult = await build({
     entrypoints: ["./index.node.ts"],
@@ -42,7 +36,6 @@ async function buildAll() {
   }
   console.log("✅ Node build complete");
 
-  // Browser build (client): localStorage-based storage
   console.log("🌐 Building Browser ESM...");
   const browserResult = await build({
     entrypoints: ["./index.browser.ts"],
@@ -61,7 +54,6 @@ async function buildAll() {
   }
   console.log("✅ Browser build complete");
 
-  // Generate TypeScript declarations
   console.log("📝 Generating type declarations...");
   const tscBrowser = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json"], {
     stdout: "inherit",
@@ -85,8 +77,6 @@ async function buildAll() {
     return false;
   }
 
-  // Ensure declaration entry points are present for consumers
-  // Root types alias to node by default for server editors
   const rootIndexDtsPath = join(distDir, "index.d.ts");
   const rootAlias = [
     'export * from "./node/index";',
@@ -95,7 +85,6 @@ async function buildAll() {
   ].join("\n");
   await writeFile(rootIndexDtsPath, rootAlias, "utf8");
 
-  // Browser alias
   const browserIndexDtsPath = join(browserDir, "index.d.ts");
   const browserAlias = [
     'export * from "./index.browser";',
@@ -104,7 +93,6 @@ async function buildAll() {
   ].join("\n");
   await writeFile(browserIndexDtsPath, browserAlias, "utf8");
 
-  // Node alias
   const nodeIndexDtsPath = join(nodeDir, "index.d.ts");
   const nodeAlias = [
     'export * from "./index.node";',

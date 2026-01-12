@@ -1,9 +1,3 @@
-"""
-Browser Plugin for ElizaOS
-
-Main plugin class for browser automation.
-"""
-
 import logging
 import os
 from collections.abc import Callable
@@ -27,19 +21,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BrowserPlugin:
-    """Browser automation plugin for ElizaOS."""
-
     name: str = "plugin-browser"
     description: str = "Browser automation plugin for AI-powered web interactions"
     config: BrowserConfig = field(default_factory=BrowserConfig)
     service: BrowserService | None = None
-
-    # Action handlers
     actions: dict[str, Callable[..., Any]] = field(default_factory=dict)
     providers: dict[str, Callable[..., Any]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Initialize actions and providers."""
         self.actions = {
             "BROWSER_NAVIGATE": self._wrap_action(browser_navigate),
             "BROWSER_CLICK": self._wrap_action(browser_click),
@@ -56,8 +45,6 @@ class BrowserPlugin:
         self,
         action: Callable[..., Any],
     ) -> Callable[..., Any]:
-        """Wrap action to inject service."""
-
         async def wrapper(message: str, callback: Any | None = None) -> Any:
             if not self.service:
                 raise RuntimeError("Browser service not initialized")
@@ -69,8 +56,6 @@ class BrowserPlugin:
         self,
         provider: Callable[..., Any],
     ) -> Callable[..., Any]:
-        """Wrap provider to inject service."""
-
         async def wrapper() -> Any:
             if not self.service:
                 raise RuntimeError("Browser service not initialized")
@@ -79,10 +64,8 @@ class BrowserPlugin:
         return wrapper
 
     async def init(self) -> None:
-        """Initialize the plugin."""
         logger.info("Initializing browser automation plugin")
 
-        # Load configuration from environment
         self.config = BrowserConfig(
             headless=os.getenv("BROWSER_HEADLESS", "true").lower() == "true",
             browserbase_api_key=os.getenv("BROWSERBASE_API_KEY"),
@@ -95,14 +78,12 @@ class BrowserPlugin:
             server_port=int(os.getenv("BROWSER_SERVER_PORT", "3456")),
         )
 
-        # Create and start service
         self.service = BrowserService(self.config)
         await self.service.start()
 
         logger.info("Browser plugin initialized successfully")
 
     async def stop(self) -> None:
-        """Stop the plugin."""
         logger.info("Stopping browser automation plugin")
         if self.service:
             await self.service.stop()
@@ -114,14 +95,12 @@ class BrowserPlugin:
         message: str,
         callback: Any | None = None,
     ) -> Any:
-        """Handle an action by name."""
         if action_name not in self.actions:
             raise ValueError(f"Unknown action: {action_name}")
 
         return await self.actions[action_name](message, callback)
 
     async def get_provider(self, provider_name: str) -> Any:
-        """Get provider data by name."""
         if provider_name not in self.providers:
             raise ValueError(f"Unknown provider: {provider_name}")
 
@@ -129,8 +108,4 @@ class BrowserPlugin:
 
 
 def create_browser_plugin(config: BrowserConfig | None = None) -> BrowserPlugin:
-    """Create a browser plugin instance."""
     return BrowserPlugin(config=config or BrowserConfig())
-
-
-

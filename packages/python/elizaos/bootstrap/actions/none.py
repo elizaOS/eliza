@@ -1,10 +1,3 @@
-"""
-NONE Action - Do nothing and skip to the next action.
-
-This action is used when no explicit action is needed
-but processing should continue.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -18,15 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class NoneAction:
-    """
-    Action that does nothing and allows processing to continue.
-
-    Use this action when:
-    - No specific action is required
-    - The agent should passively observe
-    - Processing should continue to the next action
-    """
-
     name: str = "NONE"
     similes: list[str] = field(default_factory=lambda: ["NO_ACTION", "NO_RESPONSE", "PASS"])
     description: str = (
@@ -37,7 +21,6 @@ class NoneAction:
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
     ) -> bool:
-        """Always valid."""
         return True
 
     async def handler(
@@ -49,7 +32,6 @@ class NoneAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        """Do nothing and return success."""
         return ActionResult(
             text="No action taken",
             values={"success": True, "noAction": True},
@@ -59,7 +41,6 @@ class NoneAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        """Example interactions demonstrating the NONE action."""
         return [
             [
                 ActionExample(
@@ -71,7 +52,6 @@ class NoneAction:
         ]
 
 
-# Create the action instance
 none_action = Action(
     name=NoneAction.name,
     similes=NoneAction().similes,

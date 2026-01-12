@@ -1,4 +1,3 @@
-"""Base types and utilities for actions."""
 
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
@@ -6,38 +5,27 @@ from typing import Any, Protocol, TypedDict
 
 
 class Memory(TypedDict, total=False):
-    """Memory/message data structure."""
-
-    content: dict[str, Any]
+    content: dict[str, str | dict[str, str]]
 
 
 class State(TypedDict, total=False):
-    """State data structure."""
-
     pass
 
 
 class ActionResult(TypedDict, total=False):
-    """Result from an action handler."""
-
     text: str
     success: bool
-    data: dict[str, Any]
+    data: dict[str, str | int | float | bool | list | dict | None]
 
 
 class RuntimeProtocol(Protocol):
-    """Protocol for ElizaOS runtime."""
-
     def get_setting(self, key: str) -> str | None:
-        """Get a setting value."""
         ...
 
-    def get_service(self, name: str) -> Any:
-        """Get a service by name."""
+    def get_service(self, name: str) -> object | None:
         ...
 
     async def use_model(self, model_type: str, params: dict[str, Any]) -> str | None:
-        """Use an AI model."""
         ...
 
 
@@ -53,16 +41,12 @@ HandlerFunc = Callable[
 
 @dataclass
 class ActionExample:
-    """Example of action usage."""
-
     name: str
     content: dict[str, Any]
 
 
 @dataclass
 class Action:
-    """Action definition."""
-
     name: str
     description: str
     similes: list[str]
@@ -79,7 +63,6 @@ def create_action(
     validate: ValidateFunc,
     handler: HandlerFunc,
 ) -> Action:
-    """Create an action definition."""
     return Action(
         name=name,
         description=description,
@@ -88,8 +71,3 @@ def create_action(
         validate=validate,
         handler=handler,
     )
-
-
-
-
-

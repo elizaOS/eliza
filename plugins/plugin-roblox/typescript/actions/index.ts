@@ -1,7 +1,3 @@
-/**
- * Action exports for Roblox plugin
- */
-
 import type { Action } from "@elizaos/core";
 import executeGameAction from "./executeGameAction";
 import getPlayerInfo from "./getPlayerInfo";

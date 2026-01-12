@@ -1,7 +1,3 @@
-/**
- * Action to get information about a Roblox player
- */
-
 import {
   type Action,
   type ActionExample,
@@ -48,25 +44,19 @@ const getPlayerInfoExamples: ActionExample[][] = [
   ],
 ];
 
-/**
- * Extract user ID or username from a message
- */
 function extractUserIdentifier(
   message: string
 ): { type: "id"; value: number } | { type: "username"; value: string } | null {
-  // Check for numeric ID
   const idMatch = message.match(/\b(?:player|user|id)\s*[:#]?\s*(\d{5,})\b/i);
   if (idMatch) {
     return { type: "id", value: parseInt(idMatch[1], 10) };
   }
 
-  // Check for username
   const usernameMatch = message.match(
     /\b(?:user(?:name)?|player)\s*[:#]?\s*([A-Za-z0-9_]{3,20})\b/i
   );
   if (usernameMatch) {
     const username = usernameMatch[1];
-    // Make sure it's not just a number
     if (!/^\d+$/.test(username)) {
       return { type: "username", value: username };
     }
@@ -75,9 +65,6 @@ function extractUserIdentifier(
   return null;
 }
 
-/**
- * Action to get information about a Roblox player
- */
 const getPlayerInfo: Action = {
   name: "GET_ROBLOX_PLAYER",
   similes: ["LOOKUP_PLAYER", "FIND_PLAYER", "PLAYER_INFO", "WHO_IS_PLAYER", "ROBLOX_USER_INFO"],
@@ -127,7 +114,6 @@ const getPlayerInfo: Action = {
         };
       }
 
-      // Extract user identifier from message
       const messageContent =
         (state?.message as string) || (message.content as { text?: string }).text || "";
 
@@ -147,7 +133,6 @@ const getPlayerInfo: Action = {
         };
       }
 
-      // Look up the user
       let user: RobloxUser | null;
       if (identifier.type === "id") {
         user = await client.getUserById(identifier.value);
@@ -168,7 +153,6 @@ const getPlayerInfo: Action = {
         };
       }
 
-      // Get avatar URL
       const avatarUrl = await client.getAvatarUrl(user.id);
       user.avatarUrl = avatarUrl;
 

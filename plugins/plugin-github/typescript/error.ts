@@ -1,13 +1,3 @@
-/**
- * Error types for the GitHub plugin.
- *
- * Provides strongly-typed errors that fail fast with clear messages.
- * No defensive programming or error swallowing.
- */
-
-/**
- * Base class for GitHub plugin errors
- */
 export class GitHubError extends Error {
   constructor(message: string) {
     super(message);
@@ -15,24 +5,15 @@ export class GitHubError extends Error {
     Object.setPrototypeOf(this, GitHubError.prototype);
   }
 
-  /**
-   * Check if this error is retryable
-   */
   isRetryable(): boolean {
     return false;
   }
 
-  /**
-   * Get retry delay in milliseconds if applicable
-   */
   retryAfterMs(): number | null {
     return null;
   }
 }
 
-/**
- * GitHub client is not initialized
- */
 export class ClientNotInitializedError extends GitHubError {
   constructor() {
     super("GitHub client not initialized - ensure GITHUB_API_TOKEN is configured");
@@ -41,9 +22,6 @@ export class ClientNotInitializedError extends GitHubError {
   }
 }
 
-/**
- * Configuration error
- */
 export class ConfigError extends GitHubError {
   constructor(message: string) {
     super(`Configuration error: ${message}`);
@@ -52,9 +30,6 @@ export class ConfigError extends GitHubError {
   }
 }
 
-/**
- * Missing required setting
- */
 export class MissingSettingError extends GitHubError {
   public readonly settingName: string;
 
@@ -66,9 +41,6 @@ export class MissingSettingError extends GitHubError {
   }
 }
 
-/**
- * Invalid argument provided
- */
 export class InvalidArgumentError extends GitHubError {
   constructor(message: string) {
     super(`Invalid argument: ${message}`);
@@ -77,9 +49,6 @@ export class InvalidArgumentError extends GitHubError {
   }
 }
 
-/**
- * Repository not found
- */
 export class RepositoryNotFoundError extends GitHubError {
   public readonly owner: string;
   public readonly repo: string;
@@ -93,9 +62,6 @@ export class RepositoryNotFoundError extends GitHubError {
   }
 }
 
-/**
- * Branch not found
- */
 export class BranchNotFoundError extends GitHubError {
   public readonly branch: string;
 
@@ -107,9 +73,6 @@ export class BranchNotFoundError extends GitHubError {
   }
 }
 
-/**
- * File not found
- */
 export class FileNotFoundError extends GitHubError {
   public readonly path: string;
 
@@ -121,9 +84,6 @@ export class FileNotFoundError extends GitHubError {
   }
 }
 
-/**
- * Issue not found
- */
 export class IssueNotFoundError extends GitHubError {
   public readonly issueNumber: number;
 
@@ -135,9 +95,6 @@ export class IssueNotFoundError extends GitHubError {
   }
 }
 
-/**
- * Pull request not found
- */
 export class PullRequestNotFoundError extends GitHubError {
   public readonly pullNumber: number;
 
@@ -149,9 +106,6 @@ export class PullRequestNotFoundError extends GitHubError {
   }
 }
 
-/**
- * Permission denied
- */
 export class PermissionDeniedError extends GitHubError {
   constructor(action: string) {
     super(`Permission denied: ${action}`);
@@ -160,9 +114,6 @@ export class PermissionDeniedError extends GitHubError {
   }
 }
 
-/**
- * Rate limited by GitHub API
- */
 export class RateLimitedError extends GitHubError {
   private readonly _retryAfterMs: number;
   public readonly remaining: number;
@@ -186,9 +137,6 @@ export class RateLimitedError extends GitHubError {
   }
 }
 
-/**
- * Secondary rate limit (abuse detection)
- */
 export class SecondaryRateLimitError extends GitHubError {
   private readonly _retryAfterMs: number;
 
@@ -208,9 +156,6 @@ export class SecondaryRateLimitError extends GitHubError {
   }
 }
 
-/**
- * Operation timed out
- */
 export class TimeoutError extends GitHubError {
   private readonly _timeoutMs: number;
 
@@ -230,9 +175,6 @@ export class TimeoutError extends GitHubError {
   }
 }
 
-/**
- * Merge conflict
- */
 export class MergeConflictError extends GitHubError {
   public readonly pullNumber: number;
 
@@ -244,9 +186,6 @@ export class MergeConflictError extends GitHubError {
   }
 }
 
-/**
- * Branch already exists
- */
 export class BranchExistsError extends GitHubError {
   public readonly branch: string;
 
@@ -258,9 +197,6 @@ export class BranchExistsError extends GitHubError {
   }
 }
 
-/**
- * Validation error
- */
 export class ValidationError extends GitHubError {
   public readonly field: string;
 
@@ -272,9 +208,6 @@ export class ValidationError extends GitHubError {
   }
 }
 
-/**
- * API error from GitHub
- */
 export class GitHubApiError extends GitHubError {
   public readonly status: number;
   public readonly code: string | null;
@@ -295,14 +228,10 @@ export class GitHubApiError extends GitHubError {
   }
 
   override isRetryable(): boolean {
-    // Server errors are retryable
     return this.status >= 500;
   }
 }
 
-/**
- * Network error
- */
 export class NetworkError extends GitHubError {
   constructor(message: string) {
     super(`Network error: ${message}`);
@@ -319,9 +248,6 @@ export class NetworkError extends GitHubError {
   }
 }
 
-/**
- * Git operation error
- */
 export class GitOperationError extends GitHubError {
   public readonly operation: string;
 
@@ -333,9 +259,6 @@ export class GitOperationError extends GitHubError {
   }
 }
 
-/**
- * Webhook verification error
- */
 export class WebhookVerificationError extends GitHubError {
   constructor(reason: string) {
     super(`Webhook verification failed: ${reason}`);
@@ -344,11 +267,7 @@ export class WebhookVerificationError extends GitHubError {
   }
 }
 
-/**
- * Map Octokit error to typed error
- */
 export function mapOctokitError(error: unknown, owner: string, repo: string): GitHubError {
-  // Handle Octokit RequestError
   if (error && typeof error === "object" && "status" in error && typeof error.status === "number") {
     const err = error as {
       status: number;
@@ -375,7 +294,6 @@ export function mapOctokitError(error: unknown, owner: string, repo: string): Gi
         return new PermissionDeniedError("Invalid or missing authentication token");
 
       case 403: {
-        // Check for rate limiting
         const remaining = err.response?.headers?.["x-ratelimit-remaining"];
         const reset = err.response?.headers?.["x-ratelimit-reset"];
 
@@ -385,7 +303,6 @@ export function mapOctokitError(error: unknown, owner: string, repo: string): Gi
           return new RateLimitedError(Math.max(retryAfter, 0), 0, resetTime);
         }
 
-        // Check for secondary rate limit
         const retryAfter = err.response?.headers?.["retry-after"];
         if (retryAfter) {
           return new SecondaryRateLimitError(Number(retryAfter) * 1000);
@@ -395,9 +312,8 @@ export function mapOctokitError(error: unknown, owner: string, repo: string): Gi
       }
 
       case 404:
-        // Try to determine what wasn't found
         if (message.toLowerCase().includes("branch")) {
-          return new BranchNotFoundError("unknown", owner, repo);
+          return new BranchNotFoundError("", owner, repo);
         }
         if (message.toLowerCase().includes("issue")) {
           return new IssueNotFoundError(0, owner, repo);
@@ -412,21 +328,17 @@ export function mapOctokitError(error: unknown, owner: string, repo: string): Gi
           return new MergeConflictError(0, owner, repo);
         }
         if (message.toLowerCase().includes("already exists")) {
-          return new BranchExistsError("unknown", owner, repo);
+          return new BranchExistsError("", owner, repo);
         }
         return new GitHubApiError(err.status, message, null, docUrl);
 
       case 422: {
-        // Validation error
         const errors = err.response?.data?.errors ?? [];
         if (errors.length > 0) {
           const firstError = errors[0];
-          return new ValidationError(
-            firstError?.field ?? "unknown",
-            firstError?.message ?? message
-          );
+          return new ValidationError(firstError?.field ?? "", firstError?.message ?? message);
         }
-        return new ValidationError("unknown", message);
+        return new ValidationError("", message);
       }
 
       case 429: {
@@ -439,7 +351,6 @@ export function mapOctokitError(error: unknown, owner: string, repo: string): Gi
     }
   }
 
-  // Network errors
   if (
     error instanceof Error &&
     (error.message.includes("ECONNREFUSED") ||
@@ -450,7 +361,6 @@ export function mapOctokitError(error: unknown, owner: string, repo: string): Gi
     return new NetworkError(error.message);
   }
 
-  // Unknown error
   if (error instanceof Error) {
     return new GitHubError(error.message);
   }

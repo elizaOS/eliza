@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! RSS/Atom Feed Parser
-//!
-//! XML parsing for RSS 2.0 and Atom feeds using quick-xml.
 
 use quick_xml::events::Event;
 use quick_xml::Reader;
@@ -9,15 +6,6 @@ use quick_xml::Reader;
 use crate::error::{Result, RssError};
 use crate::types::{RssEnclosure, RssFeed, RssImage, RssItem};
 
-/// Parse RSS or Atom XML content to a RssFeed.
-///
-/// # Arguments
-///
-/// * `xml_content` - Raw XML string from feed
-///
-/// # Returns
-///
-/// Parsed RssFeed object
 pub fn parse_rss_to_json(xml_content: &str) -> Result<RssFeed> {
     let mut reader = Reader::from_str(xml_content);
     reader.config_mut().trim_text(true);
@@ -25,7 +13,6 @@ pub fn parse_rss_to_json(xml_content: &str) -> Result<RssFeed> {
     let mut buf = Vec::new();
     let mut is_atom = false;
 
-    // Peek at the root element to determine feed type
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
@@ -42,7 +29,6 @@ pub fn parse_rss_to_json(xml_content: &str) -> Result<RssFeed> {
         buf.clear();
     }
 
-    // Reset and parse
     if is_atom {
         parse_atom_feed(xml_content)
     } else {
@@ -50,7 +36,6 @@ pub fn parse_rss_to_json(xml_content: &str) -> Result<RssFeed> {
     }
 }
 
-/// Parse an RSS 2.0 feed.
 fn parse_rss_feed(xml_content: &str) -> Result<RssFeed> {
     let mut reader = Reader::from_str(xml_content);
     reader.config_mut().trim_text(true);
@@ -175,7 +160,6 @@ fn parse_rss_feed(xml_content: &str) -> Result<RssFeed> {
     Ok(feed)
 }
 
-/// Parse an Atom feed.
 fn parse_atom_feed(xml_content: &str) -> Result<RssFeed> {
     let mut reader = Reader::from_str(xml_content);
     reader.config_mut().trim_text(true);
@@ -284,7 +268,6 @@ fn parse_atom_feed(xml_content: &str) -> Result<RssFeed> {
     Ok(feed)
 }
 
-/// Decode HTML entities and clean text.
 fn decode_text(text: &str) -> String {
     text.replace("&lt;", "<")
         .replace("&gt;", ">")
@@ -295,7 +278,6 @@ fn decode_text(text: &str) -> String {
         .to_string()
 }
 
-/// Create an empty feed structure.
 pub fn create_empty_feed() -> RssFeed {
     RssFeed::default()
 }

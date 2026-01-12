@@ -1,26 +1,16 @@
 #![allow(missing_docs)]
-//! Error types for ElizaOS Cloud Plugin.
 
 use thiserror::Error;
 
-/// Error codes for ElizaOS Cloud operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElizaCloudErrorCode {
-    /// Invalid API key
     InvalidApiKey,
-    /// Rate limit exceeded
     RateLimitExceeded,
-    /// Invalid request parameters
     InvalidRequest,
-    /// API returned an error
     ApiError,
-    /// Network error
     NetworkError,
-    /// Invalid response from API
     InvalidResponse,
-    /// Configuration error
     ConfigurationError,
-    /// Unknown error
     Unknown,
 }
 
@@ -39,66 +29,47 @@ impl std::fmt::Display for ElizaCloudErrorCode {
     }
 }
 
-/// Main error type for ElizaOS Cloud operations.
 #[derive(Debug, Error)]
 pub enum ElizaCloudError {
-    /// Authentication error
     #[error("Authentication failed: {message}")]
     Authentication {
-        /// Error message
         message: String,
-        /// Error code
         code: ElizaCloudErrorCode,
     },
 
-    /// Rate limit exceeded
     #[error("Rate limit exceeded: {message}. Retry after {retry_after:?} seconds")]
     RateLimit {
-        /// Error message
         message: String,
-        /// Seconds to wait before retry
         retry_after: Option<u32>,
     },
 
-    /// Invalid request
     #[error("Invalid request: {message}")]
     InvalidRequest {
-        /// Error message
         message: String,
-        /// Validation errors
         errors: Vec<String>,
     },
 
-    /// API error
     #[error("API error ({status}): {message}")]
     Api {
-        /// HTTP status code
         status: u16,
-        /// Error message
         message: String,
-        /// Raw response body
         body: Option<String>,
     },
 
-    /// Network error
     #[error("Network error: {0}")]
     Network(#[from] reqwest::Error),
 
-    /// JSON serialization/deserialization error
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
-    /// Configuration error
     #[error("Configuration error: {0}")]
     Configuration(String),
 
-    /// Other error
     #[error("{0}")]
     Other(#[from] anyhow::Error),
 }
 
 impl ElizaCloudError {
-    /// Get the error code for this error.
     pub fn code(&self) -> ElizaCloudErrorCode {
         match self {
             Self::Authentication { code, .. } => *code,
@@ -112,7 +83,6 @@ impl ElizaCloudError {
         }
     }
 
-    /// Check if this error is retryable.
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
@@ -120,7 +90,6 @@ impl ElizaCloudError {
         )
     }
 
-    /// Create an authentication error.
     pub fn authentication(message: impl Into<String>) -> Self {
         Self::Authentication {
             message: message.into(),
@@ -128,7 +97,6 @@ impl ElizaCloudError {
         }
     }
 
-    /// Create a rate limit error.
     pub fn rate_limit(message: impl Into<String>, retry_after: Option<u32>) -> Self {
         Self::RateLimit {
             message: message.into(),
@@ -136,7 +104,6 @@ impl ElizaCloudError {
         }
     }
 
-    /// Create an invalid request error.
     pub fn invalid_request(message: impl Into<String>, errors: Vec<String>) -> Self {
         Self::InvalidRequest {
             message: message.into(),
@@ -144,7 +111,6 @@ impl ElizaCloudError {
         }
     }
 
-    /// Create an API error.
     pub fn api(status: u16, message: impl Into<String>) -> Self {
         Self::Api {
             status,
@@ -153,13 +119,11 @@ impl ElizaCloudError {
         }
     }
 
-    /// Create a configuration error.
     pub fn configuration(message: impl Into<String>) -> Self {
         Self::Configuration(message.into())
     }
 }
 
-/// Result type alias for ElizaOS Cloud operations.
 pub type Result<T> = std::result::Result<T, ElizaCloudError>;
 
 #[cfg(test)]
@@ -182,10 +146,3 @@ mod tests {
         assert!(!bad_request.is_retryable());
     }
 }
-
-
-
-
-
-
-

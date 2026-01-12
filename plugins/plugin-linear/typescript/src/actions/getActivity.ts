@@ -92,7 +92,6 @@ export const getActivityAction: Action = {
       const filters: Record<string, unknown> = {};
       let limit = 10;
 
-      // Use LLM to parse filters if content is provided
       if (content) {
         const prompt = getActivityTemplate.replace("{{userMessage}}", content);
         const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -108,7 +107,6 @@ export const getActivityAction: Action = {
                 .trim()
             );
 
-            // Handle time range filtering
             if (parsed.timeRange) {
               const now = new Date();
               let fromDate: Date | undefined;
@@ -143,27 +141,22 @@ export const getActivityAction: Action = {
               }
             }
 
-            // Handle action type filter
             if (parsed.actionTypes && parsed.actionTypes.length > 0) {
-              filters.action = parsed.actionTypes[0]; // Service currently supports single action
+              filters.action = parsed.actionTypes[0];
             }
 
-            // Handle resource type filter
             if (parsed.resourceTypes && parsed.resourceTypes.length > 0) {
               filters.resource_type = parsed.resourceTypes[0];
             }
 
-            // Handle resource ID filter
             if (parsed.resourceId) {
               filters.resource_id = parsed.resourceId;
             }
 
-            // Handle success filter
             if (parsed.successFilter && parsed.successFilter !== "all") {
               filters.success = parsed.successFilter === "success";
             }
 
-            // Set limit
             limit = parsed.limit || 10;
           } catch (parseError) {
             logger.warn("Failed to parse activity filters:", parseError);
@@ -171,10 +164,8 @@ export const getActivityAction: Action = {
         }
       }
 
-      // Get filtered activity
-      let activity = linearService.getActivityLog(limit * 2, filters); // Get more to filter client-side
+      let activity = linearService.getActivityLog(limit * 2, filters);
 
-      // Additional client-side filtering for time range
       if (filters.fromDate) {
         const fromDateValue = filters.fromDate;
         const fromDate =
@@ -189,7 +180,6 @@ export const getActivityAction: Action = {
         }
       }
 
-      // Limit results
       activity = activity.slice(0, limit);
 
       if (activity.length === 0) {
@@ -214,7 +204,7 @@ export const getActivityAction: Action = {
           const time = new Date(item.timestamp).toLocaleString();
           const status = item.success ? "✅" : "❌";
           const details = Object.entries(item.details)
-            .filter(([key]) => key !== "filters") // Don't show filter details
+            .filter(([key]) => key !== "filters")
             .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
             .join(", ");
 

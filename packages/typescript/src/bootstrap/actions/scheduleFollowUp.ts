@@ -114,7 +114,6 @@ export const scheduleFollowUpAction: Action = {
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    // Check if both services are available
     const rolodexService = runtime.getService("rolodex") as RolodexService;
     const followUpService = runtime.getService("follow_up") as FollowUpService;
 
@@ -123,7 +122,6 @@ export const scheduleFollowUpAction: Action = {
       return false;
     }
 
-    // Check if message contains intent to schedule follow-up
     const followUpKeywords = [
       "follow up",
       "followup",
@@ -152,7 +150,6 @@ export const scheduleFollowUpAction: Action = {
       throw new Error("Required services not available");
     }
 
-    // Build proper state for prompt composition
     if (!state) {
       state = {
         values: {},
@@ -161,7 +158,6 @@ export const scheduleFollowUpAction: Action = {
       };
     }
 
-    // Add our values to the state
     state.values = {
       ...state.values,
       message: message.content.text,
@@ -170,13 +166,11 @@ export const scheduleFollowUpAction: Action = {
       currentDateTime: new Date().toISOString(),
     };
 
-    // Compose prompt to extract follow-up information
     const prompt = composePromptFromState({
       state,
       template: scheduleFollowUpTemplate,
     });
 
-    // Use LLM to extract follow-up details
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
@@ -193,12 +187,10 @@ export const scheduleFollowUpAction: Action = {
       throw new Error("Could not extract follow-up information");
     }
 
-    // Determine entity ID
     let entityId = parsedResponse.entityId
       ? asUUID(parsedResponse.entityId)
       : null;
 
-    // If no entity ID provided, try to find by name
     if (!entityId && parsedResponse.contactName) {
       const entity = await findEntityByName(runtime, message, state);
 
@@ -215,19 +207,16 @@ export const scheduleFollowUpAction: Action = {
       throw new Error("Could not determine contact to follow up with");
     }
 
-    // Verify contact exists in rolodex
     const contact = await rolodexService.getContact(entityId);
     if (!contact) {
       throw new Error("Contact not found in rolodex. Please add them first.");
     }
 
-    // Parse scheduled time
     const scheduledAt = new Date(parsedResponse.scheduledAt || "");
     if (Number.isNaN(scheduledAt.getTime())) {
       throw new Error("Invalid follow-up date/time");
     }
 
-    // Schedule the follow-up
     const task = await followUpService.scheduleFollowUp(
       entityId,
       scheduledAt,
@@ -240,7 +229,6 @@ export const scheduleFollowUpAction: Action = {
       `[ScheduleFollowUp] Scheduled follow-up for ${parsedResponse.contactName} at ${scheduledAt.toISOString()}`,
     );
 
-    // Prepare response
     const responseText = `I've scheduled a follow-up with ${parsedResponse.contactName} for ${scheduledAt.toLocaleString()}. ${
       parsedResponse.reason ? `Reason: ${parsedResponse.reason}` : ""
     }`;

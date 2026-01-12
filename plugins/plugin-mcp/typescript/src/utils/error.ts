@@ -25,7 +25,6 @@ export async function handleMcpError(
   logger.error({ error, mcpType: type }, `Error executing MCP ${type}: ${errorMessage}`);
 
   let responseText = `I'm sorry, I wasn't able to get the information you requested. There seems to be an issue with the ${type} right now. Is there something else I can help you with?`;
-  let thoughtText = `Error calling MCP ${type} and failed to generate a custom response. Providing a generic fallback response.`;
 
   if (callback) {
     const enhancedState: State = {
@@ -48,10 +47,8 @@ export async function handleMcpError(
     })) as string;
 
     responseText = errorResponse;
-    thoughtText = `Error calling MCP ${type}: ${errorMessage}. Providing a helpful response to the user.`;
 
     await callback({
-      thought: thoughtText,
       text: responseText,
       actions: ["REPLY"],
     });

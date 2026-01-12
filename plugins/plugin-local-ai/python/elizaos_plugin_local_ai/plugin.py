@@ -1,9 +1,3 @@
-"""
-Local AI Plugin implementation for elizaOS.
-
-Provides local LLM inference using llama-cpp-python.
-"""
-
 import os
 from pathlib import Path
 
@@ -19,29 +13,23 @@ from elizaos_plugin_local_ai.types import (
 
 
 class LocalAIPlugin:
-    """Local AI plugin for elizaOS using llama.cpp."""
-
     def __init__(self, config: LocalAIConfig) -> None:
-        """Initialize the Local AI plugin."""
         self.config = config
         self._small_model: object | None = None
         self._large_model: object | None = None
         self._embedding_model: object | None = None
         self._initialized = False
 
-        # Set up directories
         home = Path.home()
         self.models_dir = (
             Path(config.models_dir) if config.models_dir else home / ".eliza" / "models"
         )
         self.cache_dir = Path(config.cache_dir) if config.cache_dir else home / ".eliza" / "cache"
 
-        # Ensure directories exist
         self.models_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_small_model(self) -> object:
-        """Lazy load the small model."""
         if self._small_model is None:
             try:
                 from llama_cpp import Llama
@@ -67,7 +55,6 @@ class LocalAIPlugin:
         return self._small_model
 
     def _get_large_model(self) -> object:
-        """Lazy load the large model."""
         if self._large_model is None:
             try:
                 from llama_cpp import Llama
@@ -93,7 +80,6 @@ class LocalAIPlugin:
         return self._large_model
 
     def _get_embedding_model(self) -> object:
-        """Lazy load the embedding model."""
         if self._embedding_model is None:
             try:
                 from llama_cpp import Llama
@@ -108,7 +94,7 @@ class LocalAIPlugin:
                 self._embedding_model = Llama(
                     model_path=str(model_path),
                     n_ctx=512,
-                    n_gpu_layers=0,  # Embeddings are fast on CPU
+                    n_gpu_layers=0,
                     embedding=True,
                     verbose=False,
                 )
@@ -121,11 +107,9 @@ class LocalAIPlugin:
         return self._embedding_model
 
     def generate_text(self, params: TextGenerationParams) -> TextGenerationResult:
-        """Generate text using a local LLM."""
         model = self._get_large_model() if params.use_large_model else self._get_small_model()
         model_name = self.config.large_model if params.use_large_model else self.config.small_model
 
-        # Type assertion for Llama model
         from llama_cpp import Llama
 
         assert isinstance(model, Llama)
@@ -148,17 +132,14 @@ class LocalAIPlugin:
         )
 
     def create_embedding(self, params: EmbeddingParams) -> EmbeddingResult:
-        """Create an embedding for text."""
         model = self._get_embedding_model()
 
-        # Type assertion for Llama model
         from llama_cpp import Llama
 
         assert isinstance(model, Llama)
 
         embedding = model.embed(params.text)
 
-        # Normalize the embedding
         import numpy as np
 
         embedding_array = np.array(embedding)
@@ -173,19 +154,16 @@ class LocalAIPlugin:
         )
 
     def transcribe_audio(self, params: TranscriptionParams) -> TranscriptionResult:
-        """Transcribe audio using Whisper."""
         try:
             import tempfile
 
             import whisper
 
-            # Write audio to temp file
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                 f.write(params.audio_data)
                 temp_path = f.name
 
             try:
-                # Load whisper model
                 model = whisper.load_model("tiny")
                 result = model.transcribe(temp_path, language=params.language)
 
@@ -194,7 +172,6 @@ class LocalAIPlugin:
                     language=params.language,
                 )
             finally:
-                # Clean up temp file
                 os.unlink(temp_path)
 
         except ImportError as e:
@@ -205,7 +182,6 @@ class LocalAIPlugin:
 
 
 def get_local_ai_plugin() -> LocalAIPlugin:
-    """Create a Local AI plugin from environment variables."""
     config = LocalAIConfig(
         models_dir=os.environ.get("MODELS_DIR"),
         cache_dir=os.environ.get("CACHE_DIR"),
@@ -219,7 +195,6 @@ def get_local_ai_plugin() -> LocalAIPlugin:
 
 
 def create_plugin(config: LocalAIConfig | None = None) -> LocalAIPlugin:
-    """Create a Local AI plugin with optional config."""
     if config is None:
         return get_local_ai_plugin()
     return LocalAIPlugin(config)

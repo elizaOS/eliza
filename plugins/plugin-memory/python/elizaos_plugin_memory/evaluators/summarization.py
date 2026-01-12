@@ -1,4 +1,3 @@
-"""Summarization Evaluator."""
 
 from __future__ import annotations
 
@@ -80,7 +79,6 @@ Respond in this XML format:
 
 
 def parse_summary_xml(xml: str) -> SummaryResult:
-    """Parse XML summary response."""
     summary_match = re.search(r"<text>([\s\S]*?)</text>", xml)
     topics_match = re.search(r"<topics>([\s\S]*?)</topics>", xml)
     key_points_matches = re.findall(r"<point>([\s\S]*?)</point>", xml)
@@ -95,17 +93,12 @@ def parse_summary_xml(xml: str) -> SummaryResult:
 
 
 class ModelHandler(Protocol):
-    """Protocol for model handler."""
-
     async def generate(self, prompt: str, max_tokens: int = 2500) -> str:
-        """Generate text from prompt."""
         ...
 
 
 @dataclass
 class Message:
-    """Message representation."""
-
     entity_id: UUID
     content_text: str
     content_type: str | None = None
@@ -114,13 +107,6 @@ class Message:
 
 
 class SummarizationEvaluator:
-    """
-    Short-term Memory Summarization Evaluator.
-
-    Automatically generates and updates conversation summaries when conversations
-    exceed the configured threshold.
-    """
-
     name: str = "MEMORY_SUMMARIZATION"
     description: str = "Automatically summarizes conversations to optimize context usage"
     similes: list[str] = ["CONVERSATION_SUMMARY", "CONTEXT_COMPRESSION", "MEMORY_OPTIMIZATION"]
@@ -133,7 +119,6 @@ class SummarizationEvaluator:
         agent_id: UUID,
         agent_name: str = "Agent",
     ) -> None:
-        """Initialize the evaluator."""
         self._memory_service = memory_service
         self._model_handler = model_handler
         self._agent_id = agent_id
@@ -145,7 +130,6 @@ class SummarizationEvaluator:
         message_text: str | None,
         dialogue_messages: list[Message],
     ) -> bool:
-        """Check if summarization should run."""
         if not message_text:
             return False
 
@@ -165,7 +149,6 @@ class SummarizationEvaluator:
         entity_id: UUID,
         dialogue_messages: list[Message],
     ) -> None:
-        """Handle summarization."""
         config = self._memory_service.get_config()
 
         try:
@@ -174,7 +157,6 @@ class SummarizationEvaluator:
             existing_summary = await self._memory_service.get_current_session_summary(room_id)
             last_offset = existing_summary.last_message_offset if existing_summary else 0
 
-            # Filter dialogue messages
             filtered_messages = [
                 msg
                 for msg in dialogue_messages
@@ -298,8 +280,3 @@ class SummarizationEvaluator:
 
         except Exception as e:
             logger.error("Error during summarization: %s", e)
-
-
-
-
-

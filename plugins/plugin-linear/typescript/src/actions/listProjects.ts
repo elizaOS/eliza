@@ -94,7 +94,6 @@ export const listProjectsAction: Action = {
       let showAll = false;
       let stateFilter: string | undefined;
 
-      // Use LLM to parse the request
       if (content) {
         const prompt = listProjectsTemplate.replace("{{userMessage}}", content);
         const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -110,7 +109,6 @@ export const listProjectsAction: Action = {
                 .trim()
             );
 
-            // Handle team filter
             if (parsed.teamFilter) {
               const teams = await linearService.getTeams();
               const team = teams.find(
@@ -124,18 +122,11 @@ export const listProjectsAction: Action = {
               }
             }
 
-            // Handle show all flag
             showAll = parsed.showAll === true;
-
-            // Handle state filter
             stateFilter = parsed.stateFilter;
-
-            // Date and lead filters are captured for potential future use
-            // Currently, Linear SDK filtering is applied via post-processing
           } catch (parseError) {
             logger.warn("Failed to parse project filters, using basic parsing:", parseError);
 
-            // Fallback to basic parsing
             const teamMatch = content.match(/(?:for|in|of)\s+(?:the\s+)?(\w+)\s+team/i);
             if (teamMatch) {
               const teams = await linearService.getTeams();
@@ -156,7 +147,6 @@ export const listProjectsAction: Action = {
         }
       }
 
-      // Apply default team filter if configured and user didn't ask for "all" projects
       if (!teamId && !showAll) {
         const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
         if (defaultTeamKey) {
@@ -175,7 +165,6 @@ export const listProjectsAction: Action = {
 
       let projects = await linearService.getProjects(teamId);
 
-      // Client-side filtering by state if needed
       if (stateFilter && stateFilter !== "all") {
         projects = projects.filter((project) => {
           const state = project.state?.toLowerCase() || "";
@@ -207,7 +196,6 @@ export const listProjectsAction: Action = {
         };
       }
 
-      // Get teams for each project
       const projectsWithDetails = await Promise.all(
         projects.map(async (project) => {
           const teamsQuery = await project.teams();

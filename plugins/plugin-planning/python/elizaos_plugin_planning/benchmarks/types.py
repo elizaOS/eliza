@@ -1,13 +1,9 @@
-"""Benchmark type definitions."""
-
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 
 @dataclass
 class BenchmarkConfig:
-    """Benchmark configuration."""
-
     realm_bench_path: Optional[str] = None
     api_bank_path: Optional[str] = None
     run_realm_bench: bool = True
@@ -22,8 +18,6 @@ class BenchmarkConfig:
 
 @dataclass
 class RealmBenchTask:
-    """REALM-Bench task definition."""
-
     id: str
     name: str
     description: str
@@ -38,8 +32,6 @@ class RealmBenchTask:
 
 @dataclass
 class RealmBenchTestCase:
-    """REALM-Bench test case."""
-
     task: RealmBenchTask
     input: dict[str, Any]
     expected: dict[str, Any]
@@ -47,8 +39,6 @@ class RealmBenchTestCase:
 
 @dataclass
 class RealmBenchResult:
-    """REALM-Bench execution result."""
-
     test_case_id: str
     task_id: str
     success: bool
@@ -77,8 +67,6 @@ class RealmBenchResult:
 
 @dataclass
 class RealmBenchReport:
-    """REALM-Bench benchmark report."""
-
     total_tests: int
     passed_tests: int
     failed_tests: int
@@ -99,8 +87,6 @@ class RealmBenchReport:
 
 @dataclass
 class ApiBankApi:
-    """API-Bank API definition."""
-
     name: str
     description: str
     parameters: list[dict[str, Any]]
@@ -109,8 +95,6 @@ class ApiBankApi:
 
 @dataclass
 class ApiBankApiCall:
-    """API-Bank API call."""
-
     api: str
     parameters: dict[str, Any]
 
@@ -130,8 +114,6 @@ class ApiBankTestCase:
 
 @dataclass
 class ApiBankResult:
-    """API-Bank test result."""
-
     test_case_id: str
     level: int
     success: bool
@@ -154,8 +136,6 @@ class ApiBankResult:
 
 @dataclass
 class ApiBankReport:
-    """API-Bank benchmark report."""
-
     total_tests: int
     passed_tests: int
     failed_tests: int
@@ -172,8 +152,6 @@ class ApiBankReport:
 
 @dataclass
 class BenchmarkResults:
-    """Comprehensive benchmark results."""
-
     metadata: dict[str, Any]
     realm_bench_results: Optional[RealmBenchReport] = None
     api_bank_results: Optional[ApiBankReport] = None
@@ -204,8 +182,3 @@ class BenchmarkResults:
             "performance_score": 0,
         }
     )
-
-
-
-
-

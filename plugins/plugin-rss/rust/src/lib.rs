@@ -1,29 +1,4 @@
 #![allow(missing_docs)]
-//! elizaOS RSS Plugin
-//!
-//! RSS and Atom feed integration for news monitoring.
-//!
-//! # Example
-//!
-//! ```rust,no_run
-//! use elizaos_plugin_rss::{RssClient, RssConfig};
-//!
-//! # async fn example() -> anyhow::Result<()> {
-//! // Create a client
-//! let config = RssConfig::default();
-//! let client = RssClient::new(config)?;
-//!
-//! // Fetch a feed
-//! let feed = client.fetch_feed("https://news.ycombinator.com/rss").await?;
-//! println!("Feed: {}", feed.title());
-//! for item in &feed.items {
-//!     println!("  - {}", item.title);
-//! }
-//! # Ok(())
-//! # }
-//! ```
-
-#![warn(missing_docs)]
 
 pub mod client;
 pub mod error;
@@ -31,16 +6,24 @@ pub mod parser;
 pub mod plugin;
 pub mod types;
 
-// Import directly from submodules:
-// - client::{extract_urls, format_relative_time, RssClient}
-// - error::{Result, RssError}
-// - parser::{create_empty_feed, parse_rss_to_json}
-// - plugin::{create_plugin, get_rss_plugin, RssPlugin}
-// - types::{FeedFormat, RssFeed, RssItem, etc.}
+pub mod actions;
+pub mod providers;
 
+pub use actions::get_feed::{Action, ActionExample};
+pub use providers::feed_items::{Provider, ProviderParams, ProviderResult};
+pub use actions::{
+    GetFeedAction, SubscribeFeedAction, UnsubscribeFeedAction, ListFeedsAction,
+    get_rss_action_names,
+};
+pub use providers::{FeedItemsProvider, get_rss_provider_names};
+pub use client::{extract_urls, format_relative_time, RssClient};
+pub use error::{Result, RssError};
+pub use parser::{create_empty_feed, parse_rss_to_json};
+pub use plugin::{create_plugin, get_rss_plugin, RssPlugin};
+pub use types::{FeedFormat, RssConfig, RssFeed, RssItem};
 
-
-
-
+pub const PLUGIN_NAME: &str = "rss";
+pub const PLUGIN_DESCRIPTION: &str = "RSS/Atom feed monitoring and subscription management";
+pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 

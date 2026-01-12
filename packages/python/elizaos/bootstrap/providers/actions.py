@@ -1,10 +1,3 @@
-"""
-Actions Provider - Lists available actions for the agent.
-
-This provider returns a list of all available actions that have passed
-validation for the current message context.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -23,17 +16,15 @@ if TYPE_CHECKING:
 
 
 def format_action_names(actions: list[Action]) -> str:
-    """Format action names as a comma-separated list."""
     return ", ".join(action.name for action in actions)
 
 
 def _format_parameter_type(schema: ActionParameterSchema) -> str:
-    schema_type = schema.type
-    if schema_type == "number" and (schema.minimum is not None or schema.maximum is not None):
+    if schema.type == "number" and (schema.minimum is not None or schema.maximum is not None):
         min_val = schema.minimum if schema.minimum is not None else "∞"
         max_val = schema.maximum if schema.maximum is not None else "∞"
         return f"number [{min_val}-{max_val}]"
-    return schema_type
+    return schema.type
 
 
 def _format_action_parameters(parameters: list[ActionParameter]) -> str:
@@ -54,7 +45,6 @@ def _format_action_parameters(parameters: list[ActionParameter]) -> str:
 
 
 def format_actions(actions: list[Action]) -> str:
-    """Format actions with their descriptions (including optional parameter docs)."""
     lines: list[str] = []
     for action in actions:
         line = f"- **{action.name}**: {action.description or 'No description'}"
@@ -71,32 +61,12 @@ async def get_actions(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get available actions for the current context.
-
-    Returns a list of actions that have passed validation for the
-    current message, along with their descriptions and examples.
-    """
     validated_actions: list[Action] = []
 
-    # Get all registered actions from the runtime
     for action in runtime.actions:
-        try:
-            # Validate each action against the current message
-            is_valid = await action.validate_fn(runtime, message, state)
-            if is_valid:
-                validated_actions.append(action)
-        except Exception as e:
-            runtime.logger.debug(
-                {
-                    "src": "provider:actions",
-                    "agentId": runtime.agent_id,
-                    "action": action.name,
-                    "error": str(e),
-                },
-                "Action validation failed",
-            )
-            continue
+        is_valid = await action.validate_fn(runtime, message, state)
+        if is_valid:
+            validated_actions.append(action)
 
     action_names = format_action_names(validated_actions)
     actions_text = format_actions(validated_actions)
@@ -132,7 +102,6 @@ async def get_actions(
     )
 
 
-# Create the provider instance
 actions_provider = Provider(
     name="ACTIONS",
     description="Possible response actions",

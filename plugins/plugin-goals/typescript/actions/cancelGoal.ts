@@ -16,16 +16,12 @@ import {
 import { extractCancellationTemplate } from "../generated/prompts/typescript/prompts.js";
 import { createGoalDataService, type GoalData } from "../services/goalDataService.js";
 
-// Interface for task cancellation properties
 interface TaskCancellation {
   taskId: string;
   taskName: string;
   isFound: boolean;
 }
 
-/**
- * Extracts which goal the user wants to cancel
- */
 async function extractTaskCancellation(
   runtime: IAgentRuntime,
   message: Memory,
@@ -33,7 +29,6 @@ async function extractTaskCancellation(
   state: State
 ): Promise<TaskCancellation> {
   try {
-    // Format available tasks for the prompt
     const tasksText = availableGoals
       .map((task) => {
         return `ID: ${task.id}\nName: ${task.name}\nDescription: ${task.description || task.name}\nTags: ${task.tags?.join(", ") || "none"}\n`;
@@ -59,7 +54,6 @@ async function extractTaskCancellation(
       stopSequences: [],
     });
 
-    // Parse XML from the text results
     const parsedResult = parseKeyValueXml(result) as TaskCancellation | null;
 
     logger.debug({ parsedResult }, "Parsed XML Result");
@@ -69,7 +63,6 @@ async function extractTaskCancellation(
       return { taskId: "", taskName: "", isFound: false };
     }
 
-    // Convert string 'true'/'false' to boolean and handle 'null' strings
     const finalResult: TaskCancellation = {
       taskId: parsedResult.taskId === "null" ? "" : String(parsedResult.taskId || ""),
       taskName: parsedResult.taskName === "null" ? "" : String(parsedResult.taskName || ""),
@@ -83,16 +76,12 @@ async function extractTaskCancellation(
   }
 }
 
-/**
- * The CANCEL_GOAL action allows users to cancel/delete a task.
- */
 export const cancelGoalAction: Action = {
   name: "CANCEL_GOAL",
   similes: ["DELETE_GOAL", "REMOVE_TASK", "DELETE_TASK", "REMOVE_GOAL"],
   description: "Cancels and deletes a goal item from the user's task list immediately.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    // Check if *any* active GOALs exist
     try {
       if (!message.roomId) {
         return false;
@@ -139,8 +128,6 @@ export const cancelGoalAction: Action = {
         return;
       }
       const dataService = createGoalDataService(runtime);
-
-      // Get active goals for the entity
       const activeGoals = await dataService.getGoals({
         ownerType: "entity",
         ownerId: message.entityId,
@@ -158,11 +145,9 @@ export const cancelGoalAction: Action = {
         return;
       }
 
-      // Extract which goal to cancel
       const cancelInfo = await extractTaskCancellation(runtime, message, activeGoals, state);
 
       if (!cancelInfo.isFound || !cancelInfo.taskId) {
-        // Show the list of goals
         const goalsList = activeGoals.map((goal, index) => `${index + 1}. ${goal.name}`).join("\n");
 
         if (callback) {
@@ -175,7 +160,6 @@ export const cancelGoalAction: Action = {
         return;
       }
 
-      // Find the goal to cancel
       const goalToCancel = activeGoals.find((g) => g.id === cancelInfo.taskId);
 
       if (!goalToCancel) {
@@ -189,7 +173,6 @@ export const cancelGoalAction: Action = {
         return;
       }
 
-      // Delete the goal
       const success = await dataService.deleteGoal(goalToCancel.id);
 
       if (success) {

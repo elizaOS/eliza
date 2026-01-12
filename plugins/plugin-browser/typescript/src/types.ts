@@ -1,9 +1,3 @@
-/**
- * Browser Plugin Types
- * Defines all types used across the browser automation plugin
- */
-
-// Session Types
 export interface BrowserSession {
   id: string;
   createdAt: Date;
@@ -11,7 +5,6 @@ export interface BrowserSession {
   title?: string;
 }
 
-// Result Types
 export interface NavigationResult {
   success: boolean;
   url: string;
@@ -52,7 +45,6 @@ export interface CaptchaResult {
 
 export type CaptchaType = "turnstile" | "recaptcha-v2" | "recaptcha-v3" | "hcaptcha" | "none";
 
-// Configuration Types
 export interface SecurityConfig {
   allowedDomains?: string[];
   blockedDomains?: string[];
@@ -80,7 +72,6 @@ export interface BrowserConfig {
   serverPort?: number;
 }
 
-// WebSocket Protocol Types
 export interface WebSocketMessage {
   type: string;
   requestId: string;
@@ -96,7 +87,6 @@ export interface WebSocketResponse {
   error?: string;
 }
 
-// CapSolver Types
 export interface CapSolverConfig {
   apiKey: string;
   apiUrl?: string;
@@ -113,7 +103,6 @@ export interface CaptchaTask {
   [key: string]: string | boolean | number | undefined;
 }
 
-// Rate Limiting Types
 export interface RateLimitConfig {
   maxActionsPerMinute: number;
   maxSessionsPerHour: number;
@@ -124,5 +113,4 @@ export interface RateLimitEntry {
   resetTime: number;
 }
 
-// Browser Service Type (matches core's ServiceType.BROWSER)
 export const BROWSER_SERVICE_TYPE = "browser" as const;

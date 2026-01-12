@@ -3,11 +3,11 @@ import type { Account, Address, Chain } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { BridgeAction } from "../actions/bridge";
-import { WalletProvider } from "../providers/wallet";
+import { BridgeAction } from "../../actions/bridge";
+import { WalletProvider } from "../../providers/wallet";
+import type { SupportedChain } from "../../types";
+import { getTestChains } from "../custom-chain";
 import { cleanupTestRuntime, createTestRuntime } from "../test-utils";
-import type { SupportedChain } from "../types";
-import { getTestChains } from "./custom-chain";
 
 // Test environment - use funded wallet for integration tests
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();

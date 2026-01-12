@@ -1,14 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Build script for @elizaos/plugin-local-ai TypeScript package
- *
- * Produces:
- * - dist/node/index.node.js (ESM for Node.js)
- * - dist/cjs/index.node.cjs (CommonJS for Node.js)
- * - dist/*.d.ts (TypeScript declarations)
- *
- * Node.js only (no browser support) due to native dependencies.
- */
 
 const externalDeps = [
   "@elizaos/core",
@@ -25,11 +15,9 @@ async function build(): Promise<void> {
   const totalStart = Date.now();
   const { mkdir, writeFile } = await import("node:fs/promises");
 
-  // Create output directories
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/cjs", { recursive: true });
 
-  // Node ESM build
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-local-ai for Node (ESM)...");
 
@@ -50,7 +38,6 @@ async function build(): Promise<void> {
 
   console.log(`✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 
-  // Node CJS build
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-local-ai for Node (CJS)...");
 
@@ -69,7 +56,6 @@ async function build(): Promise<void> {
     throw new Error("Node CJS build failed");
   }
 
-  // Rename .js to .cjs for correct module resolution
   const { rename, access } = await import("node:fs/promises");
   try {
     await access("dist/cjs/index.node.js");
@@ -80,7 +66,6 @@ async function build(): Promise<void> {
 
   console.log(`✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
 
-  // TypeScript declarations
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
 
@@ -91,14 +76,7 @@ async function build(): Promise<void> {
   } catch (_e) {
     console.warn("⚠️ TypeScript declaration generation had issues, creating basic declarations...");
 
-    // Create basic declaration files
-    const basicDeclaration = `/**
- * @elizaos/plugin-local-ai
- * 
- * Local AI plugin using LLaMA models for elizaOS
- */
-
-import type { Plugin } from '@elizaos/core';
+    const basicDeclaration = `import type { Plugin } from '@elizaos/core';
 
 export declare const localAiPlugin: Plugin;
 export default localAiPlugin;

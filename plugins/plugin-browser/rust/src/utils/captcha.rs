@@ -1,5 +1,3 @@
-//! CapSolver integration for CAPTCHA solving.
-
 use crate::types::CaptchaType;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -63,7 +61,6 @@ struct GetTaskResultResponse {
     solution: Option<HashMap<String, serde_json::Value>>,
 }
 
-/// CapSolver service for solving various CAPTCHA types
 pub struct CapSolverService {
     config: CapSolverConfig,
     client: Client,
@@ -77,7 +74,6 @@ impl CapSolverService {
         }
     }
 
-    /// Create a CAPTCHA solving task
     pub async fn create_task(
         &self,
         task: HashMap<String, serde_json::Value>,
@@ -113,7 +109,6 @@ impl CapSolverService {
         Ok(task_id)
     }
 
-    /// Get task result with polling
     pub async fn get_task_result(
         &self,
         task_id: &str,
@@ -156,7 +151,6 @@ impl CapSolverService {
         Err("CapSolver task timeout".to_string())
     }
 
-    /// Solve Cloudflare Turnstile
     pub async fn solve_turnstile(
         &self,
         website_url: &str,
@@ -201,7 +195,6 @@ impl CapSolverService {
             .ok_or("No token in solution".to_string())
     }
 
-    /// Solve reCAPTCHA v2
     pub async fn solve_recaptcha_v2(
         &self,
         website_url: &str,
@@ -243,7 +236,6 @@ impl CapSolverService {
             .ok_or("No gRecaptchaResponse in solution".to_string())
     }
 
-    /// Solve reCAPTCHA v3
     pub async fn solve_recaptcha_v3(
         &self,
         website_url: &str,
@@ -287,7 +279,6 @@ impl CapSolverService {
             .ok_or("No gRecaptchaResponse in solution".to_string())
     }
 
-    /// Solve hCaptcha
     pub async fn solve_hcaptcha(
         &self,
         website_url: &str,
@@ -328,10 +319,97 @@ impl CapSolverService {
     }
 }
 
-/// Detect CAPTCHA type (placeholder - would need actual browser integration)
-pub fn detect_captcha_type(_page_content: &str) -> (CaptchaType, Option<String>) {
-    // This would need actual browser/page integration to work properly
-    // For now, return no captcha detected
+/// Detect CAPTCHA type from page HTML content
+/// Returns the captcha type and optionally the site key if found
+pub fn detect_captcha_type(page_content: &str) -> (CaptchaType, Option<String>) {
+    // Check for Cloudflare Turnstile
+    if page_content.contains("cf-turnstile") || page_content.contains("challenges.cloudflare.com/turnstile") {
+        let site_key = extract_data_sitekey(page_content);
+        return (CaptchaType::Turnstile, site_key);
+    }
+
+    // Check for hCaptcha (check before reCAPTCHA since hCaptcha also uses g-recaptcha-response)
+    if page_content.contains("h-captcha") || page_content.contains("hcaptcha.com") || page_content.contains("data-hcaptcha-sitekey") {
+        let site_key = extract_data_sitekey(page_content);
+        return (CaptchaType::Hcaptcha, site_key);
+    }
+
+    // Check for reCAPTCHA
+    if page_content.contains("g-recaptcha") || page_content.contains("google.com/recaptcha") {
+        let site_key = extract_data_sitekey(page_content);
+        // Check for v3 indicators
+        if page_content.contains("grecaptcha.execute") || page_content.contains("recaptcha/api.js?render=") {
+            return (CaptchaType::RecaptchaV3, site_key);
+        }
+        return (CaptchaType::RecaptchaV2, site_key);
+    }
+
     (CaptchaType::None, None)
 }
 
+/// Extract the data-sitekey attribute value from HTML content
+fn extract_data_sitekey(html: &str) -> Option<String> {
+    // Pattern to match data-sitekey="..." or data-sitekey='...'
+    let patterns = [
+        r#"data-sitekey="([^"]+)""#,
+        r#"data-sitekey='([^']+)'"#,
+        r#"data-hcaptcha-sitekey="([^"]+)""#,
+        r#"data-hcaptcha-sitekey='([^']+)'"#,
+    ];
+
+    for pattern in patterns {
+        if let Ok(re) = regex::Regex::new(pattern) {
+            if let Some(caps) = re.captures(html) {
+                if let Some(key) = caps.get(1) {
+                    return Some(key.as_str().to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Inject a CAPTCHA solution into the page
+/// This function returns JavaScript code that should be executed in the browser context
+pub fn generate_captcha_injection_script(captcha_type: &CaptchaType, solution: &str) -> String {
+    let escaped_solution = solution.replace('\\', "\\\\").replace('"', "\\\"");
+    
+    match captcha_type {
+        CaptchaType::Turnstile => {
+            format!(
+                r#"(function() {{
+                    var textarea = document.querySelector('[name="cf-turnstile-response"]');
+                    if (textarea) textarea.value = "{}";
+                    if (typeof window.turnstileCallback === 'function') window.turnstileCallback("{}");
+                }})()"#,
+                escaped_solution, escaped_solution
+            )
+        }
+        CaptchaType::RecaptchaV2 | CaptchaType::RecaptchaV3 => {
+            format!(
+                r#"(function() {{
+                    var textarea = document.querySelector('[name="g-recaptcha-response"]');
+                    if (textarea) {{
+                        textarea.value = "{}";
+                        textarea.style.display = 'block';
+                    }}
+                    if (typeof window.onRecaptchaSuccess === 'function') window.onRecaptchaSuccess("{}");
+                }})()"#,
+                escaped_solution, escaped_solution
+            )
+        }
+        CaptchaType::Hcaptcha => {
+            format!(
+                r#"(function() {{
+                    var hcaptcha = document.querySelector('[name="h-captcha-response"]');
+                    if (hcaptcha) hcaptcha.value = "{}";
+                    var grecaptcha = document.querySelector('[name="g-recaptcha-response"]');
+                    if (grecaptcha) grecaptcha.value = "{}";
+                    if (typeof window.hcaptchaCallback === 'function') window.hcaptchaCallback("{}");
+                }})()"#,
+                escaped_solution, escaped_solution, escaped_solution
+            )
+        }
+        CaptchaType::None => String::new(),
+    }
+}

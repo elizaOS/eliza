@@ -1,5 +1,3 @@
-"""Goal data service for managing goals."""
-
 import logging
 from datetime import datetime
 from typing import Protocol
@@ -16,48 +14,24 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseProtocol(Protocol):
-    """Protocol for database operations."""
-
     async def execute(self, query: str, params: dict[str, object] | None = None) -> list[dict[str, object]]:
-        """Execute a query and return results."""
         ...
 
     async def execute_one(self, query: str, params: dict[str, object] | None = None) -> dict[str, object] | None:
-        """Execute a query and return a single result."""
         ...
 
 
 class GoalDataService:
-    """Service for managing goal data.
-
-    This service provides CRUD operations for goals,
-    including tag management and filtering capabilities.
-    """
-
     def __init__(self, db: DatabaseProtocol) -> None:
-        """Initialize the goal data service.
-
-        Args:
-            db: Database instance for executing queries
-        """
         self.db = db
 
     async def create_goal(self, params: CreateGoalParams) -> str | None:
-        """Create a new goal.
-
-        Args:
-            params: Goal creation parameters
-
-        Returns:
-            The created goal ID, or None if creation failed
-        """
         try:
             import uuid
 
             goal_id = str(uuid.uuid4())
             now = datetime.now()
 
-            # Insert goal
             await self.db.execute(
                 """
                 INSERT INTO goals (id, agent_id, owner_type, owner_id, name, description, metadata, created_at, updated_at)
@@ -76,7 +50,6 @@ class GoalDataService:
                 },
             )
 
-            # Insert tags
             if params.tags:
                 for tag in params.tags:
                     tag_id = str(uuid.uuid4())
@@ -100,14 +73,6 @@ class GoalDataService:
             raise
 
     async def get_goal(self, goal_id: str) -> Goal | None:
-        """Get a goal by ID.
-
-        Args:
-            goal_id: The goal ID
-
-        Returns:
-            The goal, or None if not found
-        """
         try:
             result = await self.db.execute_one(
                 "SELECT * FROM goals WHERE id = :id",
@@ -117,7 +82,6 @@ class GoalDataService:
             if not result:
                 return None
 
-            # Get tags
             tags_result = await self.db.execute(
                 "SELECT tag FROM goal_tags WHERE goal_id = :goal_id",
                 {"goal_id": goal_id},
@@ -144,14 +108,6 @@ class GoalDataService:
             raise
 
     async def get_goals(self, filters: GoalFilters | None = None) -> list[Goal]:
-        """Get goals with optional filters.
-
-        Args:
-            filters: Optional filters to apply
-
-        Returns:
-            List of matching goals
-        """
         try:
             conditions: list[str] = []
             params: dict[str, object] = {}
@@ -169,14 +125,12 @@ class GoalDataService:
 
             where_clause = " AND ".join(conditions) if conditions else "1=1"
             query = f"SELECT * FROM goals WHERE {where_clause} ORDER BY created_at ASC"  # noqa: S608
-
             results = await self.db.execute(query, params)
 
             goals: list[Goal] = []
             for result in results:
                 goal_id = str(result["id"])
 
-                # Get tags
                 tags_result = await self.db.execute(
                     "SELECT tag FROM goal_tags WHERE goal_id = :goal_id",
                     {"goal_id": goal_id},
@@ -212,15 +166,6 @@ class GoalDataService:
             raise
 
     async def update_goal(self, goal_id: str, updates: UpdateGoalParams) -> bool:
-        """Update a goal.
-
-        Args:
-            goal_id: The goal ID
-            updates: Fields to update
-
-        Returns:
-            True if update succeeded
-        """
         try:
             set_clauses: list[str] = ["updated_at = :updated_at"]
             params: dict[str, object] = {"id": goal_id, "updated_at": datetime.now()}
@@ -257,7 +202,6 @@ class GoalDataService:
                     {"goal_id": goal_id},
                 )
 
-                # Insert new tags
                 now = datetime.now()
                 for tag in updates.tags:
                     tag_id = str(uuid.uuid4())
@@ -281,14 +225,6 @@ class GoalDataService:
             raise
 
     async def delete_goal(self, goal_id: str) -> bool:
-        """Delete a goal.
-
-        Args:
-            goal_id: The goal ID
-
-        Returns:
-            True if deletion succeeded
-        """
         try:
             await self.db.execute(
                 "DELETE FROM goals WHERE id = :id",
@@ -305,15 +241,6 @@ class GoalDataService:
         owner_type: GoalOwnerType | None = None,
         owner_id: str | None = None,
     ) -> list[Goal]:
-        """Get uncompleted goals.
-
-        Args:
-            owner_type: Optional owner type filter
-            owner_id: Optional owner ID filter
-
-        Returns:
-            List of uncompleted goals
-        """
         return await self.get_goals(
             GoalFilters(
                 owner_type=owner_type,
@@ -327,15 +254,6 @@ class GoalDataService:
         owner_type: GoalOwnerType | None = None,
         owner_id: str | None = None,
     ) -> list[Goal]:
-        """Get completed goals.
-
-        Args:
-            owner_type: Optional owner type filter
-            owner_id: Optional owner ID filter
-
-        Returns:
-            List of completed goals
-        """
         return await self.get_goals(
             GoalFilters(
                 owner_type=owner_type,
@@ -350,16 +268,6 @@ class GoalDataService:
         owner_id: str,
         is_completed: bool | None = None,
     ) -> int:
-        """Count goals with filters.
-
-        Args:
-            owner_type: Owner type filter
-            owner_id: Owner ID filter
-            is_completed: Optional completion status filter
-
-        Returns:
-            Number of matching goals
-        """
         goals = await self.get_goals(
             GoalFilters(
                 owner_type=owner_type,

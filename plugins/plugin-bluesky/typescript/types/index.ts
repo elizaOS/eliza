@@ -1,11 +1,6 @@
-/**
- * Core types for the BlueSky AT Protocol API.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import { z } from "zod";
 
-// Constants
 export const BLUESKY_SERVICE_URL = "https://bsky.social";
 export const BLUESKY_MAX_POST_LENGTH = 300;
 export const BLUESKY_POLL_INTERVAL = 60;
@@ -19,7 +14,6 @@ export const BLUESKY_SERVICE_NAME = "bluesky";
 export const AT_PROTOCOL_HANDLE_REGEX =
   /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
 
-// Cache configuration
 export const CACHE_TTL = {
   PROFILE: 3600000,
   TIMELINE: 300000,
@@ -36,7 +30,6 @@ export const CACHE_SIZE = {
   CONVERSATIONS: 100,
 } as const;
 
-// Configuration schema
 export const BlueSkyConfigSchema = z.object({
   handle: z.string().regex(AT_PROTOCOL_HANDLE_REGEX, "Invalid handle format"),
   password: z.string().min(1),
@@ -55,7 +48,6 @@ export const BlueSkyConfigSchema = z.object({
 
 export type BlueSkyConfig = z.infer<typeof BlueSkyConfigSchema>;
 
-// Profile
 export interface BlueSkyProfile {
   did: string;
   handle: string;
@@ -70,15 +62,17 @@ export interface BlueSkyProfile {
   createdAt?: string;
 }
 
-// Post
 export interface PostFacet {
   index: { byteStart: number; byteEnd: number };
-  features: Array<{ $type: string; [key: string]: unknown }>;
+  features: Array<{
+    $type?: string;
+    [key: string]: string | number | boolean | object | null | undefined;
+  }>;
 }
 
 export interface PostEmbed {
   $type: string;
-  [key: string]: unknown;
+  [key: string]: string | number | boolean | object | null | undefined;
 }
 
 export interface PostRecord {
@@ -102,7 +96,6 @@ export interface BlueSkyPost {
   indexedAt: string;
 }
 
-// Timeline
 export interface TimelineRequest {
   algorithm?: string;
   limit?: number;
@@ -115,7 +108,7 @@ export interface TimelineFeedItem {
     root: BlueSkyPost;
     parent: BlueSkyPost;
   };
-  reason?: Record<string, unknown>;
+  reason?: Record<string, string | number | boolean | object | null | undefined>;
 }
 
 export interface TimelineResponse {
@@ -123,7 +116,6 @@ export interface TimelineResponse {
   feed: TimelineFeedItem[];
 }
 
-// Post creation
 export interface CreatePostRequest {
   content: {
     text: string;
@@ -133,7 +125,6 @@ export interface CreatePostRequest {
   replyTo?: { uri: string; cid: string };
 }
 
-// Notifications
 export type NotificationReason = "mention" | "reply" | "follow" | "like" | "repost" | "quote";
 
 export interface BlueSkyNotification {
@@ -142,12 +133,11 @@ export interface BlueSkyNotification {
   author: BlueSkyProfile;
   reason: NotificationReason;
   reasonSubject?: string;
-  record: Record<string, unknown>;
+  record: Record<string, string | number | boolean | object | null | undefined>;
   isRead: boolean;
   indexedAt: string;
 }
 
-// Messages
 export interface BlueSkyMessage {
   id: string;
   rev: string;
@@ -176,7 +166,6 @@ export interface SendMessageRequest {
   message: { text?: string; embed?: PostEmbed };
 }
 
-// Session
 export interface BlueSkySession {
   did: string;
   handle: string;
@@ -185,7 +174,6 @@ export interface BlueSkySession {
   refreshJwt: string;
 }
 
-// Error
 export class BlueSkyError extends Error {
   constructor(
     message: string,
@@ -197,17 +185,15 @@ export class BlueSkyError extends Error {
   }
 }
 
-// AT Protocol record type with known properties for posts
 export interface ATProtocolPostRecord {
   $type: string;
   text: string;
   facets?: PostFacet[];
   embed?: PostEmbed;
   createdAt: string;
-  [k: string]: string | PostFacet[] | PostEmbed | undefined;
+  [k: string]: string | PostFacet[] | PostEmbed | number | boolean | null | undefined;
 }
 
-// Extended profile view that includes all potential properties from AT Protocol
 export interface ATProtocolProfileViewExtended {
   did: string;
   handle: string;
@@ -223,7 +209,6 @@ export interface ATProtocolProfileViewExtended {
   [k: string]: string | number | undefined;
 }
 
-// Event payload types for BlueSky events
 export interface BlueSkyEventPayload {
   runtime: IAgentRuntime;
   source: "bluesky";

@@ -1,10 +1,3 @@
-"""
-Message service for elizaOS.
-
-This module provides the message handling service that processes incoming messages
-and generates responses using the agent's character, providers, and model handlers.
-"""
-
 from __future__ import annotations
 
 import time
@@ -27,8 +20,6 @@ HandlerCallback = Callable[[Content], Coroutine[Any, Any, list[Memory]]]
 
 @dataclass
 class MessageProcessingResult:
-    """Result of message processing."""
-
     did_respond: bool
     response_content: Content | None
     response_messages: list[Memory] = field(default_factory=list)
@@ -36,54 +27,32 @@ class MessageProcessingResult:
 
 
 class IMessageService(ABC):
-    """Interface for message handling service."""
-
     @abstractmethod
     async def handle_message(
         self,
         runtime: IAgentRuntime,
         message: Memory,
         callback: HandlerCallback | None = None,
-    ) -> MessageProcessingResult:
-        """Process an incoming message and generate a response."""
-        ...
+    ) -> MessageProcessingResult: ...
 
 
 class DefaultMessageService(IMessageService):
-    """
-    Default implementation of the message service.
-
-    This service handles the complete message processing pipeline:
-    - Composes state from providers
-    - Generates response using the model
-    - Returns the result
-    """
-
     async def handle_message(
         self,
         runtime: IAgentRuntime,
         message: Memory,
         callback: HandlerCallback | None = None,
     ) -> MessageProcessingResult:
-        """Process an incoming message and generate a response."""
-
-        # Start run tracking
         _ = runtime.start_run(message.room_id)
         start_time = time.time()
 
         try:
-            # Check if shouldRespond evaluation is enabled
-            # When disabled (ChatGPT mode), we always respond
             check_should_respond = runtime.is_check_should_respond_enabled()
             if not check_should_respond:
                 runtime.logger.debug(
                     "check_should_respond disabled, always responding (ChatGPT mode)"
                 )
-            # Note: This implementation always responds, so check_should_respond=False
-            # maintains the default behavior. When shouldRespond logic is added,
-            # this check will bypass it when check_should_respond is False.
 
-            # Save the incoming message to memory first
             runtime.logger.debug("Saving incoming message to memory")
             if message.id:
                 # Check if memory already exists
@@ -111,10 +80,7 @@ class DefaultMessageService(IMessageService):
                 },
             )
 
-            # Create response content
             response_content = Content(text=str(response_text))
-
-            # Create response memory
             response_id = as_uuid(str(uuid.uuid4()))
             response_memory = Memory(
                 id=response_id,
@@ -133,7 +99,7 @@ class DefaultMessageService(IMessageService):
             if callback:
                 await callback(response_content)
 
-            _ = time.time() - start_time  # elapsed time for future logging
+            _ = time.time() - start_time
 
             return MessageProcessingResult(
                 did_respond=True,
@@ -152,8 +118,6 @@ class DefaultMessageService(IMessageService):
         """Build the prompt for the model."""
         character = runtime.character
         user_text = message.content.text or ""
-
-        # Include state text from providers if available
         context = state.text if state.text else ""
 
         prompt_parts = []

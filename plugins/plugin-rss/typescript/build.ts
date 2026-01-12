@@ -1,13 +1,8 @@
-/**
- * Build script for the RSS plugin TypeScript implementation
- */
-
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { build } from "bun";
 
 const outdir = "./dist";
 
-// Clean output directory
 if (existsSync(outdir)) {
   rmSync(outdir, { recursive: true });
 }
@@ -16,7 +11,6 @@ mkdirSync(`${outdir}/node`, { recursive: true });
 
 console.log("Building RSS plugin...");
 
-// Build for Node.js
 const nodeResult = await build({
   entrypoints: ["./index.ts"],
   outdir: `${outdir}/node`,

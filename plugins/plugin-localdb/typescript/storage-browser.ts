@@ -1,13 +1,5 @@
-/**
- * Browser localStorage-based JSON storage implementation
- */
-
 import type { IStorage } from "./types";
 
-/**
- * localStorage-based JSON storage for browsers
- * Uses a key prefix to namespace all data
- */
 export class BrowserStorage implements IStorage {
   private prefix: string;
   private ready = false;
@@ -138,17 +130,11 @@ export class BrowserStorage implements IStorage {
     return items.filter(predicate).length;
   }
 
-  /**
-   * Save raw data (for HNSW index)
-   */
   async saveRaw(filename: string, data: string): Promise<void> {
     const key = `${this.prefix}:_raw:${filename}`;
     localStorage.setItem(key, data);
   }
 
-  /**
-   * Load raw data (for HNSW index)
-   */
   async loadRaw(filename: string): Promise<string | null> {
     const key = `${this.prefix}:_raw:${filename}`;
     return localStorage.getItem(key);

@@ -1,5 +1,3 @@
-"""Benchmark Runner - Orchestrates REALM-Bench and API-Bank testing."""
-
 import asyncio
 import json
 import logging
@@ -24,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryTracker:
-    """Track memory usage during benchmarks."""
-
     def __init__(self, enabled: bool = True) -> None:
         self.enabled = enabled
         self.measurements: list[int] = []
@@ -33,17 +29,15 @@ class MemoryTracker:
         self._task: Optional[asyncio.Task[None]] = None
 
     async def start(self) -> None:
-        """Start memory tracking."""
         if not self.enabled:
             return
 
         self.measurements = []
         self._running = True
         tracemalloc.start()
-        self._task = asyncio.create_task(self._track())
+            self._task = asyncio.create_task(self._track())
 
     async def stop(self) -> None:
-        """Stop memory tracking."""
         self._running = False
         if self._task:
             self._task.cancel()
@@ -55,14 +49,12 @@ class MemoryTracker:
             tracemalloc.stop()
 
     async def _track(self) -> None:
-        """Continuously track memory usage."""
         while self._running:
             current, _ = tracemalloc.get_traced_memory()
             self.measurements.append(current)
             await asyncio.sleep(1.0)
 
     def get_stats(self) -> dict[str, int]:
-        """Get memory statistics."""
         if not self.enabled or not self.measurements:
             return {"peak": 0, "average": 0}
 
@@ -73,12 +65,6 @@ class MemoryTracker:
 
 
 class BenchmarkRunner:
-    """
-    Production-Ready Benchmark Runner.
-
-    Orchestrates REALM-Bench and API-Bank testing with real runtime context.
-    """
-
     def __init__(self, config: BenchmarkConfig) -> None:
         self.config = config
         self.runtime: Optional[Any] = None
@@ -87,7 +73,6 @@ class BenchmarkRunner:
         self._start_time = 0.0
 
     async def run_benchmarks(self) -> BenchmarkResults:
-        """Run comprehensive benchmarks."""
         self._start_time = time.time()
         await self.memory_tracker.start()
 
@@ -148,7 +133,6 @@ class BenchmarkRunner:
             await self._cleanup_runtime()
 
     async def _initialize_runtime(self) -> None:
-        """Initialize runtime with real providers and services."""
         logger.info("[BenchmarkRunner] Initializing test runtime with full context...")
 
         self.planning_service = PlanningService()
@@ -157,7 +141,6 @@ class BenchmarkRunner:
         logger.info("[BenchmarkRunner] Runtime initialized successfully")
 
     async def _run_realm_bench_tests(self) -> RealmBenchReport:
-        """Run REALM-Bench tests."""
         if not self.planning_service or not self.config.realm_bench_path:
             raise ValueError("Runtime or REALM-Bench path not configured")
 
@@ -173,7 +156,6 @@ class BenchmarkRunner:
         return report
 
     async def _run_api_bank_tests(self) -> ApiBankReport:
-        """Run API-Bank tests."""
         if not self.planning_service or not self.config.api_bank_path:
             raise ValueError("Runtime or API-Bank path not configured")
 
@@ -194,7 +176,6 @@ class BenchmarkRunner:
         realm_bench_results: Optional[RealmBenchReport],
         api_bank_results: Optional[ApiBankReport],
     ) -> BenchmarkResults:
-        """Finalize benchmark results with comprehensive analysis."""
         duration = time.time() - self._start_time
         memory_stats = self.memory_tracker.get_stats()
 
@@ -243,7 +224,7 @@ class BenchmarkRunner:
             api_bank_results=api_bank_results,
             overall_metrics=overall_metrics,
             comparison=comparison,
-            summary=summary,
+            summary=            summary,
         )
 
     def _generate_comparison(
@@ -251,7 +232,6 @@ class BenchmarkRunner:
         realm_bench_results: Optional[RealmBenchReport],
         api_bank_results: Optional[ApiBankReport],
     ) -> dict[str, Any]:
-        """Generate comparison analysis."""
         strengths: list[str] = []
         weaknesses: list[str] = []
         recommendations: list[str] = []
@@ -299,7 +279,6 @@ class BenchmarkRunner:
     def _generate_summary(
         self, metrics: dict[str, Any], comparison: dict[str, Any]
     ) -> dict[str, Any]:
-        """Generate summary and scoring."""
         key_findings: list[str] = []
         success_rate = metrics.get("overall_success_rate", 0)
 
@@ -337,7 +316,6 @@ class BenchmarkRunner:
         }
 
     async def _save_results(self, results: BenchmarkResults) -> None:
-        """Save comprehensive benchmark results."""
         try:
             output_dir = Path(self.config.output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -372,7 +350,6 @@ class BenchmarkRunner:
             raise
 
     def _generate_markdown_summary(self, results: BenchmarkResults) -> str:
-        """Generate markdown summary report."""
         metadata = results.metadata
         metrics = results.overall_metrics
         comparison = results.comparison
@@ -434,12 +411,6 @@ class BenchmarkRunner:
         return md
 
     async def _cleanup_runtime(self) -> None:
-        """Cleanup runtime resources."""
         if self.planning_service:
             await self.planning_service.stop()
             logger.info("[BenchmarkRunner] Runtime cleanup completed")
-
-
-
-
-

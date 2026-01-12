@@ -1,10 +1,3 @@
-"""
-Providers Provider - Lists available providers.
-
-This provider returns a list of all registered providers
-that supply context to the agent.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,12 +13,6 @@ async def get_providers_list(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get available providers.
-
-    Returns a list of providers registered with the runtime
-    that supply context to agent prompts.
-    """
     provider_info: list[dict[str, str | bool]] = []
 
     for provider in runtime.providers:
@@ -40,12 +27,8 @@ async def get_providers_list(
     if not provider_info:
         return ProviderResult(
             text="No providers available.",
-            values={
-                "providerCount": 0,
-            },
-            data={
-                "providers": [],
-            },
+            values={"providerCount": 0},
+            data={"providers": []},
         )
 
     formatted_providers = "\n".join(f"- {p['name']}: {p['description']}" for p in provider_info)
@@ -64,7 +47,6 @@ async def get_providers_list(
     )
 
 
-# Create the provider instance
 providers_list_provider = Provider(
     name="PROVIDERS",
     description="Available context providers",

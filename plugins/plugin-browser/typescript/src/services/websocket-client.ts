@@ -1,12 +1,6 @@
-/**
- * WebSocket client for communication with browser server
- */
-
 import { logger } from "@elizaos/core";
 import type { NavigationResult, WebSocketMessage, WebSocketResponse } from "../types.js";
 
-// Dynamic import for WebSocket
-// Type adapter for browser WebSocket to match Node.js ws interface
 type WebSocketLike = {
   new (url: string): InstanceType<typeof import("ws").default>;
   prototype: InstanceType<typeof import("ws").default>;
@@ -14,8 +8,6 @@ type WebSocketLike = {
 
 let WebSocket: typeof import("ws").default;
 if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
-  // Browser WebSocket is runtime-compatible with ws but has different types
-  // Create adapter that preserves the interface
   WebSocket = window.WebSocket as unknown as WebSocketLike;
 } else {
   WebSocket = require("ws");
@@ -23,9 +15,6 @@ if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
 
 type MessageHandler = (response: WebSocketResponse) => void;
 
-/**
- * WebSocket client for browser automation server
- */
 export class BrowserWebSocketClient {
   private ws: InstanceType<typeof WebSocket> | null = null;
   private messageHandlers = new Map<string, MessageHandler>();
@@ -36,9 +25,6 @@ export class BrowserWebSocketClient {
 
   constructor(private serverUrl: string) {}
 
-  /**
-   * Connect to the browser server
-   */
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
@@ -109,9 +95,6 @@ export class BrowserWebSocketClient {
     }
   }
 
-  /**
-   * Send a message to the server and wait for response
-   */
   async sendMessage(type: string, data: Record<string, unknown>): Promise<WebSocketResponse> {
     if (!this.ws || !this.connected) {
       throw new Error("Not connected to browser server");
@@ -144,9 +127,6 @@ export class BrowserWebSocketClient {
     });
   }
 
-  /**
-   * Disconnect from the server
-   */
   disconnect(): void {
     this.reconnectAttempts = this.maxReconnectAttempts;
     if (this.ws) {
@@ -157,14 +137,9 @@ export class BrowserWebSocketClient {
     logger.info("[Browser] Client disconnected");
   }
 
-  /**
-   * Check if connected
-   */
   isConnected(): boolean {
     return this.connected;
   }
-
-  // Convenience methods for specific actions
 
   async navigate(sessionId: string, url: string): Promise<NavigationResult> {
     const response = await this.sendMessage("navigate", {

@@ -11,6 +11,7 @@ import reactToMessage from "./actions/reactToMessage";
 import readChannel from "./actions/readChannel";
 import searchMessages from "./actions/searchMessages";
 import sendDM from "./actions/sendDM";
+import sendMessage from "./actions/sendMessage";
 import serverInfo from "./actions/serverInfo";
 import { summarize } from "./actions/summarizeConversation";
 import { transcribeMedia } from "./actions/transcribeMedia";
@@ -18,6 +19,7 @@ import unpinMessage from "./actions/unpinMessage";
 import { printBanner } from "./banner";
 import { getPermissionValues } from "./permissions";
 import { channelStateProvider } from "./providers/channelState";
+import { guildInfoProvider } from "./providers/guildInfo";
 import { voiceStateProvider } from "./providers/voiceState";
 import { DiscordService } from "./service";
 import { DiscordTestSuite } from "./tests";
@@ -34,6 +36,7 @@ const discordPlugin: Plugin = {
     listChannels,
     readChannel,
     sendDM,
+    sendMessage,
     summarize,
     transcribeMedia,
     searchMessages,
@@ -44,7 +47,7 @@ const discordPlugin: Plugin = {
     unpinMessage,
     serverInfo,
   ],
-  providers: [channelStateProvider, voiceStateProvider],
+  providers: [channelStateProvider, voiceStateProvider, guildInfoProvider],
   tests: [new DiscordTestSuite()],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Gather ALL Discord settings

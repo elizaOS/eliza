@@ -22,7 +22,6 @@ export class SessionManager {
     sessionId: string,
     clientId: string,
   ): Promise<BrowserSession> {
-    // Ensure Playwright is installed before creating session
     if (!this.playwrightInstaller.isReady()) {
       try {
         await this.playwrightInstaller.ensurePlaywrightInstalled();
@@ -34,7 +33,6 @@ export class SessionManager {
       }
     }
 
-    // Check session limit for client
     const clientSessions = this.getClientSessions(clientId);
     if (clientSessions.length >= this.maxSessionsPerClient) {
       // Remove oldest session
@@ -48,10 +46,8 @@ export class SessionManager {
 
     this.logger.info(`Creating session ${sessionId} for client ${clientId}`);
 
-    // Determine environment based on available API keys
     const env = process.env.BROWSERBASE_API_KEY ? "BROWSERBASE" : "LOCAL";
 
-    // Create Stagehand configuration
     interface StagehandConfig {
       env: "BROWSERBASE" | "LOCAL";
       headless: boolean;
@@ -75,7 +71,6 @@ export class SessionManager {
       headless: process.env.BROWSER_HEADLESS !== "false",
     };
 
-    // Add API keys if available
     if (process.env.BROWSERBASE_API_KEY) {
       config.apiKey = process.env.BROWSERBASE_API_KEY;
       config.projectId = process.env.BROWSERBASE_PROJECT_ID;
@@ -91,9 +86,7 @@ export class SessionManager {
       };
     }
 
-    // Configure LLM provider
     if (process.env.OLLAMA_BASE_URL) {
-      // Use Ollama if available
       config.modelName = process.env.OLLAMA_MODEL || "llama3.2-vision";
       config.modelBaseUrl = process.env.OLLAMA_BASE_URL;
     } else if (process.env.OPENAI_API_KEY) {

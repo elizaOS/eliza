@@ -1,9 +1,3 @@
-/**
- * Review Pull Request Action
- *
- * Creates a review on a GitHub pull request.
- */
-
 import {
   type Action,
   type ActionExample,
@@ -102,7 +96,6 @@ export const reviewPullRequestAction: Action = {
       const content = message.content as Content;
       const text = content.text ?? "";
 
-      // Determine review event type from text
       let event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT" = "COMMENT";
       const lowerText = text.toLowerCase();
       if (

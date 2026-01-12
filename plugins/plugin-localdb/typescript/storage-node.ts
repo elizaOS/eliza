@@ -1,16 +1,8 @@
-/**
- * Node.js file-based JSON storage implementation
- */
-
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { IStorage } from "./types";
 
-/**
- * File-based JSON storage for Node.js
- * Stores each item as a separate JSON file in a directory hierarchy
- */
 export class NodeStorage implements IStorage {
   private dataDir: string;
   private ready = false;
@@ -39,7 +31,6 @@ export class NodeStorage implements IStorage {
   }
 
   private getFilePath(collection: string, id: string): string {
-    // Sanitize id to be filesystem-safe
     const safeId = id.replace(/[^a-zA-Z0-9-_]/g, "_");
     return join(this.getCollectionDir(collection), `${safeId}.json`);
   }
@@ -71,9 +62,7 @@ export class NodeStorage implements IStorage {
         try {
           const content = await readFile(join(collectionDir, file), "utf-8");
           items.push(JSON.parse(content) as T);
-        } catch {
-          // Skip invalid files
-        }
+        } catch {}
       }
 
       return items;
@@ -133,9 +122,7 @@ export class NodeStorage implements IStorage {
           if (predicate(item)) {
             await rm(filePath);
           }
-        } catch {
-          // Skip invalid files
-        }
+        } catch {}
       }
     } catch {
       // Ignore errors
@@ -163,9 +150,6 @@ export class NodeStorage implements IStorage {
     return items.filter(predicate).length;
   }
 
-  /**
-   * Save raw data to a file (for HNSW index)
-   */
   async saveRaw(filename: string, data: string): Promise<void> {
     const filePath = join(this.dataDir, filename);
     const dir = join(this.dataDir, filename.split("/").slice(0, -1).join("/"));
@@ -175,9 +159,6 @@ export class NodeStorage implements IStorage {
     await writeFile(filePath, data, "utf-8");
   }
 
-  /**
-   * Load raw data from a file (for HNSW index)
-   */
   async loadRaw(filename: string): Promise<string | null> {
     const filePath = join(this.dataDir, filename);
     try {

@@ -1,34 +1,15 @@
-"""
-RSS Plugin Type Definitions
-
-Pydantic models for RSS/Atom feed parsing and management.
-"""
-
 from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# ============================================================================
-# Enums
-# ============================================================================
-
 
 class FeedFormat(str, Enum):
-    """Output format for feed items."""
-
     CSV = "csv"
     MARKDOWN = "markdown"
 
 
-# ============================================================================
-# RSS Feed Types
-# ============================================================================
-
-
 class RssImage(BaseModel):
-    """RSS channel image metadata."""
-
     url: str = Field(default="", description="URL of the image")
     title: str = Field(default="", description="Image title")
     link: str = Field(default="", description="Link associated with the image")
@@ -37,16 +18,12 @@ class RssImage(BaseModel):
 
 
 class RssEnclosure(BaseModel):
-    """RSS item enclosure (media attachment)."""
-
     url: str = Field(..., description="URL of the enclosed media")
     type: str = Field(default="", description="MIME type of the media")
     length: str = Field(default="", description="Size in bytes")
 
 
 class RssItem(BaseModel):
-    """RSS feed item (article/post)."""
-
     title: str = Field(default="", description="Item title")
     link: str = Field(default="", description="Item URL")
     pub_date: str = Field(default="", alias="pubDate", description="Publication date")
@@ -61,8 +38,6 @@ class RssItem(BaseModel):
 
 
 class RssChannel(BaseModel):
-    """RSS channel (feed) metadata."""
-
     title: str = Field(default="", description="Channel title")
     description: str = Field(default="", description="Channel description")
     link: str = Field(default="", description="Channel URL")
@@ -78,19 +53,10 @@ class RssChannel(BaseModel):
 
 
 class RssFeed(RssChannel):
-    """Complete RSS feed (channel + items)."""
-
     items: list[RssItem] = Field(default_factory=list, description="Feed items")
 
 
-# ============================================================================
-# Memory Types
-# ============================================================================
-
-
 class FeedItemMetadata(BaseModel):
-    """Metadata stored with feed items in memory."""
-
     title: str | None = None
     description: str | None = None
     pub_date: str | None = Field(default=None, alias="pubDate")
@@ -105,8 +71,6 @@ class FeedItemMetadata(BaseModel):
 
 
 class FeedSubscriptionMetadata(BaseModel):
-    """Metadata stored with feed subscriptions in memory."""
-
     type: Literal["feed_subscription"] = "feed_subscription"
     subscribed_at: int = Field(alias="subscribedAt", description="Subscription timestamp")
     last_checked: int = Field(default=0, alias="lastChecked", description="Last check timestamp")
@@ -117,14 +81,7 @@ class FeedSubscriptionMetadata(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-# ============================================================================
-# Configuration
-# ============================================================================
-
-
 class RssConfig(BaseModel):
-    """RSS plugin configuration."""
-
     feeds: list[str] = Field(
         default_factory=list, description="List of feed URLs to auto-subscribe"
     )

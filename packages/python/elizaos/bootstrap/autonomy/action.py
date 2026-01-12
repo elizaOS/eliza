@@ -1,9 +1,3 @@
-"""
-Autonomy Actions for elizaOS - Python implementation.
-
-Actions that enable autonomous agent communication.
-"""
-
 from __future__ import annotations
 
 import uuid
@@ -27,8 +21,6 @@ async def _validate_send_to_admin(
     message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate send to admin action."""
-    # Only allow in autonomous context
     autonomy_service = runtime.get_service(AUTONOMY_SERVICE_TYPE)
     if not autonomy_service or not isinstance(autonomy_service, AutonomyService):
         return False
@@ -37,12 +29,10 @@ async def _validate_send_to_admin(
     if not autonomous_room_id or message.room_id != autonomous_room_id:
         return False
 
-    # Check if admin is configured
     admin_user_id = runtime.get_setting("ADMIN_USER_ID")
     if not admin_user_id:
         return False
 
-    # Check for admin-related keywords
     text = (message.content.text or "").lower() if message.content else ""
     admin_keywords = [
         "admin",
@@ -69,8 +59,6 @@ async def _handle_send_to_admin(
     callback: Callable[[Content], Awaitable[None]] | None = None,
     responses: list[Memory] | None = None,
 ) -> ActionResult:
-    """Handle send to admin action."""
-    # Double-check autonomous context
     autonomy_service = runtime.get_service(AUTONOMY_SERVICE_TYPE)
     if not autonomy_service or not isinstance(autonomy_service, AutonomyService):
         return ActionResult(
@@ -87,7 +75,6 @@ async def _handle_send_to_admin(
             data={"error": "Invalid context"},
         )
 
-    # Get admin user ID
     admin_user_id = runtime.get_setting("ADMIN_USER_ID")
     if not admin_user_id:
         return ActionResult(
@@ -96,7 +83,6 @@ async def _handle_send_to_admin(
             data={"error": "No admin configured"},
         )
 
-    # Find target room
     admin_messages = await runtime.get_memories(
         {
             "roomId": runtime.agent_id,
@@ -111,7 +97,6 @@ async def _handle_send_to_admin(
     else:
         target_room_id = runtime.agent_id
 
-    # Extract and format message
     autonomous_thought = message.content.text or "" if message.content else ""
 
     if "completed" in autonomous_thought or "finished" in autonomous_thought:
@@ -133,7 +118,6 @@ async def _handle_send_to_admin(
     else:
         message_to_admin = f"Autonomous update: {autonomous_thought}"
 
-    # Create and store message
     admin_message = Memory(
         id=as_uuid(str(uuid.uuid4())),
         entity_id=runtime.agent_id,

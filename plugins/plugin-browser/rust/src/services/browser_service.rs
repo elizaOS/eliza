@@ -1,7 +1,3 @@
-//! Browser automation service.
-//!
-//! Manages browser sessions and provides browser automation capabilities.
-
 use crate::services::BrowserWebSocketClient;
 use crate::types::{BrowserConfig, BrowserSession};
 use chrono::Utc;
@@ -11,7 +7,6 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-/// Browser automation service
 pub struct BrowserService {
     sessions: Arc<RwLock<HashMap<String, BrowserSession>>>,
     current_session_id: Arc<RwLock<Option<String>>>,
@@ -30,7 +25,6 @@ impl BrowserService {
         }
     }
 
-    /// Start the browser service
     pub async fn start(&self) -> Result<(), String> {
         info!("Starting browser automation service");
 
@@ -45,7 +39,6 @@ impl BrowserService {
         Ok(())
     }
 
-    /// Stop the browser service
     pub async fn stop(&self) {
         info!("Stopping browser automation service");
 
@@ -60,7 +53,6 @@ impl BrowserService {
         *self.initialized.write().await = false;
     }
 
-    /// Create a new browser session
     pub async fn create_session(&self, session_id: &str) -> Result<BrowserSession, String> {
         if !*self.initialized.read().await {
             return Err("Browser service not initialized".to_string());
@@ -83,18 +75,15 @@ impl BrowserService {
         Ok(session)
     }
 
-    /// Get an existing session
     pub async fn get_session(&self, session_id: &str) -> Option<BrowserSession> {
         self.sessions.read().await.get(session_id).cloned()
     }
 
-    /// Get the current active session
     pub async fn get_current_session(&self) -> Option<BrowserSession> {
         let current_id = self.current_session_id.read().await.clone()?;
         self.sessions.read().await.get(&current_id).cloned()
     }
 
-    /// Get or create a session
     pub async fn get_or_create_session(&self) -> Result<BrowserSession, String> {
         if let Some(session) = self.get_current_session().await {
             return Ok(session);
@@ -104,7 +93,6 @@ impl BrowserService {
         self.create_session(&session_id).await
     }
 
-    /// Destroy a session
     pub async fn destroy_session(&self, session_id: &str) -> Result<(), String> {
         let session = match self.sessions.read().await.get(session_id).cloned() {
             Some(s) => s,
@@ -126,12 +114,10 @@ impl BrowserService {
         Ok(())
     }
 
-    /// Get the WebSocket client
     pub fn get_client(&self) -> Arc<BrowserWebSocketClient> {
         Arc::clone(&self.client)
     }
 
-    /// Check if initialized
     pub async fn is_initialized(&self) -> bool {
         *self.initialized.read().await
     }

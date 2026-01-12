@@ -1,16 +1,8 @@
-/**
- * Browser automation service
- * Manages browser sessions and provides browser automation capabilities
- */
-
 import { type IAgentRuntime, logger, Service, ServiceType } from "@elizaos/core";
 import type { BrowserSession } from "../types.js";
 import { BrowserProcessManager } from "./process-manager.js";
 import { BrowserWebSocketClient } from "./websocket-client.js";
 
-/**
- * Browser session wrapper
- */
 export class Session implements BrowserSession {
   constructor(
     public id: string,
@@ -18,9 +10,6 @@ export class Session implements BrowserSession {
   ) {}
 }
 
-/**
- * Browser automation service
- */
 export class BrowserService extends Service {
   static serviceType = ServiceType.BROWSER;
   capabilityDescription = "Browser automation service for web interactions";
@@ -43,9 +32,6 @@ export class BrowserService extends Service {
     this.client = new BrowserWebSocketClient(`ws://localhost:${port}`);
   }
 
-  /**
-   * Start the browser service
-   */
   static async start(runtime: IAgentRuntime): Promise<BrowserService> {
     logger.info("Starting browser automation service");
     try {
@@ -73,9 +59,6 @@ export class BrowserService extends Service {
     }
   }
 
-  /**
-   * Stop the browser service for a runtime
-   */
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
     logger.info("Stopping browser automation service");
     const service = runtime.getService<BrowserService>(BrowserService.serviceType);
@@ -85,9 +68,6 @@ export class BrowserService extends Service {
     await service.stop();
   }
 
-  /**
-   * Stop the service
-   */
   async stop(): Promise<void> {
     logger.info("Cleaning up browser sessions");
 
@@ -100,9 +80,6 @@ export class BrowserService extends Service {
     this.isInitialized = false;
   }
 
-  /**
-   * Initialize the service
-   */
   async initialize(): Promise<void> {
     if (this.isInitialized) {
       return;
@@ -129,9 +106,6 @@ export class BrowserService extends Service {
     }
   }
 
-  /**
-   * Create a new browser session
-   */
   async createSession(sessionId: string): Promise<Session> {
     if (!this.isInitialized) {
       throw new Error("Browser service not initialized");
@@ -150,16 +124,10 @@ export class BrowserService extends Service {
     return session;
   }
 
-  /**
-   * Get an existing session
-   */
   async getSession(sessionId: string): Promise<Session | undefined> {
     return this.sessions.get(sessionId);
   }
 
-  /**
-   * Get the current active session
-   */
   async getCurrentSession(): Promise<Session | undefined> {
     if (!this.currentSessionId) {
       return undefined;
@@ -167,9 +135,6 @@ export class BrowserService extends Service {
     return this.sessions.get(this.currentSessionId);
   }
 
-  /**
-   * Get or create a session
-   */
   async getOrCreateSession(): Promise<Session> {
     const currentSession = await this.getCurrentSession();
     if (currentSession) {
@@ -180,9 +145,6 @@ export class BrowserService extends Service {
     return this.createSession(sessionId);
   }
 
-  /**
-   * Destroy a session
-   */
   async destroySession(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session) {
@@ -194,9 +156,6 @@ export class BrowserService extends Service {
     }
   }
 
-  /**
-   * Get the WebSocket client
-   */
   getClient(): BrowserWebSocketClient {
     if (!this.isInitialized) {
       throw new Error("Browser service not initialized");

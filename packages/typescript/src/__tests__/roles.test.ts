@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as entities from "../entities";
-import * as logger_module from "../logger";
-import { findWorldsForOwner, getUserServerRole } from "../roles";
-import { type IAgentRuntime, Role, type UUID, type World } from "../types";
 import {
   cleanupTestRuntime,
   createTestRuntime,
 } from "../bootstrap/__tests__/test-utils";
+import * as entities from "../entities";
+import * as logger_module from "../logger";
+import { findWorldsForOwner, getUserServerRole } from "../roles";
+import { type IAgentRuntime, Role, type UUID, type World } from "../types";
 
 describe("roles utilities", () => {
   let runtime: IAgentRuntime;
@@ -247,10 +247,7 @@ describe("roles utilities", () => {
       const { logger } = await import("../logger");
 
       // Testing with null value (intentional type test)
-      const result = await findWorldsForOwner(
-        runtime,
-        null as string,
-      );
+      const result = await findWorldsForOwner(runtime, null as string);
 
       expect(result).toBeNull();
       expect(logger.error).toHaveBeenCalledWith(

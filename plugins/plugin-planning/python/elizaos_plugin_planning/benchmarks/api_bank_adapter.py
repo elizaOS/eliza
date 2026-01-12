@@ -1,5 +1,3 @@
-"""API-Bank Adapter - Tests ElizaOS tool-use planning capabilities."""
-
 import json
 import logging
 import time
@@ -19,19 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 class ApiBankAdapter:
-    """
-    Production-Ready API-Bank Adapter.
-
-    Tests ElizaOS tool-use planning capabilities against API-Bank scenarios.
-    """
-
     def __init__(self, planning_service: PlanningService, runtime: Optional[Any] = None) -> None:
         self.planning_service = planning_service
         self.runtime = runtime
         self.test_cases: list[ApiBankTestCase] = []
 
     async def load_test_cases(self, api_bank_data_path: str) -> None:
-        """Load test cases from API-Bank format."""
         try:
             logger.info(f"[ApiBankAdapter] Loading test cases from {api_bank_data_path}")
 
@@ -46,7 +37,6 @@ class ApiBankAdapter:
             raise RuntimeError(f"Failed to load API-Bank test cases: {e}") from e
 
     async def run_benchmark(self) -> ApiBankReport:
-        """Run all loaded test cases."""
         start_time = time.time()
         results: list[ApiBankResult] = []
 
@@ -88,7 +78,6 @@ class ApiBankAdapter:
         return report
 
     async def _run_test_case(self, test_case: ApiBankTestCase) -> ApiBankResult:
-        """Run a specific test case."""
         start_time = time.time()
         planning_time = 0.0
         execution_time = 0.0
@@ -193,7 +182,6 @@ class ApiBankAdapter:
             )
 
     async def _load_level_1_tests(self) -> None:
-        """Load Level 1 tests - single API call scenarios."""
         level_1_scenarios = [
             {
                 "id": "level1-weather",
@@ -259,7 +247,6 @@ class ApiBankAdapter:
             )
 
     async def _load_level_2_tests(self) -> None:
-        """Load Level 2 tests - multiple sequential API calls."""
         level_2_scenarios = [
             {
                 "id": "level2-weather-recommendation",
@@ -321,7 +308,6 @@ class ApiBankAdapter:
             )
 
     async def _load_level_3_tests(self) -> None:
-        """Load Level 3 tests - complex multi-API workflows."""
         level_3_scenarios = [
             {
                 "id": "level3-travel-planning",
@@ -438,8 +424,6 @@ class ApiBankAdapter:
         planning_time: float,
         execution_time: float,
     ) -> dict[str, float]:
-        """Calculate performance metrics."""
-        # API call accuracy
         expected_apis = {call.api for call in test_case.expected_api_calls}
         planned_apis = {call.api for call in api_calls_planned}
 
@@ -449,10 +433,8 @@ class ApiBankAdapter:
         else:
             api_call_accuracy = 1.0 if not planned_apis else 0.0
 
-        # Parameter accuracy (simplified)
-        parameter_accuracy = 0.5  # Would need more sophisticated comparison
+        parameter_accuracy = 0.5
 
-        # Response quality (simplified - check for non-empty response)
         response_quality = 0.5 if response_generated else 0.0
         if response_generated and len(response_generated) > 20:
             response_quality = 0.7
@@ -468,7 +450,6 @@ class ApiBankAdapter:
     def _generate_report(
         self, results: list[ApiBankResult], total_duration: float
     ) -> ApiBankReport:
-        """Generate comprehensive benchmark report."""
         passed_tests = len([r for r in results if r.success])
         failed_tests = len(results) - passed_tests
 
@@ -515,7 +496,6 @@ class ApiBankAdapter:
         )
 
     async def save_report(self, report: ApiBankReport, file_path: str) -> None:
-        """Save benchmark report to file."""
         try:
             from dataclasses import asdict
 
@@ -526,8 +506,3 @@ class ApiBankAdapter:
         except Exception as e:
             logger.error(f"[ApiBankAdapter] Error saving report: {e}")
             raise
-
-
-
-
-

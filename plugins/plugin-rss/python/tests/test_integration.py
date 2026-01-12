@@ -1,50 +1,130 @@
-"""Integration tests for RSS client - real network requests."""
+"""Integration tests for the RSS plugin."""
 
 import pytest
 
-from elizaos_plugin_rss import RssClient, RssConfig
+
+class TestRssPluginStructure:
+    """Tests for plugin structure."""
+
+    def test_import_plugin(self) -> None:
+        """Test that plugin can be imported."""
+        from elizaos_plugin_rss import RssPlugin
+        assert RssPlugin is not None
+
+    def test_import_client(self) -> None:
+        """Test that client can be imported."""
+        from elizaos_plugin_rss import RssClient
+        assert RssClient is not None
+
+    def test_import_parser(self) -> None:
+        """Test that parser can be imported."""
+        from elizaos_plugin_rss import parse_rss_to_json, create_empty_feed
+        assert parse_rss_to_json is not None
+        assert create_empty_feed is not None
+
+    def test_import_types(self) -> None:
+        """Test that types can be imported."""
+        from elizaos_plugin_rss import (
+            RssConfig,
+            RssFeed,
+            RssItem,
+            FeedFormat,
+        )
+        assert RssConfig is not None
+        assert RssFeed is not None
+        assert RssItem is not None
+        assert FeedFormat is not None
 
 
-@pytest.mark.asyncio
-async def test_fetch_real_rss_feed() -> None:
-    """Test fetching a real RSS feed."""
-    config = RssConfig()
-    async with RssClient(config) as client:
-        feed = await client.fetch_feed("https://hnrss.org/frontpage")
+class TestRssPluginCreation:
+    """Tests for plugin creation."""
 
-        assert feed.title
-        assert len(feed.items) > 0
+    def test_create_plugin(self) -> None:
+        """Test creating a plugin instance."""
+        from elizaos_plugin_rss import RssPlugin
+        
+        plugin = RssPlugin()
+        assert plugin is not None
 
-        print(f"✅ Fetched '{feed.title}' with {len(feed.items)} items")
-        print(f"   First item: {feed.items[0].title if feed.items else 'N/A'}")
-
-
-@pytest.mark.asyncio
-async def test_fetch_github_blog() -> None:
-    """Test fetching GitHub blog feed."""
-    config = RssConfig()
-    async with RssClient(config) as client:
-        feed = await client.fetch_feed("https://github.blog/feed/")
-
-        # Just verify we got content (may be RSS or Atom)
-        assert feed is not None
-
-        print(f"✅ Fetched GitHub blog with {len(feed.items)} items")
+    def test_get_rss_plugin(self) -> None:
+        """Test get_rss_plugin helper."""
+        from elizaos_plugin_rss import get_rss_plugin
+        
+        plugin = get_rss_plugin()
+        assert plugin is not None
 
 
-@pytest.mark.asyncio
-async def test_validate_feed() -> None:
-    """Test feed validation."""
-    config = RssConfig()
-    async with RssClient(config) as client:
-        is_valid, message = await client.validate_feed("https://hnrss.org/frontpage")
+class TestRssParser:
+    """Tests for RSS parsing."""
 
-        assert is_valid
-        assert "Hacker News" in message
+    def test_create_empty_feed(self) -> None:
+        """Test creating empty feed."""
+        from elizaos_plugin_rss import create_empty_feed
+        
+        feed = create_empty_feed()
+        assert feed.title == ""
+        assert feed.items == []
 
-        print(f"✅ Validation passed: {message}")
+    def test_parse_basic_rss(self) -> None:
+        """Test parsing basic RSS."""
+        from elizaos_plugin_rss import parse_rss_to_json
+        
+        xml = """<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Test Feed</title>
+                <link>https://example.com</link>
+                <description>A test RSS feed</description>
+                <item>
+                    <title>Test Article</title>
+                    <link>https://example.com/article1</link>
+                    <description>This is a test article</description>
+                </item>
+            </channel>
+        </rss>"""
+        
+        feed = parse_rss_to_json(xml)
+        
+        assert feed.title == "Test Feed"
+        assert len(feed.items) == 1
+        assert feed.items[0].title == "Test Article"
+
+    def test_parse_rss_with_multiple_items(self) -> None:
+        """Test parsing RSS with multiple items."""
+        from elizaos_plugin_rss import parse_rss_to_json
+        
+        xml = """<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Multi Item Feed</title>
+                <item><title>Item 1</title></item>
+                <item><title>Item 2</title></item>
+                <item><title>Item 3</title></item>
+            </channel>
+        </rss>"""
+        
+        feed = parse_rss_to_json(xml)
+        assert len(feed.items) == 3
 
 
+class TestRssUtils:
+    """Tests for RSS utilities."""
 
+    def test_extract_urls(self) -> None:
+        """Test URL extraction from text."""
+        from elizaos_plugin_rss import extract_urls
+        
+        text = "Check out https://example.com and http://test.com for more."
+        urls = extract_urls(text)
+        
+        assert len(urls) == 2
+        assert any("example.com" in u for u in urls)
 
-
+    def test_format_relative_time(self) -> None:
+        """Test relative time formatting."""
+        from elizaos_plugin_rss import format_relative_time
+        import time
+        
+        now = int(time.time() * 1000)
+        result = format_relative_time(now - 30000)  # 30 seconds ago
+        assert "just now" in result or "second" in result

@@ -1,18 +1,9 @@
-/**
- * Plugin Code Templates
- *
- * Templates for generating plugin components.
- */
-
 import type { PluginSpecification } from "../types";
 
-/**
- * Generate action code.
- */
 export const generateActionCode = (
   name: string,
   description: string,
-  parameters?: Record<string, unknown>
+  parameters?: Record<string, string>
 ): string => {
   const camelCaseName = name.charAt(0).toLowerCase() + name.slice(1);
 
@@ -59,7 +50,7 @@ export const ${camelCaseName}Action: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    options?: { [key: string]: string },
     callback?: HandlerCallback
   ): Promise<string> => {
     try {
@@ -96,13 +87,10 @@ export const ${camelCaseName}Action: Action = {
 `;
 };
 
-/**
- * Generate provider code.
- */
 export const generateProviderCode = (
   name: string,
   description: string,
-  dataStructure?: Record<string, unknown>
+  dataStructure?: Record<string, string>
 ): string => {
   const camelCaseName = name.charAt(0).toLowerCase() + name.slice(1);
 
@@ -151,9 +139,6 @@ export const ${camelCaseName}Provider: Provider = {
 `;
 };
 
-/**
- * Generate service code.
- */
 export const generateServiceCode = (
   name: string,
   description: string,
@@ -211,9 +196,6 @@ export class ${className} extends Service {
 `;
 };
 
-/**
- * Generate evaluator code.
- */
 export const generateEvaluatorCode = (
   name: string,
   description: string,
@@ -290,9 +272,6 @@ export const ${camelCaseName}Evaluator: Evaluator = {
 `;
 };
 
-/**
- * Generate plugin index file.
- */
 export const generatePluginIndex = (
   pluginName: string,
   specification: PluginSpecification
@@ -382,9 +361,6 @@ export default ${pluginClassName};
 `;
 };
 
-/**
- * Generate test code using REAL AgentRuntime - NO MOCKS.
- */
 export const generateTestCode = (componentName: string, componentType: string): string => {
   const camelCaseName = componentName.charAt(0).toLowerCase() + componentName.slice(1);
   const typeLower = componentType.toLowerCase();
@@ -393,9 +369,6 @@ export const generateTestCode = (componentName: string, componentType: string): 
 import { ${camelCaseName}${componentType} } from '../${typeLower}s/${componentName}';
 import type { IAgentRuntime, Memory, State } from '@elizaos/core';
 
-/**
- * Creates a REAL AgentRuntime for testing - NO MOCKS.
- */
 async function createTestRuntime(): Promise<{
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;

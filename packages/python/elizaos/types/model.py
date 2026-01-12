@@ -1,9 +1,3 @@
-"""
-Model types for elizaOS.
-
-This module defines types for LLM models and model handlers.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -14,38 +8,12 @@ from pydantic import BaseModel, Field
 
 
 class LLMMode(str, Enum):
-    """
-    LLM Mode for overriding model selection.
-
-    - DEFAULT: Use the model type specified in the use_model call (no override)
-    - SMALL: Override all text generation model calls to use TEXT_SMALL
-    - LARGE: Override all text generation model calls to use TEXT_LARGE
-
-    This is useful for cost optimization (force SMALL) or quality (force LARGE).
-    While not recommended for production, it can be a fast way to make the agent run cheaper.
-
-    Example:
-        ```python
-        runtime = AgentRuntime(
-            character=my_character,
-            llm_mode=LLMMode.SMALL,  # All LLM calls will use TEXT_SMALL
-        )
-        ```
-    """
-
     DEFAULT = "DEFAULT"
     SMALL = "SMALL"
     LARGE = "LARGE"
 
 
 class ModelType(str, Enum):
-    """
-    Model type enumeration.
-
-    Defines the recognized types of models that the agent runtime can use.
-    Values match the TypeScript implementation for cross-language compatibility.
-    """
-
     # Text generation models
     TEXT_SMALL = "TEXT_SMALL"
     TEXT_LARGE = "TEXT_LARGE"
@@ -123,12 +91,6 @@ StreamChunkCallback = Callable[[str, str | None], Awaitable[None] | None]
 
 
 class GenerateTextParams(BaseModel):
-    """
-    Parameters for generating text using a language model.
-
-    This structure is passed to `runtime.use_model` for text generation models.
-    """
-
     prompt: str = Field(..., description="The input prompt for text generation")
     max_tokens: int | None = Field(
         default=None, alias="maxTokens", description="Maximum tokens to generate"
@@ -192,8 +154,6 @@ class GenerateTextOptions(BaseModel):
 
 
 class GenerateTextResult(BaseModel):
-    """Result of text generation."""
-
     text: str = Field(..., description="Generated text")
 
     model_config = {"populate_by_name": True}
@@ -212,8 +172,6 @@ class TokenUsage(BaseModel):
 
 
 class TextStreamChunk(BaseModel):
-    """A chunk from a streaming text response."""
-
     text: str = Field(..., description="Text chunk")
     done: bool = Field(default=False, description="Whether this is the final chunk")
 
@@ -221,8 +179,6 @@ class TextStreamChunk(BaseModel):
 
 
 class TokenizeTextParams(BaseModel):
-    """Parameters for text tokenization."""
-
     prompt: str = Field(..., description="Text to tokenize")
     model_type: str = Field(..., alias="modelType", description="Model type for tokenization")
 
@@ -230,8 +186,6 @@ class TokenizeTextParams(BaseModel):
 
 
 class DetokenizeTextParams(BaseModel):
-    """Parameters for detokenizing (tokens to text)."""
-
     tokens: list[int] = Field(..., description="Tokens to convert to text")
     model_type: str = Field(..., alias="modelType", description="Model type for detokenization")
 
@@ -257,8 +211,6 @@ class ImageGenerationParams(BaseModel):
 
 
 class ImageDescriptionParams(BaseModel):
-    """Parameters for image description."""
-
     image_url: str = Field(..., alias="imageUrl", description="URL of the image")
     prompt: str | None = Field(default=None, description="Optional guiding prompt")
 
@@ -266,8 +218,6 @@ class ImageDescriptionParams(BaseModel):
 
 
 class ImageDescriptionResult(BaseModel):
-    """Result of image description."""
-
     title: str = Field(..., description="Image title")
     description: str = Field(..., description="Image description")
 
@@ -284,8 +234,6 @@ class TranscriptionParams(BaseModel):
 
 
 class TextToSpeechParams(BaseModel):
-    """Parameters for text-to-speech."""
-
     text: str = Field(..., description="Text to convert to speech")
     voice: str | None = Field(default=None, description="Voice to use")
     speed: float | None = Field(default=None, description="Speaking speed")
@@ -317,8 +265,6 @@ class ObjectGenerationParams(BaseModel):
 
 
 class ModelHandler(BaseModel):
-    """Model handler registration info."""
-
     provider: str = Field(..., description="Provider name that registered this handler")
     priority: int | None = Field(
         default=None, description="Priority for selection (higher preferred)"

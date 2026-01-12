@@ -105,20 +105,17 @@ export const createCommentAction: Action = {
       let issueId: string;
       let commentBody: string;
 
-      // Check if we have explicit options with type-safe access
       const params = _options?.parameters as CreateCommentParameters | undefined;
       if (params?.issueId && params?.body) {
         issueId = params.issueId;
         commentBody = params.body;
       } else {
-        // Use LLM to extract comment information
         const prompt = createCommentTemplate.replace("{{userMessage}}", content);
         const response = await runtime.useModel(ModelType.TEXT_LARGE, {
           prompt: prompt,
         });
 
         if (!response) {
-          // Fallback to regex
           const issueMatch = content.match(
             /(?:comment on|add.*comment.*to|reply to|tell)\s+(\w+-\d+):?\s*(.*)/i
           );
@@ -141,13 +138,11 @@ export const createCommentAction: Action = {
               issueId = parsed.issueId;
               commentBody = parsed.commentBody;
             } else if (parsed.issueDescription) {
-              // Search for the issue by description
               const filters: { query: string; limit: number; team?: string } = {
                 query: parsed.issueDescription,
                 limit: 5,
               };
 
-              // Apply default team if configured
               const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
               if (defaultTeamKey) {
                 filters.team = defaultTeamKey;
@@ -171,7 +166,6 @@ export const createCommentAction: Action = {
                 issueId = issues[0].identifier;
                 commentBody = parsed.commentBody;
               } else {
-                // Multiple matches - ask for clarification
                 const issueList = await Promise.all(
                   issues.map(async (issue, index) => {
                     const state = await issue.state;
@@ -203,12 +197,10 @@ export const createCommentAction: Action = {
               throw new Error("No issue identifier or description found");
             }
 
-            // Add comment type context if provided
             if (parsed.commentType && parsed.commentType !== "note") {
               commentBody = `[${parsed.commentType.toUpperCase()}] ${commentBody}`;
             }
           } catch (parseError) {
-            // Fallback to regex
             logger.warn("Failed to parse LLM response, falling back to regex:", parseError);
             const issueMatch = content.match(
               /(?:comment on|add.*comment.*to|reply to|tell)\s+(\w+-\d+):?\s*(.*)/i
@@ -245,10 +237,8 @@ export const createCommentAction: Action = {
         };
       }
 
-      // Find the issue first to get its internal ID
       const issue = await linearService.getIssue(issueId);
 
-      // Create the comment
       const comment = await linearService.createComment({
         issueId: issue.id,
         body: commentBody,

@@ -37,7 +37,7 @@ pub enum LLMMode {
 
 impl std::str::FromStr for LLMMode {
     type Err = std::convert::Infallible;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_uppercase().as_str() {
             "SMALL" => LLMMode::Small,

@@ -69,7 +69,7 @@
   "scripts": {
     "dev": "bun run build.ts --watch",
     "clean": "rm -rf dist && rm -rf .turbo",
-    "lint": "bunx @biomejs/biome lint .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint:check": "bunx @biomejs/biome check .",

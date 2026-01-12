@@ -1,9 +1,3 @@
-"""
-S3 Storage Client
-
-Async client for S3 storage operations using boto3.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -31,34 +25,18 @@ if TYPE_CHECKING:
 
 
 class S3StorageError(Exception):
-    """Base exception for S3 storage errors."""
-
     def __init__(self, message: str, cause: Exception | None = None) -> None:
         super().__init__(message)
         self.cause = cause
 
 
 class S3StorageClient:
-    """
-    Async S3 storage client.
-
-    Provides async file upload, download, and signed URL generation.
-    Uses boto3 with asyncio for non-blocking operations.
-    """
-
     def __init__(self, config: S3StorageConfig) -> None:
-        """
-        Initialize the S3 storage client.
-
-        Args:
-            config: S3 storage configuration.
-        """
         self._config = config
         self._client: S3Client | None = None
         self._loop = asyncio.get_event_loop()
 
     def _get_client(self) -> S3Client:
-        """Get or create the S3 client."""
         if self._client is None:
             boto_config = Config(
                 signature_version="s3v4",
@@ -82,7 +60,6 @@ class S3StorageClient:
         return self._client
 
     async def close(self) -> None:
-        """Close the client and release resources."""
         if self._client:
             self._client.close()
             self._client = None
@@ -100,28 +77,14 @@ class S3StorageClient:
         use_signed_url: bool = False,
         expires_in: int = 900,
     ) -> UploadResult:
-        """
-        Upload a file to S3.
-
-        Args:
-            file_path: Path to the file to upload.
-            sub_directory: Optional subdirectory within the bucket.
-            use_signed_url: Whether to return a signed URL.
-            expires_in: Expiration time for signed URL in seconds.
-
-        Returns:
-            UploadResult with success status and URL.
-        """
         try:
             path = Path(file_path)
             if not path.exists():
                 return UploadResult(success=False, error="File does not exist")
 
-            # Read file content
             async with aiofiles.open(path, "rb") as f:
                 content = await f.read()
 
-            # Generate key
             timestamp = int(datetime.now().timestamp() * 1000)
             base_name = f"{timestamp}-{path.name}"
             key = f"{self._config.upload_path}{sub_directory}/{base_name}".replace("//", "/")
@@ -130,7 +93,6 @@ class S3StorageClient:
 
             content_type = get_content_type(str(path))
 
-            # Upload to S3
             client = self._get_client()
             await self._loop.run_in_executor(
                 None,
@@ -143,7 +105,6 @@ class S3StorageClient:
                 ),
             )
 
-            # Generate URL
             if use_signed_url:
                 url = await self.generate_signed_url(key, expires_in)
             else:
@@ -165,20 +126,6 @@ class S3StorageClient:
         use_signed_url: bool = False,
         expires_in: int = 900,
     ) -> UploadResult:
-        """
-        Upload bytes to S3.
-
-        Args:
-            data: The bytes to upload.
-            file_name: Name for the file.
-            content_type: MIME type of the content.
-            sub_directory: Optional subdirectory.
-            use_signed_url: Whether to return a signed URL.
-            expires_in: Expiration time for signed URL.
-
-        Returns:
-            UploadResult with success status and URL.
-        """
         try:
             key = f"{self._config.upload_path}{sub_directory}/{file_name}".replace("//", "/")
             if key.startswith("/"):
@@ -214,19 +161,6 @@ class S3StorageClient:
         use_signed_url: bool = False,
         expires_in: int = 900,
     ) -> JsonUploadResult:
-        """
-        Upload JSON data to S3.
-
-        Args:
-            json_data: Dictionary to upload as JSON.
-            file_name: Optional filename (defaults to timestamp.json).
-            sub_directory: Optional subdirectory.
-            use_signed_url: Whether to return a signed URL.
-            expires_in: Expiration time for signed URL.
-
-        Returns:
-            JsonUploadResult with success status, URL, and key.
-        """
         try:
             if not json_data:
                 return JsonUploadResult(success=False, error="JSON data is required")
@@ -267,19 +201,6 @@ class S3StorageClient:
             return JsonUploadResult(success=False, error=str(e))
 
     async def generate_signed_url(self, key: str, expires_in: int = 900) -> str:
-        """
-        Generate a signed URL for an existing object.
-
-        Args:
-            key: The object key.
-            expires_in: URL expiration time in seconds.
-
-        Returns:
-            Signed URL for the object.
-
-        Raises:
-            S3StorageError: If URL generation fails.
-        """
         try:
             client = self._get_client()
             url: str = await self._loop.run_in_executor(
@@ -296,19 +217,6 @@ class S3StorageClient:
             raise S3StorageError(f"Failed to generate signed URL: {e}", cause=e) from e
 
     async def download_file(self, key: str, destination: str | Path) -> bool:
-        """
-        Download a file from S3.
-
-        Args:
-            key: The object key.
-            destination: Path to save the file.
-
-        Returns:
-            True if download was successful.
-
-        Raises:
-            S3StorageError: If download fails.
-        """
         try:
             client = self._get_client()
             response = await self._loop.run_in_executor(
@@ -325,18 +233,6 @@ class S3StorageClient:
             raise S3StorageError(f"Failed to download file: {e}", cause=e) from e
 
     async def delete_object(self, key: str) -> bool:
-        """
-        Delete an object from S3.
-
-        Args:
-            key: The object key to delete.
-
-        Returns:
-            True if deletion was successful.
-
-        Raises:
-            S3StorageError: If deletion fails.
-        """
         try:
             client = self._get_client()
             await self._loop.run_in_executor(
@@ -348,34 +244,12 @@ class S3StorageClient:
             raise S3StorageError(f"Failed to delete object: {e}", cause=e) from e
 
     def _get_public_url(self, key: str) -> str:
-        """Get the public URL for an object."""
         if self._config.endpoint:
             return f"{self._config.endpoint}/{self._config.bucket}/{key}"
         return f"https://{self._config.bucket}.s3.{self._config.region}.amazonaws.com/{key}"
 
 
 def create_client_from_env() -> S3StorageClient:
-    """
-    Create an S3 storage client from environment variables.
-
-    Required environment variables:
-    - AWS_ACCESS_KEY_ID
-    - AWS_SECRET_ACCESS_KEY
-    - AWS_REGION
-    - AWS_S3_BUCKET
-
-    Optional environment variables:
-    - AWS_S3_UPLOAD_PATH
-    - AWS_S3_ENDPOINT
-    - AWS_S3_SSL_ENABLED
-    - AWS_S3_FORCE_PATH_STYLE
-
-    Returns:
-        Configured S3StorageClient.
-
-    Raises:
-        ValueError: If required environment variables are missing.
-    """
     access_key = os.environ.get("AWS_ACCESS_KEY_ID")
     secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
     region = os.environ.get("AWS_REGION")
@@ -399,8 +273,4 @@ def create_client_from_env() -> S3StorageClient:
     )
 
     return S3StorageClient(config)
-
-
-
-
 

@@ -1,10 +1,3 @@
-"""
-World Provider - Provides information about the current world context.
-
-This provider supplies world-level information including settings,
-members, rooms, and world metadata.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,22 +13,9 @@ async def get_world_context(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get the world context for the current conversation.
-
-    Returns world information including:
-    - World name and description
-    - Member list
-    - Room information
-    - World settings
-    """
     room_id = message.room_id
     if not room_id:
-        return ProviderResult(
-            text="",
-            values={"hasWorld": False},
-            data={},
-        )
+        return ProviderResult(text="", values={"hasWorld": False}, data={})
 
     room = await runtime.get_room(room_id)
     if not room or not room.world_id:
@@ -55,23 +35,19 @@ async def get_world_context(
 
     sections: list[str] = []
 
-    # World name and description
     sections.append(f"# World: {world.name or 'Unknown'}")
     if world.metadata and world.metadata.get("description"):
         sections.append(f"\n{world.metadata['description']}")
 
-    # Room info
     sections.append(f"\n## Current Room: {room.name or 'Unknown'}")
     if room.metadata and room.metadata.get("topic"):
         sections.append(f"Topic: {room.metadata['topic']}")
 
-    # Member count
     member_count = 0
     if world.metadata and world.metadata.get("members"):
         member_count = len(world.metadata["members"])
     sections.append(f"\n## Members: {member_count}")
 
-    # Settings (filtered for safety)
     if world.metadata and world.metadata.get("settings"):
         safe_settings = {
             k: v
@@ -109,10 +85,9 @@ async def get_world_context(
     )
 
 
-# Create the provider instance
 world_provider = Provider(
     name="WORLD",
     description="Provides information about the current world context including settings and members",
     get=get_world_context,
-    dynamic=True,  # World state may change
+    dynamic=True,
 )

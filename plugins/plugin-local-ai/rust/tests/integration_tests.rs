@@ -1,5 +1,3 @@
-//! Integration tests for the Local AI plugin.
-
 use elizaos_plugin_local_ai::{LocalAIConfig, LocalAIPlugin};
 
 #[tokio::test]

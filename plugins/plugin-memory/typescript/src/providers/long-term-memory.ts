@@ -9,18 +9,6 @@ import {
 } from "@elizaos/core";
 import type { MemoryService } from "../services/memory-service";
 
-/**
- * Long-term Memory Provider
- *
- * Provides persistent facts about the user that have been learned across
- * all conversations. This includes:
- * - User identity and roles
- * - Domain expertise
- * - Preferences
- * - Goals and projects
- * - Custom definitions
- * - Behavioral patterns
- */
 export const longTermMemoryProvider: Provider = {
   name: "LONG_TERM_MEMORY",
   description: "Persistent facts and preferences about the user",

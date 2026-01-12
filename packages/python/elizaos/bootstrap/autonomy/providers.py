@@ -1,9 +1,3 @@
-"""
-Autonomy Providers for elizaOS - Python implementation.
-
-Providers that supply autonomous context information.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -25,8 +19,6 @@ async def _get_admin_chat_history(
     message: Memory,
     _state: State | None = None,
 ) -> ProviderResult:
-    """Get admin chat history for autonomous context."""
-    # Only provide in autonomous room
     autonomy_service = runtime.get_service(AUTONOMY_SERVICE_TYPE)
     if not autonomy_service or not isinstance(autonomy_service, AutonomyService):
         return ProviderResult(text="")
@@ -35,7 +27,6 @@ async def _get_admin_chat_history(
     if not autonomous_room_id or message.room_id != autonomous_room_id:
         return ProviderResult(text="")
 
-    # Get admin user ID
     admin_user_id = runtime.get_setting("ADMIN_USER_ID")
     if not admin_user_id:
         return ProviderResult(
@@ -45,7 +36,6 @@ async def _get_admin_chat_history(
 
     admin_uuid = as_uuid(str(admin_user_id))
 
-    # Get recent messages
     admin_messages = await runtime.get_memories(
         {
             "entityId": admin_uuid,
@@ -65,7 +55,6 @@ async def _get_admin_chat_history(
             },
         )
 
-    # Format conversation history
     sorted_messages = sorted(admin_messages, key=lambda m: m.created_at or 0)[-10:]
 
     history_lines = []
@@ -81,7 +70,6 @@ async def _get_admin_chat_history(
 
     conversation_history = "\n".join(history_lines)
 
-    # Get recent admin messages
     recent_admin_messages = [msg for msg in sorted_messages if msg.entity_id == admin_uuid][-3:]
 
     last_admin_message = recent_admin_messages[-1] if recent_admin_messages else None
@@ -114,23 +102,18 @@ async def _get_autonomy_status(
     message: Memory,
     _state: State | None = None,
 ) -> ProviderResult:
-    """Get autonomy status for regular conversations."""
-    # Get autonomy service
     autonomy_service = runtime.get_service(AUTONOMY_SERVICE_TYPE)
     if not autonomy_service or not isinstance(autonomy_service, AutonomyService):
         return ProviderResult(text="")
 
-    # Don't show in autonomous room
     autonomous_room_id = autonomy_service.get_autonomous_room_id()
     if autonomous_room_id and message.room_id == autonomous_room_id:
         return ProviderResult(text="")
 
-    # Get status
     autonomy_enabled = runtime.get_setting("AUTONOMY_ENABLED")
     service_running = autonomy_service.is_loop_running()
     interval = autonomy_service.get_loop_interval()
 
-    # Determine status display
     if service_running:
         status = "running autonomously"
         status_icon = "🤖"

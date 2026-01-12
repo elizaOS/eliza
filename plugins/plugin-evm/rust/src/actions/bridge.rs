@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! Cross-chain bridge action implementation
-//!
-//! Handles cross-chain token bridges using LiFi API.
 
 use alloy::{
     hex,
@@ -22,26 +19,18 @@ use crate::error::{EVMError, EVMErrorCode, EVMResult};
 use crate::providers::WalletProvider;
 use crate::types::{SupportedChain, Transaction};
 
-/// Parameters for a cross-chain bridge
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BridgeParams {
-    /// Source chain
     pub from_chain: SupportedChain,
-    /// Destination chain
     pub to_chain: SupportedChain,
-    /// Token address on source chain
     pub from_token: Address,
-    /// Token address on destination chain
     pub to_token: Address,
-    /// Amount to bridge (in wei/smallest unit)
     pub amount: String,
-    /// Destination address (optional, defaults to sender)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_address: Option<Address>,
 }
 
 impl BridgeParams {
-    /// Create new bridge parameters
     #[must_use]
     pub fn new(
         from_chain: SupportedChain,
@@ -60,14 +49,12 @@ impl BridgeParams {
         }
     }
 
-    /// Set destination address
     #[must_use]
     pub fn with_recipient(mut self, address: Address) -> Self {
         self.to_address = Some(address);
         self
     }
 
-    /// Validate the bridge parameters
     pub fn validate(&self) -> EVMResult<()> {
         if self.amount.is_empty() {
             return Err(EVMError::invalid_params("Amount is required"));
@@ -83,34 +70,24 @@ impl BridgeParams {
     }
 }
 
-/// Bridge execution status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BridgeStatus {
-    /// Current status
     pub status: BridgeStatusType,
-    /// Substatus message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub substatus: Option<String>,
-    /// Source transaction hash
     pub source_tx_hash: String,
-    /// Destination transaction hash (when complete)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dest_tx_hash: Option<String>,
 }
 
-/// Bridge status type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum BridgeStatusType {
-    /// Bridge is pending
     Pending,
-    /// Bridge is complete
     Done,
-    /// Bridge failed
     Failed,
 }
 
-/// LiFi route response
 #[derive(Debug, Deserialize)]
 struct LifiRoutesResponse {
     routes: Vec<LifiRoute>,
@@ -141,7 +118,6 @@ struct LifiTransactionRequest {
     gas_limit: Option<String>,
 }
 
-/// LiFi status response
 #[derive(Debug, Deserialize)]
 struct LifiStatusResponse {
     status: String,
@@ -156,14 +132,12 @@ struct LifiReceiving {
     tx_hash: Option<String>,
 }
 
-/// Bridge action executor
 pub struct BridgeAction {
     provider: Arc<WalletProvider>,
     http_client: reqwest::Client,
 }
 
 impl BridgeAction {
-    /// Create a new bridge action
     #[must_use]
     pub fn new(provider: Arc<WalletProvider>) -> Self {
         Self {
@@ -175,7 +149,6 @@ impl BridgeAction {
         }
     }
 
-    /// Get available bridge routes
     async fn get_routes(&self, params: &BridgeParams) -> EVMResult<LifiRoutesResponse> {
         let from_address = self.provider.address();
         let to_address = params.to_address.unwrap_or(from_address);
@@ -213,7 +186,6 @@ impl BridgeAction {
         response.json().await.map_err(Into::into)
     }
 
-    /// Poll bridge status
     async fn poll_status(
         &self,
         tx_hash: &str,
@@ -273,7 +245,6 @@ impl BridgeAction {
             }
         }
 
-        // Timeout reached
         Ok(BridgeStatus {
             status: BridgeStatusType::Pending,
             substatus: Some("Status polling timed out".to_string()),
@@ -282,18 +253,14 @@ impl BridgeAction {
         })
     }
 
-    /// Execute a cross-chain bridge
     pub async fn execute(&self, params: BridgeParams) -> EVMResult<(Transaction, BridgeStatus)> {
         params.validate()?;
 
-        // Check if both chains are configured
         self.provider.provider(params.from_chain)?;
         self.provider.provider(params.to_chain)?;
 
         let chain_provider = self.provider.provider(params.from_chain)?;
         let chain_id = params.from_chain.chain_id();
-
-        // Get routes
         let routes = self.get_routes(&params).await?;
 
         let route = routes.routes.first().ok_or_else(|| {
@@ -311,7 +278,6 @@ impl BridgeAction {
             )
         })?;
 
-        // Parse transaction parameters
         let to: Address = tx_request.to.parse().map_err(|_| {
             EVMError::invalid_params("Invalid to address in route")
         })?;
@@ -327,7 +293,6 @@ impl BridgeAction {
 
         let gas_limit: Option<u64> = tx_request.gas_limit.as_ref().and_then(|g| g.parse().ok());
 
-        // Build transaction
         let mut tx = TransactionRequest::default()
             .with_to(to)
             .with_value(value)
@@ -337,7 +302,6 @@ impl BridgeAction {
             tx = tx.with_gas_limit(limit);
         }
 
-        // Send transaction
         let pending = chain_provider.send_transaction(tx).await.map_err(|e| {
             EVMError::new(
                 EVMErrorCode::TransactionFailed,
@@ -347,8 +311,6 @@ impl BridgeAction {
 
         let tx_hash = *pending.tx_hash();
         let tx_hash_str = format!("{tx_hash:#x}");
-
-        // Wait for source chain confirmation
         let receipt = pending.get_receipt().await.map_err(|e| {
             EVMError::new(
                 EVMErrorCode::TransactionFailed,
@@ -365,7 +327,6 @@ impl BridgeAction {
 
         tracing::info!("Bridge source transaction confirmed: {}", tx_hash);
 
-        // Poll for cross-chain completion
         let bridge_status = self
             .poll_status(
                 &tx_hash_str,
@@ -387,7 +348,6 @@ impl BridgeAction {
         Ok((transaction, bridge_status))
     }
 
-    /// Check the status of a bridge transaction
     pub async fn check_status(
         &self,
         tx_hash: &str,

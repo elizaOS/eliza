@@ -1,26 +1,20 @@
-"""
-elizaOS EVM Plugin - Ethereum Virtual Machine interaction for elizaOS.
-
-This package provides EVM blockchain adapters for elizaOS agents using
-web3.py for interacting with various EVM-compatible networks.
-
-Features:
-- Multi-chain wallet management
-- Native and ERC20 token transfers
-- Token swaps using LiFi aggregator
-- Cross-chain bridges using LiFi
-- Strong type validation with Pydantic
-"""
-
 __version__ = "0.1.0"
 
 from elizaos_plugin_evm.actions import (
     bridge_action,
+    execute_action,
     execute_bridge,
+    execute_governance,
+    execute_propose,
+    execute_queue,
     execute_swap,
     execute_transfer,
+    execute_vote,
+    propose_action,
+    queue_action,
     swap_action,
     transfer_action,
+    vote_action,
 )
 from elizaos_plugin_evm.constants import (
     CACHE_REFRESH_INTERVAL_SECS,
@@ -78,6 +72,14 @@ __all__ = [
     "swap_action",
     "execute_bridge",
     "bridge_action",
+    "execute_propose",
+    "propose_action",
+    "execute_vote",
+    "vote_action",
+    "execute_queue",
+    "queue_action",
+    "execute_governance",
+    "execute_action",
     # Constants
     "EVM_SERVICE_NAME",
     "EVM_WALLET_DATA_CACHE_KEY",
@@ -87,9 +89,7 @@ __all__ = [
 ]
 
 
-# Plugin definition for elizaOS
 def get_plugin():
-    """Get the EVM plugin definition for elizaOS."""
     return {
         "name": "@elizaos/plugin-evm",
         "description": "EVM blockchain plugin for elizaOS with Python support",
@@ -98,6 +98,10 @@ def get_plugin():
             transfer_action,
             swap_action,
             bridge_action,
+            propose_action,
+            vote_action,
+            queue_action,
+            execute_action,
         ],
         "providers": [
             EVMWalletProvider,

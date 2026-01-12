@@ -1,5 +1,3 @@
-"""Roblox service implementation for elizaOS."""
-
 import logging
 from datetime import datetime
 from typing import Any
@@ -13,21 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 class RobloxService:
-    """Roblox service for elizaOS agents."""
-
     def __init__(
         self,
         config: RobloxConfig,
         agent_id: UUID,
         agent_name: str,
     ) -> None:
-        """Initialize the service.
-
-        Args:
-            config: Roblox configuration.
-            agent_id: Agent UUID.
-            agent_name: Agent name.
-        """
         self.config = config
         self.agent_id = agent_id
         self.agent_name = agent_name
@@ -35,7 +24,6 @@ class RobloxService:
         self._is_running = False
 
     async def start(self) -> None:
-        """Start the service."""
         if self._is_running:
             logger.warning("Roblox service already running")
             return
@@ -47,7 +35,6 @@ class RobloxService:
         )
 
     async def stop(self) -> None:
-        """Stop the service."""
         if not self._is_running:
             logger.debug("Roblox service not running")
             return
@@ -58,7 +45,6 @@ class RobloxService:
 
     @property
     def is_running(self) -> bool:
-        """Check if the service is running."""
         return self._is_running
 
     async def send_message(
@@ -66,12 +52,6 @@ class RobloxService:
         content: str,
         target_player_ids: list[int] | None = None,
     ) -> None:
-        """Send a message to the game.
-
-        Args:
-            content: Message content.
-            target_player_ids: Optional list of target player IDs.
-        """
         message = MessagingServiceMessage(
             topic=self.config.messaging_topic,
             data={
@@ -94,13 +74,6 @@ class RobloxService:
         parameters: dict[str, Any],
         target_player_ids: list[int] | None = None,
     ) -> None:
-        """Execute an action in the game.
-
-        Args:
-            action_name: Name of the action.
-            parameters: Action parameters.
-            target_player_ids: Optional list of target player IDs.
-        """
         message = MessagingServiceMessage(
             topic=self.config.messaging_topic,
             data={
@@ -119,12 +92,10 @@ class RobloxService:
         await self.client.send_agent_message(message)
 
     async def __aenter__(self) -> "RobloxService":
-        """Async context manager entry."""
         await self.start()
         return self
 
     async def __aexit__(self, *args: object) -> None:
-        """Async context manager exit."""
         await self.stop()
 
 

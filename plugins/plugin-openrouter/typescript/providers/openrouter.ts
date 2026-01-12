@@ -1,24 +1,13 @@
-/**
- * OpenRouter provider factory.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { getApiKey, getBaseURL } from "../utils/config";
 
-/**
- * Create an OpenRouter provider instance with proper configuration.
- *
- * @param runtime - The runtime context
- * @returns Configured OpenRouter provider instance
- */
 export function createOpenRouterProvider(runtime: IAgentRuntime) {
   const apiKey = getApiKey(runtime);
   const isBrowser =
     typeof globalThis !== "undefined" && (globalThis as Record<string, unknown>).document;
   const baseURL = getBaseURL(runtime);
 
-  // In browser, omit apiKey and rely on proxy baseURL
   return createOpenRouter({
     apiKey: isBrowser ? undefined : apiKey,
     baseURL,

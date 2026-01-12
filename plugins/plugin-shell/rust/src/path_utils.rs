@@ -1,11 +1,9 @@
 #![allow(missing_docs)]
-//! Path and command validation utilities for the shell plugin.
 
 use regex::Regex;
 use std::path::{Path, PathBuf};
 use tracing::warn;
 
-/// Default forbidden commands for safety
 pub const DEFAULT_FORBIDDEN_COMMANDS: &[&str] = &[
     "rm -rf /",
     "rmdir",
@@ -31,18 +29,9 @@ pub const DEFAULT_FORBIDDEN_COMMANDS: &[&str] = &[
     "mkfs",
     "dd if=/dev/zero",
     "shred",
-    ":(){:|:&};:", // Fork bomb
+    ":(){:|:&};:",
 ];
 
-/// Normalize a path and ensure it's within the allowed directory.
-///
-/// # Arguments
-/// * `command_path` - The path from the command
-/// * `allowed_dir` - The allowed directory
-/// * `current_dir` - The current working directory
-///
-/// # Returns
-/// The normalized absolute path or None if invalid
 pub fn validate_path(
     command_path: &str,
     allowed_dir: &Path,
@@ -54,7 +43,6 @@ pub fn validate_path(
         current_dir.join(command_path)
     };
 
-    // Normalize the path
     let normalized = match resolved_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
@@ -68,7 +56,6 @@ pub fn validate_path(
         Err(_) => normalize_path(allowed_dir),
     };
 
-    // Check if the resolved path is within the allowed directory
     if normalized.starts_with(&normalized_allowed) {
         Some(normalized)
     } else {
@@ -81,7 +68,6 @@ pub fn validate_path(
     }
 }
 
-/// Manually normalize a path (resolve . and ..)
 fn normalize_path(path: &Path) -> PathBuf {
     let mut components = Vec::new();
 
@@ -98,33 +84,23 @@ fn normalize_path(path: &Path) -> PathBuf {
     components.iter().collect()
 }
 
-/// Check if a command contains path traversal attempts or dangerous patterns.
-///
-/// # Arguments
-/// * `command` - The command to check
-///
-/// # Returns
-/// true if the command appears safe, false if it contains dangerous patterns
 pub fn is_safe_command(command: &str) -> bool {
-    // Check for path traversal patterns
     let path_traversal_patterns = [
         r"\.\./",   // ../
         r"\.\.\\",  // ..\
         r"/\.\.",   // /..
-        r"\\\.\.",  // \..
+        r"\\\.\.",
     ];
 
-    // Check for dangerous command patterns
     let dangerous_patterns = [
         r"\$\(",        // Command substitution $(
         r"`[^']*`",     // Command substitution ` (but allow in quotes)
         r"\|\s*sudo",   // Pipe to sudo
         r";\s*sudo",    // Chain with sudo
         r"&\s*&",       // && chaining
-        r"\|\s*\|",     // || chaining
+        r"\|\s*\|",
     ];
 
-    // Check for path traversal
     for pattern in &path_traversal_patterns {
         if let Ok(re) = Regex::new(pattern) {
             if re.is_match(command) {
@@ -134,7 +110,6 @@ pub fn is_safe_command(command: &str) -> bool {
         }
     }
 
-    // Check for dangerous patterns
     for pattern in &dangerous_patterns {
         if let Ok(re) = Regex::new(pattern) {
             if re.is_match(command) {
@@ -144,7 +119,6 @@ pub fn is_safe_command(command: &str) -> bool {
         }
     }
 
-    // Allow single pipes but block multiple pipes
     let pipe_count = command.matches('|').count();
     if pipe_count > 1 {
         warn!("Multiple pipes detected in command: {}", command);
@@ -154,13 +128,6 @@ pub fn is_safe_command(command: &str) -> bool {
     true
 }
 
-/// Extract the base command from a full command string.
-///
-/// # Arguments
-/// * `full_command` - The full command string
-///
-/// # Returns
-/// The base command
 pub fn extract_base_command(full_command: &str) -> &str {
     full_command
         .split_whitespace()
@@ -168,26 +135,16 @@ pub fn extract_base_command(full_command: &str) -> &str {
         .unwrap_or("")
 }
 
-/// Check if a command is in the forbidden list.
-///
-/// # Arguments
-/// * `command` - The command to check
-/// * `forbidden_commands` - List of forbidden commands/patterns
-///
-/// # Returns
-/// true if the command is forbidden
 pub fn is_forbidden_command(command: &str, forbidden_commands: &[String]) -> bool {
     let normalized_command = command.trim().to_lowercase();
 
     for forbidden in forbidden_commands {
         let forbidden_lower = forbidden.to_lowercase();
 
-        // Check if the command starts with the forbidden pattern
         if normalized_command.starts_with(&forbidden_lower) {
             return true;
         }
 
-        // Check if it's the exact base command for single-word forbidden commands
         if !forbidden.contains(' ') {
             let base_command = extract_base_command(command).to_lowercase();
             if base_command == forbidden_lower {

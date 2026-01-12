@@ -1,22 +1,4 @@
 #![allow(missing_docs)]
-//! Local AI Plugin for elizaOS
-//!
-//! This crate provides local LLM inference for elizaOS agents.
-//!
-//! # Example
-//!
-//! ```rust,no_run
-//! use elizaos_plugin_local_ai::LocalAIPlugin;
-//!
-//! # async fn example() -> anyhow::Result<()> {
-//! let plugin = LocalAIPlugin::from_env()?;
-//! let response = plugin.generate_text("Hello, world!").await?;
-//! println!("{}", response);
-//! # Ok(())
-//! # }
-//! ```
-
-#![warn(missing_docs)]
 
 pub mod error;
 pub mod types;
@@ -28,24 +10,15 @@ pub use types::*;
 use std::path::PathBuf;
 use anyhow::Result as AnyhowResult;
 
-/// Local AI plugin configuration.
 #[derive(Debug, Clone)]
 pub struct LocalAIConfig {
-    /// Directory containing model files
     pub models_dir: PathBuf,
-    /// Directory for caching
     pub cache_dir: PathBuf,
-    /// Small model filename
     pub small_model: String,
-    /// Large model filename
     pub large_model: String,
-    /// Embedding model filename
     pub embedding_model: String,
-    /// Embedding dimensions
     pub embedding_dimensions: usize,
-    /// Number of GPU layers to use
     pub gpu_layers: u32,
-    /// Context size
     pub context_size: usize,
 }
 
@@ -70,7 +43,6 @@ impl Default for LocalAIConfig {
 }
 
 impl LocalAIConfig {
-    /// Create a new configuration with custom models directory.
     pub fn new(models_dir: impl Into<PathBuf>) -> Self {
         let models_dir = models_dir.into();
         Self {
@@ -79,48 +51,38 @@ impl LocalAIConfig {
         }
     }
 
-    /// Set the small model filename.
     pub fn small_model(mut self, model: impl Into<String>) -> Self {
         self.small_model = model.into();
         self
     }
 
-    /// Set the large model filename.
     pub fn large_model(mut self, model: impl Into<String>) -> Self {
         self.large_model = model.into();
         self
     }
 
-    /// Set the embedding model filename.
     pub fn embedding_model(mut self, model: impl Into<String>) -> Self {
         self.embedding_model = model.into();
         self
     }
 
-    /// Set the number of GPU layers.
     pub fn gpu_layers(mut self, layers: u32) -> Self {
         self.gpu_layers = layers;
         self
     }
 
-    /// Set the context size.
     pub fn context_size(mut self, size: usize) -> Self {
         self.context_size = size;
         self
     }
 }
 
-/// Local AI plugin for elizaOS.
-///
-/// This struct provides local LLM inference capabilities.
 pub struct LocalAIPlugin {
     config: LocalAIConfig,
 }
 
 impl LocalAIPlugin {
-    /// Create a new LocalAIPlugin with the given configuration.
     pub fn new(config: LocalAIConfig) -> Result<Self> {
-        // Ensure directories exist
         std::fs::create_dir_all(&config.models_dir)
             .map_err(|e| LocalAIError::IoError(e.to_string()))?;
         std::fs::create_dir_all(&config.cache_dir)
@@ -129,7 +91,6 @@ impl LocalAIPlugin {
         Ok(Self { config })
     }
 
-    /// Create a LocalAIPlugin from environment variables.
     pub fn from_env() -> AnyhowResult<Self> {
         let mut config = LocalAIConfig::default();
 
@@ -160,19 +121,11 @@ impl LocalAIPlugin {
         Self::new(config).map_err(|e| anyhow::anyhow!("Failed to create Local AI plugin: {}", e))
     }
 
-    /// Generate text from a prompt.
-    ///
-    /// Note: Currently returns a mock response. Enable the `llm` feature
-    /// and implement with llama-cpp-rs for actual inference.
     pub async fn generate_text(&self, prompt: &str) -> Result<String> {
         let params = TextGenerationParams::new(prompt);
         self.generate_text_with_params(&params).await
     }
 
-    /// Generate text with full parameters.
-    ///
-    /// Currently validates model path and returns a mock response.
-    /// For actual inference, enable the `llm` feature and integrate llama-cpp-rs.
     pub async fn generate_text_with_params(&self, params: &TextGenerationParams) -> Result<String> {
         let model_path = if params.use_large_model {
             self.config.models_dir.join(&self.config.large_model)
@@ -186,7 +139,6 @@ impl LocalAIPlugin {
             ));
         }
 
-        // Mock response - requires llm feature for actual inference
         tracing::info!(
             "Model path validated: {} (llm feature required for inference)",
             model_path.display()
@@ -198,16 +150,11 @@ impl LocalAIPlugin {
         ))
     }
 
-    /// Create an embedding for text.
     pub async fn create_embedding(&self, text: &str) -> Result<Vec<f32>> {
         let params = EmbeddingParams::new(text);
         self.create_embedding_with_params(&params).await
     }
 
-    /// Create an embedding with full parameters.
-    ///
-    /// Currently validates model path and returns a zero vector.
-    /// For actual embeddings, enable the `llm` feature and integrate llama-cpp-rs.
     pub async fn create_embedding_with_params(&self, _params: &EmbeddingParams) -> Result<Vec<f32>> {
         let model_path = self.config.models_dir.join(&self.config.embedding_model);
 
@@ -217,7 +164,6 @@ impl LocalAIPlugin {
             ));
         }
 
-        // Mock embedding - requires llm feature for actual embedding generation
         tracing::info!(
             "Model path validated: {} (llm feature required for embeddings)",
             model_path.display()
@@ -226,7 +172,6 @@ impl LocalAIPlugin {
         Ok(vec![0.0; self.config.embedding_dimensions])
     }
 
-    /// Get the underlying configuration.
     pub fn config(&self) -> &LocalAIConfig {
         &self.config
     }

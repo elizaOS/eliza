@@ -1,7 +1,3 @@
-/**
- * Configuration utilities for the BlueSky plugin.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   BLUESKY_ACTION_INTERVAL,

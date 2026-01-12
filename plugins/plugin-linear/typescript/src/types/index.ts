@@ -3,13 +3,29 @@ export interface LinearConfig {
   LINEAR_WORKSPACE_ID?: string;
 }
 
+/** Primitive types allowed in activity details */
+export type ActivityDetailPrimitive = string | number | boolean | null;
+
+/** Array types allowed in activity details */
+export type ActivityDetailArray = ActivityDetailPrimitive[];
+
+/** Nested object allowed in activity details (one level deep) */
+export type ActivityDetailObject = Record<string, ActivityDetailPrimitive | ActivityDetailArray>;
+
+/** Valid values for activity detail fields */
+export type ActivityDetailValue =
+  | ActivityDetailPrimitive
+  | ActivityDetailArray
+  | ActivityDetailObject
+  | Date;
+
 export interface LinearActivityItem {
   id: string;
   timestamp: string;
   action: string;
   resource_type: "issue" | "project" | "comment" | "label" | "user" | "team";
   resource_id: string;
-  details: Record<string, unknown>;
+  details: Record<string, ActivityDetailValue>;
   success: boolean;
   error?: string;
 }

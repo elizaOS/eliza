@@ -9,9 +9,6 @@ import {
 } from "@elizaos/core";
 import { createGoalDataService } from "../services/goalDataService.js";
 
-/**
- * Goals provider that shows active and recently completed goals
- */
 export const goalsProvider: Provider = {
   name: "GOALS",
   description: "Provides information about active goals and recent achievements",
@@ -19,8 +16,6 @@ export const goalsProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     try {
       const dataService = createGoalDataService(runtime);
-
-      // Determine owner context - check if message is from an entity or the agent itself
       let ownerType: "agent" | "entity" = "agent";
       let ownerId: UUID = runtime.agentId;
 
@@ -29,29 +24,24 @@ export const goalsProvider: Provider = {
         ownerId = message.entityId;
       }
 
-      // Get active goals
       const activeGoals = await dataService.getGoals({
         ownerType,
         ownerId,
         isCompleted: false,
       });
 
-      // Get recently completed goals (last 5)
       const completedGoals = await dataService.getGoals({
         ownerType,
         ownerId,
         isCompleted: true,
       });
 
-      // Take only the 5 most recent completed goals
       const recentCompleted = completedGoals
         .sort((a, b) => (b.completedAt?.getTime() || 0) - (a.completedAt?.getTime() || 0))
         .slice(0, 5);
 
-      // Format the output
       let output = "";
 
-      // Active goals section
       if (activeGoals.length > 0) {
         output += "## Active Goals\n";
         activeGoals.forEach((goal) => {
@@ -65,7 +55,6 @@ export const goalsProvider: Provider = {
         output += "\n";
       }
 
-      // Recently completed section
       if (recentCompleted.length > 0) {
         output += "## Recently Completed Goals\n";
         recentCompleted.forEach((goal) => {
@@ -77,7 +66,6 @@ export const goalsProvider: Provider = {
         output += "\n";
       }
 
-      // Summary
       const totalActive = activeGoals.length;
       const totalCompleted = completedGoals.length;
 

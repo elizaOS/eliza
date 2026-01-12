@@ -1,21 +1,15 @@
-"""Tests for RSS parser."""
-
 import pytest
 
 from elizaos_plugin_rss import create_empty_feed, parse_rss_to_json
 
 
 class TestRssParser:
-    """Tests for RSS XML parsing."""
-
     def test_parse_empty_feed(self) -> None:
-        """Test creating an empty feed."""
         feed = create_empty_feed()
         assert feed.title == ""
         assert feed.items == []
 
     def test_parse_basic_rss(self) -> None:
-        """Test parsing a basic RSS 2.0 feed."""
         xml = """<?xml version="1.0"?>
         <rss version="2.0">
             <channel>
@@ -45,7 +39,6 @@ class TestRssParser:
         assert item.guid == "article-1"
 
     def test_parse_rss_with_categories(self) -> None:
-        """Test parsing RSS with multiple categories."""
         xml = """<?xml version="1.0"?>
         <rss version="2.0">
             <channel>
@@ -66,7 +59,6 @@ class TestRssParser:
         assert feed.items[0].category == ["Tech", "News", "AI"]
 
     def test_parse_rss_with_enclosure(self) -> None:
-        """Test parsing RSS with media enclosure."""
         xml = """<?xml version="1.0"?>
         <rss version="2.0">
             <channel>
@@ -88,7 +80,6 @@ class TestRssParser:
         assert enclosure.type == "audio/mpeg"
 
     def test_parse_rss_with_cdata(self) -> None:
-        """Test parsing RSS with CDATA sections."""
         xml = """<?xml version="1.0"?>
         <rss version="2.0">
             <channel>
@@ -107,12 +98,10 @@ class TestRssParser:
         assert "<p>HTML content here</p>" in feed.items[0].description
 
     def test_parse_invalid_xml(self) -> None:
-        """Test parsing invalid XML raises ValueError."""
         with pytest.raises(ValueError):
             parse_rss_to_json("not valid xml")
 
     def test_parse_missing_channel(self) -> None:
-        """Test parsing XML without channel element raises ValueError."""
         xml = """<?xml version="1.0"?>
         <rss version="2.0">
         </rss>"""
@@ -122,10 +111,7 @@ class TestRssParser:
 
 
 class TestAtomParser:
-    """Tests for Atom feed parsing."""
-
     def test_parse_basic_atom(self) -> None:
-        """Test parsing a basic Atom feed."""
         xml = """<?xml version="1.0" encoding="utf-8"?>
         <feed xmlns="http://www.w3.org/2005/Atom">
             <title>Atom Test Feed</title>
@@ -148,8 +134,3 @@ class TestAtomParser:
         item = feed.items[0]
         assert item.title == "Atom Entry"
         assert item.guid == "entry-1"
-
-
-
-
-

@@ -1,7 +1,3 @@
-/**
- * BlueSky message service for DMs.
- */
-
 import { composePrompt, type IAgentRuntime, ModelType } from "@elizaos/core";
 import type { BlueSkyClient } from "../client";
 import { generateDmTemplate } from "../generated/prompts/typescript/prompts.js";

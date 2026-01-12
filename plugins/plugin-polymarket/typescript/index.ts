@@ -1,22 +1,7 @@
-/**
- * @elizaos/plugin-polymarket
- *
- * Multi-language Polymarket prediction markets plugin for elizaOS.
- * This TypeScript implementation provides:
- * - Market data retrieval and browsing
- * - Order book access and price information
- * - Order placement and management
- * - Real-time WebSocket updates
- * - Integration with plugin-evm for Polygon wallet operations
- *
- * @packageDocumentation
- */
-
 import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { z } from "zod";
 
-// Import for plugin definition
 import {
   checkOrderScoringAction,
   createApiKeyAction,
@@ -46,9 +31,6 @@ import {
 import { polymarketProvider } from "./providers";
 import { PolymarketService } from "./services";
 
-/**
- * Configuration schema for the Polymarket plugin
- */
 const configSchema = z.object({
   CLOB_API_URL: z
     .string()
@@ -62,15 +44,6 @@ const configSchema = z.object({
   CLOB_API_PASSPHRASE: z.string().min(1, "CLOB API passphrase cannot be empty").optional(),
 });
 
-/**
- * Polymarket Plugin for elizaOS
- *
- * Provides comprehensive Polymarket prediction markets integration including:
- * - Market data and browsing
- * - Order book and pricing
- * - Trading operations
- * - Real-time updates via WebSocket
- */
 export const polymarketPlugin: Plugin = {
   name: "polymarket",
   description: "Polymarket prediction markets integration plugin",
@@ -95,7 +68,6 @@ export const polymarketPlugin: Plugin = {
         );
       }
 
-      // Set environment variables
       for (const [key, value] of Object.entries(validatedConfig)) {
         if (value && typeof value === "string") process.env[key] = value;
       }
@@ -113,7 +85,6 @@ export const polymarketPlugin: Plugin = {
   services: [PolymarketService],
   providers: [polymarketProvider],
   actions: [
-    // Market actions
     retrieveAllMarketsAction,
     getSimplifiedMarketsAction,
     getMarketDetailsAction,
@@ -122,7 +93,6 @@ export const polymarketPlugin: Plugin = {
     getOpenMarketsAction,
     getPriceHistoryAction,
     getTradeHistoryAction,
-    // Order book actions
     getOrderBookSummaryAction,
     getOrderBookDepthAction,
     getBestPriceAction,
@@ -133,12 +103,10 @@ export const polymarketPlugin: Plugin = {
     getOrderDetailsAction,
     getActiveOrdersAction,
     checkOrderScoringAction,
-    // API key management
     createApiKeyAction,
     revokeApiKeyAction,
     getAllApiKeysAction,
     getAccountAccessStatusAction,
-    // WebSocket and real-time
     setupWebsocketAction,
     handleRealtimeUpdatesAction,
     handleAuthenticationAction,

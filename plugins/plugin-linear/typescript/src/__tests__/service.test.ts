@@ -2,15 +2,15 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LinearService } from "../services/linear";
 
-// Mock the Linear SDK
-vi.mock("@linear/sdk", () => ({
-  LinearClient: vi.fn().mockImplementation(() => ({
-    viewer: Promise.resolve({
+vi.mock("@linear/sdk", () => {
+  class MockLinearClient {
+    viewer = Promise.resolve({
       id: "user-123",
       email: "test@example.com",
       name: "Test User",
-    }),
-    teams: vi.fn().mockResolvedValue({
+    });
+
+    teams = vi.fn().mockResolvedValue({
       nodes: [
         {
           id: "team-123",
@@ -19,24 +19,28 @@ vi.mock("@linear/sdk", () => ({
           description: "Engineering team",
         },
       ],
-    }),
-    createIssue: vi.fn().mockResolvedValue({
+    });
+
+    createIssue = vi.fn().mockResolvedValue({
       issue: Promise.resolve({
         id: "issue-123",
         identifier: "ENG-123",
         title: "Test Issue",
         url: "https://linear.app/test/issue/ENG-123",
       }),
-    }),
-  })),
-}));
+    });
+  }
+
+  return {
+    LinearClient: MockLinearClient,
+  };
+});
 
 describe("LinearService", () => {
   let agentRuntime: IAgentRuntime;
   let service: LinearService;
 
   beforeEach(() => {
-    // Create a mock runtime
     agentRuntime = {
       getSetting: vi.fn((key: string) => {
         if (key === "LINEAR_API_KEY") return "test-api-key";
@@ -82,10 +86,8 @@ describe("LinearService", () => {
   it("should track activity", async () => {
     service = await LinearService.start(agentRuntime);
 
-    // Clear any existing activity
     service.clearActivityLog();
 
-    // Create an issue to generate activity
     await service.createIssue({
       title: "Test Issue",
       teamId: "team-123",

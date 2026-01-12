@@ -1,5 +1,3 @@
-"""Planning Service - Manages plan creation and execution."""
-
 import asyncio
 import logging
 import re
@@ -21,8 +19,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PlanState:
-    """State of a plan during execution."""
-
     status: str = "pending"
     start_time: Optional[float] = None
     end_time: Optional[float] = None
@@ -32,8 +28,6 @@ class PlanState:
 
 @dataclass
 class PlanExecution:
-    """Execution context for a plan."""
-
     state: PlanState
     working_memory: dict[str, Any]
     results: list[dict[str, Any]]
@@ -41,12 +35,6 @@ class PlanExecution:
 
 
 class PlanningService:
-    """
-    Production-Ready Planning Service Implementation.
-
-    Provides comprehensive planning capabilities with full runtime integration.
-    """
-
     SERVICE_TYPE = "planning"
     CAPABILITY_DESCRIPTION = "Provides comprehensive planning and action coordination capabilities"
 
@@ -57,12 +45,10 @@ class PlanningService:
         self.plan_executions: dict[UUID, PlanExecution] = {}
 
     async def start(self, runtime: Any) -> None:
-        """Start the planning service."""
         self.runtime = runtime
         logger.info("PlanningService started successfully")
 
     async def stop(self) -> None:
-        """Stop the planning service and cleanup."""
         for execution in self.plan_executions.values():
             execution.abort_event.set()
             execution.state.status = "cancelled"
@@ -77,7 +63,6 @@ class PlanningService:
         state: dict[str, Any],
         response_content: Optional[dict[str, Any]] = None,
     ) -> Optional[ActionPlan]:
-        """Create a simple plan for basic message handling."""
         try:
             logger.debug("[PlanningService] Creating simple plan for message handling")
 
@@ -150,7 +135,6 @@ class PlanningService:
         message: Optional[dict[str, Any]] = None,
         state: Optional[dict[str, Any]] = None,
     ) -> ActionPlan:
-        """Create a comprehensive multi-step plan using LLM planning."""
         goal = context.get("goal", "")
         if not goal or not goal.strip():
             raise ValueError("Planning context must have a non-empty goal")
@@ -197,7 +181,6 @@ class PlanningService:
         message: dict[str, Any],
         callback: Optional[Callable[[dict[str, Any]], Any]] = None,
     ) -> PlanExecutionResult:
-        """Execute a plan with full runtime integration and error handling."""
         import time
 
         start_time = time.time()
@@ -262,7 +245,6 @@ class PlanningService:
             del self.plan_executions[plan.id]
 
     async def validate_plan(self, plan: ActionPlan) -> tuple[bool, Optional[list[str]]]:
-        """Validate a plan before execution."""
         issues: list[str] = []
 
         try:
@@ -307,7 +289,6 @@ class PlanningService:
         results: list[dict[str, Any]],
         error: Optional[Exception] = None,
     ) -> ActionPlan:
-        """Adapt a plan during execution based on results or errors."""
         logger.info(f"[PlanningService] Adapting plan {plan.id} at step {current_step_index}")
 
         adaptation_prompt = self._build_adaptation_prompt(plan, current_step_index, results, error)
@@ -334,12 +315,10 @@ class PlanningService:
         return adapted_plan
 
     async def get_plan_status(self, plan_id: UUID) -> Optional[PlanState]:
-        """Get the current execution status of a plan."""
         execution = self.plan_executions.get(plan_id)
         return execution.state if execution else None
 
     async def cancel_plan(self, plan_id: UUID) -> bool:
-        """Cancel plan execution."""
         execution = self.plan_executions.get(plan_id)
         if not execution:
             return False
@@ -359,7 +338,6 @@ class PlanningService:
         message: Optional[dict[str, Any]],
         state: Optional[dict[str, Any]],
     ) -> str:
-        """Build the planning prompt for LLM."""
         available_actions = ", ".join(context.get("available_actions", []))
         available_providers = ", ".join(context.get("available_providers", []))
         constraints = ", ".join(
@@ -417,7 +395,6 @@ Focus on:
 5. Including error handling considerations"""
 
     def _parse_planning_response(self, response: str, context: dict[str, Any]) -> ActionPlan:
-        """Parse the LLM planning response into an ActionPlan."""
         try:
             plan_id = uuid4()
             steps: list[ActionStep] = []
@@ -545,7 +522,6 @@ Focus on:
             )
 
     async def _enhance_plan(self, plan: ActionPlan, context: dict[str, Any]) -> ActionPlan:
-        """Validate and enhance a parsed plan."""
         if self.runtime:
             for step in plan.steps:
                 action = next(
@@ -573,7 +549,6 @@ Focus on:
         execution: PlanExecution,
         callback: Optional[Callable[[dict[str, Any]], Any]],
     ) -> None:
-        """Execute plan steps sequentially."""
         for i, step in enumerate(plan.steps):
             if execution.abort_event.is_set():
                 raise asyncio.CancelledError("Plan execution aborted")
@@ -596,7 +571,6 @@ Focus on:
         execution: PlanExecution,
         callback: Optional[Callable[[dict[str, Any]], Any]],
     ) -> None:
-        """Execute plan steps in parallel."""
         tasks = [self._execute_step(step, message, execution, callback) for step in plan.steps]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -604,7 +578,7 @@ Focus on:
             if isinstance(result, Exception):
                 logger.error(f"Step failed with error: {result}")
             else:
-                execution.results.append(result)
+                    execution.results.append(result)
 
     async def _execute_dag(
         self,
@@ -613,7 +587,6 @@ Focus on:
         execution: PlanExecution,
         callback: Optional[Callable[[dict[str, Any]], Any]],
     ) -> None:
-        """Execute plan steps as a DAG."""
         completed: set[UUID] = set()
         pending = {step.id for step in plan.steps}
 
@@ -646,7 +619,6 @@ Focus on:
         execution: PlanExecution,
         callback: Optional[Callable[[dict[str, Any]], Any]],
     ) -> dict[str, Any]:
-        """Execute a single step with retry logic."""
         if not self.runtime:
             # Simulate execution for testing
             return {
@@ -700,7 +672,6 @@ Focus on:
         raise ValueError("Maximum retries exceeded")
 
     def _detect_cycles(self, steps: list[ActionStep]) -> bool:
-        """Detect cycles in the step dependencies."""
         visited: set[UUID] = set()
         recursion_stack: set[UUID] = set()
 
@@ -735,7 +706,6 @@ Focus on:
         results: list[dict[str, Any]],
         error: Optional[Exception],
     ) -> str:
-        """Build the adaptation prompt for LLM."""
         return f"""You are an expert AI adaptation system. A plan execution has encountered an issue and needs adaptation.
 
 ORIGINAL PLAN: {json.dumps({"id": str(plan.id), "goal": plan.goal, "steps": [{"id": str(s.id), "action_name": s.action_name} for s in plan.steps]}, indent=2)}
@@ -754,7 +724,6 @@ Return the adapted plan in the same XML format as the original planning response
     def _parse_adaptation_response(
         self, response: str, original_plan: ActionPlan, current_step_index: int
     ) -> ActionPlan:
-        """Parse the adaptation response into a modified plan."""
         try:
             adapted_steps: list[ActionStep] = []
             step_pattern = re.compile(r"<step>(.*?)</step>", re.DOTALL)
@@ -836,7 +805,6 @@ Return the adapted plan in the same XML format as the original planning response
             )
 
     def _create_fallback_plan_response(self, context: dict[str, Any]) -> str:
-        """Create a fallback plan response for testing."""
         return f"""<plan>
 <goal>{context["goal"]}</goal>
 <execution_model>sequential</execution_model>
@@ -850,8 +818,3 @@ Return the adapted plan in the same XML format as the original planning response
 </steps>
 <estimated_duration>30000</estimated_duration>
 </plan>"""
-
-
-
-
-

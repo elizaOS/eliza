@@ -1,9 +1,3 @@
-/**
- * @elizaos/plugin-evm Swap Action
- *
- * Handles token swaps on EVM chains using multiple aggregators (LiFi, Bebop).
- */
-
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { composePromptFromState, logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import {
@@ -49,11 +43,6 @@ import {
 
 export { swapTemplate };
 
-/**
- * Build send transaction parameters for viem.
- * Viem's SendTransactionParameters is a union type that requires specific combinations.
- * This function ensures type safety by constructing a properly typed transaction request.
- */
 function buildSendTxParams(params: {
   account: Account;
   to: Address;
@@ -63,14 +52,12 @@ function buildSendTxParams(params: {
   gas?: bigint;
   gasPrice?: bigint;
 }): SendTransactionParameters {
-  // Construct the transaction parameters object
-  // Using partial typing to avoid strict viem union constraints on optional fields
-  const txParams: Partial<SendTransactionParameters> & Pick<SendTransactionParameters, 'account' | 'to'> = {
+  const txParams: Partial<SendTransactionParameters> &
+    Pick<SendTransactionParameters, "account" | "to"> = {
     account: params.account,
     to: params.to,
   };
 
-  // Add optional parameters only if they are defined
   if (params.value !== undefined) {
     txParams.value = params.value;
   }
@@ -90,9 +77,6 @@ function buildSendTxParams(params: {
   return txParams as SendTransactionParameters;
 }
 
-/**
- * Swap action executor
- */
 export class SwapAction {
   constructor(private readonly walletProvider: WalletProvider) {
     const lifiChains: ExtendedChain[] = [];
@@ -102,7 +86,6 @@ export class SwapAction {
         ? [config.blockExplorers.default.url]
         : [];
 
-      // Cast to ExtendedChain - the type assertions are needed for LiFi SDK compatibility
       const lifiChain = {
         id: config.id,
         name: config.name,
@@ -138,26 +121,20 @@ export class SwapAction {
       lifiChains.push(lifiChain);
     }
 
-    // Configure LiFi SDK with chain information
     createConfig({
       integrator: "eliza",
       chains: lifiChains,
     });
   }
 
-  /**
-   * Resolve a token symbol or address to a contract address using LiFi SDK
-   */
   private async resolveTokenAddress(
     tokenSymbolOrAddress: string,
     chainId: number
   ): Promise<string> {
-    // If it's already a valid address, return as is
     if (tokenSymbolOrAddress.startsWith("0x") && tokenSymbolOrAddress.length === 42) {
       return tokenSymbolOrAddress;
     }
 
-    // If it's the native token, return as is
     if (tokenSymbolOrAddress === NATIVE_TOKEN_ADDRESS) {
       return tokenSymbolOrAddress;
     }
@@ -166,14 +143,9 @@ export class SwapAction {
     return token.address;
   }
 
-  /**
-   * Execute a token swap
-   */
   async swap(params: SwapParams): Promise<Transaction> {
     const walletClient = this.walletProvider.getWalletClient(params.chain);
     const [fromAddress] = await walletClient.getAddresses();
-
-    // Resolve token symbols to addresses
     const chainConfig = this.walletProvider.getChainConfigs(params.chain);
     const chainId = chainConfig.id;
 
@@ -186,7 +158,6 @@ export class SwapAction {
       toToken: resolvedToToken as Address,
     };
 
-    // Try swap with progressively higher slippage if needed
     const slippageLevels = [0.01, 0.015, 0.02];
     let lastError: Error | undefined;
     let attemptCount = 0;
@@ -230,7 +201,6 @@ export class SwapAction {
         }
       }
 
-      // Add delay before retrying with higher slippage
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
@@ -261,7 +231,6 @@ export class SwapAction {
 
     const chainConfig = this.walletProvider.getChainConfigs(params.chain);
 
-    // Check if the fromToken is the native currency
     if (
       params.fromToken.toUpperCase() === chainConfig.nativeCurrency.symbol.toUpperCase() ||
       params.fromToken === NATIVE_TOKEN_ADDRESS
@@ -269,12 +238,14 @@ export class SwapAction {
       fromTokenDecimals = chainConfig.nativeCurrency.decimals;
     } else {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
-      // @ts-expect-error - viem type narrowing issue with readContract union types
-      fromTokenDecimals = Number(await publicClient.readContract({
-        address: params.fromToken as Address,
-        abi: decimalsAbi,
-        functionName: "decimals",
-      }));
+      fromTokenDecimals = Number(
+        // @ts-expect-error - viem type narrowing issue with readContract parameters
+        await publicClient.readContract({
+          address: params.fromToken as Address,
+          abi: decimalsAbi,
+          functionName: "decimals",
+        })
+      );
     }
 
     const quotesPromises: Promise<SwapQuote | undefined>[] = [
@@ -453,8 +424,6 @@ export class SwapAction {
     }
 
     const txRequest = stepWithTx.transactionRequest;
-
-    // Handle ERC20 approval if needed
     const fromToken = route.fromToken;
     if (fromToken.address !== NATIVE_TOKEN_ADDRESS) {
       await this.handleTokenApproval(
@@ -517,7 +486,6 @@ export class SwapAction {
     const chainConfig = this.walletProvider.getChainConfigs(params.chain);
     const resolvedFromToken = await this.resolveTokenAddress(params.fromToken, chainConfig.id);
 
-    // Handle ERC20 approval if not native token
     if (resolvedFromToken !== NATIVE_TOKEN_ADDRESS) {
       await this.handleTokenApproval(
         publicClient,
@@ -571,7 +539,7 @@ export class SwapAction {
 
     const allowanceAbi = parseAbi(["function allowance(address,address) view returns (uint256)"]);
 
-    // @ts-expect-error - viem type narrowing issue
+    // @ts-expect-error - viem type narrowing issue with readContract parameters
     const allowance = (await publicClient.readContract({
       address: tokenAddress,
       abi: allowanceAbi,
@@ -619,9 +587,6 @@ export class SwapAction {
   }
 }
 
-/**
- * Build swap details from LLM response
- */
 async function buildSwapDetails(
   state: State,
   message: Memory,
@@ -667,7 +632,6 @@ async function buildSwapDetails(
 
   const swapDetails = parseSwapParams(rawParams);
 
-  // Validate chain exists
   if (!wp.chains[swapDetails.chain]) {
     throw new EVMError(
       EVMErrorCode.CHAIN_NOT_CONFIGURED,
@@ -675,7 +639,6 @@ async function buildSwapDetails(
     );
   }
 
-  // Handle percentage-based amounts
   const messageText = (message.content.text ?? "").toLowerCase();
   if (!swapDetails.amount || swapDetails.amount === "null") {
     const balance = balances[swapDetails.chain];
@@ -707,9 +670,6 @@ async function buildSwapDetails(
   return swapDetails;
 }
 
-/**
- * Swap action definition
- */
 export const swapAction = {
   name: "EVM_SWAP_TOKENS",
   description: "Swap tokens on the same chain",

@@ -1,8 +1,3 @@
-/**
- * Prompt building utilities for the Forms plugin.
- * Uses the generated prompts and shared types from @elizaos/core.
- */
-
 import { composePrompt } from "@elizaos/core";
 import {
   FORM_CREATION_TEMPLATE,
@@ -10,13 +5,6 @@ import {
 } from "../generated/prompts/typescript/prompts.js";
 import type { PromptFieldInfo } from "../types.js";
 
-/**
- * Build the form extraction prompt with the given user message and fields.
- *
- * @param userMessage - The user's message to extract values from
- * @param fields - List of field information objects
- * @returns The formatted prompt string
- */
 export function buildExtractionPrompt(userMessage: string, fields: PromptFieldInfo[]): string {
   const fieldDescriptions = fields
     .map((f) => {
@@ -40,13 +28,6 @@ export function buildExtractionPrompt(userMessage: string, fields: PromptFieldIn
   });
 }
 
-/**
- * Build the form creation prompt with available form types.
- *
- * @param userMessage - The user's message requesting form creation
- * @param availableTypes - List of available form type names
- * @returns The formatted prompt string
- */
 export function buildCreationPrompt(userMessage: string, availableTypes: string[]): string {
   const typesList = availableTypes.map((t) => `  <type>${t}</type>`).join("\n");
 

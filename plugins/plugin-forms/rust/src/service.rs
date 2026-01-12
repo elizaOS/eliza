@@ -1,8 +1,4 @@
 #![allow(missing_docs)]
-//! Forms Service implementation for the elizaOS Forms Plugin.
-//!
-//! This service manages form lifecycle and state, providing methods to create,
-//! update, list, and cancel forms.
 
 use std::collections::HashMap;
 use async_trait::async_trait;
@@ -14,32 +10,22 @@ use crate::error::{FormsError, FormsResult};
 use crate::prompts::{build_extraction_prompt, FieldInfo};
 use crate::types::*;
 
-/// Trait for the agent runtime interface.
 #[async_trait]
 pub trait Runtime: Send + Sync {
-    /// Get the agent ID.
     fn agent_id(&self) -> Uuid;
-    
-    /// Use a model to generate a response.
     async fn use_model(&self, model_type: &str, params: &HashMap<String, serde_json::Value>) -> FormsResult<String>;
 }
 
-/// Parse key-value pairs from a simple XML structure.
-///
-/// This is a Rust equivalent of the TypeScript parseKeyValueXml function.
 pub fn parse_key_value_xml(text: &str) -> Option<HashMap<String, String>> {
-    // Find the response block
     let response_re = Regex::new(r"<response>([\s\S]*?)</response>").ok()?;
     let xml_content = if let Some(caps) = response_re.captures(text) {
         caps.get(1)?.as_str()
     } else {
-        // Try any root element
         let root_re = Regex::new(r"<(\w+)>([\s\S]*?)</\1>").ok()?;
         let caps = root_re.captures(text)?;
         caps.get(2)?.as_str()
     };
 
-    // Extract child elements
     let child_re = Regex::new(r"<(\w+)>([^<]*)</\1>").ok()?;
     let mut result = HashMap::new();
 
@@ -47,7 +33,6 @@ pub fn parse_key_value_xml(text: &str) -> Option<HashMap<String, String>> {
         let key = caps.get(1)?.as_str().to_string();
         let mut value = caps.get(2)?.as_str().trim().to_string();
         
-        // Unescape common XML entities
         value = value
             .replace("&lt;", "<")
             .replace("&gt;", ">")
@@ -65,7 +50,6 @@ pub fn parse_key_value_xml(text: &str) -> Option<HashMap<String, String>> {
     }
 }
 
-/// FormsService manages form lifecycle and state.
 pub struct FormsService<R: Runtime> {
     runtime: R,
     forms: HashMap<Uuid, Form>,
@@ -73,7 +57,6 @@ pub struct FormsService<R: Runtime> {
 }
 
 impl<R: Runtime> FormsService<R> {
-    /// Create a new forms service.
     pub fn new(runtime: R) -> Self {
         let mut service = Self {
             runtime,
@@ -109,7 +92,6 @@ impl<R: Runtime> FormsService<R> {
         self.templates.insert("contact".to_string(), contact);
     }
 
-    /// Create a new form from a template name.
     pub fn create_form_from_template(
         &mut self,
         template_name: &str,
@@ -146,13 +128,11 @@ impl<R: Runtime> FormsService<R> {
         Ok(form)
     }
 
-    /// Update form with extracted values from user message.
     pub async fn update_form(
         &mut self,
         form_id: Uuid,
         message_text: &str,
     ) -> FormsResult<FormUpdateResult> {
-        // First, get fields to extract (immutable borrow)
         let fields_to_extract: Vec<FormField> = {
             let form = self
                 .forms
@@ -183,11 +163,9 @@ impl<R: Runtime> FormsService<R> {
             }
         };
 
-        // Extract values using LLM (no mutable borrow needed)
         let field_refs: Vec<&FormField> = fields_to_extract.iter().collect();
         let extracted = self.extract_form_values(message_text, &field_refs).await?;
 
-        // Now get mutable borrow for updates
         let form = self
             .forms
             .get_mut(&form_id)
@@ -198,8 +176,6 @@ impl<R: Runtime> FormsService<R> {
 
         let current_step = &mut form.steps[form.current_step_index];
 
-        // Update fields with extracted values
-        // First, validate all values (clone field types to avoid borrow conflict)
         let mut field_validations: Vec<(String, Result<FieldValue, String>)> = Vec::new();
         for field in &current_step.fields {
             if let Some(value) = extracted.get(&field.id) {
@@ -209,7 +185,6 @@ impl<R: Runtime> FormsService<R> {
             }
         }
         
-        // Then update fields (needs mutable borrow of form)
         for (field_id, validation_result) in field_validations {
             if let Some(field) = current_step.fields.iter_mut().find(|f| f.id == field_id) {
                 match validation_result {
@@ -229,7 +204,6 @@ impl<R: Runtime> FormsService<R> {
             }
         }
 
-        // Check if step is complete
         let required_fields: Vec<_> = current_step
             .fields
             .iter()
@@ -372,7 +346,6 @@ impl<R: Runtime> FormsService<R> {
         }
     }
 
-    /// List all forms, optionally filtered by status.
     pub fn list_forms(&self, status: Option<FormStatus>) -> Vec<&Form> {
         self.forms
             .values()
@@ -388,7 +361,6 @@ impl<R: Runtime> FormsService<R> {
             .filter(|f| f.agent_id == self.runtime.agent_id())
     }
 
-    /// Cancel a form.
     pub fn cancel_form(&mut self, form_id: Uuid) -> bool {
         if let Some(form) = self.forms.get_mut(&form_id) {
             if form.agent_id == self.runtime.agent_id() {
@@ -400,12 +372,10 @@ impl<R: Runtime> FormsService<R> {
         false
     }
 
-    /// Register a form template.
     pub fn register_template(&mut self, template: FormTemplate) {
         self.templates.insert(template.name.clone(), template);
     }
 
-    /// Get all registered templates.
     pub fn get_templates(&self) -> Vec<&FormTemplate> {
         self.templates.values().collect()
     }

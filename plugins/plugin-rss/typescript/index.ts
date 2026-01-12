@@ -1,65 +1,20 @@
-/**
- * RSS Plugin for elizaOS
- *
- * Provides RSS/Atom feed monitoring and subscription management capabilities.
- *
- * Features:
- * - Feed fetching and parsing
- * - Feed subscriptions
- * - Periodic feed checking
- * - Duplicate detection
- * - Multiple output formats (CSV/Markdown)
- */
-
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-
-// Actions
 import {
   getFeedAction,
   listFeedsAction,
   subscribeFeedAction,
   unsubscribeFeedAction,
 } from "./actions";
-
-// Providers
 import { feedItemsProvider } from "./providers";
-
-// Service
 import { RssService } from "./service";
 
-// Check if subscription actions should be disabled
 const actionsDisabled = process.env.RSS_DISABLE_ACTIONS === "true";
+const actions = [getFeedAction];
 
-// Build actions array conditionally
-const actions = [
-  getFeedAction, // Always include GET_NEWSFEED for initial setup
-];
-
-// Add subscription management actions if not disabled
 if (!actionsDisabled) {
   actions.push(subscribeFeedAction, unsubscribeFeedAction, listFeedsAction);
 }
-
-/**
- * RSS Plugin Configuration
- *
- * Environment Variables:
- * - RSS_FEEDS: JSON array or comma-separated list of feed URLs to auto-subscribe
- *   Example: RSS_FEEDS='["https://example.com/rss","https://news.com/feed"]'
- *   Example: RSS_FEEDS='https://example.com/rss,https://news.com/feed'
- *
- * - RSS_DISABLE_ACTIONS: Set to "true" to disable subscription management actions
- *   When disabled, feeds can only be managed via RSS_FEEDS env var
- *   Default: false (actions are enabled)
- *
- * - RSS_FEED_FORMAT: Output format for feed items in context
- *   Options: 'csv' (compact, token-efficient) or 'markdown' (human-readable)
- *   Default: 'csv' (recommended for economy)
- *
- * - RSS_CHECK_INTERVAL_MINUTES: Check interval in minutes
- *   Default: 15 minutes
- */
 export const rssPlugin: Plugin = {
   name: "rss",
   description: "RSS/Atom feed monitoring and subscription management",
@@ -73,7 +28,6 @@ export const rssPlugin: Plugin = {
 
   async init(_config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> {
     logger.info("Initializing RSS plugin");
-    // Plugin initialization is handled by the service start
   },
 
   evaluators: [],

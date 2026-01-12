@@ -1,4 +1,3 @@
-"""Error types for the BlueSky plugin."""
 
 from __future__ import annotations
 

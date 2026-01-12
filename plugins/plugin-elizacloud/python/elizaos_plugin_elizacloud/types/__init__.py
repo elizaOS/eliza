@@ -1,13 +1,9 @@
-"""Type definitions for elizaOS Cloud Plugin."""
-
 from dataclasses import dataclass, field
 from typing import Literal
 
 
 @dataclass
 class ElizaCloudConfig:
-    """Configuration for ElizaOS Cloud API client."""
-
     api_key: str
     base_url: str = "https://www.elizacloud.ai/api/v1"
     small_model: str = "gpt-4o-mini"
@@ -28,8 +24,6 @@ class ElizaCloudConfig:
 
 @dataclass
 class TextGenerationParams:
-    """Parameters for text generation."""
-
     prompt: str
     temperature: float = 0.7
     max_tokens: int = 8192
@@ -41,8 +35,6 @@ class TextGenerationParams:
 
 @dataclass
 class ObjectGenerationParams:
-    """Parameters for structured object generation."""
-
     prompt: str
     schema: dict[str, object] | None = None
     temperature: float = 0.0
@@ -50,16 +42,12 @@ class ObjectGenerationParams:
 
 @dataclass
 class TextEmbeddingParams:
-    """Parameters for text embedding."""
-
     text: str | None = None
     texts: list[str] | None = None
 
 
 @dataclass
 class ImageGenerationParams:
-    """Parameters for image generation."""
-
     prompt: str
     count: int = 1
     size: str = "1024x1024"
@@ -69,24 +57,18 @@ class ImageGenerationParams:
 
 @dataclass
 class ImageDescriptionParams:
-    """Parameters for image description."""
-
     image_url: str
     prompt: str | None = None
 
 
 @dataclass
 class ImageDescriptionResult:
-    """Result from image description."""
-
     title: str
     description: str
 
 
 @dataclass
 class TextToSpeechParams:
-    """Parameters for text-to-speech."""
-
     text: str
     model: str | None = None
     voice: str | None = None
@@ -96,8 +78,6 @@ class TextToSpeechParams:
 
 @dataclass
 class TranscriptionParams:
-    """Parameters for audio transcription."""
-
     audio: bytes
     model: str | None = None
     language: str | None = None
@@ -118,8 +98,6 @@ class TokenizeTextParams:
 
 @dataclass
 class DetokenizeTextParams:
-    """Parameters for text detokenization."""
-
     tokens: list[int]
     model_type: str = "TEXT_LARGE"
 

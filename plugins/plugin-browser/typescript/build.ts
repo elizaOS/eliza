@@ -1,20 +1,12 @@
 #!/usr/bin/env bun
 
-/**
- * Build script using bun build
- * Uses Bun.build for bundling
- */
-
 import { $ } from 'bun';
 import { buildConfig } from './build.config';
 
 async function build() {
   console.log('🏗️  Building package...');
-
-  // Clean dist directory
   await $`rm -rf dist`;
 
-  // Build with bun
   const result = await Bun.build(buildConfig);
 
   if (!result.success) {
@@ -27,7 +19,6 @@ async function build() {
 
   console.log(`✅ Built ${result.outputs.length} files`);
 
-  // Generate TypeScript declarations
   console.log('📝 Generating TypeScript declarations...');
   try {
     await $`tsc --project tsconfig.build.json`;

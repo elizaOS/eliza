@@ -1,9 +1,3 @@
-"""
-Autonomy Module for elizaOS Bootstrap - Python implementation.
-
-Provides autonomous operation capabilities for agents.
-"""
-
 from __future__ import annotations
 
 from .action import send_to_admin_action

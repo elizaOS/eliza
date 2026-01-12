@@ -20,8 +20,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Separator } from "./ui/separator";
 import { cn } from "./utils";
 
-// Define Task type based on backend structure
-// NOTE: Adjust this type based on the actual structure returned by IAgentRuntime and modified by API routes
 interface TaskMetadata {
   dueDate?: string; // ISO string
   streak?: number;
@@ -29,7 +27,7 @@ interface TaskMetadata {
   lastReminderSent?: string; // ISO string
   pointsAwarded?: number;
   completedAt?: string; // ISO string
-  [key: string]: unknown; // Allow other metadata properties
+  [key: string]: unknown;
 }
 
 interface Task {
@@ -38,8 +36,7 @@ interface Task {
   description?: string;
   tags?: string[];
   metadata?: TaskMetadata;
-  roomId: string; // Added roomId as it's crucial
-  // Add other relevant fields like createdAt, updatedAt if needed
+  roomId: string;
 }
 
 interface RoomWithTasks {
@@ -54,18 +51,16 @@ interface WorldWithRooms {
   rooms: RoomWithTasks[];
 }
 
-// --- NEW: Interface for Task Identifiers ---
 interface TaskIdentifier {
   id: string;
   name: string;
-  entityId?: string; // Make optional if they can be null/undefined
+  entityId?: string;
   roomId?: string;
   worldId?: string;
 }
 
 const queryClient = new QueryClient();
 
-// Helper to extract context from URL
 const getContextFromUrl = () => {
   const params = new URLSearchParams(window.location.search);
   return {
@@ -74,8 +69,6 @@ const getContextFromUrl = () => {
     worldId: params.get("worldId"),
   };
 };
-
-// --- API Interaction Hooks ---
 
 const useGoals = () => {
   return useQuery<WorldWithRooms[], Error>({
@@ -90,7 +83,6 @@ const useGoals = () => {
   });
 };
 
-// --- Hook to fetch tags ---
 const useTags = () => {
   return useQuery<string[], Error>({
     queryKey: ["taskTags"],
@@ -110,7 +102,7 @@ const useAllTasks = () => {
   return useQuery<TaskIdentifier[], Error>({
     queryKey: ["allTasks"],
     queryFn: async () => {
-      const response = await fetch("/api/all-tasks"); // Use new endpoint
+      const response = await fetch("/api/all-tasks");
       if (!response.ok) {
         const errorData = await response.text();
         throw new Error(`Failed to fetch all tasks: ${errorData}`);
@@ -152,7 +144,7 @@ const useAddTask = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["goalsStructured"] });
-      queryClient.invalidateQueries({ queryKey: ["allTasks"] }); // Invalidate all tasks too
+      queryClient.invalidateQueries({ queryKey: ["allTasks"] });
     },
   });
 };
@@ -613,7 +605,6 @@ const TagsList = () => {
   );
 };
 
-// --- Component to display ALL tasks --- MODIFY THIS COMPONENT
 const AllTasksList = () => {
   const { data: allTasks, isLoading, error } = useAllTasks(); // Fetch TaskIdentifier[]
 
@@ -630,7 +621,6 @@ const AllTasksList = () => {
         )}
         {allTasks && allTasks.length > 0 && (
           <div className="space-y-1 max-h-96 overflow-y-auto text-xs">
-            {/* Render the identifiers directly */}
             {allTasks.map((task) => (
               <div key={task.id} className="p-1 border-b border-dashed last:border-b-0">
                 <p>
@@ -656,7 +646,6 @@ const AllTasksList = () => {
     </Card>
   );
 };
-// --- END ALL TASKS COMPONENT ---
 
 function App() {
   const { data: worlds, isLoading, error, isSuccess } = useGoals();
@@ -687,14 +676,12 @@ function App() {
       </div>
 
       <div className="container flex flex-col lg:flex-row gap-6">
-        {/* Left Column: Add Task Form, Tags List, All Tasks List */}
         <div className="lg:w-1/3 space-y-4 flex-shrink-0">
           <AddTaskForm worlds={worlds ?? []} />
           <TagsList />
           <AllTasksList />
         </div>
 
-        {/* Right Column: Task List by World/Room */}
         <div className="lg:w-2/3 space-y-6">
           {isLoading && <Loader data-testid="loader" />}
           {error && <p className="text-red-500">Error loading tasks: {error.message}</p>}

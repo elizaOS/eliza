@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! HTTP/SSE transport for MCP connections.
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -8,7 +7,6 @@ use crate::error::{McpError, McpResult};
 use crate::transport::Transport;
 use crate::types::HttpServerConfig;
 
-/// Transport that communicates with an MCP server via HTTP/SSE.
 pub struct HttpTransport {
     config: HttpServerConfig,
     client: Option<reqwest::Client>,
@@ -16,7 +14,6 @@ pub struct HttpTransport {
 }
 
 impl HttpTransport {
-    /// Create a new HTTP transport.
     pub fn new(config: HttpServerConfig) -> Self {
         Self {
             config,
@@ -61,8 +58,6 @@ impl Transport for HttpTransport {
     }
 
     async fn receive(&mut self) -> McpResult<Value> {
-        // For simple HTTP transport, we use a request/response pattern
-        // This is different from SSE where responses come asynchronously
         Err(McpError::protocol(
             "Direct receive not supported for HTTP transport, use send_request",
         ))
@@ -80,8 +75,6 @@ impl Transport for HttpTransport {
 }
 
 impl HttpTransport {
-    /// Send a request and receive the response.
-    /// This is the primary method for HTTP-based MCP communication.
     pub async fn send_request(&mut self, message: Value) -> McpResult<Value> {
         let client = self.client.as_ref().ok_or(McpError::NotConnected)?;
 

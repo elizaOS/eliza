@@ -11,17 +11,10 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-/**
- * Template for extracting command from user input
- * Auto-generated from prompts/command_extraction.txt
- */
 import { commandExtractionTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { ShellService } from "../services/shellService";
 export { commandExtractionTemplate };
 
-/**
- * Extracts the command from the message
- */
 const extractCommand = async (
   runtime: IAgentRuntime,
   _message: Memory,
@@ -67,13 +60,11 @@ export const executeCommand: Action = {
   description:
     "Execute ANY shell command in the terminal. Use this to run ANY command including: brew install, npm install, apt-get, system commands, file operations (create, write, delete), navigate directories, execute scripts, or perform any other shell operation. I CAN and SHOULD execute commands when asked. This includes brew, npm, git, ls, cd, echo, touch, cat, mkdir, system_profiler, and literally ANY other terminal command.",
   validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
-    // Check if shell service is available
     const shellService = runtime.getService<ShellService>("shell");
     if (!shellService) {
       return false;
     }
 
-    // This action should be used for ANY command execution request
     const text = message.content.text?.toLowerCase() || "";
     const commandKeywords = [
       "run",
@@ -104,10 +95,7 @@ export const executeCommand: Action = {
       "test",
     ];
 
-    // Be very permissive - if any command-related keyword is found, this action is valid
     const hasCommandKeyword = commandKeywords.some((keyword) => text.includes(keyword));
-
-    // Also check for direct commands
     const hasDirectCommand = /^(brew|npm|apt|git|ls|cd|echo|cat|touch|mkdir|rm|mv|cp)\s/i.test(
       message.content.text || ""
     );
@@ -131,7 +119,6 @@ export const executeCommand: Action = {
       return { success: false, error: "Shell service is not available." };
     }
 
-    // Extract command from message
     const commandInfo = await extractCommand(runtime, message, state);
     if (!commandInfo?.command) {
       logger.error("Failed to extract command from message:", message.content.text);
@@ -146,13 +133,9 @@ export const executeCommand: Action = {
     logger.info(`Extracted command: "${commandInfo.command}"`);
 
     try {
-      // Get conversation ID for history tracking
       const conversationId = message.roomId || message.agentId;
-
-      // Execute the command with conversation tracking
       const result = await shellService.executeCommand(commandInfo.command, conversationId);
 
-      // Format the response
       let responseText = "";
 
       if (result.success) {

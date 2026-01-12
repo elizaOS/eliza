@@ -274,6 +274,11 @@
       "outputs": [".next/**", "!.next/cache/**"],
       "cache": false
     },
+    "@elizaos/vercel-edge-examples#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["rust/target/release/**"]
+    },
     "lint": {
       "outputs": []
     },

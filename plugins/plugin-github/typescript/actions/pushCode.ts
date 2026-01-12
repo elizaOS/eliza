@@ -1,9 +1,3 @@
-/**
- * Push Code Action
- *
- * Creates a commit with file changes and pushes to a branch.
- */
-
 import {
   type Action,
   type ActionExample,

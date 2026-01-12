@@ -85,7 +85,6 @@ export const removeContactAction: Action = {
         template: removeContactTemplate,
       });
 
-      // Get LLM response
       const response = await runtime.useModel(ModelType.TEXT_SMALL, {
         prompt,
       });
@@ -106,7 +105,6 @@ export const removeContactAction: Action = {
         return;
       }
 
-      // Find the contact
       const contacts = await rolodexService.searchContacts({
         searchTerm: parsed.contactName,
       });
@@ -120,7 +118,6 @@ export const removeContactAction: Action = {
 
       const contact = contacts[0];
 
-      // Remove the contact
       const removed = await rolodexService.removeContact(contact.entityId);
 
       if (removed) {

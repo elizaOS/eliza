@@ -1,7 +1,3 @@
-/**
- * Action to send a message to players in a Roblox game
- */
-
 import {
   type Action,
   type ActionExample,
@@ -48,9 +44,6 @@ const sendGameMessageExamples: ActionExample[][] = [
   ],
 ];
 
-/**
- * Action to send a message to players in a Roblox game
- */
 const sendGameMessage: Action = {
   name: "SEND_ROBLOX_MESSAGE",
   similes: ["ROBLOX_MESSAGE", "GAME_MESSAGE", "SEND_TO_GAME", "BROADCAST_MESSAGE", "TELL_PLAYERS"],
@@ -87,7 +80,6 @@ const sendGameMessage: Action = {
         };
       }
 
-      // Extract message content from state or message
       const messageContent =
         (state?.message as string) || (message.content as { text?: string }).text || "";
 
@@ -105,10 +97,8 @@ const sendGameMessage: Action = {
         };
       }
 
-      // Extract target player IDs if specified in the message
       const targetPlayerIds = extractPlayerIds(messageContent);
 
-      // Send the message
       await service.sendMessage(runtime.agentId, messageContent, targetPlayerIds);
 
       logger.info(
@@ -152,11 +142,7 @@ const sendGameMessage: Action = {
   },
 };
 
-/**
- * Extract player IDs from a message (looks for patterns like "player123" or explicit IDs)
- */
 function extractPlayerIds(message: string): number[] | undefined {
-  // Look for explicit player IDs (numbers)
   const playerIdPattern = /\bplayer\s*(\d+)\b/gi;
   const matches = [...message.matchAll(playerIdPattern)];
 

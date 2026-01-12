@@ -1,5 +1,3 @@
-"""Merge Pull Request Action."""
-
 from typing import Literal
 
 from elizaos_plugin_github.actions.create_issue import ActionContext, ActionResult
@@ -7,8 +5,6 @@ from elizaos_plugin_github.types import MergePullRequestParams
 
 
 class MergePullRequestAction:
-    """Action to merge a GitHub pull request."""
-
     @property
     def name(self) -> str:
         return "MERGE_GITHUB_PULL_REQUEST"
@@ -28,7 +24,6 @@ class MergePullRequestAction:
         ]
 
     async def validate(self, context: ActionContext) -> bool:
-        """Validate the action can be executed."""
         content = context.message.get("content", {})
         text = ""
         if isinstance(content, dict):
@@ -41,7 +36,6 @@ class MergePullRequestAction:
         context: ActionContext,
         service: object,
     ) -> ActionResult:
-        """Execute the action."""
         from elizaos_plugin_github.service import GitHubService
 
         if not isinstance(service, GitHubService):
@@ -86,8 +80,3 @@ class MergePullRequestAction:
                 )
         except Exception as e:
             return ActionResult.error_result(f"Failed to merge pull request: {e}")
-
-
-
-
-

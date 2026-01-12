@@ -5,18 +5,9 @@ import { SOLANA_WALLET_DATA_CACHE_KEY } from "../constants";
 import { getWalletKey } from "../keypairUtils";
 import type { WalletPortfolio } from "../types";
 
-/**
- * Wallet provider for Solana.
- * @param {IAgentRuntime} runtime - The agent runtime.
- * @param {Memory} _message - The memory message.
- * @param {State} [state] - Optional state parameter.
- * @returns {Promise<ProviderResult>} The result of the wallet provider.
- */
 export const walletProvider: Provider = {
   name: "solana-wallet",
   description: "your solana wallet information",
-  // it's not slow we always have this data
-  // but we don't always need this data, let's free up the context
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, state: State): Promise<ProviderResult> => {
     try {
@@ -39,13 +30,11 @@ export const walletProvider: Provider = {
       const agentName = state.agentName ?? runtime.character.name ?? "The agent";
       const totalSol = portfolio.totalSol ?? "0";
 
-      // Values that can be injected into templates
       const values: Record<string, string> = {
         total_usd: new BigNumber(portfolio.totalUsd).toFixed(2),
         total_sol: totalSol,
       };
 
-      // Add token balances to values
       portfolio.items.forEach((item, index) => {
         if (new BigNumber(item.uiAmount).isGreaterThan(0)) {
           values[`token_${index}_name`] = item.name;
@@ -56,18 +45,14 @@ export const walletProvider: Provider = {
         }
       });
 
-      // Add market prices to values
       if (portfolio.prices) {
         values.sol_price = new BigNumber(portfolio.prices.solana.usd).toFixed(2);
         values.btc_price = new BigNumber(portfolio.prices.bitcoin.usd).toFixed(2);
         values.eth_price = new BigNumber(portfolio.prices.ethereum.usd).toFixed(2);
       }
 
-      // Format the text output
       let text = `\n\n${agentName}'s Main Solana Wallet${pubkeyStr}\n`;
       text += `Total Value: $${values.total_usd} (${values.total_sol} SOL)\n\n`;
-
-      // Token Balances
       text += "Token Balances:\n";
       const nonZeroItems = portfolio.items.filter((item) =>
         new BigNumber(item.uiAmount).isGreaterThan(0)
@@ -85,7 +70,6 @@ export const walletProvider: Provider = {
         }
       }
 
-      // Market Prices
       if (portfolio.prices) {
         text += "\nMarket Prices:\n";
         text += `SOL: $${values.sol_price}\n`;
@@ -93,7 +77,6 @@ export const walletProvider: Provider = {
         text += `ETH: $${values.eth_price}\n`;
       }
 
-      // Portfolio data for the ProviderResult
       const data = {
         totalUsd: portfolio.totalUsd,
         totalSol: portfolio.totalSol,

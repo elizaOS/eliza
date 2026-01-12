@@ -1,16 +1,17 @@
-//! Error types for the Goals plugin
-//!
-//! Provides strongly-typed errors that fail fast with clear messages.
-
 use std::fmt;
 use thiserror::Error;
 
-/// Result type alias for Goal operations
+/// A specialized Result type for goal operations.
+///
+/// This type alias is used throughout the goals plugin to represent
+/// operations that may fail with a `GoalError`.
 pub type Result<T> = std::result::Result<T, GoalError>;
 
-/// Goals plugin error types
+/// Errors that can occur during goal operations.
 ///
-/// All errors are designed to fail fast with clear, actionable messages.
+/// This enum represents all possible error conditions that may arise
+/// when working with goals, including not found, validation, and
+/// database errors.
 #[derive(Debug, Error)]
 pub enum GoalError {
     /// Goal not found
@@ -55,7 +56,14 @@ pub enum GoalError {
 }
 
 impl GoalError {
-    /// Check if error is retryable
+    /// Checks if this error is potentially recoverable by retrying the operation.
+    ///
+    /// Currently, only `DatabaseError` is considered retryable, as it may
+    /// represent transient connection issues.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the operation should be retried, `false` otherwise.
     pub fn is_retryable(&self) -> bool {
         matches!(self, GoalError::DatabaseError(_))
     }
@@ -73,7 +81,10 @@ impl From<std::io::Error> for GoalError {
     }
 }
 
-/// Error context wrapper for adding contextual information
+/// Wraps an error with additional context information.
+///
+/// This struct is useful for adding contextual information to errors
+/// without losing the original error type.
 #[derive(Debug)]
 pub struct ErrorContext<E: fmt::Display> {
     error: E,

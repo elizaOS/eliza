@@ -1,7 +1,5 @@
-"""Linear plugin definition for ElizaOS."""
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from elizaos_plugin_linear.actions import (
     clear_activity_action,
@@ -28,11 +26,9 @@ from elizaos_plugin_linear.services.linear import LinearService
 
 @dataclass
 class Plugin:
-    """Plugin definition for ElizaOS."""
-
     name: str
     description: str
-    services: list[type[Any]]
+    services: list[type[object]]
     actions: list[Action]
     providers: list[Provider] = field(default_factory=list)
 
@@ -60,8 +56,3 @@ linear_plugin = Plugin(
         linear_activity_provider,
     ],
 )
-
-
-
-
-

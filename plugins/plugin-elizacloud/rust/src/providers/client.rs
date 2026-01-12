@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! ElizaOS Cloud API client implementation.
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -11,7 +10,6 @@ use crate::types::{
     TextEmbeddingParams, TextGenerationParams, TextToSpeechParams, TranscriptionParams,
 };
 
-/// Client for interacting with ElizaOS Cloud API.
 #[derive(Debug, Clone)]
 pub struct ElizaCloudClient {
     config: ElizaCloudConfig,
@@ -68,7 +66,6 @@ struct EmbeddingData {
     embedding: Vec<f32>,
 }
 
-/// ElizaOS Cloud custom image generation request
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ImageGenerationRequest {
@@ -89,10 +86,8 @@ struct ImageData {
     image: Option<String>,
 }
 
-/// Image result with URL
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageResult {
-    /// URL of the generated image
     pub url: String,
 }
 
@@ -107,7 +102,6 @@ struct TextToSpeechRequest {
     instructions: Option<String>,
 }
 
-/// Map size to aspect ratio for ElizaOS Cloud API
 fn size_to_aspect_ratio(size: &str) -> &'static str {
     match size {
         "1024x1024" => "1:1",
@@ -118,15 +112,6 @@ fn size_to_aspect_ratio(size: &str) -> &'static str {
 }
 
 impl ElizaCloudClient {
-    /// Create a new ElizaOS Cloud client.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - Configuration for the client
-    ///
-    /// # Returns
-    ///
-    /// A new client instance or an error if configuration is invalid.
     pub fn new(config: ElizaCloudConfig) -> Result<Self> {
         if config.api_key.is_empty() {
             return Err(ElizaCloudError::configuration("API key is required"));
@@ -140,7 +125,6 @@ impl ElizaCloudClient {
         Ok(Self { config, client })
     }
 
-    /// Get authorization headers.
     fn auth_headers(&self, use_embedding_key: bool) -> reqwest::header::HeaderMap {
         let mut headers = reqwest::header::HeaderMap::new();
         let api_key = if use_embedding_key {
@@ -162,7 +146,6 @@ impl ElizaCloudClient {
         headers
     }
 
-    /// Get the base URL for a request type.
     fn get_url(&self, endpoint: &str, use_embedding_url: bool) -> String {
         let base = if use_embedding_url {
             self.config
@@ -175,12 +158,10 @@ impl ElizaCloudClient {
         format!("{}{}", base, endpoint)
     }
 
-    /// Generate text using the small model.
     pub async fn generate_text_small(&self, params: TextGenerationParams) -> Result<String> {
         self.generate_text(params, &self.config.small_model).await
     }
 
-    /// Generate text using the large model.
     pub async fn generate_text_large(&self, params: TextGenerationParams) -> Result<String> {
         self.generate_text(params, &self.config.large_model).await
     }
@@ -218,7 +199,6 @@ impl ElizaCloudClient {
             })
     }
 
-    /// Generate embeddings for text(s).
     pub async fn generate_embedding(&self, params: TextEmbeddingParams) -> Result<Vec<Vec<f32>>> {
         let input = if let Some(texts) = params.texts {
             texts
@@ -249,9 +229,6 @@ impl ElizaCloudClient {
             .map(|r| r.data.into_iter().map(|d| d.embedding).collect())
     }
 
-    /// Generate images from a prompt.
-    ///
-    /// Uses ElizaOS Cloud's custom /generate-image endpoint.
     pub async fn generate_image(&self, params: ImageGenerationParams) -> Result<Vec<ImageResult>> {
         let aspect_ratio = size_to_aspect_ratio(&params.size);
 
@@ -283,9 +260,6 @@ impl ElizaCloudClient {
             .collect())
     }
 
-    /// Describe an image.
-    ///
-    /// Accepts either an image URL string or ImageDescriptionParams.
     pub async fn describe_image(
         &self,
         params: ImageDescriptionInput,
@@ -339,7 +313,6 @@ impl ElizaCloudClient {
             .map(|c| c.message.content.clone())
             .unwrap_or_default();
 
-        // Parse title and description from response
         let lines: Vec<&str> = content.trim().splitn(2, '\n').collect();
         let title = lines
             .first()
@@ -353,7 +326,6 @@ impl ElizaCloudClient {
         Ok(ImageDescriptionResult { title, description })
     }
 
-    /// Generate speech from text.
     pub async fn generate_speech(&self, params: TextToSpeechParams) -> Result<Vec<u8>> {
         let model = params
             .model
@@ -390,9 +362,7 @@ impl ElizaCloudClient {
         Ok(response.bytes().await?.to_vec())
     }
 
-    /// Transcribe audio to text.
     pub async fn transcribe_audio(&self, params: TranscriptionParams) -> Result<String> {
-        // Use config default if model not specified
         let model = params
             .model
             .unwrap_or_else(|| self.config.transcription_model.clone());
@@ -445,7 +415,6 @@ impl ElizaCloudClient {
             return Err(ElizaCloudError::api(status, text));
         }
 
-        // Handle both JSON and plain text responses
         let content_type = response
             .headers()
             .get("content-type")
@@ -464,7 +433,6 @@ impl ElizaCloudClient {
         }
     }
 
-    /// Handle API response and convert to typed result.
     async fn handle_response<T: serde::de::DeserializeOwned>(
         &self,
         response: reqwest::Response,
@@ -497,11 +465,8 @@ impl ElizaCloudClient {
     }
 }
 
-/// Input type for image description that accepts either URL string or params.
 pub enum ImageDescriptionInput {
-    /// Just the image URL
     Url(String),
-    /// Full parameters
     Params(ImageDescriptionParams),
 }
 

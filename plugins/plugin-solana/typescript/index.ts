@@ -1,19 +1,11 @@
 import type { IAgentRuntime, Plugin, ServiceTypeName } from "@elizaos/core";
-
-// actions
 import { executeSwap } from "./actions/swap";
 import transferToken from "./actions/transfer";
 import { SOLANA_SERVICE_NAME } from "./constants";
-// providers
 import { walletProvider } from "./providers/wallet";
-// routes
 import { solanaRoutes } from "./routes/index";
-// service
 import { SolanaService, SolanaWalletService } from "./service";
 
-/**
- * Get a string setting from runtime, returning null if not a string.
- */
 function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
   const value = runtime.getSetting(key);
   if (typeof value === "string") {
@@ -22,9 +14,6 @@ function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
   return null;
 }
 
-/**
- * Parse a boolean from a setting value.
- */
 function parseBoolSetting(value: string | number | boolean | null): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value === "boolean") return value;
@@ -39,7 +28,6 @@ export const solanaPlugin: Plugin = {
   services: [SolanaService, SolanaWalletService],
   routes: solanaRoutes,
   init: async (_, runtime: IAgentRuntime) => {
-    // Validation
     if (!getStringSetting(runtime, "SOLANA_RPC_URL")) {
       runtime.logger.log("no SOLANA_RPC_URL, skipping plugin-solana init");
       return;
@@ -55,7 +43,6 @@ export const solanaPlugin: Plugin = {
 
     runtime.registerProvider(walletProvider);
 
-    // extensions
     runtime
       .getServiceLoadPromise("INTEL_CHAIN" as ServiceTypeName as string as ServiceTypeName)
       .then(() => {
@@ -89,8 +76,6 @@ export default solanaPlugin;
 export { SOLANA_SERVICE_NAME } from "./constants";
 export type { SolanaService as ISolanaService } from "./service";
 export { SolanaService, SolanaWalletService } from "./service";
-
-// Export API types for HTTP routes
 export type {
   ApiError,
   ApiResponse,

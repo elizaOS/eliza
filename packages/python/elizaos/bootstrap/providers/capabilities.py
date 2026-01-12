@@ -1,10 +1,3 @@
-"""
-Capabilities Provider - Lists agent capabilities.
-
-This provider returns a list of capabilities the agent has,
-including available models, services, and features.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,34 +13,10 @@ async def get_capabilities(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get agent capabilities.
-
-    Returns information about what the agent can do, including
-    available models, services, and configured features.
-    """
-    capabilities: dict[str, list[str] | bool] = {
-        "models": [],
-        "services": [],
-        "features": [],
-    }
-
-    # Check available models
     model_types = ["TEXT_LARGE", "TEXT_SMALL", "TEXT_EMBEDDING", "IMAGE", "AUDIO"]
-    available_models: list[str] = []
-    for model_type in model_types:
-        if runtime.has_model(model_type):
-            available_models.append(model_type)
-    capabilities["models"] = available_models
+    available_models = [mt for mt in model_types if runtime.has_model(mt)]
+    service_names = [s.name for s in runtime.services if hasattr(s, "name")]
 
-    # Check available services
-    service_names: list[str] = []
-    for service in runtime.services:
-        if hasattr(service, "name"):
-            service_names.append(service.name)
-    capabilities["services"] = service_names
-
-    # Check features based on settings
     features: list[str] = []
     if runtime.get_setting("ENABLE_VOICE"):
         features.append("voice")
@@ -55,9 +24,13 @@ async def get_capabilities(
         features.append("vision")
     if runtime.get_setting("ENABLE_MEMORY"):
         features.append("long_term_memory")
-    capabilities["features"] = features
 
-    # Format text output
+    capabilities: dict[str, list[str] | bool] = {
+        "models": available_models,
+        "services": service_names,
+        "features": features,
+    }
+
     text_parts: list[str] = ["# Agent Capabilities"]
 
     if available_models:
@@ -81,7 +54,6 @@ async def get_capabilities(
     )
 
 
-# Create the provider instance
 capabilities_provider = Provider(
     name="CAPABILITIES",
     description="Agent capabilities including models, services, and features",

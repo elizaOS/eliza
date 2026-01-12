@@ -1,10 +1,3 @@
-/**
- * Cross-language type parity tests for InMemoryDatabaseAdapter
- *
- * Tests type consistency across TypeScript, Python, and Rust implementations.
- * These tests document the expected interface that must be consistent across languages.
- */
-
 import { describe, expect, it } from "vitest";
 import { EphemeralHNSW } from "../hnsw";
 import { MemoryStorage } from "../storage-memory";
@@ -12,7 +5,6 @@ import { MemoryStorage } from "../storage-memory";
 describe("MemoryStorage Implementation", () => {
   it("should initialize storage", async () => {
     const storage = new MemoryStorage();
-    // Just await - if it throws, the test will fail
     await storage.init();
     expect(true).toBe(true);
   });
@@ -62,7 +54,6 @@ describe("MemoryStorage Implementation", () => {
 describe("EphemeralHNSW Vector Index", () => {
   it("should initialize with dimension", async () => {
     const hnsw = new EphemeralHNSW();
-    // Just await - if it throws, the test will fail
     await hnsw.init(384);
     expect(true).toBe(true);
   });
@@ -85,10 +76,8 @@ describe("EphemeralHNSW Vector Index", () => {
     await hnsw.add("vec-2", [0.0, 1.0, 0.0]);
     await hnsw.add("vec-3", [0.0, 0.0, 1.0]);
 
-    // Search for vector close to vec-1
     const results = await hnsw.search([0.9, 0.1, 0.0], 2, 0.0);
     expect(results.length).toBeLessThanOrEqual(2);
-    // vec-1 should be most similar
     if (results.length > 0) {
       expect(results[0].id).toBe("vec-1");
     }
@@ -118,9 +107,6 @@ describe("EphemeralHNSW Vector Index", () => {
 
 describe("Cross-Language Memory Storage Parity", () => {
   it("should have consistent memory structure across implementations", () => {
-    // This test documents the expected memory structure that must be
-    // consistent across TypeScript, Python, and Rust implementations
-
     const expectedMemoryFields = [
       "id",
       "entityId",
@@ -151,12 +137,11 @@ describe("Cross-Language Memory Storage Parity", () => {
   });
 
   it("should have consistent HNSW vector search interface", () => {
-    // Documents the expected vector search interface
     const searchParams = {
-      embedding: [0.1, 0.2, 0.3], // Query vector
-      tableName: "memories", // Collection name
-      match_count: 10, // Number of results
-      match_threshold: 0.8, // Similarity threshold
+      embedding: [0.1, 0.2, 0.3],
+      tableName: "memories",
+      match_count: 10,
+      match_threshold: 0.8,
     };
 
     expect(searchParams.embedding).toBeDefined();
@@ -165,8 +150,6 @@ describe("Cross-Language Memory Storage Parity", () => {
   });
 
   it("should have consistent database adapter interface", () => {
-    // Documents the core adapter methods that must be implemented
-    // in TypeScript, Python, and Rust implementations
     const requiredMethods = [
       "init",
       "close",
@@ -190,7 +173,6 @@ describe("Cross-Language Memory Storage Parity", () => {
       "deleteCache",
     ];
 
-    // Document the interface - all implementations must have these
     expect(requiredMethods.length).toBe(20);
     expect(requiredMethods).toContain("init");
     expect(requiredMethods).toContain("createMemory");

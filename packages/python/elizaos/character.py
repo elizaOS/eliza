@@ -1,9 +1,3 @@
-"""
-Character utilities for elizaOS.
-
-This module provides utilities for parsing and validating character configurations.
-"""
-
 from __future__ import annotations
 
 import json
@@ -17,35 +11,18 @@ from elizaos.types.agent import Character
 
 
 class CharacterValidationError(Exception):
-    """Exception raised when character validation fails."""
-
     def __init__(self, message: str, errors: list[str] | None = None) -> None:
         super().__init__(message)
         self.errors = errors or []
 
 
 class CharacterLoadError(Exception):
-    """Exception raised when character loading fails."""
-
     def __init__(self, message: str, cause: Exception | None = None) -> None:
         super().__init__(message)
         self.cause = cause
 
 
 def parse_character(input_data: str | dict[str, Any] | Character) -> Character:
-    """
-    Parse character input from various formats (string path, object, or Character).
-
-    Args:
-        input_data: Character data in various formats
-
-    Returns:
-        Parsed Character object
-
-    Raises:
-        CharacterValidationError: If validation fails
-        CharacterLoadError: If loading from file fails
-    """
     if isinstance(input_data, Character):
         return input_data
 
@@ -60,18 +37,6 @@ def parse_character(input_data: str | dict[str, Any] | Character) -> Character:
 
 
 def load_character_from_file(path: str) -> Character:
-    """
-    Load a character configuration from a JSON file.
-
-    Args:
-        path: Path to the character JSON file
-
-    Returns:
-        Parsed Character object
-
-    Raises:
-        CharacterLoadError: If loading fails
-    """
     try:
         file_path = Path(path)
         if not file_path.exists():
@@ -90,18 +55,6 @@ def load_character_from_file(path: str) -> Character:
 
 
 def validate_and_create_character(data: dict[str, Any]) -> Character:
-    """
-    Validate character data and create a Character instance.
-
-    Args:
-        data: Character data dictionary
-
-    Returns:
-        Validated Character object
-
-    Raises:
-        CharacterValidationError: If validation fails
-    """
     try:
         return Character(**data)
     except ValidationError as e:
@@ -114,15 +67,6 @@ def validate_and_create_character(data: dict[str, Any]) -> Character:
 
 
 def validate_character_config(character: Character) -> dict[str, Any]:
-    """
-    Validate a character configuration.
-
-    Args:
-        character: Character to validate
-
-    Returns:
-        Validation result with isValid and errors
-    """
     try:
         # Re-validate by converting to dict and back
         Character(**character.model_dump())
@@ -139,15 +83,6 @@ def validate_character_config(character: Character) -> dict[str, Any]:
 
 
 def merge_character_defaults(char: dict[str, Any]) -> Character:
-    """
-    Merge character with default values.
-
-    Args:
-        char: Partial character configuration
-
-    Returns:
-        Complete character with defaults
-    """
     defaults: dict[str, Any] = {
         "settings": {},
         "plugins": [],
@@ -162,23 +97,6 @@ def merge_character_defaults(char: dict[str, Any]) -> Character:
 
 
 def build_character_plugins(env: dict[str, str | None] | None = None) -> list[str]:
-    """
-    Build ordered plugin list based on available environment variables.
-
-    Plugin loading order:
-    1. Core plugins (@elizaos/plugin-sql)
-    2. Text-only LLM plugins (no embedding support)
-    3. Embedding-capable LLM plugins
-    4. Platform plugins (Discord, X, Telegram)
-    5. Bootstrap plugin (unless IGNORE_BOOTSTRAP is set)
-    6. Ollama fallback (only if no other LLM providers configured)
-
-    Args:
-        env: Environment dictionary (defaults to os.environ)
-
-    Returns:
-        Ordered list of plugin names
-    """
     if env is None:
         env = dict(os.environ)
 
@@ -188,12 +106,7 @@ def build_character_plugins(env: dict[str, str | None] | None = None) -> list[st
             return value.strip() if isinstance(value, str) else value
         return None
 
-    plugins: list[str] = [
-        # Core plugins first
-        "@elizaos/plugin-sql",
-    ]
-
-    # Text-only plugins (no embedding support)
+    plugins: list[str] = ["@elizaos/plugin-sql"]
     if get_env("ANTHROPIC_API_KEY"):
         plugins.append("@elizaos/plugin-anthropic")
     if get_env("OPENROUTER_API_KEY"):
@@ -204,8 +117,6 @@ def build_character_plugins(env: dict[str, str | None] | None = None) -> list[st
         plugins.append("@elizaos/plugin-openai")
     if get_env("GOOGLE_GENERATIVE_AI_API_KEY"):
         plugins.append("@elizaos/plugin-google-genai")
-
-    # Platform plugins
     if get_env("DISCORD_API_TOKEN"):
         plugins.append("@elizaos/plugin-discord")
     if all(
@@ -220,11 +131,6 @@ def build_character_plugins(env: dict[str, str | None] | None = None) -> list[st
         plugins.append("@elizaos/plugin-x")
     if get_env("TELEGRAM_BOT_TOKEN"):
         plugins.append("@elizaos/plugin-telegram")
-
-    # Bootstrap plugin is now part of @elizaos/core and loaded automatically
-    # No need to explicitly add it to the plugins list
-
-    # Ollama fallback (only if no other LLM providers configured)
     has_llm_provider = any(
         get_env(key)
         for key in [

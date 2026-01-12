@@ -1,7 +1,3 @@
-/**
- * Retry utility with exponential backoff
- */
-
 import { logger } from "@elizaos/core";
 import type { RetryConfig } from "../types.js";
 
@@ -26,9 +22,6 @@ export const DEFAULT_RETRY_CONFIGS = {
   },
 } satisfies Record<string, RetryConfig>;
 
-/**
- * Execute a function with retry and exponential backoff
- */
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   config: Partial<RetryConfig> & { timeout?: number },
@@ -74,9 +67,6 @@ export async function retryWithBackoff<T>(
   throw lastError ?? new Error(`${operation} failed after ${maxAttempts} attempts`);
 }
 
-/**
- * Sleep for specified milliseconds
- */
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

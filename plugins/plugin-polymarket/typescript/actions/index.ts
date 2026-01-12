@@ -1,11 +1,3 @@
-/**
- * @elizaos/plugin-polymarket Actions
- *
- * Aggregates all Polymarket actions for internal plugin use.
- * External consumers should import directly from the specific action files.
- */
-
-// Note: These are local exports for the plugin's internal use, not re-exports
 export { checkOrderScoringAction } from "./checkOrderScoring";
 export { createApiKeyAction } from "./createApiKey";
 export { getAccountAccessStatusAction } from "./getAccountAccessStatus";

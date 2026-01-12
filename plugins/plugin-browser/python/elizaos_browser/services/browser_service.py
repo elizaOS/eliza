@@ -1,9 +1,3 @@
-"""
-Browser automation service.
-
-Manages browser sessions and provides browser automation capabilities.
-"""
-
 import asyncio
 import logging
 import random
@@ -17,8 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class BrowserService:
-    """Browser automation service."""
-
     def __init__(self, config: BrowserConfig | None = None) -> None:
         self.config = config or BrowserConfig()
         self._sessions: dict[str, BrowserSession] = {}
@@ -27,7 +19,6 @@ class BrowserService:
         self._initialized = False
 
     async def start(self) -> None:
-        """Start the browser service."""
         logger.info("Starting browser automation service")
         try:
             logger.info("Connecting to browser server...")
@@ -40,7 +31,6 @@ class BrowserService:
             raise
 
     async def stop(self) -> None:
-        """Stop the browser service."""
         logger.info("Stopping browser automation service")
 
         for session_id in list(self._sessions.keys()):
@@ -50,7 +40,6 @@ class BrowserService:
         self._initialized = False
 
     async def create_session(self, session_id: str) -> BrowserSession:
-        """Create a new browser session."""
         if not self._initialized:
             raise RuntimeError("Browser service not initialized")
 
@@ -66,17 +55,14 @@ class BrowserService:
         return session
 
     async def get_session(self, session_id: str) -> BrowserSession | None:
-        """Get an existing session."""
         return self._sessions.get(session_id)
 
     async def get_current_session(self) -> BrowserSession | None:
-        """Get the current active session."""
         if not self._current_session_id:
             return None
         return self._sessions.get(self._current_session_id)
 
     async def get_or_create_session(self) -> BrowserSession:
-        """Get or create a session."""
         current = await self.get_current_session()
         if current:
             return current
@@ -85,7 +71,6 @@ class BrowserService:
         return await self.create_session(session_id)
 
     async def destroy_session(self, session_id: str) -> None:
-        """Destroy a session."""
         session = self._sessions.get(session_id)
         if session:
             await self._client.send_message(
@@ -97,7 +82,6 @@ class BrowserService:
                 self._current_session_id = None
 
     def get_client(self) -> BrowserWebSocketClient:
-        """Get the WebSocket client."""
         if not self._initialized:
             raise RuntimeError("Browser service not initialized")
         return self._client
@@ -107,7 +91,6 @@ class BrowserService:
         max_attempts: int = 60,
         delay_seconds: float = 3.0,
     ) -> None:
-        """Wait for the browser server to be ready."""
         logger.info("Waiting for browser server to be ready...")
 
         for attempt in range(1, max_attempts + 1):
@@ -127,6 +110,3 @@ class BrowserService:
                 await asyncio.sleep(delay_seconds)
 
         raise RuntimeError(f"Browser server did not become ready after {max_attempts} attempts")
-
-
-

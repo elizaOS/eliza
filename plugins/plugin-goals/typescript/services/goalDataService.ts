@@ -3,7 +3,6 @@ import { and, asc, eq, inArray, type SQL } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { goalsTable, goalTagsTable } from "../schema.js";
 
-// Type helper for Drizzle db instance
 type DrizzleTable = unknown;
 type DrizzleCondition = unknown;
 type DrizzleValues = Record<string, unknown>;
@@ -55,9 +54,6 @@ export interface GoalData {
   tags?: string[];
 }
 
-/**
- * Service for managing goal data
- */
 export class GoalDataService {
   private runtime: IAgentRuntime;
 
@@ -81,7 +77,6 @@ export class GoalDataService {
       const db = this.runtime.db as DrizzleDB | undefined;
       if (!db) throw new Error("Database not available");
 
-      // Create the goal
       const goalId = asUUID(uuidv4());
       const values: DrizzleValues = {
         id: goalId,
@@ -92,7 +87,6 @@ export class GoalDataService {
         metadata: params.metadata || {},
       };
 
-      // Only include description if it's provided
       if (params.description !== undefined) {
         values.description = params.description;
       }
@@ -101,7 +95,6 @@ export class GoalDataService {
 
       if (!goal) return null;
 
-      // Add tags if provided
       if (params.tags && params.tags.length > 0) {
         const tagInserts = params.tags.map((tag) => ({
           id: asUUID(uuidv4()),
@@ -119,9 +112,6 @@ export class GoalDataService {
     }
   }
 
-  /**
-   * Get goals with optional filters
-   */
   async getGoals(filters?: {
     ownerType?: "agent" | "entity";
     ownerId?: UUID;
@@ -162,7 +152,6 @@ export class GoalDataService {
             : inArray(goalTagsTable.goalId, goalIds)
         );
 
-      // Group tags by goal
       const tagsByGoal = tags.reduce(
         (acc, tag) => {
           const tagGoalId = asUUID(tag.goalId as string);
@@ -205,9 +194,6 @@ export class GoalDataService {
     }
   }
 
-  /**
-   * Get a single goal by ID
-   */
   async getGoal(goalId: UUID): Promise<GoalData | null> {
     try {
       const db = this.runtime.db as DrizzleDB | undefined;
@@ -217,7 +203,6 @@ export class GoalDataService {
 
       if (!goal) return null;
 
-      // Get tags
       const tags = await db.select().from(goalTagsTable).where(eq(goalTagsTable.goalId, goalId));
 
       return {
@@ -236,9 +221,6 @@ export class GoalDataService {
     }
   }
 
-  /**
-   * Update a goal
-   */
   async updateGoal(
     goalId: UUID,
     updates: {
@@ -254,7 +236,6 @@ export class GoalDataService {
       const db = this.runtime.db as DrizzleDB | undefined;
       if (!db) throw new Error("Database not available");
 
-      // Update goal fields
       const fieldsToUpdate: DrizzleValues = {
         updatedAt: new Date(),
       };
@@ -267,12 +248,9 @@ export class GoalDataService {
 
       await db.update(goalsTable).set(fieldsToUpdate).where(eq(goalsTable.id, goalId));
 
-      // Update tags if provided
       if (updates.tags !== undefined) {
-        // Delete existing tags
         await db.delete(goalTagsTable).where(eq(goalTagsTable.goalId, goalId));
 
-        // Insert new tags
         if (updates.tags.length > 0) {
           const tagInserts = updates.tags.map((tag) => ({
             id: asUUID(uuidv4()),
@@ -291,9 +269,6 @@ export class GoalDataService {
     }
   }
 
-  /**
-   * Delete a goal
-   */
   async deleteGoal(goalId: UUID): Promise<boolean> {
     try {
       const db = this.runtime.db as DrizzleDB | undefined;
@@ -307,9 +282,6 @@ export class GoalDataService {
     }
   }
 
-  /**
-   * Get uncompleted goals
-   */
   async getUncompletedGoals(ownerType?: "agent" | "entity", ownerId?: UUID): Promise<GoalData[]> {
     try {
       const conditions = [eq(goalsTable.isCompleted, false)];
@@ -335,9 +307,6 @@ export class GoalDataService {
     }
   }
 
-  /**
-   * Get completed goals
-   */
   async getCompletedGoals(ownerType?: "agent" | "entity", ownerId?: UUID): Promise<GoalData[]> {
     try {
       return this.getGoals({
@@ -354,9 +323,6 @@ export class GoalDataService {
     }
   }
 
-  /**
-   * Count goals with filters
-   */
   async countGoals(
     ownerType: "agent" | "entity",
     ownerId: UUID,
@@ -375,9 +341,6 @@ export class GoalDataService {
     }
   }
 
-  /**
-   * Get all goals for a specific owner (both completed and uncompleted)
-   */
   async getAllGoalsForOwner(ownerType: "agent" | "entity", ownerId: UUID): Promise<GoalData[]> {
     try {
       return this.getGoals({
@@ -404,19 +367,15 @@ export function createGoalDataService(runtime: IAgentRuntime): GoalDataService {
   return new GoalDataService(runtime);
 }
 
-/**
- * Service wrapper for the GoalDataService to be registered with the plugin
- */
 export class GoalDataServiceWrapper extends Service {
   static serviceName = "goalDataService";
-  static serviceType = "GOAL_DATA" as const; // Custom service type for goal data
+  static serviceType = "GOAL_DATA" as const;
 
   private goalDataService: GoalDataService | null = null;
 
   capabilityDescription = "Manages goal data storage and retrieval";
 
   async stop(): Promise<void> {
-    // Clean up any resources if needed
     this.goalDataService = null;
   }
 
@@ -432,9 +391,6 @@ export class GoalDataServiceWrapper extends Service {
     return service;
   }
 
-  /**
-   * Get the underlying GoalDataService instance
-   */
   getDataService(): GoalDataService | null {
     return this.goalDataService;
   }

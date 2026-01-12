@@ -6,43 +6,22 @@ import { logger } from "@elizaos/core";
 
 const execAsync = promisify(exec);
 
-// Lazy load whisper-node to avoid ESM/CommonJS issues
 type WhisperModule = {
   transcribe: (audioBuffer: Buffer, options?: Record<string, unknown>) => Promise<string>;
 };
 let whisperModule: WhisperModule | null = null;
 async function getWhisper(): Promise<WhisperModule> {
   if (!whisperModule) {
-    // Dynamic import for CommonJS module
     const module = await import("whisper-node");
-    // The module exports an object with a whisper property
     whisperModule = (module as { whisper: WhisperModule }).whisper;
   }
   return whisperModule;
 }
 
-/**
- * Interface representing the result of a transcription process.
- * @interface
- * @property {string} text - The transcribed text.
- */
 interface TranscriptionResult {
   text: string;
 }
 
-/**
- * Class representing a TranscribeManager.
- *
- * @property {TranscribeManager | null} instance - The singleton instance of the TranscribeManager class.
- * @property {string} cacheDir - The directory path for caching transcribed files.
- * @property {boolean} ffmpegAvailable - Flag indicating if ffmpeg is available for audio processing.
- * @property {string | null} ffmpegVersion - The version of ffmpeg if available.
- * @property {string | null} ffmpegPath - The path to the ffmpeg executable.
- * @property {boolean} ffmpegInitialized - Flag indicating if ffmpeg has been initialized.
- *
- * @constructor
- * Creates an instance of TranscribeManager with the specified cache directory.
- */
 export class TranscribeManager {
   private static instance: TranscribeManager | null = null;
   private cacheDir: string;
@@ -51,11 +30,6 @@ export class TranscribeManager {
   private ffmpegPath: string | null = null;
   private ffmpegInitialized = false;
 
-  /**
-   * Constructor for TranscribeManager class.
-   *
-   * @param {string} cacheDir - The directory path for storing cached files.
-   */
   private constructor(cacheDir: string) {
     this.cacheDir = path.join(cacheDir, "whisper");
     logger.debug("Initializing TranscribeManager", {
@@ -65,10 +39,6 @@ export class TranscribeManager {
     this.ensureCacheDirectory();
   }
 
-  /**
-   * Ensures that FFmpeg is initialized and available for use.
-   * @returns {Promise<boolean>} A promise that resolves to a boolean value indicating if FFmpeg is available.
-   */
   public async ensureFFmpeg(): Promise<boolean> {
     if (!this.ffmpegInitialized) {
       try {
@@ -86,19 +56,10 @@ export class TranscribeManager {
     return this.ffmpegAvailable;
   }
 
-  /**
-   * Checks if FFmpeg is available.
-   * @returns {boolean} True if FFmpeg is available, false otherwise.
-   */
   public isFFmpegAvailable(): boolean {
     return this.ffmpegAvailable;
   }
 
-  /**
-   * Asynchronously retrieves the FFmpeg version if it hasn't been fetched yet.
-   * If the FFmpeg version has already been fetched, it will return the stored version.
-   * @returns A Promise that resolves with the FFmpeg version as a string, or null if the version is not available.
-   */
   public async getFFmpegVersion(): Promise<string | null> {
     if (!this.ffmpegVersion) {
       await this.fetchFFmpegVersion();
@@ -106,12 +67,6 @@ export class TranscribeManager {
     return this.ffmpegVersion;
   }
 
-  /**
-   * Fetches the FFmpeg version by executing the command "ffmpeg -version".
-   * Updates the class property ffmpegVersion with the retrieved version.
-   * Logs the FFmpeg version information or error message.
-   * @returns {Promise<void>} A Promise that resolves once the FFmpeg version is fetched and logged.
-   */
   private async fetchFFmpegVersion(): Promise<void> {
     try {
       const { stdout } = await execAsync("ffmpeg -version");
@@ -129,27 +84,13 @@ export class TranscribeManager {
     }
   }
 
-  /**
-   * Initializes FFmpeg by performing the following steps:
-   * 1. Checks for FFmpeg availability in PATH
-   * 2. Retrieves FFmpeg version information
-   * 3. Verifies FFmpeg capabilities
-   *
-   * If FFmpeg is available, logs a success message with version, path, and timestamp.
-   * If FFmpeg is not available, logs installation instructions.
-   *
-   * @returns A Promise that resolves once FFmpeg has been successfully initialized
-   */
   private async initializeFFmpeg(): Promise<void> {
     try {
-      // First check if ffmpeg exists in PATH
       await this.checkFFmpegAvailability();
 
       if (this.ffmpegAvailable) {
-        // Get FFmpeg version info
         await this.fetchFFmpegVersion();
 
-        // Verify FFmpeg capabilities
         await this.verifyFFmpegCapabilities();
 
         logger.success("FFmpeg initialized successfully", {
@@ -171,13 +112,6 @@ export class TranscribeManager {
     }
   }
 
-  /**
-   * Asynchronously checks for the availability of FFmpeg in the system by executing a command to find the FFmpeg location.
-   * Updates the class properties `ffmpegPath` and `ffmpegAvailable` accordingly.
-   * Logs relevant information such as FFmpeg location and potential errors using the logger.
-   *
-   * @returns A Promise that resolves with no value upon completion.
-   */
   private async checkFFmpegAvailability(): Promise<void> {
     try {
       const { stdout, stderr } = await execAsync("which ffmpeg || where ffmpeg");
@@ -199,25 +133,14 @@ export class TranscribeManager {
     }
   }
 
-  /**
-   * Verifies the FFmpeg capabilities by checking if FFmpeg supports the required codecs and formats.
-   *
-   * @returns {Promise<void>} A Promise that resolves if FFmpeg has the required codecs, otherwise rejects with an error message.
-   */
   private async verifyFFmpegCapabilities(): Promise<void> {
     try {
-      // Check if FFmpeg supports required codecs and formats
       const { stdout } = await execAsync("ffmpeg -codecs");
       const hasRequiredCodecs = stdout.includes("pcm_s16le") && stdout.includes("wav");
 
       if (!hasRequiredCodecs) {
         throw new Error("FFmpeg installation missing required codecs (pcm_s16le, wav)");
       }
-
-      // logger.info("FFmpeg capabilities verified", {
-      //   hasRequiredCodecs,
-      //   timestamp: new Date().toISOString()
-      // });
     } catch (error) {
       logger.error("FFmpeg capabilities verification failed:", {
         error: error instanceof Error ? error.message : String(error),
@@ -227,9 +150,6 @@ export class TranscribeManager {
     }
   }
 
-  /**
-   * Logs instructions on how to install FFmpeg if it is not properly installed.
-   */
   private logFFmpegInstallInstructions(): void {
     logger.warn("FFmpeg is required but not properly installed. Please install FFmpeg:", {
       instructions: {
@@ -244,12 +164,6 @@ export class TranscribeManager {
     });
   }
 
-  /**
-   * Gets the singleton instance of TranscribeManager, creates a new instance if it doesn't exist.
-   *
-   * @param {string} cacheDir - The directory path for caching transcriptions.
-   * @returns {TranscribeManager} The singleton instance of TranscribeManager.
-   */
   public static getInstance(cacheDir: string): TranscribeManager {
     if (!TranscribeManager.instance) {
       TranscribeManager.instance = new TranscribeManager(cacheDir);
@@ -257,26 +171,12 @@ export class TranscribeManager {
     return TranscribeManager.instance;
   }
 
-  /**
-   * Ensures that the cache directory exists. If it doesn't exist,
-   * creates the directory using fs.mkdirSync with recursive set to true.
-   * @returns {void}
-   */
   private ensureCacheDirectory(): void {
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
-      // logger.info("Created whisper cache directory:", this.cacheDir);
     }
   }
 
-  /**
-   * Converts an audio file to WAV format using FFmpeg.
-   *
-   * @param {string} inputPath - The input path of the audio file to convert.
-   * @param {string} outputPath - The output path where the converted WAV file will be saved.
-   * @returns {Promise<void>} A Promise that resolves when the conversion is completed.
-   * @throws {Error} If FFmpeg is not installed or not properly configured, or if the audio conversion fails.
-   */
   private async convertToWav(inputPath: string, outputPath: string): Promise<void> {
     if (!this.ffmpegAvailable) {
       throw new Error(
@@ -285,7 +185,6 @@ export class TranscribeManager {
     }
 
     try {
-      // Add -loglevel error to suppress FFmpeg output unless there's an error
       const { stderr } = await execAsync(
         `ffmpeg -y -loglevel error -i "${inputPath}" -acodec pcm_s16le -ar 16000 -ac 1 "${outputPath}"`
       );
@@ -318,14 +217,6 @@ export class TranscribeManager {
     }
   }
 
-  /**
-   * Asynchronously preprocesses the audio by converting the provided audio buffer into a WAV file.
-   * If FFmpeg is not installed, an error is thrown.
-   *
-   * @param {Buffer} audioBuffer The audio buffer to preprocess
-   * @returns {Promise<string>} The path to the preprocessed WAV file
-   * @throws {Error} If FFmpeg is not installed or if audio preprocessing fails
-   */
   private async preprocessAudio(audioBuffer: Buffer): Promise<string> {
     if (!this.ffmpegAvailable) {
       throw new Error("FFmpeg is not installed. Please install FFmpeg to use audio transcription.");
@@ -374,26 +265,18 @@ export class TranscribeManager {
             stream?.channels === 1 &&
             (stream?.bits_per_raw_sample === 16 || stream?.bits_per_raw_sample === undefined)
           ) {
-            // Already in correct format, just rename
             fs.renameSync(tempInputFile, tempWavFile);
             return tempWavFile;
           }
         } catch (probeError) {
-          // If probe fails, continue with conversion
           logger.debug("FFprobe failed, continuing with conversion:", probeError);
         }
       }
 
-      // Convert to WAV format
       await this.convertToWav(tempInputFile, tempWavFile);
 
-      // Clean up the input file
       if (fs.existsSync(tempInputFile)) {
         fs.unlinkSync(tempInputFile);
-        // logger.info("Temporary input file cleaned up", {
-        //   path: tempInputFile,
-        //   timestamp: new Date().toISOString()
-        // });
       }
 
       return tempWavFile;
@@ -410,14 +293,6 @@ export class TranscribeManager {
     }
   }
 
-  /**
-   * Transcribes the audio buffer to text using whisper.
-   *
-   * @param {Buffer} audioBuffer The audio buffer to transcribe.
-   * @returns {Promise<TranscriptionResult>} A promise that resolves with the transcription result.
-   * @throws {Error} If FFmpeg is not installed or properly configured.
-   */
-
   public async transcribe(audioBuffer: Buffer): Promise<TranscriptionResult> {
     await this.ensureFFmpeg();
 
@@ -428,27 +303,23 @@ export class TranscribeManager {
     }
 
     try {
-      // Preprocess audio to WAV format
       const wavFile = await this.preprocessAudio(audioBuffer);
 
       logger.info("Starting transcription with whisper...");
 
       let segments: Array<{ speech?: string }> | null = null;
       try {
-        // Get the whisper function
         const whisper = await getWhisper();
 
-        // Transcribe using whisper-node
         segments = await whisper(wavFile, {
           modelName: "tiny",
-          modelPath: path.join(this.cacheDir, "models"), // Specify where to store models
+          modelPath: path.join(this.cacheDir, "models"),
           whisperOptions: {
             language: "en",
-            word_timestamps: false, // We don't need word-level timestamps
+            word_timestamps: false,
           },
         });
       } catch (whisperError) {
-        // Check if it's a model download issue
         const errorMessage =
           whisperError instanceof Error ? whisperError.message : String(whisperError);
         if (errorMessage.includes("not found") || errorMessage.includes("download")) {
@@ -458,34 +329,28 @@ export class TranscribeManager {
           );
         }
 
-        // For other errors, log and rethrow
         logger.error("Whisper transcription error:", whisperError);
         throw whisperError;
       }
 
-      // Clean up temporary WAV file
       if (fs.existsSync(wavFile)) {
         fs.unlinkSync(wavFile);
         logger.info("Temporary WAV file cleaned up");
       }
 
-      // Check if segments is valid
       if (!segments || !Array.isArray(segments)) {
         logger.warn("Whisper returned no segments (likely silence or very short audio)");
-        // Return empty transcription for silent/empty audio
         return { text: "" };
       }
 
-      // Handle empty segments array
       if (segments.length === 0) {
         logger.warn("No speech detected in audio");
         return { text: "" };
       }
 
-      // Combine all segments into a single text
       const cleanText = segments
         .map((segment: { speech?: string }) => segment.speech?.trim() || "")
-        .filter((text: string) => text) // Remove empty segments
+        .filter((text: string) => text)
         .join(" ");
 
       logger.success("Transcription complete:", {

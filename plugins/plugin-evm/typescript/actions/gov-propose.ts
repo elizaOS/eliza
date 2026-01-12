@@ -8,9 +8,7 @@ import type { ProposeProposalParams, SupportedChain, Transaction } from "../type
 export { proposeTemplate };
 
 export class ProposeAction {
-  constructor(private walletProvider: WalletProvider) {
-    this.walletProvider = walletProvider;
-  }
+  constructor(private walletProvider: WalletProvider) {}
 
   async propose(params: ProposeProposalParams): Promise<Transaction> {
     const walletClient = this.walletProvider.getWalletClient(params.chain);
@@ -27,18 +25,16 @@ export class ProposeAction {
 
     try {
       const chainConfig = this.walletProvider.getChainConfigs(params.chain);
-
-      // Log current block before sending transaction
       const publicClient = this.walletProvider.getPublicClient(params.chain);
 
-      const hash = // @ts-expect-error - viem type narrowing issue
-        await walletClient.sendTransaction({
-          account: walletClient.account,
-          to: params.governor,
-          value: BigInt(0),
-          data: txData as Hex,
-          chain: chainConfig,
-        });
+      // @ts-expect-error - viem type narrowing issue with sendTransaction parameters
+      const hash = await walletClient.sendTransaction({
+        account: walletClient.account,
+        to: params.governor,
+        value: BigInt(0),
+        data: txData as Hex,
+        chain: chainConfig,
+      });
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,
@@ -55,7 +51,7 @@ export class ProposeAction {
       };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Vote failed: ${errorMessage}`);
+      throw new Error(`Proposal failed: ${errorMessage}`);
     }
   }
 }
@@ -71,7 +67,6 @@ export const proposeAction = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
-      // Validate required fields
       if (
         !options.chain ||
         !options.governor ||
@@ -83,7 +78,6 @@ export const proposeAction = {
         throw new Error("Missing required parameters for proposal");
       }
 
-      // Convert options to ProposeProposalParams
       const proposeParams: ProposeProposalParams = {
         chain: options.chain as SupportedChain,
         governor: options.governor as Address,
@@ -109,7 +103,6 @@ export const proposeAction = {
       };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error in propose handler:", errorMessage);
       if (callback) {
         callback({ text: `Error: ${errorMessage}` });
       }

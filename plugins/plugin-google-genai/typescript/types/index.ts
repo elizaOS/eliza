@@ -39,21 +39,16 @@ export interface ImageDescriptionResponse {
   description: string;
 }
 
-export interface GoogleGenAIImageDescriptionResult {
-  title: string;
-  description: string;
-}
-
 export interface ObjectGenerationParams {
   prompt: string;
   system?: string;
-  schema?: Record<string, unknown>;
+  schema?: Record<string, string | number | boolean | null>;
   temperature?: number;
   maxTokens?: number;
 }
 
 export interface ObjectGenerationResponse {
-  object: Record<string, unknown>;
+  object: Record<string, string | number | boolean | null>;
   usage: TokenUsage;
   model: string;
 }

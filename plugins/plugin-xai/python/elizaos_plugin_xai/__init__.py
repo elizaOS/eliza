@@ -12,9 +12,18 @@ Example:
     >>> result = await grok.generate_text(TextGenerationParams(prompt="Hello"))
 """
 
+from elizaos_plugin_xai.actions import POST_ACTION
 from elizaos_plugin_xai.client import TwitterClient, XClientError
 from elizaos_plugin_xai.grok import GrokClient, GrokConfig, GrokError
-from elizaos_plugin_xai.plugin import XAIPlugin, create_plugin, get_xai_plugin
+from elizaos_plugin_xai.models import (
+    TEXT_EMBEDDING_HANDLER,
+    TEXT_LARGE_HANDLER,
+    TEXT_SMALL_HANDLER,
+    handle_text_embedding,
+    handle_text_large,
+    handle_text_small,
+)
+from elizaos_plugin_xai.plugin import XAIPlugin, create_plugin, get_xai_plugin, get_xai_elizaos_plugin
 from elizaos_plugin_xai.types import (
     AuthMode,
     Mention,
@@ -35,6 +44,16 @@ __all__ = [
     "XAIPlugin",
     "create_plugin",
     "get_xai_plugin",
+    "get_xai_elizaos_plugin",
+    # Actions
+    "POST_ACTION",
+    # Model handlers
+    "TEXT_SMALL_HANDLER",
+    "TEXT_LARGE_HANDLER",
+    "TEXT_EMBEDDING_HANDLER",
+    "handle_text_small",
+    "handle_text_large",
+    "handle_text_embedding",
     # Grok Client
     "GrokClient",
     "GrokConfig",

@@ -29,7 +29,9 @@ export type JsonObject = Record<string, unknown>;
  * Helper to convert a proto message to a plain JSON object.
  * Uses a properly constrained type to avoid unsafe casts.
  */
-export function toJson<T extends Record<string, unknown>>(message: T): Record<string, unknown> {
+export function toJson<T extends Record<string, unknown>>(
+  message: T,
+): Record<string, unknown> {
   // The @bufbuild/protobuf types are already plain objects
   return message;
 }

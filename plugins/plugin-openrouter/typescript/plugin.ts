@@ -1,7 +1,3 @@
-/**
- * OpenRouter plugin definition for elizaOS.
- */
-
 import {
   type GenerateTextParams,
   type IAgentRuntime,
@@ -20,15 +16,6 @@ import { handleImageDescription, handleImageGeneration } from "./models/image";
 import { handleObjectLarge, handleObjectSmall } from "./models/object";
 import { handleTextLarge, handleTextSmall } from "./models/text";
 
-/**
- * OpenRouter plugin for elizaOS.
- *
- * Provides integration with OpenRouter's multi-model AI gateway for:
- * - Text generation (small and large)
- * - Object/JSON generation
- * - Image description and generation
- * - Text embeddings
- */
 export const openrouterPlugin: Plugin = {
   name: "openrouter",
   description: "OpenRouter multi-model AI gateway plugin",
@@ -77,13 +64,11 @@ export const openrouterPlugin: Plugin = {
       params: ImageDescriptionParams | string
     ) => {
       const description = await handleImageDescription(runtime, params);
-      // Return expected format with title and description
       return { title: "", description };
     },
 
     [ModelType.IMAGE]: async (runtime: IAgentRuntime, params: ImageGenerationParams) => {
       const result = await handleImageGeneration(runtime, params);
-      // Return expected format as array of {url}
       return [{ url: result.imageUrl }];
     },
 

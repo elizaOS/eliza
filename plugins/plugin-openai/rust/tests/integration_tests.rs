@@ -11,7 +11,7 @@ fn get_config() -> Option<OpenAIConfig> {
     dotenvy::dotenv().ok();
     std::env::var("OPENAI_API_KEY")
         .ok()
-        .map(|key| OpenAIConfig::new(key))
+        .map(|key| OpenAIConfig::new(&key))
 }
 
 mod text_generation {
@@ -32,7 +32,7 @@ mod text_generation {
 
         assert!(!response.is_empty());
         // Check it's approximately 3 words
-        let words: Vec<&str> = response.trim().split_whitespace().collect();
+        let words: Vec<&str> = response.split_whitespace().collect();
         assert!(words.len() <= 10, "Response too long: {}", response);
     }
 

@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! SAM TTS Service - Retro text-to-speech using SAM.
 
 use std::sync::Arc;
 use tracing::info;
@@ -32,7 +31,6 @@ impl SamTTSService {
         info!("[SAM-TTS] Service stopped");
     }
 
-    /// Generate 8-bit audio from text.
     pub fn generate_audio(&self, text: &str, options: Option<SamTTSOptions>) -> Vec<u8> {
         let opts = options.unwrap_or_default();
 
@@ -64,7 +62,6 @@ impl SamTTSService {
         audio
     }
 
-    /// Create WAV file from raw 8-bit audio.
     pub fn create_wav_buffer(&self, audio_data: &[u8], sample_rate: u32) -> Vec<u8> {
         let data_size = audio_data.len() as u32;
         let mut buffer = Vec::with_capacity(44 + audio_data.len());

@@ -1,7 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Build script for @elizaos/plugin-simple-voice TypeScript package
- */
 
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -11,13 +8,11 @@ import { build } from "bun";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = join(__dirname, "dist");
 
-// Clean dist directory
 if (existsSync(DIST)) {
   rmSync(DIST, { recursive: true });
 }
 mkdirSync(DIST, { recursive: true });
 
-// Build Node.js ESM version
 console.log("Building @elizaos/plugin-simple-voice...");
 const result = await build({
   entrypoints: [join(__dirname, "src", "index.ts")],
@@ -37,7 +32,6 @@ if (!result.success) {
   process.exit(1);
 }
 
-// Generate TypeScript declarations
 console.log("Generating TypeScript declarations...");
 const { $ } = await import("bun");
 const tscResult = await $`tsc --project tsconfig.build.json --emitDeclarationOnly`.nothrow();

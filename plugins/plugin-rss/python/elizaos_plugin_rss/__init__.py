@@ -1,9 +1,3 @@
-"""
-elizaOS RSS Plugin - RSS and Atom feed integration for news monitoring.
-
-This package provides RSS/Atom feed fetching, parsing, and subscription management.
-"""
-
 from elizaos_plugin_rss.client import (
     RssClient,
     RssClientError,
@@ -31,20 +25,43 @@ from elizaos_plugin_rss.types import (
     RssItem,
 )
 
+# Actions
+from elizaos_plugin_rss.actions import (
+    GetFeedAction,
+    SubscribeFeedAction,
+    UnsubscribeFeedAction,
+    ListFeedsAction,
+    get_rss_action_names,
+)
+from elizaos_plugin_rss.providers import (
+    FeedItemsProvider,
+    get_rss_provider_names,
+)
+
 __version__ = "1.0.0"
+
+# Plugin metadata
+PLUGIN_NAME = "rss"
+PLUGIN_DESCRIPTION = "RSS/Atom feed monitoring and subscription management"
 
 __all__ = [
     # Main plugin
     "RssPlugin",
     "create_plugin",
     "get_rss_plugin",
-    # Client
     "RssClient",
     "RssClientError",
     # Parser
     "parse_rss_to_json",
     "create_empty_feed",
-    # Types
+    "GetFeedAction",
+    "SubscribeFeedAction",
+    "UnsubscribeFeedAction",
+    "ListFeedsAction",
+    "get_rss_action_names",
+    # Providers
+    "FeedItemsProvider",
+    "get_rss_provider_names",
     "RssConfig",
     "RssFeed",
     "RssChannel",
@@ -57,9 +74,6 @@ __all__ = [
     # Utilities
     "extract_urls",
     "format_relative_time",
+    "PLUGIN_NAME",
+    "PLUGIN_DESCRIPTION",
 ]
-
-
-
-
-

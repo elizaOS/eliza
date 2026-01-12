@@ -1,17 +1,3 @@
-"""
-elizaOS GitHub Plugin
-
-GitHub integration for elizaOS agents.
-
-Provides comprehensive GitHub API access including:
-- Repository management
-- Issue tracking
-- Pull request workflows
-- Code reviews
-- Branch management
-- File operations
-- Commit creation
-"""
 
 from elizaos_plugin_github.config import GitHubConfig
 from elizaos_plugin_github.error import (
@@ -126,8 +112,3 @@ __all__ = [
 __version__ = "1.0.0"
 PLUGIN_NAME = "github"
 PLUGIN_DESCRIPTION = "GitHub integration for elizaOS agents"
-
-
-
-
-

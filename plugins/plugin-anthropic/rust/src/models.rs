@@ -1,43 +1,39 @@
-//! Anthropic model definitions.
-//!
-//! Provides strongly typed model constants and utilities.
-
 use crate::error::{AnthropicError, Result};
 
-/// Model size category.
+/// Categorization of model sizes for cost/performance tradeoffs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelSize {
-    /// Small model (fast, efficient).
+    /// Small, fast, and cost-effective models (e.g., Haiku).
     Small,
-    /// Large model (most capable).
+    /// Large, powerful models with better reasoning (e.g., Sonnet, Opus).
     Large,
 }
 
-/// Anthropic Claude model.
+/// Represents an Anthropic Claude model.
+///
+/// Contains the model identifier, size category, and default token limits.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Model {
-    /// The model identifier string.
     id: String,
-    /// Model size category.
     size: ModelSize,
-    /// Default max tokens for this model.
     default_max_tokens: u32,
 }
 
 impl Model {
-    // Well-known model IDs
-    /// Claude 3.5 Haiku - Fast and efficient.
+    /// Model ID for Claude 3.5 Haiku.
     pub const CLAUDE_3_5_HAIKU: &'static str = "claude-3-5-haiku-20241022";
-    /// Claude 3 Haiku - Previous generation fast model.
+    /// Model ID for Claude 3 Haiku.
     pub const CLAUDE_3_HAIKU: &'static str = "claude-3-haiku-20240307";
-    /// Claude Sonnet 4 - Most capable model.
+    /// Model ID for Claude Sonnet 4.
     pub const CLAUDE_SONNET_4: &'static str = "claude-sonnet-4-20250514";
-    /// Claude 3.5 Sonnet - Balanced performance.
+    /// Model ID for Claude 3.5 Sonnet.
     pub const CLAUDE_3_5_SONNET: &'static str = "claude-3-5-sonnet-20241022";
-    /// Claude 3 Opus - Previous generation flagship.
+    /// Model ID for Claude 3 Opus.
     pub const CLAUDE_3_OPUS: &'static str = "claude-3-opus-20240229";
 
-    /// Create a new model from an ID string.
+    /// Creates a new Model with the given identifier.
+    ///
+    /// Automatically infers the model size and default max tokens based on the ID.
     ///
     /// # Errors
     ///
@@ -61,7 +57,7 @@ impl Model {
         })
     }
 
-    /// Create the default small model.
+    /// Returns the default small model (Claude 3.5 Haiku).
     pub fn small() -> Self {
         Self {
             id: Self::CLAUDE_3_5_HAIKU.to_string(),
@@ -70,7 +66,7 @@ impl Model {
         }
     }
 
-    /// Create the default large model.
+    /// Returns the default large model (Claude Sonnet 4).
     pub fn large() -> Self {
         Self {
             id: Self::CLAUDE_SONNET_4.to_string(),
@@ -79,32 +75,31 @@ impl Model {
         }
     }
 
-    /// Get the model ID.
+    /// Returns the model identifier string.
     pub fn id(&self) -> &str {
         &self.id
     }
 
-    /// Get the model size.
+    /// Returns the model's size category.
     pub fn size(&self) -> ModelSize {
         self.size
     }
 
-    /// Get the default max tokens for this model.
+    /// Returns the default maximum tokens for this model.
     pub fn default_max_tokens(&self) -> u32 {
         self.default_max_tokens
     }
 
-    /// Check if this is a small model.
+    /// Returns true if this is a small model.
     pub fn is_small(&self) -> bool {
         self.size == ModelSize::Small
     }
 
-    /// Check if this is a large model.
+    /// Returns true if this is a large model.
     pub fn is_large(&self) -> bool {
         self.size == ModelSize::Large
     }
 
-    /// Infer model size from ID.
     fn infer_size(id: &str) -> ModelSize {
         let id_lower = id.to_lowercase();
         if id_lower.contains("haiku") {
@@ -114,9 +109,7 @@ impl Model {
         }
     }
 
-    /// Infer default max tokens from ID.
     fn infer_max_tokens(id: &str) -> u32 {
-        // Claude 3 models have 4096 default, newer models have 8192
         if id.contains("-3-") && !id.contains("-3-5-") {
             4096
         } else {
@@ -169,5 +162,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-
-

@@ -1,9 +1,3 @@
-/**
- * @elizaos/plugin-polymarket LLM Helpers
- *
- * Utilities for calling LLM models with timeout and parsing responses.
- */
-
 import {
   composePromptFromState,
   type IAgentRuntime,
@@ -13,16 +7,6 @@ import {
 } from "@elizaos/core";
 import { LLM_CALL_TIMEOUT_MS } from "../constants";
 
-/**
- * Call LLM with a timeout and parse JSON response
- *
- * @param runtime - The agent runtime
- * @param state - Current conversation state
- * @param template - The prompt template
- * @param actionName - Name of the action (for logging)
- * @param timeoutMs - Timeout in milliseconds (default: 60000)
- * @returns Parsed JSON response from LLM
- */
 export async function callLLMWithTimeout<T>(
   runtime: IAgentRuntime,
   state: State | undefined,
@@ -37,13 +21,11 @@ export async function callLLMWithTimeout<T>(
 
   logger.debug(`[${actionName}] Calling LLM with prompt:`, composedPrompt);
 
-  // Create a timeout promise
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error(`LLM call timed out after ${timeoutMs}ms`)), timeoutMs);
   });
 
   try {
-    // Race between LLM call and timeout
     const response = await Promise.race([
       runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: composedPrompt,
@@ -59,7 +41,6 @@ export async function callLLMWithTimeout<T>(
     const text = typeof response === "string" ? response : String(response);
     logger.debug(`[${actionName}] LLM response:`, text);
 
-    // Try to extract JSON from the response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logger.warn(`[${actionName}] No JSON found in LLM response`);
@@ -77,16 +58,6 @@ export async function callLLMWithTimeout<T>(
   }
 }
 
-/**
- * Extract a specific field from LLM response
- *
- * @param runtime - The agent runtime
- * @param state - Current conversation state
- * @param template - The prompt template
- * @param fieldName - Name of the field to extract
- * @param actionName - Name of the action (for logging)
- * @returns The extracted field value or null
- */
 export async function extractFieldFromLLM<T>(
   runtime: IAgentRuntime,
   state: State | undefined,
@@ -112,9 +83,6 @@ export async function extractFieldFromLLM<T>(
   return null;
 }
 
-/**
- * Check if LLM response indicates an error
- */
 export function isLLMError<T extends object>(
   response: T | null
 ): response is T & { error: string } {

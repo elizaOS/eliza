@@ -1,7 +1,3 @@
-"""
-Utility module exports.
-"""
-
 from elizaos_browser.utils.errors import (
     ActionError,
     BrowserError,
@@ -56,6 +52,3 @@ __all__ = [
     "parse_select_action",
     "parse_extract_instruction",
 ]
-
-
-

@@ -1,18 +1,3 @@
-"""
-elizaOS Cloud Plugin - Multi-model AI generation for elizaOS.
-
-This package provides AI model handlers for elizaOS agents using
-the ElizaOS Cloud API for text, embeddings, images, and audio.
-
-Features:
-- Text generation (small and large models)
-- Structured object generation (small and large models)
-- Text embeddings with batch support
-- Image generation and description
-- Text-to-speech generation
-- Audio transcription
-- Tokenization utilities
-"""
 
 __version__ = "1.7.4"
 
@@ -46,11 +31,8 @@ from elizaos_plugin_elizacloud.types import (
 )
 
 __all__ = [
-    # Version
     "__version__",
-    # Client
     "ElizaCloudClient",
-    # Types
     "ElizaCloudConfig",
     "TextGenerationParams",
     "ObjectGenerationParams",
@@ -62,29 +44,22 @@ __all__ = [
     "TranscriptionParams",
     "TokenizeTextParams",
     "DetokenizeTextParams",
-    # Model Handlers - Text
     "handle_text_small",
     "handle_text_large",
-    # Model Handlers - Object
     "handle_object_small",
     "handle_object_large",
-    # Model Handlers - Embeddings
     "handle_text_embedding",
     "handle_batch_text_embedding",
-    # Model Handlers - Image
     "handle_image_generation",
     "handle_image_description",
-    # Model Handlers - Audio
     "handle_text_to_speech",
     "handle_transcription",
-    # Model Handlers - Tokenization
     "handle_tokenizer_encode",
     "handle_tokenizer_decode",
 ]
 
 
 def get_plugin() -> dict[str, object]:
-    """Get the ElizaOS Cloud plugin definition for elizaOS."""
     return {
         "name": "@elizaos/plugin-elizacloud",
         "description": "ElizaOS Cloud plugin - Multi-model AI generation with text, image, and audio support",

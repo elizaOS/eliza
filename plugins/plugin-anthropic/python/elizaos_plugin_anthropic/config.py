@@ -1,10 +1,3 @@
-"""
-Configuration for the Anthropic client.
-
-Configuration is loaded from environment variables or provided explicitly.
-All required values must be present - no defaults for secrets.
-"""
-
 from __future__ import annotations
 
 import os
@@ -12,15 +5,12 @@ import os
 from elizaos_plugin_anthropic.errors import ApiKeyError
 from elizaos_plugin_anthropic.models import Model
 
-# Default values
 DEFAULT_BASE_URL: str = "https://api.anthropic.com"
 DEFAULT_API_VERSION: str = "2023-06-01"
 DEFAULT_TIMEOUT_SECONDS: int = 60
 
 
 class AnthropicConfig:
-    """Configuration for the Anthropic client."""
-
     _api_key: str
     _base_url: str
     _api_version: str
@@ -38,20 +28,6 @@ class AnthropicConfig:
         large_model: Model | None = None,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
-        """
-        Create a new configuration with an API key.
-
-        Args:
-            api_key: The Anthropic API key (required).
-            base_url: Base URL for the API.
-            api_version: API version string.
-            small_model: Model to use for small text generation.
-            large_model: Model to use for large text generation.
-            timeout_seconds: Request timeout in seconds.
-
-        Raises:
-            ApiKeyError: If the API key is empty.
-        """
         if not api_key or not api_key.strip():
             raise ApiKeyError("API key cannot be empty")
 
@@ -64,24 +40,6 @@ class AnthropicConfig:
 
     @classmethod
     def from_env(cls) -> AnthropicConfig:
-        """
-        Load configuration from environment variables.
-
-        Required:
-            ANTHROPIC_API_KEY
-
-        Optional:
-            ANTHROPIC_BASE_URL (default: https://api.anthropic.com)
-            ANTHROPIC_SMALL_MODEL (default: claude-3-5-haiku-20241022)
-            ANTHROPIC_LARGE_MODEL (default: claude-sonnet-4-20250514)
-            ANTHROPIC_TIMEOUT_SECONDS (default: 60)
-
-        Returns:
-            Configured AnthropicConfig instance.
-
-        Raises:
-            ApiKeyError: If ANTHROPIC_API_KEY is not set or is empty.
-        """
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
             raise ApiKeyError(
@@ -110,41 +68,33 @@ class AnthropicConfig:
 
     @property
     def api_key(self) -> str:
-        """Get the API key."""
         return self._api_key
 
     @property
     def base_url(self) -> str:
-        """Get the base URL."""
         return self._base_url
 
     @property
     def api_version(self) -> str:
-        """Get the API version."""
         return self._api_version
 
     @property
     def small_model(self) -> Model:
-        """Get the small model."""
         return self._small_model
 
     @property
     def large_model(self) -> Model:
-        """Get the large model."""
         return self._large_model
 
     @property
     def timeout_seconds(self) -> int:
-        """Get the timeout in seconds."""
         return self._timeout_seconds
 
     @property
     def messages_url(self) -> str:
-        """Get the full messages endpoint URL."""
         return f"{self._base_url}/v1/messages"
 
     def with_base_url(self, base_url: str) -> AnthropicConfig:
-        """Create a new config with a different base URL."""
         return AnthropicConfig(
             api_key=self._api_key,
             base_url=base_url,
@@ -155,7 +105,6 @@ class AnthropicConfig:
         )
 
     def with_timeout(self, seconds: int) -> AnthropicConfig:
-        """Create a new config with a different timeout."""
         return AnthropicConfig(
             api_key=self._api_key,
             base_url=self._base_url,

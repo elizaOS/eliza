@@ -1,23 +1,22 @@
-//! Type definitions for the Goals plugin
-//!
-//! Strong types with validation - no unknown or any types.
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
-/// Goal status
+/// The current status of a goal.
+///
+/// Goals progress through various states during their lifecycle,
+/// from initial creation to completion or cancellation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GoalStatus {
-    /// Goal is pending
+    /// Goal has been created but work has not yet begun.
     Pending,
-    /// Goal is in progress
+    /// Goal is actively being worked on.
     InProgress,
-    /// Goal is completed
+    /// Goal has been successfully completed.
     Completed,
-    /// Goal is cancelled
+    /// Goal was cancelled before completion.
     Cancelled,
 }
 
@@ -39,13 +38,15 @@ impl Default for GoalStatus {
     }
 }
 
-/// Goal owner type
+/// The type of entity that owns a goal.
+///
+/// Goals can be owned by either an agent (AI) or an entity (user/external system).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GoalOwnerType {
-    /// Owned by an agent
+    /// Goal is owned by an AI agent.
     Agent,
-    /// Owned by an entity (user)
+    /// Goal is owned by a user or external entity.
     Entity,
 }
 
@@ -65,42 +66,53 @@ impl Default for GoalOwnerType {
     }
 }
 
-/// Goal data structure
+/// A goal that can be tracked and managed by the system.
+///
+/// Goals represent objectives or tasks that agents or entities want to accomplish.
+/// They support metadata, tags, and completion tracking.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Goal {
-    /// Unique goal ID
+    /// Unique identifier for this goal (UUID format).
     pub id: String,
-    /// Agent ID
+    /// The ID of the agent associated with this goal.
     pub agent_id: String,
-    /// Owner type
+    /// Whether the goal is owned by an agent or entity.
     pub owner_type: GoalOwnerType,
-    /// Owner ID
+    /// The ID of the owner (agent or entity) of this goal.
     pub owner_id: String,
-    /// Goal name
+    /// The name or title of the goal.
     pub name: String,
-    /// Goal description
+    /// Optional detailed description of the goal.
     pub description: Option<String>,
-    /// Whether goal is completed
+    /// Whether the goal has been completed.
     pub is_completed: bool,
-    /// When goal was completed
+    /// Timestamp when the goal was completed, if applicable.
     pub completed_at: Option<DateTime<Utc>>,
-    /// When goal was created
+    /// Timestamp when the goal was created.
     pub created_at: DateTime<Utc>,
-    /// When goal was last updated
+    /// Timestamp when the goal was last updated.
     pub updated_at: DateTime<Utc>,
-    /// Additional metadata
+    /// Arbitrary key-value metadata associated with the goal.
     pub metadata: HashMap<String, serde_json::Value>,
-    /// Goal tags
+    /// Tags for categorizing and filtering goals.
     pub tags: Vec<String>,
 }
 
 impl Goal {
-    /// Check if goal is active (not completed or cancelled)
+    /// Checks if the goal is currently active (not completed).
+    ///
+    /// # Returns
+    ///
+    /// `true` if the goal is not yet completed, `false` otherwise.
     pub fn is_active(&self) -> bool {
         !self.is_completed
     }
 
-    /// Get goal status based on completion state
+    /// Gets the current status of the goal.
+    ///
+    /// # Returns
+    ///
+    /// The `GoalStatus` based on the completion state.
     pub fn status(&self) -> GoalStatus {
         if self.is_completed {
             GoalStatus::Completed
@@ -110,42 +122,51 @@ impl Goal {
     }
 }
 
-/// Goal tag structure
+/// A tag associated with a goal for categorization purposes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoalTag {
-    /// Tag ID
+    /// Unique identifier for this tag association.
     pub id: String,
-    /// Goal ID
+    /// The ID of the goal this tag belongs to.
     pub goal_id: String,
-    /// Tag value
+    /// The tag value/label.
     pub tag: String,
-    /// When tag was created
+    /// Timestamp when the tag was added.
     pub created_at: DateTime<Utc>,
 }
 
-/// Parameters for creating a goal
+/// Parameters for creating a new goal.
+///
+/// Use the builder pattern methods to construct a complete set of parameters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateGoalParams {
-    /// Agent ID
+    /// The ID of the agent associated with this goal.
     pub agent_id: String,
-    /// Owner type
+    /// Whether the goal is owned by an agent or entity.
     pub owner_type: GoalOwnerType,
-    /// Owner ID
+    /// The ID of the owner (agent or entity) of this goal.
     pub owner_id: String,
-    /// Goal name
+    /// The name or title of the goal.
     pub name: String,
-    /// Goal description
+    /// Optional detailed description of the goal.
     pub description: Option<String>,
-    /// Additional metadata
+    /// Arbitrary key-value metadata to associate with the goal.
     #[serde(default)]
     pub metadata: HashMap<String, serde_json::Value>,
-    /// Goal tags
+    /// Tags for categorizing the goal.
     #[serde(default)]
     pub tags: Vec<String>,
 }
 
 impl CreateGoalParams {
-    /// Create new params with required fields
+    /// Creates a new `CreateGoalParams` with required fields.
+    ///
+    /// # Arguments
+    ///
+    /// * `agent_id` - The ID of the associated agent
+    /// * `owner_type` - Whether owned by agent or entity
+    /// * `owner_id` - The ID of the owner
+    /// * `name` - The name of the goal
     pub fn new(agent_id: String, owner_type: GoalOwnerType, owner_id: String, name: String) -> Self {
         Self {
             agent_id,
@@ -170,49 +191,56 @@ impl CreateGoalParams {
         self
     }
 
-    /// Add metadata (builder pattern)
+    /// Adds a metadata key-value pair (builder pattern).
+    ///
+    /// Multiple calls will accumulate metadata entries.
     pub fn with_metadata(mut self, key: String, value: serde_json::Value) -> Self {
         self.metadata.insert(key, value);
         self
     }
 }
 
-/// Parameters for updating a goal
+/// Parameters for updating an existing goal.
+///
+/// All fields are optional; only provided fields will be updated.
+/// Use the builder pattern methods to construct the update.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UpdateGoalParams {
-    /// New name
+    /// New name for the goal, if changing.
     pub name: Option<String>,
-    /// New description
+    /// New description for the goal, if changing.
     pub description: Option<String>,
-    /// Completion status
+    /// New completion status, if changing.
     pub is_completed: Option<bool>,
-    /// Completion time
+    /// Timestamp when completed, typically set automatically.
     pub completed_at: Option<DateTime<Utc>>,
-    /// New metadata
+    /// New metadata, replaces existing metadata if provided.
     pub metadata: Option<HashMap<String, serde_json::Value>>,
-    /// New tags
+    /// New tags, replaces existing tags if provided.
     pub tags: Option<Vec<String>>,
 }
 
 impl UpdateGoalParams {
-    /// Create empty update params
+    /// Creates a new empty `UpdateGoalParams`.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Set name (builder pattern)
+    /// Sets the name to update (builder pattern).
     pub fn with_name(mut self, name: String) -> Self {
         self.name = Some(name);
         self
     }
 
-    /// Set description (builder pattern)
+    /// Sets the description to update (builder pattern).
     pub fn with_description(mut self, description: String) -> Self {
         self.description = Some(description);
         self
     }
 
-    /// Set completed (builder pattern)
+    /// Sets the completion status (builder pattern).
+    ///
+    /// If `completed` is `true`, also sets `completed_at` to the current time.
     pub fn with_completed(mut self, completed: bool) -> Self {
         self.is_completed = Some(completed);
         if completed {
@@ -242,78 +270,88 @@ pub struct GoalFilters {
 }
 
 impl GoalFilters {
-    /// Create empty filters
+    /// Creates a new empty `GoalFilters` with no filters applied.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Filter by owner type (builder pattern)
+    /// Filters by owner type (builder pattern).
     pub fn with_owner_type(mut self, owner_type: GoalOwnerType) -> Self {
         self.owner_type = Some(owner_type);
         self
     }
 
-    /// Filter by owner ID (builder pattern)
+    /// Filters by owner ID (builder pattern).
     pub fn with_owner_id(mut self, owner_id: String) -> Self {
         self.owner_id = Some(owner_id);
         self
     }
 
-    /// Filter by completion status (builder pattern)
+    /// Filters by completion status (builder pattern).
     pub fn with_completed(mut self, completed: bool) -> Self {
         self.is_completed = Some(completed);
         self
     }
 
-    /// Filter by tags (builder pattern)
+    /// Filters by tags (builder pattern).
+    ///
+    /// Goals matching any of the provided tags will be included.
     pub fn with_tags(mut self, tags: Vec<String>) -> Self {
         self.tags = Some(tags);
         self
     }
 }
 
-/// Extracted goal information from user message
+/// Information extracted from natural language about a goal.
+///
+/// Used when parsing user input to identify goal-related information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractedGoalInfo {
-    /// Goal name
+    /// The extracted name of the goal.
     pub name: String,
-    /// Goal description
+    /// The extracted description, if any.
     pub description: Option<String>,
-    /// Owner type
+    /// The inferred owner type for the goal.
     #[serde(default)]
     pub owner_type: GoalOwnerType,
 }
 
-/// Result of checking goal similarity
+/// Result of checking for similar existing goals.
+///
+/// Used to detect potential duplicate goals before creation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimilarityCheckResult {
-    /// Whether a similar goal exists
+    /// Whether a similar goal was found.
     pub has_similar: bool,
-    /// Name of similar goal
+    /// The name of the similar goal, if found.
     pub similar_goal_name: Option<String>,
-    /// Confidence level (0-100)
+    /// Confidence level of the similarity match (0-100).
     pub confidence: u8,
 }
 
-/// Result of goal selection extraction
+/// Result of attempting to select a goal from a list.
+///
+/// Used when the user references a goal by name or description.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoalSelectionResult {
-    /// Selected goal ID
+    /// The ID of the selected goal, if found.
     pub goal_id: Option<String>,
-    /// Selected goal name
+    /// The name of the selected goal, if found.
     pub goal_name: Option<String>,
-    /// Whether a goal was found
+    /// Whether a matching goal was found.
     pub is_found: bool,
 }
 
-/// Result of confirmation intent extraction
+/// Result of parsing user confirmation input.
+///
+/// Used when awaiting user confirmation for goal operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfirmationResult {
-    /// Whether this is a confirmation
+    /// Whether the input was a confirmation response.
     pub is_confirmation: bool,
-    /// Whether to proceed
+    /// Whether the user confirmed to proceed.
     pub should_proceed: bool,
-    /// Any modifications requested
+    /// Any modifications the user requested.
     pub modifications: Option<String>,
 }
 

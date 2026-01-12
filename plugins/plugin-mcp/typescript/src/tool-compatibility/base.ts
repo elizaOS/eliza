@@ -1,7 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
 
-// Constraint types for embedding in descriptions
 export interface StringConstraints {
   minLength?: number;
   maxLength?: number;
@@ -37,7 +36,7 @@ export type SchemaConstraints =
   | ObjectConstraints;
 
 // Model provider detection
-export type ModelProvider = "openai" | "anthropic" | "google" | "openrouter" | "unknown";
+export type ModelProvider = "openai" | "anthropic" | "google" | "openrouter";
 
 export interface ModelInfo {
   readonly provider: ModelProvider;
@@ -46,7 +45,6 @@ export interface ModelInfo {
   readonly isReasoningModel?: boolean;
 }
 
-// Abstract base class for tool compatibility
 export abstract class McpToolCompatibility {
   protected readonly modelInfo: ModelInfo;
 
@@ -261,19 +259,11 @@ export abstract class McpToolCompatibility {
   protected abstract getUnsupportedObjectProperties(): readonly string[];
 }
 
-/**
- * Extended runtime interface for model information access.
- * Some runtime implementations may have modelProvider or model properties
- * that aren't part of the base IAgentRuntime interface.
- */
 interface RuntimeWithModel extends IAgentRuntime {
   modelProvider?: string;
   model?: string;
 }
 
-/**
- * Type guard to check if runtime has model information properties
- */
 function hasModelInfo(runtime: IAgentRuntime): runtime is RuntimeWithModel {
   return (
     typeof runtime === "object" &&
@@ -282,14 +272,10 @@ function hasModelInfo(runtime: IAgentRuntime): runtime is RuntimeWithModel {
   );
 }
 
-/**
- * Safely extracts model provider or model string from runtime
- */
 function getModelString(runtime: IAgentRuntime): string {
   if (hasModelInfo(runtime)) {
     return runtime.modelProvider ?? runtime.model ?? "";
   }
-  // Fallback: try to get from character settings
   if (
     runtime.character &&
     typeof runtime.character === "object" &&
@@ -309,7 +295,7 @@ export function detectModelProvider(runtime: IAgentRuntime): ModelInfo {
   const modelString = getModelString(runtime);
   const modelId = String(modelString).toLowerCase();
 
-  let provider: ModelProvider = "unknown";
+  let provider: ModelProvider = "openrouter";
   let supportsStructuredOutputs = false;
   let isReasoningModel = false;
 

@@ -1,10 +1,3 @@
-/**
- * @elizaos/plugin-polymarket LLM Templates
- *
- * Re-exports generated prompt templates.
- * DO NOT EDIT - Import from generated/prompts/typescript/prompts.ts
- */
-
 export {
   checkOrderScoringTemplate,
   getAccountAccessStatusTemplate,

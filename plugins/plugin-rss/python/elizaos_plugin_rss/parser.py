@@ -1,9 +1,3 @@
-"""
-RSS/Atom Feed Parser
-
-Secure XML parsing using defusedxml with full RSS 2.0 and Atom support.
-"""
-
 from __future__ import annotations
 
 import html
@@ -20,7 +14,6 @@ if TYPE_CHECKING:
 
 
 def _get_text(element: Element | None, tag: str, namespaces: dict[str, str] | None = None) -> str:
-    """Safely extract text content from an XML element."""
     if element is None:
         return ""
 
@@ -29,7 +22,6 @@ def _get_text(element: Element | None, tag: str, namespaces: dict[str, str] | No
         return ""
 
     text = child.text.strip()
-    # Decode HTML entities
     text = html.unescape(text)
     return text
 
@@ -37,7 +29,6 @@ def _get_text(element: Element | None, tag: str, namespaces: dict[str, str] | No
 def _get_all_text(
     element: Element | None, tag: str, namespaces: dict[str, str] | None = None
 ) -> list[str]:
-    """Safely extract all text content from matching XML elements."""
     if element is None:
         return []
 
@@ -51,13 +42,11 @@ def _get_all_text(
 
 
 def _parse_cdata(text: str) -> str:
-    """Remove CDATA wrappers from text."""
     cdata_pattern = re.compile(r"<!\[CDATA\[(.*?)\]\]>", re.DOTALL)
     return cdata_pattern.sub(r"\1", text)
 
 
 def _parse_image(channel: Element) -> RssImage | None:
-    """Parse RSS image element."""
     image = channel.find("image")
     if image is None:
         return None
@@ -72,7 +61,6 @@ def _parse_image(channel: Element) -> RssImage | None:
 
 
 def _parse_enclosure(item: Element) -> RssEnclosure | None:
-    """Parse RSS enclosure element."""
     enclosure = item.find("enclosure")
     if enclosure is None:
         return None
@@ -85,7 +73,6 @@ def _parse_enclosure(item: Element) -> RssEnclosure | None:
 
 
 def _parse_rss_item(item: Element) -> RssItem:
-    """Parse a single RSS item element."""
     description = _get_text(item, "description")
     description = _parse_cdata(description)
 
@@ -103,8 +90,6 @@ def _parse_rss_item(item: Element) -> RssItem:
 
 
 def _parse_atom_item(entry: Element, namespaces: dict[str, str]) -> RssItem:
-    """Parse a single Atom entry element."""
-    # Get link - Atom uses link[@href] attribute
     link = ""
     link_elem = entry.find("atom:link[@rel='alternate']", namespaces)
     if link_elem is None:
@@ -112,13 +97,10 @@ def _parse_atom_item(entry: Element, namespaces: dict[str, str]) -> RssItem:
     if link_elem is not None:
         link = link_elem.get("href", "")
 
-    # Get content or summary
     description = _get_text(entry, "atom:content", namespaces)
     if not description:
         description = _get_text(entry, "atom:summary", namespaces)
     description = _parse_cdata(description)
-
-    # Get categories
     categories: list[str] = []
     for cat in entry.findall("atom:category", namespaces):
         term = cat.get("term", "")
@@ -140,27 +122,11 @@ def _parse_atom_item(entry: Element, namespaces: dict[str, str]) -> RssItem:
 
 
 def parse_rss_to_json(xml_content: str) -> RssFeed:
-    """
-    Parse RSS or Atom XML content to a RssFeed object.
-
-    Args:
-        xml_content: Raw XML string from feed
-
-    Returns:
-        Parsed RssFeed object
-
-    Raises:
-        ValueError: If the XML cannot be parsed or is not a valid feed
-    """
     try:
-        # Parse XML safely
         root = ET.fromstring(xml_content)
 
-        # Check for Atom feed
         if root.tag == "{http://www.w3.org/2005/Atom}feed" or root.tag == "feed":
             return _parse_atom_feed(root)
-
-        # Assume RSS feed
         return _parse_rss_feed(root)
 
     except ET.ParseError as e:
@@ -168,15 +134,12 @@ def parse_rss_to_json(xml_content: str) -> RssFeed:
 
 
 def _parse_rss_feed(root: Element) -> RssFeed:
-    """Parse an RSS 2.0 feed."""
     channel = root.find("channel")
     if channel is None:
         raise ValueError("No channel element found in RSS feed")
 
     description = _get_text(channel, "description")
     description = _parse_cdata(description)
-
-    # Parse items
     items: list[RssItem] = []
     for item in channel.findall("item"):
         items.append(_parse_rss_item(item))
@@ -197,11 +160,8 @@ def _parse_rss_feed(root: Element) -> RssFeed:
 
 
 def _parse_atom_feed(root: Element) -> RssFeed:
-    """Parse an Atom feed."""
-    # Define Atom namespace
     ns = {"atom": "http://www.w3.org/2005/Atom"}
 
-    # Handle both namespaced and non-namespaced Atom
     if root.tag == "{http://www.w3.org/2005/Atom}feed":
         namespaces = ns
         prefix = "atom:"
@@ -209,7 +169,6 @@ def _parse_atom_feed(root: Element) -> RssFeed:
         namespaces = {}
         prefix = ""
 
-    # Get link - Atom uses link[@href] attribute
     link = ""
     link_elem = (
         root.find(f"{prefix}link[@rel='alternate']", namespaces)
@@ -221,7 +180,6 @@ def _parse_atom_feed(root: Element) -> RssFeed:
     if link_elem is not None:
         link = link_elem.get("href", "")
 
-    # Get subtitle (Atom's description equivalent)
     description = ""
     if namespaces:
         description = _get_text(root, "atom:subtitle", namespaces)
@@ -230,7 +188,6 @@ def _parse_atom_feed(root: Element) -> RssFeed:
         if subtitle is not None and subtitle.text:
             description = subtitle.text.strip()
 
-    # Parse entries
     items: list[RssItem] = []
     entry_tag = f"{prefix}entry" if prefix else "entry"
     for entry in root.findall(entry_tag, namespaces) if namespaces else root.findall("entry"):
@@ -260,7 +217,6 @@ def _parse_atom_feed(root: Element) -> RssFeed:
 
 
 def create_empty_feed() -> RssFeed:
-    """Create an empty feed structure."""
     return RssFeed(
         title="",
         description="",
@@ -274,8 +230,3 @@ def create_empty_feed() -> RssFeed:
         image=None,
         items=[],
     )
-
-
-
-
-

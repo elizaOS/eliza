@@ -1,14 +1,7 @@
-/**
- * Provider for Roblox game state information
- */
-
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME, type RobloxExperienceInfo } from "../types";
 
-/**
- * Provider that supplies Roblox game state to the agent context
- */
 export const gameStateProvider: Provider = {
   name: "roblox-game-state",
   description: "Provides information about the connected Roblox game/experience",
@@ -31,12 +24,10 @@ export const gameStateProvider: Provider = {
 
       const config = client.getConfig();
 
-      // Try to get experience info
       let experienceInfo: RobloxExperienceInfo | null = null;
       try {
         experienceInfo = await client.getExperienceInfo();
       } catch {
-        // Experience info might not be available
         experienceInfo = null;
       }
 

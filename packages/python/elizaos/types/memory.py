@@ -1,10 +1,3 @@
-"""
-Memory types for elizaOS.
-
-This module defines types for storing and retrieving memories,
-including messages, documents, and other information.
-"""
-
 from __future__ import annotations
 
 from enum import Enum
@@ -16,10 +9,6 @@ from elizaos.types.primitives import UUID, Content
 
 
 class MemoryType(str, Enum):
-    """
-    Enumerates the built-in types of memories that can be stored and retrieved.
-    """
-
     DOCUMENT = "document"
     FRAGMENT = "fragment"
     MESSAGE = "message"
@@ -32,10 +21,6 @@ MemoryScope = Literal["shared", "private", "room"]
 
 
 class BaseMetadata(BaseModel):
-    """
-    Base interface for all memory metadata types.
-    """
-
     type: str = Field(..., description="The kind of memory")
     source: str | None = Field(
         default=None, description="Optional string indicating the origin of the memory"
@@ -60,34 +45,24 @@ class BaseMetadata(BaseModel):
 
 
 class DocumentMetadata(BaseMetadata):
-    """Metadata for document memories."""
-
     type: Literal[MemoryType.DOCUMENT] = MemoryType.DOCUMENT
 
 
 class FragmentMetadata(BaseMetadata):
-    """Metadata for fragment memories (chunks of documents)."""
-
     type: Literal[MemoryType.FRAGMENT] = MemoryType.FRAGMENT
     document_id: UUID = Field(..., alias="documentId", description="ID of the parent document")
     position: int = Field(..., description="Position in the document")
 
 
 class MessageMetadata(BaseMetadata):
-    """Metadata for message memories."""
-
     type: Literal[MemoryType.MESSAGE] = MemoryType.MESSAGE
 
 
 class DescriptionMetadata(BaseMetadata):
-    """Metadata for description memories."""
-
     type: Literal[MemoryType.DESCRIPTION] = MemoryType.DESCRIPTION
 
 
 class CustomMetadata(BaseMetadata):
-    """Metadata for custom memory types."""
-
     model_config = {"extra": "allow"}
 
 
@@ -98,8 +73,6 @@ MemoryMetadata = (
 
 
 class Memory(BaseModel):
-    """Represents a stored memory/message."""
-
     id: UUID | None = Field(default=None, description="Optional unique identifier")
     entity_id: UUID = Field(..., alias="entityId", description="Associated user ID")
     agent_id: UUID | None = Field(default=None, alias="agentId", description="Associated agent ID")
@@ -130,8 +103,6 @@ class Memory(BaseModel):
 
 
 class MessageMemory(Memory):
-    """Specialized memory type for messages with enhanced type checking."""
-
     metadata: MessageMetadata = Field(..., description="Message metadata")
     content: Content = Field(..., description="Content with required text")
 

@@ -1,8 +1,3 @@
-"""
-Google GenAI model definitions.
-
-Provides strongly typed model constants and utilities.
-"""
 
 from __future__ import annotations
 
@@ -13,17 +8,12 @@ from elizaos_plugin_google_genai.errors import InvalidParameterError
 
 
 class ModelSize(Enum):
-    """Model size category."""
-
     SMALL = "small"
     LARGE = "large"
     EMBEDDING = "embedding"
 
 
 class Model:
-    """Google Gemini model."""
-
-    # Well-known model IDs
     GEMINI_2_0_FLASH: Final[str] = "gemini-2.0-flash-001"
     GEMINI_2_5_PRO: Final[str] = "gemini-2.5-pro-preview-03-25"
     GEMINI_2_5_PRO_EXP: Final[str] = "gemini-2.5-pro-exp-03-25"
@@ -34,15 +24,6 @@ class Model:
     _default_max_tokens: int
 
     def __init__(self, model_id: str) -> None:
-        """
-        Create a new model from an ID string.
-
-        Args:
-            model_id: The model identifier string.
-
-        Raises:
-            InvalidParameterError: If the model ID is empty.
-        """
         if not model_id or not model_id.strip():
             raise InvalidParameterError("model", "Model ID cannot be empty")
 
@@ -52,49 +33,39 @@ class Model:
 
     @classmethod
     def small(cls) -> Model:
-        """Create the default small model (Gemini 2.0 Flash)."""
         return cls(cls.GEMINI_2_0_FLASH)
 
     @classmethod
     def large(cls) -> Model:
-        """Create the default large model (Gemini 2.5 Pro)."""
         return cls(cls.GEMINI_2_5_PRO)
 
     @classmethod
     def embedding(cls) -> Model:
-        """Create the default embedding model."""
         return cls(cls.TEXT_EMBEDDING_004)
 
     @property
     def id(self) -> str:
-        """Get the model ID."""
         return self._id
 
     @property
     def size(self) -> ModelSize:
-        """Get the model size."""
         return self._size
 
     @property
     def default_max_tokens(self) -> int:
-        """Get the default max tokens for this model."""
         return self._default_max_tokens
 
     def is_small(self) -> bool:
-        """Check if this is a small model."""
         return self._size == ModelSize.SMALL
 
     def is_large(self) -> bool:
-        """Check if this is a large model."""
         return self._size == ModelSize.LARGE
 
     def is_embedding(self) -> bool:
-        """Check if this is an embedding model."""
         return self._size == ModelSize.EMBEDDING
 
     @staticmethod
     def _infer_size(model_id: str) -> ModelSize:
-        """Infer model size from ID."""
         model_lower = model_id.lower()
         if "embedding" in model_lower:
             return ModelSize.EMBEDDING
@@ -104,31 +75,22 @@ class Model:
 
     @staticmethod
     def _infer_max_tokens(model_id: str) -> int:
-        """Infer default max tokens from ID."""
         model_lower = model_id.lower()
         if "embedding" in model_lower:
-            return 0  # Embeddings don't have output tokens
+            return 0
         return 8192
 
     def __str__(self) -> str:
-        """Return the model ID as string representation."""
         return self._id
 
     def __repr__(self) -> str:
-        """Return detailed string representation."""
         return f"Model(id={self._id!r}, size={self._size.value})"
 
     def __eq__(self, other: object) -> bool:
-        """Check equality by model ID."""
         if isinstance(other, Model):
             return self._id == other._id
         return False
 
     def __hash__(self) -> int:
-        """Hash by model ID."""
         return hash(self._id)
-
-
-
-
 

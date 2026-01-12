@@ -103,14 +103,12 @@ export const getIssueAction: Action = {
         };
       }
 
-      // Use LLM to understand the request
       const prompt = getIssueTemplate.replace("{{userMessage}}", content);
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt: prompt,
       });
 
       if (!response) {
-        // Fallback to regex
         const issueMatch = content.match(/(\w+-\d+)/);
         if (issueMatch) {
           const issue = await linearService.getIssue(issueMatch[1]);
@@ -127,17 +125,14 @@ export const getIssueAction: Action = {
             .trim()
         );
 
-        // If direct ID is provided, use it
         if (parsed.directId) {
           const issue = await linearService.getIssue(parsed.directId);
           return await formatIssueResponse(issue, callback, message);
         }
 
-        // Otherwise, search based on criteria
         if (parsed.searchBy && Object.keys(parsed.searchBy).length > 0) {
           const filters: Record<string, unknown> = {};
 
-          // Build search filters
           if (parsed.searchBy.title) {
             filters.query = parsed.searchBy.title;
           }
@@ -171,13 +166,11 @@ export const getIssueAction: Action = {
             filters.state = [parsed.searchBy.state];
           }
 
-          // Apply default team if configured
           const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
           if (defaultTeamKey && !filters.team) {
             filters.team = defaultTeamKey;
           }
 
-          // Search for issues
           const issues = await linearService.searchIssues({
             ...filters,
             limit: parsed.searchBy.recency ? 10 : 5,
@@ -195,24 +188,20 @@ export const getIssueAction: Action = {
             };
           }
 
-          // Sort by creation date if looking for recent
           if (parsed.searchBy.recency) {
             issues.sort(
               (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
             );
           }
 
-          // If looking for recent/latest, return the first one
           if (parsed.searchBy.recency && issues.length > 0) {
             return await formatIssueResponse(issues[0], callback, message);
           }
 
-          // If only one result, return it
           if (issues.length === 1) {
             return await formatIssueResponse(issues[0], callback, message);
           }
 
-          // Multiple results - ask user to be more specific
           const issueList = await Promise.all(
             issues.slice(0, 5).map(async (issue, index) => {
               const state = await issue.state;
@@ -241,7 +230,6 @@ export const getIssueAction: Action = {
         }
       } catch (parseError) {
         logger.warn("Failed to parse LLM response, falling back to regex:", parseError);
-        // Fallback to regex
         const issueMatch = content.match(/(\w+-\d+)/);
         if (issueMatch) {
           const issue = await linearService.getIssue(issueMatch[1]);
@@ -274,7 +262,6 @@ export const getIssueAction: Action = {
   },
 };
 
-// Helper function to format issue response
 async function formatIssueResponse(
   issue: Issue,
   callback: HandlerCallback | undefined,
@@ -361,7 +348,6 @@ View in Linear: ${issue.url}`;
     source: message.content.source,
   });
 
-  // Convert Date objects to ISO strings for ProviderValue compatibility
   const serializedIssue = {
     ...issueDetails,
     createdAt:

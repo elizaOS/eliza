@@ -1,16 +1,12 @@
-//! Browser State Provider
-
 use crate::services::BrowserService;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
-/// Provider metadata
 pub const BROWSER_STATE_NAME: &str = "BROWSER_STATE";
 pub const BROWSER_STATE_DESCRIPTION: &str =
     "Provides current browser state information including active session status, current page URL, and page title";
 
-/// Provider result
 #[derive(Debug)]
 pub struct ProviderResult {
     pub text: String,
@@ -18,7 +14,6 @@ pub struct ProviderResult {
     pub data: HashMap<String, serde_json::Value>,
 }
 
-/// Get current browser state
 pub async fn get_browser_state(service: Arc<BrowserService>) -> ProviderResult {
     let session = match service.get_current_session().await {
         Some(s) => s,
@@ -83,5 +78,3 @@ pub async fn get_browser_state(service: Arc<BrowserService>) -> ProviderResult {
         }
     }
 }
-
-

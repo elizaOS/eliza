@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Type definitions for the elizaOS Forms Plugin.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

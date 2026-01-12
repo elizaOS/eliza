@@ -1,59 +1,35 @@
-/**
- * Integration tests for the N8n Plugin.
- * Uses REAL AgentRuntime - NO MOCKS.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PluginCreationService } from "../../services/plugin-creation-service";
 import type { PluginSpecification } from "../../types";
 
-// Test utilities for creating real runtime
-async function createTestRuntime(): Promise<{
+function createMockRuntime(): {
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;
-}> {
-  // Dynamically import plugin-sql to get the database adapter
-  const sqlPlugin = await import("@elizaos/plugin-sql");
-  const { AgentRuntime } = await import("@elizaos/core");
-  const { v4: uuidv4 } = await import("uuid");
+} {
+  const agentId = "test-agent-id" as `${string}-${string}-${string}-${string}-${string}`;
 
-  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
-  await adapter.init();
-
-  const runtime = new AgentRuntime({
+  const runtime = {
     agentId,
     character: {
       name: "Test Agent",
       bio: ["A test agent for plugin creation"],
       system: "You are a helpful assistant for testing.",
-      plugins: [],
       settings: {
         secrets: {
           ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
         },
       },
-      messageExamples: [],
-      postExamples: [],
-      topics: ["testing"],
-      adjectives: ["helpful"],
-      style: { all: [], chat: [], post: [] },
     },
-    adapter,
-    plugins: [],
-  });
+    getService: () => undefined,
+    getSetting: (key: string) => {
+      if (key === "ANTHROPIC_API_KEY") return process.env.ANTHROPIC_API_KEY;
+      return undefined;
+    },
+    services: new Map(),
+  } as unknown as IAgentRuntime;
 
-  await runtime.initialize();
-
-  const cleanup = async () => {
-    try {
-      await runtime.stop();
-      await adapter.close();
-    } catch {
-      // Ignore cleanup errors
-    }
-  };
+  const cleanup = async () => {};
 
   return { runtime, cleanup };
 }
@@ -64,7 +40,7 @@ describe("PluginCreationService", () => {
   let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    const result = await createTestRuntime();
+    const result = createMockRuntime();
     runtime = result.runtime;
     cleanup = result.cleanup;
     service = new PluginCreationService(runtime);

@@ -1,9 +1,3 @@
-"""
-Google GenAI API client implementation.
-
-The client handles HTTP communication with the Google Generative AI API,
-including authentication, request/response handling, and error processing.
-"""
 
 from __future__ import annotations
 
@@ -40,23 +34,10 @@ from elizaos_plugin_google_genai.types import (
 
 
 class GoogleGenAIClient:
-    """
-    Google GenAI API client.
-
-    Provides methods for text generation, embeddings, image analysis,
-    and JSON object generation using Gemini models.
-    """
-
     _config: GoogleGenAIConfig
     _http_client: httpx.AsyncClient
 
     def __init__(self, config: GoogleGenAIConfig) -> None:
-        """
-        Create a new Google GenAI client with the given configuration.
-
-        Args:
-            config: Client configuration including API key and settings.
-        """
         self._config = config
         self._http_client = httpx.AsyncClient(
             timeout=config.timeout_seconds,
@@ -65,36 +46,20 @@ class GoogleGenAIClient:
 
     @property
     def config(self) -> GoogleGenAIConfig:
-        """Get the client configuration."""
         return self._config
 
     async def close(self) -> None:
-        """Close the HTTP client."""
         await self._http_client.aclose()
 
     async def __aenter__(self) -> GoogleGenAIClient:
-        """Context manager entry."""
         return self
 
     async def __aexit__(self, *_: object) -> None:
-        """Context manager exit."""
         await self.close()
 
     async def generate_text_small(
         self, params: TextGenerationParams | str
     ) -> TextGenerationResponse:
-        """
-        Generate text using the small model.
-
-        Args:
-            params: Generation parameters or a prompt string.
-
-        Returns:
-            Text generation response.
-
-        Raises:
-            GoogleGenAIError: If the API request fails.
-        """
         if isinstance(params, str):
             params = TextGenerationParams(prompt=params)
         return await self._generate_text_with_model(params, self._config.small_model)
@@ -102,18 +67,6 @@ class GoogleGenAIClient:
     async def generate_text_large(
         self, params: TextGenerationParams | str
     ) -> TextGenerationResponse:
-        """
-        Generate text using the large model.
-
-        Args:
-            params: Generation parameters or a prompt string.
-
-        Returns:
-            Text generation response.
-
-        Raises:
-            GoogleGenAIError: If the API request fails.
-        """
         if isinstance(params, str):
             params = TextGenerationParams(prompt=params)
         return await self._generate_text_with_model(params, self._config.large_model)
@@ -121,7 +74,6 @@ class GoogleGenAIClient:
     async def _generate_text_with_model(
         self, params: TextGenerationParams, model: Model
     ) -> TextGenerationResponse:
-        """Generate text using a specific model."""
         url = self._config.generate_content_url(model)
 
         request_body: dict[str, Any] = {
@@ -150,18 +102,6 @@ class GoogleGenAIClient:
         return TextGenerationResponse(text=text, usage=usage, model=model.id)
 
     async def generate_embedding(self, params: EmbeddingParams | str) -> EmbeddingResponse:
-        """
-        Generate text embeddings.
-
-        Args:
-            params: Embedding parameters or a text string.
-
-        Returns:
-            Embedding response with vector.
-
-        Raises:
-            GoogleGenAIError: If the API request fails.
-        """
         if isinstance(params, str):
             params = EmbeddingParams(text=params)
 
@@ -181,25 +121,12 @@ class GoogleGenAIClient:
     async def describe_image(
         self, params: ImageDescriptionParams | str
     ) -> ImageDescriptionResponse:
-        """
-        Analyze and describe an image.
-
-        Args:
-            params: Image description parameters or an image URL.
-
-        Returns:
-            Image description response.
-
-        Raises:
-            GoogleGenAIError: If the API request fails.
-        """
         if isinstance(params, str):
             params = ImageDescriptionParams(image_url=params)
 
         model = self._config.image_model
         url = self._config.generate_content_url(model)
 
-        # Fetch image data
         image_data = await self._fetch_image(params.image_url)
 
         prompt = (
@@ -231,7 +158,6 @@ class GoogleGenAIClient:
         parsed = GenerateContentResponse.model_validate(response)
         text = parsed.get_text()
 
-        # Try to parse as JSON
         try:
             json_response = json.loads(text)
             if isinstance(json_response, dict):
@@ -242,7 +168,6 @@ class GoogleGenAIClient:
         except json.JSONDecodeError:
             pass
 
-        # Extract title and description from text
         title_match = re.search(r"title[:\s]+(.+?)(?:\n|$)", text, re.IGNORECASE)
         title = title_match.group(1).strip() if title_match else "Image Analysis"
         description = re.sub(r"title[:\s]+.+?(?:\n|$)", "", text, flags=re.IGNORECASE).strip()
@@ -252,18 +177,6 @@ class GoogleGenAIClient:
     async def generate_object_small(
         self, params: ObjectGenerationParams | str
     ) -> ObjectGenerationResponse:
-        """
-        Generate a JSON object using the small model.
-
-        Args:
-            params: Generation parameters or a prompt string.
-
-        Returns:
-            Object generation response.
-
-        Raises:
-            JsonGenerationError: If JSON cannot be extracted from the response.
-        """
         if isinstance(params, str):
             params = ObjectGenerationParams(prompt=params)
         return await self._generate_object_with_model(params, self._config.small_model)
@@ -271,18 +184,6 @@ class GoogleGenAIClient:
     async def generate_object_large(
         self, params: ObjectGenerationParams | str
     ) -> ObjectGenerationResponse:
-        """
-        Generate a JSON object using the large model.
-
-        Args:
-            params: Generation parameters or a prompt string.
-
-        Returns:
-            Object generation response.
-
-        Raises:
-            JsonGenerationError: If JSON cannot be extracted from the response.
-        """
         if isinstance(params, str):
             params = ObjectGenerationParams(prompt=params)
         return await self._generate_object_with_model(params, self._config.large_model)
@@ -290,10 +191,8 @@ class GoogleGenAIClient:
     async def _generate_object_with_model(
         self, params: ObjectGenerationParams, model: Model
     ) -> ObjectGenerationResponse:
-        """Generate a JSON object using a specific model."""
         url = self._config.generate_content_url(model)
 
-        # Build enhanced prompt with schema
         prompt = params.prompt
         if params.json_schema:
             prompt += (
@@ -301,11 +200,7 @@ class GoogleGenAIClient:
                 f"{json.dumps(params.json_schema, indent=2)}"
             )
 
-        # System instruction for JSON output
-        system = (
-            (params.system or "")
-            + "\nYou must respond with valid JSON only. No markdown, no code blocks, no explanation text."
-        )
+        system = f"{params.system or ''}\nYou must respond with valid JSON only. No markdown, no code blocks, no explanation text.".strip()
 
         request_body: dict[str, Any] = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -314,7 +209,7 @@ class GoogleGenAIClient:
                 "maxOutputTokens": params.max_tokens or model.default_max_tokens,
                 "responseMimeType": "application/json",
             },
-            "systemInstruction": {"parts": [{"text": system.strip()}]},
+            "systemInstruction": {"parts": [{"text": system}]},
         }
 
         response = await self._send_request(url, request_body)
@@ -324,13 +219,11 @@ class GoogleGenAIClient:
             prompt_tokens=0, completion_tokens=0, total_tokens=0
         )
 
-        # Parse JSON from response
         parsed_object = self._extract_json(text)
 
         return ObjectGenerationResponse(object=parsed_object, usage=usage, model=model.id)
 
     async def _send_request(self, url: str, body: dict[str, Any]) -> dict[str, Any]:
-        """Send a request to the Google GenAI API."""
         try:
             response = await self._http_client.post(url, json=body)
         except httpx.TimeoutException as e:
@@ -344,14 +237,13 @@ class GoogleGenAIClient:
                 return result
             return {}
 
-        # Handle error responses
         status_code = response.status_code
         try:
             error_data = response.json()
             error_response = ErrorResponse.model_validate(error_data)
             error_type = error_response.error.status
             error_message = error_response.error.message
-        except Exception:
+        except (ValueError, KeyError):
             error_type = "unknown"
             error_message = response.text
 
@@ -364,7 +256,6 @@ class GoogleGenAIClient:
         raise ApiError(error_type, error_message, status_code)
 
     async def _fetch_image(self, url: str) -> dict[str, str]:
-        """Fetch an image and return its base64 encoding."""
         try:
             response = await self._http_client.get(url)
             response.raise_for_status()
@@ -377,8 +268,6 @@ class GoogleGenAIClient:
         return {"mime_type": content_type, "base64": image_base64}
 
     def _extract_json(self, text: str) -> dict[str, Any]:
-        """Extract JSON from text response."""
-        # Try direct parsing first
         try:
             parsed = json.loads(text)
             if isinstance(parsed, dict):
@@ -386,7 +275,6 @@ class GoogleGenAIClient:
         except json.JSONDecodeError:
             pass
 
-        # Try extracting from code blocks
         json_str = self._extract_from_code_block(text)
         if json_str:
             try:
@@ -396,7 +284,6 @@ class GoogleGenAIClient:
             except json.JSONDecodeError:
                 pass
 
-        # Try finding JSON object in text
         json_str = self._find_json_object(text)
         if json_str:
             try:
@@ -412,13 +299,10 @@ class GoogleGenAIClient:
         )
 
     def _extract_from_code_block(self, text: str) -> str | None:
-        """Extract JSON from a code block."""
-        # Try ```json block first
         json_block_match = re.search(r"```json\s*([\s\S]*?)\s*```", text)
         if json_block_match:
             return json_block_match.group(1).strip()
 
-        # Try any code block with JSON-like content
         for match in re.finditer(r"```(?:\w*)\s*([\s\S]*?)\s*```", text):
             content = match.group(1).strip()
             if content.startswith("{") and content.endswith("}"):
@@ -427,12 +311,10 @@ class GoogleGenAIClient:
         return None
 
     def _find_json_object(self, text: str) -> str | None:
-        """Find a JSON object in text."""
         trimmed = text.strip()
         if trimmed.startswith("{") and trimmed.endswith("}"):
             return trimmed
 
-        # Find the largest {...} pattern using brace counting
         best: str | None = None
         depth = 0
         start: int | None = None
@@ -450,8 +332,5 @@ class GoogleGenAIClient:
                         best = candidate
 
         return best
-
-
-
 
 

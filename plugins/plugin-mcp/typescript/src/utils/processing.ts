@@ -5,7 +5,6 @@ import {
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
-  logger,
   type Media,
   type Memory,
   ModelType,
@@ -42,7 +41,7 @@ export function processResourceResult(
     if (content.text) {
       resourceContent += content.text;
     } else if (content.blob) {
-      resourceContent += `[Binary data - ${content.mimeType ?? "unknown type"}]`;
+      resourceContent += `[Binary data${content.mimeType ? ` - ${content.mimeType}` : ""}]`;
     }
 
     resourceMeta += `Resource: ${content.uri ?? uri}\n`;
@@ -137,7 +136,6 @@ export async function handleResourceAnalysis(
   if (callback) {
     await callback({
       text: analyzedResponse,
-      thought: `I analyzed the content from the ${uri} resource on ${serverName} and crafted a thoughtful response that addresses the user's request while maintaining my conversational style.`,
       actions: ["READ_MCP_RESOURCE"],
     });
   }
@@ -178,8 +176,6 @@ export async function handleToolResponse(
     hasAttachments
   );
 
-  logger.info({ reasoningPrompt }, "reasoning prompt");
-
   const reasonedResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
     prompt: reasoningPrompt,
   })) as string;
@@ -191,7 +187,6 @@ export async function handleToolResponse(
     worldId: message.worldId,
     content: {
       text: reasonedResponse,
-      thought: `I analyzed the output from the ${toolName} tool on ${serverName} and crafted a thoughtful response that addresses the user's request while maintaining my conversational style.`,
       actions: ["CALL_MCP_TOOL"],
       attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
     },
@@ -202,7 +197,6 @@ export async function handleToolResponse(
   if (callback) {
     await callback({
       text: reasonedResponse,
-      thought: `I analyzed the output from the ${toolName} tool on ${serverName} and crafted a thoughtful response that addresses the user's request while maintaining my conversational style.`,
       actions: ["CALL_MCP_TOOL"],
       attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
     });
@@ -214,8 +208,6 @@ export async function handleToolResponse(
 export async function sendInitialResponse(callback?: HandlerCallback): Promise<void> {
   if (callback) {
     const responseContent: Content = {
-      thought:
-        "The user is asking for information that can be found in an MCP resource. I will retrieve and analyze the appropriate resource.",
       text: "I'll retrieve that information for you. Let me access the resource...",
       actions: ["READ_MCP_RESOURCE"],
     };

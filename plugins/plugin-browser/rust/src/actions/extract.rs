@@ -1,5 +1,3 @@
-//! Browser Extract Action
-
 use crate::services::BrowserService;
 use crate::types::ActionResult;
 use crate::utils::{action_error, parse_extract_instruction, session_error};
@@ -7,12 +5,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
-/// Action metadata
 pub const EXTRACT_ACTION_NAME: &str = "BROWSER_EXTRACT";
 pub const EXTRACT_SIMILES: &[&str] = &["EXTRACT_DATA", "GET_TEXT", "SCRAPE"];
 pub const EXTRACT_DESCRIPTION: &str = "Extract data from the webpage";
 
-/// Extract data from the webpage
 pub async fn browser_extract(
     service: Arc<BrowserService>,
     message: &str,
@@ -64,10 +60,5 @@ pub async fn browser_extract(
         }
     }
 }
-
-
-
-
-
 
 

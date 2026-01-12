@@ -1,5 +1,3 @@
-//! Browser Plugin for ElizaOS
-
 use crate::actions::{
     browser_click, browser_extract, browser_navigate, browser_screenshot,
     browser_select, browser_type,
@@ -11,7 +9,6 @@ use std::env;
 use std::sync::Arc;
 use tracing::info;
 
-/// Browser automation plugin for ElizaOS
 pub struct BrowserPlugin {
     pub name: String,
     pub description: String,
@@ -20,7 +17,6 @@ pub struct BrowserPlugin {
 }
 
 impl BrowserPlugin {
-    /// Create a new browser plugin
     pub fn new(config: BrowserConfig) -> Self {
         Self {
             name: "plugin-browser".to_string(),
@@ -30,11 +26,9 @@ impl BrowserPlugin {
         }
     }
 
-    /// Initialize the plugin
     pub async fn init(&mut self) -> Result<(), String> {
         info!("Initializing browser automation plugin");
 
-        // Load configuration from environment
         self.config = BrowserConfig {
             headless: env::var("BROWSER_HEADLESS")
                 .map(|v| v.to_lowercase() == "true")
@@ -52,7 +46,6 @@ impl BrowserPlugin {
                 .unwrap_or(3456),
         };
 
-        // Create and start service
         let service = BrowserService::new(self.config.clone());
         service.start().await?;
         self.service = Some(Arc::new(service));
@@ -61,7 +54,6 @@ impl BrowserPlugin {
         Ok(())
     }
 
-    /// Stop the plugin
     pub async fn stop(&mut self) {
         info!("Stopping browser automation plugin");
         if let Some(service) = &self.service {
@@ -70,7 +62,6 @@ impl BrowserPlugin {
         self.service = None;
     }
 
-    /// Handle an action by name
     pub async fn handle_action(&self, action_name: &str, message: &str) -> Result<ActionResult, String> {
         let service = self.service.as_ref().ok_or("Browser service not initialized")?;
 
@@ -85,7 +76,6 @@ impl BrowserPlugin {
         }
     }
 
-    /// Get provider data by name
     pub async fn get_provider(&self, provider_name: &str) -> Result<serde_json::Value, String> {
         let service = self.service.as_ref().ok_or("Browser service not initialized")?;
 
@@ -103,14 +93,8 @@ impl BrowserPlugin {
     }
 }
 
-/// Create a browser plugin instance
 pub fn create_browser_plugin(config: Option<BrowserConfig>) -> BrowserPlugin {
     BrowserPlugin::new(config.unwrap_or_default())
 }
-
-
-
-
-
 
 

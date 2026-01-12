@@ -9,9 +9,8 @@ describe("processAttachments", () => {
 
   beforeEach(async () => {
     runtime = await createTestRuntime();
-    // Spy on useModel and reset it
-    vi.spyOn(runtime, "useModel");
-    (runtime.useModel as ReturnType<typeof vi.fn>).mockReset();
+    // Mock useModel as a vi.fn() to support mockRejectedValueOnce/mockResolvedValueOnce
+    runtime.useModel = vi.fn().mockResolvedValue("");
 
     // Spy on logger methods
     vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
@@ -50,10 +49,7 @@ describe("processAttachments", () => {
   <text>This image captures a breathtaking sunset scene over a calm ocean. The sky is painted with brilliant hues of orange, pink, and purple as the sun dips below the horizon. Gentle waves lap at the shore, creating a peaceful and serene atmosphere.</text>
 </response>`);
 
-    const result = await processAttachments(
-      [imageAttachment],
-      runtime,
-    );
+    const result = await processAttachments([imageAttachment], runtime);
 
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("image-1");
@@ -83,10 +79,7 @@ describe("processAttachments", () => {
       text: "Existing text",
     };
 
-    const result = await processAttachments(
-      [imageWithDescription],
-      runtime,
-    );
+    const result = await processAttachments([imageWithDescription], runtime);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual(imageWithDescription);
@@ -101,10 +94,7 @@ describe("processAttachments", () => {
       title: "PDF Document",
     };
 
-    const result = await processAttachments(
-      [pdfAttachment],
-      runtime,
-    );
+    const result = await processAttachments([pdfAttachment], runtime);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual(pdfAttachment);
@@ -139,10 +129,7 @@ describe("processAttachments", () => {
   <text>This is a test image description.</text>
 </response>`);
 
-    const result = await processAttachments(
-      attachments,
-      runtime,
-    );
+    const result = await processAttachments(attachments, runtime);
 
     expect(result).toHaveLength(3);
     // Only the first image should be processed
@@ -167,10 +154,7 @@ describe("processAttachments", () => {
       text: "Object response text",
     });
 
-    const result = await processAttachments(
-      [imageAttachment],
-      runtime,
-    );
+    const result = await processAttachments([imageAttachment], runtime);
 
     expect(result).toHaveLength(1);
     expect(result[0].title).toBe("Object Response Title");
@@ -189,10 +173,7 @@ describe("processAttachments", () => {
     // Mock malformed XML response
     runtime.useModel.mockResolvedValue("This is not valid XML");
 
-    const result = await processAttachments(
-      [imageAttachment],
-      runtime,
-    );
+    const result = await processAttachments([imageAttachment], runtime);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual(imageAttachment); // Should return original
@@ -219,7 +200,8 @@ describe("processAttachments", () => {
     ];
 
     // Mock error for first image, success for second
-    runtime.useModel
+    const mockUseModel = runtime.useModel as ReturnType<typeof vi.fn>;
+    mockUseModel
       .mockRejectedValueOnce(new Error("Model API error"))
       .mockResolvedValueOnce(`<response>
   <title>Second Image</title>
@@ -227,10 +209,7 @@ describe("processAttachments", () => {
   <text>Detailed description of the second image</text>
 </response>`);
 
-    const result = await processAttachments(
-      attachments,
-      runtime,
-    );
+    const result = await processAttachments(attachments, runtime);
 
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual(attachments[0]); // First image unchanged due to error
@@ -277,10 +256,7 @@ describe("processAttachments", () => {
 </response>`);
     });
 
-    const result = await processAttachments(
-      attachments,
-      runtime,
-    );
+    const result = await processAttachments(attachments, runtime);
 
     expect(result).toHaveLength(3);
     expect(runtime.useModel).toHaveBeenCalledTimes(3);
@@ -305,10 +281,7 @@ describe("processAttachments", () => {
   <text>This is the text content without a title.</text>
 </response>`);
 
-    const result = await processAttachments(
-      [imageAttachment],
-      runtime,
-    );
+    const result = await processAttachments([imageAttachment], runtime);
 
     expect(result).toHaveLength(1);
     expect(result[0].title).toBe("Image"); // Default title

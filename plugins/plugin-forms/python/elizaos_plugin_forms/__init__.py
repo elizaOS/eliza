@@ -1,13 +1,14 @@
-"""
-elizaOS Forms Plugin - Structured conversational data collection.
 
-This plugin provides form management capabilities for collecting structured data
-from users through natural conversation.
-"""
-
+from elizaos_plugin_forms.actions import (
+    CancelFormAction,
+    CreateFormAction,
+    UpdateFormAction,
+)
 from elizaos_plugin_forms.prompts import FORM_EXTRACTION_PROMPT
+from elizaos_plugin_forms.providers import FormsContextProvider, ProviderResult
 from elizaos_plugin_forms.service import FormsService
 from elizaos_plugin_forms.types import (
+    FieldError,
     Form,
     FormField,
     FormFieldType,
@@ -18,6 +19,14 @@ from elizaos_plugin_forms.types import (
 )
 
 __all__ = [
+    # Actions
+    "CreateFormAction",
+    "UpdateFormAction",
+    "CancelFormAction",
+    # Providers
+    "FormsContextProvider",
+    "ProviderResult",
+    # Types
     "Form",
     "FormField",
     "FormFieldType",
@@ -25,13 +34,11 @@ __all__ = [
     "FormStep",
     "FormTemplate",
     "FormUpdateResult",
+    "FieldError",
+    # Service
     "FormsService",
+    # Prompts
     "FORM_EXTRACTION_PROMPT",
 ]
 
 __version__ = "1.2.0"
-
-
-
-
-

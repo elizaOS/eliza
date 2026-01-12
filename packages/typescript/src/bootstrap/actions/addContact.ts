@@ -112,14 +112,12 @@ export const addContactAction: Action = {
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    // Check if RolodexService is available
     const rolodexService = runtime.getService("rolodex") as RolodexService;
     if (!rolodexService) {
       logger.warn("[AddContact] RolodexService not available");
       return false;
     }
 
-    // Check if message contains intent to add contact
     const addKeywords = [
       "add",
       "save",
@@ -146,7 +144,6 @@ export const addContactAction: Action = {
       throw new Error("RolodexService not available");
     }
 
-    // Build proper state for prompt composition
     if (!state) {
       state = {
         values: {},
@@ -155,7 +152,6 @@ export const addContactAction: Action = {
       };
     }
 
-    // Add our values to the state
     state.values = {
       ...state.values,
       message: message.content.text,
@@ -163,13 +159,11 @@ export const addContactAction: Action = {
       senderName: state.values?.senderName || "User",
     };
 
-    // Compose prompt to extract contact information
     const prompt = composePromptFromState({
       state,
       template: addContactTemplate,
     });
 
-    // Use LLM to extract contact details
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
@@ -182,12 +176,10 @@ export const addContactAction: Action = {
       throw new Error("Could not extract contact information");
     }
 
-    // Determine entity ID
     let entityId = parsedResponse.entityId
       ? asUUID(parsedResponse.entityId)
       : null;
 
-    // If no entity ID provided, try to find by name
     if (!entityId && parsedResponse.contactName) {
       const entity = await findEntityByName(runtime, message, state);
 
@@ -216,7 +208,6 @@ export const addContactAction: Action = {
     if (parsedResponse.language) preferences.language = parsedResponse.language;
     if (parsedResponse.notes) preferences.notes = parsedResponse.notes;
 
-    // Add contact
     const _contact = await rolodexService.addContact(
       entityId,
       categories,
@@ -227,7 +218,6 @@ export const addContactAction: Action = {
       `[AddContact] Added contact ${parsedResponse.contactName} (${entityId})`,
     );
 
-    // Prepare response
     const responseText = `I've added ${parsedResponse.contactName} to your contacts as ${categories.join(", ")}. ${
       parsedResponse.reason || "They have been saved to your rolodex."
     }`;

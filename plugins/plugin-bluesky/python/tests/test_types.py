@@ -1,4 +1,3 @@
-"""Tests for BlueSky types."""
 
 from elizaos_plugin_bluesky.types import (
     BlueSkyPost,
@@ -10,10 +9,7 @@ from elizaos_plugin_bluesky.types import (
 
 
 class TestBlueSkyProfile:
-    """Tests for BlueSkyProfile class."""
-
     def test_create_profile_minimal(self) -> None:
-        """Test creating profile with minimal fields."""
         profile = BlueSkyProfile(
             did="did:plc:test123",
             handle="test.bsky.social",
@@ -24,7 +20,6 @@ class TestBlueSkyProfile:
         assert profile.description is None
 
     def test_create_profile_full(self) -> None:
-        """Test creating profile with all fields."""
         profile = BlueSkyProfile(
             did="did:plc:test123",
             handle="test.bsky.social",
@@ -40,10 +35,7 @@ class TestBlueSkyProfile:
 
 
 class TestBlueSkyPost:
-    """Tests for BlueSkyPost class."""
-
     def test_create_post(self) -> None:
-        """Test creating a post."""
         post = BlueSkyPost(
             uri="at://did:plc:test/app.bsky.feed.post/abc123",
             cid="bafytest",
@@ -63,10 +55,7 @@ class TestBlueSkyPost:
 
 
 class TestBlueSkySession:
-    """Tests for BlueSkySession class."""
-
     def test_create_session(self) -> None:
-        """Test creating a session."""
         session = BlueSkySession(
             did="did:plc:test",
             handle="test.bsky.social",
@@ -79,16 +68,10 @@ class TestBlueSkySession:
 
 
 class TestNotificationReason:
-    """Tests for NotificationReason enum."""
-
     def test_notification_reasons(self) -> None:
-        """Test notification reason values."""
         assert NotificationReason.MENTION.value == "mention"
         assert NotificationReason.REPLY.value == "reply"
         assert NotificationReason.FOLLOW.value == "follow"
         assert NotificationReason.LIKE.value == "like"
         assert NotificationReason.REPOST.value == "repost"
         assert NotificationReason.QUOTE.value == "quote"
-
-
-

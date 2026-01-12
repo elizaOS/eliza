@@ -10,9 +10,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-/**
- * Forms table - stores form instances and their metadata
- */
 export const formsTable = pgTable(
   "forms",
   {
@@ -20,9 +17,9 @@ export const formsTable = pgTable(
     agentId: uuid("agent_id").notNull(),
     name: text("name").notNull(),
     description: text("description"),
-    status: text("status").notNull(), // 'active', 'completed', 'cancelled'
+    status: text("status").notNull(),
     currentStepIndex: integer("current_step_index").default(0).notNull(),
-    steps: jsonb("steps").notNull(), // Array of step definitions
+    steps: jsonb("steps").notNull(),
     createdAt: timestamp("created_at").default(sql`now()`).notNull(),
     updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
     completedAt: timestamp("completed_at"),
@@ -36,9 +33,6 @@ export const formsTable = pgTable(
   })
 );
 
-/**
- * Form fields table - stores field values separately for better querying
- */
 export const formFieldsTable = pgTable(
   "form_fields",
   {
@@ -52,7 +46,7 @@ export const formFieldsTable = pgTable(
     fieldId: text("field_id").notNull(),
     label: text("label").notNull(),
     type: text("type").notNull(),
-    value: text("value"), // Stored as text, parsed based on type
+    value: text("value"),
     isSecret: boolean("is_secret").default(false).notNull(),
     isOptional: boolean("is_optional").default(false).notNull(),
     description: text("description"),
@@ -66,22 +60,18 @@ export const formFieldsTable = pgTable(
     formIdIndex: index("idx_form_fields_form").on(table.formId),
     stepIdIndex: index("idx_form_fields_step").on(table.stepId),
     fieldIdIndex: index("idx_form_fields_field").on(table.fieldId),
-    // Composite index for efficient lookups
     formStepFieldIndex: index("idx_form_step_field").on(table.formId, table.stepId, table.fieldId),
   })
 );
 
-/**
- * Form templates table - stores reusable form templates
- */
 export const formTemplatesTable = pgTable(
   "form_templates",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    agentId: uuid("agent_id"), // Null for global templates
+    agentId: uuid("agent_id"),
     name: text("name").notNull(),
     description: text("description"),
-    steps: jsonb("steps").notNull(), // Template step definitions
+    steps: jsonb("steps").notNull(),
     metadata: jsonb("metadata").default("{}").notNull(),
     createdAt: timestamp("created_at").default(sql`now()`).notNull(),
     updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
@@ -92,9 +82,6 @@ export const formTemplatesTable = pgTable(
   })
 );
 
-/**
- * Relations
- */
 export const formsRelations = relations(formsTable, ({ many }) => ({
   fields: many(formFieldsTable),
 }));
@@ -106,14 +93,10 @@ export const formFieldsRelations = relations(formFieldsTable, ({ one }) => ({
   }),
 }));
 
-/**
- * Export the complete schema
- */
 export const formsSchema = {
   formsTable,
   formFieldsTable,
   formTemplatesTable,
-  // Also include the original structure for compatibility
   tables: {
     forms: formsTable,
     formFields: formFieldsTable,

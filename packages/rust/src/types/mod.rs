@@ -1,14 +1,4 @@
 //! Core types for elizaOS
-//!
-//! This module contains all the fundamental types used throughout the elizaOS system.
-//! All types are designed to serialize/deserialize to JSON in a format identical to
-//! the TypeScript implementation.
-//!
-//! ## Proto-generated Types
-//!
-//! The `generated` submodule contains types generated from Protocol Buffer schemas.
-//! These are the single source of truth for cross-language interoperability.
-//! For new code, prefer using types from `generated` for better compatibility.
 
 // Proto-generated types (single source of truth)
 pub mod generated;
@@ -39,7 +29,7 @@ pub mod testing;
 // From primitives
 pub use primitives::{
     as_uuid, string_to_uuid, Content, ContentType, Media, MentionContext, MentionType, Metadata,
-    UUID, UUIDError, DEFAULT_UUID_STR,
+    UUIDError, DEFAULT_UUID_STR, UUID,
 };
 
 // From agent
@@ -58,8 +48,8 @@ pub use components::{
 
 // From memory
 pub use memory::{
-    BaseMetadata, DescriptionMetadata, DocumentMetadata, FragmentMetadata, Memory,
-    MemoryMetadata, MemoryScope, MemoryType, MessageMemory, MessageMetadata,
+    BaseMetadata, DescriptionMetadata, DocumentMetadata, FragmentMetadata, Memory, MemoryMetadata,
+    MemoryScope, MemoryType, MessageMemory, MessageMetadata,
 };
 
 // From environment
@@ -81,19 +71,19 @@ pub use state::{State, StateData, WorkingMemoryEntry};
 
 // From database
 pub use database::{
-    ActionLogBody, ActionLogContent, ActionLogResult, AgentRunCounts, AgentRunSummary,
+    vector_dims, ActionLogBody, ActionLogContent, ActionLogResult, AgentRunCounts, AgentRunSummary,
     AgentRunSummaryResult, BaseLogBody, EmbeddingLogBody, EmbeddingSearchResult, EvaluatorLogBody,
-    GetMemoriesParams, Log, LogBody, MemoryRetrievalOptions, MemorySearchOptions, ModelActionContext,
-    ModelLogBody, PromptLogEntry, RunStatus, SearchMemoriesParams, vector_dims,
+    GetMemoriesParams, Log, LogBody, MemoryRetrievalOptions, MemorySearchOptions,
+    ModelActionContext, ModelLogBody, PromptLogEntry, RunStatus, SearchMemoriesParams,
 };
 
 // From model
 pub use model::{
-    DetokenizeTextParams, GenerateTextOptions, GenerateTextParams, GenerateTextResult,
-    ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams, LLMMode,
-    ModelHandlerInfo, ObjectGenerationParams, ObjectOutputType, ResponseFormat, ResponseFormatType,
-    TextEmbeddingParams, TextStreamChunk, TextToSpeechParams, TokenUsageInfo, TokenizeTextParams,
-    TranscriptionParams, model_settings, model_type,
+    model_settings, model_type, DetokenizeTextParams, GenerateTextOptions, GenerateTextParams,
+    GenerateTextResult, ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams,
+    LLMMode, ModelHandlerInfo, ObjectGenerationParams, ObjectOutputType, ResponseFormat,
+    ResponseFormatType, TextEmbeddingParams, TextStreamChunk, TextToSpeechParams, TokenUsageInfo,
+    TokenizeTextParams, TranscriptionParams,
 };
 
 // From plugin

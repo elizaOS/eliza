@@ -28,12 +28,6 @@ type FaceApiEnv = {
  */
 type CanvasAdapter = import("canvas").Canvas & HTMLCanvasElement;
 
-/**
- * Adapter type for node-canvas Image to HTMLImageElement.
- * Runtime-compatible but TypeScript types differ.
- */
-type ImageAdapter = import("canvas").Image & HTMLImageElement;
-
 function asCanvasEnv(canvas: typeof import("canvas")): FaceApiEnv {
   return {
     // node-canvas types don't match DOM types but are runtime-compatible with face-api.js

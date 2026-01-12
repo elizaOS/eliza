@@ -1,10 +1,3 @@
-/**
- * Local JSON-based database adapter for elizaOS
- *
- * A simple, file-based implementation for local development and testing.
- * Uses JSON files for persistence and a simple HNSW index for vector search.
- */
-
 import {
   type Agent,
   type Component,
@@ -17,6 +10,7 @@ import {
   type Memory,
   type MemoryMetadata,
   type MemoryTypeAlias,
+  type Metadata,
   type Participant,
   type Relationship,
   type Room,
@@ -27,7 +21,6 @@ import {
 import { SimpleHNSW } from "./hnsw";
 import { COLLECTIONS, type IStorage } from "./types";
 
-// Internal storage types (different from core types for storage purposes)
 interface StoredParticipant {
   id: string;
   entityId: string;
@@ -61,15 +54,12 @@ interface StoredRelationship {
   id: string;
   sourceEntityId: string;
   targetEntityId: string;
+  agentId?: string;
   tags?: string[];
-  metadata?: Record<string, unknown>;
+  metadata?: Metadata;
   createdAt?: string;
 }
 
-/**
- * Convert StoredMemory to Memory type
- * This explicit conversion is safer than type casts
- */
 function toMemory(stored: StoredMemory): Memory {
   return {
     id: stored.id as UUID | undefined,
@@ -86,16 +76,10 @@ function toMemory(stored: StoredMemory): Memory {
   };
 }
 
-/**
- * Convert array of StoredMemory to Memory array
- */
 function toMemories(stored: StoredMemory[]): Memory[] {
   return stored.map(toMemory);
 }
 
-/**
- * Local JSON-based database adapter
- */
 export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private storage: IStorage;
   private vectorIndex: SimpleHNSW;
@@ -108,8 +92,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     this.storage = storage;
     this.agentId = agentId;
     this.db = storage;
-
-    // Create HNSW with save/load callbacks
     this.vectorIndex = new SimpleHNSW(
       async () => {
         const index = this.vectorIndex.getIndex();
@@ -144,7 +126,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     _plugins: Array<{ name: string; schema?: Record<string, unknown> }>,
     _options?: { verbose?: boolean; force?: boolean; dryRun?: boolean }
   ): Promise<void> {
-    // No migrations needed for JSON storage
     logger.debug({ src: "plugin:localdb" }, "Plugin migrations not needed for JSON storage");
   }
 
@@ -153,7 +134,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async close(): Promise<void> {
-    // Save vector index before closing
     await this.vectorIndex.save();
     await this.storage.close();
     this.ready = false;
@@ -163,8 +143,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async getConnection(): Promise<IStorage> {
     return this.storage;
   }
-
-  // ==================== Agent Methods ====================
 
   async getAgent(agentId: UUID): Promise<Agent | null> {
     return this.storage.get<Agent>(COLLECTIONS.AGENTS, agentId);
@@ -201,8 +179,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  // ==================== Entity Methods ====================
-
   async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
     const entities: Entity[] = [];
     for (const id of entityIds) {
@@ -213,7 +189,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getEntitiesForRoom(roomId: UUID, includeComponents = false): Promise<Entity[]> {
-    // First get participants for this room
     const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId
@@ -248,8 +223,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     if (!entity.id) return;
     await this.storage.set(COLLECTIONS.ENTITIES, entity.id, entity);
   }
-
-  // ==================== Component Methods ====================
 
   async getComponent(
     entityId: UUID,
@@ -293,8 +266,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.delete(COLLECTIONS.COMPONENTS, componentId);
   }
 
-  // ==================== Memory Methods ====================
-
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
@@ -319,10 +290,8 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
       return true;
     });
 
-    // Sort by createdAt descending
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
-    // Apply offset and count
     if (params.offset) {
       memories = memories.slice(params.offset);
     }
@@ -377,7 +346,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     query_field_sub_name: string;
     query_match_count: number;
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
-    // Simple implementation: find memories with matching content
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) => m.metadata?.type === params.query_table_name
@@ -388,9 +356,8 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     for (const memory of memories) {
       if (!memory.embedding) continue;
 
-      // Simple string matching score (not true Levenshtein)
-      // Access the content property dynamically based on query_field_name
-      const memoryRecord = memory as StoredMemory & Record<string, unknown>;
+      const memoryRecord = memory as StoredMemory &
+        Record<string, string | number | boolean | null | undefined | string[] | UUID>;
       const fieldValue = memoryRecord[params.query_field_name];
       const content = String(fieldValue ?? "");
       const score = this.simpleStringScore(params.query_input, content);
@@ -407,7 +374,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   private simpleStringScore(a: string, b: string): number {
-    // Simple scoring: 0 = exact match, higher = less similar
     if (a === b) return 0;
     const aLower = a.toLowerCase();
     const bLower = b.toLowerCase();
@@ -473,16 +439,12 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const threshold = params.match_threshold ?? 0.5;
     const count = params.count ?? 10;
 
-    // Use HNSW index for vector search
     const results = await this.vectorIndex.search(params.embedding, count * 2, threshold);
-
-    // Get memories and filter by additional criteria
     const memories: Memory[] = [];
     for (const result of results) {
       const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, result.id);
       if (!memory) continue;
 
-      // Apply filters
       if (params.tableName && memory.metadata?.type !== params.tableName) continue;
       if (params.roomId && memory.roomId !== params.roomId) continue;
       if (params.worldId && memory.worldId !== params.worldId) continue;
@@ -516,7 +478,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
     await this.storage.set(COLLECTIONS.MEMORIES, id, storedMemory);
 
-    // Index embedding if present
     if (memory.embedding && memory.embedding.length > 0) {
       await this.vectorIndex.add(id, memory.embedding);
       await this.vectorIndex.save();
@@ -542,7 +503,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
     await this.storage.set(COLLECTIONS.MEMORIES, memory.id, updated);
 
-    // Update embedding index if changed
     if (memory.embedding && memory.embedding.length > 0) {
       await this.vectorIndex.add(memory.id, memory.embedding);
       await this.vectorIndex.save();
@@ -599,8 +559,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return toMemories(memories);
   }
 
-  // ==================== World Methods ====================
-
   async createWorld(world: World): Promise<UUID> {
     const id = world.id ?? (crypto.randomUUID() as UUID);
     await this.storage.set(COLLECTIONS.WORLDS, id, { ...world, id });
@@ -624,8 +582,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.set(COLLECTIONS.WORLDS, world.id, world);
   }
 
-  // ==================== Room Methods ====================
-
   async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
     const rooms: Room[] = [];
     for (const id of roomIds) {
@@ -647,12 +603,10 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async deleteRoom(roomId: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.ROOMS, roomId);
-    // Also delete participants for this room
     await this.storage.deleteWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId
     );
-    // Delete memories for this room
     await this.storage.deleteWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => m.roomId === roomId);
   }
 
@@ -690,8 +644,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) => r.worldId === worldId);
   }
 
-  // ==================== Participant Methods ====================
-
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
     const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
@@ -714,7 +666,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
       (p) => p.entityId === entityId
     );
 
-    // Convert stored format to Participant format
     const participants: Participant[] = [];
     for (const p of stored) {
       const entity = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, p.entityId);
@@ -795,21 +746,20 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  // ==================== Relationship Methods ====================
-
   async createRelationship(params: {
     sourceEntityId: UUID;
     targetEntityId: UUID;
     tags?: string[];
-    metadata?: Record<string, unknown>;
+    metadata?: Metadata;
   }): Promise<boolean> {
     const id = crypto.randomUUID() as UUID;
     const relationship: StoredRelationship = {
       id,
       sourceEntityId: params.sourceEntityId,
       targetEntityId: params.targetEntityId,
+      agentId: this.agentId,
       tags: params.tags ?? [],
-      metadata: params.metadata ?? {},
+      metadata: params.metadata ?? ({} as Metadata),
       createdAt: new Date().toISOString(),
     };
     await this.storage.set(COLLECTIONS.RELATIONSHIPS, id, relationship);
@@ -833,10 +783,11 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
       id: r.id as UUID,
       sourceEntityId: r.sourceEntityId as UUID,
       targetEntityId: r.targetEntityId as UUID,
+      agentId: (r.agentId as UUID) ?? this.agentId,
       tags: r.tags ?? [],
       metadata: r.metadata ?? {},
       createdAt: r.createdAt,
-    } as Relationship;
+    };
   }
 
   async getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]> {
@@ -857,44 +808,38 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
       id: r.id as UUID,
       sourceEntityId: r.sourceEntityId as UUID,
       targetEntityId: r.targetEntityId as UUID,
+      agentId: (r.agentId as UUID) ?? this.agentId,
       tags: r.tags ?? [],
       metadata: r.metadata ?? {},
       createdAt: r.createdAt,
-    })) as Relationship[];
+    }));
   }
 
-  async updateRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: Record<string, unknown>;
-  }): Promise<void> {
+  async updateRelationship(relationship: Relationship): Promise<void> {
     const existing = await this.getRelationship({
-      sourceEntityId: params.sourceEntityId,
-      targetEntityId: params.targetEntityId,
+      sourceEntityId: relationship.sourceEntityId,
+      targetEntityId: relationship.targetEntityId,
     });
 
     if (!existing || !existing.id) return;
 
     const stored: StoredRelationship = {
       id: existing.id,
-      sourceEntityId: params.sourceEntityId,
-      targetEntityId: params.targetEntityId,
-      tags: params.tags ?? existing.tags ?? [],
-      metadata: { ...(existing.metadata ?? {}), ...(params.metadata ?? {}) },
-      createdAt: existing.createdAt as string,
+      sourceEntityId: relationship.sourceEntityId,
+      targetEntityId: relationship.targetEntityId,
+      agentId: relationship.agentId,
+      tags: relationship.tags ?? existing.tags ?? [],
+      metadata: { ...(existing.metadata ?? {}), ...(relationship.metadata ?? {}) },
+      createdAt: existing.createdAt ?? new Date().toISOString(),
     };
 
     await this.storage.set(COLLECTIONS.RELATIONSHIPS, existing.id, stored);
   }
 
-  // ==================== Cache Methods ====================
-
   async getCache<T>(key: string): Promise<T | undefined> {
     const cached = await this.storage.get<{ value: T; expiresAt?: number }>(COLLECTIONS.CACHE, key);
     if (!cached) return undefined;
 
-    // Check expiration if set
     if (cached.expiresAt && Date.now() > cached.expiresAt) {
       await this.deleteCache(key);
       return undefined;
@@ -911,8 +856,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async deleteCache(key: string): Promise<boolean> {
     return this.storage.delete(COLLECTIONS.CACHE, key);
   }
-
-  // ==================== Task Methods ====================
 
   async createTask(task: Task): Promise<UUID> {
     const id = task.id ?? (crypto.randomUUID() as UUID);

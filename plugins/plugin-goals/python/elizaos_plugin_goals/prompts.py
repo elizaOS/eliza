@@ -1,5 +1,3 @@
-"""Prompt templates for the Goals plugin."""
-
 CHECK_SIMILARITY_TEMPLATE = """# Task: Check Goal Similarity
 
 ## New Goal
@@ -170,15 +168,6 @@ def build_check_similarity_prompt(
 
 
 def build_extract_goal_prompt(text: str, message_history: str) -> str:
-    """Build the extract goal prompt with provided values.
-
-    Args:
-        text: User message text
-        message_history: Recent message history
-
-    Returns:
-        Formatted prompt string
-    """
     return EXTRACT_GOAL_TEMPLATE.replace("{{text}}", text).replace(
         "{{messageHistory}}", message_history
     )
@@ -187,16 +176,6 @@ def build_extract_goal_prompt(text: str, message_history: str) -> str:
 def build_extract_cancellation_prompt(
     text: str, message_history: str, available_tasks: str
 ) -> str:
-    """Build the extract cancellation prompt with provided values.
-
-    Args:
-        text: User message text
-        message_history: Recent message history
-        available_tasks: Formatted list of available tasks
-
-    Returns:
-        Formatted prompt string
-    """
     return (
         EXTRACT_CANCELLATION_TEMPLATE.replace("{{text}}", text)
         .replace("{{messageHistory}}", message_history)
@@ -207,16 +186,6 @@ def build_extract_cancellation_prompt(
 def build_extract_confirmation_prompt(
     text: str, message_history: str, pending_task: str
 ) -> str:
-    """Build the extract confirmation prompt with provided values.
-
-    Args:
-        text: User message text
-        message_history: Recent message history
-        pending_task: Details of the pending task
-
-    Returns:
-        Formatted prompt string
-    """
     return (
         EXTRACT_CONFIRMATION_TEMPLATE.replace("{{text}}", text)
         .replace("{{messageHistory}}", message_history)
@@ -225,30 +194,12 @@ def build_extract_confirmation_prompt(
 
 
 def build_extract_goal_selection_prompt(text: str, available_goals: str) -> str:
-    """Build the extract goal selection prompt with provided values.
-
-    Args:
-        text: User message text
-        available_goals: Formatted list of available goals
-
-    Returns:
-        Formatted prompt string
-    """
     return EXTRACT_GOAL_SELECTION_TEMPLATE.replace("{{text}}", text).replace(
         "{{availableGoals}}", available_goals
     )
 
 
 def build_extract_goal_update_prompt(text: str, goal_details: str) -> str:
-    """Build the extract goal update prompt with provided values.
-
-    Args:
-        text: User message text
-        goal_details: Current goal details
-
-    Returns:
-        Formatted prompt string
-    """
     return EXTRACT_GOAL_UPDATE_TEMPLATE.replace("{{text}}", text).replace(
         "{{goalDetails}}", goal_details
     )

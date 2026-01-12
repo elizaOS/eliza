@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! Token swap action implementation
-//!
-//! Handles token swaps on EVM chains using aggregator APIs.
 
 use alloy::{
     hex,
@@ -18,24 +15,17 @@ use crate::error::{EVMError, EVMErrorCode, EVMResult};
 use crate::providers::WalletProvider;
 use crate::types::{SupportedChain, Transaction};
 
-/// Parameters for a token swap
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwapParams {
-    /// Chain to execute on
     pub chain: SupportedChain,
-    /// Input token address
     pub from_token: Address,
-    /// Output token address
     pub to_token: Address,
-    /// Amount to swap (in wei/smallest unit)
     pub amount: String,
-    /// Slippage tolerance (optional, default 1%)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub slippage: Option<f64>,
 }
 
 impl SwapParams {
-    /// Create new swap parameters
     #[must_use]
     pub fn new(
         chain: SupportedChain,
@@ -52,20 +42,17 @@ impl SwapParams {
         }
     }
 
-    /// Set slippage tolerance
     #[must_use]
     pub fn with_slippage(mut self, slippage: f64) -> Self {
         self.slippage = Some(slippage);
         self
     }
 
-    /// Get slippage or default
     #[must_use]
     pub fn slippage_or_default(&self) -> f64 {
         self.slippage.unwrap_or(DEFAULT_SLIPPAGE_PERCENT)
     }
 
-    /// Validate the swap parameters
     pub fn validate(&self) -> EVMResult<()> {
         if self.amount.is_empty() {
             return Err(EVMError::invalid_params("Amount is required"));
@@ -81,24 +68,16 @@ impl SwapParams {
     }
 }
 
-/// Swap quote from aggregator
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwapQuote {
-    /// Aggregator name
     pub aggregator: String,
-    /// Minimum output amount
     pub min_output_amount: String,
-    /// Transaction to execute
     pub to: Address,
-    /// Transaction value
     pub value: U256,
-    /// Transaction data
     pub data: Bytes,
-    /// Estimated gas
     pub gas_limit: Option<u64>,
 }
 
-/// LiFi API quote response
 #[derive(Debug, Deserialize)]
 struct LifiQuoteResponse {
     estimate: LifiEstimate,
@@ -121,14 +100,12 @@ struct LifiTransactionRequest {
     gas_limit: Option<String>,
 }
 
-/// Swap action executor
 pub struct SwapAction {
     provider: Arc<WalletProvider>,
     http_client: reqwest::Client,
 }
 
 impl SwapAction {
-    /// Create a new swap action
     #[must_use]
     pub fn new(provider: Arc<WalletProvider>) -> Self {
         Self {
@@ -137,7 +114,6 @@ impl SwapAction {
         }
     }
 
-    /// Get a swap quote from LiFi
     pub async fn get_quote(&self, params: &SwapParams) -> EVMResult<SwapQuote> {
         params.validate()?;
 
@@ -206,7 +182,6 @@ impl SwapAction {
         })
     }
 
-    /// Execute a token swap
     pub async fn execute(&self, params: SwapParams) -> EVMResult<Transaction> {
         params.validate()?;
 
@@ -214,7 +189,6 @@ impl SwapAction {
         let chain_id = params.chain.chain_id();
         let chain_provider = self.provider.provider(params.chain)?;
 
-        // Build transaction
         let mut tx = TransactionRequest::default()
             .with_to(quote.to)
             .with_value(quote.value)
@@ -224,7 +198,6 @@ impl SwapAction {
             tx = tx.with_gas_limit(gas_limit);
         }
 
-        // Send transaction
         let pending = chain_provider
             .send_transaction(tx)
             .await
@@ -236,8 +209,6 @@ impl SwapAction {
             })?;
 
         let tx_hash = *pending.tx_hash();
-
-        // Wait for confirmation
         let receipt = pending.get_receipt().await.map_err(|e| {
             EVMError::new(
                 EVMErrorCode::TransactionFailed,

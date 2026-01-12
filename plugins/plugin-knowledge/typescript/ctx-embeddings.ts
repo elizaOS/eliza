@@ -1,25 +1,7 @@
-/**
- * Prompt templates and utilities for generating contextual embeddings.
- * Based on Anthropic's contextual retrieval techniques:
- * https://www.anthropic.com/news/contextual-retrieval
- * https://github.com/anthropics/anthropic-cookbook/blob/main/skills/contextual-embeddings/guide.ipynb
- */
-
-/**
- * Default token size settings for chunking and context generation.
- * These values have been adjusted based on research findings:
- * - Average chunk sizes of 400-600 tokens tend to work well for contextual embeddings
- * - Smaller chunks improve retrieval precision over larger ones
- * - Overlap should be meaningful to maintain context between chunks
- */
 export const DEFAULT_CHUNK_TOKEN_SIZE = 500;
 export const DEFAULT_CHUNK_OVERLAP_TOKENS = 100;
-export const DEFAULT_CHARS_PER_TOKEN = 3.5; // Approximation for English text
+export const DEFAULT_CHARS_PER_TOKEN = 3.5;
 
-/**
- * Target context sizes for different document types.
- * Based on Anthropic's research, contextual enrichment typically adds 50-100 tokens.
- */
 export const CONTEXT_TARGETS = {
   DEFAULT: {
     MIN_TOKENS: 60,
@@ -43,16 +25,9 @@ export const CONTEXT_TARGETS = {
   },
 };
 
-/**
- * Modern system prompt for contextual embeddings based on Anthropic's guidelines.
- * This system prompt is more concise and focused on the specific task.
- */
 export const SYSTEM_PROMPT =
   "You are a precision text augmentation tool. Your task is to expand a given text chunk with its direct context from a larger document. You must: 1) Keep the original chunk intact; 2) Add critical context from surrounding text; 3) Never summarize or rephrase the original chunk; 4) Create contextually rich output for improved semantic retrieval.";
 
-/**
- * System prompts optimized for different content types with caching support
- */
 export const SYSTEM_PROMPTS = {
   DEFAULT:
     "You are a precision text augmentation tool. Your task is to expand a given text chunk with its direct context from a larger document. You must: 1) Keep the original chunk intact; 2) Add critical context from surrounding text; 3) Never summarize or rephrase the original chunk; 4) Create contextually rich output for improved semantic retrieval.",
@@ -68,10 +43,6 @@ export const SYSTEM_PROMPTS = {
     "You are a precision technical documentation augmentation tool. Your task is to expand a technical document chunk with critical context. You must: 1) Keep the original chunk intact including all technical terminology; 2) Add relevant configuration examples, parameter definitions, or API references; 3) Include any prerequisite information; 4) Create contextually rich output that maintains technical accuracy.",
 };
 
-/**
- * Enhanced contextual embedding prompt template optimized for better retrieval performance.
- * Based on Anthropic's research showing significant improvements in retrieval accuracy.
- */
 export const CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE = `
 <document>
 {doc_content}
@@ -120,9 +91,6 @@ Create an enriched version of this chunk by adding critical surrounding context.
 
 Provide ONLY the enriched chunk text in your response:`;
 
-/**
- * Caching-optimized code chunk prompt
- */
 export const CACHED_CODE_CHUNK_PROMPT_TEMPLATE = `
 Here is the chunk of code we want to situate within the whole document:
 <chunk>
@@ -164,9 +132,6 @@ Create an enriched version of this chunk by adding critical surrounding context.
 
 Provide ONLY the enriched chunk text in your response:`;
 
-/**
- * Caching-optimized technical documentation chunk prompt
- */
 export const CACHED_TECHNICAL_PROMPT_TEMPLATE = `
 Here is the chunk we want to situate within the whole document:
 <chunk>
@@ -302,16 +267,6 @@ export function getContextualizationPrompt(
     .replace("{max_tokens}", maxTokens.toString());
 }
 
-/**
- * Generates a caching-compatible prompt string for contextual enrichment.
- * This separates the document from the chunk instructions to support OpenRouter caching.
- *
- * @param chunkContent - The content of the specific chunk to be contextualized.
- * @param contentType - Optional content type to determine specialized prompts.
- * @param minTokens - Minimum target token length for the result.
- * @param maxTokens - Maximum target token length for the result.
- * @returns Object containing the prompt and appropriate system message.
- */
 export function getCachingContextualizationPrompt(
   chunkContent: string,
   contentType?: string,
@@ -379,14 +334,6 @@ export function getCachingContextualizationPrompt(
   };
 }
 
-/**
- * Generates mime-type specific prompts with optimized parameters for different content types.
- *
- * @param mimeType - The MIME type of the document (e.g., 'application/pdf', 'text/markdown').
- * @param docContent - The full content of the document.
- * @param chunkContent - The content of the specific chunk.
- * @returns The formatted prompt string with mime-type specific settings.
- */
 export function getPromptForMimeType(
   mimeType: string,
   docContent: string,
@@ -435,14 +382,6 @@ export function getPromptForMimeType(
   return getContextualizationPrompt(docContent, chunkContent, minTokens, maxTokens, promptTemplate);
 }
 
-/**
- * Optimized version of getPromptForMimeType that separates document from prompt.
- * Returns structured data that supports OpenRouter caching.
- *
- * @param mimeType - The MIME type of the document.
- * @param chunkContent - The content of the specific chunk.
- * @returns Object containing prompt text and system message.
- */
 export function getCachingPromptForMimeType(
   mimeType: string,
   chunkContent: string
@@ -481,38 +420,27 @@ export function getCachingPromptForMimeType(
   return getCachingContextualizationPrompt(chunkContent, mimeType, minTokens, maxTokens);
 }
 
-/**
- * Determines if a document likely contains mathematical content based on heuristics.
- *
- * @param content - The document content to analyze.
- * @returns True if the document appears to contain mathematical content.
- */
 function containsMathematicalContent(content: string): boolean {
-  // Check for LaTeX-style math notation
   const latexMathPatterns = [
-    /\$\$.+?\$\$/s, // Display math: $$ ... $$
-    /\$.+?\$/g, // Inline math: $ ... $
-    /\\begin\{equation\}/, // LaTeX equation environment
-    /\\begin\{align\}/, // LaTeX align environment
-    /\\sum_/, // Summation
-    /\\int/, // Integral
-    /\\frac\{/, // Fraction
-    /\\sqrt\{/, // Square root
-    /\\alpha|\\beta|\\gamma|\\delta|\\theta|\\lambda|\\sigma/, // Greek letters
-    /\\nabla|\\partial/, // Differential operators
+    /\$\$.+?\$\$/s,
+    /\$.+?\$/g,
+    /\\begin\{equation\}/,
+    /\\begin\{align\}/,
+    /\\sum_/,
+    /\\int/,
+    /\\frac\{/,
+    /\\sqrt\{/,
+    /\\alpha|\\beta|\\gamma|\\delta|\\theta|\\lambda|\\sigma/,
+    /\\nabla|\\partial/,
   ];
-
-  // Check for common non-LaTeX mathematical patterns
   const generalMathPatterns = [
-    /[≠≤≥±∞∫∂∑∏√∈∉⊆⊇⊂⊃∪∩]/, // Mathematical symbols
-    /\b[a-zA-Z]\^[0-9]/, // Simple exponents (e.g., x^2)
-    /\(\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*\)/, // Coordinates
-    /\b[xyz]\s*=\s*-?\d+(\.\d+)?/, // Simple equations
-    /\[\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*\]/, // Vectors/matrices
-    /\b\d+\s*×\s*\d+/, // Dimensions with × symbol
+    /[≠≤≥±∞∫∂∑∏√∈∉⊆⊇⊂⊃∪∩]/,
+    /\b[a-zA-Z]\^[0-9]/,
+    /\(\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*\)/,
+    /\b[xyz]\s*=\s*-?\d+(\.\d+)?/,
+    /\[\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*\]/,
+    /\b\d+\s*×\s*\d+/,
   ];
-
-  // Test for LaTeX patterns
   for (const pattern of latexMathPatterns) {
     if (pattern.test(content)) {
       return true;
@@ -545,48 +473,31 @@ function containsMathematicalContent(content: string): boolean {
   const contentLower = content.toLowerCase();
   const mathKeywordCount = mathKeywords.filter((keyword) => contentLower.includes(keyword)).length;
 
-  // If multiple math keywords are present, it likely contains math
   return mathKeywordCount >= 2;
 }
 
-/**
- * Determines if a document is technical documentation based on heuristics.
- *
- * @param content - The document content to analyze.
- * @returns True if the document appears to be technical documentation.
- */
 function isTechnicalDocumentation(content: string): boolean {
-  // Technical documentation patterns
   const technicalPatterns = [
-    /\b(version|v)\s*\d+\.\d+(\.\d+)?/i, // Version numbers
-    /\b(api|sdk|cli)\b/i, // Technical acronyms
-    /\b(http|https|ftp):\/\//i, // URLs
-    /\b(GET|POST|PUT|DELETE)\b/, // HTTP methods
-    /<\/?[a-z][\s\S]*>/i, // HTML/XML tags
-    /\bREADME\b|\bCHANGELOG\b/i, // Common doc file names
-    /\b(config|configuration)\b/i, // Configuration references
-    /\b(parameter|param|argument|arg)\b/i, // Parameter references
+    /\b(version|v)\s*\d+\.\d+(\.\d+)?/i,
+    /\b(api|sdk|cli)\b/i,
+    /\b(http|https|ftp):\/\//i,
+    /\b(GET|POST|PUT|DELETE)\b/,
+    /<\/?[a-z][\s\S]*>/i,
+    /\bREADME\b|\bCHANGELOG\b/i,
+    /\b(config|configuration)\b/i,
+    /\b(parameter|param|argument|arg)\b/i,
   ];
 
-  // Check for common technical documentation headings
   const docHeadings = [
     /\b(Introduction|Overview|Getting Started|Installation|Usage|API Reference|Troubleshooting)\b/i,
   ];
-
-  // Check for patterns that suggest it's documentation
   for (const pattern of [...technicalPatterns, ...docHeadings]) {
     if (pattern.test(content)) {
       return true;
     }
   }
 
-  // Check for patterns of numbered or bullet point lists which are common in documentation
-  const listPatterns = [
-    /\d+\.\s.+\n\d+\.\s.+/, // Numbered lists
-    /•\s.+\n•\s.+/, // Bullet points with •
-    /\*\s.+\n\*\s.+/, // Bullet points with *
-    /-\s.+\n-\s.+/, // Bullet points with -
-  ];
+  const listPatterns = [/\d+\.\s.+\n\d+\.\s.+/, /•\s.+\n•\s.+/, /\*\s.+\n\*\s.+/, /-\s.+\n-\s.+/];
 
   for (const pattern of listPatterns) {
     if (pattern.test(content)) {
@@ -597,13 +508,6 @@ function isTechnicalDocumentation(content: string): boolean {
   return false;
 }
 
-/**
- * Combines the original chunk content with its generated contextual enrichment.
- *
- * @param chunkContent - The original content of the chunk.
- * @param generatedContext - The contextual enrichment generated by the LLM.
- * @returns The enriched chunk, or the original chunkContent if the enrichment is empty.
- */
 export function getChunkWithContext(chunkContent: string, generatedContext: string): string {
   if (!generatedContext || generatedContext.trim() === "") {
     console.warn("Generated context is empty. Falling back to original chunk content.");

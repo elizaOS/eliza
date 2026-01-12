@@ -1,7 +1,3 @@
-"""
-Type definitions for the shell plugin.
-"""
-
 from __future__ import annotations
 
 import os
@@ -11,8 +7,6 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class FileOperationType(str, Enum):
-    """Type of file operation detected."""
-
     CREATE = "create"
     WRITE = "write"
     READ = "read"
@@ -23,16 +17,12 @@ class FileOperationType(str, Enum):
 
 
 class FileOperation(BaseModel):
-    """File operation performed by a command."""
-
     type: FileOperationType
     target: str
     secondary_target: str | None = None
 
 
 class CommandResult(BaseModel):
-    """Result of a command execution."""
-
     success: bool
     stdout: str
     stderr: str
@@ -42,8 +32,6 @@ class CommandResult(BaseModel):
 
 
 class CommandHistoryEntry(BaseModel):
-    """Entry in the command history."""
-
     command: str
     stdout: str
     stderr: str
@@ -79,13 +67,11 @@ DEFAULT_FORBIDDEN_COMMANDS: tuple[str, ...] = (
     "mkfs",
     "dd if=/dev/zero",
     "shred",
-    ":(){:|:&};:",  # Fork bomb
+    ":(){:|:&};:",
 )
 
 
 class ShellConfig(BaseModel):
-    """Shell plugin configuration."""
-
     enabled: bool = False
     allowed_directory: str
     timeout: int = Field(default=30000, gt=0)
@@ -94,21 +80,17 @@ class ShellConfig(BaseModel):
     @field_validator("allowed_directory")
     @classmethod
     def validate_directory(cls, v: str) -> str:
-        """Validate and normalize the allowed directory path."""
         return os.path.abspath(os.path.expanduser(v))
 
     @classmethod
     def from_env(cls) -> ShellConfig:
-        """Load configuration from environment variables."""
         enabled = os.getenv("SHELL_ENABLED", "false").lower() == "true"
         allowed_directory = os.getenv("SHELL_ALLOWED_DIRECTORY", os.getcwd())
         timeout = int(os.getenv("SHELL_TIMEOUT", "30000"))
 
-        # Parse custom forbidden commands
         custom_forbidden_str = os.getenv("SHELL_FORBIDDEN_COMMANDS", "")
         custom_forbidden = [cmd.strip() for cmd in custom_forbidden_str.split(",") if cmd.strip()]
 
-        # Combine with defaults
         all_forbidden = list(set(list(DEFAULT_FORBIDDEN_COMMANDS) + custom_forbidden))
 
         return cls(
@@ -117,8 +99,3 @@ class ShellConfig(BaseModel):
             timeout=timeout,
             forbidden_commands=all_forbidden,
         )
-
-
-
-
-

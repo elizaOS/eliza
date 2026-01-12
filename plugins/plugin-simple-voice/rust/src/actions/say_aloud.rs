@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! SAY_ALOUD Action - Speak text using SAM synthesizer.
 
 use std::sync::Arc;
 use regex::Regex;
@@ -8,11 +7,9 @@ use tracing::info;
 use crate::services::SamTTSService;
 use crate::types::{SamTTSOptions, Memory, CallbackResult, SPEECH_TRIGGERS, VOCALIZATION_PATTERNS};
 
-/// Extract text to speak from user message.
 pub fn extract_text_to_speak(message_text: &str) -> String {
     let text = message_text.to_lowercase();
 
-    // Try quoted text
     let quoted_patterns = [
         r#"say ["']([^"']+)["']"#,
         r#"speak ["']([^"']+)["']"#,
@@ -31,7 +28,6 @@ pub fn extract_text_to_speak(message_text: &str) -> String {
         }
     }
 
-    // Try text after keywords
     let keyword_patterns = [
         r"(?:say|speak|read)\s+(?:aloud\s+)?(?:this\s+)?:?\s*(.+)$",
         r"(?:can you|please)\s+(?:say|speak|read)\s+(?:aloud\s+)?(.+)$",
@@ -86,7 +82,6 @@ pub fn extract_voice_options(message_text: &str) -> SamTTSOptions {
     options
 }
 
-/// SAY_ALOUD Action - Speaks text using SAM synthesizer.
 pub struct SayAloudAction {
     pub name: &'static str,
     pub description: &'static str,
@@ -112,7 +107,6 @@ impl SayAloudAction {
         has_trigger || has_intent
     }
 
-    /// Handle the SAY_ALOUD action.
     pub async fn handler(&self, service: Arc<SamTTSService>, message: &Memory) -> CallbackResult {
         info!("[SAY_ALOUD] Processing speech request");
 

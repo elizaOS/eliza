@@ -1,10 +1,3 @@
-"""
-Choice Provider - Provides choice options for the agent.
-
-This provider formats available choices when the agent needs
-to select from a list of options.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,7 +9,6 @@ if TYPE_CHECKING:
 
 
 def format_choice(index: int, choice: dict[str, str]) -> str:
-    """Format a single choice option."""
     label = choice.get("label", f"Option {index + 1}")
     description = choice.get("description", "")
     value = choice.get("value", str(index))
@@ -31,15 +23,8 @@ async def get_choice_options(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get available choice options.
-
-    Returns formatted choice options if the current context
-    requires the agent to make a selection.
-    """
     choices: list[dict[str, str]] = []
 
-    # Extract choices from message content
     if message.content and hasattr(message.content, "choices"):
         raw_choices = message.content.choices or []
         for choice in raw_choices:
@@ -48,7 +33,6 @@ async def get_choice_options(
             elif isinstance(choice, str):
                 choices.append({"label": choice, "value": choice})
 
-    # Also check state for choices
     if state and hasattr(state, "choices"):
         state_choices = state.choices or []
         for choice in state_choices:
@@ -60,13 +44,8 @@ async def get_choice_options(
     if not choices:
         return ProviderResult(
             text="",
-            values={
-                "hasChoices": False,
-                "choiceCount": 0,
-            },
-            data={
-                "choices": [],
-            },
+            values={"hasChoices": False, "choiceCount": 0},
+            data={"choices": []},
         )
 
     formatted_choices = "\n".join(format_choice(i, choice) for i, choice in enumerate(choices))
@@ -86,7 +65,6 @@ async def get_choice_options(
     )
 
 
-# Create the provider instance
 choice_provider = Provider(
     name="CHOICE",
     description="Available choice options for selection",

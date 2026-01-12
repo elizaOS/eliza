@@ -62,7 +62,6 @@ export const unsubscribeFeedAction: Action = {
     }
     runtime.logger.debug({ url }, "Attempting to unsubscribe from feed");
 
-    // Unsubscribe from the feed
     const success = await service.unsubscribeFeed(url);
 
     if (success) {

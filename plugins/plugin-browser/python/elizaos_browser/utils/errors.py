@@ -1,9 +1,3 @@
-"""
-Browser Plugin Error Classes
-
-Provides structured error handling with user-friendly messages.
-"""
-
 import logging
 from typing import Any
 
@@ -13,8 +7,6 @@ logger = logging.getLogger(__name__)
 
 
 class BrowserError(Exception):
-    """Base browser error class."""
-
     def __init__(
         self,
         message: str,
@@ -31,8 +23,6 @@ class BrowserError(Exception):
 
 
 class ServiceNotAvailableError(BrowserError):
-    """Browser service is not available."""
-
     def __init__(self) -> None:
         super().__init__(
             message="Browser service is not available",
@@ -43,8 +33,6 @@ class ServiceNotAvailableError(BrowserError):
 
 
 class SessionError(BrowserError):
-    """Browser session error."""
-
     def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(
             message=message,
@@ -56,8 +44,6 @@ class SessionError(BrowserError):
 
 
 class NavigationError(BrowserError):
-    """Navigation error."""
-
     def __init__(self, url: str, original_error: Exception | None = None) -> None:
         message = f"Failed to navigate to {url}"
         if original_error:
@@ -73,8 +59,6 @@ class NavigationError(BrowserError):
 
 
 class ActionError(BrowserError):
-    """Browser action error."""
-
     def __init__(self, action: str, target: str, original_error: Exception | None = None) -> None:
         message = f"Failed to {action} on {target}"
         if original_error:
@@ -94,8 +78,6 @@ class ActionError(BrowserError):
 
 
 class SecurityError(BrowserError):
-    """Security validation error."""
-
     def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(
             message=message,
@@ -107,8 +89,6 @@ class SecurityError(BrowserError):
 
 
 class CaptchaError(BrowserError):
-    """CAPTCHA solving error."""
-
     def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(
             message=message,
@@ -120,8 +100,6 @@ class CaptchaError(BrowserError):
 
 
 class TimeoutError(BrowserError):
-    """Operation timeout error."""
-
     def __init__(self, operation: str, timeout_ms: int) -> None:
         super().__init__(
             message=f"{operation} timed out after {timeout_ms}ms",
@@ -133,8 +111,6 @@ class TimeoutError(BrowserError):
 
 
 class NoUrlFoundError(BrowserError):
-    """No URL found in message."""
-
     def __init__(self) -> None:
         super().__init__(
             message="No URL found in message",
@@ -149,7 +125,6 @@ def handle_browser_error(
     callback: Any | None = None,
     action: str | None = None,
 ) -> None:
-    """Handle browser errors with logging and callback."""
     if isinstance(error, BrowserError):
         logger.error(f"Browser error [{error.code}]: {error}")
         if callback:
@@ -163,6 +138,3 @@ def handle_browser_error(
                 else "I encountered an unexpected error. Please try again."
             )
             callback({"text": message, "error": True})
-
-
-

@@ -2,12 +2,11 @@
 //!
 //! Provides the main TelegramService for connecting to Telegram and handling events.
 
-use async_trait::async_trait;
 use std::sync::Arc;
 use teloxide::prelude::*;
-use teloxide::types::{ChatId, MessageId};
+use teloxide::types::{ChatId, MessageId, ReplyParameters};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use crate::config::TelegramConfig;
 use crate::error::{Result, TelegramError};
@@ -166,7 +165,7 @@ impl TelegramService {
     }
 
     /// Send a message to a chat
-    pub async fn send_message(&self, chat_id: i64, text: &str) -> Result<i64> {
+    pub async fn send_message(&self, chat_id: i64, text: &str) -> Result<i32> {
         let bot = self.bot.as_ref().ok_or(TelegramError::ClientNotInitialized)?;
 
         // Split message if too long
@@ -188,9 +187,9 @@ impl TelegramService {
     pub async fn reply_to_message(
         &self,
         chat_id: i64,
-        message_id: i64,
+        message_id: i32,
         text: &str,
-    ) -> Result<i64> {
+    ) -> Result<i32> {
         let bot = self.bot.as_ref().ok_or(TelegramError::ClientNotInitialized)?;
 
         // Split message if too long
@@ -200,7 +199,7 @@ impl TelegramService {
         for (i, part) in parts.iter().enumerate() {
             let msg = if i == 0 {
                 bot.send_message(ChatId(chat_id), part)
-                    .reply_to_message_id(MessageId(message_id as i32))
+                    .reply_parameters(ReplyParameters::new(MessageId(message_id)))
                     .await
                     .map_err(|e| TelegramError::ApiError(e.to_string()))?
             } else {
@@ -215,10 +214,10 @@ impl TelegramService {
     }
 
     /// Edit a message
-    pub async fn edit_message(&self, chat_id: i64, message_id: i64, text: &str) -> Result<()> {
+    pub async fn edit_message(&self, chat_id: i64, message_id: i32, text: &str) -> Result<()> {
         let bot = self.bot.as_ref().ok_or(TelegramError::ClientNotInitialized)?;
 
-        bot.edit_message_text(ChatId(chat_id), MessageId(message_id as i32), text)
+        bot.edit_message_text(ChatId(chat_id), MessageId(message_id), text)
             .await
             .map_err(|e| TelegramError::ApiError(e.to_string()))?;
 
@@ -226,10 +225,10 @@ impl TelegramService {
     }
 
     /// Delete a message
-    pub async fn delete_message(&self, chat_id: i64, message_id: i64) -> Result<()> {
+    pub async fn delete_message(&self, chat_id: i64, message_id: i32) -> Result<()> {
         let bot = self.bot.as_ref().ok_or(TelegramError::ClientNotInitialized)?;
 
-        bot.delete_message(ChatId(chat_id), MessageId(message_id as i32))
+        bot.delete_message(ChatId(chat_id), MessageId(message_id))
             .await
             .map_err(|e| TelegramError::ApiError(e.to_string()))?;
 
@@ -258,7 +257,7 @@ impl TelegramService {
             title: chat.title().map(|s| s.to_string()),
             username: chat.username().map(|s| s.to_string()),
             first_name: chat.first_name().map(|s| s.to_string()),
-            is_forum: chat.is_forum.unwrap_or(false),
+            is_forum: false, // Forum status not directly available in Chat
         })
     }
 }
@@ -307,7 +306,7 @@ async fn handle_message(
         title: msg.chat.title().map(|s| s.to_string()),
         username: msg.chat.username().map(|s| s.to_string()),
         first_name: msg.chat.first_name().map(|s| s.to_string()),
-        is_forum: msg.chat.is_forum.unwrap_or(false),
+        is_forum: false, // Forum status not directly available in Message
     };
 
     // Build payload
@@ -317,7 +316,7 @@ async fn handle_message(
         from_user,
         text: msg.text().map(|s| s.to_string()),
         date: msg.date.timestamp(),
-        thread_id: msg.thread_id.map(|t| t.0 as i64),
+        thread_id: msg.thread_id.map(|t| i64::from(t.0.0)),
     };
 
     // Emit event

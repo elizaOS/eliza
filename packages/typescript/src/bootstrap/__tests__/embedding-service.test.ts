@@ -23,6 +23,9 @@ describe("EmbeddingGenerationService", () => {
 
     runtime = await createTestRuntime();
 
+    // Mock getModel to return a valid model handler (so service isn't disabled)
+    vi.spyOn(runtime, "getModel").mockReturnValue(async () => [0.1, 0.2, 0.3]);
+
     // Spy on runtime methods
     vi.spyOn(runtime, "registerEvent").mockImplementation(
       (eventType: string, handler: (params: EventPayload) => Promise<void>) => {

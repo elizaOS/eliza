@@ -1,7 +1,3 @@
-/**
- * Browser select action
- */
-
 import type {
   Action,
   ActionResult,

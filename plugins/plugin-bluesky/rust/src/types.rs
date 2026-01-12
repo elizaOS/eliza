@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Core types for the BlueSky AT Protocol API.
 
 use serde::{Deserialize, Serialize};
 

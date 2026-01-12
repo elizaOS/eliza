@@ -1,4 +1,3 @@
-"""Memory Service - Manages short-term and long-term memory."""
 
 from __future__ import annotations
 
@@ -18,10 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseAdapter(Protocol):
-    """Protocol for database operations."""
-
     async def insert(self, table: str, data: dict[str, object]) -> None:
-        """Insert a record into the database."""
         ...
 
     async def select(
@@ -31,42 +27,29 @@ class DatabaseAdapter(Protocol):
         order_by: list[tuple[str, str]] | None = None,
         limit: int | None = None,
     ) -> list[dict[str, object]]:
-        """Select records from the database."""
         ...
 
     async def update(
         self, table: str, data: dict[str, object], conditions: dict[str, object]
     ) -> None:
-        """Update records in the database."""
         ...
 
     async def delete(self, table: str, conditions: dict[str, object]) -> None:
-        """Delete records from the database."""
         ...
 
 
 class CacheAdapter(Protocol):
-    """Protocol for cache operations."""
-
     async def get(self, key: str) -> object | None:
-        """Get a value from cache."""
         ...
 
     async def set(self, key: str, value: object) -> None:
-        """Set a value in cache."""
         ...
 
 
 class MemoryService:
-    """
-    Memory Service.
-
-    Manages both short-term (session summaries) and long-term (persistent facts) memory.
-    """
-
     service_type: str = "memory"
     capability_description: str = (
-        "Advanced memory management with short-term summarization and long-term persistent facts"
+        "Memory management with short-term summarization and long-term persistent facts"
     )
 
     def __init__(
@@ -76,7 +59,6 @@ class MemoryService:
         db: DatabaseAdapter | None = None,
         cache: CacheAdapter | None = None,
     ) -> None:
-        """Initialize the memory service."""
         self.config = config or MemoryConfig()
         self.agent_id = agent_id
         self._db = db
@@ -85,7 +67,6 @@ class MemoryService:
         self._last_extraction_checkpoints: dict[str, int] = {}
 
     async def initialize(self, settings: dict[str, str]) -> None:
-        """Initialize service from runtime settings."""
         if threshold := settings.get("MEMORY_SUMMARIZATION_THRESHOLD"):
             self.config.short_term_summarization_threshold = int(threshold)
 
@@ -116,11 +97,9 @@ class MemoryService:
         logger.debug("MemoryService initialized with config: %s", self.config)
 
     async def stop(self) -> None:
-        """Stop the service."""
         logger.info("MemoryService stopped")
 
     def get_config(self) -> MemoryConfig:
-        """Get current configuration."""
         return MemoryConfig(
             short_term_summarization_threshold=self.config.short_term_summarization_threshold,
             short_term_retain_recent=self.config.short_term_retain_recent,
@@ -136,28 +115,23 @@ class MemoryService:
         )
 
     def update_config(self, **updates: object) -> None:
-        """Update configuration."""
         for key, value in updates.items():
             if hasattr(self.config, key):
                 setattr(self.config, key, value)
 
     def increment_message_count(self, room_id: UUID) -> int:
-        """Increment and return message count for a room."""
         current = self._session_message_counts.get(room_id, 0)
         new_count = current + 1
         self._session_message_counts[room_id] = new_count
         return new_count
 
     def reset_message_count(self, room_id: UUID) -> None:
-        """Reset message count for a room."""
         self._session_message_counts[room_id] = 0
 
     def _get_extraction_key(self, entity_id: UUID, room_id: UUID) -> str:
-        """Generate cache key for extraction checkpoints."""
         return f"memory:extraction:{entity_id}:{room_id}"
 
     async def get_last_extraction_checkpoint(self, entity_id: UUID, room_id: UUID) -> int:
-        """Get the last extraction checkpoint for an entity in a room."""
         key = self._get_extraction_key(entity_id, room_id)
 
         if key in self._last_extraction_checkpoints:
@@ -177,7 +151,6 @@ class MemoryService:
     async def set_last_extraction_checkpoint(
         self, entity_id: UUID, room_id: UUID, message_count: int
     ) -> None:
-        """Set the last extraction checkpoint for an entity in a room."""
         key = self._get_extraction_key(entity_id, room_id)
         self._last_extraction_checkpoints[key] = message_count
 
@@ -196,7 +169,6 @@ class MemoryService:
     async def should_run_extraction(
         self, entity_id: UUID, room_id: UUID, current_message_count: int
     ) -> bool:
-        """Check if long-term extraction should run."""
         threshold = self.config.long_term_extraction_threshold
         interval = self.config.long_term_extraction_interval
 
@@ -231,7 +203,6 @@ class MemoryService:
         metadata: dict[str, object] | None = None,
         embedding: list[float] | None = None,
     ) -> LongTermMemory:
-        """Store a long-term memory."""
         now = datetime.now()
         memory_id = uuid4()
 
@@ -278,7 +249,6 @@ class MemoryService:
         category: LongTermMemoryCategory | None = None,
         limit: int = 10,
     ) -> list[LongTermMemory]:
-        """Retrieve long-term memories for an entity."""
         if not self._db or not self.agent_id:
             return []
 
@@ -328,7 +298,6 @@ class MemoryService:
         entity_id: UUID,
         **updates: object,
     ) -> None:
-        """Update a long-term memory."""
         if not self._db or not self.agent_id:
             return
 
@@ -358,7 +327,6 @@ class MemoryService:
         logger.info("Updated long-term memory: %s for entity %s", memory_id, entity_id)
 
     async def delete_long_term_memory(self, memory_id: UUID, entity_id: UUID) -> None:
-        """Delete a long-term memory."""
         if not self._db or not self.agent_id:
             return
 
@@ -374,7 +342,6 @@ class MemoryService:
         logger.info("Deleted long-term memory: %s for entity %s", memory_id, entity_id)
 
     async def get_current_session_summary(self, room_id: UUID) -> SessionSummary | None:
-        """Get the current session summary for a room."""
         if not self._db or not self.agent_id:
             return None
 
@@ -429,7 +396,6 @@ class MemoryService:
         metadata: dict[str, object] | None = None,
         embedding: list[float] | None = None,
     ) -> SessionSummary:
-        """Store a session summary."""
         now = datetime.now()
         summary_id = uuid4()
 
@@ -513,7 +479,6 @@ class MemoryService:
         logger.info("Updated session summary: %s for room %s", summary_id, room_id)
 
     async def get_session_summaries(self, room_id: UUID, limit: int = 5) -> list[SessionSummary]:
-        """Get session summaries for a room."""
         if not self._db or not self.agent_id:
             return []
 
@@ -556,7 +521,6 @@ class MemoryService:
         ]
 
     async def get_formatted_long_term_memories(self, entity_id: UUID) -> str:
-        """Get all long-term memories formatted for context."""
         memories = await self.get_long_term_memories(entity_id, None, 20)
 
         if not memories:
@@ -575,8 +539,3 @@ class MemoryService:
             sections.append(f"**{category_name}**:\n{items}")
 
         return "\n\n".join(sections)
-
-
-
-
-

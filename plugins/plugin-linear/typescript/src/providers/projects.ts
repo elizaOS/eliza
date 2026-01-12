@@ -22,7 +22,6 @@ export const linearProjectsProvider: Provider = {
         };
       }
 
-      // Filter active projects
       const activeProjects = projects.filter(
         (project: Project) => project.state === "started" || project.state === "planned"
       );

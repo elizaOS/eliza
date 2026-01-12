@@ -1,10 +1,3 @@
-"""
-Entities Provider - Provides information about entities in the current context.
-
-This provider supplies information about users, agents, and other entities
-that are relevant to the current conversation or room.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,21 +13,12 @@ async def get_entities_context(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get the entities context for the current room/conversation.
-
-    Returns entity information including:
-    - Current user/sender
-    - Other participants
-    - Entity roles and relationships
-    """
     room_id = message.room_id
     sender_id = message.entity_id
 
     sections: list[str] = []
     entity_list: list[dict[str, str]] = []
 
-    # Get sender entity
     if sender_id:
         sender = await runtime.get_entity(sender_id)
         if sender:
@@ -49,19 +33,17 @@ async def get_entities_context(
                 f"- **{sender.name or 'Unknown'}** (sender): {sender.entity_type or 'user'}"
             )
 
-    # Get room participants if available
     if room_id:
         room = await runtime.get_room(room_id)
         if room and room.world_id:
             world = await runtime.get_world(room.world_id)
             if world and world.metadata:
-                # Get entities from world
                 member_ids = world.metadata.get("members", [])
                 roles = world.metadata.get("roles", {})
 
                 for member_id in member_ids:
                     if str(member_id) == str(sender_id):
-                        continue  # Skip sender, already added
+                        continue
 
                     entity = await runtime.get_entity(member_id)
                     if entity:
@@ -77,7 +59,6 @@ async def get_entities_context(
                             f"- **{entity.name or 'Unknown'}** ({role}): {entity.entity_type or 'user'}"
                         )
 
-    # Add agent itself
     agent_entity = await runtime.get_entity(runtime.agent_id)
     if agent_entity:
         agent_info = {
@@ -106,10 +87,9 @@ async def get_entities_context(
     )
 
 
-# Create the provider instance
 entities_provider = Provider(
     name="ENTITIES",
     description="Provides information about entities in the current context (users, agents, participants)",
     get=get_entities_context,
-    dynamic=True,  # Entities may change between messages
+    dynamic=True,
 )

@@ -1,10 +1,4 @@
 #!/usr/bin/env bun
-/**
- * REALM Benchmark Scenario Runner
- *
- * This script demonstrates how to run REALM benchmarks through the proper
- * ElizaOS scenario system, integrating with existing infrastructure.
- */
 
 import { logger } from "@elizaos/core";
 import realmBenchmarkScenarios from "../src/scenarios/realm-benchmark-scenario";

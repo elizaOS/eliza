@@ -13,9 +13,6 @@ import {
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
-/**
- * Build common generation parameters for both streaming and non-streaming modes
- */
 function buildGenerateParams(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
@@ -53,9 +50,6 @@ function buildGenerateParams(
   return { generateParams, modelName, modelLabel, prompt };
 }
 
-/**
- * Handle streaming text generation
- */
 function handleStreamingGeneration(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
@@ -89,9 +83,6 @@ function handleStreamingGeneration(
   };
 }
 
-/**
- * Common text generation logic for both small and large models
- */
 async function generateTextWithModel(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
@@ -107,7 +98,6 @@ async function generateTextWithModel(
     `[ELIZAOS_CLOUD] Generating text with ${modelLabel} model: ${modelName}`,
   );
 
-  // Handle streaming mode
   if (params.stream) {
     return handleStreamingGeneration(
       runtime,
@@ -118,7 +108,6 @@ async function generateTextWithModel(
     );
   }
 
-  // Non-streaming mode
   logger.log(`[ELIZAOS_CLOUD] Using ${modelLabel} model: ${modelName}`);
   logger.log(prompt);
 
@@ -131,13 +120,6 @@ async function generateTextWithModel(
   return response.text;
 }
 
-/**
- * TEXT_SMALL model handler
- *
- * Returns:
- * - `string` for simple text generation
- * - `TextStreamResult` for streaming (when params.stream = true)
- */
 export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams,
@@ -145,13 +127,6 @@ export async function handleTextSmall(
   return generateTextWithModel(runtime, ModelType.TEXT_SMALL, params);
 }
 
-/**
- * TEXT_LARGE model handler
- *
- * Returns:
- * - `string` for simple text generation
- * - `TextStreamResult` for streaming (when params.stream = true)
- */
 export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: GenerateTextParams,

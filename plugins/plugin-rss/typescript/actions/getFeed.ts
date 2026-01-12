@@ -42,7 +42,6 @@ export const getFeedAction: Action = {
     );
 
     if (!validUrls.length) {
-      // Fall back to any URL if no RSS-specific URLs found
       if (urls.length > 0) {
         validUrls.push(urls[0]);
       } else {
@@ -73,22 +72,16 @@ export const getFeedAction: Action = {
     let newItemCount = 0;
 
     for (const item of res.items) {
-      // Primary ID: based on guid
       const primaryId = createUniqueUuid(runtime, `${url}_${item.guid}`);
-
-      // Fallback ID: based on title and pubDate (for feeds with inconsistent guids)
       const fallbackId = createUniqueUuid(runtime, `${url}_${item.title}_${item.pubDate}`);
 
-      // Check both IDs to avoid duplicates
       const existingByGuid = await runtime.getMemoriesByIds([primaryId], "feeditems");
       const existingByTitleDate = await runtime.getMemoriesByIds([fallbackId], "feeditems");
 
-      // Only create if item doesn't exist by either method
       if (
         (!existingByGuid || existingByGuid.length === 0) &&
         (!existingByTitleDate || existingByTitleDate.length === 0)
       ) {
-        // Use primary ID if guid exists, otherwise use fallback
         const itemId = item.guid ? primaryId : fallbackId;
 
         const itemMemory: Memory = {
@@ -121,12 +114,10 @@ export const getFeedAction: Action = {
       }
     }
 
-    // Auto-subscribe to the feed after successful fetch
     if (url) {
       await service.subscribeFeed(url, res.title);
     }
 
-    // Send response
     const responseText =
       newItemCount > 0
         ? `Downloaded ${res.items.length} articles from "${res.title}", ${newItemCount} new items stored. Feed auto-subscribed for periodic updates.`

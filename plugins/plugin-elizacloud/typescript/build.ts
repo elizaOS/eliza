@@ -1,10 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Build script for @elizaos/plugin-elizacloud
- *
- * Builds the TypeScript implementation for Node.js and Browser environments.
- * For multi-language builds (Rust, Python), see respective folders.
- */
 
 import { existsSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
@@ -23,7 +17,6 @@ async function build() {
 
   await mkdir(distDir, { recursive: true });
 
-  // Node build
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-elizacloud for Node...");
   const nodeResult = await Bun.build({
@@ -43,7 +36,6 @@ async function build() {
     `✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
   );
 
-  // Browser build
   const browserStart = Date.now();
   console.log("🌐 Building @elizaos/plugin-elizacloud for Browser...");
   const browserResult = await Bun.build({
@@ -63,7 +55,6 @@ async function build() {
     `✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`,
   );
 
-  // Node CJS build
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-elizacloud for Node (CJS)...");
   const cjsResult = await Bun.build({
@@ -79,18 +70,15 @@ async function build() {
     console.error(cjsResult.logs);
     throw new Error("CJS build failed");
   }
-  // Rename .js to .cjs for correct loading when package type is module
   try {
     await rename("dist/cjs/index.node.js", "dist/cjs/index.node.cjs");
   } catch (e) {
-    // If file not found (different bundling output), surface the error
     console.warn("CJS rename step warning:", e);
   }
   console.log(
     `✅ CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`,
   );
 
-  // TypeScript declarations
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   const { $ } = await import("bun");

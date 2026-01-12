@@ -29,14 +29,8 @@ const __dirname = path.dirname(__filename);
 // relative to the package root (which is two levels up from src/plugin-todo)
 const frontendDist = path.resolve(__dirname, "../dist");
 
-const frontPagePath = path.resolve(frontendDist, "index.html");
+const _frontPagePath = path.resolve(frontendDist, "index.html");
 const assetsPath = path.resolve(frontendDist, "assets");
-console.log("*** frontPagePath", frontPagePath);
-console.log("*** assetsPath", assetsPath);
-/**
- * Definition of routes with type, path, and handler for each route.
- * Routes include fetching trending tokens, wallet information, posts, sentiment analysis, and signals.
- */
 
 export const routes: Route[] = [
   {
@@ -46,7 +40,6 @@ export const routes: Route[] = [
       const indexPath = path.resolve(frontendDist, "index.html");
       if (fs.existsSync(indexPath)) {
         const htmlContent = fs.readFileSync(indexPath, "utf-8");
-        // Set Content-Type header to text/html
         res.setHeader("Content-Type", "text/html");
         res.send(htmlContent);
       } else {
@@ -61,7 +54,6 @@ export const routes: Route[] = [
       const goalsHtmlPath = path.resolve(frontendDist, "index.html");
       if (fs.existsSync(goalsHtmlPath)) {
         const htmlContent = fs.readFileSync(goalsHtmlPath, "utf-8");
-        // Set Content-Type header to text/html
         res.setHeader("Content-Type", "text/html");
         res.send(htmlContent);
       } else {
@@ -69,7 +61,6 @@ export const routes: Route[] = [
       }
     },
   },
-  // Route to serve JS files from frontendDist/assets
   {
     type: "GET",
     path: "/assets/*",
@@ -78,24 +69,19 @@ export const routes: Route[] = [
       res: RouteResponse,
       _runtime: IAgentRuntime
     ): Promise<void> => {
-      // Extract the relative path after '/assets/'
-      const assetRelativePath = req.params?.["0"]; // This captures everything after '/assets/'
+      const assetRelativePath = req.params?.["0"];
       if (!assetRelativePath) {
         res.status(400).send("Invalid asset path");
         return;
       }
-      // Construct the full path to the asset within the frontendDist/assets directory
-      const filePath = path.resolve(assetsPath, assetRelativePath); // Corrected base path
+      const filePath = path.resolve(assetsPath, assetRelativePath);
 
-      // Basic security check to prevent path traversal
       if (!filePath.startsWith(assetsPath)) {
         res.status(403).send("Forbidden");
         return;
       }
 
-      // Check if the file exists and serve it
       if (fs.existsSync(filePath)) {
-        // Let express handle MIME types based on file extension
         const sendFile = res.sendFile;
         if (sendFile) {
           sendFile.call(res, filePath);
@@ -108,16 +94,12 @@ export const routes: Route[] = [
       }
     },
   },
-
-  // API route to get all tags
   {
     type: "GET",
     path: "/api/tags",
     handler: async (_req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) => {
       try {
         logger.debug("[API /api/tags] Fetching all distinct tags");
-
-        // Use runtime.db which should be the Drizzle instance from the adapter
         const db = runtime.db as { execute?: (query: unknown) => Promise<unknown> } | undefined;
         if (!db || typeof db.execute !== "function") {
           logger.error("[API /api/tags] runtime.db is not available or not a Drizzle instance.");
@@ -125,15 +107,12 @@ export const routes: Route[] = [
           return;
         }
 
-        // Detect database type
         let dbType: "sqlite" | "postgres" | "unknown" = "unknown";
         try {
-          // Try PostgreSQL detection
           const connection = await runtime.getConnection();
           if (connection && connection.constructor.name === "Pool") {
             dbType = "postgres";
           } else {
-            // Try SQLite detection
             try {
               await db.execute(sql`SELECT sqlite_version()`);
               dbType = "sqlite";
@@ -148,11 +127,9 @@ export const routes: Route[] = [
         let result: TagRow[] | DbQueryResult;
 
         if (dbType === "postgres") {
-          // PostgreSQL query using unnest
           const query = sql`SELECT DISTINCT unnest(tags) as tag FROM goal_tags WHERE tag IS NOT NULL;`;
           result = (await db.execute(query)) as TagRow[] | DbQueryResult;
         } else {
-          // SQLite-compatible query
           const query = sql`
             SELECT DISTINCT tag 
             FROM goal_tags 
@@ -161,11 +138,9 @@ export const routes: Route[] = [
           result = (await db.execute(query)) as TagRow[] | DbQueryResult;
         }
 
-        // Drizzle's execute might return results differently depending on the driver
-        // Adapting for common patterns (e.g., pg driver returning 'rows')
         const tags = Array.isArray(result)
           ? result.map((row: TagRow) => row.tag)
-          : (result as DbQueryResult).rows // Node-postgres likely returns object with 'rows'
+          : (result as DbQueryResult).rows
             ? (result as DbQueryResult).rows?.map((row: TagRow) => row.tag)
             : [];
 
@@ -177,8 +152,6 @@ export const routes: Route[] = [
       }
     },
   },
-
-  // API route to get all goals by world and rooms
   {
     type: "GET",
     path: "/api/goals",
@@ -226,7 +199,6 @@ export const routes: Route[] = [
       }
     },
   },
-  // API route to complete a goal
   {
     type: "PUT",
     path: "/api/goals/:id/complete",
@@ -255,8 +227,6 @@ export const routes: Route[] = [
         }
 
         const now = new Date();
-
-        // Update the goal
         await dataService.updateGoal(goalId, {
           isCompleted: true,
           completedAt: now,
@@ -280,7 +250,6 @@ export const routes: Route[] = [
       }
     },
   },
-  // API route to uncomplete a goal
   {
     type: "PUT",
     path: "/api/goals/:id/uncomplete",
@@ -307,7 +276,6 @@ export const routes: Route[] = [
           return;
         }
 
-        // Update the goal
         const metadataUpdate = { ...goal.metadata } as Record<string, unknown>;
         delete metadataUpdate.completedAt;
 
@@ -357,7 +325,6 @@ export const routes: Route[] = [
           return;
         }
 
-        // Apply updates
         const updates: Record<string, unknown> = {};
         if (updateData.name) updates.name = updateData.name;
         if (updateData.description !== undefined) updates.description = updateData.description;
@@ -383,7 +350,6 @@ export const routes: Route[] = [
       }
     },
   },
-  // API route to delete a goal
   {
     type: "DELETE",
     path: "/api/goals/:id",

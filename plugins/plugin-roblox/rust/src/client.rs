@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Roblox Open Cloud API Client.
 
 use crate::config::RobloxConfig;
 use crate::error::{Result, RobloxError};
@@ -17,14 +16,12 @@ const USERS_API_BASE: &str = "https://users.roblox.com";
 const GAMES_API_BASE: &str = "https://games.roblox.com";
 const THUMBNAILS_API_BASE: &str = "https://thumbnails.roblox.com";
 
-/// Roblox Open Cloud API Client.
 pub struct RobloxClient {
     config: RobloxConfig,
     http: Client,
 }
 
 impl RobloxClient {
-    /// Create a new Roblox client.
     pub fn new(config: RobloxConfig) -> Result<Self> {
         config.validate()?;
 
@@ -36,7 +33,6 @@ impl RobloxClient {
         Ok(Self { config, http })
     }
 
-    /// Make an authenticated request to the Roblox API.
     async fn request<T: DeserializeOwned>(
         &self,
         method: reqwest::Method,
@@ -70,16 +66,12 @@ impl RobloxClient {
 
         let text = response.text().await?;
         if text.is_empty() {
-            // Handle empty responses
             return serde_json::from_str("{}").map_err(Into::into);
         }
 
         serde_json::from_str(&text).map_err(Into::into)
     }
 
-    // ==================== Messaging Service ====================
-
-    /// Publish a message to a topic via the Messaging Service.
     pub async fn publish_message(
         &self,
         topic: &str,
@@ -114,15 +106,11 @@ impl RobloxClient {
         Ok(())
     }
 
-    /// Send a message to the default agent topic.
     pub async fn send_agent_message(&self, message: &MessagingServiceMessage) -> Result<()> {
         self.publish_message(&self.config.messaging_topic, message, None)
             .await
     }
 
-    // ==================== DataStore ====================
-
-    /// Get an entry from a DataStore.
     pub async fn get_datastore_entry<T: DeserializeOwned>(
         &self,
         datastore_name: &str,
@@ -167,7 +155,6 @@ impl RobloxClient {
         }
     }
 
-    /// Set an entry in a DataStore.
     pub async fn set_datastore_entry<T: Serialize + Clone>(
         &self,
         datastore_name: &str,
@@ -217,7 +204,6 @@ impl RobloxClient {
         })
     }
 
-    /// Delete an entry from a DataStore.
     pub async fn delete_datastore_entry(
         &self,
         datastore_name: &str,
@@ -249,9 +235,6 @@ impl RobloxClient {
         Ok(())
     }
 
-    // ==================== Users ====================
-
-    /// Get user information by user ID.
     pub async fn get_user_by_id(&self, user_id: u64) -> Result<RobloxUser> {
         let endpoint = format!("/v1/users/{}", user_id);
 
@@ -280,7 +263,6 @@ impl RobloxClient {
         })
     }
 
-    /// Get user information by username.
     pub async fn get_user_by_username(&self, username: &str) -> Result<Option<RobloxUser>> {
         let endpoint = "/v1/usernames/users";
 
@@ -323,7 +305,6 @@ impl RobloxClient {
         }))
     }
 
-    /// Get avatar thumbnail URL for a user.
     pub async fn get_avatar_url(&self, user_id: u64, size: Option<&str>) -> Result<Option<String>> {
         let size = size.unwrap_or("150x150");
         let endpoint = format!(
@@ -351,9 +332,6 @@ impl RobloxClient {
         }
     }
 
-    // ==================== Experience Info ====================
-
-    /// Get experience/universe information.
     pub async fn get_experience_info(&self, universe_id: Option<&str>) -> Result<RobloxExperienceInfo> {
         let target_universe_id = universe_id.unwrap_or(&self.config.universe_id);
         let endpoint = format!("/v1/games?universeIds={}", target_universe_id);
@@ -411,14 +389,10 @@ impl RobloxClient {
         })
     }
 
-    // ==================== Configuration ====================
-
-    /// Get the current configuration.
     pub fn config(&self) -> &RobloxConfig {
         &self.config
     }
 
-    /// Check if dry run mode is enabled.
     pub fn is_dry_run(&self) -> bool {
         self.config.dry_run
     }

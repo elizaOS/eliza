@@ -30,7 +30,6 @@ async def test_process_actions_passes_validated_params_to_handler_options() -> N
         _callback: object,
         _responses: list[Memory] | None,
     ) -> ActionResult:
-        # HandlerOptions is a pydantic model; we only care that `parameters` is present
         params = getattr(options, "parameters", None)
         direction = params.get("direction") if isinstance(params, dict) else None
         received.append(str(direction))
@@ -127,7 +126,6 @@ async def test_process_actions_skips_action_when_required_param_missing() -> Non
         content=Content(
             text="move",
             actions=["MOVE"],
-            # Missing required direction
         ),
     )
 

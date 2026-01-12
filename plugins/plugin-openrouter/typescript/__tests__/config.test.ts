@@ -2,7 +2,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import * as undici from "undici";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { openrouterPlugin } from "../src/index";
+import { openrouterPlugin } from "../index";
 
 /**
  * Creates a REAL AgentRuntime for testing - NO MOCKS.

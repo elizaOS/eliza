@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
-"""
-Integration test for Python Local AI plugin with actual model inference
-"""
-
 import os
 import time
 from pathlib import Path
 
-# Try to import llama-cpp-python
 try:
     from llama_cpp import Llama
 
@@ -22,7 +17,6 @@ EMBEDDING_MODEL = "bge-small-en-v1.5.Q4_K_M.gguf"
 
 
 def test_text_generation() -> None:
-    """Test text generation with the small model."""
     print("\n🧪 Testing Python Text Generation...")
     print(f"   Model: {SMALL_MODEL}")
 
@@ -33,7 +27,6 @@ def test_text_generation() -> None:
         print(f"   ❌ Model not found at {model_path}")
         return
 
-    # Detect GPU
     n_gpu_layers = -1 if os.environ.get("CUDA_VISIBLE_DEVICES") else 0
     print(f"   GPU layers: {n_gpu_layers}")
 
@@ -64,7 +57,6 @@ def test_text_generation() -> None:
 
 
 def test_embedding() -> None:
-    """Test embedding generation with the embedding model."""
     print("\n🧪 Testing Python Embedding Generation...")
     print(f"   Model: {EMBEDDING_MODEL}")
 
@@ -77,7 +69,7 @@ def test_embedding() -> None:
 
     llm = Llama(
         model_path=str(model_path),
-        n_gpu_layers=0,  # Embeddings typically run on CPU
+        n_gpu_layers=0,
         embedding=True,
         verbose=False,
     )
@@ -97,7 +89,6 @@ def test_embedding() -> None:
 
 
 def main() -> None:
-    """Run all integration tests."""
     print("========================================")
     print("Python Local AI Integration Test")
     print("========================================")

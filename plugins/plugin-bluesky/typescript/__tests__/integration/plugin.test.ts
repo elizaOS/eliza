@@ -1,7 +1,3 @@
-/**
- * Integration tests for BlueSky plugin.
- */
-
 import { describe, expect, it } from "vitest";
 import blueSkyPlugin from "../../index";
 

@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! PGLite adapter implementation for elizaOS WASM environments
 
 #![cfg(feature = "wasm")]
 
@@ -16,14 +15,12 @@ use elizaos::{
 
 use super::PgLiteManager;
 
-/// PGLite database adapter for WASM environments
 pub struct PgLiteAdapter {
     manager: PgLiteManager,
     agent_id: String,
 }
 
 impl PgLiteAdapter {
-    /// Create a new PGLite adapter
     pub async fn new(data_dir: Option<&str>, agent_id: &UUID) -> Result<Self> {
         let manager = PgLiteManager::new(data_dir).await?;
 
@@ -33,12 +30,10 @@ impl PgLiteAdapter {
         })
     }
 
-    /// Initialize with a JavaScript PGLite instance
     pub async fn init_with_js(&mut self, pglite_js: JsValue) -> Result<()> {
         self.manager.init(pglite_js).await
     }
 
-    /// Helper to parse query results into a Vec of rows
     fn parse_rows(&self, result: &JsValue) -> Result<Vec<JsValue>> {
         let rows = Reflect::get(result, &JsValue::from_str("rows"))
             .map_err(|e| anyhow::anyhow!("Failed to get rows: {:?}", e))?;
@@ -47,33 +42,28 @@ impl PgLiteAdapter {
         Ok(rows_array.iter().collect())
     }
 
-    /// Helper to get a string field from a JS row
     fn get_string(&self, row: &JsValue, field: &str) -> Option<String> {
         Reflect::get(row, &JsValue::from_str(field))
             .ok()
             .and_then(|v| v.as_string())
     }
 
-    /// Helper to get a UUID field from a JS row
     fn get_uuid(&self, row: &JsValue, field: &str) -> Option<UUID> {
         self.get_string(row, field).and_then(|s| UUID::new(&s).ok())
     }
 
-    /// Helper to get a bool field from a JS row
     fn get_bool(&self, row: &JsValue, field: &str) -> Option<bool> {
         Reflect::get(row, &JsValue::from_str(field))
             .ok()
             .and_then(|v| v.as_bool())
     }
 
-    /// Helper to get a number field from a JS row
     fn get_f64(&self, row: &JsValue, field: &str) -> Option<f64> {
         Reflect::get(row, &JsValue::from_str(field))
             .ok()
             .and_then(|v| v.as_f64())
     }
 
-    /// Helper to get a JSON field from a JS row
     fn get_json<T: serde::de::DeserializeOwned>(&self, row: &JsValue, field: &str) -> Option<T> {
         self.get_string(row, field)
             .and_then(|s| serde_json::from_str(&s).ok())
@@ -95,7 +85,6 @@ impl PgLiteAdapter {
         })
     }
 
-    /// Parse a Room from a JS row
     fn parse_room(&self, row: &JsValue) -> Option<Room> {
         let id = self.get_uuid(row, "id")?;
 
@@ -126,7 +115,6 @@ impl PgLiteAdapter {
         })
     }
 
-    /// Parse a Component from a JS row
     fn parse_component(&self, row: &JsValue) -> Option<Component> {
         let id = self.get_uuid(row, "id");
         let entity_id = self.get_uuid(row, "entity_id")?;
@@ -163,7 +151,6 @@ impl PgLiteAdapter {
         })
     }
 
-    /// Parse a Relationship from a JS row
     fn parse_relationship(&self, row: &JsValue) -> Option<Relationship> {
         let id = self.get_uuid(row, "id")?;
         let source_entity_id = self.get_uuid(row, "source_entity_id")?;
@@ -212,7 +199,6 @@ impl PgLiteAdapter {
         })
     }
 
-    /// Parse a ParticipantInfo from a JS row
     fn parse_participant_info(&self, row: &JsValue) -> Option<ParticipantInfo> {
         let id = self.get_uuid(row, "id")?;
         let entity_id = self.get_uuid(row, "entity_id")?;
@@ -245,10 +231,6 @@ impl DatabaseAdapter for PgLiteAdapter {
     async fn get_connection(&self) -> Result<Box<dyn std::any::Any + Send>> {
         Ok(Box::new(()))
     }
-
-    // =========================================================================
-    // Agent Methods
-    // =========================================================================
 
     async fn get_agent(&self, agent_id: &UUID) -> Result<Option<Agent>> {
         let sql = r#"
@@ -399,10 +381,6 @@ impl DatabaseAdapter for PgLiteAdapter {
         self.manager.query(sql, &params).await?;
         Ok(true)
     }
-
-    // =========================================================================
-    // Entity Methods
-    // =========================================================================
 
     async fn get_entities_by_ids(&self, entity_ids: &[UUID]) -> Result<Vec<Entity>> {
         if entity_ids.is_empty() {
@@ -589,10 +567,6 @@ impl DatabaseAdapter for PgLiteAdapter {
         self.manager.query(sql, &params).await?;
         Ok(())
     }
-
-    // =========================================================================
-    // Memory Methods
-    // =========================================================================
 
     async fn get_memories(&self, params: GetMemoriesParams) -> Result<Vec<Memory>> {
         let mut sql = String::from(
@@ -1055,10 +1029,6 @@ impl DatabaseAdapter for PgLiteAdapter {
         Ok(())
     }
 
-    // =========================================================================
-    // World Methods
-    // =========================================================================
-
     async fn create_world(&self, world: &World) -> Result<UUID> {
         let metadata = serde_json::to_string(&world.metadata)?;
 
@@ -1128,10 +1098,6 @@ impl DatabaseAdapter for PgLiteAdapter {
         self.manager.query(sql, &params).await?;
         Ok(())
     }
-
-    // =========================================================================
-    // Room Methods
-    // =========================================================================
 
     async fn get_rooms_by_ids(&self, room_ids: &[UUID]) -> Result<Vec<Room>> {
         if room_ids.is_empty() {
@@ -1389,10 +1355,6 @@ impl DatabaseAdapter for PgLiteAdapter {
         Ok(())
     }
 
-    // =========================================================================
-    // Relationship Methods
-    // =========================================================================
-
     async fn create_relationship(&self, params: CreateRelationshipParams) -> Result<bool> {
         let tags = serde_json::to_string(&params.tags)?;
         let metadata = serde_json::to_string(&params.metadata)?;
@@ -1472,10 +1434,6 @@ impl DatabaseAdapter for PgLiteAdapter {
             .collect())
     }
 
-    // =========================================================================
-    // Cache Methods
-    // =========================================================================
-
     async fn get_cache<T: serde::de::DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
         let sql = "SELECT value, expires_at FROM cache WHERE key = $1";
         let params = vec![JsValue::from_str(key)];
@@ -1483,9 +1441,7 @@ impl DatabaseAdapter for PgLiteAdapter {
         let rows = self.parse_rows(&result)?;
 
         if let Some(row) = rows.first() {
-            // Check expiration
             if let Some(expires_str) = self.get_string(row, "expires_at") {
-                // If expired, delete and return None
                 if !expires_str.is_empty() {
                     self.delete_cache(key).await?;
                     return Ok(None);
@@ -1523,10 +1479,6 @@ impl DatabaseAdapter for PgLiteAdapter {
         self.manager.query(sql, &params).await?;
         Ok(true)
     }
-
-    // =========================================================================
-    // Task Methods
-    // =========================================================================
 
     async fn create_task(&self, task: &Task) -> Result<UUID> {
         let id = task.id.clone().unwrap_or_else(UUID::new_v4);

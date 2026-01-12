@@ -1,9 +1,3 @@
-"""
-ElizaOS Linear Plugin (Python)
-
-A comprehensive Linear integration plugin for ElizaOS that enables
-issue tracking, project management, and team collaboration.
-"""
 
 from elizaos_plugin_linear.plugin import linear_plugin
 from elizaos_plugin_linear.services.linear import LinearService
@@ -32,8 +26,3 @@ __all__ = [
 ]
 
 __version__ = "1.0.0"
-
-
-
-
-

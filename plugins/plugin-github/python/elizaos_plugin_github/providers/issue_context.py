@@ -1,5 +1,3 @@
-"""Issue Context Provider."""
-
 import re
 from typing import Protocol
 
@@ -26,15 +24,7 @@ def extract_issue_number(text: str) -> int | None:
 
     return None
 
-
 class IssueContextProvider:
-    """
-    Issue context provider.
-
-    When a message references a specific issue or PR number, this provider
-    fetches detailed information about it.
-    """
-
     @property
     def name(self) -> str:
         return "GITHUB_ISSUE_CONTEXT"
@@ -48,7 +38,6 @@ class IssueContextProvider:
         context: ProviderContext,
         service: object,
     ) -> str | None:
-        """Get issue context."""
         from elizaos_plugin_github.service import GitHubService
 
         if not isinstance(service, GitHubService):
@@ -69,12 +58,10 @@ class IssueContextProvider:
             if not config.owner or not config.repo:
                 return None
 
-            # Try to fetch as issue first
             try:
                 issue = await service.get_issue(config.owner, config.repo, issue_number)
 
                 if issue.is_pull_request:
-                    # It's a PR
                     pr = await service.get_pull_request(config.owner, config.repo, issue_number)
 
                     labels = ", ".join(label.name for label in pr.labels)
@@ -112,7 +99,6 @@ class IssueContextProvider:
 
                     return "\n".join(parts)
 
-                # Regular issue
                 labels = ", ".join(label.name for label in issue.labels)
                 assignees = ", ".join(a.login for a in issue.assignees)
 

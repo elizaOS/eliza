@@ -1,5 +1,3 @@
-"""Benchmarking module for planning plugin."""
-
 from elizaos_plugin_planning.benchmarks.types import (
     BenchmarkConfig,
     BenchmarkResults,
@@ -35,8 +33,3 @@ __all__ = [
     "RealmBenchAdapter",
     "ApiBankAdapter",
 ]
-
-
-
-
-

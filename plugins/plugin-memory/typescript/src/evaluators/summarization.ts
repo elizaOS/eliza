@@ -10,9 +10,6 @@ import {
 import type { MemoryService } from "../services/memory-service";
 import type { SummaryResult } from "../types";
 
-/**
- * Helper function to get dialogue messages count (excluding action results)
- */
 async function getDialogueMessageCount(runtime: IAgentRuntime, roomId: UUID): Promise<number> {
   const messages = await runtime.getMemories({
     tableName: "messages",
@@ -34,19 +31,11 @@ async function getDialogueMessageCount(runtime: IAgentRuntime, roomId: UUID): Pr
   return dialogueMessages.length;
 }
 
-/**
- * Templates for memory summarization.
- * Auto-generated from prompts/*.txt
- * DO NOT EDIT - Generated from ../generated/prompts/typescript/prompts.ts
- */
 import {
   initialSummarizationTemplate,
   updateSummarizationTemplate,
 } from "../generated/prompts/typescript/prompts.js";
 
-/**
- * Parse XML summary response
- */
 function parseSummaryXML(xml: string): SummaryResult {
   const summaryMatch = xml.match(/<text>([\s\S]*?)<\/text>/);
   const topicsMatch = xml.match(/<topics>([\s\S]*?)<\/topics>/);
@@ -64,9 +53,6 @@ function parseSummaryXML(xml: string): SummaryResult {
   return { summary, topics, keyPoints };
 }
 
-/**
- * Short-term Memory Summarization Evaluator
- */
 export const summarizationEvaluator: Evaluator = {
   name: "MEMORY_SUMMARIZATION",
   description: "Automatically summarizes conversations to optimize context usage",
@@ -232,7 +218,7 @@ export const summarizationEvaluator: Evaluator = {
         });
 
         logger.info(
-          `Updated summary for room ${roomId}: ${newDialogueMessages.length} new dialogue messages processed`
+          `Updated summary for room ${roomId}: ${newDialogueMessages.length} messages processed`
         );
       } else {
         await memoryService.storeSessionSummary({
@@ -249,7 +235,7 @@ export const summarizationEvaluator: Evaluator = {
         });
 
         logger.info(
-          `Created new summary for room ${roomId}: ${totalDialogueCount} dialogue messages summarized`
+          `Created summary for room ${roomId}: ${totalDialogueCount} messages summarized`
         );
       }
     } catch (error) {

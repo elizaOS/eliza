@@ -4,18 +4,7 @@
 
 use std::collections::HashMap;
 
-/// Parse key-value pairs from an XML response.
-///
-/// Extracts values from XML tags like `<key>value</key>` and returns
-/// them as a HashMap.
-///
-/// # Arguments
-///
-/// * `xml` - The XML string to parse
-///
-/// # Returns
-///
-/// A HashMap of tag names to their text content, or None if parsing fails.
+/// Parse key-value pairs from an XML response
 pub fn parse_key_value_xml(xml: &str) -> Option<HashMap<String, String>> {
     let mut result = HashMap::new();
 

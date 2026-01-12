@@ -1,18 +1,7 @@
 #![allow(missing_docs)]
-//! Shared XML prompts for the elizaOS Forms Plugin.
-//!
-//! These prompts are auto-generated from prompts/*.txt files.
-//! DO NOT EDIT - Generated from ../../typescript/generated/prompts/rust/prompts.rs
-//!
-//! To modify prompts, edit the .txt files in prompts/ and run:
-//!   npm run build:prompts
-//!
-//! The generated prompts.rs file should be copied to this location during build.
 
-// Import directly from crate::generated::prompts for generated prompts
 use crate::generated::prompts::{FORM_EXTRACTION_TEMPLATE, FORM_CREATION_TEMPLATE};
 
-/// Field information for prompt building.
 pub struct FieldInfo<'a> {
     pub id: &'a str,
     pub field_type: &'a str,
@@ -21,7 +10,6 @@ pub struct FieldInfo<'a> {
     pub criteria: Option<&'a str>,
 }
 
-/// Build the form extraction prompt with the given user message and fields.
 pub fn build_extraction_prompt(user_message: &str, fields: &[FieldInfo<'_>]) -> String {
     let field_descriptions: String = fields
         .iter()
@@ -48,7 +36,6 @@ pub fn build_extraction_prompt(user_message: &str, fields: &[FieldInfo<'_>]) -> 
         .replace("{{field_templates}}", &field_templates)
 }
 
-/// Build the form creation prompt with available form types.
 pub fn build_creation_prompt(user_message: &str, available_types: &[&str]) -> String {
     let types_list: String = available_types
         .iter()

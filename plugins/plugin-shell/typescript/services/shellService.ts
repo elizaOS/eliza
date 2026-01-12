@@ -38,14 +38,7 @@ export class ShellService extends Service {
     return "Execute shell commands within a restricted directory with history tracking";
   }
 
-  /**
-   * Executes a shell command within the allowed directory
-   * @param command The command to execute
-   * @param conversationId Optional conversation ID for history tracking
-   * @returns The command execution result
-   */
   async executeCommand(command: string, conversationId?: string): Promise<CommandResult> {
-    // Check if shell is enabled
     if (!this.shellConfig.enabled) {
       return {
         success: false,
@@ -57,7 +50,6 @@ export class ShellService extends Service {
       };
     }
 
-    // Basic command validation
     if (!command || typeof command !== "string") {
       return {
         success: false,
@@ -71,7 +63,6 @@ export class ShellService extends Service {
 
     const trimmedCommand = command.trim();
 
-    // Check for dangerous patterns
     if (!isSafeCommand(trimmedCommand)) {
       return {
         success: false,
@@ -83,7 +74,6 @@ export class ShellService extends Service {
       };
     }
 
-    // Check for forbidden commands
     if (isForbiddenCommand(trimmedCommand, this.shellConfig.forbiddenCommands)) {
       return {
         success: false,
@@ -95,17 +85,14 @@ export class ShellService extends Service {
       };
     }
 
-    // Handle cd command specially to track directory changes
     if (trimmedCommand.startsWith("cd ")) {
       const result = await this.handleCdCommand(trimmedCommand);
       this.addToHistory(conversationId, trimmedCommand, result);
       return result;
     }
 
-    // Execute the command
     const result = await this.runCommand(trimmedCommand);
 
-    // Track file operations if successful
     if (result.success) {
       const fileOps = this.detectFileOperations(trimmedCommand, this.currentDirectory);
       if (fileOps && conversationId) {
@@ -120,15 +107,9 @@ export class ShellService extends Service {
     return result;
   }
 
-  /**
-   * Handles the cd command to change directory within allowed bounds
-   * @param command The cd command
-   * @returns The command result
-   */
   private async handleCdCommand(command: string): Promise<CommandResult> {
     const parts = command.split(/\s+/);
     if (parts.length < 2) {
-      // cd without arguments goes to allowed directory
       this.currentDirectory = this.shellConfig.allowedDirectory;
       return {
         success: true,
@@ -157,7 +138,6 @@ export class ShellService extends Service {
       };
     }
 
-    // Update current directory
     this.currentDirectory = validatedPath;
     return {
       success: true,
@@ -168,26 +148,18 @@ export class ShellService extends Service {
     };
   }
 
-  /**
-   * Runs a command using cross-spawn
-   * @param command The command to run
-   * @returns The command result
-   */
   private async runCommand(command: string): Promise<CommandResult> {
     return new Promise((resolve) => {
-      // For complex commands with redirects or quotes, we need to use shell
       const useShell = command.includes(">") || command.includes("<") || command.includes("|");
 
       let cmd: string;
       let args: string[];
 
       if (useShell) {
-        // Use sh -c for commands with redirects/pipes
         cmd = "sh";
         args = ["-c", command];
         logger.info(`Executing shell command: sh -c "${command}" in ${this.currentDirectory}`);
       } else {
-        // For simple commands, split and execute directly
         const parts = command.split(/\s+/);
         cmd = parts[0];
         args = parts.slice(1);
@@ -198,18 +170,15 @@ export class ShellService extends Service {
       let stderr = "";
       let timedOut = false;
 
-      // Spawn the process
       const child = spawn(cmd, args, {
         cwd: this.currentDirectory,
         env: process.env,
         shell: false,
       });
 
-      // Set timeout
       const timeout = setTimeout(() => {
         timedOut = true;
         child.kill("SIGTERM");
-        // Force kill after 5 seconds if process doesn't terminate
         setTimeout(() => {
           if (!child.killed) {
             child.kill("SIGKILL");
@@ -217,21 +186,18 @@ export class ShellService extends Service {
         }, 5000);
       }, this.shellConfig.timeout);
 
-      // Capture stdout
       if (child.stdout) {
         child.stdout.on("data", (data: Buffer) => {
           stdout += data.toString();
         });
       }
 
-      // Capture stderr
       if (child.stderr) {
         child.stderr.on("data", (data: Buffer) => {
           stderr += data.toString();
         });
       }
 
-      // Handle process exit
       child.on("exit", (code) => {
         clearTimeout(timeout);
 
@@ -256,7 +222,6 @@ export class ShellService extends Service {
         });
       });
 
-      // Handle spawn errors
       child.on("error", (err: Error) => {
         clearTimeout(timeout);
         resolve({
@@ -271,9 +236,6 @@ export class ShellService extends Service {
     });
   }
 
-  /**
-   * Adds a command to the history
-   */
   private addToHistory(
     conversationId: string | undefined,
     command: string,
@@ -302,21 +264,16 @@ export class ShellService extends Service {
     }
     history.push(historyEntry);
 
-    // Trim history if it exceeds max length
     if (history.length > this.maxHistoryPerConversation) {
       history.shift();
     }
   }
 
-  /**
-   * Detects file operations from a command
-   */
   private detectFileOperations(command: string, cwd: string): FileOperation[] | undefined {
     const operations: FileOperation[] = [];
     const parts = command.trim().split(/\s+/);
     const cmd = parts[0].toLowerCase();
 
-    // File creation/writing
     if (cmd === "touch" && parts.length > 1) {
       operations.push({
         type: "create" as FileOperationType,
@@ -357,9 +314,6 @@ export class ShellService extends Service {
     return operations.length > 0 ? operations : undefined;
   }
 
-  /**
-   * Resolves a path relative to the current working directory
-   */
   private resolvePath(filePath: string, cwd: string): string {
     if (path.isAbsolute(filePath)) {
       return filePath;
@@ -367,9 +321,6 @@ export class ShellService extends Service {
     return path.join(cwd, filePath);
   }
 
-  /**
-   * Gets command history for a conversation
-   */
   getCommandHistory(conversationId: string, limit?: number): CommandHistoryEntry[] {
     const history = this.commandHistory.get(conversationId) || [];
     if (limit && limit > 0) {
@@ -378,24 +329,15 @@ export class ShellService extends Service {
     return history;
   }
 
-  /**
-   * Clears command history for a conversation
-   */
   clearCommandHistory(conversationId: string): void {
     this.commandHistory.delete(conversationId);
     logger.info(`Cleared command history for conversation: ${conversationId}`);
   }
 
-  /**
-   * Gets the current working directory
-   */
   getCurrentDirectory(_conversationId?: string): string {
     return this.currentDirectory;
   }
 
-  /**
-   * Gets the allowed directory
-   */
   getAllowedDirectory(): string {
     return this.shellConfig.allowedDirectory;
   }

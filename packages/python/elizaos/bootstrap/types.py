@@ -1,9 +1,4 @@
-"""
-Local type definitions for the elizaOS Bootstrap Plugin.
-
-These types supplement the core elizaos types with plugin-specific
-structures that may not be available in all versions of the core package.
-"""
+"""Local type definitions for the elizaOS Bootstrap Plugin."""
 
 from __future__ import annotations
 
@@ -15,25 +10,12 @@ from pydantic import BaseModel, Field
 
 @dataclass
 class CapabilityConfig:
-    """
-    Configuration for bootstrap capabilities.
-
-    - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
-    - Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
-    - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
-    """
+    """Configuration for bootstrap capabilities."""
 
     disable_basic: bool = False
-    """Disable basic capabilities (default: False)"""
-
     enable_extended: bool = False
-    """Enable extended capabilities (default: False)"""
-
     skip_character_provider: bool = False
-    """Skip the character provider (used for anonymous agents without a character file)"""
-
     enable_autonomy: bool = False
-    """Enable autonomy capabilities (default: False)"""
 
 
 class EvaluatorResult(BaseModel):

@@ -9,8 +9,6 @@ from pydantic import BaseModel, Field
 
 
 class ConnectionStatus(str, Enum):
-    """Status of an MCP server connection."""
-
     CONNECTING = "connecting"
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
@@ -18,8 +16,6 @@ class ConnectionStatus(str, Enum):
 
 
 class StdioServerConfig(BaseModel):
-    """Configuration for a stdio-based MCP server."""
-
     type: Literal["stdio"] = "stdio"
     command: str = Field(..., min_length=1, description="Command to execute")
     args: list[str] = Field(default_factory=list, description="Command arguments")
@@ -29,8 +25,6 @@ class StdioServerConfig(BaseModel):
 
 
 class HttpServerConfig(BaseModel):
-    """Configuration for an HTTP/SSE-based MCP server."""
-
     type: Literal["http", "streamable-http", "sse"] = "http"
     url: str = Field(..., min_length=1, description="Server URL")
     timeout_ms: int = Field(default=30000, ge=1, description="Timeout in milliseconds")
@@ -40,8 +34,6 @@ McpServerConfig = StdioServerConfig | HttpServerConfig
 
 
 class JsonSchemaProperty(BaseModel):
-    """A JSON Schema property definition."""
-
     type: str | None = None
     description: str | None = None
     properties: dict[str, JsonSchemaProperty] | None = None
@@ -67,8 +59,6 @@ class McpToolInputSchema(BaseModel):
 
 
 class McpTool(BaseModel):
-    """An MCP tool definition."""
-
     name: str = Field(..., min_length=1)
     description: str = Field(default="")
     input_schema: McpToolInputSchema = Field(
@@ -79,8 +69,6 @@ class McpTool(BaseModel):
 
 
 class McpResource(BaseModel):
-    """An MCP resource definition."""
-
     uri: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1)
     description: str = Field(default="")
@@ -90,8 +78,6 @@ class McpResource(BaseModel):
 
 
 class McpResourceTemplate(BaseModel):
-    """An MCP resource template definition."""
-
     uri_template: str = Field(..., min_length=1, alias="uriTemplate")
     name: str = Field(..., min_length=1)
     description: str = Field(default="")
@@ -101,15 +87,11 @@ class McpResourceTemplate(BaseModel):
 
 
 class TextContent(BaseModel):
-    """Text content from an MCP tool or resource."""
-
     type: Literal["text"] = "text"
     text: str
 
 
 class ImageContent(BaseModel):
-    """Image content from an MCP tool."""
-
     type: Literal["image"] = "image"
     data: str  # Base64 encoded
     mime_type: str = Field(alias="mimeType")
@@ -118,8 +100,6 @@ class ImageContent(BaseModel):
 
 
 class McpResourceContent(BaseModel):
-    """Content of an MCP resource."""
-
     uri: str
     mime_type: str | None = Field(default=None, alias="mimeType")
     text: str | None = None
@@ -129,8 +109,6 @@ class McpResourceContent(BaseModel):
 
 
 class EmbeddedResource(BaseModel):
-    """Embedded resource from an MCP tool."""
-
     type: Literal["resource"] = "resource"
     resource: McpResourceContent
 
@@ -139,8 +117,6 @@ McpContent = TextContent | ImageContent | EmbeddedResource
 
 
 class McpToolResult(BaseModel):
-    """Result from calling an MCP tool."""
-
     content: list[McpContent]
     is_error: bool = Field(default=False, alias="isError")
 
@@ -148,8 +124,6 @@ class McpToolResult(BaseModel):
 
 
 class McpError(Exception):
-    """Base exception for MCP errors."""
-
     def __init__(self, message: str, code: str = "UNKNOWN") -> None:
         super().__init__(message)
         self.code = code
@@ -157,7 +131,6 @@ class McpError(Exception):
 
     @classmethod
     def connection_error(cls, server_name: str, details: str | None = None) -> McpError:
-        """Create a connection error."""
         msg = f"Failed to connect to server '{server_name}'"
         if details:
             msg += f": {details}"
@@ -165,20 +138,16 @@ class McpError(Exception):
 
     @classmethod
     def tool_not_found(cls, tool_name: str, server_name: str) -> McpError:
-        """Create a tool not found error."""
         return cls(f"Tool '{tool_name}' not found on server '{server_name}'", "TOOL_NOT_FOUND")
 
     @classmethod
     def resource_not_found(cls, uri: str, server_name: str) -> McpError:
-        """Create a resource not found error."""
         return cls(f"Resource '{uri}' not found on server '{server_name}'", "RESOURCE_NOT_FOUND")
 
     @classmethod
     def validation_error(cls, details: str) -> McpError:
-        """Create a validation error."""
         return cls(f"Validation error: {details}", "VALIDATION_ERROR")
 
     @classmethod
     def timeout_error(cls, operation: str) -> McpError:
-        """Create a timeout error."""
         return cls(f"Operation timed out: {operation}", "TIMEOUT_ERROR")

@@ -1,10 +1,3 @@
-"""
-Primitive types for elizaOS.
-
-This module defines the fundamental types used throughout elizaOS,
-including UUID, Content, Media, and Metadata.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -24,7 +17,6 @@ UUID_PATTERN = re.compile(
 
 
 def _coerce_uuid(value: str | uuid_module.UUID) -> str:
-    """Coerce UUID objects or strings to validated UUID strings."""
     if isinstance(value, uuid_module.UUID):
         return str(value)
     if isinstance(value, str):
@@ -44,18 +36,6 @@ DEFAULT_UUID: str = "00000000-0000-0000-0000-000000000000"
 
 
 def as_uuid(id_str: str | uuid_module.UUID) -> str:
-    """
-    Helper function to safely cast a string or UUID to a validated UUID string.
-
-    Args:
-        id_str: The string or UUID to validate and cast
-
-    Returns:
-        The validated UUID as a string
-
-    Raises:
-        ValueError: If the string is not a valid UUID format
-    """
     return _coerce_uuid(id_str)
 
 
@@ -99,8 +79,6 @@ def string_to_uuid(target: str | int | uuid_module.UUID) -> str:
 
 
 class ContentType(str, Enum):
-    """Content type enumeration for media attachments."""
-
     IMAGE = "image"
     VIDEO = "video"
     AUDIO = "audio"
@@ -109,8 +87,6 @@ class ContentType(str, Enum):
 
 
 class Media(BaseModel):
-    """Represents a media attachment."""
-
     id: str = Field(..., description="Unique identifier")
     url: str = Field(..., description="Media URL")
     title: str | None = Field(default=None, description="Media title")
@@ -145,13 +121,6 @@ class MentionContext(BaseModel):
 
 
 class Content(BaseModel):
-    """
-    Represents the content of a memory, message, or other information.
-
-    This is the primary data structure for messages exchanged between
-    users, agents, and the system.
-    """
-
     thought: str | None = Field(default=None, description="The agent's internal thought process")
     text: str | None = Field(default=None, description="The main text content visible to users")
     actions: list[str] | None = Field(default=None, description="Actions to be performed")

@@ -1,7 +1,3 @@
-/**
- * Model handler exports for OpenRouter.
- */
-
 export { handleTextEmbedding } from "./embedding";
 export { handleImageDescription, handleImageGeneration } from "./image";
 export { handleObjectLarge, handleObjectSmall } from "./object";

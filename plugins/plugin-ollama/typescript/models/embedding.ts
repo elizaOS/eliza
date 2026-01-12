@@ -1,7 +1,3 @@
-/**
- * Embedding model handlers for Ollama.
- */
-
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { embed } from "ai";
@@ -10,13 +6,6 @@ import { createOllama } from "ollama-ai-provider";
 import { getBaseURL, getEmbeddingModel } from "../utils/config";
 import { ensureModelAvailable } from "./availability";
 
-/**
- * Handle TEXT_EMBEDDING model generation.
- *
- * @param runtime - The agent runtime
- * @param params - Embedding parameters or text string
- * @returns The embedding vector
- */
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null
@@ -40,7 +29,6 @@ export async function handleTextEmbedding(
           ? (params as TextEmbeddingParams).text || ""
           : "";
 
-    // If no text is provided (e.g., for dimension detection), use a default text
     const embeddingText = text || "test";
 
     if (!text) {
@@ -61,7 +49,6 @@ export async function handleTextEmbedding(
     }
   } catch (error) {
     logger.error({ error }, "Error in TEXT_EMBEDDING model");
-    // Return a fallback vector rather than crashing
     return Array(1536).fill(0);
   }
 }

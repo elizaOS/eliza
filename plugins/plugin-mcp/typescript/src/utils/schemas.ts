@@ -72,7 +72,6 @@ export interface ResourceSelection {
   readonly noResourceAvailable?: boolean;
 }
 
-// Type guards for runtime validation
 export function isToolSelectionName(value: unknown): value is ToolSelectionName {
   if (typeof value !== "object" || value === null) {
     return false;

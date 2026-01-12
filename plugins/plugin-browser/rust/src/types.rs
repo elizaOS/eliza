@@ -1,12 +1,7 @@
-//! Browser Plugin Types
-//!
-//! Defines all types used across the browser automation plugin.
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// CAPTCHA types supported by the plugin
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum CaptchaType {
@@ -18,7 +13,6 @@ pub enum CaptchaType {
     None,
 }
 
-/// Error codes for browser operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
@@ -32,7 +26,6 @@ pub enum ErrorCode {
     NoUrlFound,
 }
 
-/// Browser session information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserSession {
     pub id: String,
@@ -54,7 +47,6 @@ impl BrowserSession {
     }
 }
 
-/// Result of a navigation operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NavigationResult {
     pub success: bool,
@@ -64,7 +56,6 @@ pub struct NavigationResult {
     pub error: Option<String>,
 }
 
-/// Result of a browser action
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionResult {
     pub success: bool,
@@ -92,7 +83,6 @@ impl ActionResult {
     }
 }
 
-/// Result of data extraction
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractResult {
     pub success: bool,
@@ -103,7 +93,6 @@ pub struct ExtractResult {
     pub error: Option<String>,
 }
 
-/// Result of screenshot capture
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScreenshotResult {
     pub success: bool,
@@ -123,7 +112,6 @@ fn default_mime_type() -> String {
     "image/png".to_string()
 }
 
-/// Result of CAPTCHA detection/solving
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaptchaResult {
     pub detected: bool,
@@ -138,7 +126,6 @@ pub struct CaptchaResult {
     pub error: Option<String>,
 }
 
-/// Security configuration for URL validation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
     #[serde(default)]
@@ -177,7 +164,6 @@ impl Default for SecurityConfig {
     }
 }
 
-/// Retry configuration with exponential backoff
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetryConfig {
     #[serde(default = "default_max_attempts")]
@@ -217,7 +203,6 @@ impl Default for RetryConfig {
     }
 }
 
-/// Browser service configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserConfig {
     #[serde(default = "default_true")]
@@ -260,7 +245,6 @@ impl Default for BrowserConfig {
     }
 }
 
-/// WebSocket message format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebSocketMessage {
     #[serde(rename = "type")]
@@ -273,7 +257,6 @@ pub struct WebSocketMessage {
     pub data: Option<HashMap<String, serde_json::Value>>,
 }
 
-/// WebSocket response format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebSocketResponse {
     #[serde(rename = "type")]
@@ -287,14 +270,12 @@ pub struct WebSocketResponse {
     pub error: Option<String>,
 }
 
-/// Rate limit tracking entry
 #[derive(Debug, Clone)]
 pub struct RateLimitEntry {
     pub count: u32,
     pub reset_time: i64,
 }
 
-/// Rate limiting configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RateLimitConfig {
     #[serde(default = "default_max_actions")]

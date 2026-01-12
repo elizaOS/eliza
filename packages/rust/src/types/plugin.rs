@@ -113,7 +113,10 @@ pub struct PluginDefinition {
 /// For WASM builds, this constraint is relaxed since WASM is single-threaded.
 #[cfg(not(feature = "wasm"))]
 pub type ModelHandlerFn = Box<
-    dyn Fn(serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send>>
+    dyn Fn(
+            serde_json::Value,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send>>
         + Send
         + Sync,
 >;
@@ -124,7 +127,9 @@ pub type ModelHandlerFn = Box<
 /// does not require Send + Sync since WebAssembly is single-threaded.
 #[cfg(feature = "wasm")]
 pub type ModelHandlerFn = Box<
-    dyn Fn(serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>>>>
+    dyn Fn(
+        serde_json::Value,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>>>>,
 >;
 
 /// Full plugin with handlers (runtime representation)

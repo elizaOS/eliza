@@ -67,8 +67,7 @@ export function hasMessagingAPI(runtime: IAgentRuntime): runtime is RuntimeWithM
  */
 export function hasMessageService(runtime: IAgentRuntime): boolean {
   return (
-    runtime.messageService !== null &&
-    typeof runtime.messageService?.handleMessage === "function"
+    runtime.messageService !== null && typeof runtime.messageService?.handleMessage === "function"
   );
 }
 

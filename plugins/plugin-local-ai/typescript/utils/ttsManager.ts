@@ -6,16 +6,6 @@ import { pipeline, type TextToAudioPipeline } from "@huggingface/transformers";
 import { fetch } from "undici";
 import { MODEL_SPECS } from "../types";
 
-// Audio Utils
-
-/**
- * Generates a WAV file header based on the provided audio parameters.
- * @param {number} audioLength - The length of the audio data in bytes.
- * @param {number} sampleRate - The sample rate of the audio.
- * @param {number} [channelCount=1] - The number of channels (default is 1).
- * @param {number} [bitsPerSample=16] - The number of bits per sample (default is 16).
- * @returns {Buffer} The WAV file header as a Buffer object.
- */
 function getWavHeader(
   audioLength: number,
   sampleRate: number,
@@ -24,31 +14,21 @@ function getWavHeader(
 ): Buffer {
   const wavHeader = Buffer.alloc(44);
   wavHeader.write("RIFF", 0);
-  wavHeader.writeUInt32LE(36 + audioLength, 4); // Length of entire file in bytes minus 8
+  wavHeader.writeUInt32LE(36 + audioLength, 4);
   wavHeader.write("WAVE", 8);
   wavHeader.write("fmt ", 12);
-  wavHeader.writeUInt32LE(16, 16); // Length of format data
-  wavHeader.writeUInt16LE(1, 20); // Type of format (1 is PCM)
-  wavHeader.writeUInt16LE(channelCount, 22); // Number of channels
-  wavHeader.writeUInt32LE(sampleRate, 24); // Sample rate
-  wavHeader.writeUInt32LE((sampleRate * bitsPerSample * channelCount) / 8, 28); // Byte rate
-  wavHeader.writeUInt16LE((bitsPerSample * channelCount) / 8, 32); // Block align ((BitsPerSample * Channels) / 8)
-  wavHeader.writeUInt16LE(bitsPerSample, 34); // Bits per sample
-  wavHeader.write("data", 36); // Data chunk header
-  wavHeader.writeUInt32LE(audioLength, 40); // Data chunk size
+  wavHeader.writeUInt32LE(16, 16);
+  wavHeader.writeUInt16LE(1, 20);
+  wavHeader.writeUInt16LE(channelCount, 22);
+  wavHeader.writeUInt32LE(sampleRate, 24);
+  wavHeader.writeUInt32LE((sampleRate * bitsPerSample * channelCount) / 8, 28);
+  wavHeader.writeUInt16LE((bitsPerSample * channelCount) / 8, 32);
+  wavHeader.writeUInt16LE(bitsPerSample, 34);
+  wavHeader.write("data", 36);
+  wavHeader.writeUInt32LE(audioLength, 40);
   return wavHeader;
 }
 
-/**
- * Prepends a WAV header to a readable stream of audio data.
- *
- * @param {Readable} readable - The readable stream containing the audio data.
- * @param {number} audioLength - The length of the audio data in bytes.
- * @param {number} sampleRate - The sample rate of the audio data.
- * @param {number} [channelCount=1] - The number of channels in the audio data (default is 1).
- * @param {number} [bitsPerSample=16] - The number of bits per sample in the audio data (default is 16).
- * @returns {PassThrough} A new pass-through stream with the WAV header prepended to the audio data.
- */
 function prependWavHeader(
   readable: Readable,
   audioLength: number,
@@ -72,9 +52,6 @@ function prependWavHeader(
   return passThrough;
 }
 
-/**
- * Class representing a Text-to-Speech Manager using Transformers.js
- */
 export class TTSManager {
   private static instance: TTSManager | null = null;
   private cacheDir: string;
@@ -104,20 +81,14 @@ export class TTSManager {
   }
 
   private async initialize(): Promise<void> {
-    // Guard against concurrent calls: if an initialization is already in progress, return its promise.
     if (this.initializingPromise) {
-      logger.debug("TTS initialization already in progress, awaiting existing promise.");
       return this.initializingPromise;
     }
 
-    // If already initialized, no need to do anything further.
     if (this.initialized) {
-      logger.debug("TTS already initialized.");
       return;
     }
 
-    // Start the initialization process.
-    // The promise is stored in this.initializingPromise and cleared in the finally block.
     this.initializingPromise = (async () => {
       try {
         logger.info("Initializing TTS with Transformers.js backend...");
@@ -129,12 +100,10 @@ export class TTSManager {
         const modelName = ttsModelSpec.modelId;
         const speakerEmbeddingUrl = ttsModelSpec.defaultSpeakerEmbeddingUrl;
 
-        // 1. Load the TTS Pipeline
         logger.info(`Loading TTS pipeline for model: ${modelName}`);
         this.synthesizer = await pipeline("text-to-audio", modelName);
         logger.success(`TTS pipeline loaded successfully for model: ${modelName}`);
 
-        // 2. Load Default Speaker Embedding (if specified)
         if (speakerEmbeddingUrl) {
           const embeddingFilename = path.basename(new URL(speakerEmbeddingUrl).pathname);
           const embeddingPath = path.join(this.cacheDir, embeddingFilename);
@@ -166,7 +135,6 @@ export class TTSManager {
           this.defaultSpeakerEmbedding = null;
         }
 
-        // Check synthesizer as embedding might be optional for some models
         if (!this.synthesizer) {
           throw new Error("TTS initialization failed: Pipeline not loaded.");
         }
@@ -181,28 +149,19 @@ export class TTSManager {
         this.initialized = false;
         this.synthesizer = null;
         this.defaultSpeakerEmbedding = null;
-        throw error; // Propagate error to reject the initializingPromise
+        throw error;
       } finally {
-        // Clear the promise once initialization is complete (successfully or not)
         this.initializingPromise = null;
-        logger.debug("TTS initializingPromise cleared after completion/failure.");
       }
     })();
 
     return this.initializingPromise;
   }
 
-  /**
-   * Asynchronously generates speech from a given text using the Transformers.js pipeline.
-   * @param {string} text - The text to generate speech from.
-   * @returns {Promise<Readable>} A promise that resolves to a Readable stream containing the generated WAV audio data.
-   * @throws {Error} If the TTS model is not initialized or if generation fails.
-   */
   public async generateSpeech(text: string): Promise<Readable> {
     try {
       await this.initialize();
 
-      // Check synthesizer is initialized (embedding might be null but handled in synthesizer call)
       if (!this.synthesizer) {
         throw new Error("TTS Manager not properly initialized.");
       }
@@ -211,15 +170,12 @@ export class TTSManager {
         text: `${text.substring(0, 50)}...`,
       });
 
-      // Generate audio using the pipeline
       const output = await this.synthesizer(text, {
-        // Pass embedding only if it was loaded
         ...(this.defaultSpeakerEmbedding && {
           speaker_embeddings: this.defaultSpeakerEmbedding,
         }),
       });
 
-      // output is { audio: Float32Array, sampling_rate: number }
       const audioFloat32 = output.audio;
       const samplingRate = output.sampling_rate;
 
@@ -232,11 +188,10 @@ export class TTSManager {
         throw new Error("TTS pipeline generated empty audio output.");
       }
 
-      // Convert Float32Array to Int16 Buffer (standard PCM for WAV)
       const pcmData = new Int16Array(audioFloat32.length);
       for (let i = 0; i < audioFloat32.length; i++) {
-        const s = Math.max(-1, Math.min(1, audioFloat32[i])); // Clamp to [-1, 1]
-        pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7fff; // Convert to 16-bit [-32768, 32767]
+        const s = Math.max(-1, Math.min(1, audioFloat32[i]));
+        pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
       }
       const audioBuffer = Buffer.from(pcmData.buffer);
 
@@ -244,14 +199,12 @@ export class TTSManager {
         byteLength: audioBuffer.length,
       });
 
-      // Create WAV format stream
-      // Use samplingRate from the pipeline output
       const audioStream = prependWavHeader(
         Readable.from(audioBuffer),
-        audioBuffer.length, // Pass buffer length in bytes
+        audioBuffer.length,
         samplingRate,
-        1, // Number of channels (assuming mono)
-        16 // Bit depth
+        1,
+        16
       );
 
       logger.success("Speech generation complete (Transformers.js)");

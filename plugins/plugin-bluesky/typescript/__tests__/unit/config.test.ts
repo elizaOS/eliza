@@ -1,13 +1,5 @@
-/**
- * Tests for BlueSky configuration.
- */
-
 import { describe, expect, it } from "vitest";
-import {
-  BLUESKY_DEFAULT_SERVICE_URL,
-  BLUESKY_MAX_POST_LENGTH,
-  BlueSkyConfigSchema,
-} from "../../types";
+import { BLUESKY_MAX_POST_LENGTH, BLUESKY_SERVICE_URL, BlueSkyConfigSchema } from "../../types";
 
 describe("BlueSkyConfigSchema", () => {
   it("should validate a valid config", () => {
@@ -66,7 +58,7 @@ describe("BlueSkyConfigSchema", () => {
 
 describe("Constants", () => {
   it("should have correct default service URL", () => {
-    expect(BLUESKY_DEFAULT_SERVICE_URL).toBe("https://bsky.social");
+    expect(BLUESKY_SERVICE_URL).toBe("https://bsky.social");
   });
 
   it("should have correct max post length", () => {

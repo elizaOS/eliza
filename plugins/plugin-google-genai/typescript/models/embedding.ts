@@ -16,36 +16,20 @@ export async function handleTextEmbedding(
   const embeddingModelName = getEmbeddingModel(runtime);
   logger.debug(`[TEXT_EMBEDDING] Using model: ${embeddingModelName}`);
 
-  // Handle null case for initialization
   if (params === null) {
-    logger.debug("Creating test embedding for initialization");
-    // Return 768-dimensional vector for text-embedding-004
-    const dimension = 768;
-    const testVector = Array(dimension).fill(0) as number[];
-    testVector[0] = 0.1;
-    return testVector;
+    return Array(768).fill(0) as number[];
   }
 
-  // Extract text from params
-  let text: string;
-  if (typeof params === "string") {
-    text = params;
-  } else if (typeof params === "object" && params.text) {
-    text = params.text;
-  } else {
-    logger.warn("Invalid input format for embedding");
-    const dimension = 768;
-    const fallbackVector = Array(dimension).fill(0) as number[];
-    fallbackVector[0] = 0.2;
-    return fallbackVector;
-  }
+  const text =
+    typeof params === "string"
+      ? params
+      : typeof params === "object" && params.text
+        ? params.text
+        : "";
 
   if (!text.trim()) {
     logger.warn("Empty text for embedding");
-    const dimension = 768;
-    const emptyVector = Array(dimension).fill(0) as number[];
-    emptyVector[0] = 0.3;
-    return emptyVector;
+    return Array(768).fill(0) as number[];
   }
 
   try {
@@ -56,7 +40,6 @@ export async function handleTextEmbedding(
 
     const embedding = response.embeddings?.[0]?.values || [];
 
-    // Count tokens for usage tracking
     const promptTokens = await countTokens(text);
 
     emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, text, {
@@ -67,13 +50,10 @@ export async function handleTextEmbedding(
 
     logger.log(`Got embedding with length ${embedding.length}`);
     return embedding;
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(`Error generating embedding: ${message}`);
-    // Return error vector
-    const dimension = 768;
-    const errorVector = Array(dimension).fill(0) as number[];
-    errorVector[0] = 0.6;
-    return errorVector;
+  } catch (error) {
+    logger.error(
+      `Error generating embedding: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return Array(768).fill(0) as number[];
   }
 }

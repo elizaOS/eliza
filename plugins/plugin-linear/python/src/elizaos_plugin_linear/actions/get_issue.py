@@ -1,4 +1,3 @@
-"""Get issue action for Linear plugin."""
 
 import json
 import logging
@@ -49,7 +48,6 @@ async def validate(
     _message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate the action can run."""
     try:
         api_key = runtime.get_setting("LINEAR_API_KEY")
         return bool(api_key)
@@ -62,7 +60,6 @@ async def format_issue_response(
     callback: HandlerCallback | None,
     message: Memory,
 ) -> ActionResult:
-    """Format and return an issue response."""
     assignee = issue.get("assignee")
     state = issue.get("state")
     team = issue.get("team")
@@ -104,7 +101,6 @@ async def handler(
     options: dict[str, Any] | None = None,
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
-    """Handle the get issue action."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -119,7 +115,6 @@ async def handler(
                 )
             return {"text": error_message, "success": False}
 
-        # Use LLM to understand the request
         prompt = GET_ISSUE_TEMPLATE.format(user_message=content)
         response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
 
@@ -136,12 +131,10 @@ async def handler(
             cleaned = re.sub(r"\n?```$", "", cleaned).strip()
             parsed = json.loads(cleaned)
 
-            # If direct ID is provided, use it
             if parsed.get("directId"):
                 issue = await linear_service.get_issue(parsed["directId"])
                 return await format_issue_response(issue, callback, message)
 
-            # Otherwise, search based on criteria
             search_by = parsed.get("searchBy", {})
             if search_by:
                 from elizaos_plugin_linear.types import LinearSearchFilters
@@ -162,7 +155,6 @@ async def handler(
                 if search_by.get("state"):
                     filters.state = [search_by["state"]]
 
-                # Apply default team
                 default_team_key = runtime.get_setting("LINEAR_DEFAULT_TEAM_KEY")
                 if default_team_key and not filters.team:
                     filters.team = default_team_key
@@ -179,7 +171,6 @@ async def handler(
                         )
                     return {"text": no_results, "success": False}
 
-                # Sort by creation date if looking for recent
                 if search_by.get("recency"):
                     issues.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
                     return await format_issue_response(issues[0], callback, message)
@@ -187,7 +178,6 @@ async def handler(
                 if len(issues) == 1:
                     return await format_issue_response(issues[0], callback, message)
 
-                # Multiple results
                 issue_list = [
                     f"{i + 1}. {iss['identifier']}: {iss['title']} ({iss.get('state', {}).get('name', 'No state')})"
                     for i, iss in enumerate(issues[:5])
@@ -210,7 +200,6 @@ async def handler(
                 }
 
         except json.JSONDecodeError:
-            # Fallback to regex
             issue_match = re.search(r"(\w+-\d+)", content)
             if issue_match:
                 issue = await linear_service.get_issue(issue_match.group(1))
@@ -254,8 +243,3 @@ get_issue_action = create_action(
     validate=validate,
     handler=handler,
 )
-
-
-
-
-

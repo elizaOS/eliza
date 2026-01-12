@@ -80,11 +80,6 @@ export interface McpToolResult {
   readonly isError?: boolean;
 }
 
-export interface McpToolCallResponse {
-  readonly content: ReadonlyArray<TextContent | ImageContent | EmbeddedResource>;
-  readonly isError?: boolean;
-}
-
 export interface McpResourceContent {
   readonly uri: string;
   readonly mimeType?: string;
@@ -130,7 +125,6 @@ export interface McpProviderData {
 export interface McpProviderValues {
   readonly mcp: McpProviderData;
   readonly mcpText?: string;
-  readonly [key: string]: unknown;
 }
 
 export interface McpProvider {
@@ -139,7 +133,6 @@ export interface McpProvider {
   readonly text: string;
 }
 
-// JSON Schema types for strong typing
 export type JsonSchemaPrimitive = string | number | boolean | null;
 export type JsonSchemaValue = JsonSchemaPrimitive | JsonSchemaObject | JsonSchemaArray;
 export interface JsonSchemaObject {
@@ -240,7 +233,6 @@ interface ErrorResult {
 
 export type ValidationResult<T> = SuccessResult<T> | ErrorResult;
 
-// Assertion helpers for fail-fast validation
 export function assertNonNull<T>(value: T | null | undefined, message: string): T {
   if (value === null || value === undefined) {
     throw new Error(message);

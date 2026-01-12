@@ -1,26 +1,17 @@
 #![allow(missing_docs)]
-//! PDF Plugin Types
-//!
-//! Strong types for PDF processing operations.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Options for PDF text extraction.
 #[derive(Debug, Clone, Default)]
 pub struct PdfExtractionOptions {
-    /// Starting page (1-indexed)
     pub start_page: Option<usize>,
-    /// Ending page (1-indexed)
     pub end_page: Option<usize>,
-    /// Whether to preserve whitespace
     pub preserve_whitespace: bool,
-    /// Whether to clean control characters
     pub clean_content: bool,
 }
 
 impl PdfExtractionOptions {
-    /// Create new extraction options.
     pub fn new() -> Self {
         Self {
             start_page: None,
@@ -79,7 +70,6 @@ impl PdfConversionResult {
         }
     }
 
-    /// Create a failed result.
     pub fn failure(error: String) -> Self {
         Self {
             success: false,
@@ -90,56 +80,32 @@ impl PdfConversionResult {
     }
 }
 
-/// PDF page information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PdfPageInfo {
-    /// Page number (1-indexed)
     pub page_number: usize,
-    /// Page width in points
     pub width: f64,
-    /// Page height in points
     pub height: f64,
-    /// Text content of the page
     pub text: String,
 }
 
-/// PDF document metadata.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PdfMetadata {
-    /// Document title
     pub title: Option<String>,
-    /// Document author
     pub author: Option<String>,
-    /// Document subject
     pub subject: Option<String>,
-    /// Document keywords
     pub keywords: Option<String>,
-    /// Document creator
     pub creator: Option<String>,
-    /// Document producer
     pub producer: Option<String>,
-    /// Creation date
     pub creation_date: Option<DateTime<Utc>>,
-    /// Modification date
     pub modification_date: Option<DateTime<Utc>>,
 }
 
-/// Full PDF document information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PdfDocumentInfo {
-    /// Number of pages
     pub page_count: usize,
-    /// Document metadata
     pub metadata: PdfMetadata,
-    /// Full text content
     pub text: String,
-    /// Per-page information
     pub pages: Vec<PdfPageInfo>,
 }
-
-
-
-
-
 
 

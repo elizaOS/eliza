@@ -1,9 +1,6 @@
-//! Integration tests for ElizaOS Cloud Plugin.
-//!
-//! These tests require a valid API key set in ELIZAOS_CLOUD_API_KEY environment variable.
-
-use elizaos_plugin_elizacloud::{
-    ElizaCloudClient, ElizaCloudConfig, TextEmbeddingParams, TextGenerationParams,
+use elizaos_plugin_elizacloud::providers::ElizaCloudClient;
+use elizaos_plugin_elizacloud::types::{
+    ElizaCloudConfig, TextEmbeddingParams, TextGenerationParams,
 };
 
 fn get_config() -> Option<ElizaCloudConfig> {
@@ -95,10 +92,3 @@ async fn test_embedding_batch() {
     let embeddings = result.unwrap();
     assert_eq!(embeddings.len(), 3);
 }
-
-
-
-
-
-
-

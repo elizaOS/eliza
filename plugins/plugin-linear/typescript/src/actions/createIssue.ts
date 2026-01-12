@@ -82,7 +82,6 @@ export const createIssueAction: Action = {
         };
       }
 
-      // Check if the message already has structured data with type-safe access
       const params = _options?.parameters as CreateIssueParameters | undefined;
       const structuredData = params?.issueData;
 
@@ -91,7 +90,6 @@ export const createIssueAction: Action = {
       if (structuredData) {
         issueData = structuredData;
       } else {
-        // Use LLM to extract issue information
         const prompt = createIssueTemplate.replace("{{userMessage}}", content);
 
         const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -103,21 +101,18 @@ export const createIssueAction: Action = {
         }
 
         try {
-          // Strip markdown code blocks if present
           const cleanedResponse = response
             .replace(/^```(?:json)?\n?/, "")
             .replace(/\n?```$/, "")
             .trim();
           const parsed = JSON.parse(cleanedResponse);
 
-          // Clean up parsed data - convert empty strings to undefined for fields that need it
           issueData = {
             title: parsed.title || undefined,
             description: parsed.description || undefined,
             priority: parsed.priority ? Number(parsed.priority) : undefined,
           };
 
-          // Handle team assignment
           if (parsed.teamKey) {
             const teams = await linearService.getTeams();
             const team = teams.find((t) => t.key.toLowerCase() === parsed.teamKey.toLowerCase());
@@ -126,9 +121,7 @@ export const createIssueAction: Action = {
             }
           }
 
-          // Handle assignee
           if (parsed.assignee && parsed.assignee !== "") {
-            // Clean up assignee - remove @ symbol if present
             const cleanAssignee = parsed.assignee.replace(/^@/, "");
 
             const users = await linearService.getUsers();
@@ -142,7 +135,6 @@ export const createIssueAction: Action = {
             }
           }
 
-          // Handle labels
           if (parsed.labels && Array.isArray(parsed.labels) && parsed.labels.length > 0) {
             const labels = await linearService.getLabels(issueData.teamId);
             const labelIds: string[] = [];
@@ -161,9 +153,7 @@ export const createIssueAction: Action = {
             }
           }
 
-          // If no team was specified, use the first available team as default
           if (!issueData.teamId) {
-            // Check for default team key from environment
             const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
 
             if (defaultTeamKey) {
@@ -181,7 +171,6 @@ export const createIssueAction: Action = {
               }
             }
 
-            // If still no team, fall back to first available
             if (!issueData.teamId) {
               const teams = await linearService.getTeams();
               if (teams.length > 0) {
@@ -192,13 +181,11 @@ export const createIssueAction: Action = {
           }
         } catch (parseError) {
           logger.error("Failed to parse LLM response:", parseError);
-          // Fallback to simple title extraction
           issueData = {
             title: content.length > 100 ? `${content.substring(0, 100)}...` : content,
             description: content,
           };
 
-          // Ensure we have a teamId even in fallback case
           const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
           const teams = await linearService.getTeams();
 
@@ -233,7 +220,6 @@ export const createIssueAction: Action = {
         };
       }
 
-      // Final check for required teamId
       if (!issueData.teamId) {
         const errorMessage =
           "No Linear teams found. Please ensure at least one team exists in your Linear workspace.";
@@ -249,7 +235,6 @@ export const createIssueAction: Action = {
 
       const issue = await linearService.createIssue(issueData as LinearIssueInput);
 
-      // Send success message to channel
       const successMessage = `✅ Created Linear issue: ${issue.title} (${issue.identifier})\n\nView it at: ${issue.url}`;
       await callback?.({
         text: successMessage,

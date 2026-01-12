@@ -1,6 +1,3 @@
-"""Issues provider for Linear plugin."""
-
-from typing import Any
 
 from elizaos_plugin_linear.providers.base import Provider, ProviderResult, RuntimeProtocol
 from elizaos_plugin_linear.services.linear import LinearService
@@ -9,23 +6,20 @@ from elizaos_plugin_linear.types import LinearSearchFilters
 
 async def get_issues(
     runtime: RuntimeProtocol,
-    _message: Any,
-    _state: Any,
+    _message: object,
+    _state: object,
 ) -> ProviderResult:
-    """Get recent Linear issues for context."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
             return ProviderResult(text="Linear service is not available")
 
-        # Get recent issues
         filters = LinearSearchFilters(limit=10)
         issues = await linear_service.search_issues(filters)
 
         if not issues:
             return ProviderResult(text="No recent Linear issues found")
 
-        # Format issues for context
         issues_list = []
         for issue in issues:
             assignee = issue.get("assignee", {})
@@ -58,8 +52,3 @@ linear_issues_provider = Provider(
     description="Provides context about recent Linear issues",
     get=get_issues,
 )
-
-
-
-
-

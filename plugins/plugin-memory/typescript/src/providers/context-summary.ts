@@ -9,12 +9,6 @@ import {
 } from "@elizaos/core";
 import type { MemoryService } from "../services/memory-service";
 
-/**
- * Context Summary Provider
- *
- * Provides summarized context from previous conversations.
- * Returns session summaries with and without topics for flexible usage.
- */
 export const contextSummaryProvider: Provider = {
   name: "SUMMARIZED_CONTEXT",
   description: "Provides summarized context from previous conversations",

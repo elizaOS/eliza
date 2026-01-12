@@ -1,25 +1,10 @@
 #!/usr/bin/env tsx
 
-/**
- * Comprehensive Planning Benchmark Runner
- *
- * This script demonstrates how to run ElizaOS planning benchmarks
- * against REALM-Bench and API-Bank test suites.
- *
- * Usage:
- *   npm run benchmark
- *   npm run benchmark -- --realm-bench /path/to/realm-bench --api-bank /path/to/api-bank
- *   tsx scripts/run-benchmarks.ts --verbose --max-tests 50
- */
-
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { type Character, logger } from "@elizaos/core";
 import { type BenchmarkCommandOptions, runBenchmarkCommand } from "../src/cli/benchmark-command";
 
-/**
- * Example planning-focused character for benchmarks
- */
 const PLANNING_CHARACTER: Character = {
   name: "ElizaPlanningAgent",
   bio: [
@@ -129,9 +114,6 @@ Always prioritize accuracy, efficiency, and user satisfaction in your planning p
   plugins: ["@elizaos/plugin-planning", "@elizaos/plugin-sql"],
 };
 
-/**
- * Parse command line arguments
- */
 function parseArgs(): BenchmarkCommandOptions {
   const args = process.argv.slice(2);
   const options: BenchmarkCommandOptions = {
@@ -223,9 +205,6 @@ function parseArgs(): BenchmarkCommandOptions {
   return options;
 }
 
-/**
- * Print help information
- */
 function printHelp(): void {
   console.log(`
 ElizaOS Planning Benchmark Runner
@@ -266,9 +245,6 @@ If benchmark data paths are not provided, the script will look for them in:
 `);
 }
 
-/**
- * Detect benchmark data directories
- */
 function detectBenchmarkPaths(options: BenchmarkCommandOptions): void {
   const baseDir = path.join(process.cwd(), "benchmark-data");
 
@@ -299,9 +275,6 @@ function detectBenchmarkPaths(options: BenchmarkCommandOptions): void {
   }
 }
 
-/**
- * Setup benchmark environment
- */
 async function setupBenchmarkEnvironment(): Promise<void> {
   // Create benchmark data directory if it doesn't exist
   const benchmarkDataDir = path.join(process.cwd(), "benchmark-data");
@@ -358,9 +331,6 @@ npm run benchmark -- --realm-bench ./path/to/realm-bench --api-bank ./path/to/ap
   }
 }
 
-/**
- * Create sample character if none provided
- */
 async function createSampleCharacter(): Promise<string> {
   const charactersDir = path.join(process.cwd(), "benchmark-characters");
   await fs.promises.mkdir(charactersDir, { recursive: true });
@@ -375,9 +345,6 @@ async function createSampleCharacter(): Promise<string> {
   return characterPath;
 }
 
-/**
- * Main execution function
- */
 async function main(): Promise<void> {
   console.log("🚀 ElizaOS Planning Benchmark Runner\n");
 
@@ -442,7 +409,6 @@ async function main(): Promise<void> {
   }
 }
 
-// Execute if run directly
 if (require.main === module) {
   main();
 }

@@ -1,22 +1,8 @@
-/**
- * Robust XML parser utilities for handling model responses
- *
- * Handles edge cases like:
- * - Code blocks that contain XML-like syntax
- * - CDATA sections
- * - Nested tags
- * - Malformed XML
- */
-
 import { logger } from "@elizaos/core";
 
-/**
- * Extract content from an XML tag, handling CDATA sections and nested tags
- */
 export function extractXmlTag(text: string, tagName: string): string | null {
   if (!text || !tagName) return null;
 
-  // First, try to find CDATA content
   const cdataPattern = new RegExp(
     `<${tagName}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
     "i"
@@ -26,25 +12,21 @@ export function extractXmlTag(text: string, tagName: string): string | null {
     return cdataMatch[1];
   }
 
-  // Handle regular content with proper nesting using linear scanning
   const startTagPattern = `<${tagName}`;
   const endTag = `</${tagName}>`;
 
   const startIdx = text.indexOf(startTagPattern);
   if (startIdx === -1) return null;
 
-  // Find the end of the start tag (handle attributes)
   const startTagEnd = text.indexOf(">", startIdx);
   if (startTagEnd === -1) return null;
 
-  // Check for self-closing tag
   if (text.slice(startIdx, startTagEnd + 1).includes("/>")) {
     return "";
   }
 
   const contentStart = startTagEnd + 1;
 
-  // Use depth counting to handle nested same-name tags
   let depth = 1;
   let searchStart = contentStart;
 
@@ -58,7 +40,6 @@ export function extractXmlTag(text: string, tagName: string): string | null {
     }
 
     if (nextOpen !== -1 && nextOpen < nextClose) {
-      // Check if this is a start tag (not self-closing)
       const nestedEndIdx = text.indexOf(">", nextOpen);
       if (nestedEndIdx !== -1) {
         const nestedTagContent = text.slice(nextOpen, nestedEndIdx + 1);
@@ -80,9 +61,6 @@ export function extractXmlTag(text: string, tagName: string): string | null {
   return null;
 }
 
-/**
- * Unescape common XML entities
- */
 export function unescapeXml(text: string): string {
   return text
     .replace(/&lt;/g, "<")
@@ -94,9 +72,6 @@ export function unescapeXml(text: string): string {
     .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)));
 }
 
-/**
- * Escape text for safe inclusion in XML
- */
 export function escapeXml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -106,40 +81,27 @@ export function escapeXml(text: string): string {
     .replace(/'/g, "&apos;");
 }
 
-/**
- * Wrap content in CDATA section if it contains special characters
- */
 export function wrapInCdata(text: string): string {
   if (text.includes("<") || text.includes(">") || text.includes("&")) {
-    // Handle nested CDATA by escaping the closing sequence
     const escapedText = text.replace(/\]\]>/g, "]]]]><![CDATA[>");
     return `<![CDATA[${escapedText}]]>`;
   }
   return text;
 }
 
-/**
- * Parse a simple key-value XML structure into an object
- * More robust than regex-based parsing
- */
 export function parseSimpleXml<T = Record<string, unknown>>(text: string): T | null {
   if (!text) return null;
 
-  // Find the response block
   let xmlContent = extractXmlTag(text, "response");
 
-  // If no response block, try to find any XML-like structure
   if (!xmlContent) {
-    // Look for common wrapper tags
     for (const wrapper of ["result", "output", "data", "answer"]) {
       xmlContent = extractXmlTag(text, wrapper);
       if (xmlContent) break;
     }
   }
 
-  // If still no XML content, try to parse the text directly
   if (!xmlContent) {
-    // Check if the text looks like it has XML tags
     if (!text.includes("<") || !text.includes(">")) {
       logger.debug("No XML-like content found in text");
       return null;
@@ -149,22 +111,18 @@ export function parseSimpleXml<T = Record<string, unknown>>(text: string): T | n
 
   const result: Record<string, unknown> = {};
 
-  // Extract all top-level tags
   const tagPattern = /<([a-zA-Z][a-zA-Z0-9_-]*)[^>]*>/g;
   const foundTags = new Set<string>();
 
   let match: RegExpExecArray | null = tagPattern.exec(xmlContent);
   while (match !== null) {
     const tagName = match[1];
-    // Skip if we've already processed this tag
     if (foundTags.has(tagName)) continue;
     foundTags.add(tagName);
 
     const value = extractXmlTag(xmlContent, tagName);
     if (value !== null) {
-      // Handle special cases
       if (tagName === "actions" || tagName === "providers" || tagName === "evaluators") {
-        // Parse comma-separated lists
         result[tagName] = value
           ? value
               .split(",")
@@ -172,7 +130,6 @@ export function parseSimpleXml<T = Record<string, unknown>>(text: string): T | n
               .filter(Boolean)
           : [];
       } else if (tagName === "simple" || tagName === "success" || tagName === "error") {
-        // Parse boolean values
         result[tagName] = value.toLowerCase() === "true";
       } else {
         result[tagName] = value;
@@ -189,26 +146,16 @@ export function parseSimpleXml<T = Record<string, unknown>>(text: string): T | n
   return result as T;
 }
 
-/**
- * Sanitize user content for safe XML inclusion
- * Handles code blocks and other potentially problematic content
- */
 export function sanitizeForXml(content: string): string {
-  // Check if content contains XML-like syntax that could cause parsing issues
   const hasXmlLikeSyntax = /<[a-zA-Z]/.test(content) || content.includes("</");
 
   if (hasXmlLikeSyntax) {
-    // Wrap in CDATA to preserve the content exactly
     return wrapInCdata(content);
   }
 
-  // Otherwise, just escape special characters
   return escapeXml(content);
 }
 
-/**
- * Build an XML response string from an object
- */
 export function buildXmlResponse(data: Record<string, unknown>): string {
   const parts: string[] = ["<response>"];
 
@@ -216,18 +163,14 @@ export function buildXmlResponse(data: Record<string, unknown>): string {
     if (value === null || value === undefined) continue;
 
     if (Array.isArray(value)) {
-      // Join array values with commas
       parts.push(`  <${key}>${value.join(", ")}</${key}>`);
     } else if (typeof value === "boolean") {
       parts.push(`  <${key}>${value}</${key}>`);
     } else if (typeof value === "string") {
-      // Check if the string needs CDATA wrapping
       const content = sanitizeForXml(value);
       parts.push(`  <${key}>${content}</${key}>`);
     } else if (typeof value === "object") {
-      // Nested object - serialize recursively
       const nested = buildXmlResponse(value as Record<string, unknown>);
-      // Strip outer response tags and indent
       const innerContent = nested
         .replace(/^<response>\n?/, "")
         .replace(/\n?<\/response>$/, "")
@@ -244,9 +187,6 @@ export function buildXmlResponse(data: Record<string, unknown>): string {
   return parts.join("\n");
 }
 
-// =============================================================================
-// Self-test function - run with: bun run typescript/utils/xmlParser.ts
-// =============================================================================
 if (import.meta.main) {
   const tests: Array<{ name: string; fn: () => void }> = [];
   const test = (name: string, fn: () => void) => tests.push({ name, fn });

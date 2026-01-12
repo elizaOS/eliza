@@ -1,15 +1,9 @@
 import Ajv from "ajv";
 import JSON5 from "json5";
 
-/**
- * Parses a JSON string that may contain code blocks or other formatting.
- * Throws if the input cannot be parsed as valid JSON.
- */
 export function parseJSON<T>(input: string): T {
-  // Remove code blocks
   let cleanedInput = input.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
 
-  // Find JSON object boundaries - look for first { and last }
   const firstBrace = cleanedInput.indexOf("{");
   const lastBrace = cleanedInput.lastIndexOf("}");
 
@@ -17,10 +11,8 @@ export function parseJSON<T>(input: string): T {
     throw new Error("No valid JSON object found in input");
   }
 
-  // Extract only the JSON part between { and }
   cleanedInput = cleanedInput.substring(firstBrace, lastBrace + 1);
 
-  // JSON5.parse throws on invalid input - let it propagate
   return JSON5.parse(cleanedInput) as T;
 }
 
@@ -43,10 +35,6 @@ function formatAjvErrors(errors: readonly AjvError[]): string {
     .join(", ");
 }
 
-/**
- * Validates data against a JSON schema.
- * Returns a discriminated union - success with data or failure with error message.
- */
 export function validateJsonSchema<T>(
   data: unknown,
   schema: Readonly<Record<string, unknown>>
@@ -63,16 +51,10 @@ export function validateJsonSchema<T>(
   return { success: true, data: data as T };
 }
 
-/**
- * Type-safe JSON.stringify that handles circular references by throwing.
- */
 export function stringifyJSON(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/**
- * Asserts that a value is a valid JSON object (not null, not array).
- */
 export function assertJsonObject(value: unknown, context: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${context}: Expected a JSON object, got ${typeof value}`);

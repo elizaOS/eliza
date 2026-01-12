@@ -1,7 +1,3 @@
-"""
-Retry utility with exponential backoff.
-"""
-
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
@@ -42,7 +38,6 @@ async def retry_with_backoff(
     operation: str,
     timeout_ms: int | None = None,
 ) -> T:
-    """Execute a function with retry and exponential backoff."""
     last_error: Exception | None = None
     delay = config.initial_delay_ms / 1000  # Convert to seconds
 
@@ -79,8 +74,4 @@ async def retry_with_backoff(
 
 
 async def sleep(seconds: float) -> None:
-    """Sleep for specified seconds."""
     await asyncio.sleep(seconds)
-
-
-

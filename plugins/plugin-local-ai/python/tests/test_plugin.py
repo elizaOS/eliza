@@ -1,5 +1,3 @@
-"""Tests for the Local AI plugin."""
-
 from elizaos_plugin_local_ai import (
     EmbeddingParams,
     LocalAIConfig,
@@ -9,14 +7,12 @@ from elizaos_plugin_local_ai import (
 
 
 def test_plugin_initialization(config: LocalAIConfig) -> None:
-    """Test that the plugin can be initialized."""
     plugin = LocalAIPlugin(config)
     assert plugin is not None
     assert plugin.config == config
 
 
 def test_config_defaults() -> None:
-    """Test that config has sensible defaults."""
     config = LocalAIConfig()
     assert config.small_model == "DeepHermes-3-Llama-3-3B-Preview-q4.gguf"
     assert config.large_model == "DeepHermes-3-Llama-3-8B-q4.gguf"
@@ -26,7 +22,6 @@ def test_config_defaults() -> None:
 
 
 def test_text_generation_params() -> None:
-    """Test text generation parameters."""
     params = TextGenerationParams(
         prompt="Hello, world!",
         max_tokens=100,
@@ -39,7 +34,6 @@ def test_text_generation_params() -> None:
 
 
 def test_embedding_params() -> None:
-    """Test embedding parameters."""
     params = EmbeddingParams(text="Test text for embedding")
     assert params.text == "Test text for embedding"
 

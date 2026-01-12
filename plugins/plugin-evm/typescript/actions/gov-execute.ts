@@ -8,9 +8,7 @@ import type { ExecuteProposalParams, SupportedChain, Transaction } from "../type
 export { executeProposalTemplate };
 
 export class ExecuteAction {
-  constructor(private walletProvider: WalletProvider) {
-    this.walletProvider = walletProvider;
-  }
+  constructor(private walletProvider: WalletProvider) {}
 
   async execute(params: ExecuteProposalParams): Promise<Transaction> {
     const walletClient = this.walletProvider.getWalletClient(params.chain);
@@ -29,18 +27,16 @@ export class ExecuteAction {
 
     try {
       const chainConfig = this.walletProvider.getChainConfigs(params.chain);
-
-      // Log current block before sending transaction
       const publicClient = this.walletProvider.getPublicClient(params.chain);
 
-      const hash = // @ts-expect-error - viem type narrowing issue
-        await walletClient.sendTransaction({
-          account: walletClient.account,
-          to: params.governor,
-          value: BigInt(0),
-          data: txData as Hex,
-          chain: chainConfig,
-        });
+      // @ts-expect-error - viem type narrowing issue with sendTransaction parameters
+      const hash = await walletClient.sendTransaction({
+        account: walletClient.account,
+        to: params.governor,
+        value: BigInt(0),
+        data: txData as Hex,
+        chain: chainConfig,
+      });
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,
@@ -57,7 +53,7 @@ export class ExecuteAction {
       };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Vote failed: ${errorMessage}`);
+      throw new Error(`Execute failed: ${errorMessage}`);
     }
   }
 }
@@ -73,7 +69,6 @@ export const executeAction = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
-      // Validate required fields
       if (
         !options.chain ||
         !options.governor ||
@@ -86,7 +81,6 @@ export const executeAction = {
         throw new Error("Missing required parameters for execute proposal");
       }
 
-      // Convert options to ExecuteProposalParams
       const executeParams: ExecuteProposalParams = {
         chain: options.chain as SupportedChain,
         governor: options.governor as Address,
@@ -113,7 +107,6 @@ export const executeAction = {
       };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error in execute handler:", errorMessage);
       if (callback) {
         callback({ text: `Error: ${errorMessage}` });
       }

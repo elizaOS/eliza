@@ -1,17 +1,7 @@
-"""
-REPLY Action - Generate and send replies to messages.
-
-This action generates a response using the LLM and sends it back
-to the conversation. It's the default action when the agent needs
-to respond with a message.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-
-from pydantic import BaseModel
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.prompts import REPLY_TEMPLATE
@@ -33,23 +23,8 @@ if TYPE_CHECKING:
     )
 
 
-class ReplyXmlResponse(BaseModel):
-    """Parsed XML response from the reply model."""
-
-    thought: str = ""
-    text: str = ""
-
-
 @dataclass
 class ReplyAction:
-    """
-    Action that generates and sends a reply to the current conversation.
-
-    This is the default action when the agent needs to respond with a message.
-    It can be used at the beginning of a chain of actions as an acknowledgement,
-    or at the end of a chain as a final response.
-    """
-
     name: str = "REPLY"
     similes: list[str] = field(
         default_factory=lambda: ["GREET", "REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND", "RESPONSE"]
@@ -64,7 +39,6 @@ class ReplyAction:
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
     ) -> bool:
-        """Always valid - agents can always reply."""
         return True
 
     async def handler(
@@ -76,106 +50,60 @@ class ReplyAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        """
-        Generate a reply using the LLM.
-
-        Args:
-            runtime: The agent runtime
-            message: The triggering message
-            state: Current conversation state
-            options: Handler options including action context
-            callback: Callback to send the response
-            responses: Previous responses in the chain
-
-        Returns:
-            ActionResult with the generated reply
-        """
-        # Get providers from responses if available
         all_providers: list[str] = []
         if responses:
             for res in responses:
                 if res.content and res.content.providers:
                     all_providers.extend(res.content.providers)
 
-        # Compose state with relevant providers
         state = await runtime.compose_state(
             message, [*all_providers, "RECENT_MESSAGES", "ACTION_STATE"]
         )
 
-        # Get the reply template from character or use default
         template = REPLY_TEMPLATE
         if runtime.character.templates and "replyTemplate" in runtime.character.templates:
             template = runtime.character.templates["replyTemplate"]
 
         prompt = runtime.compose_prompt_from_state(state=state, template=template)
 
-        try:
-            response = await runtime.use_model(ModelType.TEXT_LARGE, {"prompt": prompt})
+        response = await runtime.use_model(ModelType.TEXT_LARGE, {"prompt": prompt})
 
-            # Parse XML response
-            parsed = parse_key_value_xml(response)
-            thought = parsed.get("thought", "") if parsed else ""
-            text = parsed.get("text", "") if parsed else ""
+        parsed = parse_key_value_xml(response)
+        thought = parsed.get("thought", "") if parsed else ""
+        text = parsed.get("text", "") if parsed else ""
 
-            # Ensure we have strings
-            thought = str(thought) if thought else ""
-            text = str(text) if text else ""
+        thought = str(thought) if thought else ""
+        text = str(text) if text else ""
 
-            response_content = Content(
-                thought=thought,
-                text=text,
-                actions=["REPLY"],
-            )
+        response_content = Content(
+            thought=thought,
+            text=text,
+            actions=["REPLY"],
+        )
 
-            if callback:
-                await callback(response_content)
+        if callback:
+            await callback(response_content)
 
-            return ActionResult(
-                text=f"Generated reply: {text}",
-                values={
-                    "success": True,
-                    "responded": True,
-                    "lastReply": text,
-                    "lastReplyTime": runtime.get_current_time_ms(),
-                    "thoughtProcess": thought,
-                },
-                data={
-                    "actionName": "REPLY",
-                    "responseThought": thought,
-                    "responseText": text,
-                    "messageGenerated": True,
-                },
-                success=True,
-            )
-
-        except Exception as e:
-            runtime.logger.error(
-                {
-                    "src": "plugin:bootstrap:action:reply",
-                    "agentId": str(runtime.agent_id),
-                    "error": str(e),
-                },
-                "Error generating response",
-            )
-
-            return ActionResult(
-                text="Error generating reply",
-                values={
-                    "success": False,
-                    "responded": False,
-                    "error": True,
-                },
-                data={
-                    "actionName": "REPLY",
-                    "error": str(e),
-                },
-                success=False,
-                error=e if isinstance(e, Exception) else Exception(str(e)),
-            )
+        return ActionResult(
+            text=f"Generated reply: {text}",
+            values={
+                "success": True,
+                "responded": True,
+                "lastReply": text,
+                "lastReplyTime": runtime.get_current_time_ms(),
+                "thoughtProcess": thought,
+            },
+            data={
+                "actionName": "REPLY",
+                "responseThought": thought,
+                "responseText": text,
+                "messageGenerated": True,
+            },
+            success=True,
+        )
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        """Example interactions demonstrating the REPLY action."""
         return [
             [
                 ActionExample(name="{{name1}}", content=Content(text="Hello there!")),
@@ -212,7 +140,6 @@ class ReplyAction:
         ]
 
 
-# Create the action instance
 reply_action = Action(
     name=ReplyAction.name,
     similes=ReplyAction().similes,

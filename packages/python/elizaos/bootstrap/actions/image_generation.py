@@ -1,10 +1,3 @@
-"""
-GENERATE_IMAGE Action - Generate images using AI models.
-
-This action allows the agent to generate images based on
-text prompts using the runtime's image generation capabilities.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -20,15 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class GenerateImageAction:
-    """
-    Action for generating images using AI models.
-
-    This action is used when:
-    - The user requests an image
-    - Visual content is needed
-    - Creative imagery is required
-    """
-
     name: str = "GENERATE_IMAGE"
     similes: list[str] = field(
         default_factory=lambda: [
@@ -48,8 +32,6 @@ class GenerateImageAction:
     async def validate(
         self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
     ) -> bool:
-        """Validate that image generation is available."""
-        # Check if the runtime has image generation capability
         return runtime.has_model(ModelType.IMAGE)
 
     async def handler(
@@ -61,11 +43,9 @@ class GenerateImageAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        """Handle image generation."""
         if state is None:
             raise ValueError("State is required for GENERATE_IMAGE action")
 
-        # Compose state with context
         state = await runtime.compose_state(message, ["RECENT_MESSAGES", "ACTION_STATE"])
 
         template = (
@@ -76,82 +56,60 @@ class GenerateImageAction:
         )
         prompt = runtime.compose_prompt(state=state, template=template)
 
-        try:
-            # First, generate the image prompt using text model
-            prompt_response = await runtime.use_model(ModelType.TEXT_LARGE, prompt=prompt)
-            parsed_xml = parse_key_value_xml(prompt_response)
+        prompt_response = await runtime.use_model(ModelType.TEXT_LARGE, prompt=prompt)
+        parsed_xml = parse_key_value_xml(prompt_response)
 
-            if parsed_xml is None:
-                raise ValueError("Failed to parse XML response for image prompt")
+        if parsed_xml is None:
+            raise ValueError("Failed to parse XML response for image prompt")
 
-            thought = str(parsed_xml.get("thought", ""))
-            image_prompt = str(parsed_xml.get("prompt", ""))
+        thought = str(parsed_xml.get("thought", ""))
+        image_prompt = str(parsed_xml.get("prompt", ""))
 
-            if not image_prompt:
-                raise ValueError("No image prompt generated")
+        if not image_prompt:
+            raise ValueError("No image prompt generated")
 
-            # Generate the image
-            image_result = await runtime.use_model(
-                ModelType.IMAGE,
-                prompt=image_prompt,
-            )
+        image_result = await runtime.use_model(
+            ModelType.IMAGE,
+            prompt=image_prompt,
+        )
 
-            # Handle image result - could be URL or base64
-            image_url: str | None = None
-            if isinstance(image_result, str):
-                image_url = image_result
-            elif isinstance(image_result, dict):
-                image_url = image_result.get("url") or image_result.get("data")
+        image_url: str | None = None
+        if isinstance(image_result, str):
+            image_url = image_result
+        elif isinstance(image_result, dict):
+            image_url = image_result.get("url") or image_result.get("data")
 
-            if not image_url:
-                raise ValueError("No image URL returned from generation")
+        if not image_url:
+            raise ValueError("No image URL returned from generation")
 
-            response_content = Content(
-                text=f"Generated image with prompt: {image_prompt}",
-                attachments=[{"type": "image", "url": image_url}],
-                actions=["GENERATE_IMAGE"],
-            )
+        response_content = Content(
+            text=f"Generated image with prompt: {image_prompt}",
+            attachments=[{"type": "image", "url": image_url}],
+            actions=["GENERATE_IMAGE"],
+        )
 
-            if callback:
-                await callback(response_content)
+        if callback:
+            await callback(response_content)
 
-            return ActionResult(
-                text=f"Generated image: {image_prompt}",
-                values={
-                    "success": True,
-                    "imageGenerated": True,
-                    "imageUrl": image_url,
-                    "imagePrompt": image_prompt,
-                },
-                data={
-                    "actionName": "GENERATE_IMAGE",
-                    "prompt": image_prompt,
-                    "thought": thought,
-                    "imageUrl": image_url,
-                },
-                success=True,
-            )
-
-        except Exception as error:
-            runtime.logger.error(
-                {
-                    "src": "plugin:bootstrap:action:imageGeneration",
-                    "agentId": runtime.agent_id,
-                    "error": str(error),
-                },
-                "Error generating image",
-            )
-            return ActionResult(
-                text="Error generating image",
-                values={"success": False, "error": str(error)},
-                data={"actionName": "GENERATE_IMAGE", "error": str(error)},
-                success=False,
-                error=error,
-            )
+        return ActionResult(
+            text=f"Generated image: {image_prompt}",
+            values={
+                "success": True,
+                "imageGenerated": True,
+                "imageUrl": image_url,
+                "imagePrompt": image_prompt,
+            },
+            data={
+                "actionName": "GENERATE_IMAGE",
+                "prompt": image_prompt,
+                "thought": thought,
+                "imageUrl": image_url,
+            },
+            success=True,
+        )
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        """Example interactions demonstrating the GENERATE_IMAGE action."""
         return [
             [
                 ActionExample(
@@ -182,7 +140,6 @@ class GenerateImageAction:
         ]
 
 
-# Create the action instance
 generate_image_action = Action(
     name=GenerateImageAction.name,
     similes=GenerateImageAction().similes,

@@ -55,43 +55,31 @@ def main():
     
     # Check plugin configuration
     print(f"\n4. Checking plugin configuration...")
-    try:
-        with open(plugin_file, 'r') as f:
-            content = f.read()
-            if 'tests=[' in content or 'tests = [' in content:
-                if 'python_plugin_starter_test_suite' in content:
-                    print("   ✓ Plugin has tests property with test suite")
-                else:
-                    print("   ⚠ Plugin has tests property but test suite import may be missing")
-                    errors.append("Test suite not properly imported in plugin")
+    with open(plugin_file, 'r') as f:
+        content = f.read()
+        if 'tests=[' in content or 'tests = [' in content:
+            if 'python_plugin_starter_test_suite' in content:
+                print("   ✓ Plugin has tests property with test suite")
             else:
-                print("   ✗ Plugin missing tests property")
-                errors.append("Plugin missing tests property")
-    except Exception as e:
-        print(f"   ✗ Error reading plugin: {e}")
-        errors.append(f"Error reading plugin: {e}")
+                print("   ⚠ Plugin has tests property but test suite import may be missing")
+                errors.append("Test suite not properly imported in plugin")
+        else:
+            print("   ✗ Plugin missing tests property")
+            errors.append("Plugin missing tests property")
     
     # Count tests
     print(f"\n5. Counting tests...")
-    try:
-        with open(tests_file, 'r') as f:
-            content = f.read()
-            e2e_tests = content.count('async def') - 1  # Subtract create_test_suite
-            test_cases = content.count('TestCase(')
-            print(f"   ✓ Found {e2e_tests} E2E test functions")
-            print(f"   ✓ Found {test_cases} TestCase definitions")
-    except Exception as e:
-        print(f"   ✗ Error counting E2E tests: {e}")
-        errors.append(f"Error counting E2E tests: {e}")
+    with open(tests_file, 'r') as f:
+        content = f.read()
+        e2e_tests = content.count('async def') - 1  # Subtract create_test_suite
+        test_cases = content.count('TestCase(')
+        print(f"   ✓ Found {e2e_tests} E2E test functions")
+        print(f"   ✓ Found {test_cases} TestCase definitions")
     
-    try:
-        with open(unit_test_file, 'r') as f:
-            content = f.read()
-            unit_tests = content.count('def test_')
-            print(f"   ✓ Found {unit_tests} pytest test methods")
-    except Exception as e:
-        print(f"   ✗ Error counting unit tests: {e}")
-        errors.append(f"Error counting unit tests: {e}")
+    with open(unit_test_file, 'r') as f:
+        content = f.read()
+        unit_tests = content.count('def test_')
+        print(f"   ✓ Found {unit_tests} pytest test methods")
     
     # Summary
     print("\n" + "=" * 50)

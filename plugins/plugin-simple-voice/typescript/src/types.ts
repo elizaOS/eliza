@@ -1,24 +1,12 @@
 import type { Service } from "@elizaos/core";
 
-/**
- * SAM TTS Voice Configuration
- *
- * Parameters for controlling the SAM speech synthesizer output.
- */
 export interface SamTTSOptions {
-  /** Speaking speed (20-200) */
   speed: number;
-  /** Voice pitch (0-255) */
   pitch: number;
-  /** Throat resonance (0-255) */
   throat: number;
-  /** Mouth articulation (0-255) */
   mouth: number;
 }
 
-/**
- * Default SAM voice settings
- */
 export const DEFAULT_SAM_OPTIONS: SamTTSOptions = {
   speed: 72,
   pitch: 64,
@@ -26,32 +14,20 @@ export const DEFAULT_SAM_OPTIONS: SamTTSOptions = {
   mouth: 128,
 };
 
-/**
- * Service type registry extension for SAM TTS
- */
 declare module "@elizaos/core" {
   interface ServiceTypeRegistry {
     SAM_TTS: "SAM_TTS";
   }
 }
 
-/**
- * SAM service type constant
- */
 export const SAMServiceType = {
   SAM_TTS: "SAM_TTS" as const,
 } satisfies Partial<import("@elizaos/core").ServiceTypeRegistry>;
 
-/**
- * Hardware bridge service interface for audio output
- */
 export interface HardwareBridgeService extends Service {
   sendAudioData(audioBuffer: Uint8Array): Promise<void>;
 }
 
-/**
- * Speech trigger phrases that activate the SAY_ALOUD action
- */
 export const SPEECH_TRIGGERS = [
   "say aloud",
   "speak",
@@ -74,9 +50,6 @@ export const SPEECH_TRIGGERS = [
   "retro voice",
 ] as const;
 
-/**
- * Vocalization intent patterns
- */
 export const VOCALIZATION_PATTERNS = [
   "can you say",
   "please say",

@@ -1,10 +1,6 @@
-//! URL extraction and parsing utilities.
-
 use regex::Regex;
 
-/// Extract URL from text message
 pub fn extract_url(text: &str) -> Option<String> {
-    // Check for quoted URL first
     let quoted_re = Regex::new(r#"["']([^"']+)["']"#).unwrap();
     if let Some(caps) = quoted_re.captures(text) {
         let url = &caps[1];
@@ -13,13 +9,11 @@ pub fn extract_url(text: &str) -> Option<String> {
         }
     }
 
-    // Check for explicit URL
     let url_re = Regex::new(r"(https?://[^\s]+)").unwrap();
     if let Some(caps) = url_re.captures(text) {
         return Some(caps[1].to_string());
     }
 
-    // Check for domain after navigation keywords
     let domain_re = Regex::new(
         r"(?i)(?:go to|navigate to|open|visit)\s+([a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,})",
     )
@@ -31,7 +25,6 @@ pub fn extract_url(text: &str) -> Option<String> {
     None
 }
 
-/// Parse click target from message
 pub fn parse_click_target(text: &str) -> String {
     let re = Regex::new(r"(?i)click (?:on |the )?(.+)$").unwrap();
     match re.captures(text) {
@@ -40,7 +33,6 @@ pub fn parse_click_target(text: &str) -> String {
     }
 }
 
-/// Parse type action from message. Returns (text_to_type, field)
 pub fn parse_type_action(text: &str) -> (String, String) {
     let text_re = Regex::new(r#"["']([^"']+)["']"#).unwrap();
     let text_to_type = text_re
@@ -57,7 +49,6 @@ pub fn parse_type_action(text: &str) -> (String, String) {
     (text_to_type, field)
 }
 
-/// Parse select action from message. Returns (option, dropdown)
 pub fn parse_select_action(text: &str) -> (String, String) {
     let option_re = Regex::new(r#"["']([^"']+)["']"#).unwrap();
     let option = option_re
@@ -74,7 +65,6 @@ pub fn parse_select_action(text: &str) -> (String, String) {
     (option, dropdown)
 }
 
-/// Parse extract instruction from message
 pub fn parse_extract_instruction(text: &str) -> String {
     let re = Regex::new(r"(?i)(?:extract|get|find|scrape|read) (?:the )?(.+?)(?:\s+from|\s*$)").unwrap();
     match re.captures(text) {

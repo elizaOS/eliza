@@ -1,7 +1,3 @@
-"""
-Bridge action for cross-chain token transfers using LiFi.
-"""
-
 import asyncio
 import logging
 from typing import TypedDict
@@ -21,14 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 class LiFiRouteResponse(TypedDict):
-    """LiFi route API response."""
-
     routes: list[dict]
 
 
 class LiFiStepResponse(TypedDict):
-    """LiFi step transaction response."""
-
     transactionRequest: dict
 
 
@@ -36,19 +28,6 @@ async def get_lifi_route(
     params: BridgeParams,
     from_address: str,
 ) -> dict:
-    """
-    Get a bridge route from LiFi.
-
-    Args:
-        params: The bridge parameters.
-        from_address: The address executing the bridge.
-
-    Returns:
-        The best route from LiFi.
-
-    Raises:
-        EVMError: If no route is found.
-    """
     to_address = params.to_address or from_address
 
     url = f"{LIFI_API_URL}/advanced/routes"
@@ -61,7 +40,7 @@ async def get_lifi_route(
         "fromAddress": from_address,
         "toAddress": to_address,
         "options": {
-            "slippage": 0.03,  # 3% slippage
+            "slippage": 0.03,
             "allowSwitchChain": True,
         },
     }
@@ -82,20 +61,10 @@ async def get_lifi_route(
             f"No bridge route found from {params.from_chain.value} to {params.to_chain.value}"
         )
 
-    # Return the best route (first one)
     return routes[0]
 
 
 async def get_step_transaction(step: dict) -> dict:
-    """
-    Get the transaction for a route step.
-
-    Args:
-        step: The route step.
-
-    Returns:
-        The transaction request.
-    """
     url = f"{LIFI_API_URL}/advanced/stepTransaction"
 
     async with httpx.AsyncClient() as client:
@@ -114,20 +83,6 @@ async def wait_for_bridge_completion(
     to_chain: int,
     tx_hash: str,
 ) -> BridgeStatus:
-    """
-    Wait for bridge completion by polling LiFi status.
-
-    Args:
-        from_chain: Source chain ID.
-        to_chain: Destination chain ID.
-        tx_hash: The source transaction hash.
-
-    Returns:
-        The final bridge status.
-
-    Raises:
-        EVMError: If the bridge fails or times out.
-    """
     url = f"{LIFI_API_URL}/status"
 
     for attempt in range(MAX_BRIDGE_POLL_ATTEMPTS):
@@ -175,19 +130,6 @@ async def execute_bridge(
     provider: EVMWalletProvider,
     params: BridgeParams,
 ) -> BridgeStatus:
-    """
-    Execute a cross-chain bridge using LiFi.
-
-    Args:
-        provider: The wallet provider to use.
-        params: The bridge parameters.
-
-    Returns:
-        The bridge status after completion.
-
-    Raises:
-        EVMError: If the bridge fails.
-    """
     logger.info(
         "Executing bridge: %s %s -> %s (%s -> %s)",
         params.amount,
@@ -197,10 +139,7 @@ async def execute_bridge(
         params.to_chain.value,
     )
 
-    # Get route
     route = await get_lifi_route(params, provider.address)
-
-    # Execute each step
     steps = route.get("steps", [])
     if not steps:
         raise EVMError.route_not_found("Route has no steps")
@@ -210,7 +149,6 @@ async def execute_bridge(
     for i, step in enumerate(steps):
         logger.info("Executing step %d/%d: %s", i + 1, len(steps), step.get("type"))
 
-        # Check if approval needed
         if step.get("type") == "approve":
             tx_request = await get_step_transaction(step)
             approve_tx = await provider.send_transaction(
@@ -225,10 +163,7 @@ async def execute_bridge(
             logger.info("Approval confirmed: %s", approve_tx)
             continue
 
-        # Get transaction for this step
         tx_request = await get_step_transaction(step)
-
-        # Execute the step
         tx_hash = await provider.send_transaction(
             chain=params.from_chain,
             to=tx_request["to"],
@@ -238,14 +173,12 @@ async def execute_bridge(
             data=tx_request["data"],
         )
 
-        # Wait for confirmation
         await provider.wait_for_transaction(params.from_chain, tx_hash)
         logger.info("Step %d confirmed: %s", i + 1, tx_hash)
 
     if not tx_hash:
         raise EVMError.transaction_failed("No transaction was executed")
 
-    # Wait for bridge completion
     status = await wait_for_bridge_completion(
         from_chain=params.from_chain.chain_id,
         to_chain=params.to_chain.chain_id,
@@ -264,7 +197,6 @@ async def execute_bridge(
     return status
 
 
-# Action definition for elizaOS
 bridge_action = {
     "name": "BRIDGE_TOKEN",
     "description": "Bridge tokens from one chain to another",

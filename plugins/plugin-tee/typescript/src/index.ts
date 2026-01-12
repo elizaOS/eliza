@@ -1,33 +1,8 @@
-/**
- * TEE Plugin for elizaOS
- *
- * Provides Trusted Execution Environment (TEE) integration for secure key
- * management and remote attestation.
- *
- * ## Features
- *
- * - **Remote Attestation**: Prove the agent is running in a TEE
- * - **Key Derivation**: Securely derive Ed25519 (Solana) and ECDSA (EVM) keys
- * - **Vendor Support**: Extensible vendor system (currently supports Phala Network)
- *
- * ## Configuration
- *
- * Required:
- * - TEE_MODE: LOCAL | DOCKER | PRODUCTION
- * - WALLET_SECRET_SALT: Secret for key derivation
- *
- * Optional:
- * - TEE_VENDOR: Vendor name (default: "phala")
- */
-
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { TEEService } from "./services/tee";
 import { getVendor, TeeVendorNames } from "./vendors";
 
-// Export actions
 export { remoteAttestationAction } from "./actions";
-
-// Export providers
 export {
   DeriveKeyProvider,
   PhalaDeriveKeyProvider,
@@ -36,11 +11,8 @@ export {
   phalaRemoteAttestationProvider,
   RemoteAttestationProvider,
 } from "./providers";
-// Export services
 export { TEEService } from "./services";
-// Export all types
 export * from "./types";
-// Export utils
 export {
   calculateSHA256,
   getTeeEndpoint,
@@ -49,7 +21,6 @@ export {
   uint8ArrayToHex,
   uploadAttestationQuote,
 } from "./utils";
-// Export vendors
 export {
   getVendor,
   PhalaVendor,
@@ -57,14 +28,8 @@ export {
   TeeVendorNames,
 } from "./vendors";
 
-/**
- * Get the default vendor.
- */
 const defaultVendor = getVendor(TeeVendorNames.PHALA);
 
-/**
- * TEE plugin for Trusted Execution Environment integration.
- */
 export const teePlugin: Plugin = {
   name: "tee",
   description:
@@ -84,7 +49,6 @@ export const teePlugin: Plugin = {
 
     logger.info(`Initializing TEE plugin with vendor: ${vendorName}, mode: ${teeMode}`);
 
-    // Validate configuration
     if (!["LOCAL", "DOCKER", "PRODUCTION"].includes(teeMode.toUpperCase())) {
       throw new Error(`Invalid TEE_MODE: ${teeMode}. Must be one of: LOCAL, DOCKER, PRODUCTION`);
     }

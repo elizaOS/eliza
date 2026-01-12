@@ -1,16 +1,3 @@
-"""
-elizaOS Anthropic Plugin - Claude API client for text and object generation.
-
-This package provides a strongly-typed Anthropic Claude API client for elizaOS,
-supporting both text generation and structured JSON object generation.
-
-Example:
-    >>> from elizaos_plugin_anthropic import AnthropicClient, AnthropicConfig
-    >>> config = AnthropicConfig.from_env()
-    >>> client = AnthropicClient(config)
-    >>> response = await client.generate_text_large("What is 2+2?")
-    >>> print(response.text)
-"""
 
 from elizaos_plugin_anthropic.client import AnthropicClient
 from elizaos_plugin_anthropic.config import AnthropicConfig

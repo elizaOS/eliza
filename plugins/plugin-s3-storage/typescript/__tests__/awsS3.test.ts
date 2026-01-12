@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-// Unit tests for S3 types and utilities (without requiring full service initialization)
 describe("AwsS3Service", () => {
   it("should export AwsS3Service class", async () => {
     const { AwsS3Service } = await import("../services/s3");

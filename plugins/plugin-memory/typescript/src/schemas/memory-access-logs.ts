@@ -1,18 +1,14 @@
 import { sql } from "drizzle-orm";
 import { index, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
-/**
- * Memory access logs table
- * Tracks access patterns for memory optimization
- */
 export const memoryAccessLogs = pgTable(
   "memory_access_logs",
   {
     id: varchar("id", { length: 36 }).primaryKey(),
     memoryId: varchar("memory_id", { length: 36 }).notNull(),
-    memoryType: text("memory_type").notNull(), // 'long_term' or 'session'
+    memoryType: text("memory_type").notNull(),
     agentId: varchar("agent_id", { length: 36 }).notNull(),
-    accessType: text("access_type").notNull(), // 'read', 'write', 'update', 'delete'
+    accessType: text("access_type").notNull(),
     accessedAt: timestamp("accessed_at").default(sql`now()`).notNull(),
   },
   (table) => ({

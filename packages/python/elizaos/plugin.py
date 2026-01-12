@@ -1,9 +1,3 @@
-"""
-Plugin utilities for elizaOS.
-
-This module provides utilities for loading and registering plugins.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -17,8 +11,6 @@ if TYPE_CHECKING:
 
 
 class PluginLoadError(Exception):
-    """Exception raised when plugin loading fails."""
-
     def __init__(self, message: str, plugin_name: str, cause: Exception | None = None) -> None:
         super().__init__(message)
         self.plugin_name = plugin_name
@@ -26,8 +18,6 @@ class PluginLoadError(Exception):
 
 
 class PluginRegistrationError(Exception):
-    """Exception raised when plugin registration fails."""
-
     def __init__(self, message: str, plugin_name: str, cause: Exception | None = None) -> None:
         super().__init__(message)
         self.plugin_name = plugin_name
@@ -35,36 +25,15 @@ class PluginRegistrationError(Exception):
 
 
 def load_plugin(name: str) -> Plugin:
-    """
-    Load a plugin by name.
-
-    The plugin should be a Python module that exports a `plugin` variable
-    of type Plugin.
-
-    Args:
-        name: The plugin module name
-
-    Returns:
-        The loaded Plugin
-
-    Raises:
-        PluginLoadError: If the plugin cannot be loaded
-    """
     try:
-        # Try to import the module
         module = importlib.import_module(name)
-
-        # Look for a plugin export
         if hasattr(module, "plugin"):
             plugin = module.plugin
             if isinstance(plugin, Plugin):
                 logger.debug(f"Loaded plugin: {plugin.name}")
                 return plugin
-            # Try to construct if it's a dict
             if isinstance(plugin, dict):
                 return Plugin(**plugin)
-
-        # Try to find a default plugin export
         if hasattr(module, "default"):
             default = module.default
             if isinstance(default, Plugin):
@@ -93,27 +62,8 @@ def load_plugin(name: str) -> Plugin:
 
 
 async def register_plugin(runtime: IAgentRuntime, plugin: Plugin) -> None:
-    """
-    Register a plugin with the runtime.
-
-    This function handles:
-    1. Checking plugin dependencies
-    2. Initializing the plugin
-    3. Registering actions, providers, evaluators
-    4. Starting services
-    5. Registering event handlers
-
-    Args:
-        runtime: The agent runtime
-        plugin: The plugin to register
-
-    Raises:
-        PluginRegistrationError: If registration fails
-    """
     try:
         logger.info(f"Registering plugin: {plugin.name}")
-
-        # Check dependencies
         if plugin.dependencies:
             for dep in plugin.dependencies:
                 if dep not in [p.name for p in runtime.plugins]:
@@ -122,36 +72,30 @@ async def register_plugin(runtime: IAgentRuntime, plugin: Plugin) -> None:
                         plugin_name=plugin.name,
                     )
 
-        # Initialize the plugin if it has an init function
         if plugin.init:
             config = plugin.config or {}
             await plugin.init(config, runtime)
 
-        # Register actions
         if plugin.actions:
             for action in plugin.actions:
                 runtime.register_action(action)
                 logger.debug(f"Registered action: {action.name}")
 
-        # Register providers
         if plugin.providers:
             for provider in plugin.providers:
                 runtime.register_provider(provider)
                 logger.debug(f"Registered provider: {provider.name}")
 
-        # Register evaluators
         if plugin.evaluators:
             for evaluator in plugin.evaluators:
                 runtime.register_evaluator(evaluator)
                 logger.debug(f"Registered evaluator: {evaluator.name}")
 
-        # Register services
         if plugin.services:
             for service_class in plugin.services:
                 await runtime.register_service(service_class)
                 logger.debug(f"Registered service: {service_class.service_type}")
 
-        # Register models
         if plugin.models:
             for model_type, handler in plugin.models.items():
                 runtime.register_model(
@@ -161,7 +105,6 @@ async def register_plugin(runtime: IAgentRuntime, plugin: Plugin) -> None:
                 )
                 logger.debug(f"Registered model: {model_type}")
 
-        # Register event handlers
         if plugin.events:
             for event_type, event_handlers in plugin.events.items():
                 for event_handler in event_handlers:
@@ -181,18 +124,6 @@ async def register_plugin(runtime: IAgentRuntime, plugin: Plugin) -> None:
 
 
 def resolve_plugin_dependencies(plugins: list[Plugin]) -> list[Plugin]:
-    """
-    Resolve plugin dependencies and return plugins in topological order.
-
-    Args:
-        plugins: List of plugins to sort
-
-    Returns:
-        Plugins sorted by dependency order
-
-    Raises:
-        PluginLoadError: If there are circular dependencies
-    """
     plugin_map = {p.name: p for p in plugins}
     resolved: list[Plugin] = []
     visiting: set[str] = set()

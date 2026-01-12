@@ -1,9 +1,3 @@
-"""
-Task types for elizaOS.
-
-This module defines types for tasks and task workers.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -19,8 +13,6 @@ if TYPE_CHECKING:
 
 
 class TaskStatus(str, Enum):
-    """Task status enumeration."""
-
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -29,8 +21,6 @@ class TaskStatus(str, Enum):
 
 
 class TaskMetadata(BaseModel):
-    """Metadata for a task."""
-
     priority: int | None = Field(default=None, description="Task priority")
     retry_count: int | None = Field(
         default=None, alias="retryCount", description="Number of retries"
@@ -47,8 +37,6 @@ class TaskMetadata(BaseModel):
 
 
 class Task(BaseModel):
-    """Represents a task to be executed."""
-
     id: UUID | None = Field(default=None, description="Unique identifier")
     name: str = Field(..., description="Task name")
     description: str | None = Field(default=None, description="Task description")
@@ -69,8 +57,6 @@ class Task(BaseModel):
 
 
 class TaskWorker(BaseModel):
-    """Task worker definition for handling tasks."""
-
     name: str = Field(..., description="Worker name matching task name")
     validate_fn: Callable[[IAgentRuntime, Task], Awaitable[bool]] | None = Field(
         default=None, alias="validate", description="Validation function"

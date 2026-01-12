@@ -1,17 +1,8 @@
-/**
- * GitHub plugin configuration.
- *
- * Configuration can be loaded from environment variables or runtime settings.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import { z } from "zod";
 import { ConfigError, MissingSettingError } from "./error";
 import { formatZodErrors, type GitHubSettings } from "./types";
 
-/**
- * GitHub configuration schema
- */
 const configSchema = z.object({
   apiToken: z.string().min(1, "API token is required"),
   owner: z.string().optional(),
@@ -25,11 +16,6 @@ const configSchema = z.object({
 
 export type GitHubConfig = z.infer<typeof configSchema>;
 
-/**
- * GitHub plugin configuration class.
- *
- * Provides typed access to GitHub settings with validation.
- */
 export class GitHubPluginConfig {
   public readonly apiToken: string;
   public readonly owner: string | undefined;
@@ -51,14 +37,6 @@ export class GitHubPluginConfig {
     this.installationId = config.installationId;
   }
 
-  /**
-   * Create configuration from runtime settings.
-   *
-   * @param runtime - The agent runtime
-   * @returns Configuration instance
-   * @throws MissingSettingError if required settings are missing
-   * @throws ConfigError if configuration is invalid
-   */
   static fromRuntime(runtime: IAgentRuntime): GitHubPluginConfig {
     const apiToken = runtime.getSetting("GITHUB_API_TOKEN");
 
@@ -86,13 +64,6 @@ export class GitHubPluginConfig {
     return new GitHubPluginConfig(result.data);
   }
 
-  /**
-   * Create configuration from settings object.
-   *
-   * @param settings - GitHub settings
-   * @returns Configuration instance
-   * @throws ConfigError if configuration is invalid
-   */
   static fromSettings(settings: GitHubSettings): GitHubPluginConfig {
     const result = configSchema.safeParse({
       ...settings,
@@ -106,13 +77,6 @@ export class GitHubPluginConfig {
     return new GitHubPluginConfig(result.data);
   }
 
-  /**
-   * Create configuration from environment variables.
-   *
-   * @returns Configuration instance
-   * @throws MissingSettingError if required variables are missing
-   * @throws ConfigError if configuration is invalid
-   */
   static fromEnv(): GitHubPluginConfig {
     const apiToken = process.env.GITHUB_API_TOKEN;
 
@@ -140,14 +104,6 @@ export class GitHubPluginConfig {
     return new GitHubPluginConfig(result.data);
   }
 
-  /**
-   * Get repository reference, falling back to defaults.
-   *
-   * @param owner - Optional owner override
-   * @param repo - Optional repo override
-   * @returns Repository reference
-   * @throws MissingSettingError if neither override nor default is available
-   */
   getRepositoryRef(owner?: string, repo?: string): { owner: string; repo: string } {
     const resolvedOwner = owner ?? this.owner;
     const resolvedRepo = repo ?? this.repo;
@@ -163,18 +119,10 @@ export class GitHubPluginConfig {
     return { owner: resolvedOwner, repo: resolvedRepo };
   }
 
-  /**
-   * Check if GitHub App authentication is configured.
-   */
   hasAppAuth(): boolean {
     return !!(this.appId && this.appPrivateKey);
   }
 
-  /**
-   * Validate the configuration.
-   *
-   * @throws ConfigError if configuration is invalid
-   */
   validate(): void {
     if (
       !this.apiToken.startsWith("ghp_") &&
@@ -184,8 +132,6 @@ export class GitHubPluginConfig {
       !this.apiToken.startsWith("ghr_") &&
       !this.apiToken.startsWith("github_pat_")
     ) {
-      // May be a fine-grained PAT or classic token
-      // Just log a warning instead of throwing
       console.warn("GitHub API token format not recognized. Ensure it is a valid token.");
     }
 
@@ -196,9 +142,6 @@ export class GitHubPluginConfig {
     }
   }
 
-  /**
-   * Convert to plain settings object.
-   */
   toSettings(): GitHubSettings {
     return {
       apiToken: this.apiToken,
@@ -213,12 +156,6 @@ export class GitHubPluginConfig {
   }
 }
 
-/**
- * Validate GitHub configuration from runtime.
- *
- * @param runtime - The agent runtime
- * @returns Validated configuration
- */
 export function validateGitHubConfig(runtime: IAgentRuntime): GitHubPluginConfig {
   const config = GitHubPluginConfig.fromRuntime(runtime);
   config.validate();

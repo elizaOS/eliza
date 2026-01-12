@@ -11,7 +11,6 @@ interface TestableFormsService {
   forms: Map<string, Form>;
 }
 
-// Helper function to access private properties for testing
 function getTestableService(service: FormsService): TestableFormsService {
   return service as TestableFormsService;
 }
@@ -36,10 +35,8 @@ describe("FormsService", () => {
   beforeEach(async () => {
     runtime = await createTestRuntime();
 
-    // Spy on useModel for form field extraction
     vi.spyOn(runtime, "useModel").mockResolvedValue("{}");
 
-    // Suppress logger output
     vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
     vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
     vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
@@ -147,7 +144,6 @@ describe("FormsService", () => {
     });
 
     test("should progress to next step when all required fields are filled", async () => {
-      // Create a multi-step form
       const multiStepForm = await service.createForm({
         name: "multi-step",
         agentId: runtime.agentId,
@@ -184,13 +180,11 @@ describe("FormsService", () => {
       expect(result.success).toBe(true);
       expect(result.stepCompleted).toBe(true);
 
-      // Check that form progressed to next step
       const updatedForm = await service.getForm(multiStepForm.id);
       expect(updatedForm?.currentStepIndex).toBe(1);
     });
 
     test("should mark form as completed when all steps are done", async () => {
-      // Fill all fields of contact form
       vi.spyOn(runtime, "useModel")
         .mockResolvedValueOnce('{"name": "John Doe"}')
         .mockResolvedValueOnce('{"email": "john@example.com"}');
@@ -209,7 +203,6 @@ describe("FormsService", () => {
     });
 
     test("should handle already completed forms", async () => {
-      // Complete the form first
       const testService = getTestableService(service);
       const formData = testService.forms.get(testForm.id);
       if (formData) {
@@ -241,7 +234,6 @@ describe("FormsService", () => {
 
   describe("Form listing", () => {
     beforeEach(async () => {
-      // Create multiple forms
       await service.createForm("contact");
       const form2 = await service.createForm("contact");
       await service.cancelForm(form2.id);
@@ -300,40 +292,33 @@ describe("FormsService", () => {
 
   describe("Cleanup", () => {
     test("should remove old completed and cancelled forms", async () => {
-      // Create forms
       const form1 = await service.createForm("contact");
       const form2 = await service.createForm("contact");
 
-      // Set old timestamps
-      const oldTimestamp = Date.now() - 25 * 60 * 60 * 1000; // 25 hours ago
+      const oldTimestamp = Date.now() - 25 * 60 * 60 * 1000;
 
       const testService = getTestableService(service);
 
-      // Complete and age form1
       const form1Data = testService.forms.get(form1.id);
       if (form1Data) {
         form1Data.status = "completed";
         form1Data.updatedAt = oldTimestamp;
       }
 
-      // Cancel and age form2
       const form2Data = testService.forms.get(form2.id);
       if (form2Data) {
         form2Data.status = "cancelled";
         form2Data.updatedAt = oldTimestamp;
       }
 
-      // Create a recent completed form
       const form3 = await service.createForm("contact");
       const form3Data = testService.forms.get(form3.id);
       if (form3Data) {
         form3Data.status = "completed";
       }
 
-      // Run cleanup
       const cleanedCount = await service.cleanup();
 
-      // Check results
       expect(cleanedCount).toBe(2);
       expect(await service.getForm(form1.id)).toBeNull();
       expect(await service.getForm(form2.id)).toBeNull();
@@ -362,8 +347,6 @@ describe("FormsService", () => {
         ],
       });
 
-      // The service should still set the value even for secret fields
-      // but it would be masked in the provider
       vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"apiKey": "sk-12345"}');
 
       const result = await service.updateForm(
@@ -376,12 +359,10 @@ describe("FormsService", () => {
 
       const updatedForm = await service.getForm(formWithSecret.id);
       const apiKeyField = updatedForm?.steps[0].fields.find((f) => f.id === "apiKey");
-      // Secret fields should be encrypted, not plain text
       expect(apiKeyField?.value).toBeTruthy();
       expect(typeof apiKeyField?.value).toBe("string");
-      // Encrypted values have format "salt:encryptedValue"
       expect((apiKeyField?.value as string).includes(":")).toBe(true);
-      expect(apiKeyField?.value).not.toBe("sk-12345"); // Should not be plain text
+      expect(apiKeyField?.value).not.toBe("sk-12345");
     });
   });
 
@@ -415,7 +396,6 @@ describe("FormsService", () => {
         ],
       });
 
-      // Test invalid email
       vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"email": "not-an-email"}');
 
       const result1 = await service.updateForm(
@@ -423,12 +403,9 @@ describe("FormsService", () => {
         createTestMemory("My email is not-an-email")
       );
 
-      // The validation might not work as expected with mocked LLM
-      // Just check that the form update was attempted
       expect(result1.success).toBe(true);
       expect(runtime.useModel).toHaveBeenCalled();
 
-      // Test valid values
       vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
         '{"email": "test@example.com", "age": 25, "website": "https://example.com"}'
       );
@@ -472,7 +449,6 @@ describe("FormsService", () => {
         ],
       });
 
-      // Test falsy values
       vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
         '{"enabled": false, "count": 0, "message": ""}'
       );

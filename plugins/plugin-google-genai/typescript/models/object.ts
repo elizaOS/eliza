@@ -9,15 +9,12 @@ import {
 import { emitModelUsageEvent } from "../utils/events";
 import { countTokens } from "../utils/tokenization";
 
-/**
- * Helper function to generate objects using specified model type
- */
 async function generateObjectByModelType(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams,
   modelType: string,
   getModelFn: (runtime: IAgentRuntime) => string
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, string | number | boolean | null>> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -29,7 +26,6 @@ async function generateObjectByModelType(
   logger.info(`Using ${modelType} model: ${modelName}`);
 
   try {
-    // Add schema instructions to prompt if provided
     let enhancedPrompt = params.prompt;
     if (params.schema) {
       enhancedPrompt += `\n\nPlease respond with a JSON object that follows this schema:\n${JSON.stringify(params.schema, null, 2)}`;
@@ -50,7 +46,6 @@ async function generateObjectByModelType(
 
     const text = response.text || "";
 
-    // Count tokens for usage tracking
     const promptTokens = await countTokens(enhancedPrompt);
     const completionTokens = await countTokens(text);
 
@@ -61,27 +56,22 @@ async function generateObjectByModelType(
     });
 
     try {
-      const parsedResult = JSON.parse(text) as Record<string, unknown>;
-      return parsedResult;
-    } catch (parseError) {
-      logger.error(
-        `Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : String(parseError)}`
-      );
-      // Try to extract JSON from the response
+      return JSON.parse(text) as Record<string, string | number | boolean | null>;
+    } catch {
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
-          const extractedResult = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-          return extractedResult;
-        } catch (_secondParseError) {
+          return JSON.parse(jsonMatch[0]) as Record<string, string | number | boolean | null>;
+        } catch {
           throw new Error("Failed to parse JSON from response");
         }
       }
-      throw parseError;
+      throw new Error("Failed to parse JSON from response");
     }
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(`[generateObject] Error: ${message}`);
+  } catch (error) {
+    logger.error(
+      `[generateObject] Error: ${error instanceof Error ? error.message : String(error)}`
+    );
     throw error;
   }
 }
@@ -89,13 +79,13 @@ async function generateObjectByModelType(
 export async function handleObjectSmall(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, string | number | boolean | null>> {
   return generateObjectByModelType(runtime, params, "OBJECT_SMALL", getSmallModel);
 }
 
 export async function handleObjectLarge(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, string | number | boolean | null>> {
   return generateObjectByModelType(runtime, params, "OBJECT_LARGE", getLargeModel);
 }

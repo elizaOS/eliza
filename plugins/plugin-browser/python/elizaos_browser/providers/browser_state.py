@@ -1,9 +1,3 @@
-"""
-Browser State Provider
-
-Provides current browser state information.
-"""
-
 import logging
 from typing import Any
 
@@ -19,15 +13,6 @@ BROWSER_STATE_PROVIDER = {
 
 
 async def get_browser_state(service: BrowserService) -> dict[str, Any]:
-    """
-    Get current browser state.
-
-    Args:
-        service: Browser service instance
-
-    Returns:
-        Dictionary with browser state information
-    """
     session = await service.get_current_session()
 
     if not session:
@@ -37,29 +22,18 @@ async def get_browser_state(service: BrowserService) -> dict[str, Any]:
             "data": {},
         }
 
-    try:
-        client = service.get_client()
-        state = await client.get_state(session.id)
+    client = service.get_client()
+    state = await client.get_state(session.id)
 
-        return {
-            "text": f'Current browser page: "{state.get("title", "")}" at {state.get("url", "")}',
-            "values": {
-                "hasSession": True,
-                "url": state.get("url", ""),
-                "title": state.get("title", ""),
-            },
-            "data": {
-                "sessionId": session.id,
-                "createdAt": session.created_at.isoformat(),
-            },
-        }
-    except Exception as e:
-        logger.error(f"Error getting browser state: {e}")
-        return {
-            "text": "Error getting browser state",
-            "values": {"hasSession": True, "error": True},
-            "data": {},
-        }
-
-
-
+    return {
+        "text": f'Current browser page: "{state.get("title", "")}" at {state.get("url", "")}',
+        "values": {
+            "hasSession": True,
+            "url": state.get("url", ""),
+            "title": state.get("title", ""),
+        },
+        "data": {
+            "sessionId": session.id,
+            "createdAt": session.created_at.isoformat(),
+        },
+    }

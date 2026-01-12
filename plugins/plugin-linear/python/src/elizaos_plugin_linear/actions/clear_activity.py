@@ -1,4 +1,3 @@
-"""Clear activity action for Linear plugin."""
 
 import logging
 from typing import Any
@@ -22,7 +21,6 @@ async def validate(
     _message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate the action can run."""
     try:
         api_key = runtime.get_setting("LINEAR_API_KEY")
         return bool(api_key)
@@ -37,7 +35,6 @@ async def handler(
     options: dict[str, Any] | None = None,
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
-    """Handle the clear activity action."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -82,8 +79,3 @@ clear_activity_action = create_action(
     validate=validate,
     handler=handler,
 )
-
-
-
-
-

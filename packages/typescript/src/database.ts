@@ -6,6 +6,7 @@ import type {
   Log,
   Memory,
   MemoryMetadata,
+  Metadata,
   Participant,
   Relationship,
   Room,
@@ -472,7 +473,7 @@ export abstract class DatabaseAdapter<DB = unknown>
     sourceEntityId: UUID;
     targetEntityId: UUID;
     tags?: string[];
-    metadata?: Record<string, unknown>;
+    metadata?: Metadata;
   }): Promise<boolean>;
 
   /**
@@ -497,15 +498,10 @@ export abstract class DatabaseAdapter<DB = unknown>
 
   /**
    * Updates an existing relationship between two users.
-   * @param params Object containing the relationship details to update including entity IDs, agent ID, optional tags and metadata
-   * @returns A Promise that resolves to a boolean indicating success or failure of the update.
+   * @param relationship The relationship object with updated data
+   * @returns A Promise that resolves when the update is complete.
    */
-  abstract updateRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: Record<string, unknown>;
-  }): Promise<void>;
+  abstract updateRelationship(relationship: Relationship): Promise<void>;
 
   /**
    * Retrieves an agent by its ID.

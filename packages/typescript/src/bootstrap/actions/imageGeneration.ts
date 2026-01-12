@@ -14,11 +14,6 @@ import type {
 import { ContentType, ModelType } from "../../types/index.ts";
 import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
-/**
- * Represents an action that allows the agent to generate an image using a generated prompt.
- *
- * This action can be used in a chain where the agent needs to visualize or illustrate a concept, emotion, or scene.
- */
 export const generateImageAction = {
   name: "GENERATE_IMAGE",
   similes: ["DRAW", "CREATE_IMAGE", "RENDER_IMAGE", "VISUALIZE"],
@@ -54,7 +49,6 @@ export const generateImageAction = {
       prompt,
     });
 
-    // Parse XML response
     const parsedXml = parseKeyValueXml(promptResponse);
     const promptValue = parsedXml?.prompt;
 
@@ -107,7 +101,6 @@ export const generateImageAction = {
       "Received image URL",
     );
 
-    // Determine file extension from URL or default to png
     const getFileExtension = (url: string): string => {
       const urlPath = new URL(url).pathname;
       const urlPathSplit = urlPath.split(".");
@@ -115,18 +108,15 @@ export const generateImageAction = {
         urlPathSplit.length > 0 &&
         urlPathSplit[urlPathSplit.length - 1] &&
         urlPathSplit[urlPathSplit.length - 1].toLowerCase();
-      // Common image extensions
       if (
         extension &&
         ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(extension)
       ) {
         return extension;
       }
-      // Extension not in allowed list, default to png
       return "png";
     };
 
-    // Create shared attachment data to avoid duplication
     const extension = getFileExtension(imageUrl);
     const timestamp = new Date()
       .toISOString()

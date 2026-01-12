@@ -1,7 +1,3 @@
-/**
- * BlueSky agent manager for polling and automated actions.
- */
-
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import type { BlueSkyClient } from "../client";
 import type {

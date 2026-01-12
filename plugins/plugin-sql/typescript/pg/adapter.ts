@@ -11,10 +11,6 @@ import { BaseDrizzleAdapter } from "../base";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
 import type { PostgresConnectionManager } from "./manager";
 
-/**
- * Adapter class for interacting with a PostgreSQL database.
- * Extends BaseDrizzleAdapter.
- */
 export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
   private manager: PostgresConnectionManager;
@@ -33,13 +29,6 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return this.manager;
   }
 
-  /**
-   * Execute a callback with entity context for Entity RLS
-   * Delegates to the manager's withEntityContext method
-   *
-   * This is a public method because it's part of the adapter's public API
-   * for operations that need entity-scoped database access.
-   */
   public async withEntityContext<T>(
     entityId: UUID | null,
     callback: (tx: NodePgDatabase) => Promise<T>

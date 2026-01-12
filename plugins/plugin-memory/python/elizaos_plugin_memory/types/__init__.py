@@ -1,5 +1,3 @@
-"""Type definitions for the Memory Plugin."""
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -7,17 +5,13 @@ from uuid import UUID
 
 
 class LongTermMemoryCategory(str, Enum):
-    """Categories of long-term memory based on cognitive science."""
-
-    EPISODIC = "episodic"  # Specific events, experiences, and interactions
-    SEMANTIC = "semantic"  # General facts, concepts, and knowledge
-    PROCEDURAL = "procedural"  # Skills, workflows, and how-to knowledge
+    EPISODIC = "episodic"
+    SEMANTIC = "semantic"
+    PROCEDURAL = "procedural"
 
 
 @dataclass
 class LongTermMemory:
-    """Long-term memory entry."""
-
     id: UUID
     agent_id: UUID
     entity_id: UUID
@@ -36,8 +30,6 @@ class LongTermMemory:
 
 @dataclass
 class SessionSummary:
-    """Short-term memory session summary."""
-
     id: UUID
     agent_id: UUID
     room_id: UUID
@@ -56,21 +48,14 @@ class SessionSummary:
 
 @dataclass
 class MemoryConfig:
-    """Configuration for memory plugin."""
-
-    # Short-term memory settings
     short_term_summarization_threshold: int = 16
     short_term_retain_recent: int = 6
     short_term_summarization_interval: int = 10
-
-    # Long-term memory settings
     long_term_extraction_enabled: bool = True
     long_term_vector_search_enabled: bool = False
     long_term_confidence_threshold: float = 0.85
     long_term_extraction_threshold: int = 30
     long_term_extraction_interval: int = 10
-
-    # Summarization settings
     summary_model_type: str = "TEXT_LARGE"
     summary_max_tokens: int = 2500
     summary_max_new_messages: int = 20
@@ -78,8 +63,6 @@ class MemoryConfig:
 
 @dataclass
 class MemoryExtraction:
-    """Memory extraction result from evaluator."""
-
     category: LongTermMemoryCategory
     content: str
     confidence: float
@@ -88,13 +71,7 @@ class MemoryExtraction:
 
 @dataclass
 class SummaryResult:
-    """Summary generation result."""
-
     summary: str
     topics: list[str]
     key_points: list[str]
-
-
-
-
 

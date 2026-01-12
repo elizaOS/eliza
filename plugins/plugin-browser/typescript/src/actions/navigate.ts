@@ -1,7 +1,3 @@
-/**
- * Browser navigation action
- */
-
 import type {
   Action,
   ActionResult,

@@ -3,13 +3,15 @@
 //! This module provides the core runtime for elizaOS agents.
 
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
-use crate::types::components::{ActionHandler, ActionResult, EvaluatorHandler, HandlerOptions, ProviderHandler};
+use crate::types::components::{
+    ActionHandler, ActionResult, EvaluatorHandler, HandlerOptions, ProviderHandler,
+};
 use crate::types::database::{GetMemoriesParams, SearchMemoriesParams};
 use crate::types::environment::{Entity, Room, World};
 use crate::types::events::{EventPayload, EventType};
 use crate::types::memory::Memory;
-use crate::types::plugin::Plugin;
 use crate::types::model::LLMMode;
+use crate::types::plugin::Plugin;
 use crate::types::primitives::{string_to_uuid, UUID};
 use crate::types::settings::{RuntimeSettings, SettingValue};
 use crate::types::state::State;
@@ -220,51 +222,25 @@ fn normalize_setting_value(value: SettingValue) -> SettingValue {
 /// Model handler for native builds (Send + Sync)
 #[cfg(not(feature = "wasm"))]
 pub type RuntimeModelHandler = Box<
-    dyn Fn(serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>> + Send>>
+    dyn Fn(
+            serde_json::Value,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>> + Send>>
         + Send
         + Sync,
 >;
 
-/// Model handler function type for runtime (WASM version)
-/// 
-/// This type represents an async function that takes model parameters (as JSON)
-/// and returns a string result. The WASM version does not require Send + Sync
-/// since WebAssembly is single-threaded.
+/// Model handler for WASM builds (no Send + Sync required)
 #[cfg(feature = "wasm")]
 pub type RuntimeModelHandler = Box<
-    dyn Fn(serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>>>>
+    dyn Fn(
+        serde_json::Value,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>>>>,
 >;
 
 /// Static counter for anonymous agent naming
 static ANONYMOUS_AGENT_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// The core runtime for an elizaOS agent
-///
-/// Users can create an AgentRuntime directly without needing a higher-level abstraction:
-///
-/// ```rust,ignore
-/// use elizaos::{AgentRuntime, Character, DEFAULT_UUID_STR};
-/// use elizaos::runtime::{RuntimeOptions, LogLevel};
-///
-/// // With a character
-/// let runtime = AgentRuntime::new(RuntimeOptions {
-///     character: Some(Character { name: "MyAgent".to_string(), ..Default::default() }),
-///     log_level: LogLevel::Info, // defaults to Error
-///     disable_basic_capabilities: false,
-///     enable_extended_capabilities: true,
-///     ..Default::default()
-/// }).await?;
-///
-/// // Or without a character (anonymous agent)
-/// let runtime = AgentRuntime::new(RuntimeOptions {
-///     log_level: LogLevel::Info,
-///     ..Default::default()
-/// }).await?;
-///
-/// await runtime.initialize()?;
-///
-/// // For memory operations, use UUID::default_uuid() if no specific room/world needed
-/// ```
 pub struct AgentRuntime {
     /// Agent ID
     pub agent_id: UUID,
@@ -343,7 +319,10 @@ impl AgentRuntime {
             .unwrap_or_else(|| string_to_uuid(&character.name));
 
         let log_level = opts.log_level;
-        info!("Creating AgentRuntime for agent: {} with log level {:?}", agent_id, log_level);
+        info!(
+            "Creating AgentRuntime for agent: {} with log level {:?}",
+            agent_id, log_level
+        );
 
         let runtime = AgentRuntime {
             agent_id,
@@ -381,13 +360,7 @@ impl AgentRuntime {
         self.log_level
     }
 
-    /// Check if action planning mode is enabled.
-    /// 
-    /// When enabled (default), the agent can plan and execute multiple actions per response.
-    /// When disabled, the agent executes only a single action per response - a performance
-    /// optimization useful for game situations where state updates with every action.
-    /// 
-    /// Priority: constructor option > character setting ACTION_PLANNING > default (true)
+    /// Check if action planning mode is enabled
     pub async fn is_action_planning_enabled(&self) -> bool {
         // Constructor option takes precedence
         if let Some(enabled) = self.action_planning_option {
@@ -407,13 +380,7 @@ impl AgentRuntime {
         true
     }
 
-    /// Get the LLM mode for model selection override.
-    /// 
-    /// - `LLMMode::Default`: Use the model type specified in the use_model call (no override)
-    /// - `LLMMode::Small`: Override all text generation model calls to use TEXT_SMALL
-    /// - `LLMMode::Large`: Override all text generation model calls to use TEXT_LARGE
-    /// 
-    /// Priority: constructor option > character setting LLM_MODE > default (Default)
+    /// Get the LLM mode for model selection override
     pub async fn get_llm_mode(&self) -> LLMMode {
         // Constructor option takes precedence
         if let Some(mode) = self.llm_mode_option {
@@ -430,10 +397,10 @@ impl AgentRuntime {
     }
 
     /// Check if the shouldRespond evaluation is enabled.
-    /// 
+    ///
     /// When enabled (default: true), the agent evaluates whether to respond to each message.
     /// When disabled, the agent always responds (ChatGPT mode) - useful for direct chat interfaces.
-    /// 
+    ///
     /// Priority: constructor option > character setting CHECK_SHOULD_RESPOND > default (true)
     pub async fn is_check_should_respond_enabled(&self) -> bool {
         // Constructor option takes precedence
@@ -569,19 +536,8 @@ impl AgentRuntime {
         Ok(())
     }
 
-    /// Get a setting value (TypeScript-compatible semantics).
-    ///
-    /// Precedence matches the TS runtime:
-    /// 1) `character.secrets[key]`
-    /// 2) `character.settings[key]`
-    /// 3) `character.settings.secrets[key]` (nested secrets)
-    /// 4) runtime settings (`RuntimeSettings`)
-    ///
-    /// Non-primitive values (objects/arrays) are treated as missing (TS returns null).
+    /// Get a setting value
     pub async fn get_setting(&self, key: &str) -> Option<SettingValue> {
-        // NOTE: This method intentionally returns only primitive values.
-        // Complex JSON values are ignored for parity with TS getSetting().
-
         // Read character once for consistent lookups.
         let character = {
             #[cfg(not(feature = "wasm"))]
@@ -893,17 +849,12 @@ impl AgentRuntime {
     }
 
     /// Get a message service for handling incoming messages
-    /// 
-    /// This returns a new DefaultMessageService instance. Usage:
-    /// ```rust,ignore
-    /// let result = runtime.message_service().handle_message(&runtime, &mut message, None, None).await?;
-    /// ```
     pub fn message_service(&self) -> crate::services::DefaultMessageService {
         crate::services::DefaultMessageService::new()
     }
 
     /// Register a model handler for a specific model type
-    /// 
+    ///
     /// Model types are strings like "TEXT_LARGE", "TEXT_SMALL", "TEXT_EMBEDDING"
     pub async fn register_model(&self, model_type: &str, handler: RuntimeModelHandler) {
         #[cfg(not(feature = "wasm"))]
@@ -920,18 +871,6 @@ impl AgentRuntime {
     }
 
     /// Use a model to generate text
-    /// 
-    /// This looks up the registered handler for the given model type and calls it.
-    /// Applies LLM mode override for text generation models if configured.
-    /// 
-    /// # Example
-    /// ```rust,ignore
-    /// let result = runtime.use_model("TEXT_LARGE", serde_json::json!({
-    ///     "prompt": "Hello!",
-    ///     "system": "You are helpful.",
-    ///     "temperature": 0.7
-    /// })).await?;
-    /// ```
     pub async fn use_model(&self, model_type: &str, params: serde_json::Value) -> Result<String> {
         use crate::types::model::model_type;
 
@@ -979,7 +918,9 @@ impl AgentRuntime {
             #[cfg(feature = "wasm")]
             {
                 let handlers = self.model_handlers.read().unwrap();
-                handlers.get(effective_model_type).map(|h| h(params.clone()))
+                handlers
+                    .get(effective_model_type)
+                    .map(|h| h(params.clone()))
             }
         };
 
@@ -1079,10 +1020,17 @@ mod tests {
             .set_setting("FLAG_TRUE", SettingValue::String("true".to_string()), false)
             .await;
         runtime
-            .set_setting("FLAG_FALSE", SettingValue::String("false".to_string()), false)
+            .set_setting(
+                "FLAG_FALSE",
+                SettingValue::String("false".to_string()),
+                false,
+            )
             .await;
 
-        assert_eq!(runtime.get_setting("FLAG_TRUE").await, Some(SettingValue::Bool(true)));
+        assert_eq!(
+            runtime.get_setting("FLAG_TRUE").await,
+            Some(SettingValue::Bool(true))
+        );
         assert_eq!(
             runtime.get_setting("FLAG_FALSE").await,
             Some(SettingValue::Bool(false))

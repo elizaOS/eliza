@@ -1,8 +1,3 @@
-//! Integration test for Rust Local AI plugin with model path verification
-//!
-//! Note: Full LLM inference requires the `llm` feature and system build tools.
-//! This test verifies configuration and model path handling.
-
 use elizaos_plugin_local_ai::{LocalAIConfig, LocalAIPlugin};
 use std::path::PathBuf;
 
@@ -62,8 +57,6 @@ fn test_plugin_creation_with_models() {
     println!("   ✓ Plugin created successfully");
     println!("   ✅ Plugin Creation Test PASSED\n");
     
-    // Note: Full inference test requires `llm` feature
-    // which needs clang and system headers
     println!("   Note: Full LLM inference requires the 'llm' feature flag");
     println!("   Enable with: cargo test --features llm");
 }
@@ -80,14 +73,12 @@ async fn test_async_plugin_methods() {
     
     let plugin = LocalAIPlugin::new(config).expect("Failed to create plugin");
     
-    // Test mock text generation (actual inference requires llm feature)
     let response = plugin.generate_text("Hello").await;
     assert!(response.is_ok(), "Text generation should succeed");
     let text = response.unwrap();
     println!("   ✓ Text generation method works");
     println!("   Response: {}", text);
     
-    // Test mock embedding generation (actual embeddings require llm feature)
     let embedding = plugin.create_embedding("Hello").await;
     assert!(embedding.is_ok(), "Embedding generation should succeed");
     let vec = embedding.unwrap();

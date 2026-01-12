@@ -1,7 +1,3 @@
-"""
-Swap action for exchanging tokens using LiFi.
-"""
-
 import logging
 from decimal import Decimal
 from typing import TypedDict
@@ -21,8 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class LiFiQuoteResponse(TypedDict):
-    """LiFi quote API response."""
-
     action: dict
     estimate: dict
     transactionRequest: dict
@@ -32,26 +26,11 @@ async def get_lifi_quote(
     params: SwapParams,
     from_address: str,
 ) -> SwapQuote:
-    """
-    Get a quote from LiFi for a swap.
-
-    Args:
-        params: The swap parameters.
-        from_address: The address executing the swap.
-
-    Returns:
-        A SwapQuote with the swap details.
-
-    Raises:
-        EVMError: If the quote fails.
-    """
     slippage = params.slippage or DEFAULT_SLIPPAGE_PERCENT
 
-    # Validate slippage
     if slippage > MAX_SLIPPAGE_PERCENT:
         raise EVMError.invalid_params(f"Slippage {slippage} exceeds maximum {MAX_SLIPPAGE_PERCENT}")
 
-    # Build request
     url = f"{LIFI_API_URL}/quote"
     query_params = {
         "fromChain": params.chain.chain_id,
@@ -96,19 +75,6 @@ async def execute_swap(
     provider: EVMWalletProvider,
     params: SwapParams,
 ) -> str:
-    """
-    Execute a token swap using LiFi.
-
-    Args:
-        provider: The wallet provider to use.
-        params: The swap parameters.
-
-    Returns:
-        The transaction hash.
-
-    Raises:
-        EVMError: If the swap fails.
-    """
     logger.info(
         "Executing swap: %s %s -> %s on %s",
         params.amount,
@@ -117,10 +83,8 @@ async def execute_swap(
         params.chain.value,
     )
 
-    # Get quote
     quote = await get_lifi_quote(params, provider.address)
 
-    # Check allowance and approve if needed (for non-native tokens)
     if not params.from_token.lower().startswith("0x000000"):
         current_allowance = await provider.get_allowance(
             chain=params.chain,
@@ -135,12 +99,11 @@ async def execute_swap(
                 chain=params.chain,
                 token_address=params.from_token,
                 spender=quote.to,
-                amount=2**256 - 1,  # Max approval
+                amount=2**256 - 1,
             )
             await provider.wait_for_transaction(params.chain, approve_tx)
             logger.info("Approval confirmed: %s", approve_tx)
 
-    # Execute swap
     tx_hash = await provider.send_transaction(
         chain=params.chain,
         to=quote.to,
@@ -148,14 +111,12 @@ async def execute_swap(
         data=quote.data,
     )
 
-    # Wait for confirmation
     await provider.wait_for_transaction(params.chain, tx_hash)
 
     logger.info("Swap confirmed: %s", tx_hash)
     return tx_hash
 
 
-# Action definition for elizaOS
 swap_action = {
     "name": "SWAP_TOKEN",
     "description": "Swap one token for another on the same chain",

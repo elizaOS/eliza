@@ -1,9 +1,3 @@
-"""
-Forms Service implementation for the elizaOS Forms Plugin.
-
-This service manages form lifecycle and state, providing methods to create,
-update, list, and cancel forms.
-"""
 
 import re
 import uuid
@@ -49,9 +43,7 @@ def parse_key_value_xml(text: str) -> dict[str, str] | None:
         Parsed dictionary or None if parsing fails
     """
     # Find the response block
-    response_match = re.search(r"<response>(.*?)</response>", text, re.DOTALL)
     if not response_match:
-        # Try any root element
         root_match = re.search(r"<(\w+)>(.*?)</\1>", text, re.DOTALL)
         if not root_match:
             return None
@@ -59,12 +51,10 @@ def parse_key_value_xml(text: str) -> dict[str, str] | None:
     else:
         xml_content = response_match.group(1)
 
-    # Extract child elements
     result: dict[str, str] = {}
     for match in re.finditer(r"<(\w+)>([^<]*)</\1>", xml_content):
         key = match.group(1)
         value = match.group(2).strip()
-        # Unescape common XML entities
         value = (
             value.replace("&lt;", "<")
             .replace("&gt;", ">")
@@ -78,25 +68,17 @@ def parse_key_value_xml(text: str) -> dict[str, str] | None:
 
 
 class FormsService:
-    """
-    FormsService manages form lifecycle and state.
-
-    It provides methods to create, update, list, and cancel forms.
-    """
 
     service_name = "forms"
     service_type = "forms"
 
     def __init__(self, runtime: RuntimeProtocol) -> None:
-        """Initialize the forms service."""
         self.runtime = runtime
         self._forms: dict[uuid.UUID, Form] = {}
         self._templates: dict[str, FormTemplate] = {}
         self._register_default_templates()
 
     def _register_default_templates(self) -> None:
-        """Register the default form templates."""
-        # Basic contact form template
         self._templates["contact"] = FormTemplate(
             name="contact",
             description="Basic contact information form",
@@ -136,19 +118,6 @@ class FormsService:
         template_or_form: str | Form,
         metadata: dict[str, object] | None = None,
     ) -> Form:
-        """
-        Create a new form from a template or custom definition.
-
-        Args:
-            template_or_form: Template name or Form object
-            metadata: Optional metadata for the form
-
-        Returns:
-            The created form
-
-        Raises:
-            ValueError: If template is not found
-        """
         if isinstance(template_or_form, str):
             template = self._templates.get(template_or_form)
             if not template:
@@ -186,16 +155,6 @@ class FormsService:
         form_id: uuid.UUID,
         message_text: str,
     ) -> FormUpdateResult:
-        """
-        Update form with extracted values from user message.
-
-        Args:
-            form_id: ID of the form to update
-            message_text: The user's message text
-
-        Returns:
-            Result of the update operation
-        """
         form = self._forms.get(form_id)
         if not form:
             return FormUpdateResult(success=False, message="Form not found")
@@ -205,7 +164,6 @@ class FormsService:
 
         current_step = form.steps[form.current_step_index]
 
-        # Get fields that need values
         fields_to_extract = [
             field for field in current_step.fields if field.value is None and not field.optional
         ]
@@ -213,7 +171,6 @@ class FormsService:
         if not fields_to_extract:
             fields_to_extract = [field for field in current_step.fields if field.value is None]
 
-        # Extract values using LLM
         extracted = await self._extract_form_values(message_text, fields_to_extract)
 
         updated_fields: list[str] = []
@@ -235,7 +192,6 @@ class FormsService:
                         )
                     )
 
-        # Check if step is complete
         required_fields = [f for f in current_step.fields if not f.optional]
         filled_required = [f for f in required_fields if f.value is not None]
         step_completed = len(filled_required) == len(required_fields)
@@ -279,20 +235,9 @@ class FormsService:
         text: str,
         fields: list[FormField],
     ) -> dict[str, str | int | float | bool]:
-        """
-        Extract form values from text using LLM with XML prompts.
-
-        Args:
-            text: User's message text
-            fields: Fields to extract values for
-
-        Returns:
-            Dictionary of field_id to extracted value
-        """
         if not fields:
             return {}
 
-        # Build the extraction prompt
         field_dicts = [
             {
                 "id": f.id,
@@ -305,16 +250,11 @@ class FormsService:
         ]
 
         prompt = build_extraction_prompt(text, field_dicts)
-
-        # Call the LLM
         response = await self.runtime.use_model("TEXT_SMALL", {"prompt": prompt})
-
-        # Parse the XML response
         parsed = parse_key_value_xml(response)
         if not parsed:
             return {}
 
-        # Transform values based on field type
         result: dict[str, str | int | float | bool] = {}
         for field in fields:
             raw_value = parsed.get(field.id)
@@ -346,16 +286,6 @@ class FormsService:
         value: object,
         field: FormField,
     ) -> dict[str, object]:
-        """
-        Validate a field value based on its type.
-
-        Args:
-            value: The value to validate
-            field: The field definition
-
-        Returns:
-            Dict with is_valid, value, and optional error
-        """
         field_type = field.type.value if isinstance(field.type, FormFieldType) else field.type
 
         if field_type == "number":
@@ -386,28 +316,24 @@ class FormsService:
         if field_type == "checkbox":
             return {"is_valid": True, "value": bool(value)}
 
-        # Default: accept strings
         if value is not None:
             return {"is_valid": True, "value": str(value)}
 
         return {"is_valid": False, "error": "Value is required"}
 
     async def list_forms(self, status: FormStatus | None = None) -> list[Form]:
-        """List all forms, optionally filtered by status."""
         forms = [f for f in self._forms.values() if f.agent_id == self.runtime.agent_id]
         if status:
             forms = [f for f in forms if f.status == status]
         return forms
 
     async def get_form(self, form_id: uuid.UUID) -> Form | None:
-        """Get a specific form by ID."""
         form = self._forms.get(form_id)
         if form and form.agent_id == self.runtime.agent_id:
             return form
         return None
 
     async def cancel_form(self, form_id: uuid.UUID) -> bool:
-        """Cancel a form."""
         form = self._forms.get(form_id)
         if not form or form.agent_id != self.runtime.agent_id:
             return False
@@ -417,14 +343,7 @@ class FormsService:
         return True
 
     def register_template(self, template: FormTemplate) -> None:
-        """Register a form template."""
         self._templates[template.name] = template
 
     def get_templates(self) -> list[FormTemplate]:
-        """Get all registered templates."""
         return list(self._templates.values())
-
-
-
-
-

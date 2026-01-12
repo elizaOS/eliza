@@ -1,9 +1,3 @@
-"""
-Classic ELIZA Pattern Matching Plugin.
-
-Implements Joseph Weizenbaum's original 1966 ELIZA algorithm.
-"""
-
 from __future__ import annotations
 
 import random
@@ -11,10 +5,6 @@ import re
 from typing import Any
 
 from elizaos_plugin_eliza_classic.types import ElizaConfig, ElizaPattern, ElizaRule
-
-# ============================================================================
-# ELIZA Pattern Database
-# ============================================================================
 
 ELIZA_PATTERNS: list[ElizaPattern] = [
     ElizaPattern(
@@ -73,6 +63,21 @@ ELIZA_PATTERNS: list[ElizaPattern] = [
         ],
     ),
     ElizaPattern(
+        keyword="dreamed",
+        weight=4,
+        rules=[
+            ElizaRule(
+                pattern=re.compile(r"i dreamed (.*)", re.IGNORECASE),
+                responses=[
+                    "Really, $1?",
+                    "Have you ever fantasized $1 while you were awake?",
+                    "Have you ever dreamed $1 before?",
+                    "What does that dream suggest to you?",
+                ],
+            ),
+        ],
+    ),
+    ElizaPattern(
         keyword="dream",
         weight=3,
         rules=[
@@ -83,6 +88,35 @@ ELIZA_PATTERNS: list[ElizaPattern] = [
                     "Do you dream often?",
                     "What persons appear in your dreams?",
                     "Do you believe that dreams have something to do with your problems?",
+                ],
+            ),
+        ],
+    ),
+    ElizaPattern(
+        keyword="perhaps",
+        weight=0,
+        rules=[
+            ElizaRule(
+                pattern=re.compile(r".*", re.IGNORECASE),
+                responses=[
+                    "You don't seem quite certain.",
+                    "Why the uncertain tone?",
+                    "Can't you be more positive?",
+                    "You aren't sure?",
+                    "Don't you know?",
+                ],
+            ),
+        ],
+    ),
+    ElizaPattern(
+        keyword="name",
+        weight=15,
+        rules=[
+            ElizaRule(
+                pattern=re.compile(r".*", re.IGNORECASE),
+                responses=[
+                    "I am not interested in names.",
+                    "I've told you before, I don't care about names -- please continue.",
                 ],
             ),
         ],
@@ -152,6 +186,68 @@ ELIZA_PATTERNS: list[ElizaPattern] = [
                     "How do you feel about being $1?",
                     "Do you enjoy being $1?",
                     "Do you believe it is normal to be $1?",
+                ],
+            ),
+        ],
+    ),
+    ElizaPattern(
+        keyword="are",
+        weight=0,
+        rules=[
+            ElizaRule(
+                pattern=re.compile(r"are you (.*)", re.IGNORECASE),
+                responses=[
+                    "Why are you interested in whether I am $1 or not?",
+                    "Would you prefer if I weren't $1?",
+                    "Perhaps I am $1 in your fantasies.",
+                    "Do you sometimes think I am $1?",
+                ],
+            ),
+            ElizaRule(
+                pattern=re.compile(r"(.*) are (.*)", re.IGNORECASE),
+                responses=[
+                    "Did you think they might not be $2?",
+                    "Would you like it if they were not $2?",
+                    "What if they were not $2?",
+                    "Possibly they are $2.",
+                ],
+            ),
+        ],
+    ),
+    ElizaPattern(
+        keyword="your",
+        weight=0,
+        rules=[
+            ElizaRule(
+                pattern=re.compile(r"your (.*)", re.IGNORECASE),
+                responses=[
+                    "Why are you concerned over my $1?",
+                    "What about your own $1?",
+                    "Are you worried about someone else's $1?",
+                    "Really, my $1?",
+                ],
+            ),
+        ],
+    ),
+    ElizaPattern(
+        keyword="was",
+        weight=2,
+        rules=[
+            ElizaRule(
+                pattern=re.compile(r"was i (.*)", re.IGNORECASE),
+                responses=[
+                    "What if you were $1?",
+                    "Do you think you were $1?",
+                    "Were you $1?",
+                    "What would it mean if you were $1?",
+                ],
+            ),
+            ElizaRule(
+                pattern=re.compile(r"i was (.*)", re.IGNORECASE),
+                responses=[
+                    "Were you really?",
+                    "Why do you tell me you were $1 now?",
+                    "Perhaps I already know you were $1.",
                 ],
             ),
         ],
@@ -231,6 +327,15 @@ ELIZA_PATTERNS: list[ElizaPattern] = [
         weight=0,
         rules=[
             ElizaRule(
+                pattern=re.compile(r"you remind me of (.*)", re.IGNORECASE),
+                responses=[
+                    "What makes you think of $1?",
+                    "What resemblance do you see?",
+                    "What does that similarity suggest to you?",
+                    "What other connections do you see?",
+                ],
+            ),
+            ElizaRule(
                 pattern=re.compile(r"you are (.*)", re.IGNORECASE),
                 responses=[
                     "What makes you think I am $1?",
@@ -246,6 +351,37 @@ ELIZA_PATTERNS: list[ElizaPattern] = [
                     "You like to think I $1 you -- don't you?",
                     "What makes you think I $1 you?",
                     "Really, I $1 you?",
+                ],
+            ),
+            ElizaRule(
+                pattern=re.compile(r"you (.*)", re.IGNORECASE),
+                responses=[
+                    "We were discussing you -- not me.",
+                    "Oh, I $1?",
+                    "You're not really talking about me -- are you?",
+                    "What are your feelings now?",
+                ],
+            ),
+        ],
+    ),
+    ElizaPattern(
+        keyword="can",
+        weight=0,
+        rules=[
+            ElizaRule(
+                pattern=re.compile(r"can you (.*)", re.IGNORECASE),
+                responses=[
+                    "You believe I can $1 don't you?",
+                    "You want me to be able to $1.",
+                    "Perhaps you would like to be able to $1 yourself.",
+                ],
+            ),
+            ElizaRule(
+                pattern=re.compile(r"can i (.*)", re.IGNORECASE),
+                responses=[
+                    "Whether or not you can $1 depends on you more than on me.",
+                    "Do you want to be able to $1?",
+                    "Perhaps you don't want to $1.",
                 ],
             ),
         ],
@@ -401,6 +537,38 @@ ELIZA_PATTERNS: list[ElizaPattern] = [
             ),
         ],
     ),
+    ElizaPattern(
+        keyword="alike",
+        weight=10,
+        rules=[
+            ElizaRule(
+                pattern=re.compile(r".*", re.IGNORECASE),
+                responses=[
+                    "In what way?",
+                    "What resemblance do you see?",
+                    "What does that similarity suggest to you?",
+                    "What other connections do you see?",
+                    "How?",
+                ],
+            ),
+        ],
+    ),
+    ElizaPattern(
+        keyword="like",
+        weight=10,
+        rules=[
+            ElizaRule(
+                pattern=re.compile(r".*(?:am|is|are|was) like.*", re.IGNORECASE),
+                responses=[
+                    "In what way?",
+                    "What resemblance do you see?",
+                    "What does that similarity suggest to you?",
+                    "What other connections do you see?",
+                    "How?",
+                ],
+            ),
+        ],
+    ),
 ]
 
 DEFAULT_RESPONSES: list[str] = [
@@ -421,7 +589,6 @@ DEFAULT_RESPONSES: list[str] = [
     "Interesting. Please go on.",
 ]
 
-# Pronoun reflections
 REFLECTIONS: dict[str, str] = {
     "am": "are",
     "was": "were",
@@ -444,15 +611,6 @@ REFLECTIONS: dict[str, str] = {
 
 
 def reflect(text: str) -> str:
-    """
-    Reflect pronouns in text (I → you, my → your, etc.).
-
-    Args:
-        text: The text to reflect.
-
-    Returns:
-        The text with reflected pronouns.
-    """
     words = text.lower().split()
     reflected = [REFLECTIONS.get(word, word) for word in words]
     return " ".join(reflected)
@@ -465,19 +623,6 @@ def generate_response(
     response_history: list[str] | None = None,
     max_history: int = 10,
 ) -> str:
-    """
-    Generate an ELIZA response for the given input.
-
-    Args:
-        input_text: The user's input text.
-        patterns: Custom patterns (defaults to ELIZA_PATTERNS).
-        default_responses: Custom default responses.
-        response_history: List to track used responses for variety.
-        max_history: Maximum size of response history.
-
-    Returns:
-        The ELIZA response.
-    """
     if patterns is None:
         patterns = ELIZA_PATTERNS
     if default_responses is None:
@@ -490,7 +635,6 @@ def generate_response(
     if not normalized_input:
         return "I didn't catch that. Could you please repeat?"
 
-    # Find all matching patterns
     matches: list[tuple[ElizaPattern, ElizaRule, re.Match[str]]] = []
 
     for pattern in patterns:
@@ -501,33 +645,27 @@ def generate_response(
                     matches.append((pattern, rule, match))
 
     if matches:
-        # Sort by weight (higher weight = higher priority)
         matches.sort(key=lambda x: x[0].weight, reverse=True)
         best_pattern, best_rule, match = matches[0]
 
-        # Select a response, avoiding recent ones
         available = [r for r in best_rule.responses if r not in response_history]
         pool = available if available else best_rule.responses
         response = random.choice(pool)
 
-        # Track history
         response_history.append(response)
         if len(response_history) > max_history:
             response_history.pop(0)
 
-        # Substitute captured groups
         for i in range(1, len(match.groups()) + 1):
             group = match.group(i)
             if group:
                 reflected = reflect(group)
                 response = response.replace(f"${i}", reflected)
 
-        # Clean up remaining placeholders
         response = re.sub(r"\$\d+", "that", response)
 
         return response
 
-    # No pattern matched, use default response
     available = [r for r in default_responses if r not in response_history]
     pool = available if available else default_responses
     response = random.choice(pool)
@@ -540,24 +678,11 @@ def generate_response(
 
 
 def get_greeting() -> str:
-    """Get the initial ELIZA greeting message."""
     return "Hello. I am ELIZA, a Rogerian psychotherapist simulation. How are you feeling today?"
 
 
 class ElizaClassicPlugin:
-    """
-    Classic ELIZA pattern matching plugin for elizaOS.
-
-    Provides a testable chat response interface without requiring an LLM.
-    """
-
     def __init__(self, config: ElizaConfig | None = None) -> None:
-        """
-        Initialize the ELIZA Classic plugin.
-
-        Args:
-            config: Optional configuration for the plugin.
-        """
         self._config = config or ElizaConfig()
         self._response_history: list[str] = []
         self._patterns = ELIZA_PATTERNS + self._config.custom_patterns
@@ -568,15 +693,6 @@ class ElizaClassicPlugin:
         )
 
     def generate_response(self, input_text: str) -> str:
-        """
-        Generate an ELIZA response for the given input.
-
-        Args:
-            input_text: The user's input text.
-
-        Returns:
-            The ELIZA response.
-        """
         return generate_response(
             input_text,
             patterns=self._patterns,
@@ -586,44 +702,24 @@ class ElizaClassicPlugin:
         )
 
     def get_greeting(self) -> str:
-        """Get the initial ELIZA greeting message."""
         return get_greeting()
 
     def reset_history(self) -> None:
-        """Clear the response history."""
         self._response_history.clear()
 
 
-# ============================================================================
-# elizaOS Plugin (for use with AgentRuntime)
-# ============================================================================
-
-
 def create_eliza_classic_elizaos_plugin() -> Any:
-    """
-    Create an elizaOS-compatible plugin for ELIZA Classic.
-
-    This creates a proper elizaOS Plugin that can be passed to AgentRuntime.
-    The plugin registers model handlers for TEXT_LARGE and TEXT_SMALL.
-
-    Returns:
-        An elizaOS Plugin instance.
-    """
     try:
         from elizaos import Plugin
         from elizaos.types.model import ModelType
         from elizaos.types.runtime import IAgentRuntime
-    except ImportError:
-        raise ImportError(
-            "elizaos package required for plugin creation. "
-            "Install with: pip install elizaos"
-        )
+    except ImportError as e:
+        raise ImportError("elizaos package required for plugin creation") from e
 
     plugin_instance = ElizaClassicPlugin()
 
     async def text_large_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         prompt = params.get("prompt", "")
-        # Extract user message if formatted
         match = re.search(r"(?:User|Human|You):\s*(.+?)(?:\n|$)", prompt, re.IGNORECASE)
         input_text = match.group(1) if match else prompt
         return plugin_instance.generate_response(input_text)
@@ -641,18 +737,11 @@ def create_eliza_classic_elizaos_plugin() -> Any:
     )
 
 
-# Lazy plugin singleton
 _eliza_plugin_instance: Any | None = None
 
 
 def get_eliza_classic_plugin() -> Any:
-    """Get the singleton elizaOS ELIZA Classic plugin instance."""
     global _eliza_plugin_instance
     if _eliza_plugin_instance is None:
         _eliza_plugin_instance = create_eliza_classic_elizaos_plugin()
     return _eliza_plugin_instance
-
-
-
-
-

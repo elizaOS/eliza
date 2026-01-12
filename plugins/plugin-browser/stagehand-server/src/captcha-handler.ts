@@ -7,7 +7,6 @@ export interface CaptchaInfo {
 
 export async function detectCaptchaType(page: Page): Promise<CaptchaInfo> {
   try {
-    // Check for Cloudflare Turnstile
     const turnstileElement = await page.$(
       '[id*="turnstile"], [class*="cf-turnstile"]',
     );
@@ -19,7 +18,6 @@ export async function detectCaptchaType(page: Page): Promise<CaptchaInfo> {
       return { type: "turnstile", siteKey };
     }
 
-    // Check for reCAPTCHA v2
     const recaptchaV2Element = await page.$(".g-recaptcha, [data-sitekey]");
     if (recaptchaV2Element) {
       const siteKey = await page.evaluate(() => {
@@ -29,7 +27,6 @@ export async function detectCaptchaType(page: Page): Promise<CaptchaInfo> {
       return { type: "recaptcha-v2", siteKey };
     }
 
-    // Check for reCAPTCHA v3
     const hasRecaptchaV3 = await page.evaluate(() => {
       interface WindowWithRecaptcha extends Window {
         grecaptcha?: {
@@ -57,7 +54,6 @@ export async function detectCaptchaType(page: Page): Promise<CaptchaInfo> {
       return { type: "recaptcha-v3", siteKey };
     }
 
-    // Check for hCaptcha
     const hcaptchaElement = await page.$(
       ".h-captcha, [data-hcaptcha-widget-id]",
     );
@@ -81,8 +77,6 @@ export async function injectCaptchaSolution(
   captchaType: string,
   solution: string,
 ): Promise<void> {
-  // This is a placeholder - actual implementation would depend on captcha type
-  // For now, we'll just log that we would inject the solution
   console.log(
     `Would inject ${captchaType} solution:`,
     `${solution.substring(0, 20)}...`,

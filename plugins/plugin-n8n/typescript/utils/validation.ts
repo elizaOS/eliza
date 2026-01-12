@@ -1,12 +1,5 @@
-/**
- * Validation utilities.
- */
-
 import type { Memory } from "@elizaos/core";
 
-/**
- * Validates if a memory contains a valid prompt.
- */
 export function validatePrompt(message: Memory): boolean {
   if (!message?.content?.text) {
     return false;
@@ -16,9 +9,6 @@ export function validatePrompt(message: Memory): boolean {
   return text.length > 0;
 }
 
-/**
- * Validates if text looks like a JSON specification.
- */
 export function isValidJsonSpecification(text: string): boolean {
   try {
     JSON.parse(text);

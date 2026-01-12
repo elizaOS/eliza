@@ -6,9 +6,6 @@ import { getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { getJsonRepairFunction } from "../utils/helpers";
 
-/**
- * Common object generation logic for both small and large models
- */
 async function generateObjectByModelType(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams,
@@ -19,13 +16,6 @@ async function generateObjectByModelType(
   const modelName = getModelFn(runtime);
   logger.log(`[ELIZAOS_CLOUD] Using ${modelType} model: ${modelName}`);
   const temperature = params.temperature ?? 0;
-  const schemaPresent = !!params.schema;
-
-  if (schemaPresent) {
-    logger.info(
-      `Using ${modelType} without schema validation (schema provided but output=no-schema)`,
-    );
-  }
 
   try {
     const { object, usage } = await generateObject({
@@ -40,7 +30,7 @@ async function generateObjectByModelType(
       emitModelUsageEvent(runtime, modelType as never, params.prompt, usage);
     }
     return object as Record<string, unknown>;
-  } catch (error: unknown) {
+  } catch (error) {
     if (error instanceof JSONParseError) {
       logger.error(`[generateObject] Failed to parse JSON: ${error.message}`);
 
@@ -55,7 +45,7 @@ async function generateObjectByModelType(
           const repairedObject = JSON.parse(repairedJsonString);
           logger.info("[generateObject] Successfully repaired JSON.");
           return repairedObject as Record<string, unknown>;
-        } catch (repairParseError: unknown) {
+        } catch (repairParseError) {
           const message =
             repairParseError instanceof Error
               ? repairParseError.message
@@ -71,15 +61,12 @@ async function generateObjectByModelType(
       }
     } else {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error(`[generateObject] Unknown error: ${message}`);
+      logger.error(`[generateObject] Error: ${message}`);
       throw error;
     }
   }
 }
 
-/**
- * OBJECT_SMALL model handler
- */
 export async function handleObjectSmall(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams,
@@ -92,9 +79,6 @@ export async function handleObjectSmall(
   );
 }
 
-/**
- * OBJECT_LARGE model handler
- */
 export async function handleObjectLarge(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams,

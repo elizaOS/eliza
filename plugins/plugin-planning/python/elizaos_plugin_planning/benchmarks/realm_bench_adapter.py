@@ -1,5 +1,3 @@
-"""REALM-Bench Adapter - Tests ElizaOS planning capabilities against REALM-Bench scenarios."""
-
 import json
 import logging
 import time
@@ -18,19 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 class RealmBenchAdapter:
-    """
-    Production-Ready REALM-Bench Adapter.
-
-    Tests ElizaOS planning capabilities against REALM-Bench scenarios.
-    """
-
     def __init__(self, planning_service: PlanningService, runtime: Optional[Any] = None) -> None:
         self.planning_service = planning_service
         self.runtime = runtime
         self.test_cases: list[RealmBenchTestCase] = []
 
     async def load_test_cases(self, realm_bench_data_path: str) -> None:
-        """Load test cases from REALM-Bench format."""
         try:
             logger.info(f"[RealmBenchAdapter] Loading test cases from {realm_bench_data_path}")
 
@@ -46,7 +37,6 @@ class RealmBenchAdapter:
             raise RuntimeError(f"Failed to load REALM-Bench test cases: {e}") from e
 
     async def run_benchmark(self) -> RealmBenchReport:
-        """Run all loaded test cases."""
         start_time = time.time()
         results: list[RealmBenchResult] = []
 
@@ -89,7 +79,6 @@ class RealmBenchAdapter:
         return report
 
     async def _run_test_case(self, test_case: RealmBenchTestCase) -> RealmBenchResult:
-        """Run a specific test case."""
         start_time = time.time()
         planning_time = 0.0
         execution_time = 0.0
@@ -202,7 +191,6 @@ class RealmBenchAdapter:
             )
 
     async def _load_planning_pattern_tests(self) -> None:
-        """Load planning pattern tests from REALM-Bench."""
         planning_patterns = [
             {
                 "name": "Sequential Planning",
@@ -270,7 +258,6 @@ class RealmBenchAdapter:
             self.test_cases.append(test_case)
 
     async def _load_multi_agent_tests(self) -> None:
-        """Load multi-agent tests from REALM-Bench."""
         multi_agent_scenarios = [
             {
                 "name": "Information Gathering and Analysis",
@@ -335,7 +322,6 @@ class RealmBenchAdapter:
         execution_result: Any,
         actions_performed: list[str],
     ) -> bool:
-        """Evaluate test result against expected outcomes."""
         if not execution_result.success:
             return False
 
@@ -369,7 +355,6 @@ class RealmBenchAdapter:
         planning_time: float,
         execution_time: float,
     ) -> dict[str, float]:
-        """Calculate performance metrics."""
         plan_quality = min(1.0, 0.5 + len(plan.steps) / 10 if plan.steps else 0)
 
         required_actions = test_case.expected.get("metrics", {}).get("required_actions", [])
@@ -395,7 +380,6 @@ class RealmBenchAdapter:
     def _generate_report(
         self, results: list[RealmBenchResult], total_duration: float
     ) -> RealmBenchReport:
-        """Generate comprehensive benchmark report."""
         passed_tests = len([r for r in results if r.success])
         failed_tests = len(results) - passed_tests
 
@@ -470,7 +454,6 @@ class RealmBenchAdapter:
         )
 
     async def save_report(self, report: RealmBenchReport, file_path: str) -> None:
-        """Save benchmark report to file."""
         try:
             from dataclasses import asdict
 
@@ -481,8 +464,3 @@ class RealmBenchAdapter:
         except Exception as e:
             logger.error(f"[RealmBenchAdapter] Error saving report: {e}")
             raise
-
-
-
-
-

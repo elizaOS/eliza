@@ -24,7 +24,6 @@ pub enum TextProvider {
     Google,
 }
 
-/// Types of memory items.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum MemoryType {
@@ -318,7 +317,6 @@ pub struct ProcessingResult {
     pub error: Option<String>,
 }
 
-/// Error types for the knowledge plugin.
 #[derive(Debug, thiserror::Error)]
 pub enum KnowledgeError {
     #[error("Document not found: {0}")]

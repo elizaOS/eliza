@@ -1,18 +1,6 @@
-/**
- * Repository State Provider
- *
- * Provides context about the current GitHub repository state.
- */
-
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 
-/**
- * Repository state provider
- *
- * Provides information about the configured repository, including
- * recent issues, pull requests, and repository metadata.
- */
 export const repositoryStateProvider: Provider = {
   name: "GITHUB_REPOSITORY_STATE",
   description: "Provides context about the current GitHub repository including recent activity",
@@ -33,13 +21,11 @@ export const repositoryStateProvider: Provider = {
         };
       }
 
-      // Fetch repository info
       const repo = await service.getRepository({
         owner: config.owner,
         repo: config.repo,
       });
 
-      // Fetch recent open issues (limit 5)
       const issues = await service.listIssues({
         owner: config.owner,
         repo: config.repo,
@@ -47,7 +33,6 @@ export const repositoryStateProvider: Provider = {
         perPage: 5,
       });
 
-      // Fetch recent open PRs (limit 5)
       const pullRequests = await service.listPullRequests({
         owner: config.owner,
         repo: config.repo,
@@ -55,7 +40,6 @@ export const repositoryStateProvider: Provider = {
         perPage: 5,
       });
 
-      // Build context string
       const parts: string[] = [
         `## GitHub Repository: ${repo.fullName}`,
         "",

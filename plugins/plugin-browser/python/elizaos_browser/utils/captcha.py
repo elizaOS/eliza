@@ -1,7 +1,3 @@
-"""
-CapSolver integration for CAPTCHA solving.
-"""
-
 import logging
 from typing import Any
 
@@ -13,8 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 class CapSolverService:
-    """CapSolver service for solving various CAPTCHA types."""
-
     def __init__(
         self,
         api_key: str,
@@ -28,7 +22,6 @@ class CapSolverService:
         self.polling_interval = polling_interval
 
     async def create_task(self, task: dict[str, Any]) -> str:
-        """Create a CAPTCHA solving task."""
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
@@ -53,7 +46,6 @@ class CapSolverService:
             raise
 
     async def get_task_result(self, task_id: str) -> dict[str, Any]:
-        """Get task result with polling."""
         import asyncio
 
         attempts = 0
@@ -93,7 +85,6 @@ class CapSolverService:
         proxy: str | None = None,
         user_agent: str | None = None,
     ) -> str:
-        """Solve Cloudflare Turnstile."""
         logger.info("Solving Cloudflare Turnstile captcha")
 
         task: dict[str, Any] = {
@@ -125,7 +116,6 @@ class CapSolverService:
         is_invisible: bool = False,
         proxy: str | None = None,
     ) -> str:
-        """Solve reCAPTCHA v2."""
         logger.info("Solving reCAPTCHA v2")
 
         task: dict[str, Any] = {
@@ -156,7 +146,6 @@ class CapSolverService:
         min_score: float = 0.7,
         proxy: str | None = None,
     ) -> str:
-        """Solve reCAPTCHA v3."""
         logger.info("Solving reCAPTCHA v3")
 
         task: dict[str, Any] = {
@@ -186,7 +175,6 @@ class CapSolverService:
         website_key: str,
         proxy: str | None = None,
     ) -> str:
-        """Solve hCaptcha."""
         logger.info("Solving hCaptcha")
 
         task: dict[str, Any] = {
@@ -210,42 +198,32 @@ class CapSolverService:
 
 
 async def detect_captcha_type(page: Any) -> tuple[CaptchaType, str | None]:
-    """Detect CAPTCHA type on a page."""
-    try:
-        # Check for Cloudflare Turnstile
-        turnstile = await page.query_selector("[data-sitekey]")
-        if turnstile:
-            cf_turnstile = await page.query_selector(".cf-turnstile")
-            if cf_turnstile:
-                site_key = await turnstile.get_attribute("data-sitekey")
-                return CaptchaType.TURNSTILE, site_key
+    turnstile = await page.query_selector("[data-sitekey]")
+    if turnstile:
+        cf_turnstile = await page.query_selector(".cf-turnstile")
+        if cf_turnstile:
+            site_key = await turnstile.get_attribute("data-sitekey")
+            return CaptchaType.TURNSTILE, site_key
 
-        # Check for reCAPTCHA
-        recaptcha = await page.query_selector("[data-sitekey], .g-recaptcha")
-        if recaptcha:
-            site_key = await recaptcha.get_attribute("data-sitekey")
-            # Check if it's v3
-            is_v3 = await page.evaluate(
-                "() => typeof grecaptcha !== 'undefined' && typeof grecaptcha.execute === 'function'"
-            )
-            return (
-                CaptchaType.RECAPTCHA_V3 if is_v3 else CaptchaType.RECAPTCHA_V2,
-                site_key,
-            )
+    recaptcha = await page.query_selector("[data-sitekey], .g-recaptcha")
+    if recaptcha:
+        site_key = await recaptcha.get_attribute("data-sitekey")
+        is_v3 = await page.evaluate(
+            "() => typeof grecaptcha !== 'undefined' && typeof grecaptcha.execute === 'function'"
+        )
+        return (
+            CaptchaType.RECAPTCHA_V3 if is_v3 else CaptchaType.RECAPTCHA_V2,
+            site_key,
+        )
 
-        # Check for hCaptcha
-        hcaptcha = await page.query_selector("[data-sitekey].h-captcha, [data-hcaptcha-sitekey]")
-        if hcaptcha:
-            site_key = await hcaptcha.get_attribute("data-sitekey") or await hcaptcha.get_attribute(
-                "data-hcaptcha-sitekey"
-            )
-            return CaptchaType.HCAPTCHA, site_key
+    hcaptcha = await page.query_selector("[data-sitekey].h-captcha, [data-hcaptcha-sitekey]")
+    if hcaptcha:
+        site_key = await hcaptcha.get_attribute("data-sitekey") or await hcaptcha.get_attribute(
+            "data-hcaptcha-sitekey"
+        )
+        return CaptchaType.HCAPTCHA, site_key
 
-        return CaptchaType.NONE, None
-
-    except Exception as e:
-        logger.error(f"Error detecting CAPTCHA type: {e}")
-        return CaptchaType.NONE, None
+    return CaptchaType.NONE, None
 
 
 async def inject_captcha_solution(
@@ -253,7 +231,6 @@ async def inject_captcha_solution(
     captcha_type: CaptchaType,
     solution: str,
 ) -> None:
-    """Inject CAPTCHA solution into the page."""
     if captcha_type == CaptchaType.TURNSTILE:
         await page.evaluate(
             """(token) => {

@@ -1,12 +1,9 @@
-//! Retry utility with exponential backoff.
-
 use crate::types::RetryConfig;
 use std::future::Future;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{info, warn};
 
-/// Default retry configurations
 pub mod default_configs {
     use super::RetryConfig;
 
@@ -38,7 +35,6 @@ pub mod default_configs {
     }
 }
 
-/// Execute a function with retry and exponential backoff
 pub async fn retry_with_backoff<T, E, F, Fut>(
     mut f: F,
     config: &RetryConfig,
@@ -80,14 +76,8 @@ where
     Err(last_error.unwrap())
 }
 
-/// Sleep for specified milliseconds
 pub async fn sleep_ms(ms: u64) {
     sleep(Duration::from_millis(ms)).await;
 }
-
-
-
-
-
 
 

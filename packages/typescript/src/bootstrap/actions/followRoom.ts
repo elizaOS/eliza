@@ -11,22 +11,8 @@ import type {
 import { ModelType } from "../../types/index.ts";
 import { composePromptFromState } from "../../utils.ts";
 
-// Inline to avoid circular import issues
 const booleanFooter = "Respond with only a YES or a NO.";
 
-/**
- * Template for deciding if {{agentName}} should start following a room.
- * The decision is based on various criteria, including recent messages and user interactions.
- * Respond with YES if:
- * - The user has directly asked {{agentName}} to follow the conversation
- * - The conversation topic is engaging and {{agentName}}'s input would add value
- * - {{agentName}} has unique insights to contribute and users seem receptive
- * Otherwise, respond with NO.
- */
-/**
- * Template for determining if the agent should start following a room
- * @type {string}
- */
 export const shouldFollowTemplate = `# Task: Decide if {{agentName}} should start following this room, i.e. eagerly participating without explicit mentions.
 
 {{recentMessages}}
@@ -40,14 +26,6 @@ Respond with YES if:
 Otherwise, respond with NO.
 ${booleanFooter}`;
 
-/**
- * Action for following a room with great interest.
- * Similes: FOLLOW_CHAT, FOLLOW_CHANNEL, FOLLOW_CONVERSATION, FOLLOW_THREAD
- * Description: Start following this channel with great interest, chiming in without needing to be explicitly mentioned. Only do this if explicitly asked to.
- * @param {IAgentRuntime} runtime - The current agent runtime.
- * @param {Memory} message - The message memory.
- * @returns {Promise<boolean>} - Promise that resolves to a boolean indicating if the room should be followed.
- */
 export const followRoomAction: Action = {
   name: "FOLLOW_ROOM",
   similes: [
@@ -117,7 +95,7 @@ export const followRoomAction: Action = {
     async function _shouldFollow(state: State): Promise<boolean> {
       const shouldFollowPrompt = composePromptFromState({
         state,
-        template: shouldFollowTemplate, // Define this template separately
+        template: shouldFollowTemplate,
       });
 
       const response = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -127,7 +105,6 @@ export const followRoomAction: Action = {
 
       const cleanedResponse = response.trim().toLowerCase();
 
-      // Handle various affirmative responses
       if (
         cleanedResponse === "true" ||
         cleanedResponse === "yes" ||
@@ -175,7 +152,6 @@ export const followRoomAction: Action = {
         return false;
       }
 
-      // Default to false if response is unclear
       logger.warn(
         {
           src: "plugin:bootstrap:action:follow_room",
@@ -199,7 +175,6 @@ export const followRoomAction: Action = {
       };
     }
 
-    // Ensure room has a name for consistent return values
     const roomName = room.name ?? `Room-${message.roomId.substring(0, 8)}`;
 
     if (shouldFollow) {

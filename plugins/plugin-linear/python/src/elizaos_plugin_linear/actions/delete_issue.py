@@ -1,4 +1,3 @@
-"""Delete issue action for Linear plugin."""
 
 import json
 import logging
@@ -35,7 +34,6 @@ async def validate(
     _message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate the action can run."""
     try:
         api_key = runtime.get_setting("LINEAR_API_KEY")
         return bool(api_key)
@@ -50,7 +48,6 @@ async def handler(
     options: dict[str, Any] | None = None,
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
-    """Handle the delete issue action."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -67,11 +64,9 @@ async def handler(
 
         issue_id: str = ""
 
-        # Check if we have issueId in options
         if options and options.get("issueId"):
             issue_id = str(options["issueId"])
         else:
-            # Use LLM to extract issue ID
             prompt = DELETE_ISSUE_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
 
@@ -88,7 +83,6 @@ async def handler(
                     raise ValueError("Issue ID not found")
 
             except json.JSONDecodeError:
-                # Fallback to regex
                 logger.warning("Failed to parse LLM response, falling back to regex")
 
                 issue_match = re.search(r"(\w+-\d+)", content)
@@ -105,14 +99,12 @@ async def handler(
 
                 issue_id = issue_match.group(1)
 
-        # Get issue details before deletion
         issue = await linear_service.get_issue(issue_id)
         issue_title = issue.get("title", "Unknown")
         issue_identifier = issue.get("identifier", issue_id)
 
         logger.info(f"Archiving issue {issue_identifier}: {issue_title}")
 
-        # Archive the issue
         await linear_service.delete_issue(issue_id)
 
         success_message = f'✅ Successfully archived issue {issue_identifier}: "{issue_title}"\n\nThe issue has been moved to the archived state.'
@@ -161,8 +153,3 @@ delete_issue_action = create_action(
     validate=validate,
     handler=handler,
 )
-
-
-
-
-

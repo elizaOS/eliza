@@ -16,16 +16,11 @@ lazy_static! {
     static ref PLUGIN_REGISTRY: Mutex<HashMap<String, PluginFactory>> = Mutex::new(HashMap::new());
 }
 
-/// Register a plugin factory under a name.
-///
-/// This enables `load_plugin()` to create plugins by name in a fully-native Rust environment
-/// (analogous to dynamic imports in TypeScript / module imports in Python).
-///
-/// For convenience, this function also registers common aliases:
-/// - normalized short name (`@elizaos/plugin-discord` → `discord`)
-/// - scoped name (`discord` → `@elizaos/plugin-discord`)
+/// Register a plugin factory under a name
 pub fn register_plugin_factory(name: &str, factory: PluginFactory) {
-    let mut registry = PLUGIN_REGISTRY.lock().expect("plugin registry lock poisoned");
+    let mut registry = PLUGIN_REGISTRY
+        .lock()
+        .expect("plugin registry lock poisoned");
 
     // Register exact name
     registry.insert(name.to_string(), factory.clone());
@@ -47,19 +42,15 @@ pub fn register_plugin_factory(name: &str, factory: PluginFactory) {
 
 /// List all registered plugin names (including aliases).
 pub fn list_registered_plugins() -> Vec<String> {
-    let registry = PLUGIN_REGISTRY.lock().expect("plugin registry lock poisoned");
+    let registry = PLUGIN_REGISTRY
+        .lock()
+        .expect("plugin registry lock poisoned");
     let mut names: Vec<String> = registry.keys().cloned().collect();
     names.sort();
     names
 }
 
 /// Validate a plugin's structure
-///
-/// # Arguments
-/// * `plugin` - The plugin definition to validate
-///
-/// # Returns
-/// A Result indicating whether the plugin is valid
 pub fn validate_plugin(plugin: &PluginDefinition) -> Result<()> {
     if plugin.name.is_empty() {
         anyhow::bail!("Plugin must have a name");
@@ -105,7 +96,9 @@ pub fn load_plugin(name: &str) -> Result<Plugin> {
     debug!("Loading plugin: {}", name);
 
     let factory = {
-        let registry = PLUGIN_REGISTRY.lock().expect("plugin registry lock poisoned");
+        let registry = PLUGIN_REGISTRY
+            .lock()
+            .expect("plugin registry lock poisoned");
         registry
             .get(name)
             .cloned()
@@ -128,11 +121,6 @@ pub fn load_plugin(name: &str) -> Result<Plugin> {
 }
 
 /// Normalize a plugin name by extracting the short name from scoped packages
-///
-/// # Examples
-/// - `@elizaos/plugin-discord` -> `discord`
-/// - `@elizaos/plugin-sql` -> `sql`
-/// - `bootstrap` -> `bootstrap`
 pub fn normalize_plugin_name(name: &str) -> String {
     // Match patterns like @elizaos/plugin-{name}
     if let Some(captures) = name.strip_prefix("@elizaos/plugin-") {
@@ -147,16 +135,6 @@ pub fn normalize_plugin_name(name: &str) -> String {
 }
 
 /// Resolve plugin dependencies with circular dependency detection
-///
-/// Performs topological sorting of plugins to ensure dependencies are loaded
-/// in the correct order.
-///
-/// # Arguments
-/// * `plugins` - Map of plugin name to Plugin
-/// * `is_test_mode` - Whether to include test dependencies
-///
-/// # Returns
-/// Ordered vector of plugins with dependencies resolved
 pub fn resolve_plugin_dependencies(
     plugins: &HashMap<String, Plugin>,
     is_test_mode: bool,

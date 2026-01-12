@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! RSS Plugin
-//!
-//! Main plugin definition and subscription management.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,9 +10,6 @@ use crate::types::{
     FeedFormat, FeedItemMetadata, FeedSubscriptionMetadata, RssConfig, RssFeed,
 };
 
-/// RSS Plugin for elizaOS.
-///
-/// Provides RSS/Atom feed monitoring and subscription management.
 pub struct RssPlugin {
     config: RssConfig,
     client: Option<RssClient>,
@@ -24,7 +18,6 @@ pub struct RssPlugin {
 }
 
 impl RssPlugin {
-    /// Create a new RSS plugin.
     pub fn new(config: RssConfig) -> Self {
         Self {
             config,
@@ -34,16 +27,12 @@ impl RssPlugin {
         }
     }
 
-    /// Create a plugin with default configuration.
     pub fn default_plugin() -> Self {
         Self::new(RssConfig::default())
     }
 
-    /// Start the plugin and initialize the client.
     pub async fn start(&mut self) -> Result<()> {
         self.client = Some(RssClient::new(self.config.clone())?);
-
-        // Subscribe to initial feeds
         let feeds: Vec<String> = self.config.feeds.clone();
         for url in feeds {
             let _ = self.subscribe_feed(&url, None).await;
@@ -52,12 +41,10 @@ impl RssPlugin {
         Ok(())
     }
 
-    /// Stop the plugin.
     pub async fn stop(&mut self) {
         self.client = None;
     }
 
-    /// Get or create the client.
     fn get_client(&mut self) -> Result<&RssClient> {
         if self.client.is_none() {
             self.client = Some(RssClient::new(self.config.clone())?);
@@ -65,13 +52,11 @@ impl RssPlugin {
         Ok(self.client.as_ref().unwrap())
     }
 
-    /// Fetch and parse an RSS feed.
     pub async fn fetch_feed(&mut self, url: &str) -> Result<RssFeed> {
         let client = self.get_client()?;
         client.fetch_feed(url).await
     }
 
-    /// Subscribe to an RSS feed.
     pub async fn subscribe_feed(&mut self, url: &str, title: Option<&str>) -> Result<()> {
         {
             let feeds: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.read().await;
@@ -80,7 +65,6 @@ impl RssPlugin {
             }
         }
 
-        // Validate feed by fetching it
         let _feed_title = if title.is_some() {
             title.map(|s: &str| s.to_string())
         } else {
@@ -101,7 +85,6 @@ impl RssPlugin {
         Ok(())
     }
 
-    /// Unsubscribe from an RSS feed.
     pub async fn unsubscribe_feed(&mut self, url: &str) -> Result<()> {
         let mut feeds: tokio::sync::RwLockWriteGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.write().await;
         if feeds.remove(url).is_none() {
@@ -110,7 +93,6 @@ impl RssPlugin {
         Ok(())
     }
 
-    /// Get all subscribed feeds.
     pub async fn get_subscribed_feeds(&self) -> Vec<(String, FeedSubscriptionMetadata)> {
         let feeds: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.read().await;
         let result: Vec<(String, FeedSubscriptionMetadata)> = feeds
@@ -120,7 +102,6 @@ impl RssPlugin {
         result
     }
 
-    /// Check all subscribed feeds for new items.
     pub async fn check_all_feeds(&mut self) -> HashMap<String, usize> {
         let mut results: HashMap<String, usize> = HashMap::new();
 
@@ -156,7 +137,6 @@ impl RssPlugin {
                 }
             }
 
-            // Update subscription metadata
             {
                 let mut subs: tokio::sync::RwLockWriteGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.write().await;
                 if let Some(meta) = subs.get_mut(&url) {
@@ -171,12 +151,9 @@ impl RssPlugin {
         results
     }
 
-    /// Get recent feed items.
     pub async fn get_feed_items(&self, limit: usize) -> Vec<FeedItemMetadata> {
         let items: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedItemMetadata>> = self.feed_items.read().await;
         let mut result: Vec<FeedItemMetadata> = items.values().cloned().collect();
-        
-        // Sort by pub_date (most recent first)
         result.sort_by(|a, b| {
             let a_date = a.pub_date.as_deref().unwrap_or("");
             let b_date = b.pub_date.as_deref().unwrap_or("");
@@ -187,7 +164,6 @@ impl RssPlugin {
         result
     }
 
-    /// Format feed items for display.
     pub async fn format_feed_items(&self, items: Option<Vec<FeedItemMetadata>>) -> String {
         let items: Vec<FeedItemMetadata> = match items {
             Some(i) => i,
@@ -198,7 +174,6 @@ impl RssPlugin {
             return "No RSS feed items available.".to_string();
         }
 
-        // Group by feed
         let mut by_feed: HashMap<String, Vec<&FeedItemMetadata>> = HashMap::new();
         for item in &items {
             let feed_title = item.feed_title.as_deref().unwrap_or("Unknown Feed");
@@ -291,12 +266,10 @@ impl RssPlugin {
     }
 }
 
-/// Create an RSS plugin instance.
 pub fn create_plugin(config: RssConfig) -> RssPlugin {
     RssPlugin::new(config)
 }
 
-/// Get an RSS plugin with default configuration.
 pub fn get_rss_plugin() -> RssPlugin {
     RssPlugin::default_plugin()
 }
@@ -328,7 +301,3 @@ mod tests {
         assert!(feeds.is_empty());
     }
 }
-
-
-
-

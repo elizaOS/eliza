@@ -1,10 +1,3 @@
-/**
- * Object/JSON generation model handlers.
- *
- * These handlers implement structured JSON output using Anthropic's Claude models.
- * The approach prompts for JSON output and then parses/repairs the response.
- */
-
 import type { IAgentRuntime, ModelTypeName, ObjectGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
@@ -15,9 +8,6 @@ import { getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { ensureReflectionProperties, extractAndParseJSON } from "../utils/json";
 
-/**
- * Build a system prompt for JSON generation.
- */
 function buildSystemPrompt(characterSystem: string | undefined, isReflection: boolean): string {
   let systemPrompt = characterSystem
     ? `${characterSystem}\nYou must respond with valid JSON only.`
@@ -33,11 +23,7 @@ function buildSystemPrompt(characterSystem: string | undefined, isReflection: bo
   return systemPrompt;
 }
 
-/**
- * Build a JSON-focused prompt from the original prompt.
- */
 function buildJsonPrompt(prompt: string): string {
-  // Don't modify if already contains explicit JSON formatting
   if (prompt.includes("```json") || prompt.includes("respond with valid JSON")) {
     return prompt;
   }
@@ -48,11 +34,6 @@ function buildJsonPrompt(prompt: string): string {
   );
 }
 
-/**
- * Generate a JSON object using the specified model.
- *
- * @throws Error if JSON parsing fails after all extraction attempts
- */
 async function generateObjectByModelType(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams,
@@ -68,7 +49,7 @@ async function generateObjectByModelType(
   const isReflection = isReflectionSchema(schema);
   const jsonPrompt = buildJsonPrompt(params.prompt);
   const systemPrompt = buildSystemPrompt(runtime.character.system, isReflection);
-  const temperature = params.temperature ?? 0.2; // Lower for structured output
+  const temperature = params.temperature ?? 0.2;
 
   const { text, usage } = await generateText({
     model: anthropic(modelName),
@@ -81,11 +62,9 @@ async function generateObjectByModelType(
     emitModelUsageEvent(runtime, modelType, params.prompt, usage);
   }
 
-  // Parse the response
   logger.debug("Attempting to parse response from Anthropic model");
   const jsonObject: ExtractedJSON = extractAndParseJSON(text);
 
-  // Check for unstructured response (parsing failed)
   if (
     typeof jsonObject === "object" &&
     jsonObject !== null &&
@@ -97,20 +76,11 @@ async function generateObjectByModelType(
     throw new Error("Invalid JSON returned from Anthropic model: could not extract valid JSON");
   }
 
-  // Ensure reflection properties if needed
   const processedObject = ensureReflectionProperties(jsonObject, isReflection);
 
-  // Return as Record<string, unknown> for compatibility
   return processedObject as Record<string, unknown>;
 }
 
-/**
- * OBJECT_SMALL model handler.
- *
- * Generates structured JSON using the configured small model.
- *
- * @throws Error if JSON cannot be extracted from the model response
- */
 export async function handleObjectSmall(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
@@ -119,13 +89,6 @@ export async function handleObjectSmall(
   return generateObjectByModelType(runtime, params, ModelType.OBJECT_SMALL, modelName, "small");
 }
 
-/**
- * OBJECT_LARGE model handler.
- *
- * Generates structured JSON using the configured large model.
- *
- * @throws Error if JSON cannot be extracted from the model response
- */
 export async function handleObjectLarge(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams

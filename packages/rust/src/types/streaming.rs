@@ -16,9 +16,3 @@ pub trait IStreamExtractor: Send {
     /// Returns the text that should be streamed to the client. An empty string means "nothing yet".
     fn push(&mut self, chunk: &str) -> String;
 }
-
-
-
-
-
-

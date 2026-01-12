@@ -430,8 +430,6 @@ export class MessageHandler {
       return this.sessionNotFoundResponse(requestId);
     }
 
-    // This would need captcha solving implementation
-    // For now, just detect if there's a captcha
     const captchaInfo = await detectCaptchaType(session.stagehand.page);
 
     return {

@@ -7,6 +7,15 @@ This plugin provides:
 - Multiple execution models (sequential, parallel, DAG)
 - Plan validation and adaptation
 - REALM-Bench and API-Bank benchmarking
+
+Actions:
+- ANALYZE_INPUT: Analyzes user input and extracts key information
+- PROCESS_ANALYSIS: Processes analysis results and makes decisions
+- EXECUTE_FINAL: Executes the final action based on processing results
+- CREATE_PLAN: Creates a comprehensive project plan
+
+Providers:
+- messageClassifier: Classifies messages by complexity and planning requirements
 """
 
 from elizaos_plugin_planning.types import (
@@ -25,20 +34,38 @@ from elizaos_plugin_planning.types import (
 from elizaos_plugin_planning.services.planning_service import PlanningService
 from elizaos_plugin_planning.providers.message_classifier import MessageClassifierProvider
 
+# Actions
+from elizaos_plugin_planning.actions import (
+    AnalyzeInputAction,
+    ProcessAnalysisAction,
+    ExecuteFinalAction,
+    CreatePlanAction,
+    get_planning_action_names,
+)
+
 __version__ = "1.0.0"
+
+# Plugin metadata
+PLUGIN_NAME = "planning"
+PLUGIN_DESCRIPTION = "Comprehensive planning and execution plugin with integrated planning service"
 
 
 class PlanningPlugin:
     """Planning Plugin for elizaOS."""
 
-    name = "planning"
-    description = "Comprehensive planning and execution plugin with integrated planning service"
+    name = PLUGIN_NAME
+    description = PLUGIN_DESCRIPTION
     version = __version__
 
     def __init__(self) -> None:
         self.service = PlanningService()
         self.providers = [MessageClassifierProvider()]
-        self.actions: list[object] = []
+        self.actions = [
+            AnalyzeInputAction(),
+            ProcessAnalysisAction(),
+            ExecuteFinalAction(),
+            CreatePlanAction(),
+        ]
         self.evaluators: list[object] = []
 
     async def initialize(self, runtime: object) -> None:
@@ -53,6 +80,12 @@ class PlanningPlugin:
 __all__ = [
     # Plugin
     "PlanningPlugin",
+    # Actions
+    "AnalyzeInputAction",
+    "ProcessAnalysisAction",
+    "ExecuteFinalAction",
+    "CreatePlanAction",
+    "get_planning_action_names",
     # Types
     "StrategySpec",
     "ExecutionStep",
@@ -69,4 +102,7 @@ __all__ = [
     "PlanningService",
     # Providers
     "MessageClassifierProvider",
+    # Metadata
+    "PLUGIN_NAME",
+    "PLUGIN_DESCRIPTION",
 ]

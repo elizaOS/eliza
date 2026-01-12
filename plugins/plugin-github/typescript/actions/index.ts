@@ -1,9 +1,3 @@
-/**
- * GitHub Actions
- *
- * All available actions for the GitHub plugin.
- */
-
 export { createBranchAction, default as createBranch } from "./createBranch";
 export { createCommentAction, default as createComment } from "./createComment";
 export { createIssueAction, default as createIssue } from "./createIssue";
@@ -29,9 +23,6 @@ import { mergePullRequestAction } from "./mergePullRequest";
 import { pushCodeAction } from "./pushCode";
 import { reviewPullRequestAction } from "./reviewPullRequest";
 
-/**
- * All GitHub actions
- */
 export const allActions = [
   createIssueAction,
   createPullRequestAction,

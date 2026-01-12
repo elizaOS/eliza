@@ -4,7 +4,6 @@ import {
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
-  logger,
   type Memory,
   ModelType,
   type State,
@@ -140,13 +139,10 @@ export const readResourceAction: Action = {
       if (!parsedSelection || parsedSelection.noResourceAvailable) {
         const responseText =
           "I don't have a specific resource that contains the information you're looking for. Let me try to assist you directly instead.";
-        const thoughtText =
-          "No appropriate MCP resource available for this request. Falling back to direct assistance.";
 
         if (callback && parsedSelection?.noResourceAvailable) {
           await callback({
             text: responseText,
-            thought: thoughtText,
             actions: ["REPLY"],
           });
         }
@@ -166,12 +162,9 @@ export const readResourceAction: Action = {
         };
       }
 
-      const { serverName, uri, reasoning } = parsedSelection;
-
-      logger.debug(`Selected resource "${uri}" on server "${serverName}" because: ${reasoning}`);
+      const { serverName, uri } = parsedSelection;
 
       const result = await mcpService.readResource(serverName, uri);
-      logger.debug(`Read resource ${uri} from server ${serverName}`);
 
       const { resourceContent, resourceMeta } = processResourceResult(result, uri);
 
@@ -197,7 +190,7 @@ export const readResourceAction: Action = {
           actionName: "READ_MCP_RESOURCE",
           serverName,
           uri,
-          reasoning,
+          reasoning: parsedSelection?.reasoning,
           resourceMeta,
           contentLength: resourceContent?.length ?? 0,
         },

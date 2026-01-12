@@ -1,26 +1,16 @@
-/**
- * OpenRouter plugin initialization.
- */
-
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { getApiKey, getBaseURL } from "./utils/config";
 
-// Disable AI SDK warning logging by default (can be overridden by setting to true)
 (globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
 
-/**
- * Initialize and validate OpenRouter configuration.
- */
 export function initializeOpenRouter(
   _config: Record<string, unknown>,
   runtime: IAgentRuntime
 ): void {
-  // Do check in the background
   (async () => {
     try {
       const isBrowser =
         typeof globalThis !== "undefined" && (globalThis as Record<string, unknown>).document;
-      // In browser, skip validation entirely to avoid exposing secrets
       if (isBrowser) {
         return;
       }
@@ -34,7 +24,6 @@ export function initializeOpenRouter(
 
       try {
         const baseURL = getBaseURL(runtime);
-        // Use global fetch which works in both Node.js 18+ and browsers
         const response = await fetch(`${baseURL}/models`, {
           headers: { Authorization: `Bearer ${getApiKey(runtime)}` },
         });

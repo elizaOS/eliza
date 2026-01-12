@@ -1,6 +1,3 @@
-"""Teams provider for Linear plugin."""
-
-from typing import Any
 
 from elizaos_plugin_linear.providers.base import Provider, ProviderResult, RuntimeProtocol
 from elizaos_plugin_linear.services.linear import LinearService
@@ -8,10 +5,9 @@ from elizaos_plugin_linear.services.linear import LinearService
 
 async def get_teams(
     runtime: RuntimeProtocol,
-    _message: Any,
-    _state: Any,
+    _message: object,
+    _state: object,
 ) -> ProviderResult:
-    """Get Linear teams for context."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -42,8 +38,3 @@ linear_teams_provider = Provider(
     description="Provides context about Linear teams",
     get=get_teams,
 )
-
-
-
-
-

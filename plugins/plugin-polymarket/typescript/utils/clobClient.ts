@@ -1,10 +1,3 @@
-/**
- * @elizaos/plugin-polymarket CLOB Client Utilities
- *
- * Utilities for initializing and managing Polymarket CLOB client connections.
- * Uses viem for wallet operations to integrate with plugin-evm.
- */
-
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { ClobClient } from "@polymarket/clob-client";
 import { createWalletClient, http } from "viem";
@@ -13,9 +6,6 @@ import { polygon } from "viem/chains";
 import { DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID } from "../constants";
 import type { ApiKeyCreds } from "../types";
 
-/**
- * Get private key from runtime settings
- */
 function getPrivateKey(runtime: IAgentRuntime): `0x${string}` {
   const privateKey =
     runtime.getSetting("POLYMARKET_PRIVATE_KEY") ||
@@ -29,7 +19,6 @@ function getPrivateKey(runtime: IAgentRuntime): `0x${string}` {
     );
   }
 
-  // Ensure it has 0x prefix
   const keyStr = String(privateKey);
   const key = keyStr.startsWith("0x") ? keyStr : `0x${keyStr}`;
   return key as `0x${string}`;
@@ -45,23 +34,12 @@ interface EnhancedWallet {
   ) => Promise<string>;
 }
 
-/**
- * Type alias for the ClobClient's signer parameter.
- * The ClobClient expects a specific signer interface that our EnhancedWallet satisfies.
- */
 type ClobClientSigner = ConstructorParameters<typeof ClobClient>[2];
 
-/**
- * Cast EnhancedWallet to ClobClient's signer type.
- * Our EnhancedWallet implements the same interface the ClobClient expects.
- */
 function asClobClientSigner(wallet: EnhancedWallet): ClobClientSigner {
   return wallet as ClobClientSigner;
 }
 
-/**
- * Create an enhanced wallet object compatible with CLOB client
- */
 function createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
   const account = privateKeyToAccount(privateKey);
 
@@ -79,7 +57,6 @@ function createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
       types: Record<string, unknown>,
       value: Record<string, unknown>
     ) => {
-      // Find the primary type (not EIP712Domain)
       const primaryType = Object.keys(types).find((k) => k !== "EIP712Domain") ?? "";
 
       return walletClient.signTypedData({
@@ -93,11 +70,6 @@ function createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
   };
 }
 
-/**
- * Initialize CLOB client with wallet-based authentication
- * @param runtime - The agent runtime containing configuration
- * @returns Configured CLOB client instance
- */
 export async function initializeClobClient(runtime: IAgentRuntime): Promise<ClobClient> {
   const clobApiUrl = String(runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL);
 
@@ -112,18 +84,13 @@ export async function initializeClobClient(runtime: IAgentRuntime): Promise<Clob
     clobApiUrl,
     POLYGON_CHAIN_ID,
     asClobClientSigner(enhancedWallet),
-    undefined // No API creds for basic client
+    undefined
   );
 
   logger.info("[initializeClobClient] CLOB client initialized successfully with EOA wallet");
   return client;
 }
 
-/**
- * Initialize CLOB client with API credentials for L2 authenticated operations
- * @param runtime - The agent runtime containing configuration
- * @returns Configured CLOB client instance with API credentials
- */
 export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Promise<ClobClient> {
   const clobApiUrl = String(runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL);
 
@@ -172,9 +139,6 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
   return client;
 }
 
-/**
- * Get the wallet address from runtime settings
- */
 export function getWalletAddress(runtime: IAgentRuntime): string {
   const privateKey = getPrivateKey(runtime);
   const account = privateKeyToAccount(privateKey);

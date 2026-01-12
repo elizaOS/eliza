@@ -6,7 +6,7 @@ export interface OpenAITranscriptionParams {
   prompt?: string;
   temperature?: number;
   timestampGranularities?: string[];
-  mimeType?: string; // MIME type for Buffer audio data (e.g., 'audio/wav', 'audio/mp3', 'audio/webm')
+  mimeType?: string;
 }
 
 export interface OpenAITextToSpeechParams {

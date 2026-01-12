@@ -1,7 +1,3 @@
-/**
- * Image model handlers for OpenRouter.
- */
-
 import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
@@ -10,9 +6,6 @@ import { createOpenRouterProvider } from "../providers";
 import { getImageGenerationModel, getImageModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
-/**
- * IMAGE_DESCRIPTION model handler.
- */
 export async function handleImageDescription(
   runtime: IAgentRuntime,
   params: ImageDescriptionParams | string
@@ -55,9 +48,6 @@ export async function handleImageDescription(
   }
 }
 
-/**
- * IMAGE generation model handler.
- */
 export async function handleImageGeneration(
   runtime: IAgentRuntime,
   params: ImageGenerationParams
@@ -80,8 +70,6 @@ export async function handleImageGeneration(
       emitModelUsageEvent(runtime, ModelType.IMAGE, params.prompt, response.usage);
     }
 
-    // The response format depends on the model
-    // For now, return the text which may contain image URL or base64
     return {
       imageUrl: response.text,
       caption: params.prompt,

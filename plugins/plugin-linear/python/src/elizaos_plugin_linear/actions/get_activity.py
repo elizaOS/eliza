@@ -1,4 +1,3 @@
-"""Get activity action for Linear plugin."""
 
 import json
 import logging
@@ -43,7 +42,6 @@ async def validate(
     _message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate the action can run."""
     try:
         api_key = runtime.get_setting("LINEAR_API_KEY")
         return bool(api_key)
@@ -58,7 +56,6 @@ async def handler(
     options: dict[str, Any] | None = None,
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
-    """Handle the get activity action."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -68,7 +65,6 @@ async def handler(
         filters: dict[str, Any] = {}
         limit = 10
 
-        # Use LLM to parse filters
         if content:
             prompt = GET_ACTIVITY_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
@@ -79,7 +75,6 @@ async def handler(
                     cleaned = re.sub(r"\n?```$", "", cleaned).strip()
                     parsed = json.loads(cleaned)
 
-                    # Handle time range filtering
                     if parsed.get("timeRange"):
                         period = parsed["timeRange"].get("period")
                         now = datetime.now()
@@ -124,10 +119,8 @@ async def handler(
                 except json.JSONDecodeError:
                     logger.warning("Failed to parse activity filters")
 
-        # Get filtered activity
         activity = linear_service.get_activity_log(limit * 2, filters if filters else None)
 
-        # Additional client-side filtering for time range
         if filters.get("fromDate"):
             from_time = datetime.fromisoformat(filters["fromDate"])
             activity = [
@@ -139,7 +132,6 @@ async def handler(
                 >= from_time
             ]
 
-        # Limit results
         activity = activity[:limit]
 
         if not activity:
@@ -154,7 +146,6 @@ async def handler(
                 )
             return {"text": no_activity_msg, "success": True, "data": {"activity": []}}
 
-        # Format activity list
         activity_text = []
         for i, item in enumerate(activity):
             time_str = datetime.fromisoformat(item.timestamp.replace("Z", "")).strftime(
@@ -233,8 +224,3 @@ get_activity_action = create_action(
     validate=validate,
     handler=handler,
 )
-
-
-
-
-

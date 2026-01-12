@@ -18,13 +18,11 @@ import type { ExtendedMemoryMetadata } from "../../types";
 
 type MemoryMetadata = ExtendedMemoryMetadata;
 
-// Use local UI components instead of importing from client
 import { Badge } from "./badge";
 import { Button } from "./button";
 import { Input } from "./input";
 import { MemoryGraphOptimized } from "./memory-graph-optimized";
 
-// Declare global window extension for TypeScript
 declare global {
   interface Window {
     ELIZA_CONFIG?: {
@@ -34,12 +32,10 @@ declare global {
   }
 }
 
-// Local utility function instead of importing from client
 const cn = (...classes: (string | undefined | null | false)[]) => {
   return classes.filter(Boolean).join(" ");
 };
 
-// Simple toast implementation using console logging
 const useToast = () => ({
   toast: ({
     title,
@@ -55,7 +51,6 @@ const useToast = () => ({
   },
 });
 
-// Simple Dialog components for now
 const Dialog = ({
   open,
   onOpenChange,

@@ -1,5 +1,3 @@
-"""ElizaOS Cloud API client implementation."""
-
 import httpx
 
 from elizaos_plugin_elizacloud.types import (
@@ -13,7 +11,6 @@ from elizaos_plugin_elizacloud.types import (
     TranscriptionParams,
 )
 
-# Map sizes to aspect ratios for ElizaOS Cloud API
 SIZE_TO_ASPECT_RATIO: dict[str, str] = {
     "1024x1024": "1:1",
     "1792x1024": "16:9",
@@ -22,14 +19,7 @@ SIZE_TO_ASPECT_RATIO: dict[str, str] = {
 
 
 class ElizaCloudClient:
-    """Client for interacting with ElizaOS Cloud API."""
-
     def __init__(self, config: ElizaCloudConfig) -> None:
-        """Initialize the ElizaOS Cloud client.
-
-        Args:
-            config: Configuration for the client.
-        """
         self.config = config
         self._client = httpx.AsyncClient(
             base_url=config.base_url,
@@ -41,15 +31,12 @@ class ElizaCloudClient:
         )
 
     async def close(self) -> None:
-        """Close the HTTP client."""
         await self._client.aclose()
 
     async def __aenter__(self) -> "ElizaCloudClient":
-        """Async context manager entry."""
         return self
 
     async def __aexit__(self, *args: object) -> None:
-        """Async context manager exit."""
         await self.close()
 
     async def generate_text(
@@ -57,15 +44,6 @@ class ElizaCloudClient:
         params: TextGenerationParams,
         model_size: str = "small",
     ) -> str:
-        """Generate text using the specified model.
-
-        Args:
-            params: Text generation parameters.
-            model_size: Either "small" or "large".
-
-        Returns:
-            Generated text string.
-        """
         model = self.config.small_model if model_size == "small" else self.config.large_model
 
         response = await self._client.post(
@@ -90,18 +68,9 @@ class ElizaCloudClient:
         self,
         params: TextEmbeddingParams,
     ) -> list[float] | list[list[float]]:
-        """Generate text embeddings.
-
-        Args:
-            params: Embedding parameters with single text or batch.
-
-        Returns:
-            Embedding vector(s).
-        """
         embedding_url = self.config.embedding_url or self.config.base_url
         embedding_key = self.config.embedding_api_key or self.config.api_key
 
-        # Determine input
         if params.texts:
             input_texts = params.texts
         elif params.text:
@@ -129,7 +98,6 @@ class ElizaCloudClient:
 
         embeddings = [item["embedding"] for item in data["data"]]
 
-        # Return single embedding or batch
         if params.text and not params.texts:
             return embeddings[0]
         return embeddings
@@ -138,17 +106,6 @@ class ElizaCloudClient:
         self,
         params: ImageGenerationParams,
     ) -> list[dict[str, str]]:
-        """Generate images from a prompt.
-
-        Uses ElizaOS Cloud's custom /generate-image endpoint.
-
-        Args:
-            params: Image generation parameters.
-
-        Returns:
-            List of image data with URLs.
-        """
-        # Convert size to aspect ratio for ElizaOS Cloud API
         aspect_ratio = SIZE_TO_ASPECT_RATIO.get(params.size, "1:1")
 
         response = await self._client.post(
@@ -163,7 +120,6 @@ class ElizaCloudClient:
         response.raise_for_status()
         data = response.json()
 
-        # Map response to expected format (url field)
         images = data.get("images", [])
         return [{"url": img.get("url") or img.get("image", "")} for img in images]
 
@@ -171,15 +127,6 @@ class ElizaCloudClient:
         self,
         params: ImageDescriptionParams | str,
     ) -> ImageDescriptionResult:
-        """Describe an image.
-
-        Args:
-            params: Image URL string or ImageDescriptionParams.
-
-        Returns:
-            Image description result.
-        """
-        # Handle both string and ImageDescriptionParams
         if isinstance(params, str):
             image_url = params
             prompt_text = "Please analyze this image and provide a title and detailed description."
@@ -211,7 +158,6 @@ class ElizaCloudClient:
 
         content = data["choices"][0]["message"]["content"]
 
-        # Parse title and description from response
         lines = content.strip().split("\n", 1)
         title = lines[0].replace("Title:", "").strip() if lines else "Untitled"
         description = lines[1].strip() if len(lines) > 1 else content
@@ -222,14 +168,6 @@ class ElizaCloudClient:
         self,
         params: TextToSpeechParams,
     ) -> bytes:
-        """Generate speech from text.
-
-        Args:
-            params: Text-to-speech parameters.
-
-        Returns:
-            Audio data as bytes.
-        """
         model = params.model or self.config.tts_model
         voice = params.voice or self.config.tts_voice
         instructions = params.instructions or self.config.tts_instructions
@@ -252,15 +190,6 @@ class ElizaCloudClient:
         self,
         params: TranscriptionParams,
     ) -> str:
-        """Transcribe audio to text.
-
-        Args:
-            params: Transcription parameters.
-
-        Returns:
-            Transcribed text.
-        """
-        # Use config default if model not specified
         model = params.model or self.config.transcription_model
 
         files = {
@@ -277,7 +206,6 @@ class ElizaCloudClient:
         if params.temperature is not None:
             data["temperature"] = str(params.temperature)
 
-        # Use a separate client without JSON content-type for multipart
         async with httpx.AsyncClient(
             base_url=self.config.base_url,
             headers={"Authorization": f"Bearer {self.config.api_key}"},
@@ -290,7 +218,6 @@ class ElizaCloudClient:
             )
             response.raise_for_status()
 
-        # Handle both JSON and plain text responses
         content_type = response.headers.get("content-type", "")
         if "application/json" in content_type:
             result = response.json()

@@ -1,5 +1,3 @@
-"""SAM TTS Service - Retro text-to-speech using SAM."""
-
 import logging
 import struct
 from typing import Protocol
@@ -11,14 +9,10 @@ logger = logging.getLogger(__name__)
 
 
 class HardwareBridge(Protocol):
-    """Hardware bridge protocol."""
-
     async def send_audio_data(self, audio_buffer: bytes) -> None: ...
 
 
 class Runtime(Protocol):
-    """Runtime protocol."""
-
     def get_service(self, service_type: str) -> object | None: ...
 
 
@@ -32,12 +26,10 @@ class SamTTSService:
 
     @classmethod
     async def start(cls, runtime: Runtime) -> "SamTTSService":
-        """Start the service."""
         logger.info("[SAM-TTS] Service initialized")
         return cls(runtime)
 
     async def stop(self) -> None:
-        """Stop the service."""
         logger.info("[SAM-TTS] Service stopped")
 
     def generate_audio(self, text: str, options: SamTTSOptions | None = None) -> bytes:
@@ -58,7 +50,6 @@ class SamTTSService:
         return audio
 
     async def speak_text(self, text: str, options: SamTTSOptions | None = None) -> bytes:
-        """Generate audio and send to hardware bridge."""
         audio = self.generate_audio(text, options)
         wav = self.create_wav_buffer(audio)
 
@@ -72,7 +63,6 @@ class SamTTSService:
         return audio
 
     def create_wav_buffer(self, audio_data: bytes, sample_rate: int = 22050) -> bytes:
-        """Create WAV file from raw 8-bit audio."""
         data_size = len(audio_data)
 
         header = bytearray()
@@ -94,5 +84,4 @@ class SamTTSService:
 
     @property
     def capability_description(self) -> str:
-        """Service description."""
         return "SAM TTS: Retro 1980s text-to-speech synthesis"

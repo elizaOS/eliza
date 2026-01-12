@@ -1,7 +1,3 @@
-/**
- * TEE Service for elizaOS.
- */
-
 import {
   type IAgentRuntime,
   logger,
@@ -17,15 +13,6 @@ import { PhalaDeriveKeyProvider } from "../providers/deriveKey";
 import type { RemoteAttestationQuote, TeeServiceConfig } from "../types";
 import { TeeMode, TeeVendor } from "../types";
 
-/**
- * TEE Service for secure key management within a Trusted Execution Environment.
- *
- * This service provides:
- * - Ed25519 key derivation (for Solana)
- * - ECDSA key derivation (for EVM chains)
- * - Raw key derivation for custom use cases
- * - Remote attestation for all derived keys
- */
 export class TEEService extends Service {
   private provider: PhalaDeriveKeyProvider;
   static serviceType = ServiceType.TEE;
@@ -50,9 +37,6 @@ export class TEEService extends Service {
     this.provider = new PhalaDeriveKeyProvider(teeMode);
   }
 
-  /**
-   * Start the TEE service.
-   */
   static async start(runtime: IAgentRuntime): Promise<TEEService> {
     const teeModeRaw = runtime.getSetting("TEE_MODE") ?? TeeMode.LOCAL;
     const teeMode = typeof teeModeRaw === "string" ? (teeModeRaw as TeeMode) : TeeMode.LOCAL;
@@ -61,22 +45,10 @@ export class TEEService extends Service {
     return service;
   }
 
-  /**
-   * Stop the TEE service.
-   */
   async stop(): Promise<void> {
     logger.info("Stopping TEE service");
-    // No cleanup needed currently
   }
 
-  /**
-   * Derive an ECDSA keypair for EVM chains.
-   *
-   * @param path - The derivation path (e.g., secret salt).
-   * @param subject - The subject for the certificate chain (e.g., "evm").
-   * @param agentId - The agent ID for attestation.
-   * @returns The keypair and attestation.
-   */
   async deriveEcdsaKeypair(
     path: string,
     subject: string,
@@ -109,13 +81,6 @@ export class TEEService extends Service {
     return this.provider.deriveEd25519Keypair(path, subject, agentId);
   }
 
-  /**
-   * Derive a raw key for custom use cases.
-   *
-   * @param path - The derivation path.
-   * @param subject - The subject for the certificate chain.
-   * @returns The raw DeriveKeyResponse from DStack SDK.
-   */
   async rawDeriveKey(path: string, subject: string): Promise<DeriveKeyResponse> {
     logger.debug("TEE Service: Deriving raw key");
     return this.provider.rawDeriveKeyResponse(path, subject);

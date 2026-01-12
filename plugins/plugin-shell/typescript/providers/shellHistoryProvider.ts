@@ -33,10 +33,7 @@ export const shellHistoryProvider: Provider = {
       };
     }
 
-    // Get conversation ID from message context
     const conversationId = message.roomId || message.agentId;
-
-    // Get history for this conversation (last 10 commands)
     const history = shellService.getCommandHistory(conversationId, 10);
     const cwd = shellService.getCurrentDirectory(conversationId);
     const allowedDir = shellService.getAllowedDirectory();
@@ -47,7 +44,6 @@ export const shellHistoryProvider: Provider = {
         .map((entry: CommandHistoryEntry) => {
           let entryStr = `[${new Date(entry.timestamp).toISOString()}] ${entry.workingDirectory}> ${entry.command}`;
 
-          // Truncate long outputs
           if (entry.stdout) {
             if (entry.stdout.length > MAX_OUTPUT_LENGTH) {
               entryStr += `\n  Output: ${entry.stdout.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${entry.stdout.substring(entry.stdout.length - TRUNCATE_SEGMENT_LENGTH)}`;
@@ -66,7 +62,6 @@ export const shellHistoryProvider: Provider = {
 
           entryStr += `\n  Exit Code: ${entry.exitCode}`;
 
-          // Add file operations if any
           if (entry.fileOperations && entry.fileOperations.length > 0) {
             entryStr += "\n  File Operations:";
             entry.fileOperations.forEach((op: FileOperation) => {
@@ -83,13 +78,12 @@ export const shellHistoryProvider: Provider = {
         .join("\n\n");
     }
 
-    // Get recent file operations
     const recentFileOps = history
       .filter(
         (entry: CommandHistoryEntry) => entry.fileOperations && entry.fileOperations.length > 0
       )
       .flatMap((entry: CommandHistoryEntry) => entry.fileOperations ?? [])
-      .slice(-5); // Last 5 file operations
+      .slice(-5);
 
     let fileOpsText = "";
     if (recentFileOps.length > 0) {

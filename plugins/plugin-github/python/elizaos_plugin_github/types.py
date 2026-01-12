@@ -1,22 +1,9 @@
-"""
-Type definitions for the GitHub plugin.
-
-Strong types with validation - no Any types allowed.
-"""
-
 from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-# =============================================================================
-# Core Types
-# =============================================================================
-
-
 class RepositoryRef(BaseModel):
-    """GitHub repository reference."""
-
     model_config = ConfigDict(frozen=True)
 
     owner: str
@@ -33,30 +20,16 @@ class FileChange(BaseModel):
     encoding: Literal["utf-8", "base64"] = "utf-8"
     operation: Literal["add", "modify", "delete"] = "modify"
 
-
-# =============================================================================
-# Issue Types
-# =============================================================================
-
-
 class IssueState(str, Enum):
-    """Issue state."""
-
     OPEN = "open"
     CLOSED = "closed"
 
-
 class IssueStateReason(str, Enum):
-    """Issue state reason."""
-
     COMPLETED = "completed"
     NOT_PLANNED = "not_planned"
     REOPENED = "reopened"
 
-
 class GitHubLabel(BaseModel):
-    """GitHub label."""
-
     model_config = ConfigDict(frozen=True)
 
     id: int
@@ -65,10 +38,7 @@ class GitHubLabel(BaseModel):
     description: str | None = None
     default: bool = False
 
-
 class GitHubMilestone(BaseModel):
-    """GitHub milestone."""
-
     model_config = ConfigDict(frozen=True)
 
     number: int
@@ -82,10 +52,7 @@ class GitHubMilestone(BaseModel):
     open_issues: int = 0
     closed_issues: int = 0
 
-
 class GitHubUser(BaseModel):
-    """GitHub user."""
-
     model_config = ConfigDict(frozen=True)
 
     id: int
@@ -95,10 +62,7 @@ class GitHubUser(BaseModel):
     html_url: str
     type: Literal["User", "Organization", "Bot"]
 
-
 class GitHubIssue(BaseModel):
-    """GitHub issue."""
-
     model_config = ConfigDict(frozen=True)
 
     number: int
@@ -117,10 +81,7 @@ class GitHubIssue(BaseModel):
     comments: int = 0
     is_pull_request: bool = False
 
-
 class CreateIssueParams(RepositoryRef):
-    """Issue creation parameters."""
-
     model_config = ConfigDict(frozen=True)
 
     title: str
@@ -129,10 +90,7 @@ class CreateIssueParams(RepositoryRef):
     labels: list[str] = []
     milestone: int | None = None
 
-
 class UpdateIssueParams(RepositoryRef):
-    """Issue update parameters."""
-
     model_config = ConfigDict(frozen=False)
 
     issue_number: int
@@ -144,10 +102,7 @@ class UpdateIssueParams(RepositoryRef):
     labels: list[str] | None = None
     milestone: int | None = None
 
-
 class ListIssuesParams(RepositoryRef):
-    """Issue list parameters."""
-
     model_config = ConfigDict(frozen=True)
 
     state: Literal["open", "closed", "all"] = "open"
@@ -160,30 +115,16 @@ class ListIssuesParams(RepositoryRef):
     per_page: int = 30
     page: int = 1
 
-
-# =============================================================================
-# Pull Request Types
-# =============================================================================
-
-
 class PullRequestState(str, Enum):
-    """Pull request state."""
-
     OPEN = "open"
     CLOSED = "closed"
 
-
 class MergeableState(str, Enum):
-    """Pull request merge state."""
-
     MERGEABLE = "mergeable"
     CONFLICTING = "conflicting"
     UNKNOWN = "unknown"
 
-
 class GitHubBranchRef(BaseModel):
-    """Branch reference."""
-
     model_config = ConfigDict(frozen=True)
 
     ref: str
@@ -191,10 +132,7 @@ class GitHubBranchRef(BaseModel):
     sha: str
     repo: RepositoryRef | None = None
 
-
 class GitHubPullRequest(BaseModel):
-    """GitHub pull request."""
-
     model_config = ConfigDict(frozen=True)
 
     number: int
@@ -222,10 +160,7 @@ class GitHubPullRequest(BaseModel):
     deletions: int = 0
     changed_files: int = 0
 
-
 class CreatePullRequestParams(RepositoryRef):
-    """Pull request creation parameters."""
-
     model_config = ConfigDict(frozen=True)
 
     title: str
@@ -235,10 +170,7 @@ class CreatePullRequestParams(RepositoryRef):
     draft: bool = False
     maintainer_can_modify: bool = True
 
-
 class UpdatePullRequestParams(RepositoryRef):
-    """Pull request update parameters."""
-
     model_config = ConfigDict(frozen=False)
 
     pull_number: int
@@ -248,10 +180,7 @@ class UpdatePullRequestParams(RepositoryRef):
     base: str | None = None
     maintainer_can_modify: bool | None = None
 
-
 class ListPullRequestsParams(RepositoryRef):
-    """Pull request list parameters."""
-
     model_config = ConfigDict(frozen=True)
 
     state: Literal["open", "closed", "all"] = "open"
@@ -274,33 +203,19 @@ class MergePullRequestParams(RepositoryRef):
     merge_method: Literal["merge", "squash", "rebase"] = "merge"
     sha: str | None = None
 
-
-# =============================================================================
-# Review Types
-# =============================================================================
-
-
 class ReviewState(str, Enum):
-    """Review state."""
-
     APPROVED = "APPROVED"
     CHANGES_REQUESTED = "CHANGES_REQUESTED"
     COMMENTED = "COMMENTED"
     DISMISSED = "DISMISSED"
     PENDING = "PENDING"
 
-
 class ReviewEvent(str, Enum):
-    """Review event type."""
-
     APPROVE = "APPROVE"
     REQUEST_CHANGES = "REQUEST_CHANGES"
     COMMENT = "COMMENT"
 
-
 class ReviewCommentInput(BaseModel):
-    """Review comment input."""
-
     model_config = ConfigDict(frozen=True)
 
     path: str
@@ -310,10 +225,7 @@ class ReviewCommentInput(BaseModel):
     start_line: int | None = None
     start_side: Literal["LEFT", "RIGHT"] | None = None
 
-
 class GitHubReview(BaseModel):
-    """GitHub pull request review."""
-
     model_config = ConfigDict(frozen=True)
 
     id: int
@@ -324,10 +236,7 @@ class GitHubReview(BaseModel):
     html_url: str
     submitted_at: str | None = None
 
-
 class CreateReviewParams(RepositoryRef):
-    """Create review parameters."""
-
     model_config = ConfigDict(frozen=True)
 
     pull_number: int
@@ -336,15 +245,7 @@ class CreateReviewParams(RepositoryRef):
     commit_id: str | None = None
     comments: list[ReviewCommentInput] = []
 
-
-# =============================================================================
-# Comment Types
-# =============================================================================
-
-
 class GitHubComment(BaseModel):
-    """GitHub issue/PR comment."""
-
     model_config = ConfigDict(frozen=True)
 
     id: int
@@ -354,58 +255,33 @@ class GitHubComment(BaseModel):
     updated_at: str
     html_url: str
 
-
 class CreateCommentParams(RepositoryRef):
-    """Create comment parameters."""
-
     model_config = ConfigDict(frozen=True)
 
     issue_number: int
     body: str
 
-
-# =============================================================================
-# Branch Types
-# =============================================================================
-
-
 class GitHubBranch(BaseModel):
-    """GitHub branch."""
-
     model_config = ConfigDict(frozen=True)
 
     name: str
     sha: str
     protected: bool = False
 
-
 class CreateBranchParams(RepositoryRef):
-    """Create branch parameters."""
-
     model_config = ConfigDict(frozen=True)
 
     branch_name: str
     from_ref: str
 
-
-# =============================================================================
-# Commit Types
-# =============================================================================
-
-
 class GitHubCommitAuthor(BaseModel):
-    """Commit author info."""
-
     model_config = ConfigDict(frozen=True)
 
     name: str
     email: str
     date: str
 
-
 class GitHubCommit(BaseModel):
-    """GitHub commit."""
-
     model_config = ConfigDict(frozen=True)
 
     sha: str
@@ -429,15 +305,7 @@ class CreateCommitParams(RepositoryRef):
     author_name: str | None = None
     author_email: str | None = None
 
-
-# =============================================================================
-# File Types
-# =============================================================================
-
-
 class GitHubFileContent(BaseModel):
-    """GitHub file content."""
-
     model_config = ConfigDict(frozen=True)
 
     name: str
@@ -464,15 +332,7 @@ class GitHubDirectoryEntry(BaseModel):
     html_url: str
     download_url: str | None = None
 
-
-# =============================================================================
-# Repository Types
-# =============================================================================
-
-
 class GitHubLicense(BaseModel):
-    """GitHub license."""
-
     model_config = ConfigDict(frozen=True)
 
     key: str
@@ -480,10 +340,7 @@ class GitHubLicense(BaseModel):
     spdx_id: str | None = None
     url: str | None = None
 
-
 class GitHubRepository(BaseModel):
-    """GitHub repository."""
-
     model_config = ConfigDict(frozen=True)
 
     id: int
@@ -533,8 +390,3 @@ class GitHubEventType(str, Enum):
     CHECK_RUN = "check_run"
     CHECK_SUITE = "check_suite"
     STATUS = "status"
-
-
-
-
-

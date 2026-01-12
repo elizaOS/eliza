@@ -17,7 +17,6 @@ import {
 import { extractConfirmationTemplate } from "../generated/prompts/typescript/prompts.js";
 import { createGoalDataService } from "../services/goalDataService.js";
 
-// Interface for confirmation data stored in state
 interface PendingGoalData {
   name: string;
   description?: string;
@@ -30,16 +29,12 @@ interface PendingGoalData {
   metadata?: Record<string, unknown>;
 }
 
-// Interface for confirmation response
 interface ConfirmationResponse {
   isConfirmation: boolean;
   shouldProceed: boolean;
   modifications?: string;
 }
 
-/**
- * Extracts confirmation intent from the user's message
- */
 async function extractConfirmationIntent(
   runtime: IAgentRuntime,
   message: Memory,
@@ -97,16 +92,12 @@ ${pendingTask.recurring ? `Recurring: ${pendingTask.recurring}` : ""}
   }
 }
 
-/**
- * The CONFIRM_GOAL action handles the confirmation step of goal creation
- */
 export const confirmGoalAction: Action = {
   name: "CONFIRM_GOAL",
   similes: ["CONFIRM_TASK", "APPROVE_GOAL", "APPROVE_TASK", "GOAL_CONFIRM"],
   description: "Confirms or cancels a pending goal creation after user review.",
 
   validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State): Promise<boolean> => {
-    // This action is only valid if there's a pending goal in the state
     const pendingGoal = state?.data?.pendingGoal as PendingGoalData | undefined;
     return !!pendingGoal;
   },
@@ -153,11 +144,9 @@ export const confirmGoalAction: Action = {
         return { success: false, error: "No room or entity context" };
       }
 
-      // Extract confirmation intent
       const confirmation = await extractConfirmationIntent(runtime, message, pendingGoal, state);
 
       if (!confirmation.isConfirmation) {
-        // User said something unrelated to the confirmation
         if (callback) {
           await callback({
             text: `I'm still waiting for your confirmation on the task "${pendingGoal.name}". Would you like me to create it?`,
@@ -169,8 +158,6 @@ export const confirmGoalAction: Action = {
       }
 
       if (!confirmation.shouldProceed) {
-        // User rejected the task
-        // Clear the pending goal from state
         delete state.data.pendingGoal;
 
         if (callback) {
@@ -183,10 +170,7 @@ export const confirmGoalAction: Action = {
         return;
       }
 
-      // User confirmed - create the task
       const dataService = createGoalDataService(runtime);
-
-      // Check for duplicates one more time
       const existingGoals = await dataService.getGoals({
         ownerId: message.entityId,
         ownerType: "entity",
@@ -207,7 +191,6 @@ export const confirmGoalAction: Action = {
         return;
       }
 
-      // Create the goal
       const createdGoalId = await dataService.createGoal({
         agentId: runtime.agentId,
         ownerType: "entity",
@@ -229,10 +212,8 @@ export const confirmGoalAction: Action = {
         throw new Error("Failed to create goal");
       }
 
-      // Clear the pending goal from state
       delete state.data.pendingGoal;
 
-      // Send success message
       let successMessage = "";
       if (pendingGoal.taskType === "daily") {
         successMessage = `✅ Created daily task: "${pendingGoal.name}".`;

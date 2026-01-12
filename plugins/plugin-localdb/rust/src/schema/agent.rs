@@ -1,9 +1,5 @@
 #![allow(missing_docs)]
-//! Agent schema for elizaOS database
-//!
-//! Corresponds to the TypeScript agentTable in packages/plugin-sql/typescript/schema/agent.ts
 
-/// SQL for creating the agents table
 pub const CREATE_AGENTS_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS agents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -26,13 +22,11 @@ CREATE TABLE IF NOT EXISTS agents (
 )
 "#;
 
-/// SQL for creating indexes on agents table
 pub const CREATE_AGENTS_INDEXES: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_agents_enabled ON agents (enabled);
 CREATE INDEX IF NOT EXISTS idx_agents_server_id ON agents (server_id);
 "#;
 
-/// Agent record structure for database operations
 #[derive(Clone, Debug)]
 pub struct AgentRecord {
     pub id: uuid::Uuid,
@@ -55,7 +49,6 @@ pub struct AgentRecord {
 }
 
 impl AgentRecord {
-    /// Convert to elizaOS Agent type
     pub fn to_agent(&self) -> elizaos::Agent {
         use elizaos::{Agent, Bio, Character, UUID};
 

@@ -1,5 +1,3 @@
-"""Tests for PDF plugin types."""
-
 from elizaos_plugin_pdf.types import (
     PdfConversionResult,
     PdfDocumentInfo,
@@ -10,10 +8,7 @@ from elizaos_plugin_pdf.types import (
 
 
 class TestPdfExtractionOptions:
-    """Tests for PdfExtractionOptions."""
-
     def test_default_options(self) -> None:
-        """Test default extraction options."""
         options = PdfExtractionOptions()
         assert options.start_page is None
         assert options.end_page is None
@@ -21,7 +16,6 @@ class TestPdfExtractionOptions:
         assert options.clean_content is True
 
     def test_custom_options(self) -> None:
-        """Test custom extraction options."""
         options = PdfExtractionOptions(
             start_page=1,
             end_page=5,
@@ -35,10 +29,7 @@ class TestPdfExtractionOptions:
 
 
 class TestPdfConversionResult:
-    """Tests for PdfConversionResult."""
-
     def test_success_result(self) -> None:
-        """Test successful conversion result."""
         result = PdfConversionResult(
             success=True,
             text="Hello World",
@@ -50,7 +41,6 @@ class TestPdfConversionResult:
         assert result.error is None
 
     def test_error_result(self) -> None:
-        """Test failed conversion result."""
         result = PdfConversionResult(
             success=False,
             error="Failed to parse PDF",
@@ -61,10 +51,7 @@ class TestPdfConversionResult:
 
 
 class TestPdfPageInfo:
-    """Tests for PdfPageInfo."""
-
     def test_page_info(self) -> None:
-        """Test page info creation."""
         page = PdfPageInfo(
             page_number=1,
             width=612.0,
@@ -78,16 +65,12 @@ class TestPdfPageInfo:
 
 
 class TestPdfMetadata:
-    """Tests for PdfMetadata."""
-
     def test_empty_metadata(self) -> None:
-        """Test empty metadata."""
         metadata = PdfMetadata()
         assert metadata.title is None
         assert metadata.author is None
 
     def test_full_metadata(self) -> None:
-        """Test full metadata."""
         metadata = PdfMetadata(
             title="Test Document",
             author="Test Author",
@@ -99,10 +82,7 @@ class TestPdfMetadata:
 
 
 class TestPdfDocumentInfo:
-    """Tests for PdfDocumentInfo."""
-
     def test_document_info(self) -> None:
-        """Test document info creation."""
         info = PdfDocumentInfo(
             page_count=1,
             metadata=PdfMetadata(title="Test"),
@@ -119,8 +99,3 @@ class TestPdfDocumentInfo:
         assert info.page_count == 1
         assert info.metadata.title == "Test"
         assert len(info.pages) == 1
-
-
-
-
-

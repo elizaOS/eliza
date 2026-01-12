@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanupTestRuntime,
+  createTestRuntime,
+} from "../bootstrap/__tests__/test-utils";
 import { ChannelType, EventType, ModelType } from "../index";
 import { DefaultMessageService } from "../services/message";
 import type { Content, HandlerCallback, Memory, UUID } from "../types";
 import type { IMessageService } from "../types/message-service";
 import type { GenerateTextParams } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
-import {
-  cleanupTestRuntime,
-  createTestRuntime,
-} from "../bootstrap/__tests__/test-utils";
 
 describe("DefaultMessageService", () => {
   let messageService: IMessageService;

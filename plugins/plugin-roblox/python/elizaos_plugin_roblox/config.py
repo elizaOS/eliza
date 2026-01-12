@@ -1,5 +1,3 @@
-"""Configuration for the Roblox plugin."""
-
 import os
 from dataclasses import dataclass, field
 
@@ -7,57 +5,22 @@ from dotenv import load_dotenv
 
 from elizaos_plugin_roblox.error import ConfigError
 
-# Default values
 DEFAULT_MESSAGING_TOPIC = "eliza-agent"
 DEFAULT_POLL_INTERVAL = 30
 
 
 @dataclass
 class RobloxConfig:
-    """Configuration for the Roblox plugin."""
-
     api_key: str
-    """API key for Roblox Open Cloud API."""
-
     universe_id: str
-    """Universe ID of the experience."""
-
     place_id: str | None = None
-    """Optional Place ID."""
-
     webhook_secret: str | None = None
-    """Webhook secret for validation."""
-
     messaging_topic: str = field(default=DEFAULT_MESSAGING_TOPIC)
-    """Messaging service topic."""
-
     poll_interval: int = field(default=DEFAULT_POLL_INTERVAL)
-    """Polling interval in seconds."""
-
     dry_run: bool = False
-    """Dry run mode."""
 
     @classmethod
     def from_env(cls) -> "RobloxConfig":
-        """Load configuration from environment variables.
-
-        Required:
-            ROBLOX_API_KEY: API key for Roblox Open Cloud API
-            ROBLOX_UNIVERSE_ID: Universe ID of the experience
-
-        Optional:
-            ROBLOX_PLACE_ID: Specific place ID
-            ROBLOX_WEBHOOK_SECRET: Secret for webhook validation
-            ROBLOX_MESSAGING_TOPIC: Messaging topic (default: "eliza-agent")
-            ROBLOX_POLL_INTERVAL: Poll interval in seconds (default: 30)
-            ROBLOX_DRY_RUN: Enable dry run mode (default: false)
-
-        Returns:
-            RobloxConfig instance.
-
-        Raises:
-            ConfigError: If required environment variables are missing.
-        """
         load_dotenv()
 
         api_key = os.getenv("ROBLOX_API_KEY")
@@ -88,11 +51,6 @@ class RobloxConfig:
         )
 
     def validate(self) -> None:
-        """Validate the configuration.
-
-        Raises:
-            ConfigError: If configuration is invalid.
-        """
         if not self.api_key:
             raise ConfigError("API key cannot be empty")
 

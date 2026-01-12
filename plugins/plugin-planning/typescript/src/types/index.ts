@@ -1,22 +1,9 @@
-/**
- * Type definitions for the Planning Plugin.
- */
-
 import type { ActionResult, HandlerCallback, Memory, State, UUID } from "@elizaos/core";
 
-/**
- * Execution model for plans.
- */
 export type ExecutionModel = "sequential" | "parallel" | "dag";
 
-/**
- * Plan status.
- */
 export type PlanStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
-/**
- * Extended action plan with full metadata.
- */
 export interface ExtendedActionPlan {
   id: string;
   goal: string;
@@ -29,9 +16,6 @@ export interface ExtendedActionPlan {
   context?: PlanningContext;
 }
 
-/**
- * Planning context for plan creation.
- */
 export interface PlanningContext {
   goal: string;
   message?: Memory;
@@ -60,9 +44,6 @@ export interface PlanState {
   error?: string;
 }
 
-/**
- * Result from plan execution.
- */
 export interface PlanExecutionResult {
   planId: string;
   success: boolean;
@@ -73,16 +54,10 @@ export interface PlanExecutionResult {
   duration?: number;
 }
 
-/**
- * Working memory interface for plan execution.
- */
 export interface WorkingMemoryData {
   [key: string]: unknown;
 }
 
-/**
- * Planning service interface.
- */
 export interface IPlanningService {
   createSimplePlan(goal: string, message?: Memory, state?: State): Promise<ExtendedActionPlan>;
   createComprehensivePlan(context: PlanningContext): Promise<ExtendedActionPlan>;
@@ -104,9 +79,6 @@ export interface IPlanningService {
   ): Promise<ExtendedActionPlan | null>;
 }
 
-/**
- * Strategy specification for planning.
- */
 export interface StrategySpec {
   goal: string;
   requirements: string[];
@@ -114,9 +86,6 @@ export interface StrategySpec {
   expectedOutcome: string;
 }
 
-/**
- * Execution step in a plan.
- */
 export interface ExecutionStep {
   id: string;
   action: string;
@@ -125,18 +94,12 @@ export interface ExecutionStep {
   optional: boolean;
 }
 
-/**
- * Directed Acyclic Graph representation for plan execution.
- */
 export interface ExecutionDAG {
   steps: ExecutionStep[];
   edges: Array<[string, string]>;
   metadata: Record<string, unknown>;
 }
 
-/**
- * Execution result from a plan run.
- */
 export interface ExecutionResult {
   dagId: string;
   status: "pending" | "running" | "completed" | "failed" | "aborted";
@@ -146,9 +109,6 @@ export interface ExecutionResult {
   errors: Record<string, string>;
 }
 
-/**
- * Required capability for a plan.
- */
 export interface RequiredCapability {
   type: "action" | "provider" | "service" | "model";
   name: string;
@@ -156,27 +116,18 @@ export interface RequiredCapability {
   required: boolean;
 }
 
-/**
- * Gap in capabilities identified during planning.
- */
 export interface CapabilityGap {
   capability: RequiredCapability;
   suggestions: string[];
   canGenerate: boolean;
 }
 
-/**
- * Method for generating missing capabilities.
- */
 export interface GenerationMethod {
   type: "plugin" | "mcp" | "n8n" | "custom";
   confidence: number;
   estimatedTime: number;
 }
 
-/**
- * Classification of incoming messages.
- */
 export enum MessageClassification {
   SIMPLE = "simple",
   STRATEGIC = "strategic",
@@ -184,9 +135,6 @@ export enum MessageClassification {
   RESEARCH_NEEDED = "research_needed",
 }
 
-/**
- * Planning context for comprehensive planning.
- */
 export interface PlanningContextExtended {
   goal: string;
   constraints: Array<{
@@ -203,16 +151,10 @@ export interface PlanningContextExtended {
   };
 }
 
-/**
- * Working memory for plan execution.
- */
 export interface PlanWorkingMemoryData {
   [key: string]: unknown;
 }
 
-/**
- * Plan execution tracking.
- */
 export interface PlanExecutionState {
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   startTime?: number;
@@ -221,9 +163,6 @@ export interface PlanExecutionState {
   error?: Error;
 }
 
-/**
- * Retry policy for action steps.
- */
 export interface RetryPolicy {
   maxRetries: number;
   backoffMs: number;
@@ -231,9 +170,6 @@ export interface RetryPolicy {
   onError: "abort" | "continue" | "skip";
 }
 
-/**
- * Extended action step with retry policy.
- */
 export interface ActionStepExtended {
   id: UUID;
   actionName: string;
@@ -243,9 +179,6 @@ export interface ActionStepExtended {
   onError?: "abort" | "continue" | "skip";
 }
 
-/**
- * Message classification result.
- */
 export interface ClassificationResult
   extends Record<
     string,

@@ -1,15 +1,7 @@
-"""
-SAM (Software Automatic Mouth) Speech Synthesis Engine
-
-A Python implementation of the classic 1980s SAM speech synthesizer.
-Uses formant-based synthesis for that distinctive retro robotic sound.
-"""
-
 from dataclasses import dataclass
 
 import numpy as np
 
-# Formant frequencies for phonemes (F1, F2, F3)
 FORMANT_FREQUENCIES: dict[int, tuple[int, int, int]] = {
     0: (730, 1090, 2440),  # a
     1: (730, 1090, 2440),
@@ -78,8 +70,6 @@ PHONEME_MAP: dict[str, tuple[int, ...]] = {
 
 @dataclass
 class SamEngine:
-    """SAM Speech Synthesis Engine."""
-
     speed: int = 72
     pitch: int = 64
     throat: int = 128
@@ -87,7 +77,6 @@ class SamEngine:
     sample_rate: int = 22050
 
     def text_to_phonemes(self, text: str) -> list[int]:
-        """Convert text to phoneme sequence."""
         phonemes: list[int] = []
         for char in text.lower():
             if char in PHONEME_MAP:
@@ -101,7 +90,6 @@ class SamEngine:
         return phonemes
 
     def synthesize_phoneme(self, phoneme: int, duration_ms: int = 80) -> np.ndarray:
-        """Synthesize audio for a single phoneme."""
         speed_factor = 100.0 / max(1, self.speed)
         duration_samples = int(duration_ms * speed_factor * self.sample_rate / 1000)
 
@@ -128,12 +116,10 @@ class SamEngine:
             amp = 1.0 / harmonic
             wave += amp * np.sin(2 * np.pi * freq * t).astype(np.float32)
 
-        # Apply formant
         if f1 > 0:
             formant1 = 0.5 * np.sin(2 * np.pi * f1 * t).astype(np.float32)
             wave = wave * (1 + 0.3 * formant1)
 
-        # Apply envelope
         attack = min(duration_samples // 10, 100)
         release = min(duration_samples // 5, 200)
 
@@ -153,7 +139,6 @@ class SamEngine:
         return wave
 
     def synthesize(self, text: str) -> bytes:
-        """Synthesize speech from text. Returns 8-bit PCM audio."""
         phonemes = self.text_to_phonemes(text)
 
         segments = [self.synthesize_phoneme(p) for p in phonemes]
@@ -167,5 +152,4 @@ class SamEngine:
         return bytes((audio_normalized * 255).astype(np.uint8))
 
     def buf8(self, text: str) -> bytes:
-        """Generate 8-bit audio buffer."""
         return self.synthesize(text)

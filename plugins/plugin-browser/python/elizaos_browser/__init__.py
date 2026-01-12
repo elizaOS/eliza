@@ -1,14 +1,3 @@
-"""
-Browser Automation Plugin for ElizaOS (Python)
-
-Provides AI-powered browser automation capabilities including:
-- Navigation (navigate, back, forward, refresh)
-- Interactions (click, type, select)
-- Data extraction
-- Screenshots
-- CAPTCHA solving
-"""
-
 from elizaos_browser.actions import (
     browser_click,
     browser_extract,
@@ -37,7 +26,6 @@ from elizaos_browser.types import (
 __version__ = "1.0.0"
 
 __all__ = [
-    # Types
     "BrowserConfig",
     "BrowserSession",
     "NavigationResult",
@@ -48,19 +36,15 @@ __all__ = [
     "CaptchaType",
     "SecurityConfig",
     "RetryConfig",
-    # Services
     "BrowserService",
     "BrowserWebSocketClient",
-    # Actions
     "browser_navigate",
     "browser_click",
     "browser_type",
     "browser_select",
     "browser_extract",
     "browser_screenshot",
-    # Providers
     "get_browser_state",
-    # Plugin
     "BrowserPlugin",
     "create_browser_plugin",
 ]

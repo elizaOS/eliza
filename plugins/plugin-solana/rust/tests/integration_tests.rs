@@ -4,7 +4,9 @@
 //! Set SOLANA_RPC_URL=https://api.devnet.solana.com to run.
 
 use elizaos_plugin_solana::{
+    actions::{SwapAction, TransferAction},
     keypair::{KeypairUtils, WalletConfig},
+    providers::WalletProvider,
     SolanaClient, SolanaError,
 };
 use rust_decimal::Decimal;
@@ -24,11 +26,9 @@ const USDC_MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 #[tokio::test]
 async fn test_read_only_wallet_balance() {
     // Use a known devnet faucet address (may or may not have balance)
-    let config = WalletConfig::read_only(
-        DEVNET_RPC.to_string(),
-        "11111111111111111111111111111111",
-    )
-    .expect("config should be valid");
+    let config =
+        WalletConfig::read_only(DEVNET_RPC.to_string(), "11111111111111111111111111111111")
+            .expect("config should be valid");
 
     let client = SolanaClient::new(config).expect("client should be created");
 
@@ -45,7 +45,7 @@ async fn test_invalid_address_balance() {
     )
     .expect("config should be valid");
 
-    let client = SolanaClient::new(config).expect("client should be created");
+    let _client = SolanaClient::new(config).expect("client should be created");
 
     // Query balance for an invalid address
     let invalid_pubkey = Pubkey::from_str("invalid");
@@ -54,11 +54,9 @@ async fn test_invalid_address_balance() {
 
 #[tokio::test]
 async fn test_get_balances_multiple_addresses() {
-    let config = WalletConfig::read_only(
-        DEVNET_RPC.to_string(),
-        "11111111111111111111111111111111",
-    )
-    .expect("config should be valid");
+    let config =
+        WalletConfig::read_only(DEVNET_RPC.to_string(), "11111111111111111111111111111111")
+            .expect("config should be valid");
 
     let client = SolanaClient::new(config).expect("client should be created");
 
@@ -68,7 +66,11 @@ async fn test_get_balances_multiple_addresses() {
     ];
 
     let result = client.get_balances_for_addresses(&addresses).await;
-    assert!(result.is_ok(), "Multi-balance query should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Multi-balance query should succeed: {:?}",
+        result
+    );
 
     let balances = result.expect("should have balances");
     assert_eq!(balances.len(), 2);
@@ -84,10 +86,7 @@ async fn test_keypair_generation_and_validation() {
     assert!(restored.is_ok(), "Keypair should restore from base58");
 
     let restored = restored.expect("should have keypair");
-    assert_eq!(
-        keypair.pubkey().to_string(),
-        restored.pubkey().to_string()
-    );
+    assert_eq!(keypair.pubkey().to_string(), restored.pubkey().to_string());
 }
 
 #[tokio::test]
@@ -124,11 +123,9 @@ async fn test_on_curve_check() {
 
 #[tokio::test]
 async fn test_read_only_wallet_cannot_sign() {
-    let config = WalletConfig::read_only(
-        DEVNET_RPC.to_string(),
-        "11111111111111111111111111111111",
-    )
-    .expect("config should be valid");
+    let config =
+        WalletConfig::read_only(DEVNET_RPC.to_string(), "11111111111111111111111111111111")
+            .expect("config should be valid");
 
     assert!(!config.can_sign());
     assert!(config.keypair().is_err());
@@ -136,14 +133,12 @@ async fn test_read_only_wallet_cannot_sign() {
 
 #[tokio::test]
 async fn test_wallet_config_builder() {
-    let config = WalletConfig::read_only(
-        DEVNET_RPC.to_string(),
-        "11111111111111111111111111111111",
-    )
-    .expect("config should be valid")
-    .with_slippage(100)
-    .with_helius_key("test_key".to_string())
-    .with_birdeye_key("bird_key".to_string());
+    let config =
+        WalletConfig::read_only(DEVNET_RPC.to_string(), "11111111111111111111111111111111")
+            .expect("config should be valid")
+            .with_slippage(100)
+            .with_helius_key("test_key".to_string())
+            .with_birdeye_key("bird_key".to_string());
 
     assert_eq!(config.slippage_bps, 100);
     assert_eq!(config.helius_api_key, Some("test_key".to_string()));
@@ -155,8 +150,8 @@ async fn test_wallet_config_builder() {
 #[tokio::test]
 #[ignore = "Requires funded devnet wallet"]
 async fn test_swap_quote_devnet() {
-    let private_key = std::env::var("SOLANA_PRIVATE_KEY")
-        .expect("SOLANA_PRIVATE_KEY required for this test");
+    let private_key =
+        std::env::var("SOLANA_PRIVATE_KEY").expect("SOLANA_PRIVATE_KEY required for this test");
 
     let config = WalletConfig::with_keypair(DEVNET_RPC.to_string(), &private_key)
         .expect("config should be valid");
@@ -171,7 +166,7 @@ async fn test_swap_quote_devnet() {
     };
 
     let result = client.get_swap_quote(&params).await;
-    
+
     // Note: Quote may fail on devnet due to liquidity, that's ok
     match result {
         Ok(quote) => {
@@ -190,8 +185,8 @@ async fn test_swap_quote_devnet() {
 #[tokio::test]
 #[ignore = "Requires funded devnet wallet"]
 async fn test_sol_transfer_devnet() {
-    let private_key = std::env::var("SOLANA_PRIVATE_KEY")
-        .expect("SOLANA_PRIVATE_KEY required for this test");
+    let private_key =
+        std::env::var("SOLANA_PRIVATE_KEY").expect("SOLANA_PRIVATE_KEY required for this test");
 
     let config = WalletConfig::with_keypair(DEVNET_RPC.to_string(), &private_key)
         .expect("config should be valid");
@@ -219,3 +214,153 @@ async fn test_sol_transfer_devnet() {
     }
 }
 
+// ============================================================================
+// Action Tests
+// ============================================================================
+
+#[test]
+fn test_swap_action_metadata() {
+    assert_eq!(SwapAction::NAME, "SWAP_SOLANA");
+    assert!(!SwapAction::DESCRIPTION.is_empty());
+    assert!(!SwapAction::SIMILES.is_empty());
+    assert!(SwapAction::SIMILES.contains(&"SWAP_SOL"));
+}
+
+#[test]
+fn test_transfer_action_metadata() {
+    assert_eq!(TransferAction::NAME, "TRANSFER_SOLANA");
+    assert!(!TransferAction::DESCRIPTION.is_empty());
+    assert!(!TransferAction::SIMILES.is_empty());
+    assert!(TransferAction::SIMILES.contains(&"SEND_SOL"));
+    assert!(TransferAction::SIMILES.contains(&"PAY_SOLANA"));
+}
+
+#[test]
+fn test_swap_resolve_sol_mint() {
+    assert_eq!(SwapAction::resolve_sol_mint("SOL"), SOL_MINT);
+    assert_eq!(SwapAction::resolve_sol_mint("sol"), SOL_MINT);
+    assert_eq!(SwapAction::resolve_sol_mint(USDC_MINT), USDC_MINT);
+}
+
+#[tokio::test]
+async fn test_swap_action_validate() {
+    let config =
+        WalletConfig::read_only(DEVNET_RPC.to_string(), "11111111111111111111111111111111")
+            .expect("config should be valid");
+
+    let client = SolanaClient::new(config).expect("client should be created");
+    assert!(SwapAction::validate(&client));
+}
+
+#[tokio::test]
+async fn test_transfer_action_validate() {
+    let config =
+        WalletConfig::read_only(DEVNET_RPC.to_string(), "11111111111111111111111111111111")
+            .expect("config should be valid");
+
+    let client = SolanaClient::new(config).expect("client should be created");
+    assert!(TransferAction::validate(&client));
+}
+
+// ============================================================================
+// Provider Tests
+// ============================================================================
+
+#[test]
+#[allow(clippy::assertions_on_constants)]
+fn test_wallet_provider_metadata() {
+    assert_eq!(WalletProvider::NAME, "solana-wallet");
+    assert!(!WalletProvider::DESCRIPTION.is_empty());
+    assert!(WalletProvider::DYNAMIC);
+}
+
+#[tokio::test]
+async fn test_wallet_provider_get() {
+    let config =
+        WalletConfig::read_only(DEVNET_RPC.to_string(), "11111111111111111111111111111111")
+            .expect("config should be valid");
+
+    let client = SolanaClient::new(config).expect("client should be created");
+
+    let result = WalletProvider::get(&client, Some("Test Agent")).await;
+    assert!(
+        result.is_ok(),
+        "Wallet provider should succeed: {:?}",
+        result
+    );
+
+    let provider_result = result.expect("should have result");
+
+    // Verify structure
+    assert!(!provider_result.text.is_empty());
+    assert!(provider_result.values.contains_key("total_usd"));
+    assert!(provider_result.values.contains_key("total_sol"));
+
+    // Check text contains agent name
+    assert!(provider_result.text.contains("Test Agent"));
+}
+
+#[tokio::test]
+#[ignore = "Requires funded devnet wallet"]
+async fn test_transfer_action_handle() {
+    let private_key =
+        std::env::var("SOLANA_PRIVATE_KEY").expect("SOLANA_PRIVATE_KEY required for this test");
+
+    let config = WalletConfig::with_keypair(DEVNET_RPC.to_string(), &private_key)
+        .expect("config should be valid");
+
+    let client = SolanaClient::new(config).expect("client should be created");
+
+    // Generate a new random recipient
+    let recipient = KeypairUtils::generate().pubkey().to_string();
+
+    // Use the action handler
+    let result = TransferAction::handle(
+        &client,
+        None, // SOL transfer
+        &recipient,
+        Decimal::new(1, 6), // 0.000001 SOL
+    )
+    .await;
+
+    if result.success {
+        assert!(result.signature.is_some());
+        assert!(result.amount.is_some());
+        assert!(result.recipient.is_some());
+        println!("Transfer via action successful: {:?}", result.signature);
+    } else {
+        // Might fail due to insufficient balance, which is ok
+        println!("Transfer failed (may be expected): {}", result.text);
+    }
+}
+
+#[tokio::test]
+#[ignore = "Requires API access"]
+async fn test_swap_action_handle() {
+    let private_key =
+        std::env::var("SOLANA_PRIVATE_KEY").expect("SOLANA_PRIVATE_KEY required for this test");
+
+    let config = WalletConfig::with_keypair(DEVNET_RPC.to_string(), &private_key)
+        .expect("config should be valid");
+
+    let client = SolanaClient::new(config).expect("client should be created");
+
+    // Use the action handler
+    let result = SwapAction::handle(
+        &client,
+        SOL_MINT,
+        USDC_MINT,
+        Decimal::new(1, 3), // 0.001 SOL
+        Some(100),          // 1% slippage
+    )
+    .await;
+
+    // Swap may fail on devnet due to liquidity, but we verify the structure
+    println!(
+        "Swap result: success={}, text={}",
+        result.success, result.text
+    );
+    if result.success {
+        assert!(result.signature.is_some());
+    }
+}

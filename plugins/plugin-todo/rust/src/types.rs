@@ -355,4 +355,36 @@ pub struct ConfirmationResponse {
     pub modifications: Option<String>,
 }
 
+/// Pending todo waiting for user confirmation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingTodo {
+    /// Task name
+    pub name: String,
+    /// Task description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Task type
+    #[serde(rename = "taskType")]
+    pub task_type: TaskType,
+    /// Priority level
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<Priority>,
+    /// Whether the task is urgent
+    #[serde(default)]
+    pub urgent: bool,
+    /// Due date
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "dueDate")]
+    pub due_date: Option<DateTime<Utc>>,
+    /// Recurring pattern
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recurring: Option<RecurringPattern>,
+    /// Tags
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Metadata
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<TodoMetadata>,
+}
+
 

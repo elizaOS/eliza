@@ -14,10 +14,6 @@ import {
 import { emitModelUsageEvent } from "../utils/events";
 import { parseImageDescriptionResponse } from "../utils/helpers";
 
-/**
- * IMAGE model handler - generates images from text prompts
- * Uses ElizaOS Cloud's custom /generate-image endpoint (not OpenAI-compatible)
- */
 export async function handleImageGeneration(
   runtime: IAgentRuntime,
   params: ImageGenerationParams,
@@ -30,7 +26,6 @@ export async function handleImageGeneration(
 
   const baseURL = getBaseURL(runtime);
 
-  // Convert size to aspect ratio for ElizaOS Cloud API
   const aspectRatioMap: Record<string, string> = {
     "1024x1024": "1:1",
     "1792x1024": "16:9",
@@ -47,7 +42,6 @@ export async function handleImageGeneration(
       model: modelName,
     };
 
-    // ElizaOS Cloud uses /generate-image endpoint, not /images/generations
     const response = await fetch(requestUrl, {
       method: "POST",
       headers: {
@@ -70,21 +64,17 @@ export async function handleImageGeneration(
       numImages: number;
     };
 
-    // Map response to expected format
     const result = typedData.images.map((img) => ({
       url: img.url || img.image,
     }));
     return result;
-  } catch (error: unknown) {
+  } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`[ELIZAOS_CLOUD] Image generation error: ${message}`);
     throw error;
   }
 }
 
-/**
- * IMAGE_DESCRIPTION model handler - analyzes images and provides descriptions
- */
 export async function handleImageDescription(
   runtime: IAgentRuntime,
   params: ImageDescriptionParams | string,
@@ -142,8 +132,6 @@ export async function handleImageDescription(
       throw new Error(`ElizaOS Cloud API error: ${response.status}`);
     }
 
-    const result: unknown = await response.json();
-
     type OpenAIResponseType = {
       choices?: Array<{
         message?: { content?: string };
@@ -156,7 +144,7 @@ export async function handleImageDescription(
       };
     };
 
-    const typedResult = result as OpenAIResponseType;
+    const typedResult = (await response.json()) as OpenAIResponseType;
     const content = typedResult.choices?.[0]?.message?.content;
 
     if (typedResult.usage) {
@@ -179,10 +167,8 @@ export async function handleImageDescription(
       };
     }
 
-    // Always return structured object with title and description
-    const processedResult = parseImageDescriptionResponse(content);
-    return processedResult;
-  } catch (error: unknown) {
+    return parseImageDescriptionResponse(content);
+  } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error analyzing image: ${message}`);
     return {

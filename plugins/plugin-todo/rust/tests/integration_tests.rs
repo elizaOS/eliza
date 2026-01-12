@@ -2,9 +2,12 @@
 
 use chrono::{Duration, Utc};
 use elizaos_plugin_todo::{
+    actions::{CancelTodoAction, CompleteTodoAction, CreateTodoAction, UpdateTodoAction},
+    providers::TodosProvider,
     CacheManager, CreateTodoParams, Priority, TaskType, TodoClient, TodoConfig, TodoDataService,
     TodoFilters, UpdateTodoParams,
 };
+use std::sync::Arc;
 use std::time::Duration as StdDuration;
 use uuid::Uuid;
 
@@ -317,6 +320,186 @@ async fn test_todo_client() {
     client.stop().await;
 }
 
+#[tokio::test]
+async fn test_action_metadata() {
+    // Test CREATE_TODO action metadata
+    assert_eq!(CreateTodoAction::NAME, "CREATE_TODO");
+    assert!(!CreateTodoAction::DESCRIPTION.is_empty());
+    assert!(!CreateTodoAction::SIMILES.is_empty());
+    assert!(CreateTodoAction::SIMILES.contains(&"CREATE_TODO"));
+    assert!(CreateTodoAction::SIMILES.contains(&"ADD_TODO"));
+
+    // Test COMPLETE_TODO action metadata
+    assert_eq!(CompleteTodoAction::NAME, "COMPLETE_TODO");
+    assert!(!CompleteTodoAction::DESCRIPTION.is_empty());
+    assert!(!CompleteTodoAction::SIMILES.is_empty());
+    assert!(CompleteTodoAction::SIMILES.contains(&"COMPLETE_TODO"));
+    assert!(CompleteTodoAction::SIMILES.contains(&"MARK_COMPLETE"));
+
+    // Test UPDATE_TODO action metadata
+    assert_eq!(UpdateTodoAction::NAME, "UPDATE_TODO");
+    assert!(!UpdateTodoAction::DESCRIPTION.is_empty());
+    assert!(!UpdateTodoAction::SIMILES.is_empty());
+    assert!(UpdateTodoAction::SIMILES.contains(&"UPDATE_TODO"));
+    assert!(UpdateTodoAction::SIMILES.contains(&"EDIT_TODO"));
+
+    // Test CANCEL_TODO action metadata
+    assert_eq!(CancelTodoAction::NAME, "CANCEL_TODO");
+    assert!(!CancelTodoAction::DESCRIPTION.is_empty());
+    assert!(!CancelTodoAction::SIMILES.is_empty());
+    assert!(CancelTodoAction::SIMILES.contains(&"CANCEL_TODO"));
+    assert!(CancelTodoAction::SIMILES.contains(&"DELETE_TODO"));
+}
+
+#[tokio::test]
+async fn test_provider_metadata() {
+    // Test TODOS provider metadata
+    assert_eq!(TodosProvider::NAME, "TODOS");
+    assert!(!TodosProvider::DESCRIPTION.is_empty());
+    assert!(TodosProvider::DYNAMIC);
+}
+
+#[tokio::test]
+async fn test_create_todo_action() {
+    let (agent_id, world_id, room_id, entity_id) = test_uuids();
+    let service = Arc::new(TodoDataService::new());
+
+    let params = CreateTodoParams {
+        agent_id,
+        world_id,
+        room_id,
+        entity_id,
+        name: "Action Test Todo".to_string(),
+        description: Some("Testing create action".to_string()),
+        task_type: TaskType::OneOff,
+        priority: Some(Priority::High),
+        ..Default::default()
+    };
+
+    let result = CreateTodoAction::handle(service.clone(), params).await;
+    assert!(result.success);
+    assert!(result.todo_id.is_some());
+    assert!(result.text.contains("Created task"));
+}
+
+#[tokio::test]
+async fn test_complete_todo_action() {
+    let (agent_id, world_id, room_id, entity_id) = test_uuids();
+    let service = Arc::new(TodoDataService::new());
+
+    let params = CreateTodoParams {
+        agent_id,
+        world_id,
+        room_id,
+        entity_id,
+        name: "Complete Me".to_string(),
+        task_type: TaskType::OneOff,
+        ..Default::default()
+    };
+
+    let todo_id = service.create_todo(params).await.unwrap();
+
+    let result = CompleteTodoAction::handle(service.clone(), room_id, Some(todo_id)).await;
+    assert!(result.success);
+    assert!(result.text.contains("Completed"));
+
+    let todo = service.get_todo(todo_id).await.unwrap();
+    assert!(todo.is_completed);
+}
+
+#[tokio::test]
+async fn test_update_todo_action() {
+    let (agent_id, world_id, room_id, entity_id) = test_uuids();
+    let service = Arc::new(TodoDataService::new());
+
+    let params = CreateTodoParams {
+        agent_id,
+        world_id,
+        room_id,
+        entity_id,
+        name: "Update Me".to_string(),
+        task_type: TaskType::OneOff,
+        ..Default::default()
+    };
+
+    let todo_id = service.create_todo(params).await.unwrap();
+
+    let updates = UpdateTodoParams {
+        name: Some("Updated Name".to_string()),
+        priority: Some(Priority::Critical),
+        ..Default::default()
+    };
+
+    let result = UpdateTodoAction::handle(service.clone(), room_id, todo_id, updates).await;
+    assert!(result.success);
+    assert!(result.text.contains("Updated"));
+
+    let todo = service.get_todo(todo_id).await.unwrap();
+    assert_eq!(todo.name, "Updated Name");
+    assert_eq!(todo.priority, Some(Priority::Critical));
+}
+
+#[tokio::test]
+async fn test_cancel_todo_action() {
+    let (agent_id, world_id, room_id, entity_id) = test_uuids();
+    let service = Arc::new(TodoDataService::new());
+
+    let params = CreateTodoParams {
+        agent_id,
+        world_id,
+        room_id,
+        entity_id,
+        name: "Cancel Me".to_string(),
+        task_type: TaskType::OneOff,
+        ..Default::default()
+    };
+
+    let todo_id = service.create_todo(params).await.unwrap();
+
+    let result = CancelTodoAction::handle(service.clone(), room_id, todo_id).await;
+    assert!(result.success);
+    assert!(result.text.contains("cancelled"));
+
+    let todo = service.get_todo(todo_id).await;
+    assert!(todo.is_none());
+}
+
+#[tokio::test]
+async fn test_todos_provider() {
+    let (agent_id, world_id, room_id, entity_id) = test_uuids();
+    let service = Arc::new(TodoDataService::new());
+
+    // Create some todos
+    let params1 = CreateTodoParams {
+        agent_id,
+        world_id,
+        room_id,
+        entity_id,
+        name: "Daily Task".to_string(),
+        task_type: TaskType::Daily,
+        ..Default::default()
+    };
+    service.create_todo(params1).await.unwrap();
+
+    let params2 = CreateTodoParams {
+        agent_id,
+        world_id,
+        room_id,
+        entity_id,
+        name: "One-Off Task".to_string(),
+        task_type: TaskType::OneOff,
+        priority: Some(Priority::High),
+        ..Default::default()
+    };
+    service.create_todo(params2).await.unwrap();
+
+    let result = TodosProvider::get(service.clone(), entity_id, Some(room_id)).await;
+    assert!(!result.text.is_empty());
+    assert!(result.values.contains_key("dailyTasks"));
+    assert!(result.values.contains_key("oneOffTasks"));
+    assert!(result.data.contains_key("dailyTodos"));
+    assert!(result.data.contains_key("oneOffTodos"));
+}
 
 
 

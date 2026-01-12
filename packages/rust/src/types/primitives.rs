@@ -31,9 +31,7 @@ pub enum UUIDError {
 #[serde(transparent)]
 pub struct UUID(String);
 
-/// The default UUID used when no room or world is specified.
-/// This is the nil/zero UUID (00000000-0000-0000-0000-000000000000).
-/// Using this allows users to spin up an AgentRuntime without worrying about room/world setup.
+/// The default UUID used when no room or world is specified
 pub const DEFAULT_UUID_STR: &str = "00000000-0000-0000-0000-000000000000";
 
 impl UUID {

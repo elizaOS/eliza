@@ -1,7 +1,3 @@
-"""
-Action module exports.
-"""
-
 from elizaos_browser.actions.click import browser_click
 from elizaos_browser.actions.extract import browser_extract
 from elizaos_browser.actions.navigate import browser_navigate
@@ -17,6 +13,3 @@ __all__ = [
     "browser_extract",
     "browser_screenshot",
 ]
-
-
-

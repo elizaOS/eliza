@@ -1,24 +1,8 @@
-// Model specifications and configurations
-/**
- * Interface representing a Tokenizer configuration.
- * @property {string} name - The name of the tokenizer.
- * @property {string} type - The type of the tokenizer.
- */
 export interface TokenizerConfig {
   name: string;
   type: string;
 }
 
-/**
- * Interface representing the specification of a model.
- * @typedef {Object} ModelSpec
- * @property {string} name - The name of the model.
- * @property {string} repo - The repository of the model.
- * @property {string} size - The size of the model.
- * @property {string} quantization - The quantization of the model.
- * @property {number} contextSize - The context size of the model.
- * @property {TokenizerConfig} tokenizer - The configuration for the tokenizer used by the model.
- */
 export interface ModelSpec {
   name: string;
   repo: string;
@@ -28,32 +12,10 @@ export interface ModelSpec {
   tokenizer: TokenizerConfig;
 }
 
-/**
- * Interface representing the specification of an embedding model.
- * @typedef {Object} EmbeddingModelSpec
- * @property {string} name - The name of the embedding model.
- * @property {string} repo - The repository of the embedding model.
- * @property {string} size - The size of the embedding model.
- * @property {string} quantization - The quantization of the embedding model.
- * @property {number} contextSize - The context size of the embedding model.
- * @property {number} dimensions - The embedding dimensions.
- * @property {TokenizerConfig} tokenizer - The configuration for the tokenizer used by the model.
- */
 export interface EmbeddingModelSpec extends ModelSpec {
   dimensions: number;
 }
 
-/**
- * Interface representing a specification for a vision model.
- * @typedef {object} VisionModelSpec
- * @property {string} name - The name of the vision model.
- * @property {string} repo - The repository of the vision model.
- * @property {string} size - The size of the vision model.
- * @property {string} modelId - The ID of the vision model.
- * @property {number} contextSize - The context size of the vision model.
- * @property {number} maxTokens - The maximum tokens of the vision model.
- * @property {Array.<string>} tasks - The tasks performed by the vision model.
- */
 export interface VisionModelSpec {
   name: string;
   repo: string;
@@ -64,21 +26,6 @@ export interface VisionModelSpec {
   tasks: string[];
 }
 
-/**
- * Interface representing the specification for a TTS model.
- * @typedef { Object } TTSModelSpec
- * @property { string } name - The name of the model.
- * @property { string } repo - The repository where the model is stored.
- * @property { string } size - The size of the model.
- * @property { string } quantization - The quantization method used for the model.
- * @property {string[]} speakers - An array of speakers the model can mimic.
- * @property {string[]} languages - An array of languages the model can speak in.
- * @property {string[]} features - An array of features supported by the model.
- * @property { number } maxInputLength - The maximum input length accepted by the model.
- * @property { number } sampleRate - The sample rate used by the model.
- * @property { number } contextSize - The context size used by the model.
- * @property { TokenizerConfig } tokenizer - The configuration for the tokenizer used by the model.
- */
 export interface TTSModelSpec {
   name: string;
   repo: string;
@@ -93,31 +40,12 @@ export interface TTSModelSpec {
   tokenizer: TokenizerConfig;
 }
 
-/**
- * Interface representing a specification for a TTS model runnable with Transformers.js.
- * @typedef { object } TransformersJsTTSModelSpec
- * @property { string } modelId - The Hugging Face model identifier (e.g., 'Xenova/speecht5_tts').
- * @property { number } defaultSampleRate - The typical sample rate for this model (e.g., 16000 for SpeechT5).
- * @property { string } [defaultSpeakerEmbeddingUrl] - Optional URL to a default speaker embedding .bin file.
- */
 export interface TransformersJsTTSModelSpec {
   modelId: string;
   defaultSampleRate: number;
   defaultSpeakerEmbeddingUrl?: string;
 }
 
-// Model specifications mapping
-/**
- * Interface for specifying different models for a project.
- * @interface ModelSpecs
- * @property {ModelSpec} small - Specifications for a small model
- * @property {ModelSpec} medium - Specifications for a medium model
- * @property {EmbeddingModelSpec} embedding - Specifications for an embedding model
- * @property {VisionModelSpec} vision - Specifications for a vision model
- * @property {VisionModelSpec} visionvl - Specifications for a vision model with vision loss
- * @property {Object} tts - Specifications for text-to-speech models (using Transformers.js)
- * @property {TransformersJsTTSModelSpec} tts.default - Specifications for the default text-to-speech model
- */
 export interface ModelSpecs {
   small: ModelSpec;
   medium: ModelSpec;
@@ -129,10 +57,6 @@ export interface ModelSpecs {
   };
 }
 
-// Export MODEL_SPECS constant type
-/**
- * Model specifications containing information about various models such as name, repository, size, quantization, context size, tokenizer details, tasks, speakers, languages, features, max input length, sample rate, and other relevant information.
- */
 export const MODEL_SPECS: ModelSpecs = {
   small: {
     name: "DeepHermes-3-Llama-3-3B-Preview-q4.gguf",
@@ -207,8 +131,7 @@ export const MODEL_SPECS: ModelSpecs = {
   tts: {
     default: {
       modelId: "Xenova/speecht5_tts",
-      defaultSampleRate: 16000, // SpeechT5 default
-      // Use the standard embedding URL
+      defaultSampleRate: 16000,
       defaultSpeakerEmbeddingUrl:
         "https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin",
     },

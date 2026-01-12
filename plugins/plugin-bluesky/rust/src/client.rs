@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! BlueSky API client using AT Protocol.
 
 use chrono::Utc;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};

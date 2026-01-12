@@ -1,28 +1,16 @@
 #![allow(missing_docs)]
-//! Robust XML parser utilities for handling model responses.
-//!
-//! Handles edge cases like:
-//! - Code blocks that contain XML-like syntax
-//! - CDATA sections
-//! - Nested tags
-//! - Malformed XML
 
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
-/// Represents parsed XML values with proper typing
 #[derive(Debug, Clone, PartialEq)]
 pub enum XmlValue {
-    /// String value
     String(String),
-    /// Boolean value
     Bool(bool),
-    /// List of strings
     List(Vec<String>),
 }
 
 impl XmlValue {
-    /// Get the value as a string, if it is one
     pub fn as_str(&self) -> Option<&str> {
         match self {
             XmlValue::String(s) => Some(s),
@@ -30,7 +18,6 @@ impl XmlValue {
         }
     }
 
-    /// Get the value as a boolean, if it is one
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             XmlValue::Bool(b) => Some(*b),
@@ -38,7 +25,6 @@ impl XmlValue {
         }
     }
 
-    /// Get the value as a list, if it is one
     pub fn as_list(&self) -> Option<&[String]> {
         match self {
             XmlValue::List(l) => Some(l),
@@ -46,7 +32,6 @@ impl XmlValue {
         }
     }
 
-    /// Convert to string representation
     pub fn to_string_value(&self) -> String {
         match self {
             XmlValue::String(s) => s.clone(),
@@ -56,13 +41,11 @@ impl XmlValue {
     }
 }
 
-/// Extract content from an XML tag, handling CDATA sections and nested tags.
 pub fn extract_xml_tag(text: &str, tag_name: &str) -> Option<String> {
     if text.is_empty() || tag_name.is_empty() {
         return None;
     }
 
-    // First, try to find CDATA content
     let cdata_pattern = format!(r"<{}[^>]*>\s*<!\[CDATA\[", tag_name);
     if let Ok(cdata_regex) = Regex::new(&cdata_pattern) {
         if let Some(m) = cdata_regex.find(text) {
@@ -74,21 +57,18 @@ pub fn extract_xml_tag(text: &str, tag_name: &str) -> Option<String> {
         }
     }
 
-    // Handle regular content with proper nesting using linear scanning
     let start_tag_pattern = format!("<{}", tag_name);
     let end_tag = format!("</{}>", tag_name);
 
     let start_idx = text.find(&start_tag_pattern)?;
     let start_tag_end = text[start_idx..].find('>')? + start_idx;
 
-    // Check for self-closing tag
     if text[start_idx..=start_tag_end].contains("/>") {
         return Some(String::new());
     }
 
     let content_start = start_tag_end + 1;
 
-    // Use depth counting to handle nested same-name tags
     let mut depth = 1;
     let mut search_start = content_start;
 
@@ -104,7 +84,6 @@ pub fn extract_xml_tag(text: &str, tag_name: &str) -> Option<String> {
         if let Some(open_offset) = next_open {
             let next_open_abs = open_offset + search_start;
             if next_open_abs < next_close {
-                // Check if this is a start tag (not self-closing)
                 if let Some(nested_end_offset) = text[next_open_abs..].find('>') {
                     let nested_end_idx = next_open_abs + nested_end_offset;
                     let nested_tag_content = &text[next_open_abs..=nested_end_idx];
@@ -130,7 +109,6 @@ pub fn extract_xml_tag(text: &str, tag_name: &str) -> Option<String> {
     None
 }
 
-/// Unescape common XML entities including numeric entities.
 pub fn unescape_xml(text: &str) -> String {
     let mut result = text
         .replace("&lt;", "<")
@@ -139,7 +117,6 @@ pub fn unescape_xml(text: &str) -> String {
         .replace("&quot;", "\"")
         .replace("&apos;", "'");
 
-    // Handle decimal numeric entities: &#123;
     if let Ok(decimal_re) = Regex::new(r"&#(\d+);") {
         result = decimal_re
             .replace_all(&result, |caps: &regex::Captures| {
@@ -152,7 +129,6 @@ pub fn unescape_xml(text: &str) -> String {
             .to_string();
     }
 
-    // Handle hex numeric entities: &#x1A;
     if let Ok(hex_re) = Regex::new(r"&#x([0-9a-fA-F]+);") {
         result = hex_re
             .replace_all(&result, |caps: &regex::Captures| {
@@ -168,7 +144,6 @@ pub fn unescape_xml(text: &str) -> String {
     result
 }
 
-/// Escape text for safe inclusion in XML.
 pub fn escape_xml(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -177,10 +152,8 @@ pub fn escape_xml(text: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-/// Wrap content in CDATA section if it contains special characters.
 pub fn wrap_in_cdata(text: &str) -> String {
     if text.contains('<') || text.contains('>') || text.contains('&') {
-        // Handle nested CDATA by escaping the closing sequence
         let escaped_text = text.replace("]]>", "]]]]><![CDATA[>");
         format!("<![CDATA[{}]]>", escaped_text)
     } else {
@@ -188,20 +161,13 @@ pub fn wrap_in_cdata(text: &str) -> String {
     }
 }
 
-/// Parse a simple key-value XML structure into a HashMap with typed values.
-/// 
-/// Special handling:
-/// - `actions`, `providers`, `evaluators` → parsed as comma-separated lists
-/// - `simple`, `success`, `error` → parsed as booleans
 pub fn parse_simple_xml(text: &str) -> Option<HashMap<String, XmlValue>> {
     if text.is_empty() {
         return None;
     }
 
-    // Find the response block
     let mut xml_content = extract_xml_tag(text, "response");
 
-    // If no response block, try to find any XML-like structure
     if xml_content.is_none() {
         for wrapper in &["result", "output", "data", "answer"] {
             xml_content = extract_xml_tag(text, wrapper);
@@ -211,7 +177,6 @@ pub fn parse_simple_xml(text: &str) -> Option<HashMap<String, XmlValue>> {
         }
     }
 
-    // If still no XML content, try to parse the text directly
     let xml_content = match xml_content {
         Some(content) => content,
         None => {
@@ -225,22 +190,18 @@ pub fn parse_simple_xml(text: &str) -> Option<HashMap<String, XmlValue>> {
     let mut result = HashMap::new();
     let mut found_tags = HashSet::new();
 
-    // Extract all top-level tags using simple pattern matching
     let tag_pattern = Regex::new(r"<([a-zA-Z][a-zA-Z0-9_-]*)[^>]*>").ok()?;
 
     for cap in tag_pattern.captures_iter(&xml_content) {
         let tag_name = cap.get(1)?.as_str();
 
-        // Skip if we've already processed this tag
         if found_tags.contains(tag_name) {
             continue;
         }
         found_tags.insert(tag_name.to_string());
 
         if let Some(value) = extract_xml_tag(&xml_content, tag_name) {
-            // Handle special cases like TypeScript and Python
             let typed_value = match tag_name {
-                // List fields - parse as comma-separated
                 "actions" | "providers" | "evaluators" => {
                     let items: Vec<String> = value
                         .split(',')
@@ -249,11 +210,9 @@ pub fn parse_simple_xml(text: &str) -> Option<HashMap<String, XmlValue>> {
                         .collect();
                     XmlValue::List(items)
                 }
-                // Boolean fields
                 "simple" | "success" | "error" => {
                     XmlValue::Bool(value.to_lowercase() == "true")
                 }
-                // All other fields as strings
                 _ => XmlValue::String(value),
             };
             result.insert(tag_name.to_string(), typed_value);
@@ -267,7 +226,6 @@ pub fn parse_simple_xml(text: &str) -> Option<HashMap<String, XmlValue>> {
     }
 }
 
-/// Parse XML to a simple string HashMap (for backwards compatibility).
 pub fn parse_simple_xml_strings(text: &str) -> Option<HashMap<String, String>> {
     parse_simple_xml(text).map(|map| {
         map.into_iter()
@@ -276,24 +234,19 @@ pub fn parse_simple_xml_strings(text: &str) -> Option<HashMap<String, String>> {
     })
 }
 
-/// Sanitize user content for safe XML inclusion.
 pub fn sanitize_for_xml(content: &str) -> String {
-    // Check if content contains XML-like syntax that could cause parsing issues
     let has_xml_like_syntax = Regex::new(r"<[a-zA-Z]")
         .map(|r| r.is_match(content))
         .unwrap_or(false)
         || content.contains("</");
 
     if has_xml_like_syntax {
-        // Wrap in CDATA to preserve the content exactly
         wrap_in_cdata(content)
     } else {
-        // Otherwise, just escape special characters
         escape_xml(content)
     }
 }
 
-/// Build an XML response string from a HashMap with XmlValue entries.
 pub fn build_xml_response(data: &HashMap<String, XmlValue>) -> String {
     let mut parts = vec!["<response>".to_string()];
 
@@ -310,7 +263,6 @@ pub fn build_xml_response(data: &HashMap<String, XmlValue>) -> String {
     parts.join("\n")
 }
 
-/// Build an XML response string from a simple string HashMap.
 pub fn build_xml_response_strings(data: &HashMap<String, String>) -> String {
     let mut parts = vec!["<response>".to_string()];
 
@@ -379,7 +331,6 @@ mod tests {
 
     #[test]
     fn test_wrap_nested_cdata() {
-        // Nested CDATA should be escaped
         assert_eq!(
             wrap_in_cdata("data]]>more"),
             "<![CDATA[data]]]]><![CDATA[>more]]>"
@@ -477,11 +428,9 @@ function test() {
         let xml = "<response><actions>a1, a2, a3</actions><success>true</success></response>";
         let result = parse_simple_xml(xml).unwrap();
         
-        // Actions must be parsed as list
         let actions = result.get("actions").and_then(|v| v.as_list()).unwrap();
         assert_eq!(actions, &["a1", "a2", "a3"]);
         
-        // Success must be parsed as boolean
         assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(true));
     }
 }

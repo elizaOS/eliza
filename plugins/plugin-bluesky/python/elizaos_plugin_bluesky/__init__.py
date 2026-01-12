@@ -1,4 +1,3 @@
-"""BlueSky plugin for elizaOS."""
 
 from elizaos_plugin_bluesky.client import BlueSkyClient
 from elizaos_plugin_bluesky.config import BlueSkyConfig

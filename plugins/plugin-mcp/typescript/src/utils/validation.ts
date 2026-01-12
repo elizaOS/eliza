@@ -55,9 +55,6 @@ export function validateToolSelectionName(
   return { success: true, data };
 }
 
-/**
- * Validates the tool selection argument object against the tool's input schema.
- */
 export function validateToolSelectionArgument(
   parsed: unknown,
   toolInputSchema: Readonly<Record<string, unknown>>

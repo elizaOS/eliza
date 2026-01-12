@@ -1,5 +1,3 @@
-"""SAY_ALOUD Action - Speak text using SAM synthesizer."""
-
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -13,23 +11,17 @@ logger = logging.getLogger(__name__)
 
 
 class Memory(Protocol):
-    """Memory protocol."""
-
     @property
     def content(self) -> dict[str, Any]: ...
 
 
 class Runtime(Protocol):
-    """Runtime protocol."""
-
     def get_service(self, service_type: str) -> object | None: ...
 
 
 def extract_text_to_speak(message_text: str) -> str:
-    """Extract text to speak from user message."""
     text = message_text.lower().strip()
 
-    # Try quoted text
     for pattern in [
         r'say ["\']([^"\']+)["\']',
         r'speak ["\']([^"\']+)["\']',
@@ -56,7 +48,6 @@ def extract_text_to_speak(message_text: str) -> str:
 
 
 def extract_voice_options(message_text: str) -> SamTTSOptions:
-    """Extract voice options from user message."""
     text = message_text.lower()
     options = SamTTSOptions()
 
@@ -82,8 +73,6 @@ def extract_voice_options(message_text: str) -> SamTTSOptions:
 
 @dataclass
 class SayAloudAction:
-    """SAY_ALOUD Action - Speaks text using SAM synthesizer."""
-
     name: str = "SAY_ALOUD"
     description: str = "Speak text aloud using SAM retro speech synthesizer"
     examples: list[list[dict[str, Any]]] = field(
@@ -117,7 +106,6 @@ class SayAloudAction:
         message: Memory,
         callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
-        """Handle the SAY_ALOUD action."""
         logger.info("[SAY_ALOUD] Processing speech request")
 
         sam_service = runtime.get_service("SAM_TTS")
