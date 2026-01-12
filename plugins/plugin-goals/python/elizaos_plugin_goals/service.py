@@ -168,7 +168,7 @@ class GoalDataService:
                     params["is_completed"] = filters.is_completed
 
             where_clause = " AND ".join(conditions) if conditions else "1=1"
-            query = f"SELECT * FROM goals WHERE {where_clause} ORDER BY created_at ASC"
+            query = f"SELECT * FROM goals WHERE {where_clause} ORDER BY created_at ASC"  # noqa: S608
 
             results = await self.db.execute(query, params)
 
@@ -243,7 +243,7 @@ class GoalDataService:
 
             set_clause = ", ".join(set_clauses)
             await self.db.execute(
-                f"UPDATE goals SET {set_clause} WHERE id = :id",
+                f"UPDATE goals SET {set_clause} WHERE id = :id",  # noqa: S608
                 params,
             )
 

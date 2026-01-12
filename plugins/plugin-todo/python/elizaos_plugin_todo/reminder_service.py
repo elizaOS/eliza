@@ -5,7 +5,6 @@ Reminder service for todo notifications.
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from elizaos_plugin_todo.cache_manager import CacheManager
@@ -32,7 +31,7 @@ class ReminderService:
     def __init__(
         self,
         config: TodoConfig | None = None,
-        runtime: Any | None = None,
+        runtime: object | None = None,
     ) -> None:
         """
         Initialize the reminder service.
@@ -234,7 +233,7 @@ class ReminderService:
 
 async def create_reminder_service(
     config: TodoConfig | None = None,
-    runtime: Any | None = None,
+    runtime: object | None = None,
 ) -> ReminderService:
     """
     Create and start a reminder service.

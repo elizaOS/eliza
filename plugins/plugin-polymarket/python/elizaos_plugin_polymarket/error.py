@@ -11,7 +11,7 @@ class PolymarketErrorCode(str, Enum):
     """Polymarket-specific error codes."""
 
     INVALID_MARKET = "INVALID_MARKET"
-    INVALID_TOKEN = "INVALID_TOKEN"
+    INVALID_TOKEN = "INVALID_TOKEN"  # noqa: S105
     INVALID_ORDER = "INVALID_ORDER"
     INSUFFICIENT_FUNDS = "INSUFFICIENT_FUNDS"
     MARKET_CLOSED = "MARKET_CLOSED"

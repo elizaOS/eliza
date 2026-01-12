@@ -142,7 +142,7 @@ class EphemeralHNSW(IVectorStorage):
                     # Prune if over limit
                     if len(neighbor_node.neighbors[lvl]) > max_neighbors:
                         to_keep = self._select_best_neighbors(
-                            neighbor_node.vector, neighbor_node.neighbors[lvl], M
+                            neighbor_node.vector, neighbor_node.neighbors[lvl], max_neighbors
                         )
                         neighbor_node.neighbors[lvl] = set(n["id"] for n in to_keep)
 

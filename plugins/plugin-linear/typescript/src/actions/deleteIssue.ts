@@ -104,8 +104,10 @@ export const deleteIssueAction: Action = {
       let issueId: string;
 
       // Check if we have issueId in options
-      if (_options?.parameters?.issueId) {
-        issueId = _options.parameters.issueId as string;
+      const params = _options?.parameters;
+      const paramIssueId = params?.issueId;
+      if (typeof paramIssueId === "string" && paramIssueId) {
+        issueId = paramIssueId;
       } else {
         // Use LLM to extract issue ID
         const prompt = deleteIssueTemplate.replace("{{userMessage}}", content);

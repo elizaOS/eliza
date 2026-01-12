@@ -83,9 +83,12 @@ export const createIssueAction: Action = {
       }
 
       // Check if the message already has structured data
-      const structuredData = _options?.parameters?.issueData as
-        | Partial<LinearIssueInput>
-        | undefined;
+      const params = _options?.parameters;
+      const paramIssueData = params?.issueData;
+      const structuredData =
+        paramIssueData && typeof paramIssueData === "object"
+          ? (paramIssueData as Partial<LinearIssueInput>)
+          : undefined;
 
       let issueData: Partial<LinearIssueInput>;
 

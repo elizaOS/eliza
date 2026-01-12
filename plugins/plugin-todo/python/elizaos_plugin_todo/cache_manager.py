@@ -8,7 +8,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, TypeVar
+from typing import TypeVar
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ T = TypeVar("T")
 class CacheEntry:
     """A cached entry with metadata."""
 
-    data: Any
+    data: object
     timestamp: float
     ttl: float
     access_count: int = 0
@@ -139,7 +139,7 @@ class CacheManager:
         del self._cache[oldest_key]
         self._evictions += 1
 
-    async def get(self, key: str) -> Any | None:
+    async def get(self, key: str) -> object | None:
         """
         Get a value from the cache.
 
@@ -170,7 +170,7 @@ class CacheManager:
     async def set(
         self,
         key: str,
-        data: Any,
+        data: object,
         ttl_ms: int | None = None,
     ) -> None:
         """
@@ -240,9 +240,9 @@ class CacheManager:
     async def get_or_set(
         self,
         key: str,
-        fetcher: Callable[[], Any],
+        fetcher: Callable[[], object],
         ttl_ms: int | None = None,
-    ) -> Any:
+    ) -> object:
         """
         Get a value from cache, or fetch and cache if missing.
 
@@ -266,7 +266,7 @@ class CacheManager:
         await self.set(key, data, ttl_ms)
         return data
 
-    async def mget(self, keys: list[str]) -> dict[str, Any]:
+    async def mget(self, keys: list[str]) -> dict[str, object]:
         """
         Get multiple values from the cache.
 
@@ -285,7 +285,7 @@ class CacheManager:
 
     async def mset(
         self,
-        entries: dict[str, Any],
+        entries: dict[str, object],
         ttl_ms: int | None = None,
     ) -> None:
         """
@@ -364,39 +364,39 @@ class CacheManager:
     async def cache_entity(
         self,
         entity_id: UUID,
-        entity: Any,
+        entity: object,
         ttl_ms: int = 300000,
     ) -> None:
         """Cache an entity."""
         await self.set(f"entity:{entity_id}", entity, ttl_ms)
 
-    async def get_cached_entity(self, entity_id: UUID) -> Any | None:
+    async def get_cached_entity(self, entity_id: UUID) -> object | None:
         """Get a cached entity."""
         return await self.get(f"entity:{entity_id}")
 
     async def cache_reminder_recommendation(
         self,
         todo_id: UUID,
-        recommendation: Any,
+        recommendation: object,
         ttl_ms: int = 600000,
     ) -> None:
         """Cache a reminder recommendation."""
         await self.set(f"recommendation:{todo_id}", recommendation, ttl_ms)
 
-    async def get_cached_reminder_recommendation(self, todo_id: UUID) -> Any | None:
+    async def get_cached_reminder_recommendation(self, todo_id: UUID) -> object | None:
         """Get a cached reminder recommendation."""
         return await self.get(f"recommendation:{todo_id}")
 
     async def cache_service_health(
         self,
         service_name: str,
-        health: Any,
+        health: object,
         ttl_ms: int = 30000,
     ) -> None:
         """Cache service health status."""
         await self.set(f"health:{service_name}", health, ttl_ms)
 
-    async def get_cached_service_health(self, service_name: str) -> Any | None:
+    async def get_cached_service_health(self, service_name: str) -> object | None:
         """Get cached service health status."""
         return await self.get(f"health:{service_name}")
 

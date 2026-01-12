@@ -11,6 +11,7 @@ import {
 } from "@elizaos/core";
 import { createCommentTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
+import { type CreateCommentParameters, isCreateCommentParameters } from "../types/index.js";
 
 export const createCommentAction: Action = {
   name: "CREATE_LINEAR_COMMENT",
@@ -104,10 +105,11 @@ export const createCommentAction: Action = {
       let issueId: string;
       let commentBody: string;
 
-      // Check if we have explicit options
-      if (_options?.parameters?.issueId && _options?.parameters?.body) {
-        issueId = _options.parameters.issueId as string;
-        commentBody = _options.parameters.body as string;
+      // Check if we have explicit options with type-safe access
+      const params = _options?.parameters as CreateCommentParameters | undefined;
+      if (params?.issueId && params?.body) {
+        issueId = params.issueId;
+        commentBody = params.body;
       } else {
         // Use LLM to extract comment information
         const prompt = createCommentTemplate.replace("{{userMessage}}", content);

@@ -107,8 +107,10 @@ export const searchIssuesAction: Action = {
       let filters: LinearSearchFilters = {};
 
       // Check if we have explicit filters in options
-      if (_options?.parameters?.filters) {
-        filters = _options.parameters.filters as LinearSearchFilters;
+      const params = _options?.parameters;
+      const paramFilters = params?.filters;
+      if (paramFilters && typeof paramFilters === "object") {
+        filters = paramFilters as LinearSearchFilters;
       } else {
         // Use LLM to extract search filters
         const prompt = searchTemplate.replace("{{userMessage}}", content);
@@ -236,7 +238,9 @@ export const searchIssuesAction: Action = {
         }
       }
 
-      filters.limit = (_options?.parameters?.limit as number) || filters.limit || 10;
+      const paramLimit = params?.limit;
+      filters.limit =
+        (typeof paramLimit === "number" ? paramLimit : undefined) || filters.limit || 10;
 
       const issues = await linearService.searchIssues(filters);
 

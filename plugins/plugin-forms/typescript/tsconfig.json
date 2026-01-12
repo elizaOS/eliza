@@ -14,7 +14,10 @@
     "target": "ESNext",
     "lib": ["ESNext"],
     "types": ["bun-types", "node"],
-    "paths": {}
+    "paths": {
+      "@elizaos/core": ["packages/typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["packages/typescript/src/*"]
+    }
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist", "__tests__"]
