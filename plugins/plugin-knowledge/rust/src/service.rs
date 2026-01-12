@@ -13,6 +13,12 @@ pub struct KnowledgeService {
     fragments: HashMap<String, KnowledgeFragment>,
 }
 
+impl Default for KnowledgeService {
+    fn default() -> Self {
+        Self::new(KnowledgeConfig::default())
+    }
+}
+
 impl KnowledgeService {
     pub fn new(config: KnowledgeConfig) -> Self {
         let chunker = TextChunker::new(config.chunk_size, config.chunk_overlap);
@@ -23,10 +29,6 @@ impl KnowledgeService {
             documents: HashMap::new(),
             fragments: HashMap::new(),
         }
-    }
-
-    pub fn default() -> Self {
-        Self::new(KnowledgeConfig::default())
     }
 
     pub fn config(&self) -> &KnowledgeConfig {

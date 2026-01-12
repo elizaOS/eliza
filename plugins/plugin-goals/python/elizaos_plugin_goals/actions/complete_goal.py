@@ -139,7 +139,7 @@ class CompleteGoalAction:
                 f"{idx + 1}. {goal.name}" for idx, goal in enumerate(active_goals)
             )
             match_prompt = f"""Given this completion request: "{message_text}"
-      
+
 Which of these active goals best matches the request? Return only the number.
 
 {goals_list}

@@ -22,7 +22,7 @@ pub async fn handle_tokenizer_encode(
         .map_err(|e| ElizaCloudError::Configuration(format!("Failed to get tokenizer: {}", e)))?;
 
     let tokens = bpe.encode_ordinary(&params.prompt);
-    Ok(tokens.into_iter().map(|t| t as u32).collect())
+    Ok(tokens.into_iter().collect())
 }
 
 pub async fn handle_tokenizer_decode(

@@ -12,13 +12,11 @@ from elizaos_plugin_todo.types import (
     CreateTodoParams,
     Priority,
     TaskType,
-    TodoFilters,
     TodoMetadata,
 )
 
 if TYPE_CHECKING:
     from elizaos.types import (
-        ActionExample,
         HandlerCallback,
         HandlerOptions,
         IAgentRuntime,

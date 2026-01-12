@@ -235,7 +235,8 @@ class RobloxClient:
             data = response.get("data", [])
             if data:
                 return data[0].get("imageUrl")
-        except Exception:
+        except Exception:  # noqa: S110
+            # Avatar URL is optional, silently return None on any error
             pass
 
         return None

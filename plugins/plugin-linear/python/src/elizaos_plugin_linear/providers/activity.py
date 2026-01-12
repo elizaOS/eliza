@@ -1,5 +1,6 @@
 
 from datetime import datetime
+
 from elizaos_plugin_linear.providers.base import Provider, ProviderResult, RuntimeProtocol
 from elizaos_plugin_linear.services.linear import LinearService
 

@@ -99,6 +99,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Test files have token addresses that look like passwords (false positives)
 "tests/*" = ["S105", "S106"]
+# Provider file uses template string variable names that trigger false positive
+"elizaos_plugin_evm/providers/get_balance.py" = ["S105"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["elizaos_plugin_evm"]

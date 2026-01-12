@@ -2,23 +2,25 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from elizaos.types.runtime import IAgentRuntime
-    from elizaos.types.memory import Memory
-    from elizaos.types.state import State
     from elizaos.types.components import ActionResult, HandlerCallback, HandlerOptions
+    from elizaos.types.memory import Memory
+    from elizaos.types.runtime import IAgentRuntime
+    from elizaos.types.state import State
+
+import logging
 
 from elizaos.types.components import Action, ActionExample
 from elizaos.types.model import ModelType
 
 from elizaos_plugin_xai.client import TwitterClient
 
-logger = None
+logger: logging.Logger | None = None
 
 
-def _get_logger():
+def _get_logger() -> logging.Logger:
     global logger
     if logger is None:
         from elizaos.logger import create_logger

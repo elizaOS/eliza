@@ -211,4 +211,3 @@ Respond in this XML format:
 </summary>`;
 
 export const UPDATE_SUMMARIZATION_TEMPLATE = updateSummarizationTemplate;
-

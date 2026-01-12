@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import ctypes
 import json
-import os
 import platform
 from pathlib import Path
 from typing import Any, Callable, Awaitable

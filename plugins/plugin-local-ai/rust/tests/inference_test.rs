@@ -52,7 +52,7 @@ fn test_plugin_creation_with_models() {
         .small_model("tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
         .embedding_model("bge-small-en-v1.5.Q4_K_M.gguf");
     
-    let plugin = LocalAIPlugin::new(config).expect("Failed to create plugin");
+    let _plugin = LocalAIPlugin::new(config).expect("Failed to create plugin");
     
     println!("   ✓ Plugin created successfully");
     println!("   ✅ Plugin Creation Test PASSED\n");

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum EmbedType {
     Image,
     Video,
@@ -12,30 +13,23 @@ pub enum EmbedType {
     Url,
     Cast,
     Frame,
+    #[default]
     Unknown,
 }
 
 
-impl Default for EmbedType {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum FarcasterMessageType {
     #[serde(rename = "CAST")]
+    #[default]
     Cast,
     #[serde(rename = "REPLY")]
     Reply,
 }
 
 
-impl Default for FarcasterMessageType {
-    fn default() -> Self {
-        Self::Cast
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FarcasterEventType {

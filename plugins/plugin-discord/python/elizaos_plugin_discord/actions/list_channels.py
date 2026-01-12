@@ -39,7 +39,7 @@ class ListChannelsAction:
 
     async def handler(
         self,
-        context: "ActionContext",
+        _context: "ActionContext",
         service: "DiscordService",
     ) -> "ActionResult":
         """Execute the action."""

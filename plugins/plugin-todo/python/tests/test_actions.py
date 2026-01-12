@@ -1,29 +1,27 @@
 """Tests for Todo plugin actions."""
 
-import pytest
 from uuid import uuid4
-from datetime import datetime
+
+import pytest
 
 from elizaos_plugin_todo.actions import (
-    handle_create_todo,
-    handle_complete_todo,
-    handle_update_todo,
     handle_cancel_todo,
+    handle_complete_todo,
     handle_confirm_todo,
-    validate_create_todo,
+    handle_create_todo,
+    handle_update_todo,
     validate_complete_todo,
-    validate_update_todo,
-    validate_cancel_todo,
     validate_confirm_todo,
+    validate_create_todo,
 )
 from elizaos_plugin_todo.data_service import TodoDataService
-from elizaos_plugin_todo.types import TaskType, Priority, CreateTodoParams
+from elizaos_plugin_todo.types import CreateTodoParams, Priority, TaskType
 
 
 class MockRuntime:
     """Mock runtime for testing."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.agent_id = uuid4()
         self.db = None
 
@@ -35,14 +33,14 @@ class MockRuntime:
         except ImportError:
             # Fallback for testing without elizaos installed
             class State:
-                def __init__(self, data=None):
+                def __init__(self, data=None) -> None:
                     self.data = data or {}
             return State(data={})
 
     async def get_room(self, room_id):
         """Mock get_room."""
         class MockRoom:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.world_id = uuid4()
         return MockRoom()
 
@@ -50,7 +48,7 @@ class MockRuntime:
 class MockMessage:
     """Mock message for testing."""
 
-    def __init__(self, text="", room_id=None, entity_id=None):
+    def __init__(self, text="", room_id=None, entity_id=None) -> None:
         self.id = uuid4()
         self.room_id = room_id or uuid4()
         self.entity_id = entity_id or uuid4()
@@ -61,7 +59,7 @@ class MockMessage:
 class MockContent:
     """Mock content for testing."""
 
-    def __init__(self, text=""):
+    def __init__(self, text="") -> None:
         self.text = text
         self.source = "test"
 
@@ -69,19 +67,19 @@ class MockContent:
 class MockState:
     """Mock state for testing."""
 
-    def __init__(self, data=None):
+    def __init__(self, data=None) -> None:
         self.data = data or {}
 
 
 class MockHandlerOptions:
     """Mock handler options for testing."""
 
-    def __init__(self, parameters=None):
+    def __init__(self, parameters=None) -> None:
         self.parameters = parameters or {}
 
 
 @pytest.mark.asyncio
-async def test_handle_create_todo():
+async def test_handle_create_todo() -> None:
     """Test create todo action."""
     runtime = MockRuntime()
     message = MockMessage(text="Create a task to finish my report")
@@ -95,7 +93,7 @@ async def test_handle_create_todo():
 
 
 @pytest.mark.asyncio
-async def test_handle_create_todo_no_room():
+async def test_handle_create_todo_no_room() -> None:
     """Test create todo action without room."""
     runtime = MockRuntime()
     message = MockMessage(text="Create a task", room_id=None)
@@ -109,11 +107,11 @@ async def test_handle_create_todo_no_room():
 
 
 @pytest.mark.asyncio
-async def test_handle_complete_todo():
+async def test_handle_complete_todo() -> None:
     """Test complete todo action."""
     runtime = MockRuntime()
     data_service = TodoDataService()
-    
+
     # Create a todo first
     params = CreateTodoParams(
         agent_id=runtime.agent_id,
@@ -129,7 +127,7 @@ async def test_handle_complete_todo():
         metadata=None,
         tags=[],
     )
-    todo_id = await data_service.create_todo(params)
+    await data_service.create_todo(params)
 
     message = MockMessage(room_id=uuid4(), entity_id=uuid4())
     state = MockState()
@@ -144,7 +142,7 @@ async def test_handle_complete_todo():
 
 
 @pytest.mark.asyncio
-async def test_validate_create_todo():
+async def test_validate_create_todo() -> None:
     """Test validate create todo."""
     runtime = MockRuntime()
     message = MockMessage()
@@ -155,7 +153,7 @@ async def test_validate_create_todo():
 
 
 @pytest.mark.asyncio
-async def test_validate_complete_todo():
+async def test_validate_complete_todo() -> None:
     """Test validate complete todo."""
     runtime = MockRuntime()
     message = MockMessage()
@@ -167,7 +165,7 @@ async def test_validate_complete_todo():
 
 
 @pytest.mark.asyncio
-async def test_handle_update_todo():
+async def test_handle_update_todo() -> None:
     """Test update todo action."""
     runtime = MockRuntime()
     message = MockMessage(text="Update my task priority to high")
@@ -179,7 +177,7 @@ async def test_handle_update_todo():
 
 
 @pytest.mark.asyncio
-async def test_handle_cancel_todo():
+async def test_handle_cancel_todo() -> None:
     """Test cancel todo action."""
     runtime = MockRuntime()
     message = MockMessage(text="Cancel my task")
@@ -191,7 +189,7 @@ async def test_handle_cancel_todo():
 
 
 @pytest.mark.asyncio
-async def test_handle_confirm_todo():
+async def test_handle_confirm_todo() -> None:
     """Test confirm todo action."""
     runtime = MockRuntime()
     message = MockMessage(text="Yes, create it")
@@ -203,7 +201,7 @@ async def test_handle_confirm_todo():
 
 
 @pytest.mark.asyncio
-async def test_validate_confirm_todo():
+async def test_validate_confirm_todo() -> None:
     """Test validate confirm todo."""
     runtime = MockRuntime()
     message = MockMessage()

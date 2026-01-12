@@ -4,7 +4,7 @@ from elizaos_plugin_forms.actions import (
     CreateFormAction,
     UpdateFormAction,
 )
-from elizaos_plugin_forms.prompts import FORM_EXTRACTION_PROMPT
+from elizaos_plugin_forms.prompts import FORM_EXTRACTION_TEMPLATE
 from elizaos_plugin_forms.providers import FormsContextProvider, ProviderResult
 from elizaos_plugin_forms.service import FormsService
 from elizaos_plugin_forms.types import (
@@ -38,7 +38,7 @@ __all__ = [
     # Service
     "FormsService",
     # Prompts
-    "FORM_EXTRACTION_PROMPT",
+    "FORM_EXTRACTION_TEMPLATE",
 ]
 
 __version__ = "1.2.0"

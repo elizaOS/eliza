@@ -70,7 +70,7 @@ impl JsonStorage {
         for entry in fs::read_dir(&dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "json") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 if let Ok(file) = File::open(&path) {
                     let reader = BufReader::new(file);
                     if let Ok(item) = serde_json::from_reader::<_, T>(reader) {
@@ -126,7 +126,7 @@ impl JsonStorage {
         
         let count = fs::read_dir(&dir)?
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "json"))
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
             .count();
         Ok(count)
     }

@@ -6,7 +6,6 @@ import pytest
 
 from elizaos_plugin_goals.providers import GoalsProvider
 from elizaos_plugin_goals.types import (
-    CreateGoalParams,
     Goal,
     GoalFilters,
     GoalOwnerType,
@@ -68,14 +67,14 @@ class MockGoalService:
 class TestGoalsProvider:
     """Tests for GoalsProvider."""
 
-    def test_provider_attributes(self):
+    def test_provider_attributes(self) -> None:
         """Test provider has required attributes."""
         provider = GoalsProvider()
         assert provider.name == "GOALS"
         assert provider.description is not None
 
     @pytest.mark.asyncio
-    async def test_get_no_goals(self):
+    async def test_get_no_goals(self) -> None:
         """Test provider with no goals."""
         provider = GoalsProvider()
         runtime = MockRuntime()
@@ -90,7 +89,7 @@ class TestGoalsProvider:
         assert result.data.get("completedGoalCount") == 0
 
     @pytest.mark.asyncio
-    async def test_get_with_active_goals(self):
+    async def test_get_with_active_goals(self) -> None:
         """Test provider with active goals."""
         provider = GoalsProvider()
         runtime = MockRuntime()
@@ -111,7 +110,7 @@ class TestGoalsProvider:
         assert result.values.get("activeGoalCount") == "2"
 
     @pytest.mark.asyncio
-    async def test_get_with_completed_goals(self):
+    async def test_get_with_completed_goals(self) -> None:
         """Test provider with completed goals."""
         provider = GoalsProvider()
         runtime = MockRuntime()
@@ -133,7 +132,7 @@ class TestGoalsProvider:
         assert result.data.get("completedGoalCount") == 1
 
     @pytest.mark.asyncio
-    async def test_get_with_mixed_goals(self):
+    async def test_get_with_mixed_goals(self) -> None:
         """Test provider with both active and completed goals."""
         provider = GoalsProvider()
         runtime = MockRuntime()
@@ -154,7 +153,7 @@ class TestGoalsProvider:
         assert result.data.get("completedGoalCount") == 1
 
     @pytest.mark.asyncio
-    async def test_get_filters_by_owner(self):
+    async def test_get_filters_by_owner(self) -> None:
         """Test provider filters goals by owner."""
         provider = GoalsProvider()
         runtime = MockRuntime()
@@ -174,7 +173,7 @@ class TestGoalsProvider:
         assert result.data.get("activeGoalCount") == 1
 
     @pytest.mark.asyncio
-    async def test_get_with_goal_tags(self):
+    async def test_get_with_goal_tags(self) -> None:
         """Test provider shows goal tags."""
         provider = GoalsProvider()
         runtime = MockRuntime()
@@ -192,7 +191,7 @@ class TestGoalsProvider:
         assert "education" in result.text
 
     @pytest.mark.asyncio
-    async def test_get_agent_goals(self):
+    async def test_get_agent_goals(self) -> None:
         """Test provider returns agent goals when no entity."""
         provider = GoalsProvider()
         runtime = MockRuntime()
@@ -213,7 +212,7 @@ class TestGoalsProvider:
         assert result.data.get("activeGoalCount") == 1
 
     @pytest.mark.asyncio
-    async def test_get_limits_completed_to_five(self):
+    async def test_get_limits_completed_to_five(self) -> None:
         """Test provider limits completed goals to 5 most recent."""
         provider = GoalsProvider()
         runtime = MockRuntime()

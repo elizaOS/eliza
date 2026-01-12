@@ -14,7 +14,7 @@ class RuntimeProtocol(Protocol):
 
 class TodoIntegrationBridge:
     """Integration bridge service for connecting todo plugin with other plugins.
-    
+
     This service enables enhanced functionality by bridging the todo plugin
     with other plugins in the system.
     """
@@ -30,10 +30,10 @@ class TodoIntegrationBridge:
     @classmethod
     async def start(cls, runtime: RuntimeProtocol) -> "TodoIntegrationBridge":
         """Start the integration bridge service.
-        
+
         Args:
             runtime: The agent runtime
-            
+
         Returns:
             The started service instance
         """

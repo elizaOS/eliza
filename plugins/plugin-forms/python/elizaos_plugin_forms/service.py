@@ -43,6 +43,7 @@ def parse_key_value_xml(text: str) -> dict[str, str] | None:
         Parsed dictionary or None if parsing fails
     """
     # Find the response block
+    response_match = re.search(r"<response>(.*?)</response>", text, re.DOTALL)
     if not response_match:
         root_match = re.search(r"<(\w+)>(.*?)</\1>", text, re.DOTALL)
         if not root_match:

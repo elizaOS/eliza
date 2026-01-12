@@ -1,25 +1,28 @@
 """Tests for forms plugin service."""
 
 import uuid
+from typing import TYPE_CHECKING
 
 import pytest
 
 from elizaos_plugin_forms import (
-    Form,
     FormField,
     FormFieldType,
+    FormsService,
     FormStatus,
     FormStep,
     FormTemplate,
-    FormsService,
 )
+
+if TYPE_CHECKING:
+    from tests.conftest import MockRuntime
 
 
 class TestFormsService:
     """Tests for FormsService."""
 
     @pytest.mark.asyncio
-    async def test_create_form_from_template(self, mock_runtime) -> None:
+    async def test_create_form_from_template(self, mock_runtime: "MockRuntime") -> None:
         """Test creating a form from a template."""
         service = FormsService(mock_runtime)
 
@@ -33,7 +36,7 @@ class TestFormsService:
         assert form.current_step_index == 0
 
     @pytest.mark.asyncio
-    async def test_create_form_invalid_template(self, mock_runtime) -> None:
+    async def test_create_form_invalid_template(self, mock_runtime: "MockRuntime") -> None:
         """Test creating a form with invalid template raises error."""
         service = FormsService(mock_runtime)
 
@@ -41,7 +44,7 @@ class TestFormsService:
             await service.create_form("nonexistent_template")
 
     @pytest.mark.asyncio
-    async def test_list_forms(self, mock_runtime) -> None:
+    async def test_list_forms(self, mock_runtime: "MockRuntime") -> None:
         """Test listing forms."""
         service = FormsService(mock_runtime)
 
@@ -55,7 +58,7 @@ class TestFormsService:
         assert len(forms) == 1
 
     @pytest.mark.asyncio
-    async def test_list_forms_by_status(self, mock_runtime) -> None:
+    async def test_list_forms_by_status(self, mock_runtime: "MockRuntime") -> None:
         """Test listing forms filtered by status."""
         service = FormsService(mock_runtime)
 
@@ -75,7 +78,7 @@ class TestFormsService:
         assert cancelled_forms[0].id == form2.id
 
     @pytest.mark.asyncio
-    async def test_get_form(self, mock_runtime) -> None:
+    async def test_get_form(self, mock_runtime: "MockRuntime") -> None:
         """Test getting a specific form."""
         service = FormsService(mock_runtime)
 
@@ -87,7 +90,7 @@ class TestFormsService:
         assert retrieved.name == form.name
 
     @pytest.mark.asyncio
-    async def test_get_form_nonexistent(self, mock_runtime) -> None:
+    async def test_get_form_nonexistent(self, mock_runtime: "MockRuntime") -> None:
         """Test getting a nonexistent form returns None."""
         service = FormsService(mock_runtime)
 
@@ -95,7 +98,7 @@ class TestFormsService:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_cancel_form(self, mock_runtime) -> None:
+    async def test_cancel_form(self, mock_runtime: "MockRuntime") -> None:
         """Test cancelling a form."""
         service = FormsService(mock_runtime)
 
@@ -111,7 +114,7 @@ class TestFormsService:
         assert updated_form.status == FormStatus.CANCELLED
 
     @pytest.mark.asyncio
-    async def test_cancel_form_nonexistent(self, mock_runtime) -> None:
+    async def test_cancel_form_nonexistent(self, mock_runtime: "MockRuntime") -> None:
         """Test cancelling a nonexistent form returns False."""
         service = FormsService(mock_runtime)
 
@@ -119,7 +122,7 @@ class TestFormsService:
         assert success is False
 
     @pytest.mark.asyncio
-    async def test_register_template(self, mock_runtime) -> None:
+    async def test_register_template(self, mock_runtime: "MockRuntime") -> None:
         """Test registering a custom template."""
         service = FormsService(mock_runtime)
 
@@ -149,7 +152,7 @@ class TestFormsService:
         assert len(form.steps[0].fields) == 1
 
     @pytest.mark.asyncio
-    async def test_get_templates(self, mock_runtime) -> None:
+    async def test_get_templates(self, mock_runtime: "MockRuntime") -> None:
         """Test getting all templates."""
         service = FormsService(mock_runtime)
 
@@ -161,7 +164,7 @@ class TestFormsService:
         assert "contact" in template_names
 
     @pytest.mark.asyncio
-    async def test_update_form(self, mock_runtime) -> None:
+    async def test_update_form(self, mock_runtime: "MockRuntime") -> None:
         """Test updating a form with extracted values."""
         service = FormsService(mock_runtime)
 
@@ -175,7 +178,7 @@ class TestFormsService:
         assert result.updated_fields is not None
 
     @pytest.mark.asyncio
-    async def test_update_form_nonexistent(self, mock_runtime) -> None:
+    async def test_update_form_nonexistent(self, mock_runtime: "MockRuntime") -> None:
         """Test updating a nonexistent form."""
         service = FormsService(mock_runtime)
 
@@ -184,7 +187,7 @@ class TestFormsService:
         assert "not found" in result.message.lower()
 
     @pytest.mark.asyncio
-    async def test_update_cancelled_form(self, mock_runtime) -> None:
+    async def test_update_cancelled_form(self, mock_runtime: "MockRuntime") -> None:
         """Test updating a cancelled form fails."""
         service = FormsService(mock_runtime)
 

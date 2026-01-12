@@ -26,6 +26,7 @@ class ProviderResult:
     values: dict[str, str]
 
 
+# Prompt template - not a password (noqa: S105)
 TOKEN_BALANCE_TEMPLATE = """You are a token balance query parser. Extract the token symbol and chain from the user message.
 
 User message: {{userMessage}}

@@ -96,12 +96,12 @@ impl GitHubService {
         }
 
         if !params.assignees.is_empty() {
-            let assignees: Vec<String> = params.assignees.iter().cloned().collect();
+            let assignees: Vec<String> = params.assignees.to_vec();
             builder = builder.assignees(assignees);
         }
 
         if !params.labels.is_empty() {
-            let labels: Vec<String> = params.labels.iter().cloned().collect();
+            let labels: Vec<String> = params.labels.to_vec();
             builder = builder.labels(labels);
         }
 

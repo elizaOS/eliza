@@ -15,7 +15,6 @@ from elizaos_plugin_n8n.errors import (
     ValidationError,
 )
 from elizaos_plugin_n8n.models import ClaudeModel, JobStatus
-from elizaos_plugin_n8n.service import PluginCreationService
 from elizaos_plugin_n8n.providers import (
     PluginCreationCapabilitiesProvider,
     PluginCreationStatusProvider,
@@ -23,6 +22,7 @@ from elizaos_plugin_n8n.providers import (
     PluginExistsProvider,
     PluginRegistryProvider,
 )
+from elizaos_plugin_n8n.service import PluginCreationService
 from elizaos_plugin_n8n.types import (
     ActionSpecification,
     CreatePluginOptions,

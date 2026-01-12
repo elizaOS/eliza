@@ -156,7 +156,7 @@ class MockGoalService:
 class TestCreateGoalAction:
     """Tests for CreateGoalAction."""
 
-    def test_action_attributes(self):
+    def test_action_attributes(self) -> None:
         """Test action has required attributes."""
         action = CreateGoalAction()
         assert action.name == "CREATE_GOAL"
@@ -165,7 +165,7 @@ class TestCreateGoalAction:
         assert len(action.examples) > 0
 
     @pytest.mark.asyncio
-    async def test_validate_always_returns_true(self):
+    async def test_validate_always_returns_true(self) -> None:
         """Test validation always passes."""
         action = CreateGoalAction()
         runtime = MockRuntime()
@@ -175,7 +175,7 @@ class TestCreateGoalAction:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_handler_creates_goal(self):
+    async def test_handler_creates_goal(self) -> None:
         """Test handler creates a goal successfully."""
         action = CreateGoalAction()
         runtime = MockRuntime()
@@ -197,14 +197,14 @@ class TestCreateGoalAction:
 class TestCompleteGoalAction:
     """Tests for CompleteGoalAction."""
 
-    def test_action_attributes(self):
+    def test_action_attributes(self) -> None:
         """Test action has required attributes."""
         action = CompleteGoalAction()
         assert action.name == "COMPLETE_GOAL"
         assert "ACHIEVE_GOAL" in action.similes
 
     @pytest.mark.asyncio
-    async def test_validate_with_complete_intent(self):
+    async def test_validate_with_complete_intent(self) -> None:
         """Test validation passes with completion keywords."""
         action = CompleteGoalAction()
         runtime = MockRuntime()
@@ -218,7 +218,7 @@ class TestCompleteGoalAction:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_validate_without_complete_intent(self):
+    async def test_validate_without_complete_intent(self) -> None:
         """Test validation fails without completion keywords."""
         action = CompleteGoalAction()
         runtime = MockRuntime()
@@ -231,7 +231,7 @@ class TestCompleteGoalAction:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_handler_completes_goal(self):
+    async def test_handler_completes_goal(self) -> None:
         """Test handler marks goal as completed."""
         action = CompleteGoalAction()
         runtime = MockRuntime()
@@ -263,14 +263,14 @@ class TestCompleteGoalAction:
 class TestCancelGoalAction:
     """Tests for CancelGoalAction."""
 
-    def test_action_attributes(self):
+    def test_action_attributes(self) -> None:
         """Test action has required attributes."""
         action = CancelGoalAction()
         assert action.name == "CANCEL_GOAL"
         assert "DELETE_GOAL" in action.similes
 
     @pytest.mark.asyncio
-    async def test_validate_with_goals(self):
+    async def test_validate_with_goals(self) -> None:
         """Test validation passes when user has goals."""
         action = CancelGoalAction()
         runtime = MockRuntime()
@@ -296,7 +296,7 @@ class TestCancelGoalAction:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_validate_without_cancel_intent(self):
+    async def test_validate_without_cancel_intent(self) -> None:
         """Test validation fails without cancel intent keywords."""
         action = CancelGoalAction()
         runtime = MockRuntime()
@@ -314,14 +314,14 @@ class TestCancelGoalAction:
 class TestUpdateGoalAction:
     """Tests for UpdateGoalAction."""
 
-    def test_action_attributes(self):
+    def test_action_attributes(self) -> None:
         """Test action has required attributes."""
         action = UpdateGoalAction()
         assert action.name == "UPDATE_GOAL"
         assert "EDIT_GOAL" in action.similes
 
     @pytest.mark.asyncio
-    async def test_validate_with_update_intent(self):
+    async def test_validate_with_update_intent(self) -> None:
         """Test validation passes with update intent keywords."""
         action = UpdateGoalAction()
         runtime = MockRuntime()
@@ -339,14 +339,14 @@ class TestUpdateGoalAction:
 class TestConfirmGoalAction:
     """Tests for ConfirmGoalAction."""
 
-    def test_action_attributes(self):
+    def test_action_attributes(self) -> None:
         """Test action has required attributes."""
         action = ConfirmGoalAction()
         assert action.name == "CONFIRM_GOAL"
         assert "APPROVE_GOAL" in action.similes
 
     @pytest.mark.asyncio
-    async def test_validate_with_pending_goal(self):
+    async def test_validate_with_pending_goal(self) -> None:
         """Test validation passes with pending goal in state."""
         action = ConfirmGoalAction()
         runtime = MockRuntime()
@@ -364,7 +364,7 @@ class TestConfirmGoalAction:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_validate_without_pending_goal(self):
+    async def test_validate_without_pending_goal(self) -> None:
         """Test validation fails without pending goal."""
         action = ConfirmGoalAction()
         runtime = MockRuntime()
@@ -375,7 +375,7 @@ class TestConfirmGoalAction:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_validate_no_state(self):
+    async def test_validate_no_state(self) -> None:
         """Test validation fails without state."""
         action = ConfirmGoalAction()
         runtime = MockRuntime()

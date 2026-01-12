@@ -6,8 +6,6 @@ These tests validate the IPC protocol handling and message processing.
 
 import json
 import pytest
-from typing import Any
-from unittest.mock import MagicMock, AsyncMock, patch
 
 
 class TestIPCProtocol:
@@ -405,7 +403,6 @@ class TestAsyncOperations:
         async def mock_get(memory, state):
             return {"text": "Async provider data", "values": {}}
 
-        import asyncio
 
         result = await mock_get({}, {})
         assert result["text"] == "Async provider data"

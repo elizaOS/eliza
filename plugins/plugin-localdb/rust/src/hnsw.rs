@@ -193,7 +193,7 @@ impl SimpleHNSW {
 
             for neighbor in &selected {
                 let should_prune = if let Some(neighbor_node) = self.nodes.get(&neighbor.id) {
-                    neighbor_node.neighbors.get(&l).map_or(false, |n| n.len() > self.config.m)
+                    neighbor_node.neighbors.get(&l).is_some_and(|n| n.len() > self.config.m)
                 } else {
                     false
                 };
@@ -297,7 +297,7 @@ impl SimpleHNSW {
                             .max_by(|a, b| {
                                 a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal)
                             })
-                            .map_or(true, |f| dist < f.distance);
+                            .is_none_or(|f| dist < f.distance);
 
                     if should_add {
                         candidates.push(Candidate {

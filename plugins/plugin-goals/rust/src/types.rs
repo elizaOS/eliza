@@ -9,8 +9,10 @@ use std::fmt;
 /// from initial creation to completion or cancellation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum GoalStatus {
     /// Goal has been created but work has not yet begun.
+    #[default]
     Pending,
     /// Goal is actively being worked on.
     InProgress,
@@ -32,21 +34,18 @@ impl fmt::Display for GoalStatus {
     }
 }
 
-impl Default for GoalStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
-}
 
 /// The type of entity that owns a goal.
 ///
 /// Goals can be owned by either an agent (AI) or an entity (user/external system).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum GoalOwnerType {
     /// Goal is owned by an AI agent.
     Agent,
     /// Goal is owned by a user or external entity.
+    #[default]
     Entity,
 }
 
@@ -60,11 +59,6 @@ impl fmt::Display for GoalOwnerType {
     }
 }
 
-impl Default for GoalOwnerType {
-    fn default() -> Self {
-        Self::Entity
-    }
-}
 
 /// A goal that can be tracked and managed by the system.
 ///

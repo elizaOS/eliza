@@ -1,11 +1,10 @@
 """Tests for forms plugin actions."""
 
-import pytest
 
 from elizaos_plugin_forms import (
+    CancelFormAction,
     CreateFormAction,
     UpdateFormAction,
-    CancelFormAction,
 )
 
 
@@ -49,7 +48,7 @@ class TestCreateFormAction:
     def test_extract_form_type_none(self) -> None:
         """Test when no form type matches."""
         assert CreateFormAction.extract_form_type("hello world") is None
-        assert CreateFormAction.extract_form_type("random message") is None
+        assert CreateFormAction.extract_form_type("random text") is None
 
     def test_validate_with_form_keywords(self) -> None:
         """Test validation with form keywords."""

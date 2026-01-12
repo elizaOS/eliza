@@ -15,14 +15,10 @@ from elizaos_plugin_github.error import (
 )
 from elizaos_plugin_github.service import GitHubService
 from elizaos_plugin_github.types import (
-    CreateBranchParams,
-    CreateCommentParams,
-    CreateIssueParams,
     ListIssuesParams,
     ListPullRequestsParams,
     RepositoryRef,
 )
-
 
 # Skip all tests if GITHUB_API_TOKEN is not set
 pytestmark = pytest.mark.skipif(

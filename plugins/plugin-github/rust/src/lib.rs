@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![allow(clippy::result_large_err)]
 #![deny(unsafe_code)]
 
 pub mod config;

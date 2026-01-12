@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
+#[derive(Default)]
 pub enum TeeMode {
+    #[default]
     Local,
     Docker,
     Production,
@@ -29,15 +31,12 @@ impl TeeMode {
     }
 }
 
-impl Default for TeeMode {
-    fn default() -> Self {
-        Self::Local
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum TeeVendor {
+    #[default]
     Phala,
 }
 
@@ -56,11 +55,6 @@ impl TeeVendor {
     }
 }
 
-impl Default for TeeVendor {
-    fn default() -> Self {
-        Self::Phala
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

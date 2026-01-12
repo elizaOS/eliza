@@ -1,6 +1,7 @@
 """Tests for MCP actions."""
 
 import pytest
+
 from elizaos_plugin_mcp.actions.call_tool import (
     ActionContext,
     CallToolAction,

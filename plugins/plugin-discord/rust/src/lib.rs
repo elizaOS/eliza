@@ -1,6 +1,8 @@
 //! elizaOS Discord Plugin
 //!
 //! This crate provides Discord integration for elizaOS agents.
+
+#![allow(clippy::result_large_err)]
 //!
 //! # Features
 //!

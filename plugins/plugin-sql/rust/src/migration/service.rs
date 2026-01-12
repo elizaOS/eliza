@@ -175,7 +175,7 @@ impl MigrationService {
         .bind(plugin_name)
         .bind(version)
         .bind(dialect)
-        .bind(&Value::Array(entries))
+        .bind(Value::Array(entries))
         .execute(&mut *tx)
         .await
         .context("Failed to update journal")?;

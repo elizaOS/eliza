@@ -145,8 +145,8 @@ impl SamEngine {
         let attack = (duration_samples / 10).min(100);
         let release = (duration_samples / 5).min(200);
 
-        for i in 0..attack {
-            wave[i] *= i as f32 / attack as f32;
+        for (i, sample) in wave.iter_mut().take(attack).enumerate() {
+            *sample *= i as f32 / attack as f32;
         }
         for i in 0..release {
             if duration_samples > release {

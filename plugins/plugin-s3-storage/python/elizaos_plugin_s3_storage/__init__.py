@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 # Import types directly - they don't have heavy dependencies
 from elizaos_plugin_s3_storage.types import (
     JsonUploadResult,

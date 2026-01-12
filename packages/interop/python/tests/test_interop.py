@@ -7,8 +7,6 @@ and that type structures are consistent across runtimes.
 
 from __future__ import annotations
 
-import pytest
-from typing import Any
 
 
 class TestTypeCompatibility:

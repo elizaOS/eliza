@@ -1,4 +1,5 @@
 import os
+
 import pytest
 
 HAS_AWS_CREDS = bool(
@@ -19,9 +20,9 @@ class TestS3PluginStructure:
 
     def test_import_types(self) -> None:
         from elizaos_plugin_s3_storage import (
+            JsonUploadResult,
             S3StorageConfig,
             UploadResult,
-            JsonUploadResult,
         )
         assert S3StorageConfig is not None
         assert UploadResult is not None
@@ -31,7 +32,7 @@ class TestS3PluginStructure:
 class TestS3Config:
     def test_config_creation(self) -> None:
         from elizaos_plugin_s3_storage import S3StorageConfig
-        
+
         config = S3StorageConfig(
             access_key_id="test-key",
             secret_access_key="test-secret",
@@ -45,7 +46,7 @@ class TestS3Config:
 class TestS3Types:
     def test_upload_result(self) -> None:
         from elizaos_plugin_s3_storage import UploadResult
-        
+
         result = UploadResult(
             success=True,
             url="https://s3.amazonaws.com/bucket/file.jpg",
@@ -56,7 +57,7 @@ class TestS3Types:
 
     def test_json_upload_result(self) -> None:
         from elizaos_plugin_s3_storage import JsonUploadResult
-        
+
         result = JsonUploadResult(
             success=True,
             url="https://s3.amazonaws.com/bucket/data.json",
@@ -71,6 +72,6 @@ class TestS3APIIntegration:
     @pytest.mark.asyncio
     async def test_plugin_initialization(self) -> None:
         from elizaos_plugin_s3_storage import get_s3_storage_plugin
-        
+
         plugin = get_s3_storage_plugin()
         assert plugin is not None

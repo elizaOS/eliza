@@ -4,13 +4,13 @@ import pytest
 
 pytest.importorskip("anthropic", reason="anthropic not installed")
 
+from elizaos_plugin_n8n.providers.capabilities import PluginCreationCapabilitiesProvider
+from elizaos_plugin_n8n.providers.exists import PluginExistsProvider
+from elizaos_plugin_n8n.providers.registry import PluginRegistryProvider
 from elizaos_plugin_n8n.providers.status import (
     PluginCreationStatusProvider,
     ProviderContext,
 )
-from elizaos_plugin_n8n.providers.capabilities import PluginCreationCapabilitiesProvider
-from elizaos_plugin_n8n.providers.registry import PluginRegistryProvider
-from elizaos_plugin_n8n.providers.exists import PluginExistsProvider
 
 
 class TestPluginCreationStatusProvider:

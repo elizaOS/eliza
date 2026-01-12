@@ -1,6 +1,7 @@
 """Tests for EphemeralHNSW."""
 
 import pytest
+
 from elizaos_plugin_inmemorydb.hnsw import EphemeralHNSW, cosine_distance
 
 

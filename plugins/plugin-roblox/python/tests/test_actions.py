@@ -1,9 +1,9 @@
 import pytest
 
 from elizaos_plugin_roblox.actions import (
-    SendGameMessageAction,
     ExecuteGameActionAction,
     GetPlayerInfoAction,
+    SendGameMessageAction,
     get_roblox_action_names,
 )
 
@@ -30,7 +30,7 @@ class TestSendGameMessageAction:
     async def test_handler_success(self, action: SendGameMessageAction) -> None:
         params = {"content": "Hello players!"}
         result = await action.handler(params)
-        
+
         assert result["action"] == "SEND_ROBLOX_MESSAGE"
         assert result["content"] == "Hello players!"
 
@@ -58,7 +58,7 @@ class TestExecuteGameActionAction:
     async def test_handler_success(self, action: ExecuteGameActionAction) -> None:
         params = {"action_name": "start_fireworks", "parameters": {"duration": 10}}
         result = await action.handler(params)
-        
+
         assert result["action"] == "EXECUTE_ROBLOX_ACTION"
         assert result["action_name"] == "start_fireworks"
 
@@ -81,7 +81,7 @@ class TestGetPlayerInfoAction:
     async def test_handler_success(self, action: GetPlayerInfoAction) -> None:
         params = {"identifier": "player123"}
         result = await action.handler(params)
-        
+
         assert result["action"] == "GET_ROBLOX_PLAYER_INFO"
         assert result["identifier"] == "player123"
 

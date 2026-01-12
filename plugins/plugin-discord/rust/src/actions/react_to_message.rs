@@ -96,9 +96,10 @@ impl DiscordAction for ReactToMessageAction {
         };
 
         // Add reaction
-        if let Err(_) = service
+        if service
             .add_reaction(&channel_id, &message_id, emoji)
             .await
+            .is_err()
         {
             return Ok(ActionResult::failure(
                 "I couldn't add the reaction. The emoji might be invalid \

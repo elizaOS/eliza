@@ -6,8 +6,6 @@ Plugin definition for elizaOS runtime integration.
 
 from __future__ import annotations
 
-from typing import Any
-
 from elizaos.logger import create_logger
 from elizaos.types.model import ModelType
 from elizaos.types.plugin import Plugin

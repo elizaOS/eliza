@@ -22,7 +22,6 @@ from elizaos_vision.actions import (
     set_vision_mode_action,
     track_entity_action,
 )
-from elizaos_vision.types import VisionMode
 
 from .conftest import MockMessage, MockRuntime
 

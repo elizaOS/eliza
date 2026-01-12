@@ -100,10 +100,8 @@ impl GatewayClient {
             if let Some(max) = params.max_tokens {
                 body["max_tokens"] = serde_json::json!(max);
             }
-        } else {
-            if let Some(max) = params.max_tokens {
-                body["max_completion_tokens"] = serde_json::json!(max);
-            }
+        } else if let Some(max) = params.max_tokens {
+            body["max_completion_tokens"] = serde_json::json!(max);
         }
 
         let response = self

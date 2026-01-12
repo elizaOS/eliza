@@ -1,7 +1,5 @@
 import os
 
-import pytest
-
 from elizaos_plugin_elizacloud.types import ElizaCloudConfig
 
 

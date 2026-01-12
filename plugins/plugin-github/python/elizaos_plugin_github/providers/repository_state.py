@@ -18,7 +18,7 @@ class RepositoryStateProvider:
 
     async def get(
         self,
-        context: ProviderContext,
+        _context: ProviderContext,
         service: object,
     ) -> str | None:
         from elizaos_plugin_github.service import GitHubService

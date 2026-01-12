@@ -19,11 +19,11 @@ class IMessageService(ABC):
     @abstractmethod
     async def send_message(self, recipient_id: str, text: str) -> dict[str, object]:
         """Send a direct message.
-        
+
         Args:
             recipient_id: The recipient's user ID
             text: The message text
-            
+
         Returns:
             The sent message data
         """
@@ -32,10 +32,10 @@ class IMessageService(ABC):
     @abstractmethod
     async def get_messages(self, conversation_id: str | None = None) -> list[dict[str, object]]:
         """Get messages from conversations.
-        
+
         Args:
             conversation_id: Optional specific conversation to retrieve
-            
+
         Returns:
             List of message data
         """
@@ -47,7 +47,7 @@ class MessageService(IMessageService):
 
     def __init__(self, runtime: RuntimeProtocol) -> None:
         """Initialize the message service.
-        
+
         Args:
             runtime: The agent runtime
         """
@@ -71,11 +71,11 @@ class MessageService(IMessageService):
 
     async def send_message(self, recipient_id: str, text: str) -> dict[str, object]:
         """Send a direct message.
-        
+
         Args:
             recipient_id: The recipient's user ID
             text: The message text
-            
+
         Returns:
             The sent message data
         """
@@ -90,10 +90,10 @@ class MessageService(IMessageService):
 
     async def get_messages(self, conversation_id: str | None = None) -> list[dict[str, object]]:
         """Get messages from conversations.
-        
+
         Args:
             conversation_id: Optional specific conversation to retrieve
-            
+
         Returns:
             List of message data
         """

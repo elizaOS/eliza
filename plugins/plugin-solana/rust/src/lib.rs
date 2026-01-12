@@ -1,5 +1,6 @@
 #![deny(unsafe_code)]
 #![forbid(clippy::unwrap_used)]
+#![allow(deprecated)] // solana_sdk::system_instruction deprecation
 
 pub mod actions;
 pub mod client;

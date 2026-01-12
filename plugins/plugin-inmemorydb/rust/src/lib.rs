@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 pub mod adapter;
 pub mod hnsw;
 pub mod storage;

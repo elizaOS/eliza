@@ -10,6 +10,12 @@ pub struct KnowledgePlugin {
     initialized: bool,
 }
 
+impl Default for KnowledgePlugin {
+    fn default() -> Self {
+        Self::new(KnowledgeConfig::default())
+    }
+}
+
 impl KnowledgePlugin {
     pub const NAME: &'static str = "knowledge";
     pub const DESCRIPTION: &'static str = "Provides knowledge management and RAG capabilities";
@@ -20,10 +26,6 @@ impl KnowledgePlugin {
             service: Arc::new(RwLock::new(KnowledgeService::new(config))),
             initialized: false,
         }
-    }
-
-    pub fn default() -> Self {
-        Self::new(KnowledgeConfig::default())
     }
 
     pub fn service(&self) -> Arc<RwLock<KnowledgeService>> {

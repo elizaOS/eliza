@@ -1,25 +1,26 @@
 """Tests for Todo plugin providers."""
 
-import pytest
-from uuid import uuid4
 from datetime import datetime, timedelta
+from uuid import uuid4
 
-from elizaos_plugin_todo.providers import get_todos
+import pytest
+
 from elizaos_plugin_todo.data_service import TodoDataService
-from elizaos_plugin_todo.types import TaskType, Priority, CreateTodoParams
+from elizaos_plugin_todo.providers import get_todos
+from elizaos_plugin_todo.types import CreateTodoParams, Priority, TaskType
 
 
 class MockRuntime:
     """Mock runtime for testing."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.agent_id = uuid4()
         self.db = None
 
     async def get_room(self, room_id):
         """Mock get_room."""
         class MockRoom:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.world_id = uuid4()
         return MockRoom()
 
@@ -27,7 +28,7 @@ class MockRuntime:
 class MockMessage:
     """Mock message for testing."""
 
-    def __init__(self, room_id=None, entity_id=None):
+    def __init__(self, room_id=None, entity_id=None) -> None:
         self.id = uuid4()
         self.room_id = room_id or uuid4()
         self.entity_id = entity_id or uuid4()
@@ -35,7 +36,7 @@ class MockMessage:
 
 
 @pytest.mark.asyncio
-async def test_get_todos():
+async def test_get_todos() -> None:
     """Test get todos provider."""
     runtime = MockRuntime()
     message = MockMessage()
@@ -49,7 +50,7 @@ async def test_get_todos():
 
 
 @pytest.mark.asyncio
-async def test_get_todos_with_data():
+async def test_get_todos_with_data() -> None:
     """Test get todos provider with actual data."""
     runtime = MockRuntime()
     data_service = TodoDataService()
@@ -104,7 +105,7 @@ async def test_get_todos_with_data():
 
 
 @pytest.mark.asyncio
-async def test_get_todos_no_room():
+async def test_get_todos_no_room() -> None:
     """Test get todos provider without room."""
     runtime = MockRuntime()
     message = MockMessage(room_id=None)
@@ -116,7 +117,7 @@ async def test_get_todos_no_room():
 
 
 @pytest.mark.asyncio
-async def test_get_todos_empty():
+async def test_get_todos_empty() -> None:
     """Test get todos provider with no todos."""
     runtime = MockRuntime()
     data_service = TodoDataService()

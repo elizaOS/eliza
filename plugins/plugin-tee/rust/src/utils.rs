@@ -8,7 +8,7 @@ pub fn hex_to_bytes(hex_str: &str) -> Result<Vec<u8>> {
     if hex_str.is_empty() {
         return Err(TeeError::config("Invalid hex string: empty after stripping prefix"));
     }
-    if hex_str.len() % 2 != 0 {
+    if !hex_str.len().is_multiple_of(2) {
         return Err(TeeError::config("Invalid hex string: odd number of characters"));
     }
     hex::decode(hex_str).map_err(TeeError::from)

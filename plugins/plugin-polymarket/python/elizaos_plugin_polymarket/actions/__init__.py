@@ -7,6 +7,7 @@ from elizaos_plugin_polymarket.actions.api_keys import (
     get_all_api_keys,
     revoke_api_key,
 )
+from elizaos_plugin_polymarket.actions.elizaos import ALL_ACTION_NAMES
 from elizaos_plugin_polymarket.actions.markets import (
     get_clob_markets,
     get_market_details,
@@ -40,7 +41,6 @@ from elizaos_plugin_polymarket.actions.trading import (
     get_price_history,
     get_trade_history,
 )
-from elizaos_plugin_polymarket.actions.elizaos import ALL_ACTION_NAMES
 
 __all__ = [
     "get_markets",

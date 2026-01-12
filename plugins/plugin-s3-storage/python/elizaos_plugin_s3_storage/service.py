@@ -19,11 +19,11 @@ class AwsS3Service:
         self._plugin = plugin
 
     @classmethod
-    def from_env(cls) -> "AwsS3Service":
+    def from_env(cls) -> AwsS3Service:
         return cls(get_s3_storage_plugin())
 
     @classmethod
-    def from_config(cls, config: S3StorageConfig) -> "AwsS3Service":
+    def from_config(cls, config: S3StorageConfig) -> AwsS3Service:
         plugin = S3StoragePlugin(
             access_key_id=config.access_key_id,
             secret_access_key=config.secret_access_key,
