@@ -21,6 +21,10 @@ pub mod wasm;
 pub use client::FarcasterClient;
 pub use config::FarcasterConfig;
 pub use error::{FarcasterError, Result};
+pub use types::{Cast, Profile};
+
+#[cfg(feature = "native")]
+pub use service::FarcasterService;
 
 pub fn create_client_from_env() -> Result<FarcasterClient> {
     let config = FarcasterConfig::from_env()?;

@@ -27,8 +27,10 @@ build-backend = "hatchling.build"
 packages = ["elizaos_plugin_inmemorydb"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-p no:anchorpy"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.mypy]
 python_version = "3.11"

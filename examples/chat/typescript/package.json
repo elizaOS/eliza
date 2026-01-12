@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-chat",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Interactive CLI chat with an AI agent using elizaOS",
   "type": "module",
   "private": true,

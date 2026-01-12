@@ -1,6 +1,6 @@
 {
   "name": "@elizaos-examples/html-eliza",
-  "version": "0.0.1",
+  "version": "2.0.0",
   "private": true,
   "description": "elizaOS browser demo using AgentRuntime with plugin-localdb and plugin-eliza-classic",
   "scripts": {

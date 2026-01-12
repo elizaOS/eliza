@@ -156,7 +156,6 @@ pub fn is_forbidden_command(command: &str, forbidden_commands: &[String]) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_is_safe_command_allows_safe() {

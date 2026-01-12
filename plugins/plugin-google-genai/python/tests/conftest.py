@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncGenerator
-import os
 
 import pytest
 import pytest_asyncio

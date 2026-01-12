@@ -10,29 +10,52 @@ async function createTestRuntime(characterOverrides: Record<string, unknown> = {
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;
 }> {
-  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const {
+    createDatabaseAdapter,
+    DatabaseMigrationService,
+    plugin: sqlPluginInstance,
+  } = await import("@elizaos/plugin-sql");
   const { AgentRuntime } = await import("@elizaos/core");
   const { v4: uuidv4 } = await import("uuid");
 
   const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+
+  // Create the adapter using the exported function
+  const adapter = createDatabaseAdapter({ dataDir: `:memory:${agentId}` }, agentId);
   await adapter.init();
+
+  // Run migrations to create the schema
+  const migrationService = new DatabaseMigrationService();
+  const db = (adapter as { getDatabase(): unknown }).getDatabase();
+  await migrationService.initializeWithDatabase(db);
+  migrationService.discoverAndRegisterPluginSchemas([sqlPluginInstance]);
+  await migrationService.runAllPluginMigrations();
+
+  const character = {
+    name: (characterOverrides.name as string) || "Test Agent",
+    bio: ["A test agent"],
+    system: "You are a helpful assistant.",
+    plugins: [],
+    settings: {},
+    messageExamples: [],
+    postExamples: [],
+    topics: ["testing"],
+    adjectives: ["helpful"],
+    style: { all: [], chat: [], post: [] },
+    ...characterOverrides,
+  };
+
+  // Create the agent in the database first
+  await adapter.createAgent({
+    id: agentId,
+    ...character,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
 
   const runtime = new AgentRuntime({
     agentId,
-    character: {
-      name: characterOverrides.name || "Test Agent",
-      bio: ["A test agent"],
-      system: "You are a helpful assistant.",
-      plugins: [],
-      settings: {},
-      messageExamples: [],
-      postExamples: [],
-      topics: ["testing"],
-      adjectives: ["helpful"],
-      style: { all: [], chat: [], post: [] },
-      ...characterOverrides,
-    },
+    character,
     adapter,
     plugins: [],
   });
@@ -42,7 +65,9 @@ async function createTestRuntime(characterOverrides: Record<string, unknown> = {
   const cleanup = async () => {
     try {
       await runtime.stop();
-      await adapter.close();
+      // Don't close the adapter - it uses a global singleton and closing it
+      // would break subsequent tests. The connection will be cleaned up
+      // when the test process ends.
     } catch {
       // Ignore cleanup errors
     }
@@ -63,7 +88,9 @@ interface ActionOptions {
 
 describe("Action Chaining", () => {
   let runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
+  let cleanup: () => Promise<void> = async () => {
+    // Default no-op cleanup in case beforeEach fails
+  };
   let testMessage: Memory;
   let testState: { values: Record<string, unknown>; data: Record<string, unknown>; text: string };
 

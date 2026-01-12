@@ -166,7 +166,7 @@ def handle_health() -> HealthResponse:
     return {
         "status": "healthy",
         "runtime": "elizaos-python",
-        "version": "1.0.0",
+        "version": "2.0.0",
     }
 
 
@@ -176,7 +176,7 @@ def handle_info() -> InfoResponse:
     return {
         "name": character_config["name"],
         "bio": character_config["bio"],
-        "version": "1.0.0",
+        "version": "2.0.0",
         "powered_by": "elizaOS",
         "endpoints": {
             "POST /chat": "Send a message and receive a response",

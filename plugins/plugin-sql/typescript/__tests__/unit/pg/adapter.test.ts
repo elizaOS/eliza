@@ -3,15 +3,19 @@ import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { PgDatabaseAdapter } from "../../../pg/adapter";
 import type { PostgresConnectionManager } from "../../../pg/manager";
 
-// Mock the logger module
-vi.mock("@elizaos/core", () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+// Mock only the logger from @elizaos/core, keeping other exports intact
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  };
+});
 
 // Import after mocking
 import { logger } from "@elizaos/core";
@@ -115,11 +119,18 @@ describe("PgDatabaseAdapter", () => {
   });
 
   describe("getConnection", () => {
-    it("should return connection from manager", async () => {
+    it("should return the drizzle database instance", async () => {
+      const result = await adapter.getConnection();
+      // getConnection returns the drizzle db instance, not the raw pool
+      expect(result).toBeDefined();
+      expect(result.query).toBeDefined();
+    });
+
+    it("should return raw connection via getRawConnection", () => {
       const mockConnection = { connect: vi.fn(), end: vi.fn() };
       mockManager.getConnection.mockReturnValue(mockConnection);
 
-      const result = await adapter.getConnection();
+      const result = adapter.getRawConnection();
       expect(result).toBe(mockConnection);
       expect(mockManager.getConnection).toHaveBeenCalled();
     });

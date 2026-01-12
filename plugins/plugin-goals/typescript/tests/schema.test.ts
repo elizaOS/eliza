@@ -24,7 +24,7 @@ describe("Goals Schema Tests", () => {
       const columns = getTableColumns(goalsTable);
 
       expect(columns.isCompleted.default).toBe(false);
-      expect(columns.metadata.default).toBe("{}");
+      expect(columns.metadata.default).toEqual({});
     });
   });
 

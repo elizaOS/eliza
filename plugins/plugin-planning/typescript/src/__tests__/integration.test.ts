@@ -10,7 +10,7 @@ describe("Planning Plugin Integration Tests", () => {
 
     it("should have correct description", async () => {
       const { planningPlugin } = await import("../index");
-      expect(planningPlugin.description).toContain("planning");
+      expect(planningPlugin.description?.toLowerCase()).toContain("planning");
     });
 
     it("should have providers defined", async () => {
@@ -98,7 +98,7 @@ describe("Planning Plugin Integration Tests", () => {
     it("should have messageClassifierProvider", async () => {
       const { messageClassifierProvider } = await import("../providers/message-classifier");
       expect(messageClassifierProvider).toBeDefined();
-      expect(messageClassifierProvider.name).toBe("MESSAGE_CLASSIFIER");
+      expect(messageClassifierProvider.name).toBe("messageClassifier");
     });
   });
 

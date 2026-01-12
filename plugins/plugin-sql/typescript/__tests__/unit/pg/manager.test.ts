@@ -1,21 +1,38 @@
 import type { UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Create mock pool instance
-const mockPoolInstance = {
-  connect: vi.fn(),
-  end: vi.fn(),
-  query: vi.fn(),
-  on: vi.fn(), // Required for pool error handler
-};
+// Create mock pool instance - must be defined before vi.mock
+const mockConnect = vi.fn();
+const mockEnd = vi.fn();
+const mockQuery = vi.fn();
+const mockOn = vi.fn();
 
-// Mock the 'pg' module
-vi.mock("pg", () => ({
-  Pool: vi.fn(() => mockPoolInstance),
-}));
+// Mock the 'pg' module with a proper constructor class
+vi.mock("pg", () => {
+  // Define the mock Pool class inside the factory to avoid hoisting issues
+  const MockPool = function (this: Record<string, unknown>) {
+    this.connect = mockConnect;
+    this.end = mockEnd;
+    this.query = mockQuery;
+    this.on = mockOn;
+    return this;
+  };
+
+  return {
+    Pool: MockPool,
+  };
+});
 
 // Import after mocking
 import { PostgresConnectionManager } from "../../../pg/manager";
+
+// Helper to access the mock functions
+const mockPoolInstance = {
+  connect: mockConnect,
+  end: mockEnd,
+  query: mockQuery,
+  on: mockOn,
+};
 
 describe("PostgresConnectionManager", () => {
   beforeEach(() => {
@@ -54,7 +71,10 @@ describe("PostgresConnectionManager", () => {
 
       const connection = manager.getConnection();
       expect(connection).toBeDefined();
-      expect(connection).toBe(mockPoolInstance);
+      // Check that the connection has the expected mock functions
+      expect(connection.connect).toBe(mockPoolInstance.connect);
+      expect(connection.end).toBe(mockPoolInstance.end);
+      expect(connection.query).toBe(mockPoolInstance.query);
     });
   });
 

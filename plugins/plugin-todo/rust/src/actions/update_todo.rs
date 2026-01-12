@@ -77,7 +77,8 @@ impl UpdateTodoAction {
         if !available_tasks.iter().any(|t| t.id == task_id) {
             return UpdateTodoResult {
                 success: false,
-                text: "I couldn't find the task you want to update. Could you be more specific?".to_string(),
+                text: "I couldn't find the task you want to update. Could you be more specific?"
+                    .to_string(),
             };
         }
 

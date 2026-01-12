@@ -22,6 +22,12 @@ pub use types::*;
 #[cfg(feature = "native")]
 pub use service::GitHubService;
 
+#[cfg(feature = "native")]
+pub use actions::{
+    ActionContext, GitHubAction, CreateIssueAction, CreatePullRequestAction, CreateCommentAction,
+    CreateBranchAction, MergePullRequestAction, PushCodeAction, ReviewPullRequestAction,
+};
+
 pub const PLUGIN_NAME: &str = "github";
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const PLUGIN_DESCRIPTION: &str = "GitHub integration for elizaOS agents";

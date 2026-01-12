@@ -179,7 +179,7 @@ Health check endpoint.
 {
   "status": "healthy",
   "runtime": "elizaos-typescript",
-  "version": "1.0.0"
+  "version": "2.0.0"
 }
 ```
 

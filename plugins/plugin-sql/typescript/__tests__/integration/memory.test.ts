@@ -497,23 +497,23 @@ describe("Memory Integration Tests", () => {
       await adapter.createMemory(createTestMemory({ text: "test" }), "memories");
 
       // Attempt to use negative offset
-      await expect(async () => {
-        await adapter.getMemories({
+      await expect(
+        adapter.getMemories({
           roomId: testRoomId,
           tableName: "memories",
           offset: -1,
-        });
-      }).toThrow("offset must be a non-negative number");
+        })
+      ).rejects.toThrow("offset must be a non-negative number");
 
       // Attempt to use another negative offset
-      await expect(async () => {
-        await adapter.getMemories({
+      await expect(
+        adapter.getMemories({
           roomId: testRoomId,
           tableName: "memories",
           count: 5,
           offset: -10,
-        });
-      }).toThrow("offset must be a non-negative number");
+        })
+      ).rejects.toThrow("offset must be a non-negative number");
     });
 
     it("should maintain consistent pagination results with countMemories", async () => {

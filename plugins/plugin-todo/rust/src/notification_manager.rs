@@ -23,7 +23,6 @@ pub struct NotificationPreferences {
     pub quiet_hours: Option<(u8, u8)>,
 }
 
-
 impl Default for NotificationPreferences {
     fn default() -> Self {
         let mut reminder_types = HashMap::new();
@@ -76,7 +75,6 @@ pub struct NotificationManager {
     notification_rx: Option<mpsc::Receiver<NotificationData>>,
 }
 
-
 impl Default for NotificationManager {
     fn default() -> Self {
         Self::new()
@@ -114,7 +112,10 @@ impl NotificationManager {
     pub async fn queue_notification(&self, notification: NotificationData) {
         // Check quiet hours
         if self.is_in_quiet_hours(notification.room_id).await {
-            debug!("Notification queued for after quiet hours: {}", notification.title);
+            debug!(
+                "Notification queued for after quiet hours: {}",
+                notification.title
+            );
             return;
         }
 
@@ -158,10 +159,7 @@ impl NotificationManager {
 
     /// Send a browser notification.
     async fn send_browser_notification(&self, notification: &NotificationData) {
-        debug!(
-            "Browser notification would be sent: {}",
-            notification.title
-        );
+        debug!("Browser notification would be sent: {}", notification.title);
     }
 
     /// Check if browser notifications should be sent.
@@ -212,10 +210,7 @@ impl NotificationManager {
     /// Get user preferences for notifications.
     pub async fn get_user_preferences(&self, user_or_room_id: Uuid) -> NotificationPreferences {
         let prefs = self.user_preferences.read().await;
-        prefs
-            .get(&user_or_room_id)
-            .cloned()
-            .unwrap_or_default()
+        prefs.get(&user_or_room_id).cloned().unwrap_or_default()
     }
 
     /// Update user notification preferences.
@@ -257,10 +252,3 @@ impl NotificationManager {
 }
 
 use chrono::Timelike;
-
-
-
-
-
-
-

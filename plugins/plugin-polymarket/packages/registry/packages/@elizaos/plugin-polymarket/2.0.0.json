@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-polymarket",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "ElizaOS plugin for Polymarket prediction markets",
   "type": "module",
   "platform": "node",

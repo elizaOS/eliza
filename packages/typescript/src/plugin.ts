@@ -392,8 +392,23 @@ async function resolvePluginsImpl(
   isTestMode: boolean = false,
 ): Promise<Plugin[]> {
   const pluginMap = new Map<string, Plugin>();
-  const queue: (string | Plugin)[] = [...plugins];
   const seenDependencies = new Set<string>();
+
+  // First pass: add all Plugin objects to the map before processing dependencies
+  // This ensures dependency resolution can find already-provided plugins
+  for (const p of plugins) {
+    if (typeof p !== "string") {
+      const validation = validatePlugin(p);
+      if (validation.isValid) {
+        pluginMap.set(p.name, p);
+        seenDependencies.add(p.name);
+        seenDependencies.add(normalizePluginName(p.name));
+      }
+    }
+  }
+
+  // Second pass: process all plugins and their dependencies
+  const queue: (string | Plugin)[] = [...plugins];
 
   while (queue.length > 0) {
     const next = queue.shift();

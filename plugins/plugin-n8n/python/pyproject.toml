@@ -34,6 +34,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
+    "pytest-xprocess>=1.0.0",
     "mypy>=1.19.0",
     "ruff>=0.14.0",
     "python-dotenv>=1.0.0",
@@ -55,11 +56,12 @@ include = [
 ]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
-addopts = "-v --cov=elizaos_plugin_n8n --cov-report=term-missing"
+addopts = "-v -p no:anchorpy"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.mypy]
 python_version = "3.11"

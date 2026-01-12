@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-forms-root",
   "description": "Forms plugin for ElizaOS - structured conversational data collection",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",
   "module": "typescript/dist/node/index.node.js",
@@ -90,7 +90,7 @@
     "lint:rust": "cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt",
     "lint:python": "cd python && ruff check --fix . && ruff format .",
     "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
-    "test:python": "test -d python && cd python && pytest || echo 'Python tests skipped'",
+    "test:python": "test -d python && cd python && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'",
     "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_forms",
     "lint": "bunx @biomejs/biome check --write ./typescript",
     "lint:check": "bunx @biomejs/biome check ./typescript"

@@ -1,7 +1,7 @@
 //! Integration tests for inmemorydb plugin.
 
-use elizaos_plugin_inmemorydb::{VectorSearchResult, COLLECTIONS};
 use elizaos_plugin_inmemorydb::types::StorageError;
+use elizaos_plugin_inmemorydb::{VectorSearchResult, COLLECTIONS};
 
 #[test]
 fn test_collections_constants() {
@@ -26,12 +26,12 @@ fn test_vector_search_result_serialization() {
         distance: 0.5,
         similarity: 0.8,
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("test-id"));
     assert!(json.contains("0.5"));
     assert!(json.contains("0.8"));
-    
+
     let parsed: VectorSearchResult = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.id, "test-id");
     assert!((parsed.distance - 0.5).abs() < f32::EPSILON);
@@ -42,11 +42,14 @@ fn test_vector_search_result_serialization() {
 fn test_storage_error_display() {
     let error = StorageError::NotReady;
     assert_eq!(format!("{}", error), "Storage not ready");
-    
+
     let error = StorageError::NotFound("test-item".to_string());
     assert!(format!("{}", error).contains("test-item"));
-    
-    let error = StorageError::DimensionMismatch { expected: 512, actual: 384 };
+
+    let error = StorageError::DimensionMismatch {
+        expected: 512,
+        actual: 384,
+    };
     assert!(format!("{}", error).contains("512"));
     assert!(format!("{}", error).contains("384"));
 }

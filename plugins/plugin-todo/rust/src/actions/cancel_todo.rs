@@ -78,7 +78,9 @@ impl CancelTodoAction {
             None => {
                 return CancelTodoResult {
                     success: false,
-                    text: "I couldn't find the task you want to cancel. Could you be more specific?".to_string(),
+                    text:
+                        "I couldn't find the task you want to cancel. Could you be more specific?"
+                            .to_string(),
                 };
             }
         };

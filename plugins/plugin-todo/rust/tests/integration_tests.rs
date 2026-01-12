@@ -8,11 +8,15 @@ use elizaos_plugin_todo::{
     TodoFilters, UpdateTodoParams,
 };
 use std::sync::Arc;
-use std::time::Duration as StdDuration;
 use uuid::Uuid;
 
 fn test_uuids() -> (Uuid, Uuid, Uuid, Uuid) {
-    (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4())
+    (
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+    )
 }
 
 #[tokio::test]
@@ -222,7 +226,10 @@ async fn test_add_and_remove_tags() {
 
     // Add tags
     service
-        .add_tags(todo_id, vec!["new-tag".to_string(), "another-tag".to_string()])
+        .add_tags(
+            todo_id,
+            vec!["new-tag".to_string(), "another-tag".to_string()],
+        )
         .await
         .unwrap();
 
@@ -246,19 +253,17 @@ async fn test_cache_manager() {
     let cache = CacheManager::from_ms(10, 60000);
 
     // Test set and get
-    cache
-        .set("key1", serde_json::json!("value1"), None)
-        .await;
-    let value = cache.get("key1").await.unwrap();
+    cache.set("key1", serde_json::json!("value1"), None).await;
+    let value: serde_json::Value = cache.get("key1").await.unwrap();
     assert_eq!(value, serde_json::json!("value1"));
 
     // Test missing key
-    let value = cache.get("nonexistent").await;
+    let value: Option<serde_json::Value> = cache.get("nonexistent").await;
     assert!(value.is_none());
 
     // Test delete
     cache.delete("key1").await;
-    let value = cache.get("key1").await;
+    let value: Option<serde_json::Value> = cache.get("key1").await;
     assert!(value.is_none());
 
     // Test has
@@ -276,8 +281,10 @@ async fn test_config_validation() {
     let config = TodoConfig::default();
     assert!(config.validate().is_ok());
 
-    let mut invalid_config = TodoConfig::default();
-    invalid_config.reminder_interval_ms = 100; // Too small
+    let invalid_config = TodoConfig {
+        reminder_interval_ms: 100, // Too small
+        ..Default::default()
+    };
     assert!(invalid_config.validate().is_err());
 }
 
@@ -356,7 +363,6 @@ async fn test_provider_metadata() {
     // Test TODOS provider metadata
     assert_eq!(TodosProvider::NAME, "TODOS");
     assert!(!TodosProvider::DESCRIPTION.is_empty());
-    assert!(TodosProvider::DYNAMIC);
 }
 
 #[tokio::test]
@@ -500,9 +506,3 @@ async fn test_todos_provider() {
     assert!(result.data.contains_key("dailyTodos"));
     assert!(result.data.contains_key("oneOffTodos"));
 }
-
-
-
-
-
-

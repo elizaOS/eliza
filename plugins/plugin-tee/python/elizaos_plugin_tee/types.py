@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TypeAlias
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TeeMode(str, Enum):
@@ -36,30 +36,27 @@ class RemoteAttestationQuote(BaseModel):
 
 
 class DeriveKeyAttestationData(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     agent_id: str = Field(alias="agentId")
     public_key: str = Field(alias="publicKey")
     subject: str | None = None
 
-    class Config:
-        populate_by_name = True
-
 
 class RemoteAttestationMessageContent(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     entity_id: str = Field(alias="entityId")
     room_id: str = Field(alias="roomId")
     content: str
 
-    class Config:
-        populate_by_name = True
-
 
 class RemoteAttestationMessage(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     agent_id: str = Field(alias="agentId")
     timestamp: int
     message: RemoteAttestationMessageContent
-
-    class Config:
-        populate_by_name = True
 
 
 class DeriveKeyResult(BaseModel):

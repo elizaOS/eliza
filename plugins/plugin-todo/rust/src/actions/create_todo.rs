@@ -58,7 +58,8 @@ impl CreateTodoAction {
         if params.name.trim().is_empty() {
             return CreateTodoResult {
                 success: false,
-                text: "I cannot create a todo without a name. Please provide a task name.".to_string(),
+                text: "I cannot create a todo without a name. Please provide a task name."
+                    .to_string(),
                 todo_id: None,
             };
         }

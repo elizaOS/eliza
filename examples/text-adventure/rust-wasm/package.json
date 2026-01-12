@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-adventure-rust-wasm",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Text adventure game using Rust WASM runtime",
   "type": "module",
   "private": true,

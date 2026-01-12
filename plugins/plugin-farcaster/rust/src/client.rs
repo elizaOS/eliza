@@ -239,7 +239,18 @@ fn split_paragraph(paragraph: &str, max_length: usize) -> Vec<String> {
                         if !current_chunk.is_empty() {
                             chunks.push(current_chunk.trim().to_string());
                         }
-                        current_chunk = word.to_string();
+                        // If word is too long, split by characters
+                        if word.len() > max_length {
+                            let word_chunks = split_by_chars(word, max_length);
+                            if word_chunks.len() > 1 {
+                                chunks.extend(word_chunks[..word_chunks.len() - 1].iter().cloned());
+                                current_chunk = word_chunks.last().cloned().unwrap_or_default();
+                            } else if !word_chunks.is_empty() {
+                                current_chunk = word_chunks[0].clone();
+                            }
+                        } else {
+                            current_chunk = word.to_string();
+                        }
                     }
                 }
             }
@@ -250,6 +261,28 @@ fn split_paragraph(paragraph: &str, max_length: usize) -> Vec<String> {
         chunks.push(current_chunk.trim().to_string());
     }
 
+    chunks
+}
+
+/// Split a string by character boundaries when it exceeds max length.
+fn split_by_chars(text: &str, max_length: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    
+    for ch in text.chars() {
+        if current.len() + ch.len_utf8() > max_length {
+            if !current.is_empty() {
+                chunks.push(current);
+            }
+            current = String::new();
+        }
+        current.push(ch);
+    }
+    
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    
     chunks
 }
 

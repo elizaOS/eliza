@@ -20,8 +20,6 @@ pub enum TaskType {
     Aspirational,
 }
 
-
-
 /// Priority levels (1 = highest, 4 = lowest).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
@@ -37,8 +35,6 @@ pub enum Priority {
     /// Low priority (4)
     Low = 4,
 }
-
-
 
 impl From<u8> for Priority {
     fn from(value: u8) -> Self {
@@ -193,7 +189,6 @@ pub struct CreateTodoParams {
     #[serde(default)]
     pub tags: Vec<String>,
 }
-
 
 impl Default for CreateTodoParams {
     fn default() -> Self {
@@ -380,5 +375,3 @@ pub struct PendingTodo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<TodoMetadata>,
 }
-
-

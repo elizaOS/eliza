@@ -185,7 +185,7 @@ fn test_detect_captcha_type_hcaptcha() {
     let html = r#"<div class="h-captcha" data-sitekey="hcaptcha-key"></div>"#;
     let (captcha_type, site_key) = detect_captcha_type(html);
     
-    assert_eq!(captcha_type, CaptchaType::HCaptcha);
+    assert_eq!(captcha_type, CaptchaType::Hcaptcha);
     assert_eq!(site_key, Some("hcaptcha-key".to_string()));
 }
 
@@ -226,7 +226,7 @@ fn test_generate_captcha_injection_script_recaptcha() {
 fn test_generate_captcha_injection_script_hcaptcha() {
     use elizaos_browser::generate_captcha_injection_script;
     
-    let script = generate_captcha_injection_script(&CaptchaType::HCaptcha, "hcaptcha-token");
+    let script = generate_captcha_injection_script(&CaptchaType::Hcaptcha, "hcaptcha-token");
     
     assert!(script.contains("h-captcha-response"));
     assert!(script.contains("hcaptcha-token"));

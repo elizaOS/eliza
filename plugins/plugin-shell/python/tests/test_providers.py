@@ -1,10 +1,10 @@
 import pytest
+from unittest.mock import MagicMock
 
 from elizaos_plugin_shell.providers import (
     ShellHistoryProvider,
     get_shell_provider_names,
 )
-from elizaos_plugin_shell.providers.shell_history import ProviderParams
 from elizaos_plugin_shell.types import (
     CommandHistoryEntry,
     FileOperation,
@@ -27,12 +27,39 @@ class TestShellHistoryProvider:
     def test_provider_position(self, provider: ShellHistoryProvider) -> None:
         assert provider.position == 99
 
-    def test_format_empty_history(self, provider: ShellHistoryProvider) -> None:
-        history: list[CommandHistoryEntry] = []
-        formatted = ShellHistoryProvider.format_history(history)
-        assert formatted == "No commands in history."
+    @pytest.mark.asyncio
+    async def test_get_provider_data_no_service(self, provider: ShellHistoryProvider) -> None:
+        """Test provider returns appropriate values when no service is available."""
+        message = {"room_id": "test-conv", "agent_id": "test-agent"}
+        state: dict = {}
+        
+        result = await provider.get(message, state, service=None)
+        
+        assert "shellHistory" in result.values
+        assert "currentWorkingDirectory" in result.values
+        assert "allowedDirectory" in result.values
+        assert result.data["historyCount"] == 0
 
-    def test_format_history_with_entries(self, provider: ShellHistoryProvider) -> None:
+    @pytest.mark.asyncio
+    async def test_get_provider_data_with_service(self, provider: ShellHistoryProvider) -> None:
+        """Test provider returns history from service."""
+        mock_service = MagicMock()
+        mock_service.get_command_history.return_value = []
+        mock_service.get_current_directory.return_value = "/home/user"
+        mock_service.get_allowed_directory.return_value = "/home/user"
+        
+        message = {"room_id": "test-conv"}
+        state: dict = {}
+        
+        result = await provider.get(message, state, service=mock_service)
+        
+        assert result.values["currentWorkingDirectory"] == "/home/user"
+        assert result.values["allowedDirectory"] == "/home/user"
+        assert "No commands in history" in result.values["shellHistory"]
+
+    @pytest.mark.asyncio
+    async def test_get_provider_data_with_history(self, provider: ShellHistoryProvider) -> None:
+        """Test provider formats history entries correctly."""
         history = [
             CommandHistoryEntry(
                 command="ls -la",
@@ -44,12 +71,24 @@ class TestShellHistoryProvider:
             ),
         ]
         
-        formatted = ShellHistoryProvider.format_history(history)
-        assert "ls -la" in formatted
-        assert "file1.txt" in formatted
-        assert "Exit Code: 0" in formatted
+        mock_service = MagicMock()
+        mock_service.get_command_history.return_value = history
+        mock_service.get_current_directory.return_value = "/home/user"
+        mock_service.get_allowed_directory.return_value = "/home/user"
+        
+        message = {"room_id": "test-conv"}
+        state: dict = {}
+        
+        result = await provider.get(message, state, service=mock_service)
+        
+        assert "ls -la" in result.values["shellHistory"]
+        assert "file1.txt" in result.values["shellHistory"]
+        assert "Exit Code: 0" in result.values["shellHistory"]
+        assert result.data["historyCount"] == 1
 
-    def test_format_history_with_file_operations(self, provider: ShellHistoryProvider) -> None:
+    @pytest.mark.asyncio
+    async def test_get_provider_data_with_file_operations(self, provider: ShellHistoryProvider) -> None:
+        """Test provider includes file operations in output."""
         history = [
             CommandHistoryEntry(
                 command="touch test.txt",
@@ -67,55 +106,18 @@ class TestShellHistoryProvider:
             ),
         ]
         
-        formatted = ShellHistoryProvider.format_history(history)
-        assert "File Operations" in formatted
-        assert "CREATE" in formatted
-        assert "test.txt" in formatted
-
-    def test_format_file_operations_empty(self, provider: ShellHistoryProvider) -> None:
-        history: list[CommandHistoryEntry] = []
-        formatted = ShellHistoryProvider.format_file_operations(history)
-        assert formatted == ""
-
-    def test_format_file_operations_with_entries(self, provider: ShellHistoryProvider) -> None:
-        history = [
-            CommandHistoryEntry(
-                command="mv a.txt b.txt",
-                stdout="",
-                stderr="",
-                exit_code=0,
-                timestamp=1234567890.0,
-                working_directory="/home/user",
-                file_operations=[
-                    FileOperation(
-                        type=FileOperationType.MOVE,
-                        target="a.txt",
-                        secondary_target="b.txt",
-                    ),
-                ],
-            ),
-        ]
+        mock_service = MagicMock()
+        mock_service.get_command_history.return_value = history
+        mock_service.get_current_directory.return_value = "/home/user"
+        mock_service.get_allowed_directory.return_value = "/home/user"
         
-        formatted = ShellHistoryProvider.format_file_operations(history)
-        assert "Recent File Operations" in formatted
-        assert "MOVE" in formatted
-        assert "a.txt" in formatted
-        assert "b.txt" in formatted
-
-    @pytest.mark.asyncio
-    async def test_get_provider_data(self, provider: ShellHistoryProvider) -> None:
-        params = ProviderParams(
-            conversation_id="test-conv",
-            agent_id="test-agent",
-        )
+        message = {"room_id": "test-conv"}
+        state: dict = {}
         
-        result = await provider.get(params)
+        result = await provider.get(message, state, service=mock_service)
         
-        assert "shellHistory" in result.values
-        assert "currentWorkingDirectory" in result.values
-        assert "allowedDirectory" in result.values
-        assert "Current Directory" in result.text
-        assert result.data["historyCount"] == 0
+        assert "File Operations" in result.text
+        assert "CREATE" in result.text
 
 
 class TestProviderRegistry:

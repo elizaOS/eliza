@@ -1,5 +1,5 @@
 use elizaos_plugin_farcaster::{
-    FarcasterClient, FarcasterConfig, FarcasterService, Cast, Profile,
+    FarcasterClient, FarcasterConfig, FarcasterService, Profile,
     PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION,
 };
 
@@ -39,11 +39,12 @@ fn test_client_creation() {
     assert!(client.is_ok());
 }
 
-#[test]
-fn test_service_creation() {
+#[tokio::test]
+async fn test_service_creation() {
     let config = test_config();
     let service = FarcasterService::new(config);
-    assert!(service.is_ok());
+    // Service should not be running initially
+    assert!(!service.is_running().await);
 }
 
 #[tokio::test]
@@ -75,11 +76,11 @@ async fn test_send_whitespace_cast() {
 #[tokio::test]
 async fn test_service_start_stop() {
     let config = test_config();
-    let service = FarcasterService::new(config).unwrap();
+    let service = FarcasterService::new(config);
     assert!(!service.is_running().await);
     service.start().await.unwrap();
     assert!(service.is_running().await);
-    service.stop().await.unwrap();
+    service.stop().await;
     assert!(!service.is_running().await);
 }
 

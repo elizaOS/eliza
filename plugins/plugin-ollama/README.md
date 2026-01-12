@@ -30,7 +30,7 @@ Ollama enables running large language models locally on your machine. This plugi
 Add the plugin to your character configuration:
 
 ```json
-"plugins": ["@elizaos-plugins/plugin-ollama"]
+"plugins": ["@elizaos/plugin-ollama"]
 ```
 
 ## Configuration

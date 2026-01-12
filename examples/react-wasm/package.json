@@ -1,6 +1,6 @@
 {
   "name": "eliza-react-wasm-rust",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "React ELIZA demo using Rust WASM runtime with classic pattern matching and LocalDB",
   "private": true,
   "type": "module",

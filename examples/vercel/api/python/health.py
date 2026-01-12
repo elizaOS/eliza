@@ -14,7 +14,7 @@ class handler(BaseHTTPRequestHandler):
         response = {
             "status": "healthy",
             "runtime": "elizaos-python",
-            "version": "1.0.0",
+            "version": "2.0.0",
         }
 
         self.send_response(200)

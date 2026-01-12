@@ -50,7 +50,6 @@ pub struct CacheManager {
     evictions: Arc<RwLock<u64>>,
 }
 
-
 impl Default for CacheManager {
     fn default() -> Self {
         Self::new(1000, Duration::from_secs(300))
@@ -300,10 +299,3 @@ impl CacheManager {
         self.get(&key).await
     }
 }
-
-
-
-
-
-
-

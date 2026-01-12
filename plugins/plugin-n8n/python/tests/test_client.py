@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("anthropic", reason="anthropic not installed")
+
 from elizaos_plugin_n8n import (
     N8nConfig,
     PluginCreationClient,

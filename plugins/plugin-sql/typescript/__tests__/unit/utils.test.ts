@@ -73,15 +73,15 @@ describe("Utils", () => {
     it("should use default .eliza/.elizadb dir if no dir or env var", () => {
       delete process.env.PGLITE_DATA_DIR;
       const result = resolvePgliteDir();
-      const projectRoot = path.resolve(process.cwd(), "..", "..");
-      expect(result).toBe(path.join(projectRoot, ".eliza", ".elizadb"));
+      // When monorepo structure not detected, falls back to cwd-based path
+      expect(result).toBe(path.join(process.cwd(), ".eliza", ".elizadb"));
     });
 
     it("should use default path if no arguments or env var", () => {
       delete process.env.PGLITE_DATA_DIR;
       const result = resolvePgliteDir();
-      const projectRoot = path.resolve(process.cwd(), "..", "..");
-      expect(result).toBe(path.join(projectRoot, ".eliza", ".elizadb"));
+      // When monorepo structure not detected, falls back to cwd-based path
+      expect(result).toBe(path.join(process.cwd(), ".eliza", ".elizadb"));
     });
 
     it("should expand tilde paths", () => {

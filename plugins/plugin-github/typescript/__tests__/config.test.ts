@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig } from "../src/config";
+import { GitHubPluginConfig } from "../config";
 
 describe("GitHub Config", () => {
   const originalEnv = process.env;
@@ -18,7 +18,7 @@ describe("GitHub Config", () => {
     process.env.GITHUB_REPO = "test_repo";
     process.env.GITHUB_BRANCH = "develop";
 
-    const config = loadConfig();
+    const config = GitHubPluginConfig.fromEnv();
 
     expect(config.apiToken).toBe("test_token");
     expect(config.owner).toBe("test_owner");
@@ -30,7 +30,7 @@ describe("GitHub Config", () => {
     process.env.GITHUB_API_TOKEN = "test_token";
     delete process.env.GITHUB_BRANCH;
 
-    const config = loadConfig();
+    const config = GitHubPluginConfig.fromEnv();
 
     expect(config.branch).toBe("main");
   });
@@ -38,6 +38,6 @@ describe("GitHub Config", () => {
   it("should throw error when API token is missing", () => {
     delete process.env.GITHUB_API_TOKEN;
 
-    expect(() => loadConfig()).toThrow();
+    expect(() => GitHubPluginConfig.fromEnv()).toThrow();
   });
 });

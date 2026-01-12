@@ -202,6 +202,10 @@ impl KnowledgePlugin {
     }
 }
 
+pub(crate) fn create_knowledge_plugin(config: Option<KnowledgeConfig>) -> KnowledgePlugin {
+    KnowledgePlugin::new(config.unwrap_or_default())
+}
+
 
 #[cfg(test)]
 mod tests {

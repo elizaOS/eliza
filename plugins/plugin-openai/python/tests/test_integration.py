@@ -6,8 +6,6 @@ import pytest
 # Check if API key is available
 HAS_API_KEY = bool(os.environ.get("OPENAI_API_KEY"))
 
-pytestmark = pytest.mark.skipif(not HAS_API_KEY, reason="OPENAI_API_KEY not set")
-
 
 class TestOpenAIPluginStructure:
     """Tests for plugin structure (no API key needed)."""
@@ -77,14 +75,14 @@ class TestOpenAIConfig:
         """Test config creation."""
         from elizaos_plugin_openai import OpenAIConfig
         
-        config = OpenAIConfig(api_key="test-key")
-        assert config.api_key == "test-key"
+        config = OpenAIConfig(api_key="sk-test-key-1234567890")
+        assert config.api_key == "sk-test-key-1234567890"
 
     def test_config_defaults(self) -> None:
         """Test config defaults."""
         from elizaos_plugin_openai import OpenAIConfig
         
-        config = OpenAIConfig(api_key="test-key")
+        config = OpenAIConfig(api_key="sk-test-key-1234567890")
         assert config.base_url is not None
 
 

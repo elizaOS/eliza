@@ -36,7 +36,7 @@ impl DocumentsProvider {
 
                 if doc.file_size > 0 {
                     let size_kb = doc.file_size / 1024;
-                    if size_kb > 1024 {
+                    if size_kb >= 1024 {
                         parts.push(format!("{}MB", size_kb / 1024));
                     } else {
                         parts.push(format!("{}KB", size_kb));

@@ -48,7 +48,14 @@ impl ConfirmTodoAction {
             "good", "perfect", "great",
         ];
         let rejection_words = [
-            "no", "nope", "cancel", "don't", "dont", "nevermind", "never mind", "stop",
+            "no",
+            "nope",
+            "cancel",
+            "don't",
+            "dont",
+            "nevermind",
+            "never mind",
+            "stop",
         ];
 
         let has_confirmation = confirmation_words.iter().any(|w| lower_text.contains(w));
@@ -170,7 +177,12 @@ impl ConfirmTodoAction {
             room_id,
             entity_id,
             name: pending.name.clone(),
-            description: Some(pending.description.clone().unwrap_or_else(|| pending.name.clone())),
+            description: Some(
+                pending
+                    .description
+                    .clone()
+                    .unwrap_or_else(|| pending.name.clone()),
+            ),
             task_type: pending.task_type,
             priority: if pending.task_type == TaskType::OneOff {
                 pending.priority

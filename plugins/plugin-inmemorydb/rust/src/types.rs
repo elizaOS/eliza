@@ -37,16 +37,9 @@ pub trait IStorage: Send + Sync {
     async fn set(&self, collection: &str, id: &str, data: serde_json::Value) -> StorageResult<()>;
     async fn delete(&self, collection: &str, id: &str) -> StorageResult<bool>;
     async fn delete_many(&self, collection: &str, ids: &[String]) -> StorageResult<()>;
-    async fn delete_where(
-        &self,
-        collection: &str,
-        predicate: PredicateFn,
-    ) -> StorageResult<()>;
-    async fn count(
-        &self,
-        collection: &str,
-        predicate: Option<PredicateFn>,
-    ) -> StorageResult<usize>;
+    async fn delete_where(&self, collection: &str, predicate: PredicateFn) -> StorageResult<()>;
+    async fn count(&self, collection: &str, predicate: Option<PredicateFn>)
+        -> StorageResult<usize>;
     async fn clear(&self) -> StorageResult<()>;
 }
 
@@ -87,4 +80,3 @@ impl COLLECTIONS {
     pub const LOGS: &'static str = "logs";
     pub const EMBEDDINGS: &'static str = "embeddings";
 }
-

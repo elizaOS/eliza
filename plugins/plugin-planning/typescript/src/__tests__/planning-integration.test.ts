@@ -16,27 +16,50 @@ async function createTestRuntime(): Promise<{
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;
 }> {
-  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const {
+    createDatabaseAdapter,
+    DatabaseMigrationService,
+    plugin: sqlPluginInstance,
+  } = await import("@elizaos/plugin-sql");
   const { AgentRuntime } = await import("@elizaos/core");
 
   const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+
+  // Create the adapter using the exported function
+  const adapter = createDatabaseAdapter({ dataDir: `:memory:${agentId}` }, agentId);
   await adapter.init();
+
+  // Run migrations to create the schema
+  const migrationService = new DatabaseMigrationService();
+  const db = (adapter as { getDatabase(): unknown }).getDatabase();
+  await migrationService.initializeWithDatabase(db);
+  migrationService.discoverAndRegisterPluginSchemas([sqlPluginInstance]);
+  await migrationService.runAllPluginMigrations();
+
+  const character = {
+    name: "Test Agent",
+    bio: ["A test agent for planning"],
+    system: "You are a helpful assistant.",
+    plugins: [],
+    settings: {},
+    messageExamples: [],
+    postExamples: [],
+    topics: ["testing"],
+    adjectives: ["helpful"],
+    style: { all: [], chat: [], post: [] },
+  };
+
+  // Create the agent in the database first
+  await adapter.createAgent({
+    id: agentId,
+    ...character,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
 
   const runtime = new AgentRuntime({
     agentId,
-    character: {
-      name: "Test Agent",
-      bio: ["A test agent for planning"],
-      system: "You are a helpful assistant.",
-      plugins: [],
-      settings: {},
-      messageExamples: [],
-      postExamples: [],
-      topics: ["testing"],
-      adjectives: ["helpful"],
-      style: { all: [], chat: [], post: [] },
-    },
+    character,
     adapter,
     plugins: [],
   });
@@ -46,7 +69,9 @@ async function createTestRuntime(): Promise<{
   const cleanup = async () => {
     try {
       await runtime.stop();
-      await adapter.close();
+      // Don't close the adapter - it uses a global singleton and closing it
+      // would break subsequent tests. The connection will be cleaned up
+      // when the test process ends.
     } catch {
       // Ignore cleanup errors
     }
@@ -58,9 +83,9 @@ async function createTestRuntime(): Promise<{
 function createTestMemory(overrides: Partial<Memory> = {}): Memory {
   return {
     id: asUUID(uuidv4()),
-    roomId: asUUID("test-room-id"),
-    entityId: asUUID("test-entity-id"),
-    agentId: asUUID("test-agent-id"),
+    roomId: asUUID(uuidv4()),
+    entityId: asUUID(uuidv4()),
+    agentId: asUUID(uuidv4()),
     content: {
       text: overrides.content?.text || "Test message",
     },
@@ -94,7 +119,9 @@ function createTestPlanningContext(): PlanningContext {
 
 describe("Planning Integration Tests", () => {
   let runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
+  let cleanup: () => Promise<void> = async () => {
+    // Default no-op cleanup in case beforeEach fails
+  };
   let planningService: PlanningService;
 
   beforeEach(async () => {
@@ -521,7 +548,7 @@ describe("Planning Integration Tests", () => {
       const validation = await planningService.validatePlan(runtime, validPlan);
 
       expect(validation.valid).toBe(true);
-      expect(validation.issues).toBeUndefined();
+      expect(validation.errors).toHaveLength(0);
     });
 
     it("should detect invalid plans", async () => {
@@ -545,9 +572,9 @@ describe("Planning Integration Tests", () => {
       const validation = await planningService.validatePlan(runtime, invalidPlan);
 
       expect(validation.valid).toBe(false);
-      expect(validation.issues).toBeDefined();
-      expect(validation.issues?.length).toBeGreaterThan(0);
-      expect(validation.issues?.[0]).toContain("NONEXISTENT_ACTION");
+      expect(validation.errors).toBeDefined();
+      expect(validation.errors?.length).toBeGreaterThan(0);
+      expect(validation.errors?.[0]).toContain("NONEXISTENT_ACTION");
     });
 
     it("should detect circular dependencies in DAG plans", async () => {
@@ -582,8 +609,8 @@ describe("Planning Integration Tests", () => {
       const validation = await planningService.validatePlan(runtime, circularPlan);
 
       expect(validation.valid).toBe(false);
-      expect(validation.issues).toBeDefined();
-      expect(validation.issues?.some((issue) => issue.includes("circular"))).toBe(true);
+      expect(validation.errors).toBeDefined();
+      expect(validation.errors?.some((error) => error.includes("circular"))).toBe(true);
     });
   });
 

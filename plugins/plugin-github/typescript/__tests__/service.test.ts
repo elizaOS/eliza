@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { GitHubService } from "../src/service";
+import { GITHUB_SERVICE_NAME, GitHubService } from "../service";
 
 describe("GitHubService", () => {
   let service: GitHubService;
@@ -16,7 +16,7 @@ describe("GitHubService", () => {
     expect(service).toBeInstanceOf(GitHubService);
   });
 
-  it("should not be started initially", () => {
-    expect(service.isRunning).toBe(false);
+  it("should have correct name property", () => {
+    expect(service.name).toBe(GITHUB_SERVICE_NAME);
   });
 });

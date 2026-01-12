@@ -618,9 +618,30 @@ describe("Plugin Functions", () => {
 
   describe("tryInstallPlugin (auto-install)", () => {
     const originalSpawn = BunGlobal.spawn;
+    const originalBun = globalThis.Bun;
     const originalEnv = { ...process.env } as Record<string, string>;
 
+    function restoreBun(value: typeof globalThis.Bun) {
+      if (typeof value === "undefined") {
+        Reflect.deleteProperty(globalThis, "Bun");
+        return;
+      }
+
+      Object.defineProperty(globalThis, "Bun", {
+        value,
+        configurable: true,
+        writable: true,
+      });
+    }
+
     beforeEach(() => {
+      // Ensure `Bun` exists as a global for the code under test.
+      Object.defineProperty(globalThis, "Bun", {
+        value: BunGlobal,
+        configurable: true,
+        writable: true,
+      });
+
       // Reset environment to allow auto-install
       process.env = { ...originalEnv } as Record<string, string | undefined>;
       process.env.NODE_ENV = "development";
@@ -632,6 +653,7 @@ describe("Plugin Functions", () => {
 
     afterEach(() => {
       BunGlobal.spawn = originalSpawn;
+      restoreBun(originalBun);
       process.env = { ...originalEnv } as Record<string, string | undefined>;
     });
 
@@ -693,7 +715,7 @@ describe("Plugin Functions", () => {
       expect(called).toBe(0);
     });
 
-    test.skip("succeeds when bun present and bun add exits 0", async () => {
+    test("succeeds when bun present and bun add exits 0", async () => {
       const calls: string[][] = [];
 
       BunGlobal.spawn = (args: string[]): SpawnResult => {
@@ -709,7 +731,7 @@ describe("Plugin Functions", () => {
       expect(calls[1]).toEqual(["bun", "add", "@elizaos/test-success"]);
     });
 
-    test.skip("fails when bun --version exits non-zero", async () => {
+    test("fails when bun --version exits non-zero", async () => {
       let versionCalls = 0;
       BunGlobal.spawn = (args: string[]): SpawnResult => {
         if (args[1] === "--version") {
@@ -725,7 +747,7 @@ describe("Plugin Functions", () => {
       expect(versionCalls).toBe(1);
     });
 
-    test.skip("fails when bun add exits non-zero", async () => {
+    test("fails when bun add exits non-zero", async () => {
       const calls: string[][] = [];
       BunGlobal.spawn = (args: string[]): SpawnResult => {
         calls.push(args);
@@ -738,7 +760,7 @@ describe("Plugin Functions", () => {
       expect(calls.length).toBe(2);
     });
 
-    test.skip("awaits process completion before returning", async () => {
+    test("awaits process completion before returning", async () => {
       let versionResolved = false;
       let addResolved = false;
       BunGlobal.spawn = (args: string[]): SpawnResult => {

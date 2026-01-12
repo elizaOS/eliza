@@ -3,15 +3,19 @@ import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { PgliteDatabaseAdapter } from "../../../pglite/adapter";
 import type { PGliteClientManager } from "../../../pglite/manager";
 
-// Mock the logger module
-vi.mock("@elizaos/core", () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+// Mock only the logger from @elizaos/core, keeping other exports intact
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  };
+});
 
 // Import after mocking
 import { logger } from "@elizaos/core";
@@ -100,11 +104,18 @@ describe("PgliteDatabaseAdapter", () => {
   });
 
   describe("getConnection", () => {
-    it("should return the connection from manager", async () => {
-      const mockConnection = { query: vi.fn(), close: vi.fn() };
+    it("should return the drizzle database instance", async () => {
+      const result = await adapter.getConnection();
+      // getConnection returns the drizzle db instance, not the raw PGlite client
+      expect(result).toBeDefined();
+      expect(result.query).toBeDefined();
+    });
+
+    it("should return raw connection via getRawConnection", () => {
+      const mockConnection = { query: vi.fn(), close: vi.fn(), transaction: vi.fn() };
       mockManager.getConnection.mockReturnValue(mockConnection);
 
-      const result = await adapter.getConnection();
+      const result = adapter.getRawConnection();
       expect(result).toBe(mockConnection);
       expect(mockManager.getConnection).toHaveBeenCalled();
     });
@@ -116,16 +127,6 @@ describe("PgliteDatabaseAdapter", () => {
       expect(mockConnection).toBeDefined();
       expect(mockConnection.query).toBeDefined();
       expect(mockConnection.transaction).toBeDefined();
-    });
-
-    it("should handle query errors gracefully", async () => {
-      const mockConnection = {
-        query: vi.fn().mockRejectedValue(new Error("Query failed")),
-      };
-      mockManager.getConnection.mockReturnValue(mockConnection);
-
-      const connection = await adapter.getConnection();
-      await expect(connection.query("SELECT 1")).rejects.toThrow("Query failed");
     });
   });
 

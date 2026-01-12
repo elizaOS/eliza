@@ -300,8 +300,8 @@ describe("EmbeddingGenerationService", () => {
         });
       }
 
-      // Wait for processing to complete
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Wait for processing to complete (queue processes every 100ms + embedding takes 10ms)
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       expect(runtime.useModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING, {
         text: "Generate embedding for this",

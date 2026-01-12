@@ -1,19 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock logger to silence debug output during tests
-const core = await import("@elizaos/core");
-vi.spyOn(core.logger, "debug").mockImplementation(() => {});
+// Create a mutable mock implementation that can be swapped per test
+const { jsonrepairMock } = vi.hoisted(() => {
+  return { jsonrepairMock: { impl: (x: string) => x } };
+});
 
-// We'll swap jsonrepair mock per test
-let jsonrepairImpl = (x: string) => x;
-const jsonrepairModule = await import("jsonrepair");
-vi.spyOn(jsonrepairModule, "jsonrepair").mockImplementation((x: string) => jsonrepairImpl(x));
+// Mock jsonrepair module
+vi.mock("jsonrepair", () => ({
+  jsonrepair: (x: string) => jsonrepairMock.impl(x),
+}));
+
+// Mock logger to silence debug output during tests
+vi.mock("@elizaos/core", () => ({
+  logger: {
+    debug: vi.fn(),
+  },
+}));
 
 import { ensureReflectionProperties, extractAndParseJSON } from "../../utils";
 
 describe("extractAndParseJSON", () => {
   beforeEach(() => {
-    jsonrepairImpl = (x: string) => x;
+    jsonrepairMock.impl = (x: string) => x;
   });
 
   it("parses valid JSON directly", () => {
@@ -22,7 +30,7 @@ describe("extractAndParseJSON", () => {
   });
 
   it("repairs and parses broken JSON", () => {
-    jsonrepairImpl = (_x: string) => '{"foo": "bar"}';
+    jsonrepairMock.impl = (_x: string) => '{"foo": "bar"}';
     const input = '{foo: "bar"}';
     expect(extractAndParseJSON(input)).toEqual({ foo: "bar" });
   });
