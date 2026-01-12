@@ -1,9 +1,3 @@
-"""
-GitHub Actions for elizaOS.
-
-All available actions for the GitHub plugin.
-"""
-
 from elizaos_plugin_github.actions.create_branch import CreateBranchAction
 from elizaos_plugin_github.actions.create_comment import CreateCommentAction
 from elizaos_plugin_github.actions.create_issue import CreateIssueAction
@@ -22,7 +16,6 @@ __all__ = [
     "MergePullRequestAction",
 ]
 
-# All actions list
 all_actions = [
     CreateIssueAction(),
     CreatePullRequestAction(),
@@ -32,8 +25,4 @@ all_actions = [
     PushCodeAction(),
     MergePullRequestAction(),
 ]
-
-
-
-
 

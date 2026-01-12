@@ -8,7 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ServiceType } from "@elizaos/core";
+import { ServiceType } from "@elizaos/core";
 import type { BrowserService } from "../services/browser-service.js";
 import {
   handleBrowserError,
@@ -23,8 +23,7 @@ import { extractUrl } from "../utils/url.js";
 export const browserNavigateAction: Action = {
   name: "BROWSER_NAVIGATE",
   similes: ["GO_TO_URL", "OPEN_WEBSITE", "VISIT_PAGE", "NAVIGATE_TO"],
-  description:
-    "Navigate the browser to a specified URL. Can be chained with BROWSER_EXTRACT to get content or BROWSER_SCREENSHOT to capture the page",
+  description: "Navigate the browser to a specified URL",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const browserEnabled =
@@ -32,13 +31,11 @@ export const browserNavigateAction: Action = {
       runtime.getSetting("BROWSER_ENABLED") === "true";
 
     if (!browserEnabled) {
-      logger.debug("Browser capability disabled in settings.");
       return false;
     }
 
     const service = runtime.getService<BrowserService>(ServiceType.BROWSER);
     if (!service) {
-      logger.debug("Browser service not available.");
       return false;
     }
 
@@ -54,8 +51,6 @@ export const browserNavigateAction: Action = {
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult | undefined> => {
-    logger.info("Handling BROWSER_NAVIGATE action");
-
     const service = runtime.getService<BrowserService>(ServiceType.BROWSER);
     if (!service) {
       const error = new ServiceNotAvailableError();

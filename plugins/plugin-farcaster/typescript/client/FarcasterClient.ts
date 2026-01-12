@@ -1,9 +1,3 @@
-/**
- * Farcaster API client implementation.
- *
- * Handles communication with the Neynar API for Farcaster operations.
- */
-
 import { type Content, elizaLogger } from "@elizaos/core";
 import { isApiErrorResponse, type NeynarAPIClient } from "@neynar/nodejs-sdk";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
@@ -18,23 +12,16 @@ import {
 } from "../types";
 import { neynarCastToCast, splitPostContent } from "../utils";
 
-// Global cast cache
 const castCache: LRUCache<string, NeynarCast> = new LRUCache({
   max: DEFAULT_CAST_CACHE_SIZE,
   ttl: DEFAULT_CAST_CACHE_TTL,
 });
 
-// Global profile cache
 const profileCache: LRUCache<number, Profile> = new LRUCache({
   max: 1000,
-  ttl: 1000 * 60 * 15, // 15 minutes
+  ttl: 1000 * 60 * 15,
 });
 
-/**
- * Farcaster client for interacting with the Neynar API.
- *
- * Provides methods for sending casts, fetching profiles, and retrieving timeline.
- */
 export class FarcasterClient {
   private neynar: NeynarAPIClient;
   private signerUuid: string;
@@ -44,9 +31,6 @@ export class FarcasterClient {
     this.signerUuid = opts.signerUuid;
   }
 
-  /**
-   * Send a cast (potentially split into multiple if too long).
-   */
   async sendCast({
     content,
     inReplyTo,
@@ -69,9 +53,6 @@ export class FarcasterClient {
     return sent;
   }
 
-  /**
-   * Publish a single cast.
-   */
   private async publishCast(cast: string, parentCastId?: CastId): Promise<NeynarCast> {
     try {
       const result = await this.neynar.publishCast({
@@ -94,9 +75,6 @@ export class FarcasterClient {
     }
   }
 
-  /**
-   * Get a cast by hash.
-   */
   async getCast(castHash: string): Promise<NeynarCast> {
     const cachedCast = castCache.get(castHash);
     if (cachedCast) {
@@ -134,9 +112,6 @@ export class FarcasterClient {
     return mentions;
   }
 
-  /**
-   * Get a user's profile by FID.
-   */
   async getProfile(fid: number): Promise<Profile> {
     if (profileCache.has(fid)) {
       return profileCache.get(fid) as Profile;
@@ -171,9 +146,6 @@ export class FarcasterClient {
     }
   }
 
-  /**
-   * Get timeline for a FID.
-   */
   async getTimeline(request: FidRequest): Promise<{
     timeline: Cast[];
     cursor?: string;
@@ -198,17 +170,11 @@ export class FarcasterClient {
     };
   }
 
-  /**
-   * Clear all caches.
-   */
   clearCache(): void {
     profileCache.clear();
     castCache.clear();
   }
 
-  /**
-   * Publish a reaction (like or recast) to a cast.
-   */
   async publishReaction(params: {
     reactionType: "like" | "recast";
     target: string;
@@ -231,9 +197,6 @@ export class FarcasterClient {
     }
   }
 
-  /**
-   * Delete a reaction (unlike or remove recast) from a cast.
-   */
   async deleteReaction(params: {
     reactionType: "like" | "recast";
     target: string;

@@ -1,14 +1,4 @@
 /**
- * OpenAI Plugin Types
- *
- * Strong types with no `any` or `unknown` - all data is validated and well-defined.
- */
-
-// ============================================================================
-// Configuration Types
-// ============================================================================
-
-/**
  * Supported audio formats for transcription
  */
 export type AudioFormat = "mp3" | "wav" | "webm" | "ogg" | "flac" | "mp4";
@@ -47,10 +37,6 @@ export type ImageQuality = "standard" | "hd";
  * Image style options
  */
 export type ImageStyle = "vivid" | "natural";
-
-// ============================================================================
-// Request Parameter Types
-// ============================================================================
 
 /**
  * Parameters for audio transcription
@@ -203,10 +189,6 @@ export interface DetokenizeParams {
   modelType?: string;
 }
 
-// ============================================================================
-// Response Types
-// ============================================================================
-
 /**
  * Result of image description/analysis
  */
@@ -259,10 +241,6 @@ export interface TextStreamResult {
   /** Promise resolving to finish reason */
   finishReason: Promise<string | undefined>;
 }
-
-// ============================================================================
-// API Response Types (from OpenAI API)
-// ============================================================================
 
 /**
  * OpenAI embedding response structure
@@ -348,10 +326,6 @@ export interface OpenAIModelsResponse {
   }>;
 }
 
-// ============================================================================
-// Configuration Types
-// ============================================================================
-
 /**
  * OpenAI plugin configuration settings
  */
@@ -410,10 +384,6 @@ export interface OpenAIPluginConfig {
   /** Image generation model */
   OPENAI_IMAGE_MODEL?: string;
 }
-
-// ============================================================================
-// Validation Functions
-// ============================================================================
 
 /**
  * Validates that a string is non-empty

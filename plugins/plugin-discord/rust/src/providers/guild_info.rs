@@ -56,6 +56,24 @@ impl DiscordProvider for GuildInfoProvider {
     }
 }
 
+/// TS-parity alias provider (camelCase name).
+pub struct GuildInfoProviderCamel;
+
+#[async_trait]
+impl DiscordProvider for GuildInfoProviderCamel {
+    fn name(&self) -> &str {
+        "guildInfo"
+    }
+
+    fn description(&self) -> &str {
+        "Provides information about the current Discord guild/server, including name, members, and channels."
+    }
+
+    async fn get(&self, context: &ProviderContext) -> Value {
+        GuildInfoProvider.get(context).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

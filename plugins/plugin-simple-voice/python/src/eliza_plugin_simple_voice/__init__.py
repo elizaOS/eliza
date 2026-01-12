@@ -1,5 +1,3 @@
-"""Eliza Plugin Simple Voice - Retro SAM TTS."""
-
 from .actions.say_aloud import SayAloudAction, say_aloud_action
 from .plugin import SimpleVoicePlugin, simple_voice_plugin
 from .sam_engine import SamEngine

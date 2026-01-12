@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import z from "zod";
 import { type ModelConfig, ModelConfigSchema, type ProviderRateLimits } from "./types.ts";
 
@@ -19,26 +19,8 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
     };
 
     const ctxKnowledgeEnabled = parseBooleanEnv(getSetting("CTX_KNOWLEDGE_ENABLED", "false"));
-
-    logger.debug(
-      `[Document Processor] CTX_KNOWLEDGE_ENABLED: ${ctxKnowledgeEnabled} (runtime: ${!!runtime})`
-    );
-
     const embeddingProvider = getSetting("EMBEDDING_PROVIDER");
     const assumePluginOpenAI = !embeddingProvider;
-
-    if (assumePluginOpenAI) {
-      const openaiApiKey = getSetting("OPENAI_API_KEY");
-      const openaiEmbeddingModel = getSetting("OPENAI_EMBEDDING_MODEL");
-
-      if (openaiApiKey && openaiEmbeddingModel) {
-        logger.debug(
-          "[Document Processor] EMBEDDING_PROVIDER not specified, using configuration from plugin-openai"
-        );
-      }
-    }
-
-    const finalEmbeddingProvider = embeddingProvider;
 
     const textEmbeddingModel =
       getSetting("TEXT_EMBEDDING_MODEL") ||
@@ -50,7 +32,7 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
     const openaiApiKey = getSetting("OPENAI_API_KEY");
 
     const config = ModelConfigSchema.parse({
-      EMBEDDING_PROVIDER: finalEmbeddingProvider,
+      EMBEDDING_PROVIDER: embeddingProvider,
       TEXT_PROVIDER: getSetting("TEXT_PROVIDER"),
 
       OPENAI_API_KEY: openaiApiKey,
@@ -103,19 +85,11 @@ function validateConfigRequirements(config: ModelConfig, assumePluginOpenAI: boo
     throw new Error('GOOGLE_API_KEY is required when EMBEDDING_PROVIDER is set to "google"');
   }
 
-  if (!embeddingProvider) {
-    logger.debug(
-      "[Document Processor] No EMBEDDING_PROVIDER specified. Embeddings will be handled by the runtime."
-    );
-  }
-
   if (assumePluginOpenAI && config.OPENAI_API_KEY && !config.TEXT_EMBEDDING_MODEL) {
     throw new Error("OPENAI_EMBEDDING_MODEL is required when using plugin-openai configuration");
   }
 
   if (config.CTX_KNOWLEDGE_ENABLED) {
-    logger.debug("[Document Processor] CTX validation: Checking text generation settings...");
-
     if (config.TEXT_PROVIDER === "openai" && !config.OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY is required when TEXT_PROVIDER is set to "openai"');
     }
@@ -127,20 +101,6 @@ function validateConfigRequirements(config: ModelConfig, assumePluginOpenAI: boo
     }
     if (config.TEXT_PROVIDER === "google" && !config.GOOGLE_API_KEY) {
       throw new Error('GOOGLE_API_KEY is required when TEXT_PROVIDER is set to "google"');
-    }
-
-    if (config.TEXT_PROVIDER === "openrouter") {
-      const modelName = config.TEXT_MODEL?.toLowerCase() || "";
-      if (modelName.includes("claude") || modelName.includes("gemini")) {
-        logger.debug(
-          `[Document Processor] Using ${modelName} with OpenRouter. Document caching supported.`
-        );
-      }
-    }
-  } else {
-    logger.info("[Document Processor] Contextual Knowledge is DISABLED");
-    if (assumePluginOpenAI) {
-      logger.info("[Document Processor] Embeddings will be handled by the runtime");
     }
   }
 }
@@ -157,9 +117,6 @@ export async function getProviderRateLimits(runtime?: IAgentRuntime): Promise<Pr
   const primaryProvider = config.TEXT_PROVIDER || config.EMBEDDING_PROVIDER;
 
   if (!rateLimitEnabled) {
-    logger.info(
-      `[Document Processor] Rate limiting DISABLED - unlimited throughput mode (concurrent: ${maxConcurrentRequests}, batch delay: ${batchDelayMs}ms)`
-    );
     return {
       maxConcurrentRequests,
       requestsPerMinute: Number.MAX_SAFE_INTEGER,
@@ -169,10 +126,6 @@ export async function getProviderRateLimits(runtime?: IAgentRuntime): Promise<Pr
       batchDelayMs,
     };
   }
-
-  logger.debug(
-    `[Document Processor] Rate limiting for ${primaryProvider}: ${requestsPerMinute} RPM, ${tokensPerMinute} TPM, ${maxConcurrentRequests} concurrent, ${batchDelayMs}ms batch delay`
-  );
 
   return {
     maxConcurrentRequests,

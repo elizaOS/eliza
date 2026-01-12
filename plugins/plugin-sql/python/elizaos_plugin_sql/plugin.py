@@ -1,9 +1,3 @@
-"""
-elizaOS SQL Plugin definition.
-
-This module defines the plugin for registering with elizaOS.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -17,9 +11,7 @@ if TYPE_CHECKING:
 async def init_sql_plugin(
     config: dict[str, str | int | float | bool | None], runtime: IAgentRuntime
 ) -> None:
-    """Initialize the SQL plugin."""
-    # Plugin initialization logic here
-    _ = config, runtime  # Parameters available for plugin initialization
+    _ = config, runtime
 
 
 sql_plugin = Plugin(

@@ -1,10 +1,3 @@
-/**
- * @fileoverview Test Utilities for Vercel AI Gateway Plugin Tests
- *
- * Uses REAL AgentRuntime instances for testing.
- * Re-exports utilities from bootstrap test-utils.
- */
-
 export {
   cleanupTestRuntime,
   createTestMemory,

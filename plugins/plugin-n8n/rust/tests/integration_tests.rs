@@ -117,10 +117,3 @@ async fn test_client_cleanup_empty() {
     let count = client.cleanup_old_jobs(7).await;
     assert_eq!(count, 0);
 }
-
-
-
-
-
-
-

@@ -3,19 +3,10 @@ import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
 import { vector } from "@electric-sql/pglite/vector";
 import type { IDatabaseClientManager } from "../types";
 
-/**
- * Class representing a database client manager for PGlite.
- * @implements { IDatabaseClientManager }
- */
 export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   private client: PGlite;
   private shuttingDown = false;
 
-  /**
-   * Constructor for creating a new instance of PGlite with the provided options.
-   * Initializes the PGlite client with additional extensions.
-   * @param {PGliteOptions} options - The options to configure the PGlite client.
-   */
   constructor(options: PGliteOptions) {
     this.client = new PGlite({
       ...options,
@@ -35,15 +26,10 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     return this.shuttingDown;
   }
 
-  public async initialize(): Promise<void> {
-    // No-op
-  }
+  public async initialize(): Promise<void> {}
 
   public async close(): Promise<void> {
     this.shuttingDown = true;
-    // Actually close the PGLite client to release file locks and cleanup resources
-    // Without this, the WAL files remain locked and deleting the data directory
-    // causes ENOENT errors when subsequent tests try to access it
     if (this.client) {
       try {
         await this.client.close();
@@ -51,7 +37,5 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     }
   }
 
-  private setupShutdownHandlers() {
-    // Implementation of setupShutdownHandlers method
-  }
+  private setupShutdownHandlers() {}
 }

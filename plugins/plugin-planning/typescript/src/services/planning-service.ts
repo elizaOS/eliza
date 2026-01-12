@@ -17,7 +17,6 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import type { PlanningContext as LocalPlanningContext, RetryPolicy } from "../types";
 
-// Local type definitions for the planning service
 interface ActionStep {
   id?: string;
   action?: string;
@@ -110,7 +109,7 @@ export class PlanningService extends Service {
   static serviceType = "planning";
 
   serviceType = "planning";
-  capabilityDescription = "Provides comprehensive planning and action coordination capabilities";
+  capabilityDescription = "Planning and action coordination";
 
   private activePlans = new Map<UUID, ActionPlan>();
   private planExecutions = new Map<
@@ -136,14 +135,11 @@ export class PlanningService extends Service {
     responseContent?: Content
   ): Promise<ActionPlan | null> {
     try {
-      logger.debug("[PlanningService] Creating simple plan for message handling");
-
       let actions: string[] = [];
       if (responseContent?.actions && responseContent.actions.length > 0) {
         actions = responseContent.actions;
       } else {
         const text = message.content.text?.toLowerCase() || "";
-        logger.debug(`[PlanningService] Analyzing text: "${text}"`);
         if (text.includes("email")) {
           actions = ["SEND_EMAIL"];
         } else if (
@@ -199,8 +195,6 @@ export class PlanningService extends Service {
       };
 
       this.activePlans.set(planId, plan);
-      logger.debug(`[PlanningService] Created simple plan ${planId} with ${steps.length} steps`);
-
       return plan;
     } catch (error) {
       logger.error("[PlanningService] Error creating simple plan:", error);
@@ -228,8 +222,6 @@ export class PlanningService extends Service {
         throw new Error("Planning context preferences must be an object");
       }
 
-      logger.info(`[PlanningService] Creating comprehensive plan for goal: ${context.goal}`);
-
       const planningPrompt = this.buildPlanningPrompt(context, runtime, message, state);
 
       const planningResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -239,22 +231,16 @@ export class PlanningService extends Service {
       });
 
       const parsedPlan = this.parsePlanningResponse(planningResponse as string, context);
-      const enhancedPlan = await this.enhancePlan(runtime, parsedPlan, context);
+      const enhancedPlan = await this.enhancePlan(runtime, parsedPlan);
 
       if (!enhancedPlan.id) {
         throw new Error("Enhanced plan missing id");
       }
 
       this.activePlans.set(enhancedPlan.id as UUID, enhancedPlan);
-
-      logger.info(
-        `[PlanningService] Created comprehensive plan ${enhancedPlan.id} with ${enhancedPlan.steps.length} steps`
-      );
-
       return enhancedPlan;
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error("[PlanningService] Error creating comprehensive plan:", err.message);
       throw new Error(`Failed to create comprehensive plan: ${err.message}`);
     }
   }
@@ -285,8 +271,6 @@ export class PlanningService extends Service {
     });
 
     try {
-      logger.info(`[PlanningService] Starting execution of plan ${plan.id as string}`);
-
       if (plan.executionModel === "sequential") {
         await this.executeSequential(
           runtime,
@@ -337,14 +321,8 @@ export class PlanningService extends Service {
         duration: Date.now() - startTime,
       };
 
-      logger.info(
-        `[PlanningService] Plan ${plan.id} execution completed. Success: ${result.success}, Duration: ${result.duration}ms`
-      );
-
       return result;
     } catch (error) {
-      logger.error(`[PlanningService] Plan ${plan.id} execution failed:`, error);
-
       executionState.status = "failed";
       executionState.endTime = Date.now();
       executionState.error = error instanceof Error ? error.message : String(error);
@@ -415,7 +393,6 @@ export class PlanningService extends Service {
       };
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error("[PlanningService] Error validating plan:", err.message);
       return {
         valid: false,
         errors: [`Validation error: ${err.message}`],
@@ -432,8 +409,6 @@ export class PlanningService extends Service {
     error?: Error
   ): Promise<ActionPlan> {
     try {
-      logger.info(`[PlanningService] Adapting plan ${plan.id} at step ${currentStepIndex}`);
-
       const adaptationPrompt = this.buildAdaptationPrompt(plan, currentStepIndex, results, error);
 
       const adaptationResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -449,13 +424,9 @@ export class PlanningService extends Service {
       );
 
       this.activePlans.set(plan.id as UUID, adaptedPlan);
-
-      logger.info(`[PlanningService] Plan ${plan.id} adapted successfully`);
-
       return adaptedPlan;
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`[PlanningService] Error adapting plan ${plan.id}:`, err.message);
       throw new Error(`Failed to adapt plan: ${err.message}`);
     }
   }
@@ -474,8 +445,6 @@ export class PlanningService extends Service {
     execution.abortController?.abort();
     execution.state.status = "cancelled";
     execution.state.endTime = Date.now();
-
-    logger.info(`[PlanningService] Plan ${planId} cancelled`);
     return true;
   }
 
@@ -488,15 +457,13 @@ export class PlanningService extends Service {
 
     this.planExecutions.clear();
     this.activePlans.clear();
-
-    logger.info("PlanningService stopped");
   }
 
   private buildPlanningPrompt(
     context: PlanningContext,
     _runtime: IAgentRuntime,
     message?: Memory,
-    state?: State
+    _state?: State
   ): string {
     const availableActions = (context.availableActions || []).join(", ");
     const availableProviders = (context.availableProviders || []).join(", ");
@@ -516,7 +483,7 @@ EXECUTION MODEL: ${context.preferences?.executionModel || "sequential"}
 MAX STEPS: ${context.preferences?.maxSteps || 10}
 
 ${message ? `CONTEXT MESSAGE: ${message.content.text}` : ""}
-${state ? `CURRENT STATE: ${JSON.stringify(state.values)}` : ""}
+${_state ? `CURRENT STATE: ${JSON.stringify(_state.values)}` : ""}
 
 Create a detailed plan with the following structure:
 <plan>
@@ -602,7 +569,6 @@ Focus on:
         }
       }
 
-      // Resolve dependencies
       for (const step of steps) {
         const extendedStep = step as ActionStep & { _dependencyStrings?: string[] };
         const dependencyStrings = extendedStep._dependencyStrings || [];
@@ -621,7 +587,6 @@ Focus on:
       }
 
       if (steps.length === 0 && response.includes("<step>")) {
-        logger.warn("XML parsing failed, creating fallback plan");
         steps.push({
           id: asUUID(uuidv4()),
           actionName: "ANALYZE_INPUT",
@@ -662,9 +627,7 @@ Focus on:
           tags: ["comprehensive"],
         },
       };
-    } catch (error) {
-      logger.error("Failed to parse planning response:", error);
-
+    } catch (_error) {
       const planId = asUUID(uuidv4());
       const fallbackSteps = [
         {
@@ -693,17 +656,10 @@ Focus on:
     }
   }
 
-  private async enhancePlan(
-    runtime: IAgentRuntime,
-    plan: ActionPlan,
-    _context: PlanningContext
-  ): Promise<ActionPlan> {
+  private async enhancePlan(runtime: IAgentRuntime, plan: ActionPlan): Promise<ActionPlan> {
     for (const step of plan.steps) {
       const action = runtime.actions.find((a) => a.name === step.actionName);
       if (!action) {
-        logger.warn(
-          `[PlanningService] Action '${step.actionName}' not found, replacing with REPLY`
-        );
         step.actionName = "REPLY";
         step.parameters = { text: `Unable to find action: ${step.actionName}` };
       }
@@ -758,7 +714,6 @@ Focus on:
           execution.state.currentStepIndex = i + 1;
         }
       } catch (error) {
-        logger.error(`[PlanningService] Step ${step.id} failed:`, error);
         errors.push(error instanceof Error ? error : new Error(String(error)));
 
         const extendedStep = step as ActionStep & { onError?: string; retryPolicy?: RetryPolicy };
@@ -1039,8 +994,8 @@ Return the adapted plan in the same XML format as the original planning response
             };
             adaptedSteps.push(step);
           }
-        } catch (stepError) {
-          logger.warn(`Failed to parse adaptation step: ${stepMatch}`, stepError);
+        } catch {
+          // Skip invalid step
         }
       }
 
@@ -1097,9 +1052,7 @@ Return the adapted plan in the same XML format as the original planning response
           ],
         },
       };
-    } catch (error) {
-      logger.error("Failed to parse adaptation response:", error);
-
+    } catch (_error) {
       const fallbackStep: ActionStep = {
         id: asUUID(uuidv4()),
         actionName: "REPLY",

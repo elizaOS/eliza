@@ -64,7 +64,12 @@ pub struct BoundingBox {
 impl BoundingBox {
     /// Create a new bounding box
     pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Get the center point of the bounding box
@@ -527,20 +532,48 @@ pub struct VisionConfig {
     pub enable_opencv: bool,
 }
 
-fn default_pixel_change_threshold() -> f64 { 50.0 }
-fn default_update_interval() -> u64 { 100 }
-fn default_tf_update_interval() -> u64 { 1000 }
-fn default_vlm_update_interval() -> u64 { 10000 }
-fn default_tf_change_threshold() -> f64 { 10.0 }
-fn default_vlm_change_threshold() -> f64 { 50.0 }
-fn default_screen_capture_interval() -> u64 { 2000 }
-fn default_tile_size() -> u32 { 256 }
-fn default_true() -> bool { true }
-fn default_max_memory() -> u32 { 2000 }
-fn default_entity_timeout() -> u64 { 30000 }
-fn default_max_entities() -> u32 { 100 }
-fn default_face_match_threshold() -> f64 { 0.6 }
-fn default_max_face_profiles() -> u32 { 1000 }
+fn default_pixel_change_threshold() -> f64 {
+    50.0
+}
+fn default_update_interval() -> u64 {
+    100
+}
+fn default_tf_update_interval() -> u64 {
+    1000
+}
+fn default_vlm_update_interval() -> u64 {
+    10000
+}
+fn default_tf_change_threshold() -> f64 {
+    10.0
+}
+fn default_vlm_change_threshold() -> f64 {
+    50.0
+}
+fn default_screen_capture_interval() -> u64 {
+    2000
+}
+fn default_tile_size() -> u32 {
+    256
+}
+fn default_true() -> bool {
+    true
+}
+fn default_max_memory() -> u32 {
+    2000
+}
+fn default_entity_timeout() -> u64 {
+    30000
+}
+fn default_max_entities() -> u32 {
+    100
+}
+fn default_face_match_threshold() -> f64 {
+    0.6
+}
+fn default_max_face_profiles() -> u32 {
+    1000
+}
 
 impl Default for VisionConfig {
     fn default() -> Self {

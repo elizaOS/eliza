@@ -1,5 +1,6 @@
 from elizaos_plugin_pdf.client import PdfClient, PdfError
 from elizaos_plugin_pdf.plugin import PdfPlugin, create_plugin, get_pdf_plugin
+from elizaos_plugin_pdf.service import PdfService
 from elizaos_plugin_pdf.types import (
     PdfConversionResult,
     PdfDocumentInfo,
@@ -14,6 +15,7 @@ __all__ = [
     "PdfPlugin",
     "create_plugin",
     "get_pdf_plugin",
+    "PdfService",
     "PdfClient",
     "PdfError",
     "PdfConversionResult",

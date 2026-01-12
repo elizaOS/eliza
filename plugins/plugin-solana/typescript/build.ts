@@ -1,7 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Build script for @elizaos/plugin-solana TypeScript
- */
 
 import { $ } from "bun";
 
@@ -9,9 +6,6 @@ function fmt(ms: number): string {
   return ms < 1000 ? `${ms.toFixed(2)}ms` : `${(ms / 1000).toFixed(2)}s`;
 }
 
-/**
- * Run TypeScript type-checker (no emit)
- */
 async function typecheck(): Promise<void> {
   const t0 = performance.now();
   console.log("▶︎ Type-checking with tsc…");
@@ -26,13 +20,9 @@ async function typecheck(): Promise<void> {
   }
 }
 
-/**
- * Build the TypeScript package
- */
 async function build(): Promise<void> {
   const totalStart = Date.now();
 
-  // Load package.json and auto-generate externals from dependencies
   const pkg = await Bun.file("./package.json").json();
   const externalDeps = [
     ...Object.keys(pkg.dependencies ?? {}),
@@ -40,11 +30,8 @@ async function build(): Promise<void> {
     ...Object.keys(pkg.devDependencies ?? {}),
   ];
 
-  // Clean previous build
   await $`rm -rf ../dist`;
   await $`mkdir -p ../dist`;
-
-  // ESM build
   const esmStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-solana (ESM)...");
   const esmResult = await Bun.build({
@@ -62,7 +49,6 @@ async function build(): Promise<void> {
   }
   console.log(`✅ ESM build complete in ${((Date.now() - esmStart) / 1000).toFixed(2)}s`);
 
-  // TypeScript declarations
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   await $`tsc --project tsconfig.build.json`;
@@ -71,7 +57,6 @@ async function build(): Promise<void> {
   console.log(`🎉 All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
 }
 
-// Run typecheck first, then build
 await typecheck();
 
 build().catch((err) => {

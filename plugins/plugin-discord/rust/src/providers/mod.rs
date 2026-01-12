@@ -7,8 +7,11 @@ mod voice_state;
 mod guild_info;
 
 pub use channel_state::ChannelStateProvider;
+pub use channel_state::ChannelStateProviderCamel;
 pub use voice_state::VoiceStateProvider;
+pub use voice_state::VoiceStateProviderCamel;
 pub use guild_info::GuildInfoProvider;
+pub use guild_info::GuildInfoProviderCamel;
 
 use async_trait::async_trait;
 use serde_json::Value;

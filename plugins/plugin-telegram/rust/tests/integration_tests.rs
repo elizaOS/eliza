@@ -24,7 +24,11 @@ fn test_config_from_env() {
 
     std::env::remove_var("TELEGRAM_BOT_TOKEN");
 
-    assert!(config.is_ok(), "Config should load successfully: {:?}", config.err());
+    assert!(
+        config.is_ok(),
+        "Config should load successfully: {:?}",
+        config.err()
+    );
 
     let config = config.unwrap();
     assert_eq!(config.bot_token, "123456:ABC-DEF");
@@ -34,13 +38,22 @@ fn test_config_from_env() {
 #[test]
 fn test_config_validation() {
     let config = TelegramConfig::new("".to_string());
-    assert!(config.validate().is_err(), "Empty token should fail validation");
+    assert!(
+        config.validate().is_err(),
+        "Empty token should fail validation"
+    );
 
     let config = TelegramConfig::new("invalid_token".to_string());
-    assert!(config.validate().is_err(), "Invalid token format should fail validation");
+    assert!(
+        config.validate().is_err(),
+        "Invalid token format should fail validation"
+    );
 
     let config = TelegramConfig::new("123456:ABC-DEF".to_string());
-    assert!(config.validate().is_ok(), "Valid config should pass validation");
+    assert!(
+        config.validate().is_ok(),
+        "Valid config should pass validation"
+    );
 }
 
 /// Test service creation
@@ -74,8 +87,8 @@ fn test_message_splitting() {
 /// Test chat allowed check
 #[test]
 fn test_chat_allowed() {
-    let config = TelegramConfig::new("123456:ABC-DEF".to_string())
-        .with_allowed_chat_ids(vec![12345, 67890]);
+    let config =
+        TelegramConfig::new("123456:ABC-DEF".to_string()).with_allowed_chat_ids(vec![12345, 67890]);
 
     assert!(config.is_chat_allowed(12345));
     assert!(config.is_chat_allowed(67890));
@@ -135,7 +148,9 @@ async fn test_send_message_action() {
 /// Test provider output
 #[tokio::test]
 async fn test_chat_state_provider() {
-    use elizaos_plugin_telegram::providers::{ChatStateProvider, ProviderContext, TelegramProvider};
+    use elizaos_plugin_telegram::providers::{
+        ChatStateProvider, ProviderContext, TelegramProvider,
+    };
 
     let provider = ChatStateProvider;
     let context = ProviderContext {

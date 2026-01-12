@@ -1,10 +1,3 @@
-"""
-X (formerly Twitter) API v2 Client
-
-Async HTTP client for X API v2 interactions using httpx.
-All methods use strong typing and fail-fast error handling.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -35,31 +28,20 @@ from elizaos_plugin_xai.types import (
 
 
 class XClientError(Exception):
-    """X API error."""
-
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
 
 
 class TwitterClient:
-    """
-    Async X (formerly Twitter) API v2 client.
-
-    All methods are async and use httpx for HTTP requests.
-    Errors are raised immediately - no silent failures.
-    """
-
     API_BASE = "https://api.x.com/2"
 
     def __init__(self, config: TwitterConfig) -> None:
-        """Initialize the X client."""
         self._config = config
         self._client: httpx.AsyncClient | None = None
         self._me: Profile | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create the HTTP client."""
         if self._client is None:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(self._config.timeout),
@@ -78,10 +60,6 @@ class TwitterClient:
     async def __aexit__(self, *_: object) -> None:
         await self.close()
 
-    # =========================================================================
-    # OAuth 1.0a Signing
-    # =========================================================================
-
     def _generate_oauth_signature(
         self,
         method: str,
@@ -89,7 +67,6 @@ class TwitterClient:
         params: dict[str, str],
         oauth_params: dict[str, str],
     ) -> str:
-        """Generate OAuth 1.0a signature."""
         all_params = {**params, **oauth_params}
         sorted_params = sorted(all_params.items())
         param_string = "&".join(
@@ -120,7 +97,6 @@ class TwitterClient:
         return base64.b64encode(signature).decode("utf-8")
 
     def _get_oauth_header(self, method: str, url: str, params: dict[str, str] | None = None) -> str:
-        """Generate OAuth 1.0a Authorization header."""
         oauth_params = {
             "oauth_consumer_key": self._config.api_key,
             "oauth_nonce": base64.b64encode(str(time.time_ns()).encode()).decode()[:32],
@@ -160,7 +136,6 @@ class TwitterClient:
         json: dict | None = None,
         params: dict | None = None,
     ) -> dict:
-        """Make an authenticated request to the X API."""
         url = f"{self.API_BASE}{endpoint}"
         client = await self._get_client()
 
@@ -177,12 +152,7 @@ class TwitterClient:
 
         return response.json()
 
-    # =========================================================================
-    # User Methods
-    # =========================================================================
-
     async def me(self) -> Profile:
-        """Get the authenticated user's profile."""
         if self._me:
             return self._me
 
@@ -245,16 +215,10 @@ class TwitterClient:
         )
 
     async def get_user_id(self, username: str) -> str:
-        """Get a user's ID by username."""
         profile = await self.get_profile(username)
         return profile.id
 
-    # =========================================================================
-    # Post Methods
-    # =========================================================================
-
     def _parse_post(self, post_data: dict, includes: dict | None = None) -> Post:
-        """Parse a post from API v2 response."""
         includes = includes or {}
         users = {u["id"]: u for u in includes.get("users", [])}
         media = {m["media_key"]: m for m in includes.get("media", [])}
@@ -267,7 +231,6 @@ class TwitterClient:
         refs = post_data.get("referenced_posts", [])
         attachments = post_data.get("attachments", {})
 
-        # Parse media
         photos: list[Photo] = []
         videos: list[Video] = []
         for key in attachments.get("media_keys", []):
@@ -282,7 +245,6 @@ class TwitterClient:
                         break
                 videos.append(Video(id=key, preview=m.get("preview_image_url", ""), url=url))
 
-        # Parse poll
         poll = None
         for poll_id in attachments.get("poll_ids", []):
             p = polls.get(poll_id)
@@ -301,7 +263,6 @@ class TwitterClient:
                     ],
                 )
 
-        # Parse place
         place = None
         geo = post_data.get("geo", {})
         if geo.get("place_id"):
@@ -315,7 +276,6 @@ class TwitterClient:
                 place_type=p.get("place_type"),
             )
 
-        # Parse mentions
         mentions = [
             Mention(id=m.get("id", ""), username=m.get("username"))
             for m in entities.get("mentions", [])
@@ -354,7 +314,6 @@ class TwitterClient:
         )
 
     async def get_post(self, post_id: str) -> Post:
-        """Get a single post by ID."""
         data = await self._request(
             "GET",
             f"/posts/{post_id}",
@@ -377,7 +336,6 @@ class TwitterClient:
         quote_post_id: str | None = None,
         poll: PollData | None = None,
     ) -> PostCreateResult:
-        """Create a new post."""
         if self._config.dry_run:
             return PostCreateResult(id="dry-run", text=text)
 
@@ -404,7 +362,6 @@ class TwitterClient:
         )
 
     async def delete_post(self, post_id: str) -> bool:
-        """Delete a post."""
         if self._config.dry_run:
             return True
 
@@ -412,7 +369,6 @@ class TwitterClient:
         return data["data"]["deleted"]
 
     async def like_post(self, post_id: str) -> bool:
-        """Like a post."""
         if self._config.dry_run:
             return True
 
@@ -421,7 +377,6 @@ class TwitterClient:
         return data["data"]["liked"]
 
     async def unlike_post(self, post_id: str) -> bool:
-        """Unlike a post."""
         if self._config.dry_run:
             return True
 
@@ -430,7 +385,6 @@ class TwitterClient:
         return not data["data"]["liked"]
 
     async def repost(self, post_id: str) -> bool:
-        """Repost a post."""
         if self._config.dry_run:
             return True
 
@@ -439,7 +393,6 @@ class TwitterClient:
         return data["data"]["reposted"]
 
     async def unrepost(self, post_id: str) -> bool:
-        """Undo a repost."""
         if self._config.dry_run:
             return True
 
@@ -447,16 +400,11 @@ class TwitterClient:
         data = await self._request("DELETE", f"/users/{me.id}/reposts/{post_id}")
         return not data["data"]["reposted"]
 
-    # =========================================================================
-    # Timeline Methods
-    # =========================================================================
-
     async def get_home_timeline(
         self,
         max_results: int = 100,
         pagination_token: str | None = None,
     ) -> QueryPostsResponse:
-        """Get the home timeline for the authenticated user."""
         params: dict = {
             "max_results": min(max_results, 100),
             "post.fields": "id,text,created_at,author_id,conversation_id,referenced_posts,entities,public_metrics,attachments",
@@ -488,7 +436,6 @@ class TwitterClient:
         exclude_replies: bool = True,
         exclude_reposts: bool = True,
     ) -> QueryPostsResponse:
-        """Get posts from a specific user."""
         params: dict = {
             "max_results": min(max_results, 100),
             "post.fields": "id,text,created_at,author_id,conversation_id,referenced_posts,entities,public_metrics,attachments",
@@ -517,10 +464,6 @@ class TwitterClient:
             next_token=data.get("meta", {}).get("next_token"),
         )
 
-    # =========================================================================
-    # Search Methods
-    # =========================================================================
-
     async def search_posts(
         self,
         query: str,
@@ -528,7 +471,6 @@ class TwitterClient:
         *,
         sort_order: str = "relevancy",
     ) -> AsyncIterator[Post]:
-        """Search for posts matching a query."""
         pagination_token: str | None = None
         count = 0
 
@@ -558,17 +500,12 @@ class TwitterClient:
             if not pagination_token:
                 break
 
-    # =========================================================================
-    # Follower/Following Methods
-    # =========================================================================
-
     async def get_followers(
         self,
         user_id: str,
         max_results: int = 100,
         pagination_token: str | None = None,
     ) -> QueryProfilesResponse:
-        """Get followers of a user."""
         params: dict = {
             "max_results": min(max_results, 1000),
             "user.fields": "id,name,username,description,profile_image_url,verified,public_metrics",
@@ -607,7 +544,6 @@ class TwitterClient:
         max_results: int = 100,
         pagination_token: str | None = None,
     ) -> QueryProfilesResponse:
-        """Get users that a user is following."""
         params: dict = {
             "max_results": min(max_results, 1000),
             "user.fields": "id,name,username,description,profile_image_url,verified,public_metrics",
@@ -652,7 +588,6 @@ class TwitterClient:
         return data["data"]["following"]
 
     async def unfollow_user(self, user_id: str) -> bool:
-        """Unfollow a user."""
         if self._config.dry_run:
             return True
 

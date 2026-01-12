@@ -91,7 +91,6 @@ pub struct SchemaNamespaceManager {
 }
 
 impl SchemaNamespaceManager {
-    /// Create a new schema namespace manager.
     pub fn new(pool: Arc<PgPool>) -> Self {
         Self { pool }
     }
@@ -128,19 +127,16 @@ impl SchemaNamespaceManager {
         Ok(())
     }
 
-    /// Get the expected schema name for a plugin.
     pub fn get_expected_schema_name(&self, plugin_name: &str) -> String {
         derive_schema_name(plugin_name)
     }
 
-    /// Ensure the schema for a plugin exists.
     pub async fn ensure_plugin_schema(&self, plugin_name: &str) -> Result<String> {
         let schema_name = derive_schema_name(plugin_name);
         self.ensure_schema_exists(&schema_name).await?;
         Ok(schema_name)
     }
 
-    /// Check if a schema exists.
     pub async fn schema_exists(&self, schema_name: &str) -> Result<bool> {
         let row = sqlx::query_scalar::<_, bool>(
             r#"

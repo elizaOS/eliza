@@ -1,8 +1,6 @@
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { Wallet } from "@ethersproject/wallet";
 import { ClobClient } from "@polymarket/clob-client";
-import { createWalletClient, http } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { polygon } from "viem/chains";
 import { DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID } from "../constants";
 import type { ApiKeyCreds } from "../types";
 
@@ -24,70 +22,20 @@ function getPrivateKey(runtime: IAgentRuntime): `0x${string}` {
   return key as `0x${string}`;
 }
 
-interface EnhancedWallet {
-  address: string;
-  getAddress: () => Promise<string>;
-  _signTypedData: (
-    domain: Record<string, unknown>,
-    types: Record<string, unknown>,
-    value: Record<string, unknown>
-  ) => Promise<string>;
-}
-
 type ClobClientSigner = ConstructorParameters<typeof ClobClient>[2];
 
-function asClobClientSigner(wallet: EnhancedWallet): ClobClientSigner {
-  return wallet as ClobClientSigner;
-}
-
-function createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
-  const account = privateKeyToAccount(privateKey);
-
-  const walletClient = createWalletClient({
-    account,
-    chain: polygon,
-    transport: http(),
-  });
-
-  return {
-    address: account.address,
-    getAddress: async () => account.address,
-    _signTypedData: async (
-      domain: Record<string, unknown>,
-      types: Record<string, unknown>,
-      value: Record<string, unknown>
-    ) => {
-      const primaryType = Object.keys(types).find((k) => k !== "EIP712Domain") ?? "";
-
-      return walletClient.signTypedData({
-        account,
-        domain: domain as Parameters<typeof walletClient.signTypedData>[0]["domain"],
-        types: types as Parameters<typeof walletClient.signTypedData>[0]["types"],
-        primaryType,
-        message: value,
-      });
-    },
-  };
+function createClobClientSigner(privateKey: `0x${string}`): ClobClientSigner {
+  return new Wallet(privateKey);
 }
 
 export async function initializeClobClient(runtime: IAgentRuntime): Promise<ClobClient> {
   const clobApiUrl = String(runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL);
 
   const privateKey = getPrivateKey(runtime);
-  const enhancedWallet = createEnhancedWallet(privateKey);
+  const signer = createClobClientSigner(privateKey);
 
-  logger.info(`[initializeClobClient] Initializing CLOB client with HTTP URL: ${clobApiUrl}`);
-  logger.info(`[initializeClobClient] Wallet address: ${enhancedWallet.address}`);
-  logger.info(`[initializeClobClient] Chain ID: ${POLYGON_CHAIN_ID}`);
+  const client = new ClobClient(clobApiUrl, POLYGON_CHAIN_ID, signer, undefined);
 
-  const client = new ClobClient(
-    clobApiUrl,
-    POLYGON_CHAIN_ID,
-    asClobClientSigner(enhancedWallet),
-    undefined
-  );
-
-  logger.info("[initializeClobClient] CLOB client initialized successfully with EOA wallet");
   return client;
 }
 
@@ -101,10 +49,6 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
   const apiPassphrase =
     runtime.getSetting("CLOB_API_PASSPHRASE") || runtime.getSetting("CLOB_PASS_PHRASE");
 
-  logger.info(
-    `[initializeClobClientWithCreds] Checking credentials: hasApiKey=${Boolean(apiKey)}, hasApiSecret=${Boolean(apiSecret)}, hasApiPassphrase=${Boolean(apiPassphrase)}`
-  );
-
   if (!apiKey || !apiSecret || !apiPassphrase) {
     const missing: string[] = [];
     if (!apiKey) missing.push("CLOB_API_KEY");
@@ -115,7 +59,7 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
     );
   }
 
-  const enhancedWallet = createEnhancedWallet(privateKey);
+  const signer = createClobClientSigner(privateKey);
 
   const creds: ApiKeyCreds = {
     key: String(apiKey),
@@ -123,24 +67,12 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
     passphrase: String(apiPassphrase),
   };
 
-  logger.info(`[initializeClobClientWithCreds] Wallet address: ${enhancedWallet.address}`);
-  logger.info(`[initializeClobClientWithCreds] Chain ID: ${POLYGON_CHAIN_ID}`);
+  const client = new ClobClient(clobApiUrl, POLYGON_CHAIN_ID, signer, creds);
 
-  const client = new ClobClient(
-    clobApiUrl,
-    POLYGON_CHAIN_ID,
-    asClobClientSigner(enhancedWallet),
-    creds
-  );
-
-  logger.info(
-    "[initializeClobClientWithCreds] CLOB client initialized successfully with API credentials"
-  );
   return client;
 }
 
 export function getWalletAddress(runtime: IAgentRuntime): string {
   const privateKey = getPrivateKey(runtime);
-  const account = privateKeyToAccount(privateKey);
-  return account.address;
+  return new Wallet(privateKey).address;
 }

@@ -1,6 +1,5 @@
 import { logger } from "@elizaos/core";
 
-// Base error class for all vision-related errors
 export class VisionError extends Error {
   public readonly code: string;
   public readonly context?: Record<string, unknown>;
@@ -23,7 +22,6 @@ export class VisionError extends Error {
   }
 }
 
-// Specific error types
 export class CameraError extends VisionError {
   constructor(message: string, context?: Record<string, unknown>) {
     super(message, "CAMERA_ERROR", true, context);
@@ -76,7 +74,6 @@ export class APIError extends VisionError {
   }
 }
 
-// Error recovery strategies
 export interface RecoveryStrategy {
   canRecover(error: VisionError): boolean;
   recover(error: VisionError): Promise<void>;
@@ -92,7 +89,6 @@ export class ErrorRecoveryManager {
   }
 
   private registerDefaultStrategies(): void {
-    // Camera recovery strategy
     this.registerStrategy("CAMERA_ERROR", {
       canRecover: (error) => {
         const count = this.errorCounts.get(error.code) || 0;
@@ -100,7 +96,6 @@ export class ErrorRecoveryManager {
       },
       recover: async (error) => {
         logger.warn("[ErrorRecovery] Attempting camera recovery:", error.message);
-        // Wait before retry
         await new Promise((resolve) =>
           setTimeout(resolve, 1000 * (this.errorCounts.get(error.code) || 1))
         );
@@ -108,11 +103,9 @@ export class ErrorRecoveryManager {
       },
     });
 
-    // API recovery strategy
     this.registerStrategy("API_ERROR", {
       canRecover: (error) => {
         const apiError = error as APIError;
-        // Don't retry on client errors (4xx)
         if (apiError.statusCode && apiError.statusCode >= 400 && apiError.statusCode < 500) {
           return false;
         }
@@ -122,7 +115,6 @@ export class ErrorRecoveryManager {
       recover: async (error) => {
         const apiError = error as APIError;
         logger.warn("[ErrorRecovery] API error recovery:", error.message);
-        // Exponential backoff
         const delay = Math.min(
           1000 * 2 ** (this.errorCounts.get(`${error.code}_${apiError.endpoint}`) || 0),
           30000
@@ -131,12 +123,10 @@ export class ErrorRecoveryManager {
       },
     });
 
-    // Screen capture recovery
     this.registerStrategy("SCREEN_CAPTURE_ERROR", {
       canRecover: () => true,
       recover: async (error) => {
         logger.warn("[ErrorRecovery] Screen capture recovery:", error.message);
-        // Brief pause before retry
         await new Promise((resolve) => setTimeout(resolve, 500));
       },
     });
@@ -149,12 +139,10 @@ export class ErrorRecoveryManager {
   async handleError(error: VisionError): Promise<boolean> {
     logger.error(`[ErrorRecovery] Handling ${error.name}:`, error.message, error.context);
 
-    // Track error occurrences
     const errorKey = error.code + (error.context?.endpoint || "");
     const currentCount = this.errorCounts.get(errorKey) || 0;
     this.errorCounts.set(errorKey, currentCount + 1);
 
-    // Check if we can recover
     if (!error.recoverable) {
       logger.error("[ErrorRecovery] Error is not recoverable");
       return false;
@@ -190,7 +178,6 @@ export class ErrorRecoveryManager {
   }
 }
 
-// Circuit breaker for external services
 export class CircuitBreaker {
   private failures = 0;
   private lastFailureTime = 0;
@@ -198,7 +185,7 @@ export class CircuitBreaker {
 
   constructor(
     private readonly threshold = 5,
-    private readonly timeout = 60000, // 1 minute
+    private readonly timeout = 60000,
     private readonly name: string
   ) {}
 
@@ -282,7 +269,6 @@ export class VisionErrorHandler {
   }
 
   async handle(error: unknown): Promise<boolean> {
-    // Convert to VisionError if needed
     let visionError: VisionError;
     if (error instanceof VisionError) {
       visionError = error;

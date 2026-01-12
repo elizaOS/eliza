@@ -1,5 +1,3 @@
-"""Tests for shell plugin providers."""
-
 import pytest
 
 from elizaos_plugin_shell.providers import (
@@ -15,33 +13,26 @@ from elizaos_plugin_shell.types import (
 
 
 class TestShellHistoryProvider:
-    """Tests for ShellHistoryProvider."""
-
     @pytest.fixture
     def provider(self) -> ShellHistoryProvider:
         return ShellHistoryProvider()
 
     def test_provider_name(self, provider: ShellHistoryProvider) -> None:
-        """Test provider name."""
         assert provider.name == "SHELL_HISTORY"
 
     def test_provider_description(self, provider: ShellHistoryProvider) -> None:
-        """Test provider description."""
         assert "history" in provider.description.lower()
         assert "command" in provider.description.lower()
 
     def test_provider_position(self, provider: ShellHistoryProvider) -> None:
-        """Test provider position."""
         assert provider.position == 99
 
     def test_format_empty_history(self, provider: ShellHistoryProvider) -> None:
-        """Test formatting empty history."""
         history: list[CommandHistoryEntry] = []
         formatted = ShellHistoryProvider.format_history(history)
         assert formatted == "No commands in history."
 
     def test_format_history_with_entries(self, provider: ShellHistoryProvider) -> None:
-        """Test formatting history with entries."""
         history = [
             CommandHistoryEntry(
                 command="ls -la",
@@ -59,7 +50,6 @@ class TestShellHistoryProvider:
         assert "Exit Code: 0" in formatted
 
     def test_format_history_with_file_operations(self, provider: ShellHistoryProvider) -> None:
-        """Test formatting history with file operations."""
         history = [
             CommandHistoryEntry(
                 command="touch test.txt",
@@ -83,13 +73,11 @@ class TestShellHistoryProvider:
         assert "test.txt" in formatted
 
     def test_format_file_operations_empty(self, provider: ShellHistoryProvider) -> None:
-        """Test formatting file operations when empty."""
         history: list[CommandHistoryEntry] = []
         formatted = ShellHistoryProvider.format_file_operations(history)
         assert formatted == ""
 
     def test_format_file_operations_with_entries(self, provider: ShellHistoryProvider) -> None:
-        """Test formatting file operations."""
         history = [
             CommandHistoryEntry(
                 command="mv a.txt b.txt",
@@ -116,7 +104,6 @@ class TestShellHistoryProvider:
 
     @pytest.mark.asyncio
     async def test_get_provider_data(self, provider: ShellHistoryProvider) -> None:
-        """Test getting provider data."""
         params = ProviderParams(
             conversation_id="test-conv",
             agent_id="test-agent",
@@ -132,10 +119,7 @@ class TestShellHistoryProvider:
 
 
 class TestProviderRegistry:
-    """Tests for provider registry functions."""
-
     def test_get_shell_provider_names(self) -> None:
-        """Test getting all shell provider names."""
         names = get_shell_provider_names()
         assert "SHELL_HISTORY" in names
         assert len(names) == 1

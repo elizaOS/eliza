@@ -126,7 +126,6 @@ pub enum GitHubError {
 }
 
 impl GitHubError {
-    /// Check if error is retryable
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
@@ -172,7 +171,6 @@ impl From<reqwest::Error> for GitHubError {
     }
 }
 
-/// Error context wrapper for adding contextual information
 #[derive(Debug)]
 pub struct ErrorContext<E: fmt::Display> {
     error: E,
@@ -187,9 +185,7 @@ impl<E: fmt::Display> fmt::Display for ErrorContext<E> {
 
 impl<E: fmt::Display + fmt::Debug> std::error::Error for ErrorContext<E> {}
 
-/// Extension trait for adding context to errors
 pub trait WithContext<T, E: fmt::Display> {
-    /// Add context to an error
     fn with_context<F: FnOnce() -> String>(self, f: F) -> std::result::Result<T, ErrorContext<E>>;
 }
 

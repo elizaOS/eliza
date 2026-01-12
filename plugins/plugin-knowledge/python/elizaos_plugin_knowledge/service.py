@@ -269,11 +269,9 @@ class KnowledgeService:
     async def _extract_pdf_text(self, content: str) -> str:
         try:
             import base64
-
             from pypdf import PdfReader
             from io import BytesIO
 
-            # Decode base64 if needed
             if self._looks_like_base64(content):
                 pdf_bytes = base64.b64decode(content)
             else:
@@ -288,17 +286,14 @@ class KnowledgeService:
 
             return "\n\n".join(text_parts)
         except ImportError:
-            logger.warning("pypdf not installed, cannot extract PDF text")
             raise
 
     async def _extract_docx_text(self, content: str) -> str:
         try:
             import base64
-
             from docx import Document
             from io import BytesIO
 
-            # Decode base64 if needed
             if self._looks_like_base64(content):
                 docx_bytes = base64.b64decode(content)
             else:
@@ -312,7 +307,6 @@ class KnowledgeService:
 
             return "\n\n".join(text_parts)
         except ImportError:
-            logger.warning("python-docx not installed, cannot extract DOCX text")
             raise
 
     def _looks_like_base64(self, content: str) -> bool:
@@ -329,7 +323,6 @@ class KnowledgeService:
         self,
         fragments: list[KnowledgeFragment],
     ) -> None:
-        """Generate embeddings for fragments."""
         if not self._embedding_provider:
             return
 
@@ -349,11 +342,9 @@ class KnowledgeService:
             logger.warning("No embedding provider configured for search")
             return []
 
-        # Generate query embedding
         result = await self._embedding_provider.generate_embedding(query)
         query_embedding = result.embedding
 
-        # Search through fragments
         results: list[SearchResult] = []
 
         for fragment in self._fragments.values():

@@ -1,10 +1,3 @@
-"""
-CLOB Client provider for Polymarket.
-
-Provides CLOB client initialization and management using the official
-py-clob-client library.
-"""
-
 import os
 from typing import Protocol
 
@@ -20,23 +13,12 @@ from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 
 
 class RuntimeProtocol(Protocol):
-    """Protocol for agent runtime."""
-
     def get_setting(self, key: str) -> str | None:
-        """Get a setting value."""
         ...
 
 
 class ClobClientProvider:
-    """Provider for CLOB client instances."""
-
     def __init__(self, runtime: RuntimeProtocol | None = None) -> None:
-        """
-        Initialize the CLOB client provider.
-
-        Args:
-            runtime: Optional agent runtime for settings
-        """
         self._runtime = runtime
         self._client: ClobClient | None = None
         self._authenticated_client: ClobClient | None = None
@@ -51,7 +33,6 @@ class ClobClientProvider:
         return os.environ.get(key)
 
     def _get_private_key(self) -> str:
-        """Get the private key from settings."""
         private_key = (
             self._get_setting("POLYMARKET_PRIVATE_KEY")
             or self._get_setting("EVM_PRIVATE_KEY")
@@ -66,7 +47,6 @@ class ClobClientProvider:
                 "EVM_PRIVATE_KEY, or WALLET_PRIVATE_KEY",
             )
 
-        # Ensure it has 0x prefix
         if not private_key.startswith("0x"):
             private_key = f"0x{private_key}"
 
@@ -83,15 +63,6 @@ class ClobClientProvider:
         return self._wallet_address
 
     def get_client(self) -> ClobClient:
-        """
-        Get or create a basic CLOB client for read operations.
-
-        Returns:
-            Configured ClobClient instance
-
-        Raises:
-            PolymarketError: If client initialization fails
-        """
         if self._client:
             return self._client
 

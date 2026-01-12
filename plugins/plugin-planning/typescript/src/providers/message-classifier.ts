@@ -3,8 +3,7 @@ import { messageClassifierTemplate } from "../generated/prompts/typescript/promp
 
 export const messageClassifierProvider: Provider = {
   name: "messageClassifier",
-  description:
-    "Classifies incoming messages by complexity and planning requirements using intelligent LLM analysis. Use to determine if strategic planning, sequential execution, or direct action is needed.",
+  description: "Classifies messages by complexity and planning requirements",
 
   get: async (runtime, message, _state) => {
     const text = message.content.text || "";

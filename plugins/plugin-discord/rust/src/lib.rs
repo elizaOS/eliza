@@ -27,6 +27,7 @@ pub mod config;
 pub mod error;
 pub mod types;
 
+/// Discord service implementation (native-only).
 #[cfg(feature = "native")]
 pub mod service;
 

@@ -5,7 +5,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, Service, ServiceType } from "@elizaos/core";
 
-import type { JsonUploadResult, UploadResult } from "../types";
+import type { JsonUploadResult, JsonValue, UploadResult } from "../types";
 import { getContentType } from "../types";
 
 export class AwsS3Service extends Service {
@@ -44,6 +44,16 @@ export class AwsS3Service extends Service {
       await this.s3Client.destroy();
       this.s3Client = null;
     }
+  }
+
+  /**
+   * Get the S3 client, throwing if not initialized
+   */
+  private getClient(): S3Client {
+    if (!this.s3Client) {
+      throw new Error("S3 client not initialized");
+    }
+    return this.s3Client;
   }
 
   private async initializeS3Client(): Promise<boolean> {
@@ -107,27 +117,21 @@ export class AwsS3Service extends Service {
         "/"
       );
 
-      const uploadParams = {
-        Bucket: this.bucket,
-        Key: fileName,
-        Body: fileContent,
-        ContentType: getContentType(filePath),
-      };
-
-      if (!this.s3Client) {
-        return {
-          success: false,
-          error: "S3 client not initialized",
-        };
-      }
-
-      await this.s3Client.send(new PutObjectCommand(uploadParams));
+      const client = this.getClient();
+      await client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: fileName,
+          Body: fileContent,
+          ContentType: getContentType(filePath),
+        })
+      );
 
       const result: UploadResult = { success: true };
 
       if (!useSignedUrl) {
-        if (this.s3Client.config.endpoint) {
-          const endpoint = await this.s3Client.config.endpoint();
+        if (client.config.endpoint) {
+          const endpoint = await client.config.endpoint();
           const port = endpoint.port ? `:${endpoint.port}` : "";
           result.url = `${endpoint.protocol}//${endpoint.hostname}${port}${endpoint.path}${this.bucket}/${fileName}`;
         } else {
@@ -138,7 +142,7 @@ export class AwsS3Service extends Service {
           Bucket: this.bucket,
           Key: fileName,
         });
-        result.url = await getSignedUrl(this.s3Client, getObjectCommand, {
+        result.url = await getSignedUrl(client, getObjectCommand, {
           expiresIn,
         });
       }
@@ -147,7 +151,7 @@ export class AwsS3Service extends Service {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error occurred",
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -162,14 +166,12 @@ export class AwsS3Service extends Service {
       Key: fileName,
     });
 
-    if (!this.s3Client) {
-      throw new Error("S3 client not initialized");
-    }
-    return await getSignedUrl(this.s3Client, command, { expiresIn });
+    const client = this.getClient();
+    return await getSignedUrl(client, command, { expiresIn });
   }
 
   async uploadJson(
-    jsonData: Record<string, unknown>,
+    jsonData: Record<string, JsonValue>,
     fileName?: string,
     subDirectory?: string,
     useSignedUrl = false,
@@ -200,22 +202,16 @@ export class AwsS3Service extends Service {
       const key = `${fullPath}/${actualFileName}`.replace(/\/+/g, "/");
 
       const jsonString = JSON.stringify(jsonData, null, 2);
+      const client = this.getClient();
 
-      const uploadParams = {
-        Bucket: this.bucket,
-        Key: key,
-        Body: jsonString,
-        ContentType: "application/json",
-      };
-
-      if (!this.s3Client) {
-        return {
-          success: false,
-          error: "S3 client not initialized",
-        };
-      }
-
-      await this.s3Client.send(new PutObjectCommand(uploadParams));
+      await client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: jsonString,
+          ContentType: "application/json",
+        })
+      );
 
       const result: JsonUploadResult = {
         success: true,
@@ -223,8 +219,8 @@ export class AwsS3Service extends Service {
       };
 
       if (!useSignedUrl) {
-        if (this.s3Client.config.endpoint) {
-          const endpoint = await this.s3Client.config.endpoint();
+        if (client.config.endpoint) {
+          const endpoint = await client.config.endpoint();
           const port = endpoint.port ? `:${endpoint.port}` : "";
           result.url = `${endpoint.protocol}//${endpoint.hostname}${port}${endpoint.path}${this.bucket}/${key}`;
         } else {
@@ -235,7 +231,7 @@ export class AwsS3Service extends Service {
           Bucket: this.bucket,
           Key: key,
         });
-        result.url = await getSignedUrl(this.s3Client, getObjectCommand, {
+        result.url = await getSignedUrl(client, getObjectCommand, {
           expiresIn,
         });
       }
@@ -244,7 +240,7 @@ export class AwsS3Service extends Service {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error occurred",
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -266,28 +262,22 @@ export class AwsS3Service extends Service {
       }
 
       const key = `${this.fileUploadPath}${subDirectory}/${fileName}`.replace(/\/+/g, "/");
+      const client = this.getClient();
 
-      const uploadParams = {
-        Bucket: this.bucket,
-        Key: key,
-        Body: data,
-        ContentType: contentType,
-      };
-
-      if (!this.s3Client) {
-        return {
-          success: false,
-          error: "S3 client not initialized",
-        };
-      }
-
-      await this.s3Client.send(new PutObjectCommand(uploadParams));
+      await client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: data,
+          ContentType: contentType,
+        })
+      );
 
       const result: UploadResult = { success: true };
 
       if (!useSignedUrl) {
-        if (this.s3Client.config.endpoint) {
-          const endpoint = await this.s3Client.config.endpoint();
+        if (client.config.endpoint) {
+          const endpoint = await client.config.endpoint();
           const port = endpoint.port ? `:${endpoint.port}` : "";
           result.url = `${endpoint.protocol}//${endpoint.hostname}${port}${endpoint.path}${this.bucket}/${key}`;
         } else {
@@ -298,7 +288,7 @@ export class AwsS3Service extends Service {
           Bucket: this.bucket,
           Key: key,
         });
-        result.url = await getSignedUrl(this.s3Client, getObjectCommand, {
+        result.url = await getSignedUrl(client, getObjectCommand, {
           expiresIn,
         });
       }
@@ -307,7 +297,7 @@ export class AwsS3Service extends Service {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error occurred",
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }

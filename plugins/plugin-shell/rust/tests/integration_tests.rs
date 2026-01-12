@@ -1,5 +1,3 @@
-//! Integration tests for the shell plugin.
-
 use elizaos_plugin_shell::{
     is_forbidden_command, is_safe_command, validate_path, ShellConfig, ShellService,
 };
@@ -11,23 +9,19 @@ fn test_path_validation() {
     let allowed = PathBuf::from("/home/user/allowed");
     let current = PathBuf::from("/home/user/allowed");
 
-    // Valid path within allowed directory
     let result = validate_path("subfolder", &allowed, &current);
     assert!(result.is_some());
 
-    // Invalid path outside allowed directory
     let result = validate_path("../../../etc", &allowed, &current);
     assert!(result.is_none());
 }
 
 #[test]
 fn test_safe_command_detection() {
-    // Safe commands
     assert!(is_safe_command("ls -la"));
     assert!(is_safe_command("echo hello"));
     assert!(is_safe_command("pwd"));
 
-    // Unsafe commands
     assert!(!is_safe_command("cd ../.."));
     assert!(!is_safe_command("echo $(whoami)"));
     assert!(!is_safe_command("cmd1 && cmd2"));
@@ -99,19 +93,12 @@ async fn test_shell_service_security() {
 
     let mut service = ShellService::new(config);
 
-    // Forbidden command
     let result = service.execute_command("rm test.txt", None).await.unwrap();
     assert!(!result.success);
     assert!(result.stderr.contains("forbidden"));
 
-    // Path traversal
     let result = service.execute_command("cd ../../..", None).await.unwrap();
     assert!(!result.success);
 }
-
-
-
-
-
 
 

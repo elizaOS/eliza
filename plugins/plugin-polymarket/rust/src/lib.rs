@@ -38,30 +38,21 @@
 #![warn(missing_docs)]
 #![deny(unsafe_code)]
 
-pub mod types;
+pub mod actions;
+pub mod client;
 pub mod constants;
 pub mod error;
-pub mod client;
-pub mod actions;
+pub mod providers;
+pub mod service;
+pub mod types;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Import directly from submodules:
-// - types::* for all types
-// - constants::* for constants
-// - error::{PolymarketError, PolymarketErrorCode}
-// - client::ClobClient
-// - actions::* for action functions
-
-/// Plugin metadata
+/// The canonical plugin identifier used by elizaOS to refer to this plugin.
 pub const PLUGIN_NAME: &str = "polymarket";
-/// Plugin version
+
+/// The plugin crate version (from `CARGO_PKG_VERSION`).
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-
-
-
-
-
-
+pub use service::PolymarketService;

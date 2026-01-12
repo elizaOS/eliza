@@ -1,4 +1,3 @@
-//! Documents provider for knowledge plugin.
 
 use async_trait::async_trait;
 use log::error;
@@ -6,29 +5,21 @@ use log::error;
 use super::{KnowledgeProviderTrait, ProviderContext, ProviderResult};
 use crate::types::KnowledgeDocument;
 
-/// Documents Provider.
-///
-/// A static provider that lists available documents in the knowledge base.
-/// This provider helps the agent understand which documents are available for retrieval.
 pub struct DocumentsProvider {
-    /// Documents stored in the knowledge base
     documents: Vec<KnowledgeDocument>,
 }
 
 impl DocumentsProvider {
-    /// Create a new documents provider.
     pub fn new() -> Self {
         Self {
             documents: Vec::new(),
         }
     }
 
-    /// Update the documents list.
     pub fn update_documents(&mut self, documents: Vec<KnowledgeDocument>) {
         self.documents = documents;
     }
 
-    /// Format documents for context.
     pub fn format_documents(&self, documents: &[&KnowledgeDocument]) -> String {
         if documents.is_empty() {
             return String::new();
@@ -39,12 +30,10 @@ impl DocumentsProvider {
             .map(|doc| {
                 let mut parts = vec![doc.filename.clone()];
 
-                // Add content type
                 if !doc.content_type.is_empty() && doc.content_type != "unknown" {
                     parts.push(doc.content_type.clone());
                 }
 
-                // Add file size
                 if doc.file_size > 0 {
                     let size_kb = doc.file_size / 1024;
                     if size_kb > 1024 {
@@ -54,7 +43,6 @@ impl DocumentsProvider {
                     }
                 }
 
-                // Add source if available
                 if let Some(source) = doc.metadata.get("source") {
                     if let Some(source_str) = source.as_str() {
                         if source_str != "upload" {
@@ -69,7 +57,6 @@ impl DocumentsProvider {
             .join("\n")
     }
 
-    /// Add header to text.
     fn add_header(header: &str, content: &str) -> String {
         if content.is_empty() {
             String::new()
@@ -96,11 +83,10 @@ impl KnowledgeProviderTrait for DocumentsProvider {
     }
 
     fn dynamic(&self) -> bool {
-        false // Static provider - doesn't change based on the message
+        false
     }
 
     async fn get(&self, context: &ProviderContext) -> ProviderResult {
-        // Get documents from state if available
         let documents_value = context.state.get("documents");
 
         let documents: Vec<KnowledgeDocument> = documents_value

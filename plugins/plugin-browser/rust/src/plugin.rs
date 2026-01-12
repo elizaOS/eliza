@@ -20,7 +20,7 @@ impl BrowserPlugin {
     pub fn new(config: BrowserConfig) -> Self {
         Self {
             name: "plugin-browser".to_string(),
-            description: "Browser automation plugin for AI-powered web interactions".to_string(),
+            description: "Browser automation plugin".to_string(),
             config,
             service: None,
         }

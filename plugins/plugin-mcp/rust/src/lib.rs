@@ -7,6 +7,7 @@ pub mod providers;
 pub mod transport;
 pub mod transports;
 pub mod types;
+pub mod service;
 
 pub use client::McpClient;
 pub use error::{McpError, McpResult};
@@ -20,5 +21,6 @@ pub use actions::{
     ActionContext, ActionResult, CallToolAction, McpAction, ReadResourceAction,
 };
 pub use providers::{McpProvider, McpProviderTrait, ProviderContext, ProviderResult};
+pub use service::McpService;
 
 

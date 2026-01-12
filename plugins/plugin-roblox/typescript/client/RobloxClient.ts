@@ -68,9 +68,12 @@ export class RobloxClient {
     return JSON.parse(text) as T;
   }
 
-  async publishMessage(topic: string, data: unknown, universeId?: string): Promise<void> {
+  async publishMessage(
+    topic: string,
+    data: Record<string, unknown>,
+    universeId?: string
+  ): Promise<void> {
     if (this.config.dryRun) {
-      console.log(`[DRY RUN] Would publish to topic "${topic}":`, data);
       return;
     }
 
@@ -86,7 +89,13 @@ export class RobloxClient {
   }
 
   async sendAgentMessage(message: MessagingServiceMessage): Promise<void> {
-    await this.publishMessage(this.config.messagingTopic, message);
+    const payload: Record<string, unknown> = {
+      ...message.data,
+    };
+    if (message.sender) {
+      payload.sender = message.sender;
+    }
+    await this.publishMessage(message.topic, payload);
   }
 
   async getDataStoreEntry<T = unknown>(

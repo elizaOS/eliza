@@ -23,6 +23,8 @@ from elizaos_plugin_s3_storage.types import (
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
 
+JsonValue = str | int | float | bool | None | dict[str, "JsonValue"] | list["JsonValue"]
+
 
 class S3StorageError(Exception):
     def __init__(self, message: str, cause: Exception | None = None) -> None:
@@ -43,7 +45,7 @@ class S3StorageClient:
                 s3={"addressing_style": "path" if self._config.force_path_style else "virtual"},
             )
 
-            client_kwargs: dict[str, object] = {
+            client_kwargs: dict[str, str | Config | bool] = {
                 "aws_access_key_id": self._config.access_key_id,
                 "aws_secret_access_key": self._config.secret_access_key,
                 "region_name": self._config.region,
@@ -155,7 +157,7 @@ class S3StorageClient:
 
     async def upload_json(
         self,
-        json_data: dict[str, object],
+        json_data: dict[str, JsonValue],
         file_name: str | None = None,
         sub_directory: str | None = None,
         use_signed_url: bool = False,

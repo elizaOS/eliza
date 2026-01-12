@@ -1,10 +1,5 @@
 #!/usr/bin/env bun
 
-/**
- * Build script for @elizaos/plugin-tee
- * Uses Bun.build for bundling
- */
-
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 
@@ -30,15 +25,12 @@ const externalDeps = [
 ];
 
 async function buildPlugin() {
-  console.log("🔨 Building @elizaos/plugin-tee...\n");
+  console.log("Building @elizaos/plugin-tee...\n");
 
-  // Clean dist directory
   if (existsSync("dist")) {
     await rm("dist", { recursive: true, force: true });
   }
 
-  // Build with Bun
-  console.log("📦 Bundling with Bun...");
   const buildResult = await Bun.build({
     entrypoints: ["src/index.ts"],
     outdir: "dist",
@@ -57,10 +49,8 @@ async function buildPlugin() {
     process.exit(1);
   }
 
-  console.log(`✅ Built ${buildResult.outputs.length} file(s)`);
+  console.log(`Built ${buildResult.outputs.length} file(s)`);
 
-  // Generate type declarations with tsc
-  console.log("📝 Generating type declarations...");
   const tscProcess = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json"], {
     stdout: "inherit",
     stderr: "inherit",
@@ -72,7 +62,7 @@ async function buildPlugin() {
     process.exit(1);
   }
 
-  console.log("\n✅ Build complete!");
+  console.log("\nBuild complete!");
 }
 
 buildPlugin().catch((error) => {

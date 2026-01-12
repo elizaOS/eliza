@@ -1,16 +1,9 @@
-/**
- * Callback utilities for cast handling.
- */
-
 import type { Content, HandlerCallback, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
 import type { FarcasterClient } from "../client";
 import type { CastId, FarcasterConfig } from "../types";
 import { createCastMemory, neynarCastToCast } from "./index";
 
-/**
- * Create a standard callback for handling cast responses.
- */
 export function standardCastHandlerCallback({
   client,
   runtime,

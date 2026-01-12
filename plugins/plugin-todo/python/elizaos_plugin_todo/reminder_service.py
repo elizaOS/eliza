@@ -1,7 +1,3 @@
-"""
-Reminder service for todo notifications.
-"""
-
 import asyncio
 import logging
 from datetime import datetime
@@ -17,29 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 class ReminderService:
-    """
-    Main todo reminder service that handles all reminder functionality.
-
-    Features:
-    - Periodic reminder checks
-    - Overdue task detection
-    - Upcoming task reminders
-    - Daily task reminders
-    - Rate limiting to prevent spam
-    """
-
     def __init__(
         self,
         config: TodoConfig | None = None,
         runtime: object | None = None,
     ) -> None:
-        """
-        Initialize the reminder service.
-
-        Args:
-            config: Optional configuration
-            runtime: Optional runtime context
-        """
         self._config = config or TodoConfig.from_env()
         self._runtime = runtime
         self._notification_manager: NotificationManager | None = None
@@ -49,10 +27,8 @@ class ReminderService:
         self._last_reminder_check: dict[UUID, float] = {}
 
     async def start(self) -> None:
-        """Start the reminder service."""
         logger.info("Starting ReminderService...")
 
-        # Initialize managers
         self._notification_manager = NotificationManager(self._runtime)
         await self._notification_manager.start()
 
@@ -61,7 +37,6 @@ class ReminderService:
 
         self._data_service = create_todo_data_service()
 
-        # Start reminder loop
         if self._config.enable_reminders:
             self._reminder_task = asyncio.create_task(self._reminder_loop())
             logger.info(
@@ -72,7 +47,6 @@ class ReminderService:
         logger.info("ReminderService started successfully")
 
     async def stop(self) -> None:
-        """Stop the reminder service."""
         if self._reminder_task:
             self._reminder_task.cancel()
             try:
@@ -85,12 +59,9 @@ class ReminderService:
 
         if self._cache_manager:
             await self._cache_manager.stop()
-
         logger.info("ReminderService stopped")
 
     async def _reminder_loop(self) -> None:
-        """Background reminder checking loop."""
-        # Run immediately on start
         await self.check_tasks_for_reminders()
 
         while True:
@@ -103,14 +74,12 @@ class ReminderService:
                 logger.error(f"Error in reminder loop: {e}")
 
     async def check_tasks_for_reminders(self) -> None:
-        """Check all tasks for reminder conditions."""
         if not self._data_service:
             return
 
         try:
             from elizaos_plugin_todo.types import TodoFilters
 
-            # Get all incomplete todos
             filters = TodoFilters(is_completed=False)
             todos = await self._data_service.get_todos(filters)
 
@@ -124,32 +93,23 @@ class ReminderService:
             logger.error(f"Error checking tasks for reminders: {e}")
 
     async def _process_todo_reminder(self, todo: Todo) -> None:
-        """
-        Process reminder for a single todo.
-
-        Args:
-            todo: The todo to process
-        """
         now = datetime.utcnow()
         should_remind = False
         reminder_type = "general"
         priority = "medium"
 
-        # Check last reminder time to avoid spam
         last_reminder = self._last_reminder_check.get(todo.id, 0)
         time_since_last = now.timestamp() - last_reminder
         min_interval = self._config.min_reminder_interval_ms / 1000
 
         if time_since_last < min_interval:
-            return  # Skip if we reminded recently
+            return
 
-        # Check if overdue
         if todo.due_date and todo.due_date < now:
             should_remind = True
             reminder_type = "overdue"
             priority = "high"
 
-        # Check if upcoming (within 30 minutes)
         elif todo.due_date:
             time_until_due = (todo.due_date - now).total_seconds()
             if 0 < time_until_due < 1800:  # 30 minutes
@@ -157,11 +117,9 @@ class ReminderService:
                 reminder_type = "upcoming"
                 priority = "high" if todo.is_urgent else "medium"
 
-        # Check daily tasks (remind in morning and evening)
         elif todo.type.value == "daily":
             hour = now.hour
-            if hour in (9, 18):  # 9 AM and 6 PM
-                # Check if completed today
+            if hour in (9, 18):
                 today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 if not todo.completed_at or todo.completed_at < today_start:
                     should_remind = True
@@ -178,14 +136,6 @@ class ReminderService:
         reminder_type: str,
         priority: str,
     ) -> None:
-        """
-        Send a reminder notification.
-
-        Args:
-            todo: The todo to remind about
-            reminder_type: Type of reminder
-            priority: Priority level
-        """
         if not self._notification_manager:
             return
 
@@ -229,6 +179,15 @@ class ReminderService:
     def clear_reminder_history(self) -> None:
         """Clear the reminder history."""
         self._last_reminder_check.clear()
+
+
+class TodoReminderService(ReminderService):
+    """
+    Wrapper class to match the TypeScript service naming (`TodoReminderService`).
+    """
+
+    service_type: str = "TODO_REMINDER"
+    capability_description: str = "Manages todo reminders and notifications"
 
 
 async def create_reminder_service(

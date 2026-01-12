@@ -77,7 +77,3 @@ def test_experience_info() -> None:
     assert info.creator.creator_type == CreatorType.USER
     assert info.playing == 100
 
-
-
-
-

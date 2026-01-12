@@ -15,27 +15,12 @@ import { createMemorySafe } from "./utils/memory";
 import { getSetting } from "./utils/settings";
 import { getEpochMs } from "./utils/time";
 
-/**
- * Extracts the answer from the given text.
- *
- * @param {string} text - The text containing the answer
- * @returns {string} The extracted answer
- */
 export function extractAnswer(text: string): string {
   const startIndex = text.indexOf("Answer: ") + 8;
   const endIndex = text.indexOf("<|endoftext|>", 11);
   return text.slice(startIndex, endIndex);
 }
 
-/**
- * Represents an X Profile.
- * @typedef {Object} XProfile
- * @property {string} id - The unique identifier of the profile.
- * @property {string} username - The username of the profile.
- * @property {string} screenName - The screen name of the profile.
- * @property {string} bio - The biography of the profile.
- * @property {string[]} nicknames - An array of nicknames associated with the profile.
- */
 type XProfile = {
   id: string;
   username: string;
@@ -44,23 +29,12 @@ type XProfile = {
   nicknames: string[];
 };
 
-/**
- * Class representing a request queue for handling asynchronous requests in a controlled manner.
- */
-
 class RequestQueue {
   private queue: (() => Promise<unknown>)[] = [];
   private processing = false;
   private maxRetries = 3;
   private retryAttempts = new Map<() => Promise<unknown>, number>();
 
-  /**
-   * Asynchronously adds a request to the queue, then processes the queue.
-   *
-   * @template T
-   * @param {() => Promise<T>} request - The request to be added to the queue
-   * @returns {Promise<T>} - A promise that resolves with the result of the request or rejects with an error
-   */
   async add<T>(request: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       this.queue.push(async () => {
@@ -75,11 +49,6 @@ class RequestQueue {
     });
   }
 
-  /**
-   * Asynchronously processes the queue of requests.
-   *
-   * @returns A promise that resolves when the queue has been fully processed.
-   */
   private async processQueue(): Promise<void> {
     if (this.processing || this.queue.length === 0) {
       return;
@@ -91,7 +60,6 @@ class RequestQueue {
       if (!request) continue;
       try {
         await request();
-        // Clear retry count on success
         this.retryAttempts.delete(request);
       } catch (error: unknown) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -103,7 +71,6 @@ class RequestQueue {
           this.retryAttempts.set(request, retryCount);
           this.queue.unshift(request);
           await this.exponentialBackoff(retryCount);
-          // Break the loop to allow exponential backoff to take effect
           break;
         } else {
           logger.error(`Max retries (${this.maxRetries}) exceeded for request, skipping`);
@@ -115,37 +82,22 @@ class RequestQueue {
 
     this.processing = false;
 
-    // If there are still items in the queue, restart processing
     if (this.queue.length > 0) {
       this.processQueue();
     }
   }
 
-  /**
-   * Implements an exponential backoff strategy for retrying a task.
-   * @param {number} retryCount - The number of retries attempted so far.
-   * @returns {Promise<void>} - A promise that resolves after a delay based on the retry count.
-   */
   private async exponentialBackoff(retryCount: number): Promise<void> {
     const delay = 2 ** retryCount * 1000;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
 
-  /**
-   * Asynchronous method that creates a random delay between 1500ms and 3500ms.
-   *
-   * @returns A Promise that resolves after the random delay has passed.
-   */
   private async randomDelay(): Promise<void> {
     const delay = Math.floor(Math.random() * 2000) + 1500;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
 }
 
-/**
- * Class representing a base client for interacting with X.
- * @extends EventEmitter
- */
 export class ClientBase {
   static _xClients: { [accountIdentifier: string]: Client } = {};
   xClient: Client;
@@ -157,12 +109,6 @@ export class ClientBase {
 
   profile: XProfile | null = null;
 
-  /**
-   * Caches a post in the database.
-   *
-   * @param {Post} post - The post to cache.
-   * @returns {Promise<void>} A promise that resolves once the post is cached.
-   */
   async cachePost(post: Post): Promise<void> {
     if (!post) {
       logger.warn("Post is undefined, skipping cache");
@@ -172,11 +118,6 @@ export class ClientBase {
     this.runtime.setCache<Post>(`x/posts/${post.id}`, post);
   }
 
-  /**
-   * Retrieves a cached post by its ID.
-   * @param {string} postId - The ID of the post to retrieve from the cache.
-   * @returns {Promise<Post | undefined>} A Promise that resolves to the cached post, or undefined if the post is not found in the cache.
-   */
   async getCachedPost(postId: string): Promise<Post | undefined> {
     const cached = await this.runtime.getCache<Post>(`x/posts/${postId}`);
 
@@ -187,13 +128,6 @@ export class ClientBase {
     return cached;
   }
 
-  /**
-   * Asynchronously retrieves a post with the specified ID.
-   * If the post is found in the cache, it is returned from the cache.
-   * If not, a request is made to the X API to get the post, which is then cached and returned.
-   * @param {string} postId - The ID of the post to retrieve.
-   * @returns {Promise<Post>} A Promise that resolves to the retrieved post.
-   */
   async getPost(postId: string): Promise<Post> {
     const cachedPost = await this.getCachedPost(postId);
 
@@ -213,11 +147,6 @@ export class ClientBase {
 
   callback: ((self: ClientBase) => void) | null = null;
 
-  /**
-   * This method is called when the application is ready.
-   * It throws an error indicating that it is not implemented in the base class
-   * and should be implemented in the subclass.
-   */
   onReady() {
     throw new Error("Not implemented in base class, please call from subclass");
   }
@@ -228,7 +157,6 @@ export class ClientBase {
     this.runtime = runtime;
     this.state = state;
 
-    // Use a stable identifier for client reuse per auth mode.
     const mode = getXAuthMode(runtime, state);
     const reuseKey =
       mode === "env"
@@ -254,9 +182,6 @@ export class ClientBase {
   }
 
   async init() {
-    // First ensure the agent exists in the database
-    // await this.runtime.ensureAgentExists(this.runtime.character);
-
     const provider = createXAuthProvider(this.runtime, this.state);
 
     const maxRetries = process.env.MAX_RETRIES ? Number.parseInt(process.env.MAX_RETRIES, 10) : 3;
@@ -278,7 +203,7 @@ export class ClientBase {
         retryCount++;
 
         if (retryCount < maxRetries) {
-          const delay = 2 ** retryCount * 1000; // Exponential backoff
+          const delay = 2 ** retryCount * 1000;
           logger.info(`Retrying in ${delay / 1000} seconds...`);
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
@@ -291,7 +216,6 @@ export class ClientBase {
       );
     }
 
-    // Initialize X profile from the authenticated user
     const profile = await this.xClient.me();
     if (profile) {
       logger.log("X user ID:", profile.userId);
@@ -329,8 +253,8 @@ export class ClientBase {
       }
       this.profile = {
         id: profile.userId,
-        username: profile.username, // this is the at
-        screenName: profile.name, // this is the human readable name
+        username: profile.username,
+        screenName: profile.name,
         bio: profile.biography || "",
         nicknames: [],
       };
@@ -348,20 +272,15 @@ export class ClientBase {
       throw new Error("Profile not initialized");
     }
     const homeTimeline = await this.xClient.getUserPosts(this.profile.id, count);
-    // homeTimeline.posts already contains Post objects from v2 API, no parsing needed
     return homeTimeline.posts;
   }
 
-  /**
-   * Fetch timeline for X account, optionally only from followed accounts
-   */
   async fetchHomeTimeline(count: number, following?: boolean): Promise<Post[]> {
     logger.debug("fetching home timeline");
     const homeTimeline = following
       ? await this.xClient.fetchFollowingTimeline(count, [])
       : await this.xClient.fetchHomeTimeline(count, []);
 
-    // homeTimeline already contains Post objects from v2 API, no parsing needed
     return homeTimeline;
   }
 
@@ -371,8 +290,6 @@ export class ClientBase {
     searchMode: SearchMode,
     cursor?: string
   ): Promise<QueryPostsResponse> {
-    // Sometimes this fails because we are rate limited. in this case, we just need to return an empty array
-    // if we dont get a response in 5 seconds, something is wrong
     const timeoutPromise = new Promise((resolve) =>
       setTimeout(() => resolve({ posts: [] }), 15000)
     );
@@ -392,11 +309,7 @@ export class ClientBase {
 
     const cachedTimeline = await this.getCachedTimeline();
 
-    // Check if the cache file exists
     if (cachedTimeline) {
-      // Read the cached search results from the file
-
-      // Get the existing memories from the database
       const existingMemories = await this.runtime.getMemoriesByRoomIds({
         tableName: "messages",
         roomIds: cachedTimeline
@@ -405,12 +318,10 @@ export class ClientBase {
           .map((id) => createUniqueUuid(this.runtime, id as string)),
       });
 
-      // Create a Set to store the IDs of existing memories
       const existingMemoryIds = new Set(
         existingMemories.map((memory) => memory.id?.toString()).filter((id): id is string => !!id)
       );
 
-      // Check if any of the cached posts exist in the existing memories
       const someCachedPostsExist = cachedTimeline.some((post) =>
         post.id ? existingMemoryIds.has(createUniqueUuid(this.runtime, post.id as string)) : false
       );
@@ -425,7 +336,6 @@ export class ClientBase {
             !existingMemoryIds.has(createUniqueUuid(this.runtime, post.id as string))
         );
 
-        // Save the missing posts as memories
         for (const post of postsToSave) {
           if (!post.id || !post.userId || !post.conversationId || !post.username) {
             logger.warn("Skipping post with missing required fields");
@@ -438,7 +348,6 @@ export class ClientBase {
             continue;
           }
 
-          // Create a world for this X user if it doesn't exist
           const worldId = createUniqueUuid(this.runtime, post.userId) as UUID;
           await this.runtime.ensureWorldExists({
             id: worldId,
@@ -460,7 +369,6 @@ export class ClientBase {
               ? this.runtime.agentId
               : createUniqueUuid(this.runtime, post.userId as string);
 
-          // Ensure the entity exists with proper world association
           await this.runtime.ensureConnection({
             entityId,
             roomId,
@@ -502,7 +410,6 @@ export class ClientBase {
 
     const timeline = await this.fetchHomeTimeline(cachedTimeline ? 10 : 50);
 
-    // Get the most recent 20 mentions and interactions
     if (!this.profile?.username) {
       logger.warn("Profile username not available, skipping mentions fetch");
       return;
@@ -514,14 +421,11 @@ export class ClientBase {
       SearchMode.Latest
     );
 
-    // Combine the timeline posts and mentions/interactions
     const allPosts = [...timeline, ...mentionsAndInteractions.posts];
 
-    // Create a Set to store unique post IDs
     const postIdsToCheck = new Set<string>();
     const roomIds = new Set<UUID>();
 
-    // Add post IDs to the Set
     for (const post of allPosts) {
       if (!post.id || !post.conversationId) {
         continue;
@@ -530,18 +434,15 @@ export class ClientBase {
       roomIds.add(createUniqueUuid(this.runtime, post.conversationId));
     }
 
-    // Check the existing memories in the database
     const existingMemories = await this.runtime.getMemoriesByRoomIds({
       tableName: "messages",
       roomIds: Array.from(roomIds),
     });
 
-    // Create a Set to store the existing memory IDs
     const existingMemoryIds = new Set<UUID>(
       existingMemories.map((memory) => memory.id).filter((id): id is UUID => !!id)
     );
 
-    // Filter out the posts that already exist in the database
     const postsToSave = allPosts.filter(
       (post) =>
         post.userId &&
@@ -557,7 +458,6 @@ export class ClientBase {
         .join(","),
     });
 
-    // Save the new posts as memories
     for (const post of postsToSave) {
       if (!post.id || !post.userId || !post.conversationId || !post.username) {
         logger.warn("Skipping post with missing required fields");
@@ -570,7 +470,6 @@ export class ClientBase {
         continue;
       }
 
-      // Create a world for this X user if it doesn't exist
       const worldId = createUniqueUuid(this.runtime, post.userId) as UUID;
       await this.runtime.ensureWorldExists({
         id: worldId,
@@ -593,7 +492,6 @@ export class ClientBase {
           ? this.runtime.agentId
           : createUniqueUuid(this.runtime, post.userId);
 
-      // Ensure the entity exists with proper world association
       await this.runtime.ensureConnection({
         entityId,
         roomId,
@@ -629,7 +527,6 @@ export class ClientBase {
       await this.cachePost(post);
     }
 
-    // Cache
     await this.cacheTimeline(timeline);
     await this.cacheMentions(mentionsAndInteractions.posts);
   }
@@ -744,20 +641,15 @@ export class ClientBase {
     return profile;
   }
 
-  /**
-   * Fetches recent interactions (likes, reposts, quotes) for the authenticated user's posts
-   */
   async fetchInteractions() {
     if (!this.profile?.username) {
       return [];
     }
     const username = this.profile.username;
-    // Use fetchSearchPosts to get mentions instead of the non-existent get method
     const mentionsResponse = await this.requestQueue.add(() =>
       this.xClient.fetchSearchPosts(`@${username}`, 100, SearchMode.Latest)
     );
 
-    // Process posts directly into the expected interaction format
     return mentionsResponse.posts.map((post: Post) => this.formatPostToInteraction(post));
   }
 

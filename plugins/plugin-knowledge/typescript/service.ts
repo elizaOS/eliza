@@ -26,13 +26,6 @@ import type { KnowledgeConfig, LoadResult } from "./types";
 import type { AddKnowledgeOptions } from "./types.ts";
 import { generateContentBasedId, isBinaryContentType, looksLikeBase64 } from "./utils.ts";
 
-const parseBooleanEnv = (value: string | number | boolean | null | undefined): boolean => {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") return value.toLowerCase() === "true";
-  if (typeof value === "number") return value !== 0;
-  return false;
-};
-
 export class KnowledgeService extends Service {
   static readonly serviceType = "knowledge";
   public override config: Metadata = {};
@@ -47,9 +40,7 @@ export class KnowledgeService extends Service {
   }
 
   private async loadInitialDocuments(): Promise<void> {
-    logger.info(
-      `KnowledgeService: Checking for documents to load on startup for agent ${this.runtime.agentId}`
-    );
+    logger.info(`Loading documents on startup for agent ${this.runtime.agentId}`);
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -65,118 +56,58 @@ export class KnowledgeService extends Service {
       );
 
       if (result.successful > 0) {
-        logger.info(
-          `KnowledgeService: Loaded ${result.successful} documents from docs folder on startup for agent ${this.runtime.agentId}`
-        );
-      } else {
-        logger.info(
-          `KnowledgeService: No new documents found to load on startup for agent ${this.runtime.agentId}`
-        );
+        logger.info(`Loaded ${result.successful} documents on startup`);
       }
     } catch (error) {
-      logger.error(
-        { error },
-        `KnowledgeService: Error loading documents on startup for agent ${this.runtime.agentId}`
-      );
+      logger.error({ error }, "Error loading documents on startup");
     }
   }
 
   static async start(runtime: IAgentRuntime): Promise<KnowledgeService> {
     logger.info(`Starting Knowledge service for agent: ${runtime.agentId}`);
 
-    logger.info("Initializing Knowledge Plugin...");
-    logger.info("Validating model configuration for Knowledge plugin...");
-
-    logger.debug(`[Knowledge Plugin] INIT DEBUG:`);
-    logger.debug(
-      `[Knowledge Plugin] - process.env.CTX_KNOWLEDGE_ENABLED: '${process.env.CTX_KNOWLEDGE_ENABLED}'`
-    );
-
-    const config = {
-      CTX_KNOWLEDGE_ENABLED: parseBooleanEnv(runtime.getSetting("CTX_KNOWLEDGE_ENABLED")),
-    };
-
-    logger.debug(
-      `[Knowledge Plugin] - config.CTX_KNOWLEDGE_ENABLED: '${config.CTX_KNOWLEDGE_ENABLED}'`
-    );
-    logger.debug(
-      `[Knowledge Plugin] - runtime.getSetting('CTX_KNOWLEDGE_ENABLED'): '${runtime.getSetting("CTX_KNOWLEDGE_ENABLED")}'`
-    );
-
     const validatedConfig = validateModelConfig(runtime);
+    const ctxEnabled = validatedConfig.CTX_KNOWLEDGE_ENABLED;
 
-    const ctxEnabledFromEnv = parseBooleanEnv(process.env.CTX_KNOWLEDGE_ENABLED);
-    const ctxEnabledFromRuntime = parseBooleanEnv(runtime.getSetting("CTX_KNOWLEDGE_ENABLED"));
-    const ctxEnabledFromValidated = validatedConfig.CTX_KNOWLEDGE_ENABLED;
-
-    const finalCtxEnabled = ctxEnabledFromValidated;
-
-    logger.debug(`[Knowledge Plugin] CTX_KNOWLEDGE_ENABLED sources:`);
-    logger.debug(`[Knowledge Plugin] - From env: ${ctxEnabledFromEnv}`);
-    logger.debug(`[Knowledge Plugin] - From runtime: ${ctxEnabledFromRuntime}`);
-    logger.debug(`[Knowledge Plugin] - FINAL RESULT: ${finalCtxEnabled}`);
-
-    if (finalCtxEnabled) {
-      logger.info("Running in Contextual Knowledge mode with text generation capabilities.");
+    if (ctxEnabled) {
       logger.info(
-        `Using ${validatedConfig.EMBEDDING_PROVIDER || "auto-detected"} for embeddings and ${validatedConfig.TEXT_PROVIDER} for text generation.`
+        `Contextual Knowledge enabled: ${validatedConfig.EMBEDDING_PROVIDER || "auto"} embeddings, ${validatedConfig.TEXT_PROVIDER} text generation`
       );
       logger.info(`Text model: ${validatedConfig.TEXT_MODEL}`);
     } else {
       const usingPluginOpenAI = !process.env.EMBEDDING_PROVIDER;
-
-      logger.warn("Running in Basic Embedding mode - documents will NOT be enriched with context!");
-      logger.info("To enable contextual enrichment:");
-      logger.info("   - Set CTX_KNOWLEDGE_ENABLED=true");
-      logger.info("   - Configure TEXT_PROVIDER (anthropic/openai/openrouter/google)");
-      logger.info("   - Configure TEXT_MODEL and API key");
+      logger.warn("Basic Embedding mode - documents will not be enriched with context");
+      logger.info(
+        "To enable contextual enrichment: Set CTX_KNOWLEDGE_ENABLED=true and configure TEXT_PROVIDER/TEXT_MODEL"
+      );
 
       if (usingPluginOpenAI) {
-        logger.info("Using auto-detected configuration from plugin-openai for embeddings.");
+        logger.info("Using plugin-openai configuration for embeddings");
       } else {
         logger.info(
-          `Using ${validatedConfig.EMBEDDING_PROVIDER} for embeddings with ${validatedConfig.TEXT_EMBEDDING_MODEL}.`
+          `Using ${validatedConfig.EMBEDDING_PROVIDER} for embeddings with ${validatedConfig.TEXT_EMBEDDING_MODEL}`
         );
       }
     }
-
-    logger.info("Model configuration validated successfully.");
-    logger.info(`Knowledge Plugin initialized for agent: ${runtime.character.name}`);
-
-    logger.info(
-      "Knowledge Plugin initialized. Frontend panel should be discoverable via its public route."
-    );
 
     const service = new KnowledgeService(runtime);
     service.config = validatedConfig;
 
     if (service.config.LOAD_DOCS_ON_STARTUP) {
-      logger.info("LOAD_DOCS_ON_STARTUP is enabled. Loading documents from docs folder...");
       service.loadInitialDocuments().catch((error) => {
-        logger.error({ error }, "Error during initial document loading in KnowledgeService");
+        logger.error({ error }, "Error loading initial documents");
       });
-    } else {
-      logger.info("LOAD_DOCS_ON_STARTUP is disabled. Skipping automatic document loading.");
     }
 
     if (service.runtime.character?.knowledge && service.runtime.character.knowledge.length > 0) {
-      logger.info(
-        `KnowledgeService: Processing ${service.runtime.character.knowledge.length} character knowledge items.`
-      );
       const stringKnowledge = service.runtime.character.knowledge.filter(
         (item): item is string => typeof item === "string"
       );
       await service.processCharacterKnowledge(stringKnowledge).catch((err) => {
-        logger.error(
-          { error: err },
-          "KnowledgeService: Error processing character knowledge during startup"
-        );
+        logger.error({ error: err }, "Error processing character knowledge");
       });
-    } else {
-      logger.info(
-        `KnowledgeService: No character knowledge to process for agent ${runtime.agentId}.`
-      );
     }
+
     return service;
   }
 
@@ -262,7 +193,7 @@ export class KnowledgeService extends Service {
 
     try {
       logger.debug(
-        `KnowledgeService: Processing document ${originalFilename} (type: ${contentType}) via processDocument for agent: ${agentId}`
+        `Processing document ${originalFilename} (type: ${contentType}) for agent: ${agentId}`
       );
 
       let fileBuffer: Buffer | null = null;
@@ -275,10 +206,7 @@ export class KnowledgeService extends Service {
         try {
           fileBuffer = Buffer.from(content, "base64");
         } catch (e) {
-          logger.error(
-            { error: e },
-            `KnowledgeService: Failed to convert base64 to buffer for ${originalFilename}`
-          );
+          logger.error({ error: e }, `Failed to convert base64 to buffer for ${originalFilename}`);
           throw new Error(`Invalid base64 content for PDF file ${originalFilename}`);
         }
         extractedText = await extractTextFromDocument(fileBuffer, contentType, originalFilename);
@@ -287,10 +215,7 @@ export class KnowledgeService extends Service {
         try {
           fileBuffer = Buffer.from(content, "base64");
         } catch (e) {
-          logger.error(
-            { error: e },
-            `KnowledgeService: Failed to convert base64 to buffer for ${originalFilename}`
-          );
+          logger.error({ error: e }, `Failed to convert base64 to buffer for ${originalFilename}`);
           throw new Error(`Invalid base64 content for binary file ${originalFilename}`);
         }
         extractedText = await extractTextFromDocument(fileBuffer, contentType, originalFilename);
@@ -328,11 +253,9 @@ export class KnowledgeService extends Service {
       }
 
       if (!extractedText || extractedText.trim() === "") {
-        const noTextError = new Error(
-          `KnowledgeService: No text content extracted from ${originalFilename} (type: ${contentType}).`
+        throw new Error(
+          `No text content extracted from ${originalFilename} (type: ${contentType})`
         );
-        logger.warn(noTextError.message);
-        throw noTextError;
       }
 
       const documentMemory = createDocumentMemory({
@@ -355,18 +278,7 @@ export class KnowledgeService extends Service {
         entityId: entityId || agentId,
       };
 
-      logger.debug(
-        `KnowledgeService: Creating memory with agentId=${agentId}, entityId=${entityId}, roomId=${roomId}, this.runtime.agentId=${this.runtime.agentId}`
-      );
-      logger.debug(
-        `KnowledgeService: memoryWithScope agentId=${memoryWithScope.agentId}, entityId=${memoryWithScope.entityId}`
-      );
-
       await this.runtime.createMemory(memoryWithScope, "documents");
-
-      logger.debug(
-        `KnowledgeService: Stored document ${originalFilename} (Memory ID: ${memoryWithScope.id})`
-      );
 
       const fragmentCount = await processFragmentsSynchronously({
         runtime: this.runtime,
@@ -388,18 +300,9 @@ export class KnowledgeService extends Service {
         fragmentCount,
       };
     } catch (error) {
-      const errorStack = error instanceof Error ? error.stack : undefined;
-      logger.error(
-        { error, stack: errorStack },
-        `KnowledgeService: Error processing document ${originalFilename}`
-      );
+      logger.error({ error }, `Error processing document ${originalFilename}`);
       throw error;
     }
-  }
-
-  private async handleProcessingError(error: unknown, context: string) {
-    logger.error({ error }, `KnowledgeService: Error ${context}`);
-    throw error;
   }
 
   async checkExistingKnowledge(knowledgeId: UUID): Promise<boolean> {
@@ -411,9 +314,8 @@ export class KnowledgeService extends Service {
     message: Memory,
     scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
   ): Promise<KnowledgeItem[]> {
-    logger.debug(`KnowledgeService: getKnowledge called for message id: ${message.id}`);
     if (!message?.content?.text || message?.content?.text.trim().length === 0) {
-      logger.warn("KnowledgeService: Invalid or empty message content for knowledge query.");
+      logger.warn("Invalid or empty message content for knowledge query");
       return [];
     }
 
@@ -486,10 +388,6 @@ export class KnowledgeService extends Service {
         id: memoryId,
         metadata: updatedMetadata,
       });
-
-      logger.debug(
-        `Enriched conversation memory ${memoryId} with RAG data: ${ragMetadata.totalFragments} fragments`
-      );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.warn(
@@ -533,8 +431,6 @@ export class KnowledgeService extends Service {
       ragMetadata,
       timestamp: now,
     });
-
-    logger.debug(`Stored pending RAG metadata for next conversation memory`);
   }
 
   async enrichRecentMemoriesWithPendingRAG(): Promise<void> {
@@ -580,9 +476,7 @@ export class KnowledgeService extends Service {
 
   async processCharacterKnowledge(items: string[]): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    logger.info(
-      `KnowledgeService: Processing ${items.length} character knowledge items for agent ${this.runtime.agentId}`
-    );
+    logger.info(`Processing ${items.length} character knowledge items`);
 
     const processingPromises = items.map(async (item) => {
       await this.knowledgeProcessingSemaphore.acquire();
@@ -593,15 +487,8 @@ export class KnowledgeService extends Service {
         }) as UUID;
 
         if (await this.checkExistingKnowledge(knowledgeId)) {
-          logger.debug(
-            `KnowledgeService: Character knowledge item with ID ${knowledgeId} already exists. Skipping.`
-          );
           return;
         }
-
-        logger.debug(
-          `KnowledgeService: Processing character knowledge for ${this.runtime.character?.name} - ${item.slice(0, 100)}`
-        );
 
         let metadata: CustomMetadata = {
           type: MemoryType.CUSTOM,
@@ -642,16 +529,13 @@ export class KnowledgeService extends Service {
           }
         );
       } catch (error) {
-        await this.handleProcessingError(error, "processing character knowledge");
+        logger.error({ error }, "Error processing character knowledge");
       } finally {
         this.knowledgeProcessingSemaphore.release();
       }
     });
 
     await Promise.all(processingPromises);
-    logger.info(
-      `KnowledgeService: Finished processing character knowledge for agent ${this.runtime.agentId}.`
-    );
   }
 
   async _internalAddKnowledge(
@@ -673,8 +557,6 @@ export class KnowledgeService extends Service {
       entityId: scope?.entityId ?? this.runtime.agentId,
     };
 
-    logger.debug(`KnowledgeService: _internalAddKnowledge called for item ID ${item.id}`);
-
     const documentMetadata: CustomMetadata = {
       ...(item.metadata ?? {}),
       type: MemoryType.CUSTOM,
@@ -695,9 +577,6 @@ export class KnowledgeService extends Service {
 
     const existingDocument = await this.runtime.getMemoryById(item.id);
     if (existingDocument) {
-      logger.debug(
-        `KnowledgeService: Document ${item.id} already exists in _internalAddKnowledge, updating...`
-      );
       await this.runtime.updateMemory({
         ...documentMemory,
         id: item.id,
@@ -713,11 +592,9 @@ export class KnowledgeService extends Service {
       finalScope
     );
 
-    let fragmentsProcessed = 0;
     for (const fragment of fragments) {
       try {
         await this.processDocumentFragment(fragment);
-        fragmentsProcessed++;
       } catch (error) {
         logger.error(
           { error },
@@ -725,9 +602,6 @@ export class KnowledgeService extends Service {
         );
       }
     }
-    logger.debug(
-      `KnowledgeService: Processed ${fragmentsProcessed}/${fragments.length} fragments for document ${item.id}.`
-    );
   }
 
   private async processDocumentFragment(fragment: Memory): Promise<void> {
@@ -736,7 +610,7 @@ export class KnowledgeService extends Service {
 
       await this.runtime.createMemory(fragment, "knowledge");
     } catch (error) {
-      logger.error({ error }, `KnowledgeService: Error processing fragment ${fragment.id}`);
+      logger.error({ error }, `Error processing fragment ${fragment.id}`);
       throw error;
     }
   }
@@ -806,8 +680,5 @@ export class KnowledgeService extends Service {
 
   async deleteMemory(memoryId: UUID): Promise<void> {
     await this.runtime.deleteMemory(memoryId);
-    logger.info(
-      `KnowledgeService: Deleted memory ${memoryId} for agent ${this.runtime.agentId}. Assumed it was a document or related fragment.`
-    );
   }
 }

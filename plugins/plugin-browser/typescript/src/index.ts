@@ -40,8 +40,7 @@ const configSchema = z.object({
 
 const browserStateProvider: Provider = {
   name: "BROWSER_STATE",
-  description:
-    "Provides current browser state information including active session status, current page URL, and page title",
+  description: "Provides current browser state information",
 
   get: async (
     runtime: IAgentRuntime,
@@ -94,7 +93,7 @@ const browserStateProvider: Provider = {
 
 export const browserPlugin: Plugin = {
   name: "plugin-browser",
-  description: "Browser automation plugin using Stagehand for web interactions",
+  description: "Browser automation plugin",
   config: {
     BROWSERBASE_API_KEY: process.env.BROWSERBASE_API_KEY ?? null,
     BROWSERBASE_PROJECT_ID: process.env.BROWSERBASE_PROJECT_ID ?? null,
@@ -118,13 +117,15 @@ export const browserPlugin: Plugin = {
       }
 
       logger.info("Browser plugin initialized successfully");
-    } catch (caughtError: unknown) {
-      const zodErrorCheck = caughtError as { issues?: Array<{ message: string }> };
-      if (zodErrorCheck.issues && Array.isArray(zodErrorCheck.issues)) {
-        const errorMessages = zodErrorCheck.issues.map((e) => e.message).join(", ");
-        throw new Error(`Invalid plugin configuration: ${errorMessages}`);
+    } catch (error) {
+      if (error && typeof error === "object" && "issues" in error) {
+        const zodError = error as { issues?: Array<{ message: string }> };
+        if (Array.isArray(zodError.issues)) {
+          const errorMessages = zodError.issues.map((e) => e.message).join(", ");
+          throw new Error(`Invalid plugin configuration: ${errorMessages}`);
+        }
       }
-      throw caughtError;
+      throw error;
     }
   },
   services: [BrowserService],

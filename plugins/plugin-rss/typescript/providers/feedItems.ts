@@ -7,15 +7,12 @@ export const feedItemsProvider: Provider = {
   description: "Provides recent news and articles from subscribed RSS feeds",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     try {
-      logger.debug("FEEDITEMS provider: Fetching feed items from memory");
-
       const items = await runtime.getMemories({
         tableName: "feeditems",
         unique: false,
       });
 
       if (!items || items.length === 0) {
-        logger.debug("No feed items found in memory");
         return {
           data: { count: 0 },
           values: {},
@@ -105,11 +102,6 @@ export const feedItemsProvider: Provider = {
         itemCount: recentItems.length,
         feedCount: itemsByFeed.size,
       };
-
-      logger.debug(
-        { count: recentItems.length, feeds: itemsByFeed.size, format },
-        "FEEDITEMS provider returning items"
-      );
 
       return {
         data,

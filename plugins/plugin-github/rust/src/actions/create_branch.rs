@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Create Branch Action
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -9,7 +8,6 @@ use crate::error::Result;
 use crate::types::CreateBranchParams;
 use crate::GitHubService;
 
-/// Action to create a new branch in a GitHub repository
 pub struct CreateBranchAction;
 
 #[async_trait]
@@ -78,10 +76,6 @@ impl GitHubAction for CreateBranchAction {
         ))
     }
 }
-
-
-
-
 
 
 

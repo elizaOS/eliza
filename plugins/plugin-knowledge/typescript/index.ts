@@ -1,5 +1,4 @@
 import type { Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import { knowledgeActions } from "./actions";
 import { documentsProvider } from "./documents-provider";
 import { knowledgeProvider } from "./provider";
@@ -26,9 +25,6 @@ export function createKnowledgePlugin(config: KnowledgePluginConfig = {}): Plugi
 
   if (enableUI || enableRoutes) {
     plugin.routes = knowledgeRoutes;
-    logger.debug("[Knowledge Plugin] Routes enabled");
-  } else {
-    logger.info("[Knowledge Plugin] Running in headless mode (no routes or UI)");
   }
 
   if (enableActions) {
@@ -39,10 +35,7 @@ export function createKnowledgePlugin(config: KnowledgePluginConfig = {}): Plugi
     try {
       const { default: knowledgeTestSuite } = require("./tests");
       plugin.tests = [knowledgeTestSuite];
-    } catch {
-      // Tests module not available (e.g., during vitest runs)
-      logger.debug("[Knowledge Plugin] Tests module not available");
-    }
+    } catch {}
   }
 
   return plugin;

@@ -1,16 +1,21 @@
-//! Ollama plugin for ElizaOS.
+//! elizaOS Ollama plugin (Rust).
 //!
-//! This crate provides an Ollama API client with text generation, object generation,
-//! and embedding support for the ElizaOS framework.
+//! This crate provides an [`OllamaClient`] for interacting with an Ollama server, including text
+//! generation, JSON/object generation, and embedding generation.
 
 #![warn(missing_docs)]
 #![deny(unsafe_code)]
 
+/// Ollama HTTP client and request helpers.
 pub mod client;
+/// Configuration for connecting to an Ollama server.
 pub mod config;
+/// Error types and result aliases for this crate.
 pub mod error;
+/// Request/response types and parameter structs.
 pub mod types;
 
+/// WASM initialization helpers.
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
@@ -19,21 +24,19 @@ pub use config::OllamaConfig;
 pub use error::{OllamaError, Result};
 pub use types::{EmbeddingParams, ObjectGenerationParams, TextGenerationParams};
 
-/// Creates an Ollama client using configuration from environment variables.
+/// Create an [`OllamaClient`] using environment-based configuration.
 ///
-/// # Errors
-///
-/// Returns an error if the configuration cannot be loaded from the environment
-/// or if the client fails to initialize.
+/// This loads an [`OllamaConfig`] via [`OllamaConfig::from_env`] and constructs an [`OllamaClient`]
+/// with default headers and timeouts.
 pub fn create_client_from_env() -> Result<OllamaClient> {
     let config = OllamaConfig::from_env()?;
     OllamaClient::new(config)
 }
 
-/// The name of this plugin.
+/// Canonical elizaOS plugin name.
 pub const PLUGIN_NAME: &str = "ollama";
-/// A description of this plugin's functionality.
+/// Short, human-readable plugin description.
 pub const PLUGIN_DESCRIPTION: &str =
     "Ollama API client with text generation, object generation, and embedding support";
-/// The version of this plugin, derived from Cargo.toml.
+/// Plugin version, sourced from this crate’s `Cargo.toml`.
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");

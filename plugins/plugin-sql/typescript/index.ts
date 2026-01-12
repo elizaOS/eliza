@@ -32,7 +32,6 @@ export function createDatabaseAdapter(
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
     if (!globalSingletons.postgresConnectionManager) {
-      // Determine RLS server_id if data isolation is enabled
       const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
       let rlsServerId: string | undefined;
       if (dataIsolationEnabled) {
@@ -74,10 +73,6 @@ export function createDatabaseAdapter(
   return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
 }
 
-/**
- * SQL plugin for database adapter using Drizzle ORM with dynamic plugin schema migrations.
- * Provides database access through PGLite (local) or PostgreSQL (remote).
- */
 export const plugin: Plugin = {
   name: "@elizaos/plugin-sql",
   description: "A plugin for SQL database access with dynamic schema migrations",
@@ -140,8 +135,6 @@ export const plugin: Plugin = {
       { src: "plugin:sql", agentId: runtime.agentId },
       "Database adapter created and registered"
     );
-
-    // Migrations run at server level before agents load - no runtime service needed
   },
 };
 

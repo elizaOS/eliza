@@ -1,17 +1,12 @@
 #![allow(missing_docs)]
-//! Text chunking functionality.
 
 use crate::types::ChunkResult;
 
-/// Approximate characters per token.
 const CHARS_PER_TOKEN: f64 = 3.5;
 
-/// Text chunker for splitting documents into semantic chunks.
 #[derive(Debug, Clone)]
 pub struct TextChunker {
-    /// Target tokens per chunk
     pub chunk_size: usize,
-    /// Overlap tokens between chunks
     pub chunk_overlap: usize,
 }
 
@@ -34,9 +29,6 @@ impl TextChunker {
         }
     }
 
-    /// Split text into semantic chunks.
-    ///
-    /// Attempts to break at sentence boundaries when possible.
     pub fn split(&self, text: &str) -> ChunkResult {
         let char_chunk_size = (self.chunk_size as f64 * CHARS_PER_TOKEN) as usize;
         let char_overlap = (self.chunk_overlap as f64 * CHARS_PER_TOKEN) as usize;
@@ -48,12 +40,10 @@ impl TextChunker {
         while start < text_len {
             let mut end = (start + char_chunk_size).min(text_len);
 
-            // Try to break at sentence boundary if not at end
             if end < text_len {
                 let search_start = start + (char_chunk_size * 4 / 5);
                 let search_region = &text[search_start..end];
 
-                // Look for sentence endings
                 if let Some(pos) = search_region.rfind(|c| c == '.' || c == '!' || c == '?' || c == '\n') {
                     end = search_start + pos + 1;
                 }
@@ -64,7 +54,6 @@ impl TextChunker {
                 chunks.push(chunk);
             }
 
-            // Move start with overlap
             start = if end > char_overlap {
                 end - char_overlap
             } else {
@@ -86,7 +75,6 @@ impl TextChunker {
         }
     }
 
-    /// Estimate token count for text.
     pub fn estimate_tokens(&self, text: &str) -> usize {
         (text.len() as f64 / CHARS_PER_TOKEN) as usize
     }
@@ -172,18 +160,11 @@ mod tests {
 
         let result = chunker.split(text);
 
-        // Should try to break at sentence boundaries
         for chunk in &result.chunks {
-            // Chunks should ideally end with sentence terminators (unless truncated)
             let ends_with_term = chunk.ends_with('.') || chunk.ends_with('!') || chunk.ends_with('?');
             let is_continuation = !chunk.starts_with(|c: char| c.is_uppercase());
-            // Either ends properly or is a continuation
             assert!(ends_with_term || is_continuation || chunk.len() < 10);
         }
     }
 }
-
-
-
-
 

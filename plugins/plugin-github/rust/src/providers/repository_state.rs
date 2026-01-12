@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Repository State Provider
 
 use serde_json::json;
 
@@ -7,7 +6,6 @@ use super::{ProviderContext, ProviderResult, GitHubProvider};
 use crate::error::Result;
 use crate::GitHubService;
 
-/// Provider for current repository state
 pub struct RepositoryStateProvider;
 
 impl GitHubProvider for RepositoryStateProvider {
@@ -76,9 +74,26 @@ impl GitHubProvider for RepositoryStateProvider {
     }
 }
 
+/// TS-parity alias provider (name: `GITHUB_REPOSITORY_STATE`).
+pub struct GitHubRepositoryStateProvider;
 
+impl GitHubProvider for GitHubRepositoryStateProvider {
+    fn name(&self) -> &str {
+        "GITHUB_REPOSITORY_STATE"
+    }
 
+    fn description(&self) -> &str {
+        "Provides information about the current state of the GitHub repository"
+    }
 
+    fn get(
+        &self,
+        context: &ProviderContext,
+        service: &GitHubService,
+    ) -> impl std::future::Future<Output = Result<ProviderResult>> + Send {
+        RepositoryStateProvider.get(context, service)
+    }
+}
 
 
 

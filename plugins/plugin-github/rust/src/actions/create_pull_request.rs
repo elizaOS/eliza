@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Create Pull Request Action
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -9,7 +8,6 @@ use crate::error::Result;
 use crate::types::CreatePullRequestParams;
 use crate::GitHubService;
 
-/// Action to create a new pull request in a GitHub repository
 pub struct CreatePullRequestAction;
 
 #[async_trait]
@@ -100,10 +98,6 @@ impl GitHubAction for CreatePullRequestAction {
         ))
     }
 }
-
-
-
-
 
 
 

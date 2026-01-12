@@ -3,6 +3,7 @@
 from elizaos_plugin_mcp.actions import CallToolAction, ReadResourceAction
 from elizaos_plugin_mcp.client import McpClient
 from elizaos_plugin_mcp.providers import McpProvider
+from elizaos_plugin_mcp.service import McpService
 from elizaos_plugin_mcp.transports import HttpTransport, StdioTransport, Transport
 from elizaos_plugin_mcp.types import (
     ConnectionStatus,
@@ -22,6 +23,8 @@ __version__ = "1.7.0"
 __all__ = [
     # Client
     "McpClient",
+    # Service
+    "McpService",
     # Actions
     "CallToolAction",
     "ReadResourceAction",

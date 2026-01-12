@@ -33,5 +33,3 @@ pub enum LinearError {
     #[error("Linear service not available")]
     ServiceUnavailable,
 }
-
-

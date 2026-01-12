@@ -1,7 +1,3 @@
-//! Telegram actions module
-//!
-//! Contains action implementations for Telegram operations.
-
 mod send_message;
 
 pub use send_message::SendMessageAction;
@@ -11,33 +7,33 @@ use serde_json::Value;
 
 use crate::error::Result;
 
-/// Context for action execution
 #[derive(Debug, Clone)]
+/// Context passed to Telegram actions.
 pub struct ActionContext {
-    /// Original message data
+    /// Raw incoming message/event payload.
     pub message: Value,
-    /// Chat ID
+    /// Telegram chat ID the action is operating on.
     pub chat_id: i64,
-    /// User ID
+    /// Telegram user ID that initiated the action.
     pub user_id: i64,
-    /// Thread ID (for forum topics)
+    /// Optional thread/topic ID (for forum-enabled chats).
     pub thread_id: Option<i64>,
-    /// Current state
+    /// Current agent/plugin state, including the response to send.
     pub state: Value,
 }
 
-/// Trait for Telegram actions
 #[async_trait]
+/// Trait implemented by Telegram actions.
 pub trait TelegramAction: Send + Sync {
-    /// Get action name
+    /// Machine-readable action name.
     fn name(&self) -> &'static str;
 
-    /// Get action description
+    /// Human-friendly description of the action.
     fn description(&self) -> &'static str;
 
-    /// Validate if action should run
+    /// Validates whether the action can run for the given context.
     async fn validate(&self, context: &ActionContext) -> Result<bool>;
 
-    /// Execute the action
+    /// Executes the action and returns a JSON result.
     async fn execute(&self, context: &ActionContext) -> Result<Value>;
 }

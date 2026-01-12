@@ -60,31 +60,6 @@ import {
 } from "./schema/index";
 import type { DrizzleDatabase } from "./types";
 
-// Define the metadata type inline since we can't import it
-/**
- * Represents metadata information about memory.
- * @typedef {Object} MemoryMetadata
- * @property {string} type - The type of memory.
- * @property {string} [source] - The source of the memory.
- * @property {UUID} [sourceId] - The ID of the source.
- * @property {string} [scope] - The scope of the memory.
- * @property {number} [timestamp] - The timestamp of the memory.
- * @property {string[]} [tags] - The tags associated with the memory.
- * @property {UUID} [documentId] - The ID of the document associated with the memory.
- * @property {number} [position] - The position of the memory.
- */
-
-/**
- * Abstract class representing a base Drizzle adapter for working with databases.
- * This adapter provides a comprehensive set of methods for interacting with a database
- * using Drizzle ORM. It implements the DatabaseAdapter interface and handles operations
- * for various entity types including agents, entities, components, memories, rooms,
- * participants, relationships, tasks, and more.
- *
- * The adapter includes built-in retry logic for database operations, embedding dimension
- * management, and transaction support. Concrete implementations must provide the
- * withDatabase method to execute operations against their specific database.
- */
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
@@ -95,14 +70,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   protected abstract withDatabase<T>(operation: () => Promise<T>): Promise<T>;
 
-  /**
-   * Execute a callback with entity context for Entity RLS.
-   * Must be implemented by concrete adapters to handle their specific RLS mechanisms.
-   *
-   * @param entityId - The entity UUID to set as context (or null for system operations)
-   * @param callback - The database operations to execute with the entity context
-   * @returns The result of the callback
-   */
   public abstract withEntityContext<T>(
     entityId: UUID | null,
     callback: (tx: DrizzleDatabase) => Promise<T>
@@ -111,18 +78,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   public abstract init(): Promise<void>;
   public abstract close(): Promise<void>;
 
-  /**
-   * Initialize method that can be overridden by implementations
-   */
   public async initialize(): Promise<void> {
     await this.init();
   }
 
-  /**
-   * Run plugin schema migrations for all registered plugins
-   * @param plugins Array of plugins with their schemas
-   * @param options Migration options (verbose, force, dryRun, etc.)
-   */
   public async runPluginMigrations(
     plugins: Array<{ name: string; schema?: Record<string, unknown> }>,
     options?: {
@@ -131,78 +90,53 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       dryRun?: boolean;
     }
   ): Promise<void> {
-    // Initialize migration service if not already done
     if (!this.migrationService) {
       const { DatabaseMigrationService } = await import("./migration-service");
       this.migrationService = new DatabaseMigrationService();
       await this.migrationService.initializeWithDatabase(this.db as DrizzleDatabase);
     }
 
-    // Register plugin schemas
     for (const plugin of plugins) {
       if (plugin.schema) {
         this.migrationService.registerSchema(plugin.name, plugin.schema);
       }
     }
 
-    // Run migrations with options
     await this.migrationService.runAllPluginMigrations(options);
   }
 
-  /**
-   * Get the underlying database instance for testing purposes
-   */
   public getDatabase(): unknown {
     return this.db;
   }
 
   protected agentId: UUID;
 
-  /**
-   * Constructor for creating a new instance of Agent with the specified agentId.
-   *
-   * @param {UUID} agentId - The unique identifier for the agent.
-   */
   constructor(agentId: UUID) {
     super();
     this.agentId = agentId;
   }
 
-  /**
-   * Normalizes entity names to ensure they are always a proper array of strings.
-   * Handles strings, Sets, Maps, iterables, and non-iterable values.
-   * All array elements are converted to strings to prevent database errors.
-   * @param names - The names value to normalize
-   * @returns A proper array of string names
-   */
   private normalizeEntityNames(names: unknown): string[] {
-    // Handle null/undefined
     if (names == null) {
       return [];
     }
 
-    // Handle string - wrap in array
     if (typeof names === "string") {
       return [names];
     }
 
-    // Handle arrays - ensure all elements are strings
     if (Array.isArray(names)) {
       return names.map(String);
     }
 
-    // Handle Sets - convert to array and ensure all elements are strings
     if (names instanceof Set) {
       return Array.from(names).map(String);
     }
 
-    // Handle other iterables (including Maps) - convert to array and ensure all elements are strings
-    // Maps yield [key, value] tuples, so we need to convert those to strings too
     if (typeof names === "object" && typeof names[Symbol.iterator] === "function") {
       return Array.from(names as Iterable<unknown>).map(String);
     }
 
-    // Handle non-iterable primitives (numbers, booleans, objects)
     return [String(names)];
   }
 

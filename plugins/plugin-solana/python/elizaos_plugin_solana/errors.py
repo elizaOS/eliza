@@ -1,4 +1,3 @@
-"""Error types for the Solana plugin."""
 
 
 class SolanaError(Exception):

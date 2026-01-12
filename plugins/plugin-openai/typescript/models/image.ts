@@ -1,9 +1,3 @@
-/**
- * Image model handlers
- *
- * Provides image generation and description functionality.
- */
-
 import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import type {
@@ -24,36 +18,14 @@ import {
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
-/**
- * Extended image generation params that may include OpenAI-specific options
- */
 interface ExtendedImageGenerationParams extends ImageGenerationParams {
   quality?: ImageQuality;
   style?: ImageStyle;
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-/**
- * Default prompt for image description
- */
 const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
   "Please analyze this image and provide a title and detailed description.";
 
-// ============================================================================
-// Image Generation
-// ============================================================================
-
-/**
- * Generates images using OpenAI's image generation API (DALL-E).
- *
- * @param runtime - The agent runtime
- * @param params - Image generation parameters
- * @returns Array of generated image URLs
- * @throws Error if generation fails
- */
 export async function handleImageGeneration(
   runtime: IAgentRuntime,
   params: ImageGenerationParams
@@ -61,13 +33,10 @@ export async function handleImageGeneration(
   const modelName = getImageModel(runtime);
   const count = params.count ?? 1;
   const size: ImageSize = (params.size as ImageSize) ?? "1024x1024";
-
-  // Cast to extended type for OpenAI-specific params
   const extendedParams = params as ExtendedImageGenerationParams;
 
   logger.debug(`[OpenAI] Using IMAGE model: ${modelName}`);
 
-  // Validate parameters
   if (!params.prompt || params.prompt.trim().length === 0) {
     throw new Error("IMAGE generation requires a non-empty prompt");
   }
@@ -85,7 +54,6 @@ export async function handleImageGeneration(
     size,
   };
 
-  // Add optional quality and style for DALL-E 3
   if (extendedParams.quality) {
     requestBody.quality = extendedParams.quality;
   }
@@ -121,33 +89,15 @@ export async function handleImageGeneration(
   }));
 }
 
-// ============================================================================
-// Image Description
-// ============================================================================
-
-/**
- * Parses a title from the model's response text.
- */
 function parseTitleFromResponse(content: string): string {
   const titleMatch = content.match(/title[:\s]+(.+?)(?:\n|$)/i);
   return titleMatch?.[1]?.trim() ?? "Image Analysis";
 }
 
-/**
- * Parses a description from the model's response text.
- */
 function parseDescriptionFromResponse(content: string): string {
   return content.replace(/title[:\s]+(.+?)(?:\n|$)/i, "").trim();
 }
 
-/**
- * Describes/analyzes an image using OpenAI's vision capabilities.
- *
- * @param runtime - The agent runtime
- * @param params - Image URL or description parameters
- * @returns Title and description of the image
- * @throws Error if analysis fails
- */
 export async function handleImageDescription(
   runtime: IAgentRuntime,
   params: ImageDescriptionParams | string
@@ -157,7 +107,6 @@ export async function handleImageDescription(
 
   logger.debug(`[OpenAI] Using IMAGE_DESCRIPTION model: ${modelName}`);
 
-  // Normalize parameters
   let imageUrl: string;
   let promptText: string;
 
@@ -169,7 +118,6 @@ export async function handleImageDescription(
     promptText = params.prompt ?? DEFAULT_IMAGE_DESCRIPTION_PROMPT;
   }
 
-  // Validate URL
   if (!imageUrl || imageUrl.trim().length === 0) {
     throw new Error("IMAGE_DESCRIPTION requires a valid image URL");
   }
@@ -208,7 +156,6 @@ export async function handleImageDescription(
 
   const data = (await response.json()) as OpenAIChatCompletionResponse;
 
-  // Emit usage event
   if (data.usage) {
     emitModelUsageEvent(
       runtime,
@@ -222,7 +169,6 @@ export async function handleImageDescription(
     );
   }
 
-  // Extract content from response
   const firstChoice = data.choices?.[0];
   const content = firstChoice?.message?.content;
 

@@ -1,5 +1,3 @@
-"""Execute command action for the shell plugin."""
-
 from dataclasses import dataclass
 from typing import Optional
 
@@ -9,16 +7,12 @@ from elizaos_plugin_shell.types import CommandResult
 
 @dataclass
 class ActionExample:
-    """Example for an action."""
-
     user_message: str
     agent_response: str
 
 
 @dataclass
 class ActionResult:
-    """Result of an action execution."""
-
     success: bool
     text: str
     data: Optional[dict] = None
@@ -26,7 +20,6 @@ class ActionResult:
 
 
 class ExecuteCommandAction:
-    """Action to execute shell commands."""
 
     COMMAND_KEYWORDS = [
         "run", "execute", "command", "shell", "install", "brew", "npm",
@@ -42,12 +35,10 @@ class ExecuteCommandAction:
 
     @property
     def name(self) -> str:
-        """Get the action name."""
         return "EXECUTE_COMMAND"
 
     @property
     def similes(self) -> list[str]:
-        """Get action similes (alternative names)."""
         return [
             "RUN_COMMAND",
             "SHELL_COMMAND",
@@ -66,20 +57,16 @@ class ExecuteCommandAction:
 
     @property
     def description(self) -> str:
-        """Get action description."""
         return (
-            "Execute ANY shell command in the terminal. Use this to run ANY command including: "
-            "brew install, npm install, apt-get, system commands, file operations (create, write, delete), "
-            "navigate directories, execute scripts, or perform any other shell operation."
+            "Execute shell commands including brew install, npm install, apt-get, "
+            "system commands, file operations, directory navigation, and scripts."
         )
 
     def _has_command_keyword(self, text: str) -> bool:
-        """Check if text contains command keywords."""
         lower = text.lower()
         return any(kw in lower for kw in self.COMMAND_KEYWORDS)
 
     def _has_direct_command(self, text: str) -> bool:
-        """Check if text starts with a direct command."""
         lower = text.lower()
         for cmd in self.DIRECT_COMMANDS:
             if lower.startswith(cmd) and (
@@ -89,7 +76,6 @@ class ExecuteCommandAction:
         return False
 
     async def validate(self, message: dict, state: dict) -> bool:
-        """Validate if this action should be executed for the given message."""
         text = message.get("content", {}).get("text", "")
         return self._has_command_keyword(text) or self._has_direct_command(text)
 
@@ -99,7 +85,6 @@ class ExecuteCommandAction:
         state: dict,
         service: Optional[ShellService] = None,
     ) -> ActionResult:
-        """Execute the action."""
         if service is None:
             return ActionResult(
                 success=False,
@@ -113,8 +98,7 @@ class ExecuteCommandAction:
         if not command:
             return ActionResult(
                 success=False,
-                text="I couldn't understand which command you want to execute. "
-                     "Please specify a shell command.",
+                text="Could not determine which command to execute. Please specify a shell command.",
                 error="Could not extract command",
             )
 
@@ -146,10 +130,8 @@ class ExecuteCommandAction:
         )
 
     def _extract_command_from_text(self, text: str) -> str:
-        """Extract command from text."""
         lower = text.lower()
 
-        # Direct command patterns
         direct_commands = [
             "ls", "cd", "pwd", "echo", "cat", "mkdir", "rm", "mv", "cp",
             "git", "npm", "brew", "apt",
@@ -165,7 +147,6 @@ class ExecuteCommandAction:
                 pos = lower.find(f"execute {cmd}")
                 return text[pos + 8:].strip()
 
-        # Check for "run <command>" or "execute <command>" patterns
         if "run " in lower:
             pos = lower.find("run ")
             return text[pos + 4:].strip()
@@ -173,7 +154,6 @@ class ExecuteCommandAction:
             pos = lower.find("execute ")
             return text[pos + 8:].strip()
 
-        # Common request patterns
         if "list" in lower and ("file" in lower or "director" in lower):
             return "ls -la"
         if "git status" in lower or ("check" in lower and "git" in lower):
@@ -184,7 +164,6 @@ class ExecuteCommandAction:
         return ""
 
     def examples(self) -> list[ActionExample]:
-        """Get usage examples."""
         return [
             ActionExample(
                 user_message="run ls -la",

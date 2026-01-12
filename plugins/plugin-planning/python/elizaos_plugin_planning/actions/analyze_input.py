@@ -1,7 +1,3 @@
-"""
-Analyze input action for the planning plugin.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,14 +6,12 @@ import time
 
 @dataclass
 class ActionExample:
-    """An action example."""
     input: str
     output: str
 
 
 @dataclass
 class AnalyzeInputAction:
-    """Action to analyze user input and extract key information."""
 
     @property
     def name(self) -> str:

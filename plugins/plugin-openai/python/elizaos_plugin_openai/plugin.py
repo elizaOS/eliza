@@ -1,9 +1,3 @@
-"""
-OpenAI Plugin for elizaOS.
-
-Provides a high-level interface to OpenAI APIs.
-"""
-
 from __future__ import annotations
 
 import os
@@ -39,12 +33,6 @@ from elizaos_plugin_openai.types import (
 
 
 class OpenAIPlugin:
-    """
-    High-level OpenAI plugin for elizaOS.
-
-    Provides convenient methods for all OpenAI API operations.
-    """
-
     def __init__(
         self,
         api_key: str | None = None,
@@ -54,20 +42,6 @@ class OpenAIPlugin:
         embedding_model: str = "text-embedding-3-small",
         embedding_dimensions: int = 1536,
     ) -> None:
-        """
-        Initialize the OpenAI plugin.
-
-        Args:
-            api_key: OpenAI API key (defaults to OPENAI_API_KEY env var).
-            base_url: API base URL.
-            small_model: Small model identifier.
-            large_model: Large model identifier.
-            embedding_model: Embedding model identifier.
-            embedding_dimensions: Embedding dimensions.
-
-        Raises:
-            ValueError: If no API key is provided or found in environment.
-        """
         key = api_key or os.environ.get("OPENAI_API_KEY")
         if not key:
             raise ValueError("OPENAI_API_KEY must be provided or set in environment variables")
@@ -83,7 +57,6 @@ class OpenAIPlugin:
         self._client = OpenAIClient(self._config)
 
     async def close(self) -> None:
-        """Close the plugin and release resources."""
         await self._client.close()
 
     async def __aenter__(self) -> OpenAIPlugin:
@@ -92,10 +65,6 @@ class OpenAIPlugin:
     async def __aexit__(self, *_: object) -> None:
         await self.close()
 
-    # =========================================================================
-    # Text Generation
-    # =========================================================================
-
     async def generate_text_small(
         self,
         prompt: str,
@@ -103,17 +72,6 @@ class OpenAIPlugin:
         system: str | None = None,
         max_tokens: int | None = None,
     ) -> str:
-        """
-        Generate text using the small model (gpt-5-mini).
-
-        Args:
-            prompt: The prompt for generation.
-            system: Optional system message.
-            max_tokens: Maximum output tokens.
-
-        Returns:
-            Generated text.
-        """
         params = TextGenerationParams(
             prompt=prompt,
             model=self._config.small_model,
@@ -129,17 +87,6 @@ class OpenAIPlugin:
         system: str | None = None,
         max_tokens: int | None = None,
     ) -> str:
-        """
-        Generate text using the large model (gpt-5).
-
-        Args:
-            prompt: The prompt for generation.
-            system: Optional system message.
-            max_tokens: Maximum output tokens.
-
-        Returns:
-            Generated text.
-        """
         params = TextGenerationParams(
             prompt=prompt,
             model=self._config.large_model,
@@ -155,17 +102,6 @@ class OpenAIPlugin:
         model: str | None = None,
         system: str | None = None,
     ) -> AsyncIterator[str]:
-        """
-        Stream text generation.
-
-        Args:
-            prompt: The prompt for generation.
-            model: Model to use (defaults to large model).
-            system: Optional system message.
-
-        Yields:
-            Text chunks as they are generated.
-        """
         params = TextGenerationParams(
             prompt=prompt,
             model=model or self._config.large_model,
@@ -174,10 +110,6 @@ class OpenAIPlugin:
         )
         async for chunk in self._client.stream_text(params):
             yield chunk
-
-    # =========================================================================
-    # Embeddings
-    # =========================================================================
 
     async def create_embedding(self, text: str) -> list[float]:
         """
@@ -196,10 +128,6 @@ class OpenAIPlugin:
         )
         return await self._client.create_embedding(params)
 
-    # =========================================================================
-    # Images
-    # =========================================================================
-
     async def generate_image(
         self,
         prompt: str,
@@ -209,19 +137,6 @@ class OpenAIPlugin:
         quality: ImageQuality = ImageQuality.STANDARD,
         style: ImageStyle = ImageStyle.VIVID,
     ) -> list[ImageGenerationResult]:
-        """
-        Generate images using DALL-E.
-
-        Args:
-            prompt: The prompt describing the image.
-            n: Number of images to generate.
-            size: Image size.
-            quality: Image quality.
-            style: Image style.
-
-        Returns:
-            List of generated image results.
-        """
         params = ImageGenerationParams(
             prompt=prompt,
             model=self._config.image_model,
@@ -239,17 +154,6 @@ class OpenAIPlugin:
         prompt: str | None = None,
         max_tokens: int = 8192,
     ) -> ImageDescriptionResult:
-        """
-        Describe/analyze an image.
-
-        Args:
-            image_url: URL of the image.
-            prompt: Custom analysis prompt.
-            max_tokens: Maximum response tokens.
-
-        Returns:
-            Image description with title and description.
-        """
         params = ImageDescriptionParams(
             image_url=image_url,
             max_tokens=max_tokens,
@@ -262,10 +166,6 @@ class OpenAIPlugin:
             )
         return await self._client.describe_image(params)
 
-    # =========================================================================
-    # Audio
-    # =========================================================================
-
     async def transcribe(
         self,
         audio_data: bytes,
@@ -274,18 +174,6 @@ class OpenAIPlugin:
         prompt: str | None = None,
         filename: str = "audio.webm",
     ) -> str:
-        """
-        Transcribe audio to text.
-
-        Args:
-            audio_data: Raw audio bytes.
-            language: Language code (ISO-639-1).
-            prompt: Optional prompt to guide transcription.
-            filename: Filename hint for format detection.
-
-        Returns:
-            Transcribed text.
-        """
         params = TranscriptionParams(
             model=self._config.transcription_model,
             language=language,
@@ -322,21 +210,7 @@ class OpenAIPlugin:
         )
         return await self._client.text_to_speech(params)
 
-    # =========================================================================
-    # Tokenization
-    # =========================================================================
-
     def tokenize(self, text: str, model: str | None = None) -> list[int]:
-        """
-        Tokenize text into token IDs.
-
-        Args:
-            text: Text to tokenize.
-            model: Model to use (defaults to large model).
-
-        Returns:
-            List of token IDs.
-        """
         return tokenize(text, model or self._config.large_model)
 
     def detokenize(self, tokens: list[int], model: str | None = None) -> str:
@@ -353,16 +227,6 @@ class OpenAIPlugin:
         return detokenize(tokens, model or self._config.large_model)
 
     def count_tokens(self, text: str, model: str | None = None) -> int:
-        """
-        Count tokens in text.
-
-        Args:
-            text: Text to count.
-            model: Model to use (defaults to large model).
-
-        Returns:
-            Token count.
-        """
         return count_tokens(text, model or self._config.large_model)
 
     def truncate_to_tokens(
@@ -383,10 +247,6 @@ class OpenAIPlugin:
             Truncated text.
         """
         return truncate_to_token_limit(text, max_tokens, model or self._config.large_model)
-
-    # =========================================================================
-    # Structured Output
-    # =========================================================================
 
     async def generate_object(
         self,
@@ -415,7 +275,6 @@ class OpenAIPlugin:
         )
         response = await self._client.generate_text(params)
 
-        # Clean up markdown code blocks if present
         cleaned = response.strip()
         if cleaned.startswith("```json"):
             cleaned = cleaned[7:]
@@ -427,42 +286,14 @@ class OpenAIPlugin:
         return json.loads(cleaned.strip())  # type: ignore[no-any-return]
 
 
-# Convenience function to create plugin
 def create_plugin(
     api_key: str | None = None,
     **kwargs: object,
 ) -> OpenAIPlugin:
-    """
-    Create an OpenAI plugin instance.
-
-    Args:
-        api_key: OpenAI API key (defaults to OPENAI_API_KEY env var).
-        **kwargs: Additional configuration options.
-
-    Returns:
-        Configured OpenAIPlugin instance.
-    """
     return OpenAIPlugin(api_key=api_key, **kwargs)  # type: ignore[arg-type]
 
 
-# ============================================================================
-# elizaOS Plugin (for use with AgentRuntime)
-# ============================================================================
-
-
 def create_openai_elizaos_plugin() -> Plugin:
-    """
-    Create an elizaOS-compatible plugin for OpenAI.
-
-    This creates a proper elizaOS Plugin that can be passed to AgentRuntime.
-    The plugin registers model handlers for TEXT_LARGE, TEXT_SMALL, and TEXT_EMBEDDING.
-
-    Configuration is read from environment variables:
-    - OPENAI_API_KEY (required)
-    - OPENAI_BASE_URL (optional)
-    - OPENAI_SMALL_MODEL (optional, default: gpt-5-mini)
-    - OPENAI_LARGE_MODEL (optional, default: gpt-5)
-    """
     from typing import Any
 
     from elizaos import Plugin
@@ -485,7 +316,6 @@ def create_openai_elizaos_plugin() -> Plugin:
 
     async def text_large_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
-        # Note: gpt-5 models don't support temperature - use defaults
         return await client.generate_text_large(
             params.get("prompt", ""),
             system=params.get("system"),
@@ -516,12 +346,10 @@ def create_openai_elizaos_plugin() -> Plugin:
     )
 
 
-# Lazy plugin singleton
 _openai_plugin_instance: Plugin | None = None
 
 
 def get_openai_plugin() -> Plugin:
-    """Get the singleton elizaOS OpenAI plugin instance."""
     global _openai_plugin_instance
     if _openai_plugin_instance is None:
         _openai_plugin_instance = create_openai_elizaos_plugin()

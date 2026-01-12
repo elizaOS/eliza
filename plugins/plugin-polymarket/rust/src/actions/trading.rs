@@ -29,7 +29,9 @@ pub async fn check_order_scoring(
     }
 
     if order_ids.is_empty() {
-        return Err(PolymarketError::invalid_order("At least one order ID is required"));
+        return Err(PolymarketError::invalid_order(
+            "At least one order ID is required",
+        ));
     }
 
     // This should call client.are_orders_scoring(order_ids) when implemented
@@ -138,7 +140,6 @@ pub async fn get_price_history(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_check_order_scoring_empty_ids() {

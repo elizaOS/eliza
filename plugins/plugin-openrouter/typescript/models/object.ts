@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger, ModelType, type ObjectGenerationParams } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, type ObjectGenerationParams } from "@elizaos/core";
 import { generateObject, jsonSchema } from "ai";
 import type { JSONSchema7 } from "json-schema";
 
@@ -15,9 +15,7 @@ async function generateObjectWithModel(
   const openrouter = createOpenRouterProvider(runtime);
   const modelName =
     modelType === ModelType.OBJECT_SMALL ? getSmallModel(runtime) : getLargeModel(runtime);
-  const modelLabel = modelType === ModelType.OBJECT_SMALL ? "OBJECT_SMALL" : "OBJECT_LARGE";
 
-  logger.log(`[OpenRouter] Using ${modelLabel} model: ${modelName}`);
   const temperature = params.temperature ?? 0.7;
 
   try {

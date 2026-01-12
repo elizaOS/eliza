@@ -6,8 +6,6 @@ import os
 import shlex
 import subprocess
 import time
-from typing import TYPE_CHECKING
-
 from elizaos_plugin_shell.path_utils import (
     is_forbidden_command,
     is_safe_command,
@@ -20,9 +18,6 @@ from elizaos_plugin_shell.types import (
     FileOperationType,
     ShellConfig,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +245,7 @@ class ShellService:
     ) -> list[FileOperation] | None:
         import re
 
-        operations: list[FileOperation] = []
+        operations = []
         parts = command.strip().split()
         cmd = parts[0].lower() if parts else ""
 
@@ -328,8 +323,4 @@ class ShellService:
 
     def get_allowed_directory(self) -> str:
         return self._config.allowed_directory
-
-
-
-
 

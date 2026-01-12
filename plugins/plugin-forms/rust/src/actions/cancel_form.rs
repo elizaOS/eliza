@@ -5,7 +5,7 @@ pub struct CancelFormAction;
 impl CancelFormAction {
     pub fn wants_cancel(text: &str) -> bool {
         let lower = text.to_lowercase();
-        
+
         lower.contains("cancel")
             || lower.contains("stop")
             || lower.contains("abort")
@@ -30,15 +30,20 @@ impl Action for CancelFormAction {
         "Cancels an active form"
     }
 
-    fn validate(&self, message_text: &str, has_active_forms: bool, has_forms_service: bool) -> bool {
+    fn validate(
+        &self,
+        message_text: &str,
+        has_active_forms: bool,
+        has_forms_service: bool,
+    ) -> bool {
         if !has_forms_service {
             return false;
         }
-        
+
         if !has_active_forms {
             return false;
         }
-        
+
         Self::wants_cancel(message_text)
     }
 
@@ -88,7 +93,7 @@ mod tests {
         assert!(CancelFormAction::wants_cancel("nevermind"));
         assert!(CancelFormAction::wants_cancel("never mind"));
         assert!(CancelFormAction::wants_cancel("I don't want to do this"));
-        
+
         // Should not detect without cancel keywords
         assert!(!CancelFormAction::wants_cancel("My name is John"));
         assert!(!CancelFormAction::wants_cancel("Continue please"));
@@ -97,16 +102,16 @@ mod tests {
     #[test]
     fn test_validate() {
         let action = CancelFormAction;
-        
+
         // Should validate when service available, has active forms, and wants to cancel
         assert!(action.validate("cancel the form", true, true));
-        
+
         // Should not validate without service
         assert!(!action.validate("cancel the form", true, false));
-        
+
         // Should not validate without active forms
         assert!(!action.validate("cancel the form", false, true));
-        
+
         // Should not validate without cancel intent
         assert!(!action.validate("continue please", true, true));
     }
@@ -116,7 +121,7 @@ mod tests {
         let action = CancelFormAction;
         let examples = action.examples();
         assert!(!examples.is_empty());
-        
+
         // Check that CANCEL_FORM action is in examples
         let has_cancel = examples.iter().any(|e| e.actions.contains(&"CANCEL_FORM"));
         assert!(has_cancel);

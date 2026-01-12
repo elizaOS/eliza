@@ -63,10 +63,7 @@ pub async fn get_teams_context(service: &LinearService) -> Result<ProviderResult
     let teams_list: Vec<String> = teams
         .iter()
         .map(|team| {
-            let desc = team
-                .description
-                .as_deref()
-                .unwrap_or("No description");
+            let desc = team.description.as_deref().unwrap_or("No description");
             format!("- {} ({}): {}", team.name, team.key, desc)
         })
         .collect();
@@ -89,10 +86,10 @@ pub async fn get_projects_context(service: &LinearService) -> Result<ProviderRes
     let projects = service.get_projects(None).await?;
 
     if projects.is_empty() {
-            return Ok(ProviderResult::new("No Linear projects found"));
-        }
+        return Ok(ProviderResult::new("No Linear projects found"));
+    }
 
-        let active_projects: Vec<_> = projects
+    let active_projects: Vec<_> = projects
         .iter()
         .filter(|p| {
             p.state
@@ -173,5 +170,3 @@ pub async fn get_activity_context(service: &LinearService) -> Result<ProviderRes
         }),
     ))
 }
-
-

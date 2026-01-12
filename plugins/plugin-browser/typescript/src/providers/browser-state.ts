@@ -4,8 +4,7 @@ import type { BrowserService } from "../services/browser-service.js";
 
 export const browserStateProvider: Provider = {
   name: "BROWSER_STATE",
-  description:
-    "Provides current browser state information including active session status, current page URL, and page title",
+  description: "Provides current browser state information",
 
   get: async (
     runtime: IAgentRuntime,

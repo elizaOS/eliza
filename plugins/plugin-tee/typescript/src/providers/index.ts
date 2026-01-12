@@ -1,7 +1,3 @@
-/**
- * TEE Providers exports.
- */
-
 export { DeriveKeyProvider, RemoteAttestationProvider } from "./base";
 export { PhalaDeriveKeyProvider, phalaDeriveKeyProvider } from "./deriveKey";
 export {

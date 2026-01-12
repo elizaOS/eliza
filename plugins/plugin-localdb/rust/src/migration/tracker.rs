@@ -14,12 +14,10 @@ pub struct MigrationTracker {
 }
 
 impl MigrationTracker {
-    /// Create a new migration tracker.
     pub fn new(pool: Arc<PgPool>) -> Self {
         Self { pool }
     }
 
-    /// Ensure migration tracking schema and tables exist.
     pub async fn ensure_tables(&self) -> Result<()> {
         // Create migrations schema
         sqlx::query("CREATE SCHEMA IF NOT EXISTS migrations")
@@ -94,7 +92,6 @@ impl MigrationTracker {
         Ok(())
     }
 
-    /// Get the last migration for a plugin.
     pub async fn get_last_migration(
         &self,
         plugin_name: &str,
@@ -124,7 +121,6 @@ impl MigrationTracker {
         }
     }
 
-    /// Record a migration in the tracking table.
     pub async fn record_migration(
         &self,
         plugin_name: &str,
@@ -148,7 +144,6 @@ impl MigrationTracker {
         Ok(())
     }
 
-    /// Get migration status for a plugin.
     pub async fn get_status(&self, plugin_name: &str) -> Result<HashMap<String, String>> {
         let last_migration = self.get_last_migration(plugin_name).await?;
 

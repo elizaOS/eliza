@@ -29,7 +29,10 @@ impl N8nProvider for PluginRegistryProvider {
     }
 
     async fn get(&self, context: &ProviderContext) -> ProviderResult {
-        let registry = context.state.get("pluginRegistry").and_then(|r| r.as_array());
+        let registry = context
+            .state
+            .get("pluginRegistry")
+            .and_then(|r| r.as_array());
 
         match registry {
             Some(plugins) if !plugins.is_empty() => {

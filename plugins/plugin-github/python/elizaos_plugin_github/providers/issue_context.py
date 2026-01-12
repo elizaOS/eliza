@@ -3,13 +3,10 @@ from typing import Protocol
 
 
 class ProviderContext(Protocol):
-    """Provider context protocol."""
-
     message: dict[str, object]
 
 
 def extract_issue_number(text: str) -> int | None:
-    """Extract issue number from text."""
     patterns = [
         r"#(\d+)",
         r"issue\s*#?(\d+)",

@@ -1,16 +1,13 @@
-// Vision service types and interfaces
 export const VisionServiceType = {
   VISION: "VISION" as const,
 };
 
-// Extend the core service types with vision service
 declare module "@elizaos/core" {
   interface ServiceTypeRegistry {
     VISION: "VISION";
   }
 }
 
-// Vision-specific types
 export interface CameraInfo {
   id: string;
   name: string;
@@ -24,7 +21,7 @@ export interface SceneDescription {
   people: PersonInfo[];
   sceneChanged: boolean;
   changePercentage: number;
-  audioTranscription?: string; // Latest audio transcription
+  audioTranscription?: string;
 }
 
 export interface DetectedObject {
@@ -62,7 +59,6 @@ export interface VisionFrame {
   format: "rgb" | "rgba" | "jpeg" | "png";
 }
 
-// Vision modes
 export enum VisionMode {
   OFF = "OFF",
   CAMERA = "CAMERA",
@@ -129,7 +125,6 @@ export interface OCRResult {
   fullText: string;
 }
 
-// Enhanced scene description with screen data
 export interface EnhancedSceneDescription extends SceneDescription {
   screenCapture?: ScreenCapture;
   screenAnalysis?: {
@@ -145,7 +140,6 @@ export interface EnhancedSceneDescription extends SceneDescription {
   };
 }
 
-// Update VisionConfig
 export interface VisionConfig {
   cameraName?: string;
   pixelChangeThreshold?: number;
@@ -156,28 +150,22 @@ export interface VisionConfig {
   vlmUpdateInterval?: number;
   tfChangeThreshold?: number;
   vlmChangeThreshold?: number;
-
-  // Screen vision config
   visionMode?: VisionMode;
-  screenCaptureInterval?: number; // ms between screen captures
-  tileSize?: number; // Size of tiles (e.g., 256 for 256x256)
+  screenCaptureInterval?: number;
+  tileSize?: number;
   tileProcessingOrder?: "sequential" | "priority" | "random";
   ocrEnabled?: boolean;
   florence2Enabled?: boolean;
   screenRegion?: {
-    // Optional: capture only part of screen
     x: number;
     y: number;
     width: number;
     height: number;
   };
-
-  // Multi-display and worker config
-  displayIndex?: number; // Specific display to capture
-  captureAllDisplays?: boolean; // Cycle through all displays
-  targetScreenFPS?: number; // Target FPS for screen capture
+  displayIndex?: number;
+  captureAllDisplays?: boolean;
+  targetScreenFPS?: number;
   textRegions?: Array<{
-    // Specific regions for OCR
     x: number;
     y: number;
     width: number;
@@ -185,7 +173,6 @@ export interface VisionConfig {
   }>;
 }
 
-// Entity tracking types
 export interface TrackedEntity {
   id: string;
   entityType: "person" | "object" | "pet";
@@ -211,10 +198,7 @@ export interface EntityAppearance {
 }
 
 export interface EntityAttributes {
-  // Index signature for Metadata compatibility
   [key: string]: string | number | boolean | null | undefined | string[] | number[];
-
-  // For people
   name?: string;
   faceEmbedding?: number[];
   faceId?: string;
@@ -226,8 +210,6 @@ export interface EntityAttributes {
   objectType?: string;
   color?: string;
   size?: "small" | "medium" | "large";
-
-  // Common
   description?: string;
   tags?: string[];
 }
@@ -255,7 +237,7 @@ export interface WorldState {
   worldId: string;
   entities: Map<string, TrackedEntity>;
   lastUpdate: number;
-  activeEntities: string[]; // Currently visible
+  activeEntities: string[];
   recentlyLeft: Array<{
     entityId: string;
     leftAt: number;

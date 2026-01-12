@@ -19,9 +19,6 @@ export interface CacheStats {
   totalMisses: number;
 }
 
-/**
- * High-performance caching manager with LRU eviction and TTL support
- */
 export class CacheManager {
   private cache: Map<string, CacheEntry<unknown>> = new Map();
   private readonly maxSize: number;
@@ -40,12 +37,9 @@ export class CacheManager {
   }
 
   private initialize(): void {
-    // Start cleanup timer
-    setInterval(() => this.cleanup(), 60000); // Cleanup every minute
+    setInterval(() => this.cleanup(), 60000);
     logger.info("CacheManager initialized");
   }
-
-  // ====== Core Cache Operations ======
 
   async get<T>(key: string): Promise<T | null> {
     const entry = this.cache.get(key);
@@ -55,7 +49,6 @@ export class CacheManager {
       return null;
     }
 
-    // Check if expired
     if (this.isExpired(entry)) {
       this.cache.delete(key);
       this.stats.expired++;
@@ -63,7 +56,6 @@ export class CacheManager {
       return null;
     }
 
-    // Update access statistics
     entry.accessCount++;
     entry.lastAccessed = Date.now();
     this.stats.hits++;
@@ -75,7 +67,6 @@ export class CacheManager {
     const now = Date.now();
     const entryTTL = ttl || this.defaultTTL;
 
-    // Check if we need to evict
     if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
       this.evictLRU();
     }
@@ -112,8 +103,6 @@ export class CacheManager {
 
     return true;
   }
-
-  // ====== Advanced Operations ======
 
   async getOrSet<T>(key: string, fetcher: () => Promise<T>, ttl?: number): Promise<T> {
     const cached = await this.get<T>(key);
@@ -170,8 +159,6 @@ export class CacheManager {
     return deleted;
   }
 
-  // ====== Cache Management ======
-
   private isExpired(entry: CacheEntry<unknown>): boolean {
     return Date.now() - entry.timestamp > entry.ttl;
   }
@@ -213,8 +200,6 @@ export class CacheManager {
     }
   }
 
-  // ====== Statistics and Monitoring ======
-
   getStats(): CacheStats {
     const totalRequests = this.stats.hits + this.stats.misses;
     const hitRate = totalRequests > 0 ? this.stats.hits / totalRequests : 0;
@@ -228,9 +213,8 @@ export class CacheManager {
       oldestEntry = Math.min(oldestEntry, entry.timestamp);
       newestEntry = Math.max(newestEntry, entry.timestamp);
 
-      // Rough memory estimation
       const serialized = JSON.stringify(entry.data);
-      memoryEstimate += serialized.length * 2; // UTF-16 characters
+      memoryEstimate += serialized.length * 2;
     }
 
     return {
@@ -306,16 +290,13 @@ export class CacheManager {
     logger.info("Starting cache warm-up process...");
 
     try {
-      // Pre-load frequently accessed data
       const entityIds = await this.getFrequentlyAccessedEntities();
       const serviceNames = ["TODO_REMINDER", "TODO_INTEGRATION_BRIDGE", "NOTIFICATION"];
 
-      // Warm up entity cache
       for (const entityId of entityIds) {
         await this.warmUpEntity(entityId);
       }
 
-      // Warm up service health cache
       for (const serviceName of serviceNames) {
         await this.warmUpServiceHealth(serviceName);
       }
@@ -331,20 +312,14 @@ export class CacheManager {
   }
 
   private async getFrequentlyAccessedEntities(): Promise<UUID[]> {
-    // This would typically query the database for active users
-    // For now, return empty array
     return [];
   }
 
   private async warmUpEntity(entityId: UUID): Promise<void> {
-    // This would typically fetch entity data from the database
-    // For now, just create a placeholder entry
     await this.cacheEntity(entityId, { id: entityId, warmedUp: true });
   }
 
   private async warmUpServiceHealth(serviceName: string): Promise<void> {
-    // This would typically check actual service health
-    // For now, just create a placeholder entry
     await this.cacheServiceHealth(serviceName, {
       status: "unknown",
       warmedUp: true,
@@ -352,20 +327,15 @@ export class CacheManager {
     });
   }
 
-  // ====== Memory Management ======
-
   async optimize(): Promise<void> {
     logger.info("Optimizing cache...");
 
-    // Remove expired entries
     this.cleanup();
 
-    // If still over capacity, be more aggressive
     if (this.cache.size > this.maxSize * 0.9) {
       await this.aggressiveCleanup();
     }
 
-    // Force garbage collection if available
     if (global.gc) {
       global.gc();
     }
@@ -374,7 +344,6 @@ export class CacheManager {
   }
 
   private async aggressiveCleanup(): Promise<void> {
-    // Sort entries by access count and last accessed time
     const entries = Array.from(this.cache.entries()).sort(([, a], [, b]) => {
       const scoreA = a.accessCount * 0.7 + (Date.now() - a.lastAccessed) * 0.3;
       const scoreB = b.accessCount * 0.7 + (Date.now() - b.lastAccessed) * 0.3;
@@ -388,8 +357,6 @@ export class CacheManager {
       this.stats.evictions++;
     }
   }
-
-  // ====== Manager Lifecycle ======
 
   async stop(): Promise<void> {
     await this.clear();

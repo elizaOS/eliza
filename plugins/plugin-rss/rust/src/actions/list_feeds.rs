@@ -1,10 +1,7 @@
-//! List feeds action for the RSS plugin.
-
 use async_trait::async_trait;
 use serde_json::Value;
 use super::get_feed::{Action, ActionExample};
 
-/// List feeds action.
 pub struct ListFeedsAction;
 
 impl ListFeedsAction {

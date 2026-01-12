@@ -50,7 +50,6 @@ class CreateIssueAction:
         ]
 
     async def validate(self, context: ActionContext) -> bool:
-        """Validate the action can be executed."""
         content = context.message.get("content", {})
         text = ""
         if isinstance(content, dict):

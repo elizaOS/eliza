@@ -1,18 +1,14 @@
 #![allow(missing_docs)]
-//! Configuration for the Farcaster plugin.
 
 use crate::defaults;
 use crate::error::{FarcasterError, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
 
-/// Operation mode for the Farcaster service.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FarcasterMode {
-    /// Polling mode - periodically fetch new data
     Polling,
-    /// Webhook mode - receive push notifications
     Webhook,
 }
 
@@ -35,49 +31,33 @@ impl std::str::FromStr for FarcasterMode {
     }
 }
 
-/// Configuration for the Farcaster client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FarcasterConfig {
-    /// Farcaster ID (FID) for the account
     pub fid: u64,
-    /// Neynar signer UUID for signing casts
     pub signer_uuid: String,
-    /// Neynar API key for API access
     pub neynar_api_key: String,
-    /// Enable dry run mode (operations are simulated)
     #[serde(default)]
     pub dry_run: bool,
-    /// Operation mode
     #[serde(default)]
     pub mode: FarcasterMode,
-    /// Maximum cast length in characters
     #[serde(default = "default_max_cast_length")]
     pub max_cast_length: usize,
-    /// Polling interval in seconds
     #[serde(default = "default_poll_interval")]
     pub poll_interval: u64,
-    /// Enable auto-casting
     #[serde(default = "default_true")]
     pub enable_cast: bool,
-    /// Minimum interval between casts in minutes
     #[serde(default = "default_cast_interval_min")]
     pub cast_interval_min: u64,
-    /// Maximum interval between casts in minutes
     #[serde(default = "default_cast_interval_max")]
     pub cast_interval_max: u64,
-    /// Enable action processing
     #[serde(default = "default_true")]
     pub enable_action_processing: bool,
-    /// Interval between action processing cycles in milliseconds
     #[serde(default = "default_action_interval")]
     pub action_interval: u64,
-    /// Post casts immediately
     #[serde(default = "default_true")]
     pub cast_immediately: bool,
-    /// Maximum number of actions to process in a batch
     #[serde(default = "default_max_actions")]
     pub max_actions_processing: u32,
-    /// Optional custom Farcaster hub URL
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hub_url: Option<String>,
 }
@@ -111,7 +91,6 @@ fn default_max_actions() -> u32 {
 }
 
 impl FarcasterConfig {
-    /// Create a new configuration.
     pub fn new(fid: u64, signer_uuid: impl Into<String>, neynar_api_key: impl Into<String>) -> Self {
         Self {
             fid,
@@ -165,7 +144,6 @@ impl FarcasterConfig {
         let neynar_api_key = env::var("FARCASTER_NEYNAR_API_KEY")
             .map_err(|_| FarcasterError::env("FARCASTER_NEYNAR_API_KEY is required"))?;
 
-        // Optional settings
         let dry_run = env::var("FARCASTER_DRY_RUN")
             .map(|v| v.to_lowercase() == "true")
             .unwrap_or(false);
@@ -221,7 +199,6 @@ impl FarcasterConfig {
         })
     }
 
-    /// Validate the configuration.
     pub fn validate(&self) -> Result<()> {
         if self.fid == 0 {
             return Err(FarcasterError::validation("FARCASTER_FID must be a positive integer"));
@@ -246,13 +223,11 @@ impl FarcasterConfig {
         Ok(())
     }
 
-    /// Enable dry run mode.
     pub fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
         self
     }
 
-    /// Set the operation mode.
     pub fn with_mode(mut self, mode: FarcasterMode) -> Self {
         self.mode = mode;
         self

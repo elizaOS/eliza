@@ -1,4 +1,3 @@
-//! Knowledge provider for knowledge plugin.
 
 use async_trait::async_trait;
 use log::error;
@@ -6,29 +5,21 @@ use log::error;
 use super::{KnowledgeProviderTrait, ProviderContext, ProviderResult};
 use crate::types::KnowledgeItem;
 
-/// Knowledge Provider.
-///
-/// A dynamic provider that retrieves knowledge from the knowledge base for RAG,
-/// enriching agent responses with relevant context.
 pub struct KnowledgeProvider {
-    /// Retrieved knowledge items
     items: Vec<KnowledgeItem>,
 }
 
 impl KnowledgeProvider {
-    /// Create a new knowledge provider.
     pub fn new() -> Self {
         Self {
             items: Vec::new(),
         }
     }
 
-    /// Update the knowledge items.
     pub fn update_items(&mut self, items: Vec<KnowledgeItem>) {
         self.items = items;
     }
 
-    /// Format knowledge items for context.
     pub fn format_items(&self, items: &[&KnowledgeItem]) -> String {
         if items.is_empty() {
             return String::new();
@@ -49,7 +40,6 @@ impl KnowledgeProvider {
             .join("\n\n")
     }
 
-    /// Add header to text.
     fn add_header(header: &str, content: &str) -> String {
         if content.is_empty() {
             String::new()
@@ -72,15 +62,14 @@ impl KnowledgeProviderTrait for KnowledgeProvider {
     }
 
     fn description(&self) -> &'static str {
-        "Dynamic provider that retrieves knowledge from the knowledge base for RAG, enriching agent responses with relevant context."
+        "Retrieves knowledge from the knowledge base for RAG"
     }
 
     fn dynamic(&self) -> bool {
-        true // Dynamic provider - changes based on the message
+        true
     }
 
     async fn get(&self, context: &ProviderContext) -> ProviderResult {
-        // Get knowledge items from state if available
         let items_value = context.state.get("knowledgeItems");
 
         let items: Vec<KnowledgeItem> = items_value

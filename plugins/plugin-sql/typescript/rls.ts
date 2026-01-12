@@ -4,84 +4,9 @@ import { agentTable } from "./schema/agent";
 import { serverTable } from "./schema/server";
 import { getDb } from "./types";
 
-/**
- * PostgreSQL Row-Level Security (RLS) for Multi-Server and Entity Isolation
- *
- * This module provides two layers of database-level security:
- *
- * 1. **Server RLS** - Multi-server isolation
- *    - Isolates data between different elizaOS server instances
- *    - Uses `server_id` column added dynamically to all tables
- *    - Server context set via PostgreSQL `application_name` connection parameter
- *    - Prevents data leakage between different deployments/environments
- *
- * 2. **Entity RLS** - User/agent-level privacy isolation
- *    - Isolates data between different users (Clients (plugins/API) users)
- *    - Uses `entity_id`, `author_id`, or joins via `participants` table
- *    - Entity context set via `app.entity_id` transaction-local variable
- *    - Provides DM privacy and multi-user isolation within a server
- *
- * CRITICAL SECURITY REQUIREMENTS:
- * - RLS policies DO NOT apply to PostgreSQL superuser accounts
- * - Use a REGULAR (non-superuser) database user
- * - Grant only necessary permissions (CREATE, SELECT, INSERT, UPDATE, DELETE)
- * - NEVER use the 'postgres' superuser or any superuser account
- * - Superusers bypass ALL RLS policies by design, defeating the isolation mechanism
- *
- * ARCHITECTURE:
- * - Server RLS: Uses PostgreSQL `application_name` (set at connection pool level)
- * - Entity RLS: Uses `SET LOCAL app.entity_id` (set per transaction)
- * - Policies use FORCE ROW LEVEL SECURITY to enforce even for table owners
- * - Automatic index creation for performance (`server_id`, `entity_id`, `room_id`)
- *
- * @module rls
- */
-
-/**
- * Install PostgreSQL functions required for Server RLS and Entity RLS
- *
- * This function creates all necessary PostgreSQL stored procedures for both
- * Server RLS (multi-server isolation) and Entity RLS (user privacy isolation).
- *
- * **Server RLS Functions Created:**
- * - `current_server_id()` - Returns server UUID from `application_name`
- * - `add_server_isolation(schema, table)` - Adds Server RLS to a single table
- * - `apply_rls_to_all_tables()` - Applies Server RLS to all eligible tables
- *
- * **Entity RLS Functions Created:**
- * - `current_entity_id()` - Returns entity UUID from `app.entity_id` session variable
- * - `add_entity_isolation(schema, table)` - Adds Entity RLS to a single table
- * - `apply_entity_rls_to_all_tables()` - Applies Entity RLS to all eligible tables
- *
- * **Security Model:**
- * - Server RLS: Isolation between different elizaOS instances (environments/deployments)
- * - Entity RLS: Isolation between different users within a server instance
- * - Both layers stack - a user can only see data from their server AND their accessible entities
- *
- * **Important Notes:**
- * - Must be called before `applyRLSToNewTables()` or `applyEntityRLSToAllTables()`
- * - Creates `servers` table if it doesn't exist
- * - Automatically calls `installEntityRLS()` to set up both layers
- * - Uses `%I` identifier quoting in format() to prevent SQL injection
- * - Policies use FORCE RLS to enforce even for table owners
- *
- * @param adapter - Database adapter with access to the Drizzle ORM instance
- * @returns Promise that resolves when all RLS functions are installed
- * @throws {Error} If database connection fails or SQL execution fails
- *
- * @example
- * ```typescript
- * // Install RLS functions on server startup
- * await installRLSFunctions(database);
- * await getOrCreateRlsServer(database, serverId);
- * await setServerContext(database, serverId);
- * await applyRLSToNewTables(database);
- * ```
- */
 export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
-  // Create servers table if it doesn't exist
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS servers (
       id UUID PRIMARY KEY,
@@ -90,9 +15,6 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     )
   `);
 
-  // Function to get server_id from application_name
-  // This allows multi-tenant isolation without needing superuser privileges
-  // Each connection pool sets application_name = server_id
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION current_server_id() RETURNS UUID AS $$
     DECLARE
@@ -100,8 +22,6 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     BEGIN
       app_name := NULLIF(current_setting('application_name', TRUE), '');
 
-      -- Return NULL if application_name is not set or not a valid UUID
-      -- This allows admin queries to work without RLS restrictions
       BEGIN
         RETURN app_name::UUID;
       EXCEPTION WHEN OTHERS THEN
@@ -111,14 +31,6 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     $$ LANGUAGE plpgsql STABLE;
   `);
 
-  // Function to add RLS to a table
-  // SECURITY: Uses format() with %I to safely quote identifiers and prevent SQL injection
-  // This function:
-  // 1. Adds server_id column if it doesn't exist (with DEFAULT current_server_id())
-  // 2. Backfills/reassigns orphaned data to current server
-  // 3. Creates an index on server_id for query performance
-  // 4. Enables FORCE ROW LEVEL SECURITY (enforces RLS even for table owners)
-  // 5. Creates an isolation policy that filters rows by server_id
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION add_server_isolation(
       schema_name text,
@@ -131,7 +43,6 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     BEGIN
       full_table_name := schema_name || '.' || table_name;
 
-      -- Check if server_id column already exists
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
@@ -139,19 +50,11 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
           AND information_schema.columns.column_name = 'server_id'
       ) INTO column_exists;
 
-      -- Add server_id column if missing (DEFAULT populates it automatically for new rows)
       IF NOT column_exists THEN
         EXECUTE format('ALTER TABLE %I.%I ADD COLUMN server_id UUID DEFAULT current_server_id()', schema_name, table_name);
-
-        -- Backfill existing rows with current server_id
-        -- This ensures all existing data belongs to the server instance that is enabling RLS
         EXECUTE format('UPDATE %I.%I SET server_id = current_server_id() WHERE server_id IS NULL', schema_name, table_name);
       ELSE
-        -- Column already exists (RLS was previously enabled then disabled)
-        -- Restore the DEFAULT clause (may have been removed during uninstallRLS)
         EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN server_id SET DEFAULT current_server_id()', schema_name, table_name);
-
-        -- Only backfill NULL server_id rows, do NOT steal data from other servers
         EXECUTE format('SELECT COUNT(*) FROM %I.%I WHERE server_id IS NULL', schema_name, table_name) INTO orphaned_count;
 
         IF orphaned_count > 0 THEN
@@ -160,20 +63,10 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
         END IF;
       END IF;
 
-      -- Create index for efficient server_id filtering
       EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%I_server_id ON %I.%I(server_id)', table_name, schema_name, table_name);
-
-      -- Enable RLS on the table
       EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', schema_name, table_name);
-
-      -- FORCE RLS even for table owners (critical for security)
       EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', schema_name, table_name);
-
-      -- Drop existing policy if present
       EXECUTE format('DROP POLICY IF EXISTS server_isolation_policy ON %I.%I', schema_name, table_name);
-
-      -- Create isolation policy: users can only see/modify rows where server_id matches current server instance
-      -- No NULL clause - all rows must have a valid server_id (backfilled during column addition)
       EXECUTE format('
         CREATE POLICY server_isolation_policy ON %I.%I
         USING (server_id = current_server_id())
@@ -183,16 +76,6 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     $$ LANGUAGE plpgsql;
   `);
 
-  // Function to apply RLS to all tables
-  // SCHEMA COVERAGE: This function automatically applies RLS to ALL tables in the 'public' schema
-  // including: agents, rooms, memories, messages, participants, channels, embeddings, relationships,
-  // entities, logs, cache, components, tasks, world, message_servers, etc.
-  //
-  // EXCLUDED tables (not isolated):
-  // - servers (contains all server instance IDs, shared for multi-tenant management)
-  // - drizzle_migrations, __drizzle_migrations (migration tracking tables)
-  //
-  // This dynamic approach ensures plugin tables are automatically protected when added.
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION apply_rls_to_all_tables() RETURNS void AS $$
     DECLARE
@@ -219,14 +102,9 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
   `);
 
   logger.info({ src: "plugin:sql" }, "RLS PostgreSQL functions installed");
-
-  // Install Entity RLS functions as well (part of the RLS system)
   await installEntityRLS(adapter);
 }
 
-/**
- * Get or create RLS server using Drizzle ORM
- */
 export async function getOrCreateRlsServer(
   adapter: IDatabaseAdapter,
   serverId: string
@@ -245,17 +123,11 @@ export async function getOrCreateRlsServer(
   return serverId;
 }
 
-/**
- * Set RLS context on PostgreSQL connection pool
- * This function validates that the server exists and has correct UUID format
- */
 export async function setServerContext(adapter: IDatabaseAdapter, serverId: string): Promise<void> {
-  // Validate UUID format using @elizaos/core utility
   if (!validateUuid(serverId)) {
     throw new Error(`Invalid server ID format: ${serverId}. Must be a valid UUID.`);
   }
 
-  // Validate server exists
   const db = getDb(adapter);
   const servers = await db.select().from(serverTable).where(eq(serverTable.id, serverId));
 
@@ -266,15 +138,11 @@ export async function setServerContext(adapter: IDatabaseAdapter, serverId: stri
   logger.info({ src: "plugin:sql", serverId: serverId.slice(0, 8) }, "RLS context configured");
 }
 
-/**
- * Assign agent to server using Drizzle ORM
- */
 export async function assignAgentToServer(
   adapter: IDatabaseAdapter,
   agentId: string,
   serverId: string
 ): Promise<void> {
-  // Validate inputs
   if (!agentId || !serverId) {
     logger.warn(
       `[Data Isolation] Cannot assign agent to server: invalid agentId (${agentId}) or serverId (${serverId})`
@@ -325,18 +193,10 @@ export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<vo
   }
 }
 
-/**
- * Disable RLS globally
- * SIMPLE APPROACH:
- * - Disables RLS for ALL server instances
- * - Keeps server_id columns and data intact
- * - Use only in development or when migrating to single-server mode
- */
 export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
   try {
-    // Check if RLS is actually enabled by checking if the servers table exists
     const checkResult = await db.execute(sql`
       SELECT EXISTS (
         SELECT FROM pg_tables
@@ -356,7 +216,6 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       "Disabling RLS globally (keeping server_id columns for schema compatibility)..."
     );
 
-    // First, uninstall Entity RLS (depends on Server RLS)
     try {
       await uninstallEntityRLS(adapter);
     } catch (_entityRlsError) {
@@ -366,8 +225,6 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       );
     }
 
-    // Create a temporary stored procedure to safely drop policies and disable RLS
-    // Using format() with %I ensures proper identifier quoting and prevents SQL injection
     await db.execute(sql`
       CREATE OR REPLACE FUNCTION _temp_disable_rls_on_table(
         p_schema_name text,
@@ -393,7 +250,6 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       $$ LANGUAGE plpgsql;
     `);
 
-    // Get all tables in public schema
     const tablesResult = await db.execute(sql`
       SELECT schemaname, tablename
       FROM pg_tables
@@ -401,13 +257,11 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
         AND tablename NOT IN ('drizzle_migrations', '__drizzle_migrations')
     `);
 
-    // Safely disable RLS on each table using the stored procedure
     for (const row of tablesResult.rows || []) {
       const schemaName = row.schemaname;
       const tableName = row.tablename;
 
       try {
-        // Call stored procedure with parameterized query (safe from SQL injection)
         await db.execute(sql`SELECT _temp_disable_rls_on_table(${schemaName}, ${tableName})`);
         logger.debug({ src: "plugin:sql", schemaName, tableName }, "Disabled RLS on table");
       } catch (error) {
@@ -418,25 +272,16 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       }
     }
 
-    // Drop the temporary function
     await db.execute(sql`DROP FUNCTION IF EXISTS _temp_disable_rls_on_table(text, text)`);
 
-    // 2. KEEP server_id values intact (do NOT clear them)
-    // This prevents data theft when re-enabling RLS:
-    // - Each row keeps its original server_id
-    // - When RLS is re-enabled, only NULL rows are backfilled (new data created while RLS was off)
-    // - Existing data remains owned by its original server instance
     logger.info(
       { src: "plugin:sql" },
       "Keeping server_id values intact (prevents data theft on re-enable)"
     );
 
-    // 3. Keep the servers table structure but clear it
-    // When RLS is re-enabled, servers will be re-created from server initialization
     logger.info({ src: "plugin:sql" }, "Clearing servers table...");
     await db.execute(sql`TRUNCATE TABLE servers`);
 
-    // 4. Drop all RLS functions
     await db.execute(sql`DROP FUNCTION IF EXISTS apply_rls_to_all_tables() CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS add_server_isolation(text, text) CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS current_server_id() CASCADE`);
@@ -449,61 +294,11 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
   }
 }
 
-// ============================================================================
-// ENTITY RLS
-// ============================================================================
-
-/**
- * Install Entity RLS functions for user privacy isolation
- *
- * This provides database-level privacy between different entities (client users: Plugins/API)
- * interacting with agents, independent of JWT authentication.
- *
- * **How Entity RLS Works:**
- * - Each database transaction sets `app.entity_id` before querying
- * - Policies filter rows based on entity ownership or participant membership
- * - Two isolation strategies:
- *   1. Direct ownership: `entity_id` or `author_id` column matches `current_entity_id()`
- *   2. Shared access: `room_id`/`channel_id` exists in `participants` table for the entity
- *
- * **Performance Considerations:**
- * - **Subquery policies** (for `room_id`/`channel_id`) run on EVERY row access
- * - Indexes are automatically created on: `entity_id`, `author_id`, `room_id`, `channel_id`
- * - The `participants` table should have an index on `(entity_id, channel_id)`
- * - For large datasets (>1M rows), consider:
- *   - Materialized views for frequently accessed entity-filtered data
- *   - Partitioning large tables by date or entity_id
- *
- * **Optimization Tips:**
- * - Direct column policies (`entity_id = current_entity_id()`) are faster than subquery policies
- * - The `participants` lookup is cached per transaction but still requires index scans
- *
- * **Tables Excluded from Entity RLS:**
- * - `servers` - Server RLS table
- * - `users` - Authentication (no entity isolation)
- * - `entity_mappings` - Cross-platform entity mapping
- * - `drizzle_migrations`, `__drizzle_migrations` - Migration tracking
- *
- * @param adapter - Database adapter with access to the Drizzle ORM instance
- * @returns Promise that resolves when Entity RLS functions are installed
- * @throws {Error} If database connection fails or SQL execution fails
- *
- * @example
- * ```typescript
- * // Called automatically by installRLSFunctions()
- * await installRLSFunctions(database);
- *
- * // Or call separately if needed
- * await installEntityRLS(database);
- * await applyEntityRLSToAllTables(database);
- * ```
- */
 export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
   logger.info("[Entity RLS] Installing entity RLS functions and policies...");
 
-  // 1. Create current_entity_id() function - reads from app.entity_id session variable
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION current_entity_id()
     RETURNS UUID AS $$
@@ -546,7 +341,6 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
     BEGIN
       full_table_name := schema_name || '.' || table_name;
 
-      -- Check which columns exist
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
@@ -568,16 +362,11 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
           AND information_schema.columns.column_name = 'room_id'
       ) INTO has_room_id;
 
-      -- Skip if no entity-related columns
       IF NOT (has_entity_id OR has_author_id OR has_room_id) THEN
         RAISE NOTICE '[Entity RLS] Skipping %.%: no entity columns found', schema_name, table_name;
         RETURN;
       END IF;
 
-      -- Determine which column to use for entity filtering
-      -- Priority: room_id (shared access via participants) > entity_id/author_id (direct access)
-      --
-      -- SPECIAL CASE: participants table must use direct entity_id to avoid infinite recursion
       IF table_name = 'participants' AND has_entity_id THEN
         entity_column_name := 'entity_id';
         room_column_name := NULL;
@@ -595,23 +384,12 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
         room_column_name := NULL;
       END IF;
 
-      -- Enable RLS on the table
       EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', schema_name, table_name);
       EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', schema_name, table_name);
-
-      -- Drop existing entity policies if present
       EXECUTE format('DROP POLICY IF EXISTS entity_isolation_policy ON %I.%I', schema_name, table_name);
 
-      -- CASE 1: Table has room_id (shared access via participants)
       IF room_column_name IS NOT NULL THEN
-        -- Determine the corresponding column name in participants table
-        -- If the table has room_id, look for room_id in participants.room_id
-        -- participants table uses: entity_id (for participant), room_id (for room)
-        -- RESTRICTIVE: Must pass BOTH server RLS AND entity RLS (combined with AND)
-
-        -- Build policy with or without NULL check based on require_entity parameter
         IF require_entity THEN
-          -- STRICT MODE: Entity context is REQUIRED (blocks NULL entity_id)
           EXECUTE format('
             CREATE POLICY entity_isolation_policy ON %I.%I
             AS RESTRICTIVE
@@ -634,7 +412,6 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
           ', schema_name, table_name, room_column_name, room_column_name);
           RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % → participants.room_id, entity REQUIRED)', schema_name, table_name, room_column_name;
         ELSE
-          -- PERMISSIVE MODE: NULL entity_id allows system/admin access
           EXECUTE format('
             CREATE POLICY entity_isolation_policy ON %I.%I
             AS RESTRICTIVE
@@ -658,12 +435,8 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
           RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (via % → participants.room_id, NULL allowed)', schema_name, table_name, room_column_name;
         END IF;
 
-      -- CASE 2: Table has direct entity_id or author_id column
       ELSIF entity_column_name IS NOT NULL THEN
-        -- RESTRICTIVE: Must pass BOTH server RLS AND entity RLS (combined with AND)
-
         IF require_entity THEN
-          -- STRICT MODE: Entity context is REQUIRED
           EXECUTE format('
             CREATE POLICY entity_isolation_policy ON %I.%I
             AS RESTRICTIVE
@@ -695,7 +468,6 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
         END IF;
       END IF;
 
-      -- Create indexes for efficient entity filtering
       IF room_column_name IS NOT NULL THEN
         EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%I_room ON %I.%I(%I)',
           table_name, schema_name, table_name, room_column_name);
@@ -711,7 +483,6 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
 
   logger.info("[Entity RLS] Created add_entity_isolation() function");
 
-  // 3. Create apply_entity_rls_to_all_tables() function - applies to all eligible tables
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION apply_entity_rls_to_all_tables() RETURNS void AS $$
     DECLARE
@@ -739,8 +510,6 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
           IF tbl.tablename IN ('memories', 'logs', 'components', 'tasks') THEN
             require_entity_for_table := true;
           ELSE
-            -- PERMISSIVE mode (require_entity=false) for system/privileged tables
-            -- This includes: participants, rooms, channels, entities, etc.
             require_entity_for_table := false;
           END IF;
 
@@ -758,10 +527,6 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
   logger.info("[Entity RLS] Entity RLS functions installed successfully");
 }
 
-/**
- * Apply Entity RLS policies to all eligible tables
- * Call this after installEntityRLS() to activate the policies
- */
 export async function applyEntityRLSToAllTables(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
@@ -773,17 +538,12 @@ export async function applyEntityRLSToAllTables(adapter: IDatabaseAdapter): Prom
   }
 }
 
-/**
- * Remove Entity RLS (for rollback or testing)
- * Drops entity RLS functions and policies but keeps server RLS intact
- */
 export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
   logger.info("[Entity RLS] Removing entity RLS policies and functions...");
 
   try {
-    // First, drop all entity_isolation_policy policies from all tables
     const tablesResult = await db.execute(sql`
       SELECT schemaname, tablename
       FROM pg_tables
@@ -796,7 +556,6 @@ export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       const tableName = row.tablename;
 
       try {
-        // Drop entity_isolation_policy if it exists
         await db.execute(
           sql.raw(`DROP POLICY IF EXISTS entity_isolation_policy ON "${schemaName}"."${tableName}"`)
         );
@@ -808,7 +567,6 @@ export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       }
     }
 
-    // Drop the apply function (CASCADE will drop dependencies)
     await db.execute(sql`DROP FUNCTION IF EXISTS apply_entity_rls_to_all_tables() CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS add_entity_isolation(text, text) CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS current_entity_id() CASCADE`);

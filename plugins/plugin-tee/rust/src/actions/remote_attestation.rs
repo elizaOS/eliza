@@ -1,7 +1,6 @@
 #![allow(missing_docs)]
-//! Remote Attestation Action for TEE.
 
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::client::upload_attestation_quote;
 use crate::providers::base::RemoteAttestationProvider;
@@ -9,28 +8,19 @@ use crate::providers::PhalaRemoteAttestationProvider;
 use crate::types::{RemoteAttestationMessage, RemoteAttestationMessageContent};
 use crate::utils::{current_timestamp_ms, hex_to_bytes};
 
-/// Remote Attestation Action.
-///
-/// Generates a remote attestation quote and uploads it to the proof service.
 pub struct RemoteAttestationAction;
 
-/// Result of remote attestation action.
 pub struct RemoteAttestationResult {
-    /// Whether the action succeeded.
     pub success: bool,
-    /// Result text (URL or error message).
     pub text: String,
 }
 
 impl RemoteAttestationAction {
-    /// Action name.
     pub const NAME: &'static str = "REMOTE_ATTESTATION";
 
-    /// Action description.
     pub const DESCRIPTION: &'static str =
         "Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)";
 
-    /// Similar action names.
     pub const SIMILES: &'static [&'static str] = &[
         "REMOTE_ATTESTATION",
         "TEE_REMOTE_ATTESTATION",
@@ -42,19 +32,6 @@ impl RemoteAttestationAction {
         "VERIFY_TEE",
     ];
 
-    /// Handle the remote attestation action.
-    ///
-    /// # Arguments
-    ///
-    /// * `tee_mode` - The TEE operation mode.
-    /// * `agent_id` - The agent ID.
-    /// * `entity_id` - The entity ID from the message.
-    /// * `room_id` - The room ID from the message.
-    /// * `content` - The message content.
-    ///
-    /// # Returns
-    ///
-    /// The action result.
     pub async fn handle(
         tee_mode: Option<&str>,
         agent_id: &str,
@@ -70,7 +47,6 @@ impl RemoteAttestationAction {
             };
         };
 
-        // Build attestation message
         let attestation_message = RemoteAttestationMessage {
             agent_id: agent_id.to_string(),
             timestamp: current_timestamp_ms(),
@@ -81,12 +57,6 @@ impl RemoteAttestationAction {
             },
         };
 
-        debug!(
-            "Generating attestation for: {:?}",
-            serde_json::to_string(&attestation_message)
-        );
-
-        // Generate attestation
         let provider = match PhalaRemoteAttestationProvider::new(mode) {
             Ok(p) => p,
             Err(e) => {
@@ -120,7 +90,6 @@ impl RemoteAttestationAction {
             }
         };
 
-        // Upload to proof service
         let attestation_data = match hex_to_bytes(&attestation.quote) {
             Ok(d) => d,
             Err(e) => {
@@ -149,12 +118,11 @@ impl RemoteAttestationAction {
 
         RemoteAttestationResult {
             success: true,
-            text: format!("Here's my 🧾 RA Quote 🫡\n{}", proof_url),
+            text: format!("Remote attestation quote: {}", proof_url),
         }
     }
 }
 
-/// Example conversations for the remote attestation action.
 pub const REMOTE_ATTESTATION_EXAMPLES: &[&[(&str, &str)]] = &[
     &[
         ("{{name1}}", "If you are running in a TEE, generate a remote attestation"),
@@ -169,7 +137,3 @@ pub const REMOTE_ATTESTATION_EXAMPLES: &[&[(&str, &str)]] = &[
         ("{{agentName}}", "I'll generate a remote attestation to prove I'm running in a TEE."),
     ],
 ];
-
-
-
-

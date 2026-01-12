@@ -21,16 +21,6 @@ class KnowledgeProvider:
         message: str,
         count: int = 5,
     ) -> str:
-        """
-        Get relevant knowledge context for a message.
-
-        Args:
-            message: The user message to find context for.
-            count: Maximum number of knowledge items to retrieve.
-
-        Returns:
-            Formatted context string with relevant knowledge.
-        """
         if not message or not message.strip():
             return ""
 
@@ -110,6 +100,23 @@ class DocumentsProvider:
             return None
 
 
+class KnowledgeProviderTs(KnowledgeProvider):
+    """TS-parity alias provider (name: `KNOWLEDGE`)."""
 
+    name = "KNOWLEDGE"
+    description = (
+        "Knowledge from the knowledge base that the agent knows, retrieved whenever the agent needs "
+        "to answer a question about their expertise."
+    )
+
+
+class AvailableDocumentsProvider(DocumentsProvider):
+    """TS-parity alias provider (name: `AVAILABLE_DOCUMENTS`)."""
+
+    name = "AVAILABLE_DOCUMENTS"
+    description = (
+        "List of documents available in the knowledge base. Shows which documents the agent can "
+        "reference and retrieve information from."
+    )
 
 

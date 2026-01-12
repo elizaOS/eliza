@@ -1,5 +1,3 @@
-"""Tests for shell service."""
-
 from unittest.mock import patch
 
 import pytest
@@ -9,8 +7,6 @@ from elizaos_plugin_shell.types import CommandResult
 
 
 class TestShellHistory:
-    """Tests for shell history tracking."""
-
     @pytest.fixture
     def config(self) -> ShellConfig:
         return ShellConfig(
@@ -28,7 +24,6 @@ class TestShellHistory:
     async def test_tracks_command_history(self, service: ShellService) -> None:
         conversation_id = "test-conversation-1"
 
-        # Mock the run command to return a CommandResult directly
         mock_result = CommandResult(
             success=True,
             stdout="file1.txt\nfile2.txt",
@@ -105,8 +100,6 @@ class TestShellHistory:
 
 
 class TestShellDisabled:
-    """Tests for disabled shell behavior."""
-
     @pytest.mark.asyncio
     async def test_returns_error_when_disabled(self) -> None:
         config = ShellConfig(
@@ -123,8 +116,6 @@ class TestShellDisabled:
 
 
 class TestSecurityValidation:
-    """Tests for security validation."""
-
     @pytest.fixture
     def config(self) -> ShellConfig:
         return ShellConfig(

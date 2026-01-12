@@ -1,7 +1,5 @@
 #![allow(missing_docs)]
-//! Participant schema for elizaOS database
 
-/// SQL for creating the participants table
 pub const CREATE_PARTICIPANTS_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS participants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -19,7 +17,6 @@ CREATE INDEX IF NOT EXISTS idx_participants_room_id ON participants (room_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_unique ON participants (entity_id, room_id);
 "#;
 
-/// Participant record structure
 #[derive(Clone, Debug)]
 pub struct ParticipantRecord {
     pub id: uuid::Uuid,
@@ -30,7 +27,6 @@ pub struct ParticipantRecord {
 }
 
 impl ParticipantRecord {
-    /// Convert to ParticipantInfo type
     pub fn to_participant_info(&self) -> crate::base::ParticipantInfo {
         use elizaos::UUID;
 

@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Roblox service implementation for elizaOS.
 
 use crate::client::RobloxClient;
 use crate::config::RobloxConfig;
@@ -10,7 +9,6 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-/// Roblox service for elizaOS agents.
 pub struct RobloxService {
     client: Arc<RobloxClient>,
     config: RobloxConfig,
@@ -20,7 +18,6 @@ pub struct RobloxService {
 }
 
 impl RobloxService {
-    /// Create a new Roblox service.
     pub fn new(
         config: RobloxConfig,
         agent_id: Uuid,
@@ -37,7 +34,6 @@ impl RobloxService {
         })
     }
 
-    /// Start the service.
     pub async fn start(&self) -> Result<()> {
         let mut running = self.is_running.write().await;
         if *running {
@@ -55,7 +51,6 @@ impl RobloxService {
         Ok(())
     }
 
-    /// Stop the service.
     pub async fn stop(&self) -> Result<()> {
         let mut running = self.is_running.write().await;
         if !*running {
@@ -69,32 +64,26 @@ impl RobloxService {
         Ok(())
     }
 
-    /// Check if the service is running.
     pub async fn is_running(&self) -> bool {
         *self.is_running.read().await
     }
 
-    /// Get the Roblox client.
     pub fn client(&self) -> &RobloxClient {
         &self.client
     }
 
-    /// Get the configuration.
     pub fn config(&self) -> &RobloxConfig {
         &self.config
     }
 
-    /// Get the agent ID.
     pub fn agent_id(&self) -> Uuid {
         self.agent_id
     }
 
-    /// Get the agent name.
     pub fn agent_name(&self) -> &str {
         &self.agent_name
     }
 
-    /// Send a message to the game.
     pub async fn send_message(
         &self,
         content: impl Into<String>,
@@ -117,7 +106,6 @@ impl RobloxService {
         self.client.send_agent_message(&message).await
     }
 
-    /// Execute an action in the game.
     pub async fn execute_action(
         &self,
         action_name: impl Into<String>,
@@ -161,10 +149,5 @@ mod tests {
         assert!(!service.is_running().await);
     }
 }
-
-
-
-
-
 
 

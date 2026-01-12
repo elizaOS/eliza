@@ -249,6 +249,30 @@ impl ReminderService {
     }
 }
 
+/// Wrapper struct to match the TypeScript service naming (`TodoReminderService`).
+pub struct TodoReminderService(pub ReminderService);
+
+impl TodoReminderService {
+    pub const SERVICE_TYPE: &'static str = "TODO_REMINDER";
+    pub const CAPABILITY_DESCRIPTION: &'static str = "Manages todo reminders and notifications";
+
+    pub fn new(config: TodoConfig) -> Self {
+        Self(ReminderService::new(config))
+    }
+
+    pub fn from_env() -> crate::error::Result<Self> {
+        Ok(Self(ReminderService::from_env()?))
+    }
+}
+
+impl std::ops::Deref for TodoReminderService {
+    type Target = ReminderService;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 use chrono::Timelike;
 
 /// Create and start a reminder service.

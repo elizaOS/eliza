@@ -6,7 +6,12 @@ use crate::error::{LinearError, Result};
 use crate::service::LinearService;
 use crate::types::*;
 
-pub type ActionHandler = fn(&LinearService, Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ActionResult>> + Send + '_>>;
+pub type ActionHandler = fn(
+    &LinearService,
+    Value,
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<ActionResult>> + Send + '_>,
+>;
 
 pub async fn create_issue(service: &LinearService, params: Value) -> Result<ActionResult> {
     let title = params
@@ -22,17 +27,39 @@ pub async fn create_issue(service: &LinearService, params: Value) -> Result<Acti
     let input = IssueInput {
         title: title.to_string(),
         team_id: team_id.to_string(),
-        description: params.get("description").and_then(|d| d.as_str()).map(String::from),
-        priority: params.get("priority").and_then(|p| p.as_i64()).map(|p| p as i32),
-        assignee_id: params.get("assigneeId").and_then(|a| a.as_str()).map(String::from),
+        description: params
+            .get("description")
+            .and_then(|d| d.as_str())
+            .map(String::from),
+        priority: params
+            .get("priority")
+            .and_then(|p| p.as_i64())
+            .map(|p| p as i32),
+        assignee_id: params
+            .get("assigneeId")
+            .and_then(|a| a.as_str())
+            .map(String::from),
         label_ids: params
             .get("labelIds")
             .and_then(|l| l.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default(),
-        project_id: params.get("projectId").and_then(|p| p.as_str()).map(String::from),
-        state_id: params.get("stateId").and_then(|s| s.as_str()).map(String::from),
-        estimate: params.get("estimate").and_then(|e| e.as_i64()).map(|e| e as i32),
+        project_id: params
+            .get("projectId")
+            .and_then(|p| p.as_str())
+            .map(String::from),
+        state_id: params
+            .get("stateId")
+            .and_then(|s| s.as_str())
+            .map(String::from),
+        estimate: params
+            .get("estimate")
+            .and_then(|e| e.as_i64())
+            .map(|e| e as i32),
         due_date: None,
     };
 
@@ -103,10 +130,7 @@ pub async fn update_issue(service: &LinearService, params: Value) -> Result<Acti
         .and_then(|i| i.as_str())
         .ok_or_else(|| LinearError::InvalidInput("Issue ID is required".to_string()))?;
 
-    let updates = params
-        .get("updates")
-        .cloned()
-        .unwrap_or(json!({}));
+    let updates = params.get("updates").cloned().unwrap_or(json!({}));
 
     let issue = service.update_issue(issue_id, updates).await?;
 
@@ -145,26 +169,48 @@ pub async fn delete_issue(service: &LinearService, params: Value) -> Result<Acti
 
 pub async fn search_issues(service: &LinearService, params: Value) -> Result<ActionResult> {
     let filters = SearchFilters {
-        query: params.get("query").and_then(|q| q.as_str()).map(String::from),
-        team: params.get("team").and_then(|t| t.as_str()).map(String::from),
-        state: params
-            .get("state")
-            .and_then(|s| s.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()),
+        query: params
+            .get("query")
+            .and_then(|q| q.as_str())
+            .map(String::from),
+        team: params
+            .get("team")
+            .and_then(|t| t.as_str())
+            .map(String::from),
+        state: params.get("state").and_then(|s| s.as_array()).map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        }),
         priority: params
             .get("priority")
             .and_then(|p| p.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_i64().map(|n| n as i32)).collect()),
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_i64().map(|n| n as i32))
+                    .collect()
+            }),
         assignee: params
             .get("assignee")
             .and_then(|a| a.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()),
-        label: params
-            .get("label")
-            .and_then(|l| l.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()),
-        project: params.get("project").and_then(|p| p.as_str()).map(String::from),
-        limit: params.get("limit").and_then(|l| l.as_i64()).map(|l| l as i32),
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            }),
+        label: params.get("label").and_then(|l| l.as_array()).map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        }),
+        project: params
+            .get("project")
+            .and_then(|p| p.as_str())
+            .map(String::from),
+        limit: params
+            .get("limit")
+            .and_then(|l| l.as_i64())
+            .map(|l| l as i32),
     };
 
     let issues = service.search_issues(filters).await?;
@@ -266,10 +312,7 @@ pub async fn list_teams(service: &LinearService, _params: Value) -> Result<Actio
         .iter()
         .enumerate()
         .map(|(i, team)| {
-            let desc = team
-                .description
-                .as_deref()
-                .unwrap_or("No description");
+            let desc = team.description.as_deref().unwrap_or("No description");
             format!("{}. {} ({})\n   {}", i + 1, team.name, team.key, desc)
         })
         .collect();
@@ -328,7 +371,11 @@ pub async fn list_projects(service: &LinearService, params: Value) -> Result<Act
                 "{}. {}{}\n   Status: {}{} | Teams: {}",
                 i + 1,
                 project.name,
-                project.description.as_ref().map(|d| format!(" - {}", d)).unwrap_or_default(),
+                project
+                    .description
+                    .as_ref()
+                    .map(|d| format!(" - {}", d))
+                    .unwrap_or_default(),
                 status,
                 progress,
                 teams
@@ -406,7 +453,7 @@ pub async fn get_activity(service: &LinearService, params: Value) -> Result<Acti
 
 pub async fn clear_activity(service: &LinearService, _params: Value) -> Result<ActionResult> {
     service.clear_activity_log();
-    Ok(ActionResult::success("✅ Linear activity log has been cleared."))
+    Ok(ActionResult::success(
+        "✅ Linear activity log has been cleared.",
+    ))
 }
-
-

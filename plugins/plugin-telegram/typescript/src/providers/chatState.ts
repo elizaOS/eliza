@@ -1,17 +1,7 @@
-/**
- * Chat state provider for Telegram.
- */
-
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 
-/**
- * Provider name constant.
- */
 export const CHAT_STATE_PROVIDER = "telegram_chat_state";
 
-/**
- * Provides Telegram chat state information.
- */
 export const chatStateProvider: Provider = {
   name: CHAT_STATE_PROVIDER,
   description: "Provides Telegram chat context including chat ID, user ID, and chat type",

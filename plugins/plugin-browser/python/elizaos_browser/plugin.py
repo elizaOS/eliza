@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BrowserPlugin:
     name: str = "plugin-browser"
-    description: str = "Browser automation plugin for AI-powered web interactions"
+    description: str = "Browser automation plugin"
     config: BrowserConfig = field(default_factory=BrowserConfig)
     service: BrowserService | None = None
     actions: dict[str, Callable[..., Any]] = field(default_factory=dict)

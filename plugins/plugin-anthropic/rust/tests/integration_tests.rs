@@ -32,7 +32,10 @@ async fn test_text_generation_small() {
     assert!(response.is_ok(), "Request failed: {:?}", response.err());
 
     let response = response.unwrap();
-    assert!(!response.text.is_empty(), "Response text should not be empty");
+    assert!(
+        !response.text.is_empty(),
+        "Response text should not be empty"
+    );
     assert!(
         response.text.contains('4'),
         "Response should contain '4': {}",
@@ -60,7 +63,10 @@ async fn test_text_generation_large() {
     assert!(response.is_ok(), "Request failed: {:?}", response.err());
 
     let response = response.unwrap();
-    assert!(!response.text.is_empty(), "Response text should not be empty");
+    assert!(
+        !response.text.is_empty(),
+        "Response text should not be empty"
+    );
     assert!(
         response.text.to_lowercase().contains("paris"),
         "Response should contain 'Paris': {}",
@@ -113,7 +119,10 @@ async fn test_object_generation_small() {
     assert!(obj.contains_key("age"), "Should have 'age' field");
     assert!(obj.contains_key("active"), "Should have 'active' field");
 
-    println!("Generated object: {}", serde_json::to_string_pretty(&response.object).unwrap());
+    println!(
+        "Generated object: {}",
+        serde_json::to_string_pretty(&response.object).unwrap()
+    );
 }
 
 /// Test object generation with large model.
@@ -137,7 +146,10 @@ async fn test_object_generation_large() {
     assert!(obj.contains_key("email"), "Should have 'email' field");
     assert!(obj.contains_key("roles"), "Should have 'roles' field");
 
-    println!("Generated user: {}", serde_json::to_string_pretty(&response.object).unwrap());
+    println!(
+        "Generated user: {}",
+        serde_json::to_string_pretty(&response.object).unwrap()
+    );
 }
 
 /// Test error handling for invalid parameters.
@@ -155,7 +167,10 @@ async fn test_invalid_parameters() {
     };
 
     let response = client.generate_text_small(params).await;
-    assert!(response.is_err(), "Should fail with both temperature and top_p");
+    assert!(
+        response.is_err(),
+        "Should fail with both temperature and top_p"
+    );
 
     let err = response.unwrap_err();
     assert!(
@@ -226,5 +241,3 @@ async fn test_complex_object_generation() {
         serde_json::to_string_pretty(&response.object).unwrap()
     );
 }
-
-

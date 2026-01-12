@@ -51,3 +51,11 @@ class GuildInfoProvider:
             }
 
 
+class GuildInfoProviderCamel(GuildInfoProvider):
+    """TS-parity alias provider (camelCase name)."""
+
+    @property
+    def name(self) -> str:
+        return "guildInfo"
+
+

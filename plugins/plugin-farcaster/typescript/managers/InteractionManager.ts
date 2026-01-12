@@ -1,7 +1,3 @@
-/**
- * Interaction manager for handling mentions and replies.
- */
-
 import {
   ChannelType,
   createUniqueUuid,
@@ -38,9 +34,6 @@ interface FarcasterInteractionManagerParams {
   config: FarcasterConfig;
 }
 
-/**
- * Processes Farcaster interactions (mentions, replies) regardless of source.
- */
 export class FarcasterInteractionManager implements IInteractionProcessor {
   private client: FarcasterClient;
   private runtime: IAgentRuntime;

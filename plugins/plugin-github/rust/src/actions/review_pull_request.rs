@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! Review Pull Request Action
-//!
-//! Creates a review on a GitHub pull request.
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -11,11 +8,9 @@ use crate::error::Result;
 use crate::types::{CreateReviewParams, ReviewEvent, ReviewState};
 use crate::GitHubService;
 
-/// Action to review a pull request on GitHub
 pub struct ReviewPullRequestAction;
 
 impl ReviewPullRequestAction {
-    /// Determine review event type from text
     fn determine_review_event(text: &str) -> ReviewEvent {
         let lower = text.to_lowercase();
         
@@ -83,7 +78,6 @@ impl GitHubAction for ReviewPullRequestAction {
             .and_then(|t| t.as_str())
             .unwrap_or("");
 
-        // Get pull request number from state
         let pull_number = context
             .state
             .get("pullNumber")
@@ -102,7 +96,6 @@ impl GitHubAction for ReviewPullRequestAction {
             .map(|s| s.to_string())
             .unwrap_or_else(|| text.to_string());
 
-        // Determine event from state or text
         let event = context
             .state
             .get("event")

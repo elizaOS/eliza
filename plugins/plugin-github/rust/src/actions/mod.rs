@@ -57,22 +57,12 @@ impl ActionResult {
     }
 }
 
-/// GitHub action trait
 #[async_trait]
 pub trait GitHubAction: Send + Sync {
-    /// Action name
     fn name(&self) -> &str;
-
-    /// Action description
     fn description(&self) -> &str;
-
-    /// Similar action names
     fn similes(&self) -> Vec<&str>;
-
-    /// Validate if action can be executed
     async fn validate(&self, context: &ActionContext) -> Result<bool>;
-
-    /// Execute the action
     async fn handler(
         &self,
         context: &ActionContext,

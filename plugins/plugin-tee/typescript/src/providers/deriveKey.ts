@@ -42,11 +42,7 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
       publicKey,
       subject,
     };
-
-    logger.debug("Generating attestation for derived key...");
-    const quote = await this.raProvider.generateAttestation(JSON.stringify(deriveKeyData));
-    logger.info("Key derivation attestation generated successfully");
-    return quote;
+    return this.raProvider.generateAttestation(JSON.stringify(deriveKeyData));
   }
 
   async rawDeriveKey(path: string, subject: string): Promise<DeriveKeyResult> {
@@ -55,10 +51,7 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     }
 
     try {
-      logger.debug("Deriving raw key in TEE...");
       const response: DeriveKeyResponse = await this.client.deriveKey(path, subject);
-
-      logger.info("Raw key derived successfully");
       return {
         key: response.asUint8Array(),
         certificateChain: [],
@@ -74,11 +67,7 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     if (!path || !subject) {
       throw new Error("Path and subject are required for key derivation");
     }
-
-    logger.debug("Deriving raw key response in TEE...");
-    const response = await this.client.deriveKey(path, subject);
-    logger.info("Raw key response derived successfully");
-    return response;
+    return this.client.deriveKey(path, subject);
   }
 
   async deriveEd25519Keypair(
@@ -91,8 +80,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     }
 
     try {
-      logger.debug("Deriving Ed25519 key in TEE...");
-
       const derivedKey = await this.client.deriveKey(path, subject);
       const uint8ArrayDerivedKey = derivedKey.asUint8Array();
 
@@ -108,7 +95,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
         subject
       );
 
-      logger.info("Ed25519 key derived successfully");
       return { keypair, attestation };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -130,8 +116,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     }
 
     try {
-      logger.debug("Deriving ECDSA key in TEE...");
-
       const derivedKey: DeriveKeyResponse = await this.client.deriveKey(path, subject);
       const hex = keccak256(derivedKey.asUint8Array());
       const keypair: PrivateKeyAccount = privateKeyToAccount(hex);
@@ -142,7 +126,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
         subject
       );
 
-      logger.info("ECDSA key derived successfully");
       return { keypair, attestation };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

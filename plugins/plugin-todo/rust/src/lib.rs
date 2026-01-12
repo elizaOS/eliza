@@ -42,6 +42,7 @@ pub mod data_service;
 pub mod cache_manager;
 pub mod notification_manager;
 pub mod reminder_service;
+pub mod integration_bridge;
 pub mod client;
 pub mod actions;
 pub mod providers;
@@ -54,6 +55,7 @@ pub use client::TodoClient;
 pub use config::TodoConfig;
 pub use data_service::{create_todo_data_service, TodoDataService};
 pub use error::{Result, TodoError};
+pub use reminder_service::{ReminderService, TodoReminderService};
 
 /// Create a TodoClient from environment variables.
 ///

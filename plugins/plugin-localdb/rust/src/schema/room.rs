@@ -1,7 +1,5 @@
 #![allow(missing_docs)]
-//! Room schema for elizaOS database
 
-/// SQL for creating the rooms table
 pub const CREATE_ROOMS_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS rooms (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

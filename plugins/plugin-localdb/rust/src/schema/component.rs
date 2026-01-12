@@ -1,7 +1,5 @@
 #![allow(missing_docs)]
-//! Component schema for elizaOS database
 
-/// SQL for creating the components table
 pub const CREATE_COMPONENTS_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS components (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -16,14 +14,12 @@ CREATE TABLE IF NOT EXISTS components (
 )
 "#;
 
-/// SQL for creating indexes on components table
 pub const CREATE_COMPONENTS_INDEXES: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_components_entity_id ON components (entity_id);
 CREATE INDEX IF NOT EXISTS idx_components_type ON components (type);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_components_unique ON components (entity_id, type, world_id, source_entity_id);
 "#;
 
-/// Component record structure
 #[derive(Clone, Debug)]
 pub struct ComponentRecord {
     pub id: uuid::Uuid,
@@ -38,7 +34,6 @@ pub struct ComponentRecord {
 }
 
 impl ComponentRecord {
-    /// Convert to elizaOS Component type
     pub fn to_component(&self) -> elizaos::Component {
         use elizaos::{Component, UUID};
 

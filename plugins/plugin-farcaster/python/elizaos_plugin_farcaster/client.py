@@ -1,9 +1,3 @@
-"""
-Farcaster API client implementation.
-
-Handles communication with the Neynar API for Farcaster operations.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -24,12 +18,10 @@ from elizaos_plugin_farcaster.types import (
     Profile,
 )
 
-# Neynar API base URL
 NEYNAR_API_URL = "https://api.neynar.com/v2"
 
 
 def _parse_embed_type(embed: dict[str, Any]) -> EmbedType:
-    """Parse embed type from Neynar embed data."""
     if "cast" in embed or "cast_id" in embed:
         return EmbedType.CAST
     if "url" in embed:
@@ -45,7 +37,6 @@ def _parse_embed_type(embed: dict[str, Any]) -> EmbedType:
 
 
 def _neynar_cast_to_cast(neynar_cast: dict[str, Any]) -> Cast:
-    """Convert a Neynar Cast to internal Cast type."""
     author = neynar_cast.get("author", {})
 
     profile = Profile(
@@ -56,7 +47,6 @@ def _neynar_cast_to_cast(neynar_cast: dict[str, Any]) -> Cast:
         bio=author.get("profile", {}).get("bio", {}).get("text"),
     )
 
-    # Parse embeds
     embeds: list[CastEmbed] = []
     for embed_data in neynar_cast.get("embeds", []):
         embed = CastEmbed(
@@ -66,14 +56,12 @@ def _neynar_cast_to_cast(neynar_cast: dict[str, Any]) -> Cast:
         )
         embeds.append(embed)
 
-    # Parse parent
     in_reply_to: CastParent | None = None
     parent_hash = neynar_cast.get("parent_hash")
     parent_author = neynar_cast.get("parent_author", {})
     if parent_hash and parent_author.get("fid"):
         in_reply_to = CastParent(hash=parent_hash, fid=parent_author["fid"])
 
-    # Parse stats
     reactions = neynar_cast.get("reactions", {})
     stats = CastStats(
         recasts=reactions.get("recasts_count", 0),
@@ -81,7 +69,6 @@ def _neynar_cast_to_cast(neynar_cast: dict[str, Any]) -> Cast:
         likes=reactions.get("likes_count", 0),
     )
 
-    # Parse timestamp
     timestamp_str = neynar_cast.get("timestamp", "")
     try:
         timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
@@ -102,7 +89,6 @@ def _neynar_cast_to_cast(neynar_cast: dict[str, Any]) -> Cast:
 
 
 def _split_post_content(content: str, max_length: int = 320) -> list[str]:
-    """Split post content into chunks that fit within the max length."""
     paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
     posts: list[str] = []
     current_cast = ""
@@ -118,7 +104,6 @@ def _split_post_content(content: str, max_length: int = 320) -> list[str]:
             if len(paragraph) <= max_length:
                 current_cast = paragraph
             else:
-                # Split long paragraph by sentences
                 chunks = _split_paragraph(paragraph, max_length)
                 posts.extend(chunks[:-1])
                 current_cast = chunks[-1] if chunks else ""
@@ -130,7 +115,6 @@ def _split_post_content(content: str, max_length: int = 320) -> list[str]:
 
 
 def _split_paragraph(paragraph: str, max_length: int) -> list[str]:
-    """Split a paragraph into sentence-sized chunks."""
     import re
 
     sentences = re.findall(r"[^.!?]+[.!?]+|[^.!?]+$", paragraph)
@@ -170,19 +154,7 @@ def _split_paragraph(paragraph: str, max_length: int) -> list[str]:
 
 
 class FarcasterClient:
-    """
-    Farcaster client for interacting with the Neynar API.
-
-    Provides methods for sending casts, fetching profiles, and retrieving timeline.
-    """
-
     def __init__(self, config: FarcasterConfig) -> None:
-        """
-        Initialize the Farcaster client.
-
-        Args:
-            config: Farcaster configuration.
-        """
         self._config = config
         self._http_client = httpx.AsyncClient(
             base_url=NEYNAR_API_URL,
@@ -192,21 +164,16 @@ class FarcasterClient:
             },
             timeout=30.0,
         )
-        # Profile cache
         self._profile_cache: dict[int, Profile] = {}
-        # Cast cache
         self._cast_cache: dict[str, Cast] = {}
 
     async def close(self) -> None:
-        """Close the HTTP client."""
         await self._http_client.aclose()
 
     async def __aenter__(self) -> FarcasterClient:
-        """Context manager entry."""
         return self
 
     async def __aexit__(self, *args: object) -> None:
-        """Context manager exit."""
         await self.close()
 
     async def _make_request(
@@ -216,7 +183,6 @@ class FarcasterClient:
         params: dict[str, Any] | None = None,
         json_data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Make an HTTP request to the Neynar API."""
         try:
             response = await self._http_client.request(
                 method=method,
@@ -247,22 +213,11 @@ class FarcasterClient:
         text: str,
         in_reply_to: CastId | None = None,
     ) -> list[Cast]:
-        """
-        Send a cast (potentially split into multiple if too long).
-
-        Args:
-            text: The cast text content.
-            in_reply_to: Optional parent cast to reply to.
-
-        Returns:
-            List of sent casts.
-        """
         text = text.strip()
         if not text:
             return []
 
         if self._config.dry_run:
-            # Return a fake cast in dry run mode
             fake_cast = Cast(
                 hash="dry_run_hash",
                 author_fid=self._config.fid,
@@ -290,7 +245,6 @@ class FarcasterClient:
         text: str,
         parent_cast_id: CastId | None = None,
     ) -> Cast:
-        """Publish a single cast."""
         payload: dict[str, Any] = {
             "signer_uuid": self._config.signer_uuid,
             "text": text,
@@ -309,12 +263,10 @@ class FarcasterClient:
             if not result.get("success"):
                 raise CastError(f"Failed to publish cast: {text[:50]}...")
 
-            # Fetch the full cast data
             cast_hash = result.get("cast", {}).get("hash")
             if cast_hash:
                 return await self.get_cast(cast_hash)
 
-            # Return minimal cast if we can't fetch full data
             return Cast(
                 hash=cast_hash or "",
                 author_fid=self._config.fid,
@@ -333,16 +285,6 @@ class FarcasterClient:
             raise CastError(f"Error publishing cast: {e}") from e
 
     async def get_cast(self, cast_hash: str) -> Cast:
-        """
-        Get a cast by hash.
-
-        Args:
-            cast_hash: The cast hash.
-
-        Returns:
-            The cast.
-        """
-        # Check cache
         if cast_hash in self._cast_cache:
             return self._cast_cache[cast_hash]
 
@@ -358,15 +300,6 @@ class FarcasterClient:
         return cast
 
     async def get_mentions(self, request: FidRequest) -> list[Cast]:
-        """
-        Get mentions for a FID.
-
-        Args:
-            request: The request parameters.
-
-        Returns:
-            List of casts mentioning the user.
-        """
         result = await self._make_request(
             "GET",
             "/farcaster/notifications",
@@ -425,15 +358,6 @@ class FarcasterClient:
         self,
         request: FidRequest,
     ) -> tuple[list[Cast], str | None]:
-        """
-        Get timeline for a FID.
-
-        Args:
-            request: The request parameters.
-
-        Returns:
-            Tuple of (timeline casts, next cursor).
-        """
         result = await self._make_request(
             "GET",
             "/farcaster/feed/user/casts",
@@ -453,6 +377,5 @@ class FarcasterClient:
         return timeline, next_cursor
 
     def clear_cache(self) -> None:
-        """Clear all caches."""
         self._profile_cache.clear()
         self._cast_cache.clear()

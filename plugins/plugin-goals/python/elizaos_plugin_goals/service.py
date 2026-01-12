@@ -276,3 +276,26 @@ class GoalDataService:
             )
         )
         return len(goals)
+
+
+class GoalDataServiceWrapper:
+    """
+    Minimal wrapper to match the TypeScript service naming (`GoalDataServiceWrapper`).
+    """
+
+    service_name: str = "goalDataService"
+    service_type: str = "GOAL_DATA"
+    capability_description: str = "Manages goal data storage and retrieval"
+
+    def __init__(self, db: DatabaseProtocol | None) -> None:
+        self._goal_data_service: GoalDataService | None = GoalDataService(db) if db else None
+
+    @classmethod
+    async def start(cls, db: DatabaseProtocol | None) -> "GoalDataServiceWrapper":
+        return cls(db)
+
+    async def stop(self) -> None:
+        self._goal_data_service = None
+
+    def get_data_service(self) -> GoalDataService | None:
+        return self._goal_data_service

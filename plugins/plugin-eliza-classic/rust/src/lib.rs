@@ -25,8 +25,10 @@
 
 #![warn(missing_docs)]
 
+pub mod actions;
 pub mod interop;
 pub mod patterns;
+pub mod providers;
 pub mod types;
 
 use lazy_static::lazy_static;

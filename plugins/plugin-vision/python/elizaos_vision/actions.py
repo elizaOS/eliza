@@ -1,7 +1,3 @@
-"""
-Vision Actions
-All actions for vision plugin
-"""
 
 from __future__ import annotations
 
@@ -18,8 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class RuntimeProtocol(Protocol):
-    """Protocol for runtime access"""
-
     agent_id: str
 
     def get_service(self, name: str) -> Any: ...
@@ -28,8 +22,6 @@ class RuntimeProtocol(Protocol):
 
 
 class MemoryProtocol(Protocol):
-    """Protocol for message memory"""
-
     room_id: str | None
     world_id: str | None
     content: dict[str, Any]
@@ -46,7 +38,6 @@ async def _save_execution_record(
     actions: list[str] | None = None,
     attachments: list[dict] | None = None,
 ) -> None:
-    """Save an execution record to the message feed"""
     import secrets
 
     memory = {
@@ -66,13 +57,7 @@ async def _save_execution_record(
     await runtime.create_memory(memory, "messages")
 
 
-# ============================================================================
-# Describe Scene Action
-# ============================================================================
-
-
 class DescribeSceneAction:
-    """Action to describe the current visual scene"""
 
     name = "DESCRIBE_SCENE"
     similes = ["ANALYZE_SCENE", "WHAT_DO_YOU_SEE", "VISION_CHECK", "LOOK_AROUND"]
@@ -182,18 +167,11 @@ class DescribeSceneAction:
             }
 
 
-# ============================================================================
-# Capture Image Action
-# ============================================================================
-
-
 class CaptureImageAction:
-    """Action to capture an image from the camera"""
-
     name = "CAPTURE_IMAGE"
     similes = ["TAKE_PHOTO", "SCREENSHOT", "CAPTURE_FRAME", "TAKE_PICTURE"]
     description = "Captures the current frame from the camera."
-    enabled = False  # Disabled by default - privacy-sensitive
+    enabled = False
 
     @staticmethod
     async def validate(runtime: RuntimeProtocol, *args, **kwargs) -> bool:
@@ -309,13 +287,7 @@ class CaptureImageAction:
             }
 
 
-# ============================================================================
-# Set Vision Mode Action
-# ============================================================================
-
-
 class SetVisionModeAction:
-    """Action to set the vision mode"""
 
     name = "SET_VISION_MODE"
     description = "Set the vision mode to OFF, CAMERA, SCREEN, or BOTH"
@@ -395,13 +367,7 @@ class SetVisionModeAction:
                 await callback({"thought": thought, "text": text, "actions": ["SET_VISION_MODE"]})
 
 
-# ============================================================================
-# Name Entity Action
-# ============================================================================
-
-
 class NameEntityAction:
-    """Action to name an entity in view"""
 
     name = "NAME_ENTITY"
     description = "Assign a name to a person or object currently visible"
@@ -511,18 +477,11 @@ class NameEntityAction:
                 await callback({"thought": thought, "text": text, "actions": ["NAME_ENTITY"]})
 
 
-# ============================================================================
-# Identify Person Action
-# ============================================================================
-
-
 class IdentifyPersonAction:
-    """Action to identify a person in view"""
-
     name = "IDENTIFY_PERSON"
     description = "Identify a person in view if they have been seen before"
     similes = ["who is that", "who is the person", "identify the person"]
-    enabled = False  # Disabled by default - privacy-sensitive
+    enabled = False
 
     @staticmethod
     async def validate(runtime: RuntimeProtocol, *args, **kwargs) -> bool:
@@ -626,18 +585,11 @@ class IdentifyPersonAction:
                 await callback({"thought": thought, "text": text, "actions": ["IDENTIFY_PERSON"]})
 
 
-# ============================================================================
-# Track Entity Action
-# ============================================================================
-
-
 class TrackEntityAction:
-    """Action to start tracking an entity"""
-
     name = "TRACK_ENTITY"
     description = "Start tracking a specific person or object in view"
     similes = ["track the", "follow the", "keep an eye on"]
-    enabled = False  # Disabled by default - privacy-sensitive
+    enabled = False
 
     @staticmethod
     async def validate(runtime: RuntimeProtocol, *args, **kwargs) -> bool:
@@ -707,22 +659,14 @@ class TrackEntityAction:
                 await callback({"thought": thought, "text": text, "actions": ["TRACK_ENTITY"]})
 
 
-# ============================================================================
-# Kill Autonomous Action
-# ============================================================================
-
-
 class KillAutonomousAction:
-    """Action to stop the autonomous loop"""
-
     name = "KILL_AUTONOMOUS"
     similes = ["STOP_AUTONOMOUS", "HALT_AUTONOMOUS", "KILL_AUTO_LOOP"]
     description = "Stops the autonomous agent loop for debugging purposes."
-    enabled = False  # Disabled by default - potentially dangerous
+    enabled = False
 
     @staticmethod
     async def validate(*args, **kwargs) -> bool:
-        """Always allow this action"""
         return True
 
     @staticmethod
@@ -758,7 +702,6 @@ class KillAutonomousAction:
                 await callback({"thought": thought, "text": text, "actions": ["KILL_AUTONOMOUS"]})
 
 
-# Export action instances
 describe_scene_action = DescribeSceneAction()
 capture_image_action = CaptureImageAction()
 set_vision_mode_action = SetVisionModeAction()

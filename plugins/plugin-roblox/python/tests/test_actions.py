@@ -1,5 +1,3 @@
-"""Tests for Roblox plugin actions."""
-
 import pytest
 
 from elizaos_plugin_roblox.actions import (
@@ -11,8 +9,6 @@ from elizaos_plugin_roblox.actions import (
 
 
 class TestSendGameMessageAction:
-    """Tests for SendGameMessageAction."""
-
     @pytest.fixture
     def action(self) -> SendGameMessageAction:
         return SendGameMessageAction()
@@ -45,8 +41,6 @@ class TestSendGameMessageAction:
 
 
 class TestExecuteGameActionAction:
-    """Tests for ExecuteGameActionAction."""
-
     @pytest.fixture
     def action(self) -> ExecuteGameActionAction:
         return ExecuteGameActionAction()
@@ -70,8 +64,6 @@ class TestExecuteGameActionAction:
 
 
 class TestGetPlayerInfoAction:
-    """Tests for GetPlayerInfoAction."""
-
     @pytest.fixture
     def action(self) -> GetPlayerInfoAction:
         return GetPlayerInfoAction()
@@ -95,8 +87,6 @@ class TestGetPlayerInfoAction:
 
 
 class TestActionRegistry:
-    """Tests for action registry functions."""
-
     def test_get_roblox_action_names(self) -> None:
         names = get_roblox_action_names()
         assert "SEND_ROBLOX_MESSAGE" in names

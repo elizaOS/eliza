@@ -1,4 +1,3 @@
-// Vision actions for scene analysis and image capture
 import {
   type Action,
   type ActionExample,
@@ -15,7 +14,6 @@ import {
 import type { VisionService } from "./service";
 import { VisionMode } from "./types";
 
-// Helper function to save execution record to message feed
 async function saveExecutionRecord(
   runtime: IAgentRuntime,
   messageContext: Memory,
@@ -124,7 +122,6 @@ export const describeSceneAction: Action = {
         };
       }
 
-      // Format the response
       const peopleCount = scene.people.length;
       const objectCount = scene.objects.length;
       const timestamp = new Date(scene.timestamp).toLocaleString();
@@ -359,7 +356,6 @@ export const captureImageAction: Action = {
         };
       }
 
-      // Create image attachment
       const attachmentId = createUniqueUuid(runtime, `capture-${Date.now()}`);
       const timestamp = new Date().toISOString();
 
@@ -638,7 +634,6 @@ export const setVisionModeAction: Action = {
     }
 
     try {
-      // Extract the desired mode from the message
       const messageText = message.content.text?.toLowerCase() || "";
       let newMode: VisionMode | null = null;
 
@@ -762,7 +757,6 @@ export const setVisionModeAction: Action = {
   ],
 };
 
-// Enhanced actions for entity tracking and face recognition
 export const nameEntityAction: Action = {
   name: "NAME_ENTITY",
   description: "Assign a name to a person or object currently visible in the camera view",
@@ -850,7 +844,6 @@ export const nameEntityAction: Action = {
         };
       }
 
-      // Extract name from message
       const text = message.content.text?.toLowerCase() || "";
       const nameMatch = text.match(/(?:named?|call(?:ed)?|is)\s+(\w+)/i);
 
@@ -869,8 +862,6 @@ export const nameEntityAction: Action = {
       }
 
       const name = nameMatch[1];
-
-      // Get entity tracker
       const _worldId = message.worldId || "default-world";
       const entityTracker = visionService.getEntityTracker();
 
@@ -903,11 +894,9 @@ export const nameEntityAction: Action = {
         });
       }
 
-      // Assign the name
       const success = entityTracker.assignNameToEntity(targetPerson.id, name);
 
       if (success) {
-        // Success response
         const thought = `Named entity "${name}" and associated with person in scene.`;
         const text = `I've identified the person as ${name}. I'll remember them for future interactions.`;
 
@@ -1053,7 +1042,6 @@ export const identifyPersonAction: Action = {
         };
       }
 
-      // Build response about visible people
       const _responseText = "";
       let recognizedCount = 0;
       let unknownCount = 0;
@@ -1089,7 +1077,6 @@ export const identifyPersonAction: Action = {
         }
       }
 
-      // Check for recently departed people
       const recentlyLeft = entityTracker.getRecentlyLeft();
       if (recentlyLeft.length > 0) {
         identifications.push("\nRecently departed:");
@@ -1220,12 +1207,8 @@ export const trackEntityAction: Action = {
       }
 
       const _text = message.content.text?.toLowerCase() || "";
-
-      // Get entity tracker
       const _worldId = message.worldId || "default-world";
       const entityTracker = visionService.getEntityTracker();
-
-      // Update entities
       await entityTracker.updateEntities(scene.objects, scene.people, undefined, runtime);
       const stats = entityTracker.getStatistics();
 

@@ -21,4 +21,3 @@ pub enum FormsError {
 }
 
 pub type FormsResult<T> = Result<T, FormsError>;
-

@@ -36,27 +36,21 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return await this.manager.withEntityContext(entityId, callback);
   }
 
-  // Methods required by TypeScript but not in base class
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
-    // Delegate to the correct method name
     return this.getEntitiesByIds(entityIds);
   }
 
   async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
-    // This method doesn't seem to exist in the base implementation
-    // Provide a basic implementation that returns empty array
     logger.warn({ src: "plugin:sql" }, "getMemoriesByServerId called but not implemented");
     return [];
   }
 
   async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
-    // Check if agent exists, create if not
     const existingAgent = await this.getAgent(this.agentId);
     if (existingAgent) {
       return existingAgent;
     }
 
-    // Create the agent with required fields
     const newAgent: Agent = {
       id: this.agentId,
       name: agent.name || "Unknown Agent",
@@ -74,71 +68,28 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return createdAgent;
   }
 
-  /**
-   * Executes the provided operation with a database connection.
-   *
-   * This method uses the shared pool-based database instance from the manager.
-   * The pg Pool handles connection management internally, automatically acquiring
-   * and releasing connections for each query. This avoids race conditions that
-   * could occur with manual client management and shared state.
-   *
-   * The db instance is set once in constructor from manager.getDatabase()
-   * and is backed by a connection pool, so concurrent operations are safe.
-   *
-   * @template T
-   * @param {() => Promise<T>} operation - The operation to be executed with the database connection.
-   * @returns {Promise<T>} A promise that resolves with the result of the operation.
-   */
   protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     return await this.withRetry(async () => {
-      // Use the pool-based database instance from the manager
-      // The pool handles connection acquisition/release internally for each query
-      // This avoids the race condition of manually managing this.db state
       return await operation();
     });
   }
 
-  /**
-   * Asynchronously initializes the PgDatabaseAdapter by running migrations using the manager.
-   * Logs a success message if initialization is successful, otherwise logs an error message.
-   *
-   * @returns {Promise<void>} A promise that resolves when initialization is complete.
-   */
   async init(): Promise<void> {
     logger.debug({ src: "plugin:sql" }, "PgDatabaseAdapter initialized");
   }
 
-  /**
-   * Checks if the database connection is ready and active.
-   * @returns {Promise<boolean>} A Promise that resolves to true if the connection is healthy.
-   */
   async isReady(): Promise<boolean> {
     return this.manager.testConnection();
   }
 
-  /**
-   * Asynchronously closes the manager associated with this instance.
-   *
-   * @returns A Promise that resolves once the manager is closed.
-   */
   async close(): Promise<void> {
     await this.manager.close();
   }
 
-  /**
-   * Asynchronously retrieves the Drizzle database connection.
-   *
-   * @returns {Promise<NodePgDatabase>} A Promise that resolves with the Drizzle database.
-   */
   async getConnection(): Promise<NodePgDatabase> {
     return this.db as NodePgDatabase;
   }
 
-  /**
-   * Get the underlying connection pool (for testing/advanced use).
-   *
-   * @returns {Pool} The underlying connection pool.
-   */
   getRawConnection() {
     return this.manager.getConnection();
   }

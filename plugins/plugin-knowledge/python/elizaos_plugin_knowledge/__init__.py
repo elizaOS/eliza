@@ -10,7 +10,12 @@ from elizaos_plugin_knowledge.types import (
     ProviderRateLimits,
 )
 from elizaos_plugin_knowledge.service import KnowledgeService
-from elizaos_plugin_knowledge.provider import KnowledgeProvider, DocumentsProvider
+from elizaos_plugin_knowledge.provider import (
+    AvailableDocumentsProvider,
+    DocumentsProvider,
+    KnowledgeProvider,
+    KnowledgeProviderTs,
+)
 from elizaos_plugin_knowledge.plugin import (
     KnowledgePlugin,
     create_knowledge_plugin,
@@ -41,6 +46,8 @@ __all__ = [
     "KnowledgeService",
     "KnowledgeProvider",
     "DocumentsProvider",
+    "KnowledgeProviderTs",
+    "AvailableDocumentsProvider",
     "KnowledgePlugin",
     "create_knowledge_plugin",
     "get_knowledge_plugin",
@@ -53,8 +60,3 @@ __all__ = [
     "search_knowledge_action",
     "knowledge_actions",
 ]
-
-
-
-
-

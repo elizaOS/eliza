@@ -28,10 +28,12 @@ from elizaos_plugin_bluesky.types import (
     TimelineRequest,
     TimelineResponse,
 )
+from elizaos_plugin_bluesky.service import BlueSkyService
 
 __all__ = [
     "BlueSkyClient",
     "BlueSkyConfig",
+    "BlueSkyService",
     "BlueSkyError",
     "AuthenticationError",
     "ConfigError",

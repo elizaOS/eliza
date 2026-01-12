@@ -1,5 +1,3 @@
-//! Integration tests for the Roblox plugin.
-
 use elizaos_plugin_roblox::{RobloxClient, RobloxConfig};
 
 #[tokio::test]
@@ -30,17 +28,11 @@ async fn test_dry_run_message() {
 
     let client = RobloxClient::new(config).expect("Failed to create client");
 
-    // This should succeed in dry run mode without actually calling the API
     let result = client
         .publish_message("test-topic", "Hello from test!", None)
         .await;
 
     assert!(result.is_ok());
 }
-
-
-
-
-
 
 

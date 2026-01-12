@@ -78,14 +78,11 @@ impl LocalDatabaseAdapter {
         Ok(())
     }
 
-    /// Check if the adapter is ready.
     pub fn is_ready(&self) -> bool {
         self.ready && self.storage.is_ready()
     }
 
-    /// Close the adapter.
     pub async fn close(&mut self) -> Result<()> {
-        // Save HNSW index
         let index = self.vector_index.serialize();
         let data = serde_json::to_string(&index)?;
         self.storage.save_raw("vectors/hnsw_index.json", &data)?;
@@ -148,7 +145,6 @@ impl LocalDatabaseAdapter {
         Ok(memories)
     }
 
-    /// Delete a memory.
     pub fn delete_memory(&mut self, id: &str) -> Result<bool> {
         self.vector_index.remove(id);
         self.storage.delete(collections::MEMORIES, id)

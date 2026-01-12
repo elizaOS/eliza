@@ -1,7 +1,3 @@
-/**
- * Remote Attestation Provider for Phala TEE.
- */
-
 import { type IAgentRuntime, logger, type Memory, type Provider } from "@elizaos/core";
 import { TappdClient, type TdxQuoteHashAlgorithms, type TdxQuoteResponse } from "@phala/dstack-sdk";
 import type {
@@ -13,11 +9,6 @@ import type {
 import { getTeeEndpoint } from "../utils";
 import { RemoteAttestationProvider } from "./base";
 
-/**
- * Phala Network Remote Attestation Provider.
- *
- * Generates TDX attestation quotes for proving TEE execution.
- */
 export class PhalaRemoteAttestationProvider extends RemoteAttestationProvider {
   private readonly client: TappdClient;
 
@@ -34,37 +25,20 @@ export class PhalaRemoteAttestationProvider extends RemoteAttestationProvider {
     this.client = endpoint ? new TappdClient(endpoint) : new TappdClient();
   }
 
-  /**
-   * Generate a remote attestation quote.
-   *
-   * @param reportData - The data to include in the attestation report.
-   * @param hashAlgorithm - Optional hash algorithm for the quote.
-   * @returns The remote attestation quote.
-   */
   async generateAttestation(
     reportData: string,
     hashAlgorithm?: TdxQuoteHashAlgorithm
   ): Promise<RemoteAttestationQuote> {
     try {
-      logger.debug(`Generating attestation for: ${reportData.substring(0, 100)}...`);
-
       const tdxQuote: TdxQuoteResponse = await this.client.tdxQuote(
         reportData,
         hashAlgorithm as TdxQuoteHashAlgorithms | undefined
       );
 
-      const rtmrs = tdxQuote.replayRtmrs();
-      logger.debug(
-        `RTMR values: rtmr0=${rtmrs[0]}, rtmr1=${rtmrs[1]}, rtmr2=${rtmrs[2]}, rtmr3=${rtmrs[3]}`
-      );
-
-      const quote: RemoteAttestationQuote = {
+      return {
         quote: tdxQuote.quote,
         timestamp: Date.now(),
       };
-
-      logger.info("Remote attestation quote generated successfully");
-      return quote;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Error generating remote attestation: ${message}`);
@@ -73,11 +47,6 @@ export class PhalaRemoteAttestationProvider extends RemoteAttestationProvider {
   }
 }
 
-/**
- * elizaOS Provider for remote attestation.
- *
- * This provider generates attestation based on the current message context.
- */
 export const phalaRemoteAttestationProvider: Provider = {
   name: "phala-remote-attestation",
 
@@ -106,8 +75,6 @@ export const phalaRemoteAttestationProvider: Provider = {
         },
       };
 
-      logger.debug(`Generating attestation for message: ${JSON.stringify(attestationMessage)}`);
-
       const attestation = await provider.generateAttestation(JSON.stringify(attestationMessage));
 
       return {
@@ -119,7 +86,7 @@ export const phalaRemoteAttestationProvider: Provider = {
           quote: attestation.quote,
           timestamp: attestation.timestamp.toString(),
         },
-        text: `Your Agent's remote attestation is: ${JSON.stringify(attestation)}`,
+        text: `Remote attestation: ${attestation.quote.substring(0, 64)}...`,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

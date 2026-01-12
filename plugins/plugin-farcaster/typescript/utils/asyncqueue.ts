@@ -1,7 +1,3 @@
-/**
- * Async queue for rate-limited operations.
- */
-
 export class AsyncQueue {
   private queue: (() => Promise<void>)[] = [];
   private running = 0;
@@ -40,7 +36,6 @@ export class AsyncQueue {
     try {
       await work();
     } catch {
-      // Error handling without logging
     } finally {
       this.running--;
       void this.doNextWork();

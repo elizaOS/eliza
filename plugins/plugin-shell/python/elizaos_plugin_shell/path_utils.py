@@ -63,18 +63,18 @@ def validate_path(
 
 def is_safe_command(command: str) -> bool:
     path_traversal_patterns = [
-        r"\.\./",  # ../
-        r"\.\.\\",  # ..\
-        r"/\.\.",  # /..
+        r"\.\./",
+        r"\.\.\\",
+        r"/\.\.",
         r"\\\.\.",
     ]
 
     dangerous_patterns = [
-        r"\$\(",  # Command substitution $(
-        r"`[^']*`",  # Command substitution ` (but allow in quotes)
-        r"\|\s*sudo",  # Pipe to sudo
-        r";\s*sudo",  # Chain with sudo
-        r"&\s*&",  # && chaining
+        r"\$\(",
+        r"`[^']*`",
+        r"\|\s*sudo",
+        r";\s*sudo",
+        r"&\s*&",
         r"\|\s*\|",
     ]
 
@@ -105,26 +105,14 @@ def is_forbidden_command(
     command: str,
     forbidden_commands: list[str],
 ) -> bool:
-    """
-    Check if a command is in the forbidden list.
-
-    Args:
-        command: The command to check
-        forbidden_commands: List of forbidden commands/patterns
-
-    Returns:
-        True if the command is forbidden
-    """
     normalized_command = command.strip().lower()
 
     for forbidden in forbidden_commands:
         forbidden_lower = forbidden.lower()
 
-        # Check if the command starts with the forbidden pattern
         if normalized_command.startswith(forbidden_lower):
             return True
 
-        # Check if it's the exact base command for single-word forbidden commands
         if " " not in forbidden:
             base_command = extract_base_command(command)
             if base_command.lower() == forbidden_lower:

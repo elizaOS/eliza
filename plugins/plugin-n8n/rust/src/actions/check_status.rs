@@ -49,7 +49,10 @@ impl N8nAction for CheckStatusAction {
         match jobs {
             Some(jobs) if !jobs.is_empty() => {
                 let job = &jobs[0];
-                let status = job.get("status").and_then(|s| s.as_str()).unwrap_or("unknown");
+                let status = job
+                    .get("status")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
                 let progress = job.get("progress").and_then(|p| p.as_f64()).unwrap_or(0.0);
                 let name = job
                     .get("specification")

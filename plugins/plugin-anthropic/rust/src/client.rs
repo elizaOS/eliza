@@ -7,8 +7,7 @@ use crate::error::{AnthropicError, Result};
 use crate::models::Model;
 use crate::types::{
     ContentBlock, ErrorResponse, Message, MessagesRequest, MessagesResponse,
-    ObjectGenerationParams, ObjectGenerationResponse, TextGenerationParams,
-    TextGenerationResponse,
+    ObjectGenerationParams, ObjectGenerationResponse, TextGenerationParams, TextGenerationResponse,
 };
 
 /// HTTP client for interacting with the Anthropic Claude API.
@@ -32,9 +31,8 @@ impl AnthropicClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             "x-api-key",
-            HeaderValue::from_str(config.api_key()).map_err(|e| {
-                AnthropicError::config(format!("Invalid API key format: {}", e))
-            })?,
+            HeaderValue::from_str(config.api_key())
+                .map_err(|e| AnthropicError::config(format!("Invalid API key format: {}", e)))?,
         );
         headers.insert(
             "anthropic-version",
@@ -255,12 +253,7 @@ impl AnthropicClient {
     async fn send_request(&self, request: &MessagesRequest) -> Result<MessagesResponse> {
         let url = self.config.messages_url();
 
-        let response = self
-            .http_client
-            .post(&url)
-            .json(request)
-            .send()
-            .await?;
+        let response = self.http_client.post(&url).json(request).send().await?;
 
         let status = response.status();
 

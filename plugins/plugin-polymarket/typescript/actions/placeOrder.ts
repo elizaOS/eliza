@@ -1,9 +1,3 @@
-/**
- * @elizaos/plugin-polymarket Order Placement Actions
- *
- * Actions for placing and managing orders on Polymarket.
- */
-
 import {
   type Action,
   type ActionResult,
@@ -36,9 +30,6 @@ interface PlaceOrderParams {
   error?: string;
 }
 
-/**
- * Place order action for Polymarket
- */
 export const placeOrderAction: Action = {
   name: "POLYMARKET_PLACE_ORDER",
   similes: [
@@ -71,20 +62,15 @@ export const placeOrderAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
     state?: State,
-    _options?: Record<string, unknown>,
+    _options?: Record<string, string | number | boolean>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    logger.info("[placeOrderAction] Handler called");
-
-    // Use LLM to extract parameters
     const llmResult = await callLLMWithTimeout<PlaceOrderParams>(
       runtime,
       state,
       orderTemplate,
       "placeOrderAction"
     );
-
-    logger.info("[placeOrderAction] LLM result:", JSON.stringify(llmResult));
 
     if (isLLMError(llmResult)) {
       throw new Error("Required order parameters not found");
@@ -97,7 +83,6 @@ export const placeOrderAction: Action = {
     let orderType = llmResult?.orderType?.toUpperCase() ?? "GTC";
     const feeRateBps = llmResult?.feeRateBps ?? "0";
 
-    // Handle market name lookup
     if (tokenId === "MARKET_NAME_LOOKUP" && llmResult?.marketName) {
       throw new Error(
         `Market name lookup not yet implemented. Please provide a specific token ID. You requested: "${llmResult.marketName}"`
@@ -108,7 +93,6 @@ export const placeOrderAction: Action = {
       throw new Error("Invalid order parameters: tokenId, price, and size are required");
     }
 
-    // Validate and normalize parameters
     if (!["BUY", "SELL"].includes(side)) {
       side = "BUY";
     }
@@ -131,30 +115,20 @@ export const placeOrderAction: Action = {
       feeRateBps: parseFloat(feeRateBps),
     };
 
-    logger.info(
-      "[placeOrderAction] Creating and posting order with args:",
-      JSON.stringify(orderArgs)
-    );
-
-    // Create and post the order - use appropriate method based on order type
-    // createAndPostOrder is for limit orders (GTC, GTD)
-    // createAndPostMarketOrder is for market orders (FOK, FAK)
     let orderResponse: OrderResponse;
 
     if (orderType === "FOK" || orderType === "FAK") {
-      // Market orders use createAndPostMarketOrder with UserMarketOrder format
       const marketOrderType = orderType === "FAK" ? ClobOrderType.FAK : ClobOrderType.FOK;
       const marketOrderArgs = {
         tokenID: tokenId,
         price,
-        amount: size, // Market orders use 'amount' instead of 'size'
+        amount: size,
         side: side === "BUY" ? Side.BUY : Side.SELL,
         feeRateBps: parseFloat(feeRateBps),
         orderType: marketOrderType as ClobOrderType.FOK | ClobOrderType.FAK,
       };
       orderResponse = (await client.createAndPostMarketOrder(marketOrderArgs)) as OrderResponse;
     } else {
-      // Limit orders (GTC, GTD)
       const clobOrderType = orderType === "GTD" ? ClobOrderType.GTD : ClobOrderType.GTC;
       orderResponse = (await client.createAndPostOrder(
         orderArgs,
@@ -162,9 +136,7 @@ export const placeOrderAction: Action = {
         clobOrderType
       )) as OrderResponse;
     }
-    logger.info("[placeOrderAction] Order posted successfully");
 
-    // Format response
     let responseText: string;
 
     if (orderResponse.success) {

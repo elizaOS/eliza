@@ -51,13 +51,13 @@ export const documentsProvider: Provider = {
         .map((doc, index) => {
           const metadata = doc.metadata as KnowledgeDocumentMetadata | undefined;
           const filename = metadata?.filename || metadata?.title || `Document ${index + 1}`;
-          const fileType = metadata?.fileExt || metadata?.fileType || "unknown";
+          const fileType = metadata?.fileExt || metadata?.fileType || "";
           const source = metadata?.source || "upload";
           const fileSize = metadata?.fileSize;
 
           const parts = [filename];
 
-          if (fileType && fileType !== "unknown") {
+          if (fileType) {
             parts.push(fileType);
           }
 

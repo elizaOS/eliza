@@ -1,30 +1,21 @@
 #![allow(missing_docs)]
-//! Configuration types and utilities for the Roblox plugin.
 
 use crate::error::{Result, RobloxError};
 use crate::defaults;
 use serde::{Deserialize, Serialize};
 
-/// Configuration for the Roblox plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RobloxConfig {
-    /// API key for Roblox Open Cloud API
     pub api_key: String,
-    /// Universe ID of the experience
     pub universe_id: String,
-    /// Optional Place ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub place_id: Option<String>,
-    /// Webhook secret for validation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub webhook_secret: Option<String>,
-    /// Messaging service topic
     #[serde(default = "default_messaging_topic")]
     pub messaging_topic: String,
-    /// Polling interval in seconds
     #[serde(default = "default_poll_interval")]
     pub poll_interval: u64,
-    /// Dry run mode
     #[serde(default)]
     pub dry_run: bool,
 }
@@ -38,7 +29,6 @@ fn default_poll_interval() -> u64 {
 }
 
 impl RobloxConfig {
-    /// Create a new configuration.
     pub fn new(api_key: impl Into<String>, universe_id: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
@@ -51,20 +41,6 @@ impl RobloxConfig {
         }
     }
 
-    /// Load configuration from environment variables.
-    ///
-    /// # Required Environment Variables
-    ///
-    /// - `ROBLOX_API_KEY`: API key for Roblox Open Cloud API
-    /// - `ROBLOX_UNIVERSE_ID`: Universe ID of the experience
-    ///
-    /// # Optional Environment Variables
-    ///
-    /// - `ROBLOX_PLACE_ID`: Specific place ID
-    /// - `ROBLOX_WEBHOOK_SECRET`: Secret for webhook validation
-    /// - `ROBLOX_MESSAGING_TOPIC`: Messaging topic (default: "eliza-agent")
-    /// - `ROBLOX_POLL_INTERVAL`: Poll interval in seconds (default: 30)
-    /// - `ROBLOX_DRY_RUN`: Enable dry run mode (default: false)
     pub fn from_env() -> Result<Self> {
         dotenvy::dotenv().ok();
 
@@ -106,7 +82,6 @@ impl RobloxConfig {
         self
     }
 
-    /// Set the webhook secret.
     pub fn with_webhook_secret(mut self, secret: impl Into<String>) -> Self {
         self.webhook_secret = Some(secret.into());
         self
@@ -124,7 +99,6 @@ impl RobloxConfig {
         self
     }
 
-    /// Enable or disable dry run mode.
     pub fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
         self
@@ -184,10 +158,5 @@ mod tests {
         assert!(invalid_config2.validate().is_err());
     }
 }
-
-
-
-
-
 
 

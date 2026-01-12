@@ -40,13 +40,6 @@ interface LLMCursorResult {
   error?: string;
 }
 
-// =============================================================================
-// Get All Markets Action
-// =============================================================================
-
-/**
- * Retrieve all markets action for Polymarket
- */
 export const retrieveAllMarketsAction: Action = {
   name: "POLYMARKET_GET_MARKETS",
   similes: [
@@ -77,9 +70,6 @@ export const retrieveAllMarketsAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    logger.info("[retrieveAllMarketsAction] Handler called");
-
-    // Extract filters using LLM
     const llmResult = await callLLMWithTimeout<MarketFilters & { error?: string }>(
       runtime,
       state,
@@ -94,7 +84,6 @@ export const retrieveAllMarketsAction: Action = {
       if (llmResult.limit) filters.limit = llmResult.limit;
     }
 
-    // Initialize CLOB client and fetch markets
     const clobClient = await initializeClobClient(runtime);
     const response = await clobClient.getMarkets(filters.next_cursor);
     const markets = response.data as Market[];
@@ -206,8 +195,6 @@ export const getSimplifiedMarketsAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    logger.info("[getSimplifiedMarketsAction] Handler called");
-
     const llmResult = await callLLMWithTimeout<LLMCursorResult>(
       runtime,
       state,
@@ -266,13 +253,6 @@ export const getSimplifiedMarketsAction: Action = {
   ],
 };
 
-// =============================================================================
-// Get Market Details Action
-// =============================================================================
-
-/**
- * Get detailed information about a specific market
- */
 export const getMarketDetailsAction: Action = {
   name: "POLYMARKET_GET_MARKET_DETAILS",
   similes: [
@@ -297,8 +277,6 @@ export const getMarketDetailsAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    logger.info("[getMarketDetailsAction] Handler called");
-
     const llmResult = await callLLMWithTimeout<LLMMarketResult>(
       runtime,
       state,
@@ -390,13 +368,6 @@ export const getMarketDetailsAction: Action = {
   ],
 };
 
-// =============================================================================
-// Get Sampling Markets Action
-// =============================================================================
-
-/**
- * Get markets with rewards enabled (sampling markets)
- */
 export const getSamplingMarketsAction: Action = {
   name: "POLYMARKET_GET_SAMPLING_MARKETS",
   similes: ["SAMPLING_MARKETS", "REWARDS_MARKETS", "INCENTIVE_MARKETS"],
@@ -413,8 +384,6 @@ export const getSamplingMarketsAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    logger.info("[getSamplingMarketsAction] Handler called");
-
     const llmResult = await callLLMWithTimeout<LLMCursorResult>(
       runtime,
       state,

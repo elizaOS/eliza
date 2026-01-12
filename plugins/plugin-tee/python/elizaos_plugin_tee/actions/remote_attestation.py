@@ -1,7 +1,3 @@
-"""
-Remote Attestation Action for TEE.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -21,21 +17,6 @@ async def handle_remote_attestation(
     room_id: str,
     content: str,
 ) -> dict[str, bool | str]:
-    """
-    Handle remote attestation action.
-
-    Generates a remote attestation quote and uploads it to the proof service.
-
-    Args:
-        tee_mode: The TEE operation mode.
-        agent_id: The agent ID.
-        entity_id: The entity ID from the message.
-        room_id: The room ID from the message.
-        content: The message content.
-
-    Returns:
-        A result dict with success status and text/error message.
-    """
     try:
         if not tee_mode:
             logger.error("TEE_MODE is not configured")
@@ -44,7 +25,6 @@ async def handle_remote_attestation(
                 "text": "TEE_MODE is not configured. Cannot generate attestation.",
             }
 
-        # Build attestation message
         attestation_message = RemoteAttestationMessage(
             agent_id=agent_id,
             timestamp=int(time.time() * 1000),
@@ -55,9 +35,6 @@ async def handle_remote_attestation(
             ),
         )
 
-        logger.debug("Generating attestation for: %s", attestation_message.model_dump_json())
-
-        # Generate attestation
         provider = PhalaRemoteAttestationProvider(tee_mode)
         try:
             attestation = await provider.generate_attestation(
@@ -66,17 +43,14 @@ async def handle_remote_attestation(
         finally:
             await provider.close()
 
-        # Upload to proof service
         attestation_data = hex_to_bytes(attestation.quote)
         upload_result = await upload_attestation_quote(attestation_data)
 
         proof_url = f"https://proof.t16z.com/reports/{upload_result['checksum']}"
 
-        logger.info("Attestation uploaded: %s", proof_url)
-
         return {
             "success": True,
-            "text": f"Here's my 🧾 RA Quote 🫡\n{proof_url}",
+            "text": f"Remote attestation quote: {proof_url}",
         }
 
     except Exception as e:
@@ -88,7 +62,6 @@ async def handle_remote_attestation(
         }
 
 
-# Action definition for elizaOS integration
 REMOTE_ATTESTATION_ACTION = {
     "name": "REMOTE_ATTESTATION",
     "similes": [
@@ -156,8 +129,4 @@ REMOTE_ATTESTATION_ACTION = {
         ],
     ],
 }
-
-
-
-
 

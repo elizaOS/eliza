@@ -50,7 +50,6 @@ const discordPlugin: Plugin = {
   providers: [channelStateProvider, voiceStateProvider, guildInfoProvider],
   tests: [new DiscordTestSuite()],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    // Gather ALL Discord settings
     const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
     const applicationId = runtime.getSetting("DISCORD_APPLICATION_ID") as string;
     const voiceChannelId = runtime.getSetting("DISCORD_VOICE_CHANNEL_ID") as string;
@@ -64,10 +63,6 @@ const discordPlugin: Plugin = {
       "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS"
     ) as string;
 
-    // Print beautiful settings banner with ALL settings
-    // Includes tiered permission matrix for Discord invite URLs:
-    // - Basic / Moderator / Admin (role levels)
-    // - With or without voice permissions
     printBanner({
       pluginName: "plugin-discord",
       description: "Discord bot integration for servers and channels",
@@ -128,16 +123,12 @@ const discordPlugin: Plugin = {
 
 export default discordPlugin;
 
-// Export additional items for use by other plugins
-// IDiscordService? from ./types
 export { DISCORD_SERVICE_NAME } from "./constants";
-// Export permission utilities for external consumers
 export {
   ELEVATED_PERMISSIONS,
   hasElevatedPermissions,
   isElevatedRole,
 } from "./permissionEvents";
-// Export permission tier system for invite URL generation
 export {
   type DiscordPermissionTier,
   DiscordPermissionTiers,
@@ -157,5 +148,4 @@ export type {
   RoleLifecyclePayload,
   RolePermissionsChangedPayload,
 } from "./types";
-// Export event types and payload interfaces for external consumers
 export { DiscordEventTypes } from "./types";

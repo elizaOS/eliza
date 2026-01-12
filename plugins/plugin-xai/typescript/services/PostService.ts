@@ -8,16 +8,13 @@ import type { CreatePostOptions, GetPostsOptions, IPostService, Post } from "./I
 export class XPostService implements IPostService {
   constructor(private client: ClientBase) {}
 
-  /**
-   * Safely parse JSON from a Response-like object without consuming the original body
-   */
-  private async safeParseJsonResponse(result: unknown): Promise<unknown | undefined> {
+  private async safeParseJsonResponse(
+    result: unknown
+  ): Promise<Record<string, unknown> | undefined> {
     if (!isResponseLike(result)) return undefined;
 
     try {
-      // If this is a real Fetch Response, avoid consuming the original body.
       if (result.clone && typeof result.clone === "function") {
-        // If body is already used, clone() may throw; guard defensively.
         if (result.bodyUsed === true) return undefined;
         const cloned = result.clone();
         if (cloned?.json && typeof cloned.json === "function") {
@@ -26,7 +23,6 @@ export class XPostService implements IPostService {
         return undefined;
       }
 
-      // Non-Response shapes (e.g. our internal wrappers) may expose json() but do not consume streams.
       if (result.json && typeof result.json === "function") {
         return await result.json();
       }
@@ -36,19 +32,13 @@ export class XPostService implements IPostService {
     }
   }
 
-  /**
-   * Extract post ID from various X API response shapes
-   */
   private async extractPostId(result: PostResponse | unknown): Promise<string | undefined> {
-    // First try direct extraction using type-safe utility
     const directId = extractIdFromResult(result);
     if (directId) return directId;
 
-    // Check for rest_id
     const restId = extractRestId(result);
     if (restId) return restId;
 
-    // Some callers return a Response-like shape with a json() function.
     if (isResponseLike(result)) {
       const body = await this.safeParseJsonResponse(result);
       const bodyId = extractIdFromResult(body);
@@ -63,7 +53,6 @@ export class XPostService implements IPostService {
 
   async createPost(options: CreatePostOptions): Promise<Post> {
     try {
-      // Handle media uploads if needed
       const _mediaIds: string[] = [];
 
       if (options.media && options.media.length > 0) {
@@ -164,7 +153,6 @@ export class XPostService implements IPostService {
   }
 
   async getPosts(options: GetPostsOptions): Promise<Post[]> {
-    /** Shape of partial post data from X API */
     interface PartialPost {
       id?: string;
       userId?: string;
@@ -182,7 +170,6 @@ export class XPostService implements IPostService {
       media?: Array<{ type?: string; url?: string }>;
     }
 
-    /** Type guard for posts with required fields */
     function hasRequiredFields(
       post: PartialPost
     ): post is PartialPost & { id: string; userId: string; username: string; text: string } {
@@ -193,7 +180,6 @@ export class XPostService implements IPostService {
       let _posts: PartialPost[] | undefined;
 
       if (options.userId) {
-        // Get posts from a specific user
         const result = await this.client.xClient.getUserPosts(
           options.userId,
           options.limit || 20,
@@ -201,7 +187,6 @@ export class XPostService implements IPostService {
         );
         _posts = result.posts;
       } else {
-        // Get home timeline or search results
         _posts = await this.client.fetchHomeTimeline(options.limit || 20, false);
       }
 

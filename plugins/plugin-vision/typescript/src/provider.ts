@@ -1,4 +1,3 @@
-// Vision provider - provides current visual perception data to the agent
 import {
   addHeader,
   type IAgentRuntime,
@@ -14,8 +13,8 @@ export const visionProvider: Provider = {
   name: "VISION_PERCEPTION",
   description:
     "Provides current visual perception data including scene description, detected objects, people, and entity tracking. This provider is always active and provides real-time visual awareness.",
-  position: 99, // High priority for vision context
-  dynamic: false, // Always included - vision is a constant sense
+  position: 99,
+  dynamic: false,
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const visionService = runtime.getService<VisionService>("VISION");
@@ -33,7 +32,6 @@ export const visionProvider: Provider = {
       };
     }
 
-    // Get current scene description (enhanced if screen is enabled)
     const sceneDescription =
       (await visionService.getEnhancedSceneDescription()) ||
       (await visionService.getSceneDescription());
@@ -41,8 +39,6 @@ export const visionProvider: Provider = {
     const isActive = visionService.isActive();
     const visionMode = visionService.getVisionMode();
     const screenCapture = await visionService.getScreenCapture();
-
-    // Get entity tracking data
     const _worldId = message.worldId || "default-world";
     const entityTracker = visionService.getEntityTracker();
 
@@ -72,7 +68,6 @@ export const visionProvider: Provider = {
     } | null = null;
 
     if (sceneDescription && entityTracker) {
-      // Update entities with current detections
       await entityTracker.updateEntities(
         sceneDescription.objects,
         sceneDescription.people,
@@ -127,7 +122,6 @@ export const visionProvider: Provider = {
     } else {
       perceptionText = `Vision mode: ${visionMode}\n\n`;
 
-      // Camera vision data
       if ((visionMode === "CAMERA" || visionMode === "BOTH") && sceneDescription) {
         const ageInSeconds = (Date.now() - sceneDescription.timestamp) / 1000;
         const secondsAgo = Math.round(ageInSeconds);
@@ -178,7 +172,6 @@ export const visionProvider: Provider = {
           perceptionText += `\n\nScene change: ${sceneDescription.changePercentage.toFixed(1)}% of pixels changed`;
         }
 
-        // Add entity tracking information
         if (entityData) {
           if (entityData.activeEntities.length > 0) {
             perceptionText += "\n\nCurrently tracking:";
@@ -206,7 +199,6 @@ export const visionProvider: Provider = {
         }
       }
 
-      // Screen vision data
       if ((visionMode === "SCREEN" || visionMode === "BOTH") && screenCapture) {
         const screenAge = (Date.now() - screenCapture.timestamp) / 1000;
         const screenSecondsAgo = Math.round(screenAge);
@@ -218,7 +210,6 @@ export const visionProvider: Provider = {
         perceptionText += `Screen capture (${screenSecondsAgo}s ago):\n`;
         perceptionText += `Resolution: ${screenCapture.width}x${screenCapture.height}\n`;
 
-        // Enhanced scene data if available
         const enhanced = sceneDescription as EnhancedSceneDescription;
         if (enhanced?.screenAnalysis) {
           const tileAnalysis = enhanced.screenAnalysis.activeTile;
@@ -260,7 +251,6 @@ export const visionProvider: Provider = {
         lastChange: sceneDescription?.sceneChanged ? sceneDescription.changePercentage : 0,
         hasScreenCapture: !!screenCapture,
         screenResolution: screenCapture ? `${screenCapture.width}x${screenCapture.height}` : null,
-        // Entity tracking values
         activeEntities: entityData?.activeEntities || [],
         recentlyLeft: entityData?.recentlyLeft || [],
         entityStatistics: entityData?.statistics || null,

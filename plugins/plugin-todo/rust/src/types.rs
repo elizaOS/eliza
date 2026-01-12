@@ -9,42 +9,36 @@ use uuid::Uuid;
 /// Task types supported by the plugin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum TaskType {
     /// Daily recurring task
     Daily,
     /// One-off task with optional due date
+    #[default]
     OneOff,
     /// Aspirational long-term goal
     Aspirational,
 }
 
 
-impl Default for TaskType {
-    fn default() -> Self {
-        Self::OneOff
-    }
-}
 
 /// Priority levels (1 = highest, 4 = lowest).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
+#[derive(Default)]
 pub enum Priority {
     /// Critical priority (1)
     Critical = 1,
     /// High priority (2)
     High = 2,
     /// Medium priority (3)
+    #[default]
     Medium = 3,
     /// Low priority (4)
     Low = 4,
 }
 
 
-impl Default for Priority {
-    fn default() -> Self {
-        Self::Medium
-    }
-}
 
 impl From<u8> for Priority {
     fn from(value: u8) -> Self {

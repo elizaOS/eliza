@@ -375,6 +375,45 @@ impl GoalService {
     }
 }
 
+/// Minimal wrapper to match the TypeScript service naming (`GoalDataServiceWrapper`).
+pub struct GoalDataServiceWrapper {
+    goal_service: Option<GoalService>,
+}
+
+impl GoalDataServiceWrapper {
+    /// Service name used for service registration/lookup.
+    pub const SERVICE_NAME: &'static str = "goalDataService";
+    /// Service type identifier for goal data operations.
+    pub const SERVICE_TYPE: &'static str = "GOAL_DATA";
+    /// Human-readable description of the service capability.
+    pub const CAPABILITY_DESCRIPTION: &'static str = "Manages goal data storage and retrieval";
+
+    /// Creates a new wrapper around an optional [`GoalService`].
+    #[must_use]
+    pub fn new(goal_service: Option<GoalService>) -> Self {
+        Self { goal_service }
+    }
+
+    /// Creates a wrapper backed by an in-memory database.
+    #[must_use]
+    pub fn start_in_memory() -> Self {
+        let db = Arc::new(InMemoryDatabase::new());
+        let service = GoalService::new(db);
+        Self::new(Some(service))
+    }
+
+    /// Stops the service and releases its resources.
+    pub async fn stop(&mut self) {
+        self.goal_service = None;
+    }
+
+    /// Returns the underlying goal data service, if started.
+    #[must_use]
+    pub fn get_data_service(&self) -> Option<&GoalService> {
+        self.goal_service.as_ref()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

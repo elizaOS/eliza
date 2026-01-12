@@ -1,18 +1,5 @@
-/**
- * Audio utilities for OpenAI plugin
- *
- * Provides audio format detection and stream conversion utilities.
- */
-
 import { logger } from "@elizaos/core";
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-/**
- * Magic bytes for audio format detection
- */
 const MAGIC_BYTES = {
   WAV: {
     HEADER: [0x52, 0x49, 0x46, 0x46] as const, // "RIFF"
@@ -25,18 +12,8 @@ const MAGIC_BYTES = {
   WEBM_EBML: [0x1a, 0x45, 0xdf, 0xa3] as const, // EBML header
 } as const;
 
-/**
- * Minimum buffer size for format detection
- */
 const MIN_DETECTION_BUFFER_SIZE = 12;
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Known audio MIME types
- */
 export type AudioMimeType =
   | "audio/wav"
   | "audio/mpeg"
@@ -46,18 +23,6 @@ export type AudioMimeType =
   | "audio/webm"
   | "application/octet-stream";
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Checks if buffer bytes match expected pattern at given offset.
- *
- * @param buffer - The buffer to check
- * @param offset - Start offset in buffer
- * @param expected - Expected byte sequence
- * @returns True if bytes match
- */
 function matchBytes(buffer: Buffer, offset: number, expected: readonly number[]): boolean {
   for (let i = 0; i < expected.length; i++) {
     const expectedByte = expected[i];
@@ -68,24 +33,6 @@ function matchBytes(buffer: Buffer, offset: number, expected: readonly number[])
   return true;
 }
 
-// ============================================================================
-// Public Functions
-// ============================================================================
-
-/**
- * Detects audio MIME type from buffer by checking magic bytes.
- *
- * Supports detection of:
- * - WAV (RIFF/WAVE)
- * - MP3 (ID3 tag or MPEG sync)
- * - OGG (OggS container)
- * - FLAC (fLaC)
- * - M4A/MP4 (ftyp atom)
- * - WebM (EBML header)
- *
- * @param buffer - The audio buffer to analyze
- * @returns The detected MIME type or 'application/octet-stream' if unknown
- */
 export function detectAudioMimeType(buffer: Buffer): AudioMimeType {
   if (buffer.length < MIN_DETECTION_BUFFER_SIZE) {
     return "application/octet-stream";
@@ -133,12 +80,6 @@ export function detectAudioMimeType(buffer: Buffer): AudioMimeType {
   return "application/octet-stream";
 }
 
-/**
- * Gets the appropriate file extension for an audio MIME type.
- *
- * @param mimeType - The MIME type
- * @returns The file extension (without dot)
- */
 export function getExtensionForMimeType(mimeType: AudioMimeType): string {
   switch (mimeType) {
     case "audio/wav":
@@ -158,26 +99,11 @@ export function getExtensionForMimeType(mimeType: AudioMimeType): string {
   }
 }
 
-/**
- * Gets the appropriate filename for audio data based on MIME type.
- *
- * @param mimeType - The MIME type
- * @returns A suitable filename
- */
 export function getFilenameForMimeType(mimeType: AudioMimeType): string {
   const ext = getExtensionForMimeType(mimeType);
   return `recording.${ext}`;
 }
 
-/**
- * Converts a Web ReadableStream to a Node.js Readable stream.
- *
- * Uses dynamic import to avoid bundling node:stream in browser builds.
- *
- * @param webStream - The Web ReadableStream to convert
- * @returns A Node.js Readable stream
- * @throws Error if node:stream module is unavailable
- */
 export async function webStreamToNodeStream(
   webStream: ReadableStream<Uint8Array>
 ): Promise<NodeJS.ReadableStream> {
@@ -199,13 +125,6 @@ export async function webStreamToNodeStream(
   });
 }
 
-/**
- * Validates that audio data is in a supported format.
- *
- * @param buffer - The audio buffer to validate
- * @returns The detected MIME type
- * @throws Error if format is not supported
- */
 export function validateAudioFormat(buffer: Buffer): AudioMimeType {
   const mimeType = detectAudioMimeType(buffer);
   if (mimeType === "application/octet-stream") {

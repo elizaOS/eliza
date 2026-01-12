@@ -1,7 +1,3 @@
-"""
-Notification manager for handling todo notifications.
-"""
-
 import asyncio
 import logging
 from dataclasses import dataclass, field
@@ -15,8 +11,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NotificationPreferences:
-    """User notification preferences."""
-
     enabled: bool = True
     sound: bool = True
     browser_notifications: bool = False
@@ -44,23 +38,7 @@ class NotificationData:
 
 
 class NotificationManager:
-    """
-    Manager for handling notifications across different channels.
-
-    Features:
-    - Queued notification delivery
-    - User preference management
-    - Quiet hours support
-    - Multi-channel delivery (in-app, browser)
-    """
-
     def __init__(self, runtime: object | None = None) -> None:
-        """
-        Initialize the notification manager.
-
-        Args:
-            runtime: Optional runtime context
-        """
         self._runtime = runtime
         self._user_preferences: dict[UUID, NotificationPreferences] = {}
         self._notification_queue: list[NotificationData] = []
@@ -81,12 +59,10 @@ class NotificationManager:
             except asyncio.CancelledError:
                 pass
 
-        # Process remaining notifications
         await self._process_queue()
         logger.info("NotificationManager stopped")
 
     async def _process_queue_loop(self) -> None:
-        """Background queue processing loop."""
         while True:
             try:
                 await asyncio.sleep(1)
@@ -112,13 +88,6 @@ class NotificationManager:
             self._is_processing = False
 
     async def queue_notification(self, notification: NotificationData) -> None:
-        """
-        Queue a notification for delivery.
-
-        Args:
-            notification: Notification data to queue
-        """
-        # Check quiet hours
         if self._is_in_quiet_hours(notification.room_id):
             logger.debug(f"Notification queued for after quiet hours: {notification.title}")
             return
@@ -151,40 +120,16 @@ class NotificationManager:
             logger.error(f"Error sending notification: {e}")
 
     async def _send_in_app_notification(self, notification: NotificationData) -> None:
-        """
-        Send an in-app notification.
-
-        Args:
-            notification: Notification data
-        """
         if not notification.room_id:
             return
 
         if self._runtime:
-            # In a real implementation, this would emit an event
-            # to the runtime for in-app notification display
             logger.debug(f"In-app notification: {notification.title} - {notification.body}")
 
     async def _send_browser_notification(self, notification: NotificationData) -> None:
-        """
-        Send a browser notification.
-
-        Args:
-            notification: Notification data
-        """
-        # Browser notifications would be handled by the frontend
         logger.debug(f"Browser notification would be sent: {notification.title}")
 
     def _should_send_browser_notification(self, notification: NotificationData) -> bool:
-        """
-        Check if browser notifications should be sent.
-
-        Args:
-            notification: Notification data
-
-        Returns:
-            True if browser notification should be sent
-        """
         if not notification.room_id:
             return False
 
@@ -192,20 +137,10 @@ class NotificationManager:
         if not prefs.enabled or not prefs.browser_notifications:
             return False
 
-        # Check if this type of reminder is enabled
         type_key = notification.type.value
         return prefs.reminder_types.get(type_key, False)
 
     def _is_in_quiet_hours(self, room_id: UUID | None) -> bool:
-        """
-        Check if we're in quiet hours.
-
-        Args:
-            room_id: Room ID for preference lookup
-
-        Returns:
-            True if in quiet hours
-        """
         if not room_id:
             return False
 
@@ -218,7 +153,6 @@ class NotificationManager:
         start = prefs.quiet_hours.get("start", 22)
         end = prefs.quiet_hours.get("end", 8)
 
-        # Handle cases where quiet hours span midnight
         if start <= end:
             return start <= current_hour < end
         else:
@@ -237,7 +171,6 @@ class NotificationManager:
         if user_or_room_id in self._user_preferences:
             return self._user_preferences[user_or_room_id]
 
-        # Return default preferences
         defaults = NotificationPreferences()
         self._user_preferences[user_or_room_id] = defaults
         return defaults
@@ -247,28 +180,10 @@ class NotificationManager:
         user_or_room_id: UUID,
         preferences: NotificationPreferences,
     ) -> None:
-        """
-        Update user notification preferences.
-
-        Args:
-            user_or_room_id: User or room UUID
-            preferences: New preferences
-        """
         self._user_preferences[user_or_room_id] = preferences
-        # In a real implementation, this would persist to database
         logger.debug(f"Updated preferences for {user_or_room_id}")
 
     def format_reminder_title(self, todo_name: str, reminder_type: str) -> str:
-        """
-        Format a reminder notification title.
-
-        Args:
-            todo_name: Name of the todo
-            reminder_type: Type of reminder
-
-        Returns:
-            Formatted title string
-        """
         if reminder_type == "overdue":
             return f"⚠️ OVERDUE: {todo_name}"
         elif reminder_type == "upcoming":
@@ -279,16 +194,6 @@ class NotificationManager:
             return f"📋 Reminder: {todo_name}"
 
     def format_reminder_body(self, todo_name: str, reminder_type: str) -> str:
-        """
-        Format a reminder notification body.
-
-        Args:
-            todo_name: Name of the todo
-            reminder_type: Type of reminder
-
-        Returns:
-            Formatted body string
-        """
         if reminder_type == "overdue":
             return f'Your task "{todo_name}" is overdue. Please complete it when possible.'
         elif reminder_type == "upcoming":

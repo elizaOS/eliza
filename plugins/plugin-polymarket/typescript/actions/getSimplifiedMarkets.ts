@@ -85,7 +85,6 @@ export const getSimplifiedMarketsAction: Action = {
     const marketsResponse: PaginationPayload = await client.getMarkets(nextCursor);
     const allMarkets: Market[] = marketsResponse.data || [];
 
-    // Create simplified view
     const simplifiedMarkets: SimplifiedMarket[] = allMarkets
       .slice(0, limit)
       .map((market: Market) => ({

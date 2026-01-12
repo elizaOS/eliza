@@ -64,23 +64,20 @@ export class SamTTSService extends Service {
     const buffer = new Uint8Array(44 + dataSize);
     const view = new DataView(buffer.buffer);
 
-    // RIFF header
-    buffer.set([0x52, 0x49, 0x46, 0x46], 0); // "RIFF"
+    buffer.set([0x52, 0x49, 0x46, 0x46], 0);
     view.setUint32(4, 36 + dataSize, true);
-    buffer.set([0x57, 0x41, 0x56, 0x45], 8); // "WAVE"
+    buffer.set([0x57, 0x41, 0x56, 0x45], 8);
 
-    // Format chunk
-    buffer.set([0x66, 0x6d, 0x74, 0x20], 12); // "fmt "
-    view.setUint32(16, 16, true); // Subchunk1Size
-    view.setUint16(20, 1, true); // AudioFormat (PCM)
-    view.setUint16(22, 1, true); // NumChannels (Mono)
-    view.setUint32(24, sampleRate, true); // SampleRate
-    view.setUint32(28, sampleRate, true); // ByteRate
-    view.setUint16(32, 1, true); // BlockAlign
-    view.setUint16(34, 8, true); // BitsPerSample
+    buffer.set([0x66, 0x6d, 0x74, 0x20], 12);
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate, true);
+    view.setUint16(32, 1, true);
+    view.setUint16(34, 8, true);
 
-    // Data chunk
-    buffer.set([0x64, 0x61, 0x74, 0x61], 36); // "data"
+    buffer.set([0x64, 0x61, 0x74, 0x61], 36);
     view.setUint32(40, dataSize, true);
     buffer.set(audioData, 44);
 

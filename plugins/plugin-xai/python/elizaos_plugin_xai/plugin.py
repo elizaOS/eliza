@@ -22,14 +22,6 @@ logger = create_logger(__name__)
 
 
 class XAIPlugin:
-    """
-    xAI plugin for elizaOS.
-
-    Provides:
-    - xAI Grok model client for text generation and embeddings
-    - X (formerly Twitter) API v2 client for social interactions
-    """
-
     name = "xai"
     description = "xAI Grok models and X (formerly Twitter) API integration"
 
@@ -38,7 +30,6 @@ class XAIPlugin:
         grok_config: GrokConfig | None = None,
         x_config: TwitterConfig | None = None,
     ) -> None:
-        """Initialize the plugin."""
         self._grok_config = grok_config or GrokConfig.from_env()
         self._x_config = x_config or TwitterConfig.from_env()
         self._grok_client: GrokClient | None = None
@@ -46,7 +37,6 @@ class XAIPlugin:
 
     @property
     def grok(self) -> GrokClient | None:
-        """Get the Grok client (if configured)."""
         if self._grok_config is None:
             return None
         if self._grok_client is None:
@@ -55,17 +45,14 @@ class XAIPlugin:
 
     @property
     def x(self) -> TwitterClient:
-        """Get the X client."""
         if self._x_client is None:
             self._x_client = TwitterClient(self._x_config)
         return self._x_client
 
     def has_grok(self) -> bool:
-        """Check if Grok is configured."""
         return self._grok_config is not None
 
     async def close(self) -> None:
-        """Close all clients."""
         if self._grok_client:
             await self._grok_client.close()
             self._grok_client = None
@@ -84,12 +71,10 @@ def create_plugin(
     grok_config: GrokConfig | None = None,
     x_config: TwitterConfig | None = None,
 ) -> XAIPlugin:
-    """Create a new XAIPlugin instance."""
     return XAIPlugin(grok_config, x_config)
 
 
 def get_xai_plugin() -> XAIPlugin:
-    """Create an XAIPlugin from environment variables."""
     return XAIPlugin()
 
 
@@ -114,17 +99,14 @@ def get_xai_elizaos_plugin() -> Plugin:
         plugin_config: dict[str, str | int | float | bool | None],
         runtime: IAgentRuntime,
     ) -> None:
-        """Initialize the xAI plugin."""
         logger.info("Initializing xAI plugin...")
 
-        # Check Grok configuration
         api_key = runtime.get_setting("XAI_API_KEY")
         if api_key:
             logger.info("✓ Grok API configured")
         else:
             logger.warning("XAI_API_KEY not set - Grok models will not be available")
 
-        # Check X API configuration
         auth_mode = runtime.get_setting("X_AUTH_MODE") or "env"
         has_api_key = runtime.get_setting("X_API_KEY")
         has_bearer = runtime.get_setting("X_BEARER_TOKEN")

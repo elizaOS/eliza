@@ -56,11 +56,9 @@ export const polymarketPlugin: Plugin = {
     CLOB_API_PASSPHRASE: process.env.CLOB_API_PASSPHRASE,
   },
   async init(config: Record<string, string>) {
-    logger.info("*** Initializing Polymarket plugin ***");
     try {
       const validatedConfig = await configSchema.parseAsync(config);
 
-      // Check for required private key
       if (!validatedConfig.POLYMARKET_PRIVATE_KEY && !validatedConfig.EVM_PRIVATE_KEY) {
         logger.warn(
           "No private key configured (POLYMARKET_PRIVATE_KEY or EVM_PRIVATE_KEY). " +
@@ -98,7 +96,6 @@ export const polymarketPlugin: Plugin = {
     getBestPriceAction,
     getMidpointPriceAction,
     getSpreadAction,
-    // Trading actions
     placeOrderAction,
     getOrderDetailsAction,
     getActiveOrdersAction,

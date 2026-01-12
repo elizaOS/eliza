@@ -5,6 +5,7 @@ pub mod error;
 pub mod parser;
 pub mod plugin;
 pub mod types;
+pub mod service;
 
 pub mod actions;
 pub mod providers;
@@ -20,6 +21,7 @@ pub use client::{extract_urls, format_relative_time, RssClient};
 pub use error::{Result, RssError};
 pub use parser::{create_empty_feed, parse_rss_to_json};
 pub use plugin::{create_plugin, get_rss_plugin, RssPlugin};
+pub use service::RssService;
 pub use types::{FeedFormat, RssConfig, RssFeed, RssItem};
 
 pub const PLUGIN_NAME: &str = "rss";

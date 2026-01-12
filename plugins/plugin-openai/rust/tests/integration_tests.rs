@@ -25,10 +25,12 @@ mod text_generation {
         };
 
         let client = OpenAIClient::new(config).expect("Failed to create client");
-        let params =
-            TextGenerationParams::new("Say hello in exactly 3 words.").temperature(0.0);
+        let params = TextGenerationParams::new("Say hello in exactly 3 words.").temperature(0.0);
 
-        let response = client.generate_text(&params).await.expect("Failed to generate text");
+        let response = client
+            .generate_text(&params)
+            .await
+            .expect("Failed to generate text");
 
         assert!(!response.is_empty());
         // Check it's approximately 3 words
@@ -48,9 +50,16 @@ mod text_generation {
             .system("You are a math teacher. Answer with just the number.")
             .temperature(0.0);
 
-        let response = client.generate_text(&params).await.expect("Failed to generate text");
+        let response = client
+            .generate_text(&params)
+            .await
+            .expect("Failed to generate text");
 
-        assert!(response.contains('4'), "Response should contain '4': {}", response);
+        assert!(
+            response.contains('4'),
+            "Response should contain '4': {}",
+            response
+        );
     }
 }
 
@@ -67,10 +76,20 @@ mod embeddings {
         let client = OpenAIClient::new(config).expect("Failed to create client");
         let params = EmbeddingParams::new("Hello, world!");
 
-        let embedding = client.create_embedding(&params).await.expect("Failed to create embedding");
+        let embedding = client
+            .create_embedding(&params)
+            .await
+            .expect("Failed to create embedding");
 
-        assert_eq!(embedding.len(), 1536, "Default embedding should be 1536 dimensions");
-        assert!(embedding.iter().all(|&x| x.is_finite()), "All values should be finite");
+        assert_eq!(
+            embedding.len(),
+            1536,
+            "Default embedding should be 1536 dimensions"
+        );
+        assert!(
+            embedding.iter().all(|&x| x.is_finite()),
+            "All values should be finite"
+        );
     }
 
     #[tokio::test]
@@ -86,8 +105,14 @@ mod embeddings {
         let params1 = EmbeddingParams::new(text);
         let params2 = EmbeddingParams::new(text);
 
-        let embedding1 = client.create_embedding(&params1).await.expect("Failed to create embedding 1");
-        let embedding2 = client.create_embedding(&params2).await.expect("Failed to create embedding 2");
+        let embedding1 = client
+            .create_embedding(&params1)
+            .await
+            .expect("Failed to create embedding 1");
+        let embedding2 = client
+            .create_embedding(&params2)
+            .await
+            .expect("Failed to create embedding 2");
 
         // Calculate cosine similarity
         let dot_product: f32 = embedding1.iter().zip(&embedding2).map(|(a, b)| a * b).sum();
@@ -129,8 +154,7 @@ mod tokenization {
     #[test]
     fn test_truncate_to_tokens() {
         let text = "This is a longer piece of text that should be truncated.";
-        let truncated =
-            truncate_to_token_limit(text, 5, "gpt-5").expect("Failed to truncate");
+        let truncated = truncate_to_token_limit(text, 5, "gpt-5").expect("Failed to truncate");
 
         let truncated_count = count_tokens(&truncated, "gpt-5").expect("Failed to count");
         assert!(truncated_count <= 5);
@@ -150,10 +174,13 @@ mod image_description {
         let client = OpenAIClient::new(config).expect("Failed to create client");
         // Use a more reliable image URL that OpenAI can access
         let params = ImageDescriptionParams::new(
-            "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=400"
+            "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=400",
         );
 
-        let result = client.describe_image(&params).await.expect("Failed to describe image");
+        let result = client
+            .describe_image(&params)
+            .await
+            .expect("Failed to describe image");
 
         assert!(!result.title.is_empty());
         assert!(!result.description.is_empty());
@@ -187,7 +214,11 @@ mod structured_output {
         let has_name = obj.contains_key("name") || obj.contains_key("Name");
         let has_age = obj.contains_key("age") || obj.contains_key("Age");
 
-        assert!(has_name || has_age, "Should have name or age field: {:?}", result);
+        assert!(
+            has_name || has_age,
+            "Should have name or age field: {:?}",
+            result
+        );
     }
 }
 
@@ -204,7 +235,10 @@ mod audio {
         let client = OpenAIClient::new(config).expect("Failed to create client");
         let params = TextToSpeechParams::new("Hello, this is a test.");
 
-        let audio_data = client.text_to_speech(&params).await.expect("Failed to generate speech");
+        let audio_data = client
+            .text_to_speech(&params)
+            .await
+            .expect("Failed to generate speech");
 
         assert!(!audio_data.is_empty());
         // MP3 files can start with ID3 tag, or with frame sync (0xFF 0xFB or 0xFF 0xFA or 0xFF 0xF3)
@@ -215,7 +249,7 @@ mod audio {
             audio_data.len()
         );
         // Check for common MP3 signatures
-        let is_valid_mp3 = audio_data.starts_with(b"ID3") 
+        let is_valid_mp3 = audio_data.starts_with(b"ID3")
             || (audio_data.len() >= 2 && audio_data[0] == 0xFF && (audio_data[1] & 0xE0) == 0xE0);
         assert!(is_valid_mp3, "Should be valid MP3 audio data");
     }
@@ -232,7 +266,10 @@ mod audio {
         // First, generate some audio using TTS that we'll then transcribe
         // This ensures we have a valid audio format
         let tts_params = TextToSpeechParams::new("Hello, this is a test for transcription.");
-        let audio_data = client.text_to_speech(&tts_params).await.expect("Failed to generate TTS");
+        let audio_data = client
+            .text_to_speech(&tts_params)
+            .await
+            .expect("Failed to generate TTS");
 
         let params = elizaos_plugin_openai::TranscriptionParams::default();
 

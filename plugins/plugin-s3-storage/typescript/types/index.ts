@@ -1,5 +1,19 @@
 import { z } from "zod";
 
+/** JSON-serializable primitive values */
+export type JsonPrimitive = string | number | boolean | null;
+
+/** JSON-serializable object type */
+export interface JsonObject {
+  [key: string]: JsonPrimitive | JsonObject | JsonArray;
+}
+
+/** JSON-serializable array type */
+export interface JsonArray extends Array<JsonPrimitive | JsonObject | JsonArray> {}
+
+/** JSON-serializable value type */
+export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
+
 export const FileLocationResultSchema = z.object({
   fileLocation: z.string().min(1),
 });

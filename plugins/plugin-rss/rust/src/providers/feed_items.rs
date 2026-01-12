@@ -1,10 +1,7 @@
-//! Feed items provider for the RSS plugin.
-
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// Provider trait for elizaOS compatibility.
 #[async_trait]
 pub trait Provider: Send + Sync {
     fn name(&self) -> &'static str;
@@ -43,7 +40,6 @@ impl Provider for FeedItemsProvider {
     }
 
     async fn get(&self, _params: ProviderParams) -> ProviderResult {
-        // Note: In actual elizaOS integration, this would use the runtime's RssService.
         let values = HashMap::from([
             ("itemCount".to_string(), "0".to_string()),
             ("feedCount".to_string(), "0".to_string()),

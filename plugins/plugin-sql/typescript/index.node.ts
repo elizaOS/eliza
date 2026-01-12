@@ -12,12 +12,9 @@ const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
 
 interface GlobalSingletons {
   pgLiteClientManager?: PGliteClientManager;
-  // Map of PostgreSQL connection managers by server_id (for RLS multi-tenancy)
-  // Key: server_id (or 'default' for non-RLS mode)
   postgresConnectionManagers?: Map<string, PostgresConnectionManager>;
 }
 
-// Type assertion needed because globalThis doesn't include symbol keys in its type definition
 const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
   globalSymbols[GLOBAL_SINGLETONS] = {};
@@ -32,10 +29,9 @@ export function createDatabaseAdapter(
   agentId: UUID
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
-    // Determine RLS server_id if data isolation is enabled
     const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
     let rlsServerId: string | undefined;
-    let managerKey = "default"; // Key for connection manager map
+    let managerKey = "default";
 
     if (dataIsolationEnabled) {
       const rlsServerIdString = process.env.ELIZA_SERVER_ID;
@@ -45,7 +41,7 @@ export function createDatabaseAdapter(
         );
       }
       rlsServerId = stringToUuid(rlsServerIdString);
-      managerKey = rlsServerId; // Use server_id as key for multi-tenancy
+      managerKey = rlsServerId;
       logger.debug(
         {
           src: "plugin:sql",
@@ -77,7 +73,6 @@ export function createDatabaseAdapter(
 
   const dataDir = resolvePgliteDir(config.dataDir);
 
-  // Ensure the directory exists for PGLite unless it's a special URI (memory://, idb://, etc.)
   if (dataDir && !dataDir.includes("://")) {
     mkdirSync(dataDir, { recursive: true });
   }
@@ -105,13 +100,11 @@ export const plugin: Plugin = {
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         if (message.includes("Database adapter not registered")) {
-          // Expected on first load before the adapter is created; not a warning condition
           runtime.logger.info(
             { src: "plugin:sql", agentId: runtime.agentId },
             "No pre-registered database adapter detected; registering adapter"
           );
         } else {
-          // Unexpected readiness error - keep as a warning with details
           runtime.logger.warn(
             { src: "plugin:sql", agentId: runtime.agentId, error: message },
             "Database adapter readiness check error; proceeding to register adapter"
@@ -128,7 +121,6 @@ export const plugin: Plugin = {
     }
 
     const postgresUrl = runtime.getSetting("POSTGRES_URL");
-    // Only support PGLITE_DATA_DIR going forward
     const dataDir = runtime.getSetting("PGLITE_DATA_DIR");
 
     const dbAdapter = createDatabaseAdapter(

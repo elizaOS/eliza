@@ -2,30 +2,30 @@ from pydantic import BaseModel, Field
 
 
 class S3StorageConfig(BaseModel):
-    access_key_id: str = Field(..., min_length=1, description="AWS access key ID")
-    secret_access_key: str = Field(..., min_length=1, description="AWS secret access key")
-    region: str = Field(..., min_length=1, description="AWS region")
-    bucket: str = Field(..., min_length=1, description="S3 bucket name")
-    upload_path: str = Field(default="", description="Optional upload path prefix")
-    endpoint: str | None = Field(default=None, description="Optional custom S3 endpoint")
-    ssl_enabled: bool = Field(default=True, description="Enable SSL for custom endpoint")
-    force_path_style: bool = Field(default=False, description="Force path-style addressing")
+    access_key_id: str = Field(..., min_length=1)
+    secret_access_key: str = Field(..., min_length=1)
+    region: str = Field(..., min_length=1)
+    bucket: str = Field(..., min_length=1)
+    upload_path: str = Field(default="")
+    endpoint: str | None = Field(default=None)
+    ssl_enabled: bool = Field(default=True)
+    force_path_style: bool = Field(default=False)
 
 
 class UploadResult(BaseModel):
-    success: bool = Field(..., description="Whether the upload was successful")
-    url: str | None = Field(default=None, description="URL of the uploaded file")
-    error: str | None = Field(default=None, description="Error message if unsuccessful")
+    success: bool = Field(...)
+    url: str | None = Field(default=None)
+    error: str | None = Field(default=None)
 
 
 class JsonUploadResult(UploadResult):
-    key: str | None = Field(default=None, description="Storage key of the uploaded file")
+    key: str | None = Field(default=None)
 
 
 class UploadOptions(BaseModel):
-    sub_directory: str = Field(default="", description="Subdirectory within the bucket")
-    use_signed_url: bool = Field(default=False, description="Use a signed URL")
-    expires_in: int = Field(default=900, ge=1, description="Expiration time for signed URL")
+    sub_directory: str = Field(default="")
+    use_signed_url: bool = Field(default=False)
+    expires_in: int = Field(default=900, ge=1)
 
 
 CONTENT_TYPES: dict[str, str] = {

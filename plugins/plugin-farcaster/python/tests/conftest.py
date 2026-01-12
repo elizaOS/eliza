@@ -1,5 +1,3 @@
-"""Pytest configuration and fixtures."""
-
 from __future__ import annotations
 
 import pytest
@@ -9,7 +7,6 @@ from elizaos_plugin_farcaster.config import FarcasterConfig
 
 @pytest.fixture
 def mock_config() -> FarcasterConfig:
-    """Create a mock configuration for testing."""
     return FarcasterConfig(
         fid=12345,
         signer_uuid="test-signer-uuid",

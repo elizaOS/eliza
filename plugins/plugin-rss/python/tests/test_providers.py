@@ -1,5 +1,3 @@
-"""Tests for RSS plugin providers."""
-
 import pytest
 
 from elizaos_plugin_rss.providers import (
@@ -10,8 +8,6 @@ from elizaos_plugin_rss.providers.feed_items import ProviderParams
 
 
 class TestFeedItemsProvider:
-    """Tests for FeedItemsProvider."""
-
     @pytest.fixture
     def provider(self) -> FeedItemsProvider:
         return FeedItemsProvider()
@@ -40,8 +36,6 @@ class TestFeedItemsProvider:
 
 
 class TestProviderRegistry:
-    """Tests for provider registry functions."""
-
     def test_get_rss_provider_names(self) -> None:
         names = get_rss_provider_names()
         assert "FEEDITEMS" in names

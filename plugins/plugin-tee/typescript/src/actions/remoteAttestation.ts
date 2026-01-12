@@ -1,7 +1,3 @@
-/**
- * Remote Attestation Action for TEE.
- */
-
 import type {
   Action,
   ActionResult,
@@ -15,11 +11,6 @@ import { PhalaRemoteAttestationProvider } from "../providers/remoteAttestation";
 import type { RemoteAttestationMessage } from "../types";
 import { hexToUint8Array, uploadAttestationQuote } from "../utils";
 
-/**
- * Remote Attestation Action.
- *
- * Generates a remote attestation quote and uploads it to the proof service.
- */
 export const remoteAttestationAction: Action = {
   name: "REMOTE_ATTESTATION",
 
@@ -64,7 +55,6 @@ export const remoteAttestationAction: Action = {
         return { success: false, error: "TEE_MODE is not configured" };
       }
 
-      // Build attestation message
       const attestationMessage: RemoteAttestationMessage = {
         agentId: runtime.agentId,
         timestamp: Date.now(),
@@ -77,11 +67,9 @@ export const remoteAttestationAction: Action = {
 
       logger.debug(`Generating attestation for: ${JSON.stringify(attestationMessage)}`);
 
-      // Generate attestation
       const provider = new PhalaRemoteAttestationProvider(String(teeMode));
       const attestation = await provider.generateAttestation(JSON.stringify(attestationMessage));
 
-      // Upload to proof service
       const attestationData = hexToUint8Array(attestation.quote);
       const uploadResult = await uploadAttestationQuote(attestationData);
 
@@ -90,7 +78,7 @@ export const remoteAttestationAction: Action = {
       logger.info(`Attestation uploaded: ${proofUrl}`);
 
       callback?.({
-        text: `Here's my 🧾 RA Quote 🫡\n${proofUrl}`,
+        text: `Remote attestation quote: ${proofUrl}`,
         actions: ["NONE"],
       });
 

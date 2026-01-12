@@ -1,5 +1,3 @@
-"""Tests for path utilities."""
-
 import pytest
 
 from elizaos_plugin_shell.path_utils import (
@@ -11,8 +9,6 @@ from elizaos_plugin_shell.path_utils import (
 
 
 class TestValidatePath:
-    """Tests for validate_path function."""
-
     def test_allows_paths_within_allowed_directory(self) -> None:
         result = validate_path(
             "subfolder",
@@ -39,8 +35,6 @@ class TestValidatePath:
 
 
 class TestIsSafeCommand:
-    """Tests for is_safe_command function."""
-
     def test_allows_safe_commands(self) -> None:
         assert is_safe_command("ls -la") is True
         assert is_safe_command("echo hello") is True
@@ -63,8 +57,6 @@ class TestIsSafeCommand:
 
 
 class TestExtractBaseCommand:
-    """Tests for extract_base_command function."""
-
     def test_extracts_base_command_correctly(self) -> None:
         assert extract_base_command("ls -la") == "ls"
         assert extract_base_command("git status") == "git"
@@ -76,8 +68,6 @@ class TestExtractBaseCommand:
 
 
 class TestIsForbiddenCommand:
-    """Tests for is_forbidden_command function."""
-
     @pytest.fixture
     def forbidden(self) -> list[str]:
         return ["rm -rf /", "sudo rm -rf", "chmod 777", "shutdown"]
@@ -101,8 +91,5 @@ class TestIsForbiddenCommand:
     def test_case_insensitive(self, forbidden: list[str]) -> None:
         assert is_forbidden_command("RM -RF /", forbidden) is True
         assert is_forbidden_command("SHUTDOWN", forbidden) is True
-
-
-
 
 

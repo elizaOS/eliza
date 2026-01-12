@@ -1,7 +1,10 @@
 use super::{Action, ActionExample};
 
 const FORM_TYPES: &[(&str, &[&str])] = &[
-    ("contact", &["contact", "reach out", "get in touch", "message"]),
+    (
+        "contact",
+        &["contact", "reach out", "get in touch", "message"],
+    ),
     ("feedback", &["feedback", "review", "opinion", "suggestion"]),
     ("application", &["apply", "application", "job", "position"]),
     ("survey", &["survey", "questionnaire", "poll"]),
@@ -35,7 +38,12 @@ impl Action for CreateFormAction {
         "Creates a new form from a template or custom definition"
     }
 
-    fn validate(&self, message_text: &str, _has_active_forms: bool, has_forms_service: bool) -> bool {
+    fn validate(
+        &self,
+        message_text: &str,
+        _has_active_forms: bool,
+        has_forms_service: bool,
+    ) -> bool {
         if !has_forms_service {
             return false;
         }
@@ -86,26 +94,41 @@ mod tests {
 
     #[test]
     fn test_extract_form_type() {
-        assert_eq!(CreateFormAction::extract_form_type("I need a contact form"), Some("contact"));
-        assert_eq!(CreateFormAction::extract_form_type("I want to give feedback"), Some("feedback"));
-        assert_eq!(CreateFormAction::extract_form_type("Apply for job"), Some("application"));
-        assert_eq!(CreateFormAction::extract_form_type("Take a survey"), Some("survey"));
-        assert_eq!(CreateFormAction::extract_form_type("register now"), Some("registration"));
+        assert_eq!(
+            CreateFormAction::extract_form_type("I need a contact form"),
+            Some("contact")
+        );
+        assert_eq!(
+            CreateFormAction::extract_form_type("I want to give feedback"),
+            Some("feedback")
+        );
+        assert_eq!(
+            CreateFormAction::extract_form_type("Apply for job"),
+            Some("application")
+        );
+        assert_eq!(
+            CreateFormAction::extract_form_type("Take a survey"),
+            Some("survey")
+        );
+        assert_eq!(
+            CreateFormAction::extract_form_type("register now"),
+            Some("registration")
+        );
         assert_eq!(CreateFormAction::extract_form_type("hello world"), None);
     }
 
     #[test]
     fn test_validate_with_form_keywords() {
         let action = CreateFormAction;
-        
+
         // Should validate when forms service is available and message contains form keywords
         assert!(action.validate("I need to fill out a form", false, true));
         assert!(action.validate("Help me with the questionnaire", false, true));
         assert!(action.validate("I want to contact you", false, true));
-        
+
         // Should not validate without forms service
         assert!(!action.validate("I need to fill out a form", false, false));
-        
+
         // Should not validate without form keywords
         assert!(!action.validate("Hello, how are you?", false, true));
     }

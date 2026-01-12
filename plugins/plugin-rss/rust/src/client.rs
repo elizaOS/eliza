@@ -119,7 +119,6 @@ pub fn extract_urls(text: &str) -> Vec<String> {
     results
 }
 
-/// Check if a string is a valid URL.
 fn is_valid_url(url: &str) -> bool {
     url::Url::parse(url).is_ok()
 }

@@ -17,14 +17,8 @@ export const walletProvider: Provider = {
         return { data: {}, values: {}, text: "" };
       }
 
-      const solanaService = runtime.getService("solana");
-      let pubkeyStr = "";
-
       const { publicKey } = await getWalletKey(runtime, false);
-
-      if (solanaService && publicKey) {
-        pubkeyStr = ` (${publicKey.toBase58()})`;
-      }
+      const pubkeyStr = publicKey ? ` (${publicKey.toBase58()})` : "";
 
       const portfolio = portfolioCache;
       const agentName = state.agentName ?? runtime.character.name ?? "The agent";

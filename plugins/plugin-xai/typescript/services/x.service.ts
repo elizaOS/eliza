@@ -8,14 +8,6 @@ import { XTimelineClient } from "../timeline";
 import type { IXClient } from "../types";
 import { getSetting } from "../utils/settings";
 
-/**
- * X Client Instance - orchestrates all X (formerly Twitter) functionality:
- * - client: base operations (auth, timeline caching)
- * - post: autonomous posting
- * - interaction: mentions and replies
- * - timeline: actions (likes, reposts, replies)
- * - discovery: content discovery and engagement
- */
 export class XClientInstance implements IXClient {
   client: ClientBase;
   post?: XPostClient;
@@ -26,28 +18,24 @@ export class XClientInstance implements IXClient {
   constructor(runtime: IAgentRuntime, state: Record<string, unknown>) {
     this.client = new ClientBase(runtime, state);
 
-    // Posting
     const postEnabled = parseBooleanFromText(getSetting(runtime, "X_ENABLE_POST"));
     if (postEnabled) {
       logger.info("X posting ENABLED");
       this.post = new XPostClient(this.client, runtime, state);
     }
 
-    // Replies/interactions
     const repliesEnabled = getSetting(runtime, "X_ENABLE_REPLIES") !== "false";
     if (repliesEnabled) {
       logger.info("X replies ENABLED");
       this.interaction = new XInteractionClient(this.client, runtime, state);
     }
 
-    // Timeline actions
     const actionsEnabled = getSetting(runtime, "X_ENABLE_ACTIONS") === "true";
     if (actionsEnabled) {
       logger.info("X timeline actions ENABLED");
       this.timeline = new XTimelineClient(this.client, runtime, state);
     }
 
-    // Discovery
     const discoveryEnabled =
       getSetting(runtime, "X_ENABLE_DISCOVERY") === "true" ||
       (actionsEnabled && getSetting(runtime, "X_ENABLE_DISCOVERY") !== "false");

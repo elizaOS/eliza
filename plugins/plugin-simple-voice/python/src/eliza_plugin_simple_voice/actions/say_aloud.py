@@ -2,7 +2,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Protocol
 
 from ..services.sam_tts_service import SamTTSService
 from ..types import SPEECH_TRIGGERS, VOCALIZATION_PATTERNS, SamTTSOptions
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class Memory(Protocol):
     @property
-    def content(self) -> dict[str, Any]: ...
+    def content(self) -> dict[str, object]: ...
 
 
 class Runtime(Protocol):
@@ -32,7 +32,6 @@ def extract_text_to_speak(message_text: str) -> str:
         if match := re.search(pattern, text):
             return match.group(1)
 
-    # Try text after keywords
     for pattern in [
         r"(?:say|speak|read)\s+(?:aloud\s+)?(?:this\s+)?:?\s*(.+)$",
         r"(?:can you|please)\s+(?:say|speak|read)\s+(?:aloud\s+)?(.+)$",
@@ -75,7 +74,7 @@ def extract_voice_options(message_text: str) -> SamTTSOptions:
 class SayAloudAction:
     name: str = "SAY_ALOUD"
     description: str = "Speak text aloud using SAM retro speech synthesizer"
-    examples: list[list[dict[str, Any]]] = field(
+    examples: list[list[dict[str, str | dict[str, str | object]]]] = field(
         default_factory=lambda: [
             [
                 {"name": "{{user1}}", "content": {"text": "Can you say hello out loud?"}},
@@ -88,7 +87,6 @@ class SayAloudAction:
     )
 
     async def validate(self, runtime: Runtime, message: Memory) -> bool:
-        """Check if action should trigger."""
         text = message.content.get("text", "").lower()
 
         has_trigger = any(t in text for t in SPEECH_TRIGGERS)
@@ -104,7 +102,7 @@ class SayAloudAction:
         self,
         runtime: Runtime,
         message: Memory,
-        callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        callback: Callable[[dict[str, str | list[int]]], Awaitable[None]] | None = None,
     ) -> None:
         logger.info("[SAY_ALOUD] Processing speech request")
 

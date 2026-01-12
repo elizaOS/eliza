@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Type definitions for the Knowledge plugin.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,7 +13,6 @@ pub enum EmbeddingProvider {
     Custom,
 }
 
-/// Supported text generation providers.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TextProvider {
@@ -32,70 +30,44 @@ pub enum MemoryType {
     Message,
 }
 
-/// Configuration for the Knowledge service.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeConfig {
-    /// Embedding provider to use
     #[serde(default = "default_embedding_provider")]
     pub embedding_provider: String,
-
-    /// Embedding model name
     #[serde(default = "default_embedding_model")]
     pub embedding_model: String,
-
-    /// Embedding dimension
     #[serde(default = "default_embedding_dimension")]
     pub embedding_dimension: usize,
-
-    /// API keys
     pub openai_api_key: Option<String>,
     pub anthropic_api_key: Option<String>,
     pub google_api_key: Option<String>,
     pub openrouter_api_key: Option<String>,
-
-    /// Base URLs for providers
     pub openai_base_url: Option<String>,
     pub anthropic_base_url: Option<String>,
     pub google_base_url: Option<String>,
     pub openrouter_base_url: Option<String>,
-
-    /// Contextual knowledge settings
     #[serde(default)]
     pub ctx_knowledge_enabled: bool,
     pub text_provider: Option<String>,
     pub text_model: Option<String>,
-
-    /// Token limits
     #[serde(default = "default_max_input_tokens")]
     pub max_input_tokens: usize,
-
     #[serde(default = "default_max_output_tokens")]
     pub max_output_tokens: usize,
-
-    /// Chunking settings
     #[serde(default = "default_chunk_size")]
     pub chunk_size: usize,
-
     #[serde(default = "default_chunk_overlap")]
     pub chunk_overlap: usize,
-
-    /// Rate limiting
     #[serde(default = "default_true")]
     pub rate_limit_enabled: bool,
-
     #[serde(default = "default_max_concurrent")]
     pub max_concurrent_requests: usize,
-
     #[serde(default = "default_requests_per_minute")]
     pub requests_per_minute: usize,
-
     #[serde(default = "default_tokens_per_minute")]
     pub tokens_per_minute: usize,
-
-    /// Auto-load settings
     #[serde(default)]
     pub load_docs_on_startup: bool,
-
     #[serde(default = "default_knowledge_path")]
     pub knowledge_path: String,
 }
@@ -180,7 +152,6 @@ impl Default for KnowledgeConfig {
     }
 }
 
-/// A knowledge item (document or fragment).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeItem {
     pub id: String,
@@ -191,7 +162,6 @@ pub struct KnowledgeItem {
     pub similarity: Option<f64>,
 }
 
-/// A fragment of a larger document.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeFragment {
     pub id: String,
@@ -203,7 +173,6 @@ pub struct KnowledgeFragment {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
-/// A complete document in the knowledge base.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeDocument {
     pub id: String,
@@ -217,7 +186,6 @@ pub struct KnowledgeDocument {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
-/// Result of an embedding generation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResult {
     pub embedding: Vec<f32>,
@@ -227,7 +195,6 @@ pub struct EmbeddingResult {
     pub model: String,
 }
 
-/// Result of a semantic search.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub id: String,
@@ -239,7 +206,6 @@ pub struct SearchResult {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
-/// Options for adding knowledge to the system.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AddKnowledgeOptions {
     pub content: String,
@@ -253,7 +219,6 @@ pub struct AddKnowledgeOptions {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
-/// Options for text generation.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TextGenerationOptions {
     pub provider: Option<String>,
@@ -266,7 +231,6 @@ pub struct TextGenerationOptions {
     pub auto_cache_contextual_retrieval: bool,
 }
 
-/// Rate limit configuration for a provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderRateLimits {
     pub max_concurrent_requests: usize,
@@ -291,14 +255,13 @@ impl Default for ProviderRateLimits {
             max_concurrent_requests: 30,
             requests_per_minute: 60,
             tokens_per_minute: Some(150000),
-            provider: "unknown".to_string(),
+            provider: "unlimited".to_string(),
             rate_limit_enabled: true,
             batch_delay_ms: 100,
         }
     }
 }
 
-/// Result of chunking a document.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkResult {
     pub chunks: Vec<String>,
@@ -308,7 +271,6 @@ pub struct ChunkResult {
     pub chunk_count: usize,
 }
 
-/// Result of processing a document.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessingResult {
     pub document_id: String,
@@ -373,8 +335,4 @@ mod tests {
         assert!(options.metadata.is_empty());
     }
 }
-
-
-
-
 

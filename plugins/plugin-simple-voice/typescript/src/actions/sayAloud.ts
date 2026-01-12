@@ -67,7 +67,6 @@ function extractVoiceOptions(messageText: string): Partial<SamTTSOptions> {
     options.speed = 40;
   }
 
-  // Voice character
   if (text.includes("robotic") || text.includes("robot voice")) {
     options.throat = 200;
     options.mouth = 50;

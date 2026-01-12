@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! Base database adapter trait for elizaOS
-//!
-//! This module defines the DatabaseAdapter trait that all database implementations must follow.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -10,97 +7,62 @@ use elizaos::{
     SearchMemoriesParams, Task, World, UUID,
 };
 
-/// Result type for embedding similarity searches
 #[derive(Clone, Debug)]
 pub struct EmbeddingSearchResult {
-    /// UUID of the memory
     pub id: elizaos::UUID,
-    /// Embedding vector
     pub embedding: Vec<f32>,
-    /// Similarity score
     pub similarity: Option<f64>,
 }
 
-/// Parameters for cached embeddings query
 #[derive(Clone, Debug)]
 pub struct GetCachedEmbeddingsParams {
-    /// Table name to query
     pub table_name: String,
-    /// Query threshold for matching
     pub query_threshold: Option<f64>,
-    /// Query input text
     pub query_input: Option<String>,
-    /// Match count limit
     pub match_count: Option<i32>,
 }
 
-/// Parameters for logging
 #[derive(Clone, Debug)]
 pub struct LogParams {
-    /// Log body
     pub body: serde_json::Value,
-    /// Entity ID
     pub entity_id: UUID,
-    /// Room ID (optional)
     pub room_id: Option<UUID>,
-    /// Log type
     pub log_type: String,
 }
 
-/// Parameters for getting logs
 #[derive(Clone, Debug, Default)]
 pub struct GetLogsParams {
-    /// Entity ID filter
     pub entity_id: Option<UUID>,
-    /// Room ID filter
     pub room_id: Option<UUID>,
-    /// Log type filter
     pub log_type: Option<String>,
-    /// Count limit
     pub count: Option<i32>,
-    /// Offset
     pub offset: Option<i32>,
 }
 
-/// Parameters for creating a relationship
 #[derive(Clone, Debug)]
 pub struct CreateRelationshipParams {
-    /// Source entity ID
     pub source_entity_id: UUID,
-    /// Target entity ID
     pub target_entity_id: UUID,
-    /// Tags
     pub tags: Option<Vec<String>>,
-    /// Metadata
     pub metadata: Option<Metadata>,
 }
 
-/// Parameters for getting a relationship
 #[derive(Clone, Debug)]
 pub struct GetRelationshipParams {
-    /// Source entity ID
     pub source_entity_id: UUID,
-    /// Target entity ID
     pub target_entity_id: UUID,
 }
 
-/// Parameters for getting relationships
 #[derive(Clone, Debug)]
 pub struct GetRelationshipsParams {
-    /// Entity ID
     pub entity_id: UUID,
-    /// Tags filter
     pub tags: Option<Vec<String>>,
 }
 
-/// Parameters for getting tasks
 #[derive(Clone, Debug, Default)]
 pub struct GetTasksParams {
-    /// Room ID filter
     pub room_id: Option<UUID>,
-    /// Tags filter
     pub tags: Option<Vec<String>>,
-    /// Entity ID filter
     pub entity_id: Option<UUID>,
 }
 

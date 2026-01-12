@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass
 class ActionExample:
-    """An action example."""
     input: str
     output: str
 

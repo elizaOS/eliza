@@ -1,5 +1,6 @@
 from elizaos_plugin_s3_storage.client import S3StorageClient, S3StorageError
 from elizaos_plugin_s3_storage.plugin import S3StoragePlugin, create_plugin, get_s3_storage_plugin
+from elizaos_plugin_s3_storage.service import AwsS3Service
 from elizaos_plugin_s3_storage.types import (
     JsonUploadResult,
     S3StorageConfig,
@@ -13,6 +14,7 @@ __all__ = [
     "S3StoragePlugin",
     "create_plugin",
     "get_s3_storage_plugin",
+    "AwsS3Service",
     "S3StorageClient",
     "S3StorageError",
     "S3StorageConfig",

@@ -16,7 +16,6 @@ import {
 import { extractCompletionTemplate } from "../generated/prompts/typescript/prompts.js";
 import { createTodoDataService, type TodoData } from "../services/todoDataService";
 
-// Interface for task completion properties
 interface TaskCompletion {
   taskId: string;
   taskName: string;
@@ -32,7 +31,6 @@ async function extractTaskCompletion(
   availableTasks: TodoData[],
   state: State
 ): Promise<TaskCompletion> {
-  // Format available tasks for the prompt
   const tasksText = availableTasks
     .map((task) => {
       return `ID: ${task.id}\nName: ${task.name}\nDescription: ${task.description || task.name}\nTags: ${task.tags?.join(", ") || "none"}\n`;
@@ -58,7 +56,6 @@ async function extractTaskCompletion(
     stopSequences: [],
   });
 
-  // Parse XML from the text results
   const parsedResult = parseKeyValueXml(result) as TaskCompletion | null;
 
   if (!parsedResult || typeof parsedResult.isFound === "undefined") {
@@ -66,7 +63,6 @@ async function extractTaskCompletion(
     return { taskId: "", taskName: "", isFound: false };
   }
 
-  // Convert string 'true'/'false' to boolean and handle 'null' strings
   const finalResult: TaskCompletion = {
     taskId: parsedResult.taskId === "null" ? "" : String(parsedResult.taskId || ""),
     taskName: parsedResult.taskName === "null" ? "" : String(parsedResult.taskName || ""),
@@ -76,16 +72,12 @@ async function extractTaskCompletion(
   return finalResult;
 }
 
-/**
- * The COMPLETE_TODO action allows users to mark a task as completed.
- */
 export const completeTodoAction: Action = {
   name: "COMPLETE_TODO",
   similes: ["MARK_COMPLETE", "FINISH_TASK", "DONE", "TASK_DONE", "TASK_COMPLETED"],
   description: "Marks a todo item as completed.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    // Only validate if there are active (non-completed) todos in the current room
     if (!message.roomId) {
       return false;
     }
@@ -127,7 +119,6 @@ export const completeTodoAction: Action = {
     const roomId = message.roomId;
     const dataService = createTodoDataService(runtime);
 
-    // Get all incomplete todos for this room
     const availableTodos = await dataService.getTodos({
       roomId: roomId,
       isCompleted: false,
@@ -144,7 +135,6 @@ export const completeTodoAction: Action = {
       return undefined;
     }
 
-    // Extract which task the user wants to complete
     const taskCompletion = options?.parameters?.taskId
       ? {
           taskId: options.parameters.taskId as string,
@@ -166,7 +156,6 @@ export const completeTodoAction: Action = {
       return undefined;
     }
 
-    // Find the task in the available tasks
     const task = availableTodos.find((t) => t.id === taskCompletion.taskId);
 
     if (!task) {
@@ -180,7 +169,6 @@ export const completeTodoAction: Action = {
       return undefined;
     }
 
-    // Mark the task as completed
     await dataService.updateTodo(task.id, {
       isCompleted: true,
       completedAt: new Date(),
@@ -190,7 +178,6 @@ export const completeTodoAction: Action = {
       },
     });
 
-    // Generate response text based on task type
     let responseText = "";
 
     if (task.type === "daily") {

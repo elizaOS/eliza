@@ -17,23 +17,18 @@ import {
 import { extractCancellationTemplate } from "../generated/prompts/typescript/prompts.js";
 import { createTodoDataService, type TodoData } from "../services/todoDataService";
 
-// Interface for task cancellation properties
 interface TaskCancellation {
   taskId: string;
   taskName: string;
   isFound: boolean;
 }
 
-/**
- * Extracts which task the user wants to cancel
- */
 async function extractTaskCancellation(
   runtime: IAgentRuntime,
   message: Memory,
   availableTasks: TodoData[],
   state: State
 ): Promise<TaskCancellation> {
-  // Format available tasks for the prompt
   const tasksText = availableTasks
     .map((task) => {
       return `ID: ${task.id}\nName: ${task.name}\nDescription: ${task.description || task.name}\nTags: ${task.tags?.join(", ") || "none"}\n`;
@@ -59,7 +54,6 @@ async function extractTaskCancellation(
     stopSequences: [],
   });
 
-  // Parse XML from the text results
   const parsedResult = parseKeyValueXml(result) as TaskCancellation | null;
 
   logger.debug(`Parsed XML Result: ${JSON.stringify(parsedResult)}`);
@@ -69,7 +63,6 @@ async function extractTaskCancellation(
     return { taskId: "", taskName: "", isFound: false };
   }
 
-  // Convert string 'true'/'false' to boolean and handle 'null' strings
   const finalResult: TaskCancellation = {
     taskId: parsedResult.taskId === "null" ? "" : String(parsedResult.taskId || ""),
     taskName: parsedResult.taskName === "null" ? "" : String(parsedResult.taskName || ""),
@@ -79,16 +72,12 @@ async function extractTaskCancellation(
   return finalResult;
 }
 
-/**
- * The CANCEL_TODO action allows users to cancel/delete a task.
- */
 export const cancelTodoAction: Action = {
   name: "CANCEL_TODO",
   similes: ["DELETE_TODO", "REMOVE_TASK", "DELETE_TASK", "REMOVE_TODO"],
   description: "Cancels and deletes a todo item from the user's task list immediately.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    // Check if *any* active TODOs exist
     if (!message.roomId) {
       return false;
     }
@@ -129,7 +118,6 @@ export const cancelTodoAction: Action = {
     }
     const dataService = createTodoDataService(runtime);
 
-    // Get all active todos for this room
     const availableTasks = await dataService.getTodos({
       roomId: message.roomId,
       isCompleted: false,
@@ -146,7 +134,6 @@ export const cancelTodoAction: Action = {
       return;
     }
 
-    // Extract which task the user wants to cancel
     const taskCancellation = await extractTaskCancellation(runtime, message, availableTasks, state);
 
     if (!taskCancellation.isFound) {
@@ -165,7 +152,6 @@ export const cancelTodoAction: Action = {
       };
     }
 
-    // Find the task in the available tasks
     const task = availableTasks.find((t) => t.id === taskCancellation.taskId);
 
     if (!task) {
@@ -182,7 +168,6 @@ export const cancelTodoAction: Action = {
       };
     }
 
-    // Delete the task
     await dataService.deleteTodo(task.id as UUID);
     const taskName = task.name || "task";
 

@@ -1,17 +1,16 @@
 #![allow(missing_docs)]
 
 pub mod actions;
-pub mod providers;
-pub mod types;
-pub mod prompts;
-pub mod service;
 pub mod error;
 mod generated;
+pub mod prompts;
+pub mod providers;
+pub mod service;
+pub mod types;
 
 pub use actions::*;
-pub use providers::*;
-pub use types::*;
-pub use prompts::*;
-pub use service::*;
 pub use error::*;
-
+pub use prompts::*;
+pub use providers::*;
+pub use service::*;
+pub use types::*;

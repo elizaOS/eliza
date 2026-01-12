@@ -1,5 +1,3 @@
-"""Create todo action for Todo plugin."""
-
 from __future__ import annotations
 
 import logging
@@ -33,8 +31,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CreateTodoResult:
-    """Result of a create todo action."""
-
     success: bool
     text: str
     todo_id: UUID | None = None
@@ -49,19 +45,6 @@ async def handle_create_todo(
     callback: HandlerCallback | None = None,
     responses: list[Memory] | None = None,
 ) -> CreateTodoResult | None:
-    """Handle create todo action.
-
-    Args:
-        runtime: The agent runtime.
-        message: The message that triggered the action.
-        state: Optional state context.
-        options: Optional handler options.
-        callback: Optional callback for streaming responses.
-        responses: Optional previous responses.
-
-    Returns:
-        The action result.
-    """
     if not message.room_id or not message.entity_id:
         error_msg = "I cannot create a todo without a room and entity context."
         if callback:
@@ -74,12 +57,9 @@ async def handle_create_todo(
             )
         return CreateTodoResult(success=False, text=error_msg, error=error_msg)
 
-    # Compose state with relevant providers
     if not state:
         state = await runtime.compose_state(message, ["TODOS", "RECENT_MESSAGES"])
 
-    # Extract todo info from message
-    # For now, we'll use a simplified extraction - in production this would use LLM
     message_text = message.content.text if message.content else ""
     if not message_text:
         error_msg = "I couldn't understand the details of the todo you want to create. Could you please provide more information?"
@@ -93,10 +73,8 @@ async def handle_create_todo(
             )
         return CreateTodoResult(success=False, text=error_msg, error=error_msg)
 
-    # Get the data service
     data_service = create_todo_data_service(runtime.db if hasattr(runtime, "db") else None)
 
-    # Check for duplicates
     existing_todos = await data_service.get_todos(
         {
             "entity_id": message.entity_id,
@@ -105,12 +83,10 @@ async def handle_create_todo(
         }
     )
 
-    # Simple extraction - in production, use LLM to extract structured data
     todo_name = message_text.strip()
-    task_type = TaskType.ONE_OFF  # Default
+    task_type = TaskType.ONE_OFF
     priority = Priority.MEDIUM
 
-    # Check for keywords to determine task type
     if "daily" in message_text.lower():
         task_type = TaskType.DAILY
     elif "aspirational" in message_text.lower() or "goal" in message_text.lower():
@@ -133,13 +109,11 @@ async def handle_create_todo(
             )
         return CreateTodoResult(success=False, text=error_msg, error="Duplicate task found")
 
-    # Get room details for world_id
     room = await runtime.get_room(message.room_id) if hasattr(runtime, "get_room") else None
     world_id = (
         room.world_id if room and hasattr(room, "world_id") else message.world_id or runtime.agent_id
     )
 
-    # Create tags
     tags = ["TODO"]
     if task_type == TaskType.DAILY:
         tags.append("daily")
@@ -150,12 +124,10 @@ async def handle_create_todo(
     elif task_type == TaskType.ASPIRATIONAL:
         tags.append("aspirational")
 
-    # Create metadata
     metadata = {
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    # Create the todo
     try:
         params = CreateTodoParams(
             agent_id=runtime.agent_id,
@@ -215,21 +187,9 @@ async def handle_create_todo(
 async def validate_create_todo(
     runtime: IAgentRuntime, message: Memory, state: State | None = None
 ) -> bool:
-    """Validate if create todo action can be executed.
-
-    Args:
-        runtime: The agent runtime.
-        message: The message.
-        state: Optional state.
-
-    Returns:
-        True if the action can be executed.
-    """
-    # No validation needed - let handler decide
     return True
 
 
-# Action definition for elizaOS integration
 CREATE_TODO_ACTION = {
     "name": "CREATE_TODO",
     "similes": ["ADD_TODO", "NEW_TASK", "ADD_TASK", "CREATE_TASK"],

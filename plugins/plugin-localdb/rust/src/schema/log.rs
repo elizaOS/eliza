@@ -1,7 +1,5 @@
 #![allow(missing_docs)]
-//! Log schema for elizaOS database
 
-/// SQL for creating the logs table
 pub const CREATE_LOGS_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -13,7 +11,6 @@ CREATE TABLE IF NOT EXISTS logs (
 )
 "#;
 
-/// SQL for creating indexes on logs table
 pub const CREATE_LOGS_INDEXES: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_logs_entity_id ON logs (entity_id);
 CREATE INDEX IF NOT EXISTS idx_logs_room_id ON logs (room_id);
@@ -33,7 +30,6 @@ pub struct LogRecord {
 }
 
 impl LogRecord {
-    /// Convert to elizaOS Log type
     pub fn to_log(&self) -> elizaos::Log {
         use elizaos::{Log, LogBody, UUID};
 

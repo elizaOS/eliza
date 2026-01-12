@@ -117,19 +117,14 @@ impl FeedItemMetadata {
     }
 }
 
-/// Metadata stored with feed subscriptions in memory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FeedSubscriptionMetadata {
-    /// Type marker.
     #[serde(rename = "type")]
     pub sub_type: String,
-    /// Subscription timestamp (ms).
     #[serde(rename = "subscribedAt")]
     pub subscribed_at: i64,
-    /// Last check timestamp (ms).
     #[serde(rename = "lastChecked")]
     pub last_checked: i64,
-    /// Item count at last check.
     #[serde(rename = "lastItemCount")]
     pub last_item_count: usize,
 }
@@ -147,7 +142,6 @@ impl Default for FeedSubscriptionMetadata {
 }
 
 impl FeedSubscriptionMetadata {
-    /// Create new subscription metadata.
     pub fn new() -> Self {
         let now = chrono::Utc::now().timestamp_millis();
         Self {
@@ -159,24 +153,13 @@ impl FeedSubscriptionMetadata {
     }
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
-/// RSS plugin configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RssConfig {
-    /// List of feed URLs to auto-subscribe.
     pub feeds: Vec<String>,
-    /// Disable subscription management actions.
     pub disable_actions: bool,
-    /// Output format for feed items.
     pub feed_format: FeedFormat,
-    /// Interval between feed checks in minutes.
     pub check_interval_minutes: u32,
-    /// Request timeout in seconds.
     pub timeout_secs: u64,
-    /// User agent for HTTP requests.
     pub user_agent: String,
 }
 
@@ -195,30 +178,25 @@ impl Default for RssConfig {
 }
 
 impl RssConfig {
-    /// Create a new configuration.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Set the initial feeds.
     pub fn feeds(mut self, feeds: Vec<String>) -> Self {
         self.feeds = feeds;
         self
     }
 
-    /// Set the feed format.
     pub fn feed_format(mut self, format: FeedFormat) -> Self {
         self.feed_format = format;
         self
     }
 
-    /// Set the check interval.
     pub fn check_interval(mut self, minutes: u32) -> Self {
         self.check_interval_minutes = minutes;
         self
     }
 
-    /// Set the timeout.
     pub fn timeout(mut self, secs: u64) -> Self {
         self.timeout_secs = secs;
         self

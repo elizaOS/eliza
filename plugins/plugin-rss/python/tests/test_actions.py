@@ -1,5 +1,3 @@
-"""Tests for RSS plugin actions."""
-
 import pytest
 
 from elizaos_plugin_rss.actions import (
@@ -12,8 +10,6 @@ from elizaos_plugin_rss.actions import (
 
 
 class TestGetFeedAction:
-    """Tests for GetFeedAction."""
-
     @pytest.fixture
     def action(self) -> GetFeedAction:
         return GetFeedAction()
@@ -45,8 +41,6 @@ class TestGetFeedAction:
 
 
 class TestSubscribeFeedAction:
-    """Tests for SubscribeFeedAction."""
-
     @pytest.fixture
     def action(self) -> SubscribeFeedAction:
         return SubscribeFeedAction()
@@ -70,8 +64,6 @@ class TestSubscribeFeedAction:
 
 
 class TestUnsubscribeFeedAction:
-    """Tests for UnsubscribeFeedAction."""
-
     @pytest.fixture
     def action(self) -> UnsubscribeFeedAction:
         return UnsubscribeFeedAction()
@@ -87,8 +79,6 @@ class TestUnsubscribeFeedAction:
 
 
 class TestListFeedsAction:
-    """Tests for ListFeedsAction."""
-
     @pytest.fixture
     def action(self) -> ListFeedsAction:
         return ListFeedsAction()
@@ -111,8 +101,6 @@ class TestListFeedsAction:
 
 
 class TestActionRegistry:
-    """Tests for action registry functions."""
-
     def test_get_rss_action_names(self) -> None:
         names = get_rss_action_names()
         assert "GET_NEWSFEED" in names

@@ -1,101 +1,94 @@
-//! Error types for the Telegram plugin
-//!
-//! Provides strongly-typed errors that fail fast with clear messages.
-
 use std::fmt;
 use thiserror::Error;
 
-/// Result type alias for Telegram operations
+/// Result type used throughout the Telegram plugin.
 pub type Result<T> = std::result::Result<T, TelegramError>;
 
-/// Telegram plugin error types
-///
-/// All errors are designed to fail fast with clear, actionable messages.
-/// No defensive programming or error swallowing.
 #[derive(Debug, Error)]
+/// Errors produced by the Telegram plugin.
 pub enum TelegramError {
-    /// Telegram client is not initialized
     #[error("Telegram client not initialized - call start() first")]
+    /// The Telegram client/service has not been started yet.
     ClientNotInitialized,
 
-    /// Telegram client is already running
     #[error("Telegram client is already running")]
+    /// The Telegram service is already running.
     AlreadyRunning,
 
-    /// Failed to connect to Telegram
     #[error("Failed to connect to Telegram: {0}")]
+    /// A connection attempt to Telegram failed.
     ConnectionFailed(String),
 
-    /// Teloxide library error
     #[error("Telegram API error: {0}")]
+    /// A Telegram API call failed.
     ApiError(String),
 
-    /// Configuration error
     #[error("Configuration error: {0}")]
+    /// Configuration values were invalid or inconsistent.
     ConfigError(String),
 
-    /// Missing required setting
     #[error("Missing required setting: {0}")]
+    /// A required configuration setting was missing.
     MissingSetting(String),
 
-    /// Invalid chat ID
     #[error("Invalid Telegram chat ID: {0}")]
+    /// A provided chat identifier was invalid.
     InvalidChatId(String),
 
-    /// Invalid argument
     #[error("Invalid argument: {0}")]
+    /// A caller provided an invalid argument.
     InvalidArgument(String),
 
-    /// Message too long (over 4096 characters)
     #[error("Message too long: {length} characters (max: {max})")]
+    /// A message exceeded Telegram's maximum allowed length.
     MessageTooLong {
-        /// Actual length
+        /// The message length that was attempted.
         length: usize,
-        /// Maximum allowed
+        /// The maximum supported length.
         max: usize,
     },
 
-    /// Chat not found
     #[error("Chat not found: {0}")]
+    /// The requested chat could not be found.
     ChatNotFound(String),
 
-    /// User not found
     #[error("User not found: {0}")]
+    /// The requested user could not be found.
     UserNotFound(String),
 
-    /// Permission denied
     #[error("Permission denied: {0}")]
+    /// The operation is not permitted.
     PermissionDenied(String),
 
-    /// Rate limited by Telegram API
     #[error("Rate limited by Telegram API, retry after {retry_after_secs}s")]
+    /// Telegram API rate limit was hit.
     RateLimited {
-        /// Seconds until retry is allowed
+        /// Suggested delay before retrying the request.
         retry_after_secs: u64,
     },
 
-    /// Timeout waiting for response
     #[error("Operation timed out after {timeout_ms}ms")]
+    /// The operation did not complete within the expected time.
     Timeout {
-        /// Timeout in milliseconds
+        /// Timeout duration in milliseconds.
         timeout_ms: u64,
     },
 
-    /// Internal error
     #[error("Internal error: {0}")]
+    /// An internal error occurred.
     Internal(String),
 
-    /// Serialization/deserialization error
     #[error("Serialization error: {0}")]
+    /// Serialization/deserialization failed.
     SerializationError(String),
 
-    /// Action validation failed
     #[error("Action validation failed: {0}")]
+    /// An action failed validation.
     ValidationFailed(String),
 }
 
 impl TelegramError {
-    /// Check if error is retryable
+    /// Returns `true` if retrying the operation might succeed.
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
@@ -105,11 +98,11 @@ impl TelegramError {
         )
     }
 
-    /// Get retry delay in seconds if applicable
+    /// Returns an optional suggested retry delay (in seconds).
     pub fn retry_after_secs(&self) -> Option<u64> {
         match self {
             TelegramError::RateLimited { retry_after_secs } => Some(*retry_after_secs),
-            TelegramError::Timeout { timeout_ms } => Some(*timeout_ms / 2000), // Half the timeout in seconds
+            TelegramError::Timeout { timeout_ms } => Some(*timeout_ms / 2000),
             _ => None,
         }
     }
@@ -127,8 +120,8 @@ impl From<std::io::Error> for TelegramError {
     }
 }
 
-/// Error context wrapper for adding contextual information
 #[derive(Debug)]
+/// Error wrapper that adds context to an underlying error.
 pub struct ErrorContext<E: fmt::Display> {
     error: E,
     context: String,
@@ -142,9 +135,9 @@ impl<E: fmt::Display> fmt::Display for ErrorContext<E> {
 
 impl<E: fmt::Display + fmt::Debug> std::error::Error for ErrorContext<E> {}
 
-/// Extension trait for adding context to errors
+/// Extension trait for attaching context strings to results.
 pub trait WithContext<T, E: fmt::Display> {
-    /// Add context to an error
+    /// Maps an error into an [`ErrorContext`] produced by the given closure.
     fn with_context<F: FnOnce() -> String>(self, f: F) -> std::result::Result<T, ErrorContext<E>>;
 }
 
@@ -169,14 +162,19 @@ mod tests {
 
     #[test]
     fn test_error_retryable() {
-        assert!(TelegramError::RateLimited { retry_after_secs: 10 }.is_retryable());
+        assert!(TelegramError::RateLimited {
+            retry_after_secs: 10
+        }
+        .is_retryable());
         assert!(TelegramError::Timeout { timeout_ms: 5000 }.is_retryable());
         assert!(!TelegramError::ClientNotInitialized.is_retryable());
     }
 
     #[test]
     fn test_retry_after() {
-        let err = TelegramError::RateLimited { retry_after_secs: 10 };
+        let err = TelegramError::RateLimited {
+            retry_after_secs: 10,
+        };
         assert_eq!(err.retry_after_secs(), Some(10));
 
         let err = TelegramError::ClientNotInitialized;

@@ -22,7 +22,6 @@ import {
   type TodoDataService,
 } from "../services/todoDataService";
 
-// Interface for task selection properties
 interface TaskSelection {
   taskId: string;
   taskName: string;
@@ -39,15 +38,11 @@ interface TaskUpdate {
   recurring?: "daily" | "weekly" | "monthly";
 }
 
-/**
- * Extracts which task the user wants to update
- */
 async function extractTaskSelection(
   runtime: IAgentRuntime,
   message: Memory,
   availableTasks: TodoData[]
 ): Promise<TaskSelection> {
-  // Format available tasks for the prompt
   const tasksText = availableTasks
     .map((task) => {
       return `ID: ${task.id}\nName: ${task.name}\nDescription: ${task.description || task.name}\nTags: ${task.tags?.join(", ") || "none"}\n`;
@@ -67,7 +62,6 @@ async function extractTaskSelection(
     stopSequences: [],
   });
 
-  // Parse XML from the text results
   const parsedResult = parseKeyValueXml(result) as TaskSelection | null;
 
   if (!parsedResult || typeof parsedResult.isFound === "undefined") {
@@ -75,7 +69,6 @@ async function extractTaskSelection(
     return { taskId: "", taskName: "", isFound: false };
   }
 
-  // Convert string 'true'/'false' to boolean and handle 'null' strings
   const finalResult: TaskSelection = {
     taskId: parsedResult.taskId === "null" ? "" : String(parsedResult.taskId || ""),
     taskName: parsedResult.taskName === "null" ? "" : String(parsedResult.taskName || ""),
@@ -93,11 +86,9 @@ async function extractTaskUpdate(
   message: Memory,
   task: TodoData
 ): Promise<TaskUpdate | null> {
-  // Format task details for the prompt
   let taskDetails = `Name: ${task.name}\n`;
   if (task.description) taskDetails += `Description: ${task.description}\n`;
 
-  // Add task type
   taskDetails += `Type: ${task.type}\n`;
 
   if (task.type === "daily") {
@@ -129,16 +120,13 @@ async function extractTaskUpdate(
     stopSequences: [],
   });
 
-  // Parse XML from the text results
   const parsedUpdate = parseKeyValueXml(result) as TaskUpdate | null;
 
-  // Validate the parsed update has at least one property
   if (!parsedUpdate || Object.keys(parsedUpdate).length === 0) {
     logger.error("Failed to extract valid task update information from XML");
     return null;
   }
 
-  // Convert specific fields from string if necessary
   const finalUpdate: TaskUpdate = { ...parsedUpdate };
   if (finalUpdate.priority) {
     const priorityVal = parseInt(String(finalUpdate.priority), 10);
@@ -162,7 +150,6 @@ async function extractTaskUpdate(
     }
   }
 
-  // Return null if no valid fields remain after conversion/validation
   if (Object.keys(finalUpdate).length === 0) {
     logger.warn("No valid update fields found after parsing XML.");
     return null;
@@ -171,29 +158,21 @@ async function extractTaskUpdate(
   return finalUpdate;
 }
 
-/**
- * Applies updates to a task
- */
 async function applyTaskUpdate(
   dataService: TodoDataService,
   task: TodoData,
   update: TaskUpdate
 ): Promise<TodoData> {
-  // Prepare tags array
   const updatedTags = [...(task.tags || [])];
 
-  // Update tags based on changes
   if (update.recurring && task.type === "daily") {
-    // Remove any existing recurring tag
     const recurringIndex = updatedTags.findIndex((tag) => tag.startsWith("recurring-"));
     if (recurringIndex !== -1) {
       updatedTags.splice(recurringIndex, 1);
     }
-    // Add new recurring tag
     updatedTags.push(`recurring-${update.recurring}`);
   }
 
-  // Prepare the update object matching TodoDataService.updateTodo signature
   const updateData: {
     name?: string;
     description?: string;
@@ -221,17 +200,12 @@ async function applyTaskUpdate(
     },
   };
 
-  // Apply the updates
   await dataService.updateTodo(task.id, updateData);
 
-  // Return the updated task
   const updatedTask = await dataService.getTodo(task.id);
   return updatedTask || task;
 }
 
-/**
- * The UPDATE_TODO action allows users to modify an existing task.
- */
 export const updateTodoAction: Action = {
   name: "UPDATE_TODO",
   similes: ["EDIT_TODO", "MODIFY_TASK", "CHANGE_TASK", "MODIFY_TODO", "EDIT_TASK"],
@@ -279,7 +253,6 @@ export const updateTodoAction: Action = {
     }
     const dataService = createTodoDataService(runtime);
 
-    // Get all active todos for this room
     const availableTasks = await dataService.getTodos({
       roomId: message.roomId,
       isCompleted: false,
@@ -296,7 +269,6 @@ export const updateTodoAction: Action = {
       return;
     }
 
-    // Phase 1: Extract which task to update
     const taskSelection = await extractTaskSelection(runtime, message, availableTasks);
     if (!taskSelection.isFound) {
       if (callback) {
@@ -323,7 +295,6 @@ export const updateTodoAction: Action = {
       return;
     }
 
-    // Phase 2: Extract what updates to make
     const update = await extractTaskUpdate(runtime, message, task);
     if (!update) {
       if (callback) {
@@ -336,7 +307,6 @@ export const updateTodoAction: Action = {
       return;
     }
 
-    // Phase 3: Apply the update
     const updatedTask = await applyTaskUpdate(dataService, task, update);
 
     if (callback) {

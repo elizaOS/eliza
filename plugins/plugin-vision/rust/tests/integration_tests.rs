@@ -1,11 +1,10 @@
 //! Integration tests for vision plugin.
 
 use elizaos_vision::{
-    ActionContext, BoundingBox, CaptureImageAction, DescribeSceneAction,
-    EntityTrackingProvider, IdentifyPersonAction, KillAutonomousAction, NameEntityAction,
-    Point2D, ProviderContext, SceneDescription, SetVisionModeAction, TrackEntityAction,
-    TrackingStatistics, VisionAction, VisionConfig, VisionMode, VisionPlugin, VisionProvider,
-    VisionService, VisionStateProvider,
+    ActionContext, BoundingBox, CaptureImageAction, DescribeSceneAction, EntityTrackingProvider,
+    IdentifyPersonAction, KillAutonomousAction, NameEntityAction, Point2D, ProviderContext,
+    SceneDescription, SetVisionModeAction, TrackEntityAction, TrackingStatistics, VisionAction,
+    VisionConfig, VisionMode, VisionPlugin, VisionProvider, VisionService, VisionStateProvider,
 };
 
 // ============================================================================

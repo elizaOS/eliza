@@ -35,7 +35,6 @@ export function extractXmlTag(text: string, tagName: string): string | null {
     const nextClose = text.indexOf(endTag, searchStart);
 
     if (nextClose === -1) {
-      // No closing tag found
       break;
     }
 
@@ -288,7 +287,6 @@ function test() {
     assert(code.includes("<div>"), "HTML in code missing");
   });
 
-  // Run all tests
   let passed = 0;
   let failed = 0;
   for (const { name, fn } of tests) {

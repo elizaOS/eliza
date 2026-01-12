@@ -1,29 +1,17 @@
 #![allow(missing_docs)]
-//! Audio utilities for OpenAI plugin.
-//!
-//! Provides audio format detection from binary data.
 
-/// Known audio MIME types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioMimeType {
-    /// WAV audio format
     Wav,
-    /// MPEG audio (MP3)
     Mpeg,
-    /// OGG audio container
     Ogg,
-    /// FLAC lossless audio
     Flac,
-    /// MP4/M4A audio container
     Mp4,
-    /// WebM audio container
     Webm,
-    /// Unknown audio format
     Unknown,
 }
 
 impl AudioMimeType {
-    /// Get the MIME type string.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Wav => "audio/wav",
@@ -36,7 +24,6 @@ impl AudioMimeType {
         }
     }
 
-    /// Get the file extension.
     pub fn extension(&self) -> &'static str {
         match self {
             Self::Wav => "wav",
@@ -127,16 +114,6 @@ pub fn detect_audio_mime_type(data: &[u8]) -> AudioMimeType {
     AudioMimeType::Unknown
 }
 
-/// Get a filename with appropriate extension based on audio data.
-///
-/// # Arguments
-///
-/// * `data` - The audio data.
-/// * `base_name` - Base name for the file.
-///
-/// # Returns
-///
-/// Filename with extension.
 pub fn get_filename_for_data(data: &[u8], base_name: &str) -> String {
     let mime_type = detect_audio_mime_type(data);
     format!("{}.{}", base_name, mime_type.extension())

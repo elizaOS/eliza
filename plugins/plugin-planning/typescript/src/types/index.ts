@@ -33,9 +33,6 @@ export interface PlanningContext {
   };
 }
 
-/**
- * Plan state during execution.
- */
 export interface PlanState {
   status: PlanStatus;
   currentStepIndex: number;

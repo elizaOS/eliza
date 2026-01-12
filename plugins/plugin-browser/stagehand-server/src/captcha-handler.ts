@@ -28,15 +28,10 @@ export async function detectCaptchaType(page: Page): Promise<CaptchaInfo> {
     }
 
     const hasRecaptchaV3 = await page.evaluate(() => {
-      interface WindowWithRecaptcha extends Window {
-        grecaptcha?: {
-          execute?: (
-            siteKey: string,
-            options: { action: string },
-          ) => Promise<string>;
-        };
-      }
-      return !!(window as WindowWithRecaptcha).grecaptcha?.execute;
+      const win = window as typeof window & {
+        grecaptcha?: { execute?: (siteKey: string, options: { action: string }) => Promise<string> };
+      };
+      return !!win.grecaptcha?.execute;
     });
     if (hasRecaptchaV3) {
       const siteKey = await page.evaluate(() => {
@@ -74,11 +69,7 @@ export async function detectCaptchaType(page: Page): Promise<CaptchaInfo> {
 
 export async function injectCaptchaSolution(
   _page: Page,
-  captchaType: string,
-  solution: string,
+  _captchaType: string,
+  _solution: string,
 ): Promise<void> {
-  console.log(
-    `Would inject ${captchaType} solution:`,
-    `${solution.substring(0, 20)}...`,
-  );
 }

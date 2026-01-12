@@ -1,16 +1,5 @@
-/**
- * Utility functions for the TEE plugin.
- */
-
 import { createHash } from "node:crypto";
 
-/**
- * Converts a hexadecimal string to a Uint8Array.
- *
- * @param hex - The hexadecimal string to convert.
- * @returns The resulting Uint8Array.
- * @throws Error if the input hex string is invalid.
- */
 export function hexToUint8Array(hex: string): Uint8Array {
   const hexString = hex.trim().replace(/^0x/, "");
   if (!hexString) {
@@ -31,48 +20,24 @@ export function hexToUint8Array(hex: string): Uint8Array {
   return array;
 }
 
-/**
- * Converts a Uint8Array to a hexadecimal string.
- *
- * @param bytes - The Uint8Array to convert.
- * @returns The hex string (without 0x prefix).
- */
 export function uint8ArrayToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
-/**
- * Calculates the SHA256 hash of the input string.
- *
- * @param input - The input string to hash.
- * @returns The calculated SHA256 hash as a Buffer object.
- */
 export function calculateSHA256(input: string): Buffer {
   const hash = createHash("sha256");
   hash.update(input);
   return hash.digest();
 }
 
-/**
- * Calculates the SHA256 hash of the input Uint8Array.
- *
- * @param input - The input bytes to hash.
- * @returns The calculated SHA256 hash as a Uint8Array.
- */
 export function sha256Bytes(input: Uint8Array): Uint8Array {
   const hash = createHash("sha256");
   hash.update(input);
   return new Uint8Array(hash.digest());
 }
 
-/**
- * Get TEE endpoint URL based on mode.
- *
- * @param mode - The TEE mode (LOCAL, DOCKER, PRODUCTION).
- * @returns The endpoint URL or undefined for production.
- */
 export function getTeeEndpoint(mode: string): string | undefined {
   switch (mode.toUpperCase()) {
     case "LOCAL":
@@ -86,12 +51,6 @@ export function getTeeEndpoint(mode: string): string | undefined {
   }
 }
 
-/**
- * Upload attestation quote to proof service.
- *
- * @param data - The attestation quote data.
- * @returns The response from the upload service.
- */
 export async function uploadAttestationQuote(data: Uint8Array): Promise<{ checksum: string }> {
   const blob = new Blob([data as BlobPart], {
     type: "application/octet-stream",

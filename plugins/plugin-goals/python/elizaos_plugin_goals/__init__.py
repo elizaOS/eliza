@@ -26,7 +26,7 @@ from elizaos_plugin_goals.prompts import (
     build_extract_goal_update_prompt,
 )
 from elizaos_plugin_goals.providers import GoalsProvider
-from elizaos_plugin_goals.service import GoalDataService
+from elizaos_plugin_goals.service import GoalDataService, GoalDataServiceWrapper
 from elizaos_plugin_goals.types import (
     ConfirmationResult,
     CreateGoalParams,
@@ -64,6 +64,7 @@ __all__ = [
     "ConfirmationResult",
     # Service
     "GoalDataService",
+    "GoalDataServiceWrapper",
     # Prompt Templates
     "EXTRACT_GOAL_TEMPLATE",
     "CHECK_SIMILARITY_TEMPLATE",

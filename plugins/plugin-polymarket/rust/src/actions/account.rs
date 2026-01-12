@@ -25,9 +25,7 @@ pub struct AccountAccessStatus {
 /// # Errors
 ///
 /// Returns an error if the API request fails
-pub async fn get_account_access_status(
-    client: &ClobClient,
-) -> Result<AccountAccessStatus> {
+pub async fn get_account_access_status(client: &ClobClient) -> Result<AccountAccessStatus> {
     let mut status = AccountAccessStatus {
         cert_required: None,
         api_keys: Vec::new(),
@@ -56,7 +54,7 @@ pub async fn get_account_access_status(
 pub fn handle_authentication(client: &ClobClient) -> (bool, bool, bool, bool, bool) {
     let has_creds = client.has_credentials();
     let address = client.address();
-    
+
     let has_private_key = address != alloy::primitives::Address::ZERO;
     let has_api_key = has_creds;
     let has_api_secret = has_creds;
@@ -74,7 +72,6 @@ pub fn handle_authentication(client: &ClobClient) -> (bool, bool, bool, bool, bo
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_handle_authentication() {

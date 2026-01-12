@@ -2,10 +2,6 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
 
-/**
- * Node-specific utils split out for server builds.
- */
-
 export function expandTildePath(filepath: string): string {
   if (filepath?.startsWith("~")) {
     return path.join(process.cwd(), filepath.slice(1));

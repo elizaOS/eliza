@@ -1,4 +1,3 @@
-"""SWAP_SOLANA action implementation."""
 
 from __future__ import annotations
 
@@ -18,8 +17,6 @@ WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112"
 
 @dataclass
 class SwapActionResult:
-    """Result of a swap action."""
-
     success: bool
     text: str
     signature: str | None = None
@@ -35,21 +32,8 @@ async def handle_swap(
     amount: Decimal,
     slippage_bps: int | None = None,
 ) -> SwapActionResult:
-    """Execute the swap action.
-
-    Args:
-        client: The Solana client.
-        input_mint: Input token mint address.
-        output_mint: Output token mint address.
-        amount: Amount to swap in token units.
-        slippage_bps: Slippage tolerance in basis points (default: 50 = 0.5%).
-
-    Returns:
-        The swap result.
-    """
     logger.info("Executing swap: %s %s -> %s", amount, input_mint, output_mint)
 
-    # Validate addresses
     try:
         Pubkey.from_string(input_mint)
     except Exception:
@@ -68,9 +52,7 @@ async def handle_swap(
             error="Invalid output mint address",
         )
 
-    # Calculate amount in lamports/smallest unit
-    # For SOL, this is lamports (9 decimals)
-    decimals = 9 if input_mint == WRAPPED_SOL_MINT else 9  # Default to 9
+    decimals = 9
     amount_raw = str(int(amount * Decimal(10**decimals)))
 
     quote_params = SwapQuoteParams(
@@ -81,10 +63,7 @@ async def handle_swap(
     )
 
     try:
-        # Get quote
         quote = await client.get_swap_quote(quote_params)
-
-        # Execute swap
         result = await client.execute_swap(quote)
 
         text = (
@@ -113,20 +92,11 @@ async def handle_swap(
 
 
 def resolve_sol_mint(symbol_or_mint: str) -> str:
-    """Helper to resolve SOL symbol to wrapped SOL mint.
-
-    Args:
-        symbol_or_mint: Either "SOL" or a mint address.
-
-    Returns:
-        The resolved mint address.
-    """
     if symbol_or_mint.upper() == "SOL":
         return WRAPPED_SOL_MINT
     return symbol_or_mint
 
 
-# Action definition for elizaOS integration
 SWAP_ACTION = {
     "name": "SWAP_SOLANA",
     "similes": [

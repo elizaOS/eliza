@@ -1,4 +1,3 @@
-"""Type definitions for Solana plugin operations."""
 
 from decimal import Decimal
 
@@ -6,8 +5,6 @@ from pydantic import BaseModel, Field
 
 
 class PriceInfo(BaseModel):
-    """Price information for a single cryptocurrency."""
-
     usd: str = Field(description="Price in USD")
 
 
@@ -20,8 +17,6 @@ class Prices(BaseModel):
 
 
 class PortfolioItem(BaseModel):
-    """Token item in a wallet portfolio."""
-
     name: str = Field(description="Token name")
     address: str = Field(description="Token mint address")
     symbol: str = Field(description="Token symbol")
@@ -36,8 +31,6 @@ class PortfolioItem(BaseModel):
 
 
 class WalletPortfolio(BaseModel):
-    """Complete wallet portfolio."""
-
     total_usd: str = Field(alias="totalUsd", description="Total value in USD")
     total_sol: str | None = Field(default=None, alias="totalSol", description="Total value in SOL")
     items: list[PortfolioItem] = Field(description="List of token holdings")
@@ -50,8 +43,6 @@ class WalletPortfolio(BaseModel):
 
 
 class TokenAccountInfo(BaseModel):
-    """Token account information."""
-
     mint: str = Field(description="Mint address")
     owner: str = Field(description="Owner address")
     amount: str = Field(description="Raw amount as string")
@@ -62,16 +53,12 @@ class TokenAccountInfo(BaseModel):
 
 
 class TransferParams(BaseModel):
-    """Parameters for a token transfer."""
-
     recipient: str = Field(description="Recipient address")
     amount: Decimal = Field(gt=0, description="Amount to transfer")
     mint: str | None = Field(default=None, description="Token mint address (None for SOL)")
 
 
 class TransferResult(BaseModel):
-    """Result of a transfer operation."""
-
     success: bool = Field(description="Whether the transfer was successful")
     signature: str | None = Field(default=None, description="Transaction signature")
     amount: str = Field(description="Amount transferred")
@@ -80,8 +67,6 @@ class TransferResult(BaseModel):
 
 
 class SwapQuoteParams(BaseModel):
-    """Parameters for getting a swap quote."""
-
     input_mint: str = Field(alias="inputMint", description="Input token mint address")
     output_mint: str = Field(alias="outputMint", description="Output token mint address")
     amount: str = Field(description="Amount in base units")
@@ -97,8 +82,6 @@ class SwapQuoteParams(BaseModel):
 
 
 class SwapInfo(BaseModel):
-    """Swap information for a route step."""
-
     amm_key: str = Field(alias="ammKey", description="AMM key")
     label: str = Field(description="DEX label")
     input_mint: str = Field(alias="inputMint", description="Input mint")
@@ -112,8 +95,6 @@ class SwapInfo(BaseModel):
 
 
 class RoutePlanStep(BaseModel):
-    """A step in the swap route."""
-
     swap_info: SwapInfo = Field(alias="swapInfo", description="Swap info for this step")
     percent: int = Field(ge=0, le=100, description="Percentage of input routed")
 
@@ -121,8 +102,6 @@ class RoutePlanStep(BaseModel):
 
 
 class SwapQuote(BaseModel):
-    """Jupiter swap quote response."""
-
     input_mint: str = Field(alias="inputMint", description="Input token mint")
     in_amount: str = Field(alias="inAmount", description="Input amount in base units")
     output_mint: str = Field(alias="outputMint", description="Output token mint")
@@ -139,8 +118,6 @@ class SwapQuote(BaseModel):
 
 
 class SwapResult(BaseModel):
-    """Result of a swap execution."""
-
     success: bool = Field(description="Whether the swap was successful")
     signature: str | None = Field(default=None, description="Transaction signature")
     in_amount: str | None = Field(default=None, alias="inAmount", description="Input amount")
@@ -151,8 +128,6 @@ class SwapResult(BaseModel):
 
 
 class SwapTransaction(BaseModel):
-    """Jupiter swap transaction response."""
-
     swap_transaction: str = Field(
         alias="swapTransaction", description="Base64-encoded versioned transaction"
     )
@@ -169,8 +144,6 @@ class SwapTransaction(BaseModel):
 
 
 class BirdeyePriceData(BaseModel):
-    """Birdeye price data."""
-
     value: float = Field(description="Token price in USD")
     update_unix_time: int = Field(alias="updateUnixTime", description="Update timestamp")
 
@@ -178,7 +151,5 @@ class BirdeyePriceData(BaseModel):
 
 
 class BirdeyePriceResponse(BaseModel):
-    """Birdeye price response."""
-
     success: bool = Field(description="Whether the request was successful")
     data: BirdeyePriceData = Field(description="Price data")

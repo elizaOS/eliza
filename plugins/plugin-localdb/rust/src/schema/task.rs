@@ -1,7 +1,5 @@
 #![allow(missing_docs)]
-//! Task schema for elizaOS database
 
-/// SQL for creating the tasks table
 pub const CREATE_TASKS_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

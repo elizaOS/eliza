@@ -12,7 +12,7 @@ export class Session implements BrowserSession {
 
 export class BrowserService extends Service {
   static serviceType = ServiceType.BROWSER;
-  capabilityDescription = "Browser automation service for web interactions";
+  capabilityDescription = "Browser automation service";
 
   private sessions = new Map<string, Session>();
   private currentSessionId: string | null = null;

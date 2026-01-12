@@ -1,9 +1,3 @@
-/**
- * Audio model handlers
- *
- * Provides transcription and text-to-speech functionality.
- */
-
 import type {
   TextToSpeechParams as CoreTextToSpeechParams,
   TranscriptionParams as CoreTranscriptionParams,
@@ -27,53 +21,18 @@ import {
   getTTSVoice,
 } from "../utils/config";
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Raw audio input types
- */
 type AudioInput = Blob | File | Buffer;
-
-/**
- * All accepted transcription input types
- * - Raw audio: Blob, File, Buffer
- * - Local params object with audio data
- * - Core params object with audioUrl string
- * - Plain string (treated as URL)
- */
 type TranscriptionInput = AudioInput | LocalTranscriptionParams | CoreTranscriptionParams | string;
-
-/**
- * All accepted TTS input types
- * - Plain string (the text to speak)
- * - Local params object with strict voice type
- * - Core params object with string voice
- */
 type TTSInput = string | LocalTextToSpeechParams | CoreTextToSpeechParams;
 
-// ============================================================================
-// Validation
-// ============================================================================
-
-/**
- * Type guard for Blob/File
- */
 function isBlobOrFile(value: unknown): value is Blob | File {
   return value instanceof Blob || value instanceof File;
 }
 
-/**
- * Type guard for Buffer
- */
 function isBuffer(value: unknown): value is Buffer {
   return Buffer.isBuffer(value);
 }
 
-/**
- * Type guard for local TranscriptionParams object (has audio property)
- */
 function isLocalTranscriptionParams(value: unknown): value is LocalTranscriptionParams {
   return (
     typeof value === "object" &&
@@ -84,9 +43,6 @@ function isLocalTranscriptionParams(value: unknown): value is LocalTranscription
   );
 }
 
-/**
- * Type guard for core TranscriptionParams object (has audioUrl property)
- */
 function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionParams {
   return (
     typeof value === "object" &&
@@ -96,13 +52,6 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
   );
 }
 
-// ============================================================================
-// Audio Fetching
-// ============================================================================
-
-/**
- * Fetches audio from a URL and returns a Blob
- */
 async function fetchAudioFromUrl(url: string): Promise<Blob> {
   const response = await fetch(url);
   if (!response.ok) {
@@ -110,25 +59,6 @@ async function fetchAudioFromUrl(url: string): Promise<Blob> {
   }
   return response.blob();
 }
-
-// ============================================================================
-// Transcription
-// ============================================================================
-
-/**
- * Handles audio transcription using OpenAI's transcription API.
- *
- * Supports multiple input types:
- * - Raw audio: Blob, File, Buffer
- * - Local params object with `audio` property
- * - Core params object with `audioUrl` string property
- * - Plain URL string
- *
- * @param runtime - The agent runtime
- * @param input - Audio data, URL, or transcription params
- * @returns The transcribed text
- * @throws Error if transcription fails
- */
 export async function handleTranscription(
   runtime: IAgentRuntime,
   input: TranscriptionInput
@@ -137,9 +67,7 @@ export async function handleTranscription(
   let blob: Blob;
   let extraParams: Partial<LocalTranscriptionParams> = {};
 
-  // Handle different input types
   if (typeof input === "string") {
-    // String input - treat as URL
     logger.debug(`[OpenAI] Fetching audio from URL: ${input}`);
     blob = await fetchAudioFromUrl(input);
   } else if (isBlobOrFile(input)) {
@@ -149,15 +77,10 @@ export async function handleTranscription(
     logger.debug(`[OpenAI] Auto-detected audio MIME type: ${mimeType}`);
     blob = new Blob([new Uint8Array(input)], { type: mimeType });
   } else if (isLocalTranscriptionParams(input)) {
-    // Local params with audio data
     extraParams = input;
-
-    // Override model if specified in params
     if (input.model) {
       modelName = input.model;
     }
-
-    // Convert audio to blob
     if (isBuffer(input.audio)) {
       const mimeType = input.mimeType ?? detectAudioMimeType(input.audio);
       logger.debug(`[OpenAI] Using MIME type: ${mimeType}`);
@@ -166,7 +89,6 @@ export async function handleTranscription(
       blob = input.audio;
     }
   } else if (isCoreTranscriptionParams(input)) {
-    // Core params with audioUrl
     logger.debug(`[OpenAI] Fetching audio from URL: ${input.audioUrl}`);
     blob = await fetchAudioFromUrl(input.audioUrl);
     extraParams = { prompt: input.prompt };
@@ -178,7 +100,6 @@ export async function handleTranscription(
 
   logger.debug(`[OpenAI] Using TRANSCRIPTION model: ${modelName}`);
 
-  // Determine filename from MIME type
   const mimeType = (blob as File).type || "audio/webm";
   const filename =
     (blob as File).name ||
@@ -188,12 +109,10 @@ export async function handleTranscription(
         : "audio/webm"
     );
 
-  // Build form data
   const formData = new FormData();
   formData.append("file", blob, filename);
   formData.append("model", modelName);
 
-  // Add optional parameters
   if (extraParams.language) {
     formData.append("language", extraParams.language);
   }
@@ -230,28 +149,10 @@ export async function handleTranscription(
   return data.text;
 }
 
-// ============================================================================
-// Text-to-Speech
-// ============================================================================
-
-/**
- * Handles text-to-speech generation using OpenAI's TTS API.
- *
- * Supports multiple input types:
- * - Plain string (the text to speak)
- * - Local params object with strict voice type
- * - Core params object with string voice
- *
- * @param runtime - The agent runtime
- * @param input - Text string or TTS params
- * @returns Audio data as ArrayBuffer
- * @throws Error if TTS generation fails
- */
 export async function handleTextToSpeech(
   runtime: IAgentRuntime,
   input: TTSInput
 ): Promise<ArrayBuffer> {
-  // Normalize input
   let text: string;
   let voice: string | undefined;
   let format: TTSOutputFormat = "mp3";
@@ -264,8 +165,6 @@ export async function handleTextToSpeech(
   } else {
     text = input.text;
     voice = input.voice;
-
-    // Handle local params specific properties
     if ("format" in input && input.format) {
       format = input.format;
     }
@@ -277,14 +176,12 @@ export async function handleTextToSpeech(
     }
   }
 
-  // Get configuration with defaults
   model = model ?? getTTSModel(runtime);
   voice = voice ?? getTTSVoice(runtime);
   instructions = instructions ?? getTTSInstructions(runtime);
 
   logger.debug(`[OpenAI] Using TEXT_TO_SPEECH model: ${model}`);
 
-  // Validate text
   if (!text || text.trim().length === 0) {
     throw new Error("TEXT_TO_SPEECH requires non-empty text");
   }
@@ -293,7 +190,6 @@ export async function handleTextToSpeech(
     throw new Error("TEXT_TO_SPEECH text exceeds 4096 character limit");
   }
 
-  // Validate voice - cast to TTSVoice for type safety
   const validVoices: TTSVoice[] = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
   if (voice && !validVoices.includes(voice as TTSVoice)) {
     throw new Error(`Invalid voice: ${voice}. Must be one of: ${validVoices.join(", ")}`);
@@ -301,7 +197,6 @@ export async function handleTextToSpeech(
 
   const baseURL = getBaseURL(runtime);
 
-  // Build request body
   const requestBody: Record<string, string> = {
     model,
     voice: voice as TTSVoice,

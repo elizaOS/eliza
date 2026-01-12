@@ -1,35 +1,31 @@
-//! Type definitions for the Telegram plugin
-//!
-//! Strong types with validation - no unknown or any types.
-
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Telegram event types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+/// Event types emitted by the Telegram plugin.
 pub enum TelegramEventType {
-    /// World/chat joined
+    /// The bot joined a Telegram "world" (chat) context.
     WorldJoined,
-    /// Bot connected to Telegram
+    /// The bot connected successfully and is ready to receive updates.
     WorldConnected,
-    /// World/chat left
+    /// The bot left a Telegram "world" (chat) context.
     WorldLeft,
-    /// Entity (user) joined
+    /// A user joined a chat.
     EntityJoined,
-    /// Entity (user) left
+    /// A user left a chat.
     EntityLeft,
-    /// Entity updated
+    /// A user's membership or profile was updated.
     EntityUpdated,
-    /// Message received
+    /// A message was received.
     MessageReceived,
-    /// Message sent by bot
+    /// A message was sent by the bot.
     MessageSent,
-    /// Reaction received
+    /// A reaction was received.
     ReactionReceived,
-    /// Interaction (callback query) received
+    /// An interaction (e.g. callback query) was received.
     InteractionReceived,
-    /// /start command
+    /// The `/start` command was invoked.
     SlashStart,
 }
 
@@ -52,17 +48,17 @@ impl fmt::Display for TelegramEventType {
     }
 }
 
-/// Telegram channel types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+/// Telegram chat/channel type.
 pub enum TelegramChannelType {
-    /// Private chat (DM)
+    /// One-on-one private chat.
     Private,
-    /// Group chat
+    /// Group chat.
     Group,
-    /// Supergroup chat
+    /// Supergroup chat.
     Supergroup,
-    /// Channel
+    /// Broadcast channel.
     Channel,
 }
 
@@ -124,40 +120,37 @@ pub struct TelegramUser {
 }
 
 impl TelegramUser {
-    /// Get display name (first + last name, or username, or ID)
+    /// Returns a human-friendly display name for the user.
     pub fn display_name(&self) -> String {
         match (&self.first_name, &self.last_name) {
             (Some(first), Some(last)) => format!("{} {}", first, last),
             (Some(first), None) => first.clone(),
             (None, Some(last)) => last.clone(),
-            (None, None) => self
-                .username
-                .clone()
-                .unwrap_or_else(|| self.id.to_string()),
+            (None, None) => self.username.clone().unwrap_or_else(|| self.id.to_string()),
         }
     }
 }
 
-/// Telegram chat information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Telegram chat information.
 pub struct TelegramChat {
-    /// Chat ID
+    /// Chat identifier.
     pub id: i64,
-    /// Chat type
+    /// Chat kind (private, group, supergroup, channel).
     #[serde(rename = "type")]
     pub chat_type: TelegramChannelType,
-    /// Chat title (for groups/channels)
+    /// Chat title (for groups/channels).
     pub title: Option<String>,
-    /// Chat username
+    /// Chat username (without `@`), when present.
     pub username: Option<String>,
-    /// First name (for private chats)
+    /// First name (for private chats).
     pub first_name: Option<String>,
-    /// Whether chat is a forum
+    /// Whether this chat supports forum topics.
     pub is_forum: bool,
 }
 
 impl TelegramChat {
-    /// Get display name
+    /// Returns a human-friendly display name for the chat.
     pub fn display_name(&self) -> String {
         self.title
             .clone()
@@ -167,93 +160,93 @@ impl TelegramChat {
     }
 }
 
-/// Telegram message payload
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Payload for a received or sent message event.
 pub struct TelegramMessagePayload {
-    /// Message ID
+    /// Message identifier.
     pub message_id: i64,
-    /// Chat information
+    /// Chat where the message occurred.
     pub chat: TelegramChat,
-    /// User who sent the message
+    /// Message sender, if available.
     pub from_user: Option<TelegramUser>,
-    /// Message text
+    /// Message text (if the message has text content).
     pub text: Option<String>,
-    /// Unix timestamp
+    /// Message timestamp (seconds since epoch).
     pub date: i64,
-    /// Thread ID (for forum topics)
+    /// Optional forum topic/thread identifier.
     pub thread_id: Option<i64>,
 }
 
-/// Telegram reaction payload
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Payload for a reaction event.
 pub struct TelegramReactionPayload {
-    /// Message ID
+    /// Message identifier the reaction applies to.
     pub message_id: i64,
-    /// Chat information
+    /// Chat where the reaction occurred.
     pub chat: TelegramChat,
-    /// User who reacted
+    /// User who reacted, if available.
     pub from_user: Option<TelegramUser>,
-    /// Reaction emoji
+    /// Reaction identifier (e.g. emoji).
     pub reaction: String,
-    /// Unix timestamp
+    /// Reaction timestamp (seconds since epoch).
     pub date: i64,
 }
 
-/// Telegram world (chat) payload
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Payload describing the bot's current world/chat context.
 pub struct TelegramWorldPayload {
-    /// Chat information
+    /// The chat representing the "world".
     pub chat: TelegramChat,
-    /// Bot username
+    /// Bot username (without `@`), when available.
     pub bot_username: Option<String>,
 }
 
-/// Action type for entity events
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+/// Membership/action performed by an entity (user) in a chat.
 pub enum EntityAction {
-    /// Entity joined
+    /// Entity joined the chat.
     Joined,
-    /// Entity left
+    /// Entity left the chat.
     Left,
-    /// Entity updated
+    /// Entity information was updated.
     Updated,
 }
 
-/// Telegram entity (user) payload
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Payload describing a user-related event in a chat.
 pub struct TelegramEntityPayload {
-    /// User information
+    /// The user entity.
     pub user: TelegramUser,
-    /// Chat information
+    /// The chat where the event occurred.
     pub chat: TelegramChat,
-    /// Action type
+    /// The action performed.
     pub action: EntityAction,
 }
 
-/// Callback query (button click) payload
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Payload for Telegram callback queries / button interactions.
 pub struct TelegramCallbackPayload {
-    /// Callback query ID
+    /// Callback query ID.
     pub id: String,
-    /// User who clicked
+    /// The user who triggered the callback.
     pub from_user: TelegramUser,
-    /// Chat where button was clicked
+    /// Optional chat context (may be absent for some callback types).
     pub chat: Option<TelegramChat>,
-    /// Message with the button
+    /// Optional message ID the callback relates to.
     pub message_id: Option<i64>,
-    /// Callback data
+    /// Optional callback data payload.
     pub data: Option<String>,
 }
 
-/// Settings for a Telegram chat
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Settings used by the Telegram plugin runtime.
 pub struct TelegramSettings {
-    /// Allowed chat IDs
+    /// If non-empty, only allow these chat IDs.
     pub allowed_chat_ids: Vec<i64>,
-    /// Whether to ignore bot messages
+    /// Whether to ignore messages from bots.
     pub should_ignore_bot_messages: bool,
-    /// Whether to only respond when mentioned
+    /// Whether to respond only to explicit mentions.
     pub should_respond_only_to_mentions: bool,
 }
 

@@ -1,5 +1,3 @@
-"""Cancel todo action for Todo plugin."""
-
 from __future__ import annotations
 
 import logging
@@ -24,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CancelTodoResult:
-    """Result of a cancel todo action."""
-
     success: bool
     text: str
     todo_id: UUID | None = None
@@ -40,19 +36,6 @@ async def handle_cancel_todo(
     callback: HandlerCallback | None = None,
     responses: list[Memory] | None = None,
 ) -> CancelTodoResult | None:
-    """Handle cancel todo action.
-
-    Args:
-        runtime: The agent runtime.
-        message: The message that triggered the action.
-        state: Optional state context.
-        options: Optional handler options.
-        callback: Optional callback for streaming responses.
-        responses: Optional previous responses.
-
-    Returns:
-        The action result.
-    """
     if not state:
         error_msg = "Unable to process request without state context."
         if callback:
@@ -79,7 +62,6 @@ async def handle_cancel_todo(
 
     data_service = create_todo_data_service(runtime.db if hasattr(runtime, "db") else None)
 
-    # Get all active todos for this room
     filters = TodoFilters(
         room_id=message.room_id,
         is_completed=False,
@@ -98,13 +80,11 @@ async def handle_cancel_todo(
             )
         return CancelTodoResult(success=False, text=error_msg)
 
-    # Extract which task to cancel
     task_id = None
     if options and options.parameters and "task_id" in options.parameters:
         task_id = UUID(str(options.parameters["task_id"]))
 
     if not task_id:
-        # Use first task as default
         task = available_tasks[0]
     else:
         task = next((t for t in available_tasks if t.id == task_id), None)
@@ -126,7 +106,6 @@ async def handle_cancel_todo(
                 success=False, text=error_msg, error="Could not determine which task to cancel"
             )
 
-    # Delete the task
     await data_service.delete_todo(task.id)
     task_name = task.name or "task"
 
@@ -145,16 +124,6 @@ async def handle_cancel_todo(
 async def validate_cancel_todo(
     runtime: IAgentRuntime, message: Memory, state: State | None = None
 ) -> bool:
-    """Validate if cancel todo action can be executed.
-
-    Args:
-        runtime: The agent runtime.
-        message: The message.
-        state: Optional state.
-
-    Returns:
-        True if there are active todos to cancel.
-    """
     if not message.room_id:
         return False
 
@@ -167,7 +136,6 @@ async def validate_cancel_todo(
     return len(todos) > 0
 
 
-# Action definition for elizaOS integration
 CANCEL_TODO_ACTION = {
     "name": "CANCEL_TODO",
     "similes": ["DELETE_TODO", "REMOVE_TASK", "DELETE_TASK", "REMOVE_TODO"],

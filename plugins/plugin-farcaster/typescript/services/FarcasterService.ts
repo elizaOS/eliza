@@ -1,7 +1,3 @@
-/**
- * Main Farcaster service implementation.
- */
-
 import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import { FarcasterAgentManager } from "../managers/AgentManager";
 import { FARCASTER_SERVICE_NAME } from "../types";
@@ -9,11 +5,6 @@ import { getFarcasterFid, hasFarcasterEnabled, validateFarcasterConfig } from ".
 import { FarcasterCastService } from "./CastService";
 import { FarcasterMessageService } from "./MessageService";
 
-/**
- * Main Farcaster service for elizaOS.
- *
- * Manages Farcaster agents, message services, and cast services.
- */
 export class FarcasterService extends Service {
   private static instance?: FarcasterService;
   private managers = new Map<UUID, FarcasterAgentManager>();

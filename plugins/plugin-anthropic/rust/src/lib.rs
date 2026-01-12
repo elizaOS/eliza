@@ -39,7 +39,10 @@ pub use client::AnthropicClient;
 pub use config::AnthropicConfig;
 pub use error::{AnthropicError, Result};
 pub use models::{Model, ModelSize};
-pub use types::{ContentBlock, Message, ObjectGenerationParams, Role, TextGenerationParams, TextGenerationResponse};
+pub use types::{
+    ContentBlock, Message, ObjectGenerationParams, Role, TextGenerationParams,
+    TextGenerationResponse,
+};
 
 /// Creates an Anthropic client using environment variables for configuration.
 ///

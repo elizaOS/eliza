@@ -1,27 +1,11 @@
-/**
- * Type definitions for the Todo Plugin
- */
-
 import type { UUID } from "@elizaos/core";
 
-/**
- * Task types supported by the plugin
- */
 export type TaskType = "daily" | "one-off" | "aspirational";
 
-/**
- * Priority levels (1 = highest, 4 = lowest)
- */
 export type Priority = 1 | 2 | 3 | 4;
 
-/**
- * Recurring patterns for daily tasks
- */
 export type RecurringPattern = "daily" | "weekly" | "monthly";
 
-/**
- * Core todo item structure
- */
 export interface Todo {
   id: UUID;
   agentId: UUID;
@@ -42,9 +26,6 @@ export interface Todo {
   tags?: string[];
 }
 
-/**
- * Metadata stored with todos
- */
 export interface TodoMetadata {
   createdAt?: string;
   description?: string;
@@ -58,9 +39,6 @@ export interface TodoMetadata {
   [key: string]: string | number | boolean | undefined;
 }
 
-/**
- * Parameters for creating a new todo
- */
 export interface CreateTodoParams {
   agentId: UUID;
   worldId: UUID;
@@ -76,9 +54,6 @@ export interface CreateTodoParams {
   tags?: string[];
 }
 
-/**
- * Parameters for updating a todo
- */
 export interface UpdateTodoParams {
   name?: string;
   description?: string;
@@ -104,9 +79,6 @@ export interface TodoFilters {
   limit?: number;
 }
 
-/**
- * Reminder message structure
- */
 export interface ReminderMessage {
   entityId: UUID;
   message: string;
@@ -120,34 +92,14 @@ export interface ReminderMessage {
   };
 }
 
-/**
- * Notification types
- */
 export type NotificationType = "overdue" | "upcoming" | "daily" | "system";
 
-/**
- * Plugin configuration
- */
 export interface TodoPluginConfig {
-  /**
-   * Enable reminder notifications
-   */
   enableReminders?: boolean;
-
-  /**
-   * Reminder check interval in milliseconds
-   */
   reminderInterval?: number;
-
-  /**
-   * Enable integration with external plugins
-   */
   enableIntegrations?: boolean;
 }
 
-/**
- * Task input parsed from user messages
- */
 export interface TodoTaskInput {
   name: string;
   description?: string;
@@ -158,18 +110,12 @@ export interface TodoTaskInput {
   recurring?: RecurringPattern;
 }
 
-/**
- * Task selection from extraction
- */
 export interface TaskSelection {
   taskId: string;
   taskName: string;
   isFound: boolean;
 }
 
-/**
- * Task update properties
- */
 export interface TaskUpdate {
   name?: string;
   description?: string;
@@ -179,18 +125,12 @@ export interface TaskUpdate {
   recurring?: RecurringPattern;
 }
 
-/**
- * Confirmation response from user
- */
 export interface ConfirmationResponse {
   isConfirmation: boolean;
   shouldProceed: boolean;
   modifications?: string;
 }
 
-/**
- * Structured API response for todos
- */
 export interface StructuredTodoResponse {
   worldId: UUID;
   worldName: string;

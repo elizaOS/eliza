@@ -1,63 +1,42 @@
 #![allow(missing_docs)]
-//! HTTP client for communicating with TEE services.
 
 use crate::error::{Result, TeeError};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-/// HTTP client for communicating with TEE services.
-///
-/// This client provides an interface to the TEE backend services,
-/// similar to the TappdClient from the DStack SDK.
 #[derive(Debug, Clone)]
 pub struct TeeClient {
     client: Client,
     endpoint: String,
 }
 
-/// Response from key derivation.
 #[derive(Debug, Deserialize)]
 pub struct DeriveKeyResponse {
-    /// The derived key (hex-encoded).
     pub key: String,
 }
 
-/// Response from TDX quote generation.
 #[derive(Debug, Deserialize)]
 pub struct TdxQuoteResponse {
-    /// The attestation quote (hex-encoded).
     pub quote: String,
-    /// RTMR values.
     #[serde(default)]
     pub rtmrs: Vec<String>,
 }
 
-/// Request for key derivation.
 #[derive(Debug, Serialize)]
 pub struct DeriveKeyRequest {
-    /// The derivation path.
     pub path: String,
-    /// The subject for the certificate chain.
     pub subject: String,
 }
 
-/// Request for TDX quote.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TdxQuoteRequest {
-    /// The data to include in the report.
     pub report_data: String,
-    /// Optional hash algorithm.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hash_algorithm: Option<String>,
 }
 
 impl TeeClient {
-    /// Create a new TEE client.
-    ///
-    /// # Arguments
-    ///
-    /// * `endpoint` - The TEE service endpoint URL. None for production default.
     pub fn new(endpoint: Option<String>) -> Self {
         let endpoint = endpoint.unwrap_or_else(|| "https://api.phala.network/tee".to_string());
         let client = Client::builder()
@@ -68,16 +47,6 @@ impl TeeClient {
         Self { client, endpoint }
     }
 
-    /// Derive a key from the TEE.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - The derivation path.
-    /// * `subject` - The subject for the certificate chain.
-    ///
-    /// # Returns
-    ///
-    /// The derived key bytes.
     pub async fn derive_key(&self, path: &str, subject: &str) -> Result<Vec<u8>> {
         let request = DeriveKeyRequest {
             path: path.to_string(),
@@ -104,16 +73,6 @@ impl TeeClient {
         hex::decode(&result.key).map_err(TeeError::from)
     }
 
-    /// Generate a TDX attestation quote.
-    ///
-    /// # Arguments
-    ///
-    /// * `report_data` - The data to include in the attestation report.
-    /// * `hash_algorithm` - Optional hash algorithm for the quote.
-    ///
-    /// # Returns
-    ///
-    /// The TDX quote response.
     pub async fn tdx_quote(
         &self,
         report_data: &str,
@@ -145,19 +104,9 @@ impl TeeClient {
     }
 }
 
-/// Upload attestation quote to proof service.
-///
-/// # Arguments
-///
-/// * `data` - The attestation quote data.
-///
-/// # Returns
-///
-/// The response from the upload service with checksum.
 pub async fn upload_attestation_quote(data: &[u8]) -> Result<UploadResponse> {
     let client = Client::new();
 
-    // Create multipart form
     let part = reqwest::multipart::Part::bytes(data.to_vec())
         .file_name("quote.bin")
         .mime_str("application/octet-stream")
@@ -184,16 +133,10 @@ pub async fn upload_attestation_quote(data: &[u8]) -> Result<UploadResponse> {
     Ok(result)
 }
 
-/// Response from attestation upload.
 #[derive(Debug, Deserialize)]
 pub struct UploadResponse {
-    /// The checksum of the uploaded file.
     pub checksum: String,
 }
-
-
-
-
 
 
 

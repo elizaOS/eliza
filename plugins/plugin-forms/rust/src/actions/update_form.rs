@@ -1,25 +1,24 @@
-use regex::Regex;
 use super::{Action, ActionExample};
+use regex::Regex;
 
 pub struct UpdateFormAction;
 
 impl UpdateFormAction {
     pub fn contains_form_input(text: &str) -> bool {
         let lower = text.to_lowercase();
-        
-        if lower.contains("my name is") 
-            || lower.contains("i am")
-            || lower.contains("@")  // Email
+
+        if lower.contains("my name is") || lower.contains("i am") || lower.contains("@")
+        // Email
         {
             return true;
         }
-        
+
         if let Ok(re) = Regex::new(r"\d{2,}") {
             if re.is_match(&lower) {
                 return true;
             }
         }
-        
+
         text.len() > 5
     }
 }
@@ -37,15 +36,20 @@ impl Action for UpdateFormAction {
         "Updates an active form with values extracted from the user message"
     }
 
-    fn validate(&self, message_text: &str, has_active_forms: bool, has_forms_service: bool) -> bool {
+    fn validate(
+        &self,
+        message_text: &str,
+        has_active_forms: bool,
+        has_forms_service: bool,
+    ) -> bool {
         if !has_forms_service {
             return false;
         }
-        
+
         if !has_active_forms {
             return false;
         }
-        
+
         Self::contains_form_input(message_text)
     }
 
@@ -94,16 +98,20 @@ mod tests {
         // Should detect name patterns
         assert!(UpdateFormAction::contains_form_input("My name is John"));
         assert!(UpdateFormAction::contains_form_input("I am 25 years old"));
-        
+
         // Should detect email
         assert!(UpdateFormAction::contains_form_input("john@example.com"));
-        
+
         // Should detect numbers
-        assert!(UpdateFormAction::contains_form_input("My phone is 1234567890"));
-        
+        assert!(UpdateFormAction::contains_form_input(
+            "My phone is 1234567890"
+        ));
+
         // Should accept longer text as potential input
-        assert!(UpdateFormAction::contains_form_input("This is some longer message"));
-        
+        assert!(UpdateFormAction::contains_form_input(
+            "This is some longer message"
+        ));
+
         // Should reject very short messages
         assert!(!UpdateFormAction::contains_form_input("Hi"));
     }
@@ -111,13 +119,13 @@ mod tests {
     #[test]
     fn test_validate() {
         let action = UpdateFormAction;
-        
+
         // Should validate when service available and has active forms
         assert!(action.validate("My name is John Smith", true, true));
-        
+
         // Should not validate without service
         assert!(!action.validate("My name is John Smith", true, false));
-        
+
         // Should not validate without active forms
         assert!(!action.validate("My name is John Smith", false, true));
     }
@@ -127,7 +135,7 @@ mod tests {
         let action = UpdateFormAction;
         let examples = action.examples();
         assert!(examples.len() >= 2);
-        
+
         // Check that UPDATE_FORM action is in examples
         let has_update = examples.iter().any(|e| e.actions.contains(&"UPDATE_FORM"));
         assert!(has_update);

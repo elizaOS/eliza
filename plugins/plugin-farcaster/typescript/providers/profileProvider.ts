@@ -1,7 +1,3 @@
-/**
- * Profile provider for Farcaster.
- */
-
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { FarcasterService } from "../services/FarcasterService";
 import { FARCASTER_SERVICE_NAME } from "../types";

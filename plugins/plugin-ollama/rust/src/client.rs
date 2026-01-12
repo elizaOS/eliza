@@ -3,7 +3,6 @@
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use std::collections::HashMap;
 use std::time::Duration;
-use tracing::{debug, error};
 
 use crate::config::OllamaConfig;
 use crate::error::{OllamaError, Result};
@@ -69,7 +68,6 @@ impl OllamaClient {
             return Ok(true);
         }
 
-        debug!("Model {} not found, attempting to pull", model);
         let pull_request = PullRequest {
             model: model.to_string(),
             stream: false,
@@ -106,8 +104,6 @@ impl OllamaClient {
         params: TextGenerationParams,
         model: &str,
     ) -> Result<TextGenerationResponse> {
-        debug!(model = %model, "Generating text");
-
         self.ensure_model_available(model).await?;
 
         let mut options: HashMap<String, serde_json::Value> = HashMap::new();
@@ -172,8 +168,6 @@ impl OllamaClient {
         params: ObjectGenerationParams,
         model: &str,
     ) -> Result<ObjectGenerationResponse> {
-        debug!(model = %model, "Generating JSON object");
-
         self.ensure_model_available(model).await?;
 
         let json_prompt = if params.prompt.contains("```json")
@@ -229,8 +223,6 @@ impl OllamaClient {
 
     pub async fn generate_embedding(&self, params: EmbeddingParams) -> Result<EmbeddingResponse> {
         let model = self.config.embedding_model();
-        debug!(model = %model, "Generating embedding");
-
         self.ensure_model_available(model).await?;
 
         let request = EmbeddingsRequest {
@@ -304,7 +296,6 @@ impl OllamaClient {
             }
         }
 
-        error!("Failed to extract JSON from response: {}", text);
         Ok(serde_json::json!({}))
     }
 

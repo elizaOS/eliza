@@ -1,7 +1,3 @@
-"""
-Configuration for the Farcaster plugin.
-"""
-
 from __future__ import annotations
 
 import os
@@ -19,79 +15,24 @@ from elizaos_plugin_farcaster.types import (
 
 @dataclass
 class FarcasterConfig:
-    """Configuration for the Farcaster client."""
-
-    # Required settings
     fid: int
-    """Farcaster ID (FID) for the account."""
-
     signer_uuid: str
-    """Neynar signer UUID for signing casts."""
-
     neynar_api_key: str
-    """Neynar API key for API access."""
-
-    # Optional settings
     dry_run: bool = False
-    """Enable dry run mode (operations are simulated but not executed)."""
-
     mode: Literal["polling", "webhook"] = "polling"
-    """Operation mode: 'polling' or 'webhook'."""
-
     max_cast_length: int = DEFAULT_MAX_CAST_LENGTH
-    """Maximum cast length in characters."""
-
     poll_interval: int = DEFAULT_POLL_INTERVAL
-    """Polling interval in seconds."""
-
     enable_cast: bool = True
-    """Enable auto-casting."""
-
     cast_interval_min: int = DEFAULT_CAST_INTERVAL_MIN
-    """Minimum interval between casts in minutes."""
-
     cast_interval_max: int = DEFAULT_CAST_INTERVAL_MAX
-    """Maximum interval between casts in minutes."""
-
     enable_action_processing: bool = True
-    """Enable action processing for Farcaster events."""
-
     action_interval: int = 1000
-    """Interval between action processing cycles in milliseconds."""
-
     cast_immediately: bool = True
-    """Post casts immediately instead of waiting for schedule."""
-
     max_actions_processing: int = 10
-    """Maximum number of actions to process in a batch."""
-
     hub_url: str | None = None
-    """Optional custom Farcaster hub URL."""
 
     @classmethod
     def from_env(cls) -> FarcasterConfig:
-        """
-        Create configuration from environment variables.
-
-        Required environment variables:
-        - FARCASTER_FID: Farcaster ID
-        - FARCASTER_SIGNER_UUID: Neynar signer UUID
-        - FARCASTER_NEYNAR_API_KEY: Neynar API key
-
-        Optional environment variables:
-        - FARCASTER_DRY_RUN: Enable dry run mode
-        - FARCASTER_MODE: 'polling' or 'webhook'
-        - MAX_CAST_LENGTH: Maximum cast length
-        - FARCASTER_POLL_INTERVAL: Polling interval in seconds
-        - ENABLE_CAST: Enable auto-casting
-        - CAST_INTERVAL_MIN: Min cast interval in minutes
-        - CAST_INTERVAL_MAX: Max cast interval in minutes
-        - FARCASTER_HUB_URL: Custom hub URL
-
-        Raises:
-            ConfigError: If required environment variables are missing.
-        """
-        # Required settings
         fid_str = os.getenv("FARCASTER_FID")
         if not fid_str:
             raise ConfigError("FARCASTER_FID environment variable is required")
@@ -108,7 +49,6 @@ class FarcasterConfig:
         if not neynar_api_key:
             raise ConfigError("FARCASTER_NEYNAR_API_KEY environment variable is required")
 
-        # Optional settings
         dry_run = os.getenv("FARCASTER_DRY_RUN", "false").lower() == "true"
 
         mode_str = os.getenv("FARCASTER_MODE", "polling")
@@ -138,12 +78,6 @@ class FarcasterConfig:
         )
 
     def validate(self) -> None:
-        """
-        Validate the configuration.
-
-        Raises:
-            ConfigError: If configuration is invalid.
-        """
         if self.fid < 1:
             raise ConfigError("FARCASTER_FID must be a positive integer")
         if not self.signer_uuid:

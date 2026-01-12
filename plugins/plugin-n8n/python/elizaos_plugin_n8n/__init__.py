@@ -15,9 +15,11 @@ from elizaos_plugin_n8n.errors import (
     ValidationError,
 )
 from elizaos_plugin_n8n.models import ClaudeModel, JobStatus
+from elizaos_plugin_n8n.service import PluginCreationService
 from elizaos_plugin_n8n.providers import (
     PluginCreationCapabilitiesProvider,
     PluginCreationStatusProvider,
+    PluginExistsCheckProvider,
     PluginExistsProvider,
     PluginRegistryProvider,
 )
@@ -41,6 +43,7 @@ __version__ = "1.0.0"
 
 __all__ = [
     "PluginCreationClient",
+    "PluginCreationService",
     "N8nConfig",
     "N8nError",
     "ApiKeyError",
@@ -56,6 +59,7 @@ __all__ = [
     "PluginCreationCapabilitiesProvider",
     "PluginRegistryProvider",
     "PluginExistsProvider",
+    "PluginExistsCheckProvider",
     "ClaudeModel",
     "JobStatus",
     "ActionSpecification",

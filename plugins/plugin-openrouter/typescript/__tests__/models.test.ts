@@ -1,10 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, beforeAll, describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, test } from "vitest";
 import { openrouterPlugin } from "../index";
 
-/**
- * Creates a REAL AgentRuntime for testing - NO MOCKS.
- */
 async function createTestRuntime(settings: Record<string, string> = {}): Promise<{
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;
@@ -69,11 +66,6 @@ describe("OpenRouter Plugin", () => {
     }
   });
 
-  afterEach(async () => {
-    // Cleanup happens after all tests
-  });
-
-  // Cleanup after all tests
   afterAll(async () => {
     if (cleanup) {
       await cleanup();
@@ -99,7 +91,7 @@ describe("OpenRouter Plugin", () => {
       } else {
         console.warn("TEXT_SMALL model not available");
       }
-    }, 30000); // Increase timeout for API call
+    }, 30000);
   });
 
   describe("TEXT_LARGE Model", () => {
@@ -121,7 +113,7 @@ describe("OpenRouter Plugin", () => {
       } else {
         console.warn("TEXT_LARGE model not available");
       }
-    }, 30000); // Increase timeout for API call
+    }, 30000);
   });
 
   describe("OBJECT_SMALL Model", () => {
@@ -143,7 +135,7 @@ describe("OpenRouter Plugin", () => {
       } else {
         console.warn("OBJECT_SMALL model not available");
       }
-    }, 30000); // Increase timeout for API call
+    }, 30000);
   });
 
   describe("OBJECT_LARGE Model", () => {
@@ -165,7 +157,7 @@ describe("OpenRouter Plugin", () => {
       } else {
         console.warn("OBJECT_LARGE model not available");
       }
-    }, 500000); // Increase timeout for API call
+    }, 500000);
   });
 
   describe("IMAGE_DESCRIPTION Model", () => {
@@ -193,7 +185,7 @@ describe("OpenRouter Plugin", () => {
       } else {
         console.warn("IMAGE_DESCRIPTION model not available");
       }
-    }, 500000); // Increase timeout for API call
+    }, 500000);
 
     test("should describe an image with custom prompt", async () => {
       if (!process.env.OPENROUTER_API_KEY) {
@@ -201,7 +193,6 @@ describe("OpenRouter Plugin", () => {
         return;
       }
 
-      // Use a public domain test image
       const imageUrl =
         "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Gull_portrait_ca_usa.jpg/1280px-Gull_portrait_ca_usa.jpg";
       const customPrompt =
@@ -224,7 +215,7 @@ describe("OpenRouter Plugin", () => {
       } else {
         console.warn("IMAGE_DESCRIPTION model not available");
       }
-    }, 500000); // Increase timeout for API call
+    }, 500000);
   });
 
   describe("TEXT_EMBEDDING Model", () => {
@@ -247,7 +238,7 @@ describe("OpenRouter Plugin", () => {
       } else {
         console.warn("TEXT_EMBEDDING model not available");
       }
-    }, 30000); // Increase timeout for API call
+    }, 30000);
 
     test("should handle string input for embeddings", async () => {
       if (!process.env.OPENROUTER_API_KEY) {
@@ -268,7 +259,7 @@ describe("OpenRouter Plugin", () => {
       } else {
         console.warn("TEXT_EMBEDDING model not available");
       }
-    }, 30000); // Increase timeout for API call
+    }, 30000);
 
     test("should return test vector for null input", async () => {
       if (openrouterPlugin.models?.TEXT_EMBEDDING) {
@@ -285,6 +276,3 @@ describe("OpenRouter Plugin", () => {
     });
   });
 });
-
-// Add missing afterAll
-declare function afterAll(fn: () => Promise<void>): void;

@@ -267,24 +267,26 @@ export class WebhookVerificationError extends GitHubError {
   }
 }
 
+interface OctokitErrorResponse {
+  status: number;
+  message?: string;
+  response?: {
+    headers?: {
+      "retry-after"?: string;
+      "x-ratelimit-remaining"?: string;
+      "x-ratelimit-reset"?: string;
+    };
+    data?: {
+      message?: string;
+      errors?: Array<{ code?: string; field?: string; message?: string }>;
+      documentation_url?: string;
+    };
+  };
+}
+
 export function mapOctokitError(error: unknown, owner: string, repo: string): GitHubError {
   if (error && typeof error === "object" && "status" in error && typeof error.status === "number") {
-    const err = error as {
-      status: number;
-      message?: string;
-      response?: {
-        headers?: {
-          "retry-after"?: string;
-          "x-ratelimit-remaining"?: string;
-          "x-ratelimit-reset"?: string;
-        };
-        data?: {
-          message?: string;
-          errors?: Array<{ code?: string; field?: string; message?: string }>;
-          documentation_url?: string;
-        };
-      };
-    };
+    const err = error as OctokitErrorResponse;
 
     const message = err.response?.data?.message ?? err.message ?? "Unknown error";
     const docUrl = err.response?.data?.documentation_url ?? null;

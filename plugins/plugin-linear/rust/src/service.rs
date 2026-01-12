@@ -404,11 +404,10 @@ impl LinearService {
 
         match self.execute_query(queries::TEAM, Some(variables)).await {
             Ok(data) => {
-                let team: Team = serde_json::from_value(
-                    data.get("team").cloned().ok_or_else(|| {
+                let team: Team =
+                    serde_json::from_value(data.get("team").cloned().ok_or_else(|| {
                         LinearError::NotFound(format!("Team {} not found", team_id))
-                    })?,
-                )?;
+                    })?)?;
 
                 self.log_activity(
                     "get_team",
@@ -462,25 +461,29 @@ impl LinearService {
 
         let variables = json!({ "input": issue_input });
 
-        match self.execute_query(queries::CREATE_ISSUE, Some(variables)).await {
+        match self
+            .execute_query(queries::CREATE_ISSUE, Some(variables))
+            .await
+        {
             Ok(data) => {
-                let result = data.get("issueCreate").ok_or_else(|| {
-                    LinearError::Api {
-                        status: 500,
-                        message: "No issueCreate in response".to_string(),
-                    }
+                let result = data.get("issueCreate").ok_or_else(|| LinearError::Api {
+                    status: 500,
+                    message: "No issueCreate in response".to_string(),
                 })?;
 
-                if !result.get("success").and_then(|s| s.as_bool()).unwrap_or(false) {
+                if !result
+                    .get("success")
+                    .and_then(|s| s.as_bool())
+                    .unwrap_or(false)
+                {
                     return Err(LinearError::Api {
                         status: 400,
                         message: "Failed to create issue".to_string(),
                     });
                 }
 
-                let issue: Issue = serde_json::from_value(
-                    result.get("issue").cloned().unwrap_or(json!({})),
-                )?;
+                let issue: Issue =
+                    serde_json::from_value(result.get("issue").cloned().unwrap_or(json!({})))?;
 
                 self.log_activity(
                     "create_issue",
@@ -512,11 +515,10 @@ impl LinearService {
 
         match self.execute_query(queries::ISSUE, Some(variables)).await {
             Ok(data) => {
-                let issue: Issue = serde_json::from_value(
-                    data.get("issue").cloned().ok_or_else(|| {
+                let issue: Issue =
+                    serde_json::from_value(data.get("issue").cloned().ok_or_else(|| {
                         LinearError::NotFound(format!("Issue {} not found", issue_id))
-                    })?,
-                )?;
+                    })?)?;
 
                 self.log_activity(
                     "get_issue",
@@ -549,25 +551,29 @@ impl LinearService {
             "input": updates,
         });
 
-        match self.execute_query(queries::UPDATE_ISSUE, Some(variables)).await {
+        match self
+            .execute_query(queries::UPDATE_ISSUE, Some(variables))
+            .await
+        {
             Ok(data) => {
-                let result = data.get("issueUpdate").ok_or_else(|| {
-                    LinearError::Api {
-                        status: 500,
-                        message: "No issueUpdate in response".to_string(),
-                    }
+                let result = data.get("issueUpdate").ok_or_else(|| LinearError::Api {
+                    status: 500,
+                    message: "No issueUpdate in response".to_string(),
                 })?;
 
-                if !result.get("success").and_then(|s| s.as_bool()).unwrap_or(false) {
+                if !result
+                    .get("success")
+                    .and_then(|s| s.as_bool())
+                    .unwrap_or(false)
+                {
                     return Err(LinearError::Api {
                         status: 400,
                         message: "Failed to update issue".to_string(),
                     });
                 }
 
-                let issue: Issue = serde_json::from_value(
-                    result.get("issue").cloned().unwrap_or(json!({})),
-                )?;
+                let issue: Issue =
+                    serde_json::from_value(result.get("issue").cloned().unwrap_or(json!({})))?;
 
                 self.log_activity(
                     "update_issue",
@@ -597,16 +603,21 @@ impl LinearService {
     pub async fn delete_issue(&self, issue_id: &str) -> Result<()> {
         let variables = json!({ "id": issue_id });
 
-        match self.execute_query(queries::ARCHIVE_ISSUE, Some(variables)).await {
+        match self
+            .execute_query(queries::ARCHIVE_ISSUE, Some(variables))
+            .await
+        {
             Ok(data) => {
-                let result = data.get("issueArchive").ok_or_else(|| {
-                    LinearError::Api {
-                        status: 500,
-                        message: "No issueArchive in response".to_string(),
-                    }
+                let result = data.get("issueArchive").ok_or_else(|| LinearError::Api {
+                    status: 500,
+                    message: "No issueArchive in response".to_string(),
                 })?;
 
-                if !result.get("success").and_then(|s| s.as_bool()).unwrap_or(false) {
+                if !result
+                    .get("success")
+                    .and_then(|s| s.as_bool())
+                    .unwrap_or(false)
+                {
                     return Err(LinearError::Api {
                         status: 400,
                         message: "Failed to archive issue".to_string(),
@@ -717,25 +728,29 @@ impl LinearService {
             }
         });
 
-        match self.execute_query(queries::CREATE_COMMENT, Some(variables)).await {
+        match self
+            .execute_query(queries::CREATE_COMMENT, Some(variables))
+            .await
+        {
             Ok(data) => {
-                let result = data.get("commentCreate").ok_or_else(|| {
-                    LinearError::Api {
-                        status: 500,
-                        message: "No commentCreate in response".to_string(),
-                    }
+                let result = data.get("commentCreate").ok_or_else(|| LinearError::Api {
+                    status: 500,
+                    message: "No commentCreate in response".to_string(),
                 })?;
 
-                if !result.get("success").and_then(|s| s.as_bool()).unwrap_or(false) {
+                if !result
+                    .get("success")
+                    .and_then(|s| s.as_bool())
+                    .unwrap_or(false)
+                {
                     return Err(LinearError::Api {
                         status: 400,
                         message: "Failed to create comment".to_string(),
                     });
                 }
 
-                let comment: Comment = serde_json::from_value(
-                    result.get("comment").cloned().unwrap_or(json!({})),
-                )?;
+                let comment: Comment =
+                    serde_json::from_value(result.get("comment").cloned().unwrap_or(json!({})))?;
 
                 self.log_activity(
                     "create_comment",
@@ -810,7 +825,7 @@ impl LinearService {
 
     pub async fn get_project(&self, project_id: &str) -> Result<Project> {
         let projects = self.get_projects(None).await?;
-        
+
         let project = projects
             .into_iter()
             .find(|p| p.id == project_id)
@@ -866,11 +881,10 @@ impl LinearService {
     pub async fn get_current_user(&self) -> Result<User> {
         match self.execute_query(queries::VIEWER, None).await {
             Ok(data) => {
-                let user: User = serde_json::from_value(
-                    data.get("viewer").cloned().ok_or_else(|| {
+                let user: User =
+                    serde_json::from_value(data.get("viewer").cloned().ok_or_else(|| {
                         LinearError::Authentication("Failed to get current user".to_string())
-                    })?,
-                )?;
+                    })?)?;
 
                 self.log_activity(
                     "get_current_user",
@@ -945,7 +959,10 @@ impl LinearService {
             }
         });
 
-        match self.execute_query(queries::WORKFLOW_STATES, Some(variables)).await {
+        match self
+            .execute_query(queries::WORKFLOW_STATES, Some(variables))
+            .await
+        {
             Ok(data) => {
                 let states: Vec<WorkflowState> = serde_json::from_value(
                     data.get("workflowStates")
@@ -1039,4 +1056,3 @@ mod tests {
         assert!(service.get_activity_log(None).is_empty());
     }
 }
-

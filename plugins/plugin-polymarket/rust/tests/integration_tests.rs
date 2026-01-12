@@ -1,9 +1,8 @@
 //! Integration tests for polymarket plugin.
 
 use elizaos_plugin_polymarket::types::{
-    Token, OrderSide, OrderType, OrderStatus, TradeStatus,
-    BookEntry, OrderBook, Position, Balance, ApiKeyType, ApiKeyStatus,
-    MarketFilters, GetTradesParams, TokenPrice, PriceHistoryEntry,
+    ApiKeyStatus, ApiKeyType, Balance, BookEntry, GetTradesParams, MarketFilters, OrderBook,
+    OrderSide, OrderStatus, OrderType, Position, PriceHistoryEntry, Token, TokenPrice, TradeStatus,
 };
 
 #[test]
@@ -12,11 +11,11 @@ fn test_token_serialization() {
         token_id: "token-123".to_string(),
         outcome: "YES".to_string(),
     };
-    
+
     let json = serde_json::to_string(&token).unwrap();
     assert!(json.contains("token-123"));
     assert!(json.contains("YES"));
-    
+
     let parsed: Token = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.token_id, "token-123");
     assert_eq!(parsed.outcome, "YES");
@@ -54,7 +53,7 @@ fn test_order_status_serialization() {
     let status = OrderStatus::Open;
     let json = serde_json::to_string(&status).unwrap();
     assert!(json.contains("OPEN"));
-    
+
     let status = OrderStatus::Filled;
     let json = serde_json::to_string(&status).unwrap();
     assert!(json.contains("FILLED"));
@@ -65,7 +64,7 @@ fn test_trade_status_serialization() {
     let status = TradeStatus::Matched;
     let json = serde_json::to_string(&status).unwrap();
     assert!(json.contains("MATCHED"));
-    
+
     let status = TradeStatus::Confirmed;
     let json = serde_json::to_string(&status).unwrap();
     assert!(json.contains("CONFIRMED"));
@@ -77,7 +76,7 @@ fn test_book_entry_serialization() {
         price: "0.65".to_string(),
         size: "100".to_string(),
     };
-    
+
     let json = serde_json::to_string(&entry).unwrap();
     assert!(json.contains("0.65"));
     assert!(json.contains("100"));
@@ -88,14 +87,16 @@ fn test_order_book_serialization() {
     let book = OrderBook {
         market: "market-1".to_string(),
         asset_id: "asset-1".to_string(),
-        bids: vec![
-            BookEntry { price: "0.60".to_string(), size: "50".to_string() },
-        ],
-        asks: vec![
-            BookEntry { price: "0.65".to_string(), size: "75".to_string() },
-        ],
+        bids: vec![BookEntry {
+            price: "0.60".to_string(),
+            size: "50".to_string(),
+        }],
+        asks: vec![BookEntry {
+            price: "0.65".to_string(),
+            size: "75".to_string(),
+        }],
     };
-    
+
     let json = serde_json::to_string(&book).unwrap();
     assert!(json.contains("market-1"));
     assert!(json.contains("bids"));
@@ -112,7 +113,7 @@ fn test_position_serialization() {
         realized_pnl: "10".to_string(),
         unrealized_pnl: "5".to_string(),
     };
-    
+
     let json = serde_json::to_string(&position).unwrap();
     assert!(json.contains("market-1"));
     assert!(json.contains("average_price"));
@@ -126,7 +127,7 @@ fn test_balance_serialization() {
         symbol: "USDC".to_string(),
         decimals: 6,
     };
-    
+
     let json = serde_json::to_string(&balance).unwrap();
     assert!(json.contains("USDC"));
     assert!(json.contains("1000"));
@@ -137,7 +138,7 @@ fn test_api_key_type_serialization() {
     let key_type = ApiKeyType::ReadOnly;
     let json = serde_json::to_string(&key_type).unwrap();
     assert_eq!(json, "\"read_only\"");
-    
+
     let key_type = ApiKeyType::ReadWrite;
     let json = serde_json::to_string(&key_type).unwrap();
     assert_eq!(json, "\"read_write\"");
@@ -148,7 +149,7 @@ fn test_api_key_status_serialization() {
     let status = ApiKeyStatus::Active;
     let json = serde_json::to_string(&status).unwrap();
     assert_eq!(json, "\"active\"");
-    
+
     let status = ApiKeyStatus::Revoked;
     let json = serde_json::to_string(&status).unwrap();
     assert_eq!(json, "\"revoked\"");
@@ -176,7 +177,7 @@ fn test_token_price_serialization() {
         token_id: "token-1".to_string(),
         price: "0.72".to_string(),
     };
-    
+
     let json = serde_json::to_string(&price).unwrap();
     assert!(json.contains("token-1"));
     assert!(json.contains("0.72"));
@@ -189,7 +190,7 @@ fn test_price_history_entry_serialization() {
         price: "0.65".to_string(),
         volume: Some("1000".to_string()),
     };
-    
+
     let json = serde_json::to_string(&entry).unwrap();
     assert!(json.contains("2024-01-01"));
     assert!(json.contains("0.65"));

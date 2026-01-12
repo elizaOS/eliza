@@ -1,9 +1,3 @@
-"""
-Discord service implementation.
-
-Provides the main DiscordService for connecting to Discord and handling events.
-"""
-
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -37,28 +31,14 @@ from elizaos_plugin_discord.types import (
 
 logger = logging.getLogger(__name__)
 
-# Maximum message length for Discord
 MAX_MESSAGE_LENGTH = 2000
 
-# Type alias for event callbacks
 EventCallback = Callable[[DiscordEventType, dict], Awaitable[None]]
 MessageCallback = Callable[[DiscordMessagePayload], Awaitable[None]]
 
 
 class DiscordService:
-    """
-    Discord service for elizaOS.
-
-    Manages connection to Discord and handles all Discord operations.
-    """
-
     def __init__(self, config: DiscordConfig) -> None:
-        """
-        Create a new Discord service.
-
-        Args:
-            config: Discord configuration.
-        """
         self._config = config
         self._client: discord.Client | None = None
         self._is_running = False
@@ -67,44 +47,23 @@ class DiscordService:
 
     @property
     def config(self) -> DiscordConfig:
-        """Get the configuration."""
         return self._config
 
     @property
     def is_running(self) -> bool:
-        """Check if the service is running."""
         return self._is_running
 
     def on_event(self, callback: EventCallback) -> EventCallback:
-        """
-        Register an event callback (decorator).
-
-        Args:
-            callback: Async function to call when events occur.
-
-        Returns:
-            The callback (for use as decorator).
-        """
         self._event_callbacks.append(callback)
         return callback
 
     def on_message(self, callback: MessageCallback) -> MessageCallback:
-        """
-        Register a message callback (decorator).
-
-        Args:
-            callback: Async function to call when messages are received.
-
-        Returns:
-            The callback (for use as decorator).
-        """
         self._message_callbacks.append(callback)
         return callback
 
     async def _emit_event(
         self, event_type: DiscordEventType, payload: dict
     ) -> None:
-        """Emit an event to all registered callbacks."""
         for callback in self._event_callbacks:
             try:
                 await callback(event_type, payload)
@@ -112,7 +71,6 @@ class DiscordService:
                 logger.error(f"Error in event callback: {e}")
 
     async def _emit_message(self, payload: DiscordMessagePayload) -> None:
-        """Emit a message to all registered callbacks."""
         for callback in self._message_callbacks:
             try:
                 await callback(payload)
@@ -120,19 +78,11 @@ class DiscordService:
                 logger.error(f"Error in message callback: {e}")
 
     async def start(self) -> None:
-        """
-        Start the Discord service.
-
-        Raises:
-            AlreadyRunningError: If service is already running.
-            ConnectionFailedError: If connection to Discord fails.
-        """
         if self._is_running:
             raise AlreadyRunningError()
 
         logger.info("Starting Discord service...")
 
-        # Set up intents
         intents = Intents.default()
         intents.message_content = True
         intents.guilds = True
@@ -142,13 +92,10 @@ class DiscordService:
         intents.guild_reactions = True
         intents.members = True
 
-        # Create client
         self._client = discord.Client(intents=intents)
 
-        # Set up event handlers
         self._setup_event_handlers()
 
-        # Start client
         self._is_running = True
 
         try:
@@ -161,7 +108,6 @@ class DiscordService:
             raise ConnectionFailedError(str(e)) from e
 
     async def stop(self) -> None:
-        """Stop the Discord service."""
         logger.info("Stopping Discord service...")
 
         if self._client is not None:
@@ -172,7 +118,6 @@ class DiscordService:
         logger.info("Discord service stopped")
 
     def _setup_event_handlers(self) -> None:
-        """Set up Discord event handlers."""
         if self._client is None:
             return
 
@@ -199,28 +144,23 @@ class DiscordService:
             if self._client is None or self._client.user is None:
                 return
 
-            # Skip messages from self
             if message.author.id == self._client.user.id:
                 return
 
-            # Skip bot messages if configured
             if message.author.bot and self._config.should_ignore_bot_messages:
                 logger.debug(f"Ignoring bot message from {message.author.name}")
                 return
 
-            # Skip DMs if configured
             if message.guild is None and self._config.should_ignore_direct_messages:
                 logger.debug(f"Ignoring DM from {message.author.name}")
                 return
 
-            # Check channel allowlist
             if self._config.channel_ids:
                 channel_id_str = str(message.channel.id)
                 if channel_id_str not in self._config.channel_ids:
                     logger.debug(f"Ignoring message in non-allowed channel {channel_id_str}")
                     return
 
-            # Check if bot is mentioned (if respond only to mentions)
             if (
                 self._config.should_respond_only_to_mentions
                 and self._client.user not in message.mentions
@@ -228,7 +168,6 @@ class DiscordService:
                 logger.debug("Ignoring message without bot mention")
                 return
 
-            # Build payload
             payload = DiscordMessagePayload(
                 message_id=str(message.id),
                 channel_id=str(message.channel.id),
@@ -410,20 +349,6 @@ class DiscordService:
         channel_id: str,
         content: str,
     ) -> Snowflake:
-        """
-        Send a message to a channel.
-
-        Args:
-            channel_id: The channel ID to send to.
-            content: The message content.
-
-        Returns:
-            The ID of the sent message.
-
-        Raises:
-            ClientNotInitializedError: If client is not initialized.
-            InvalidArgumentError: If arguments are invalid.
-        """
         if self._client is None:
             raise ClientNotInitializedError()
 
@@ -436,7 +361,6 @@ class DiscordService:
         if not isinstance(channel, discord.TextChannel | discord.DMChannel | discord.Thread):
             raise InvalidArgumentError(f"Channel {channel_id} is not a text channel")
 
-        # Split message if too long
         parts = split_message(content)
 
         last_message: discord.Message | None = None
@@ -453,20 +377,6 @@ class DiscordService:
         user_id: str,
         content: str,
     ) -> Snowflake:
-        """
-        Send a direct message to a user.
-
-        Args:
-            user_id: The user ID to send to.
-            content: The message content.
-
-        Returns:
-            The ID of the sent message.
-
-        Raises:
-            ClientNotInitializedError: If client is not initialized.
-            InvalidArgumentError: If arguments are invalid.
-        """
         if self._client is None:
             raise ClientNotInitializedError()
 
@@ -476,7 +386,6 @@ class DiscordService:
         if user is None:
             user = await self._client.fetch_user(snowflake.as_int())
 
-        # Split message if too long
         parts = split_message(content)
 
         last_message: discord.Message | None = None
@@ -494,21 +403,6 @@ class DiscordService:
         message_id: str,
         content: str,
     ) -> Snowflake:
-        """
-        Reply to a message.
-
-        Args:
-            channel_id: The channel ID.
-            message_id: The message ID to reply to.
-            content: The reply content.
-
-        Returns:
-            The ID of the sent message.
-
-        Raises:
-            ClientNotInitializedError: If client is not initialized.
-            InvalidArgumentError: If arguments are invalid.
-        """
         if self._client is None:
             raise ClientNotInitializedError()
 
@@ -524,7 +418,6 @@ class DiscordService:
 
         message = await channel.fetch_message(message_snowflake.as_int())
 
-        # Split message if too long
         parts = split_message(content)
 
         last_message: discord.Message | None = None
@@ -545,18 +438,6 @@ class DiscordService:
         message_id: str,
         emoji: str,
     ) -> None:
-        """
-        Add a reaction to a message.
-
-        Args:
-            channel_id: The channel ID.
-            message_id: The message ID to react to.
-            emoji: The emoji to react with.
-
-        Raises:
-            ClientNotInitializedError: If client is not initialized.
-            InvalidArgumentError: If arguments are invalid.
-        """
         if self._client is None:
             raise ClientNotInitializedError()
 
@@ -574,18 +455,6 @@ class DiscordService:
         await message.add_reaction(emoji)
 
     async def get_guild_info(self, guild_id: str) -> DiscordWorldPayload:
-        """
-        Get guild information.
-
-        Args:
-            guild_id: The guild ID.
-
-        Returns:
-            Guild information payload.
-
-        Raises:
-            ClientNotInitializedError: If client is not initialized.
-        """
         if self._client is None:
             raise ClientNotInitializedError()
 
@@ -638,15 +507,6 @@ class DiscordService:
 
 
 def split_message(content: str) -> list[str]:
-    """
-    Split a message into chunks that fit within Discord's limit.
-
-    Args:
-        content: The message content to split.
-
-    Returns:
-        List of message parts.
-    """
     if len(content) <= MAX_MESSAGE_LENGTH:
         return [content]
 
@@ -654,14 +514,11 @@ def split_message(content: str) -> list[str]:
     current = ""
 
     for line in content.splitlines(keepends=True):
-        # Check if adding this line would exceed limit
         if len(current) + len(line) > MAX_MESSAGE_LENGTH:
-            # If current is not empty, push it
             if current:
                 parts.append(current)
                 current = ""
 
-            # If the line itself is too long, split by words
             if len(line) > MAX_MESSAGE_LENGTH:
                 words = line.split()
                 for word in words:
@@ -672,7 +529,6 @@ def split_message(content: str) -> list[str]:
                             parts.append(current)
                             current = ""
 
-                        # If single word is too long, split by characters
                         if len(word) > MAX_MESSAGE_LENGTH:
                             for i in range(0, len(word), MAX_MESSAGE_LENGTH):
                                 parts.append(word[i : i + MAX_MESSAGE_LENGTH])
@@ -685,7 +541,6 @@ def split_message(content: str) -> list[str]:
         else:
             current += line
 
-    # Don't forget the last part
     if current:
         parts.append(current)
 

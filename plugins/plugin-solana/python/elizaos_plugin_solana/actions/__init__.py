@@ -1,5 +1,3 @@
-"""Actions for the Solana plugin."""
-
 from elizaos_plugin_solana.actions.swap import (
     SWAP_ACTION,
     SwapActionResult,

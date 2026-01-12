@@ -35,25 +35,6 @@ impl GitHubConfig {
         }
     }
 
-    /// Load configuration from environment variables.
-    ///
-    /// # Required Variables
-    ///
-    /// - `GITHUB_API_TOKEN`: Personal access token
-    ///
-    /// # Optional Variables
-    ///
-    /// - `GITHUB_OWNER`: Default repository owner
-    /// - `GITHUB_REPO`: Default repository name
-    /// - `GITHUB_BRANCH`: Default branch (defaults to "main")
-    /// - `GITHUB_WEBHOOK_SECRET`: Webhook secret
-    /// - `GITHUB_APP_ID`: GitHub App ID
-    /// - `GITHUB_APP_PRIVATE_KEY`: GitHub App private key
-    /// - `GITHUB_INSTALLATION_ID`: GitHub App installation ID
-    ///
-    /// # Errors
-    ///
-    /// Returns `GitHubError::MissingSetting` if required variables are missing.
     pub fn from_env() -> Result<Self> {
         dotenvy::dotenv().ok();
 
@@ -88,7 +69,6 @@ impl GitHubConfig {
         self
     }
 
-    /// Set branch (builder pattern)
     pub fn with_branch(mut self, branch: String) -> Self {
         self.branch = branch;
         self

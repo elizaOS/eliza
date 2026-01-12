@@ -1,37 +1,21 @@
-//! Planning plugin actions module.
-
 use async_trait::async_trait;
 use serde_json::Value;
 use uuid::Uuid;
 
-/// Action trait for elizaOS compatibility.
 #[async_trait]
 pub trait Action: Send + Sync {
-    /// Returns the unique name identifier for this action.
     fn name(&self) -> &'static str;
-    /// Returns alternative names/aliases for this action.
     fn similes(&self) -> Vec<&'static str>;
-    /// Returns a human-readable description of what this action does.
     fn description(&self) -> &'static str;
-    /// Validates whether this action should handle the given message.
     async fn validate(&self, message_text: &str) -> bool;
-    /// Executes the action with the given parameters.
     async fn handler(&self, params: Value) -> Result<Value, String>;
-    /// Returns example input/output pairs for this action.
     fn examples(&self) -> Vec<ActionExample>;
 }
 
-/// Represents an example of action input and expected output.
 pub struct ActionExample {
-    /// Example input text or parameters.
     pub input: String,
-    /// Expected output from processing the input.
     pub output: String,
 }
-
-// ============================================================================
-// Analyze Input Action
-// ============================================================================
 
 pub struct AnalyzeInputAction;
 
@@ -75,11 +59,6 @@ impl Action for AnalyzeInputAction {
     }
 }
 
-// ============================================================================
-// Process Analysis Action
-// ============================================================================
-
-/// Action that processes analysis results and makes decisions.
 pub struct ProcessAnalysisAction;
 
 #[async_trait]
@@ -121,10 +100,6 @@ impl Action for ProcessAnalysisAction {
     }
 }
 
-// ============================================================================
-// Execute Final Action
-// ============================================================================
-
 pub struct ExecuteFinalAction;
 
 #[async_trait]
@@ -158,11 +133,6 @@ impl Action for ExecuteFinalAction {
     }
 }
 
-// ============================================================================
-// Create Plan Action
-// ============================================================================
-
-/// Action that creates comprehensive project plans with phases and tasks.
 pub struct CreatePlanAction;
 
 impl CreatePlanAction {
@@ -222,7 +192,6 @@ impl Action for CreatePlanAction {
     }
 }
 
-/// Get all planning plugin action names.
 pub fn get_planning_action_names() -> Vec<&'static str> {
     vec!["ANALYZE_INPUT", "PROCESS_ANALYSIS", "EXECUTE_FINAL", "CREATE_PLAN"]
 }

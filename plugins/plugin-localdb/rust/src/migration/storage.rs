@@ -14,12 +14,10 @@ pub struct SnapshotStorage {
 }
 
 impl SnapshotStorage {
-    /// Create a new snapshot storage.
     pub fn new(pool: Arc<PgPool>) -> Self {
         Self { pool }
     }
 
-    /// Save a schema snapshot.
     pub async fn save_snapshot(
         &self,
         plugin_name: &str,
@@ -47,7 +45,6 @@ impl SnapshotStorage {
         Ok(())
     }
 
-    /// Get the latest snapshot for a plugin.
     pub async fn get_latest_snapshot(
         &self,
         plugin_name: &str,
@@ -73,7 +70,6 @@ impl SnapshotStorage {
         }
     }
 
-    /// Get all snapshots for a plugin.
     pub async fn get_all_snapshots(&self, plugin_name: &str) -> Result<Vec<Value>> {
         let rows = sqlx::query(
             r#"
@@ -91,7 +87,6 @@ impl SnapshotStorage {
         Ok(rows.into_iter().map(|row| row.get(0)).collect())
     }
 
-    /// Get the next snapshot index for a plugin.
     pub async fn get_next_idx(&self, plugin_name: &str) -> Result<i32> {
         let row = sqlx::query_scalar(
             r#"
@@ -115,12 +110,10 @@ pub struct JournalStorage {
 }
 
 impl JournalStorage {
-    /// Create a new journal storage.
     pub fn new(pool: Arc<PgPool>) -> Self {
         Self { pool }
     }
 
-    /// Load journal for a plugin.
     pub async fn load_journal(&self, plugin_name: &str) -> Result<Option<Value>> {
         let row = sqlx::query(
             r#"
@@ -145,7 +138,6 @@ impl JournalStorage {
         }
     }
 
-    /// Save journal for a plugin.
     pub async fn save_journal(
         &self,
         plugin_name: &str,
@@ -189,7 +181,6 @@ impl JournalStorage {
         Ok(0)
     }
 
-    /// Update journal with a new entry.
     pub async fn update_journal(
         &self,
         plugin_name: &str,

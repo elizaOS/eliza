@@ -116,7 +116,6 @@ export class DownloadManager {
                   fs.mkdirSync(destDir, { recursive: true });
                 }
 
-                // Check if temp file exists before proceeding
                 if (!fs.existsSync(tempPath)) {
                   reject(new Error(`Temporary file ${tempPath} does not exist`));
                   return;
@@ -128,10 +127,8 @@ export class DownloadManager {
                     fs.renameSync(destPath, backupPath);
                     logger.info(`Created backup of existing file: ${backupPath}`);
 
-                    // Move temp file to destination
                     fs.renameSync(tempPath, destPath);
 
-                    // If successful, remove the backup
                     if (fs.existsSync(backupPath)) {
                       fs.unlinkSync(backupPath);
                       logger.info(`Removed backup file after successful update: ${backupPath}`);
@@ -187,7 +184,6 @@ export class DownloadManager {
                     );
                   }
                 }
-                // Remove from active downloads
                 this.activeDownloads.delete(destPath);
                 reject(err);
               }
@@ -224,7 +220,6 @@ export class DownloadManager {
             );
           }
         }
-        // Remove from active downloads
         this.activeDownloads.delete(destPath);
         reject(err);
       });

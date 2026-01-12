@@ -31,10 +31,6 @@ export async function handleTextEmbedding(
 
     const embeddingText = text || "test";
 
-    if (!text) {
-      logger.debug("No text provided for embedding, using default text for dimension detection");
-    }
-
     try {
       const embedParams = {
         model: ollama.embedding(modelName),

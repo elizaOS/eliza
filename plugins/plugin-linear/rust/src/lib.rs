@@ -51,4 +51,3 @@ impl Default for LinearPlugin {
 }
 
 pub static PLUGIN: LinearPlugin = LinearPlugin::new();
-

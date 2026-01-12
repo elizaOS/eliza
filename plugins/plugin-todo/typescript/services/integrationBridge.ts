@@ -1,8 +1,5 @@
 import { type IAgentRuntime, logger, Service, type ServiceTypeName } from "@elizaos/core";
 
-/**
- * Integration bridge service for connecting with other plugins
- */
 export class TodoIntegrationBridge extends Service {
   static serviceType: ServiceTypeName = "TODO_INTEGRATION_BRIDGE" as ServiceTypeName;
   serviceName = "TODO_INTEGRATION_BRIDGE" as ServiceTypeName;
@@ -17,9 +14,7 @@ export class TodoIntegrationBridge extends Service {
     return service;
   }
 
-  private async initialize(): Promise<void> {
-    // Initialization complete
-  }
+  private async initialize(): Promise<void> {}
 
   async stop(): Promise<void> {
     logger.info("TodoIntegrationBridge stopped");

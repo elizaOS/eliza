@@ -1,9 +1,3 @@
-/**
- * Unit tests for Vercel AI Gateway plugin.
- *
- * Uses REAL AgentRuntime instances with vi.spyOn for method mocking.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { gatewayPlugin } from "../index";
@@ -36,7 +30,6 @@ describe("gatewayPlugin", () => {
     expect(gatewayPlugin.models).toBeDefined();
     const models = gatewayPlugin.models;
 
-    // Check that handlers are registered
     expect(models?.TEXT_SMALL).toBeDefined();
     expect(models?.TEXT_LARGE).toBeDefined();
     expect(models?.TEXT_EMBEDDING).toBeDefined();

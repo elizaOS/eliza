@@ -4,12 +4,7 @@ import { SOLANA_WALLET_DATA_CACHE_KEY } from "../constants";
 import type { SolanaService } from "../service";
 import type { ApiError, ApiResponse, WalletPortfolio } from "../types";
 
-// Use the core types for route handlers - they use express-style API
 type RouteHandler = NonNullable<Route["handler"]>;
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
 
 function sendSuccess<T>(res: Parameters<RouteHandler>[1], data: T, status = 200): void {
   const response: ApiResponse<T> = { success: true, data };
@@ -28,14 +23,6 @@ function sendError(
   res.status(status).json(response);
 }
 
-// ============================================
-// ROUTE HANDLERS
-// ============================================
-
-/**
- * GET /solana/wallet/address
- * Get the wallet's public key
- */
 const getWalletAddressHandler: RouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
 
@@ -62,10 +49,6 @@ const getWalletAddressHandler: RouteHandler = async (_req, res, runtime) => {
   }
 };
 
-/**
- * GET /solana/wallet/balance
- * Get SOL balance for the wallet
- */
 const getWalletBalanceHandler: RouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
 
@@ -98,10 +81,6 @@ const getWalletBalanceHandler: RouteHandler = async (_req, res, runtime) => {
   }
 };
 
-/**
- * GET /solana/wallet/balance/:token
- * Get balance for a specific token
- */
 const getTokenBalanceHandler: RouteHandler = async (req, res, runtime) => {
   const token = req.params?.token;
   const solanaService = runtime.getService<SolanaService>("chain_solana");
@@ -153,11 +132,6 @@ const getTokenBalanceHandler: RouteHandler = async (req, res, runtime) => {
   }
 };
 
-/**
- * GET /solana/wallet/portfolio
- * Get complete wallet portfolio (uses cache from provider)
- * Returns USD values if BIRDEYE_API_KEY is configured
- */
 const getWalletPortfolioHandler: RouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
 
@@ -174,11 +148,9 @@ const getWalletPortfolioHandler: RouteHandler = async (_req, res, runtime) => {
       return;
     }
 
-    // Get portfolio from cache (updated by service)
     const portfolioCache = await runtime.getCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY);
 
     if (!portfolioCache) {
-      // Portfolio not yet loaded, trigger update
       logger.info("[Route] Portfolio cache empty, triggering update");
       const portfolio = await solanaService.updateWalletData(true);
 
@@ -230,10 +202,6 @@ const getWalletPortfolioHandler: RouteHandler = async (_req, res, runtime) => {
   }
 };
 
-/**
- * GET /solana/wallet/tokens
- * Get all token accounts with non-zero balances
- */
 const getWalletTokensHandler: RouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
 
@@ -250,7 +218,6 @@ const getWalletTokensHandler: RouteHandler = async (_req, res, runtime) => {
       return;
     }
 
-    // Get token accounts directly from service
     const tokenAccounts = await solanaService.getTokenAccountsByKeypair(publicKey, {
       includeZeroBalances: false,
     });
@@ -276,10 +243,6 @@ const getWalletTokensHandler: RouteHandler = async (_req, res, runtime) => {
     sendError(res, 500, "ERROR", "Failed to get wallet tokens", errorMessage);
   }
 };
-
-// ============================================
-// ROUTE DEFINITIONS
-// ============================================
 
 export const solanaRoutes: Route[] = [
   {

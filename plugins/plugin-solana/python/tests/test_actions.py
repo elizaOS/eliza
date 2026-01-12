@@ -13,16 +13,12 @@ from elizaos_plugin_solana.actions.swap import resolve_sol_mint
 
 
 class TestSwapAction:
-    """Tests for SWAP_SOLANA action."""
-
     def test_action_metadata(self) -> None:
-        """Test action has correct metadata."""
         assert SWAP_ACTION["name"] == "SWAP_SOLANA"
         assert SWAP_ACTION["description"]
         assert "SWAP_SOL" in SWAP_ACTION["similes"]
 
     def test_resolve_sol_mint(self) -> None:
-        """Test SOL symbol resolution."""
         sol_mint = "So11111111111111111111111111111111111111112"
         usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
@@ -31,7 +27,6 @@ class TestSwapAction:
         assert resolve_sol_mint(usdc_mint) == usdc_mint
 
     def test_swap_action_result_dataclass(self) -> None:
-        """Test SwapActionResult dataclass."""
         result = SwapActionResult(
             success=True,
             text="Swap completed",
@@ -45,17 +40,13 @@ class TestSwapAction:
 
 
 class TestTransferAction:
-    """Tests for TRANSFER_SOLANA action."""
-
     def test_action_metadata(self) -> None:
-        """Test action has correct metadata."""
         assert TRANSFER_ACTION["name"] == "TRANSFER_SOLANA"
         assert TRANSFER_ACTION["description"]
         assert "SEND_SOL" in TRANSFER_ACTION["similes"]
         assert "PAY_SOLANA" in TRANSFER_ACTION["similes"]
 
     def test_transfer_action_result_dataclass(self) -> None:
-        """Test TransferActionResult dataclass."""
         result = TransferActionResult(
             success=True,
             text="Transfer completed",
@@ -68,17 +59,13 @@ class TestTransferAction:
         assert result.error is None
 
 
-# Integration tests that require API access
 @pytest.mark.skipif(
-    True,  # Always skip - requires funded wallet
+    True,
     reason="Requires funded Solana wallet",
 )
 class TestSwapActionIntegration:
-    """Integration tests for swap action."""
-
     @pytest.mark.asyncio
     async def test_swap_with_invalid_mint(self) -> None:
-        """Test swap fails gracefully with invalid mint."""
         from elizaos_plugin_solana import SolanaClient, WalletConfig
         from elizaos_plugin_solana.actions.swap import handle_swap
 
@@ -98,15 +85,12 @@ class TestSwapActionIntegration:
 
 
 @pytest.mark.skipif(
-    True,  # Always skip - requires funded wallet
+    True,
     reason="Requires funded Solana wallet",
 )
 class TestTransferActionIntegration:
-    """Integration tests for transfer action."""
-
     @pytest.mark.asyncio
     async def test_transfer_with_invalid_recipient(self) -> None:
-        """Test transfer fails gracefully with invalid recipient."""
         from elizaos_plugin_solana import SolanaClient, WalletConfig
         from elizaos_plugin_solana.actions.transfer import handle_transfer
 

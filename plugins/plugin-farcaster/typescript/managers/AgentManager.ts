@@ -1,7 +1,3 @@
-/**
- * Agent manager for orchestrating Farcaster operations.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import { Configuration, NeynarAPIClient } from "@neynar/nodejs-sdk";
 import { FarcasterClient } from "../client/FarcasterClient";
@@ -9,9 +5,6 @@ import type { FarcasterConfig } from "../types";
 import { FarcasterCastManager } from "./CastManager";
 import { FarcasterInteractionManager } from "./InteractionManager";
 
-/**
- * Manager that orchestrates all Farcaster operations for an agent.
- */
 export class FarcasterAgentManager {
   readonly runtime: IAgentRuntime;
   readonly client: FarcasterClient;

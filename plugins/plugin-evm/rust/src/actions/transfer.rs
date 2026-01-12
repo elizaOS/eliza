@@ -81,6 +81,9 @@ pub struct TransferAction {
 }
 
 impl TransferAction {
+    /// elizaOS Action name (TS parity).
+    pub const NAME: &'static str = "EVM_TRANSFER_TOKENS";
+
     #[must_use]
     pub fn new(provider: Arc<WalletProvider>) -> Self {
         Self { provider }

@@ -12,13 +12,13 @@ use serde_json::json;
 pub trait VisionProvider: Send + Sync {
     /// Provider name
     fn name(&self) -> &'static str;
-    
+
     /// Provider description
     fn description(&self) -> &'static str;
-    
+
     /// Whether provider is dynamic
     fn dynamic(&self) -> bool;
-    
+
     /// Get provider state
     async fn get(&self, context: &ProviderContext) -> ProviderResult;
 }
@@ -61,15 +61,15 @@ impl VisionProvider for VisionStateProvider {
     fn name(&self) -> &'static str {
         Self::NAME
     }
-    
+
     fn description(&self) -> &'static str {
         Self::DESCRIPTION
     }
-    
+
     fn dynamic(&self) -> bool {
         true
     }
-    
+
     async fn get(&self, context: &ProviderContext) -> ProviderResult {
         if !context.vision_available {
             return ProviderResult {
@@ -101,13 +101,17 @@ impl VisionProvider for VisionStateProvider {
 
         if let Some(ref scene) = context.scene {
             text_parts.push(format!("Scene: {}", scene.description));
-            
+
             if !scene.people.is_empty() {
                 let people_count = scene.people.len();
                 text_parts.push(format!(
                     "Detected {} {}.",
                     people_count,
-                    if people_count == 1 { "person" } else { "people" }
+                    if people_count == 1 {
+                        "person"
+                    } else {
+                        "people"
+                    }
                 ));
             }
 
@@ -116,7 +120,11 @@ impl VisionProvider for VisionStateProvider {
                 text_parts.push(format!(
                     "Detected {} {}.",
                     object_count,
-                    if object_count == 1 { "object" } else { "objects" }
+                    if object_count == 1 {
+                        "object"
+                    } else {
+                        "objects"
+                    }
                 ));
             }
         }
@@ -124,9 +132,7 @@ impl VisionProvider for VisionStateProvider {
         if let Some(ref stats) = context.tracking_stats {
             text_parts.push(format!(
                 "Tracking {} entities ({} people, {} objects).",
-                stats.active_entities,
-                stats.people,
-                stats.objects
+                stats.active_entities, stats.people, stats.objects
             ));
         }
 
@@ -150,6 +156,41 @@ impl VisionProvider for VisionStateProvider {
     }
 }
 
+/// TS-parity alias provider (name: `VISION_PERCEPTION`).
+pub struct VisionPerceptionProvider;
+
+impl VisionPerceptionProvider {
+    /// Provider name constant
+    pub const NAME: &'static str = "VISION_PERCEPTION";
+    /// Provider description
+    pub const DESCRIPTION: &'static str =
+        "Provides current visual perception data including scene description, detected objects, people, and entity tracking.";
+}
+
+#[async_trait]
+impl VisionProvider for VisionPerceptionProvider {
+    fn name(&self) -> &'static str {
+        Self::NAME
+    }
+
+    fn description(&self) -> &'static str {
+        Self::DESCRIPTION
+    }
+
+    fn dynamic(&self) -> bool {
+        false
+    }
+
+    async fn get(&self, context: &ProviderContext) -> ProviderResult {
+        let mut result = VisionStateProvider.get(context).await;
+        // Prefer the TS-parity provider name in the structured data.
+        if let Some(obj) = result.data.as_object_mut() {
+            obj.insert("provider_name".to_string(), json!(Self::NAME));
+        }
+        result
+    }
+}
+
 // ============================================================================
 // Entity Tracking Provider
 // ============================================================================
@@ -161,7 +202,8 @@ impl EntityTrackingProvider {
     /// Provider name constant
     pub const NAME: &'static str = "ENTITY_TRACKING";
     /// Provider description
-    pub const DESCRIPTION: &'static str = "Provides information about tracked entities in the visual field";
+    pub const DESCRIPTION: &'static str =
+        "Provides information about tracked entities in the visual field";
 }
 
 #[async_trait]
@@ -169,15 +211,15 @@ impl VisionProvider for EntityTrackingProvider {
     fn name(&self) -> &'static str {
         Self::NAME
     }
-    
+
     fn description(&self) -> &'static str {
         Self::DESCRIPTION
     }
-    
+
     fn dynamic(&self) -> bool {
         true
     }
-    
+
     async fn get(&self, context: &ProviderContext) -> ProviderResult {
         if !context.vision_available || !context.vision_active {
             return ProviderResult {
@@ -198,10 +240,7 @@ impl VisionProvider for EntityTrackingProvider {
                 } else {
                     format!(
                         "Tracking {} entities: {} people, {} objects. {} named entities.",
-                        stats.active_entities,
-                        stats.people,
-                        stats.objects,
-                        stats.named_entities
+                        stats.active_entities, stats.people, stats.objects, stats.named_entities
                     )
                 };
 
@@ -254,15 +293,15 @@ impl VisionProvider for CameraInfoProvider {
     fn name(&self) -> &'static str {
         Self::NAME
     }
-    
+
     fn description(&self) -> &'static str {
         Self::DESCRIPTION
     }
-    
+
     fn dynamic(&self) -> bool {
         false
     }
-    
+
     async fn get(&self, context: &ProviderContext) -> ProviderResult {
         if !context.vision_available {
             return ProviderResult {

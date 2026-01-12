@@ -1,27 +1,22 @@
 #![allow(missing_docs)]
-//! Farcaster providers for elizaOS agents.
 
 use crate::config::FarcasterConfig;
 use crate::service::FarcasterService;
 
-/// Provider for Farcaster profile information.
 pub struct ProfileProvider<'a> {
     service: &'a FarcasterService,
     config: &'a FarcasterConfig,
 }
 
 impl<'a> ProfileProvider<'a> {
-    /// Provider name.
     pub const NAME: &'static str = "farcaster_profile";
-    /// Provider description.
+    pub const TS_NAME: &'static str = "farcasterProfile";
     pub const DESCRIPTION: &'static str = "Provides the agent's Farcaster profile information";
 
-    /// Create a new profile provider.
     pub fn new(service: &'a FarcasterService, config: &'a FarcasterConfig) -> Self {
         Self { service, config }
     }
 
-    /// Get the profile information as a string.
     pub async fn get(&self) -> String {
         match self.service.get_profile(self.config.fid).await {
             Ok(profile) => {
@@ -42,23 +37,19 @@ impl<'a> ProfileProvider<'a> {
     }
 }
 
-/// Provider for Farcaster timeline.
 pub struct TimelineProvider<'a> {
     service: &'a FarcasterService,
 }
 
 impl<'a> TimelineProvider<'a> {
-    /// Provider name.
     pub const NAME: &'static str = "farcaster_timeline";
-    /// Provider description.
+    pub const TS_NAME: &'static str = "farcasterTimeline";
     pub const DESCRIPTION: &'static str = "Provides the agent's recent Farcaster timeline";
 
-    /// Create a new timeline provider.
     pub fn new(service: &'a FarcasterService, _config: &'a FarcasterConfig) -> Self {
         Self { service }
     }
 
-    /// Get the timeline as a string.
     pub async fn get(&self, limit: u32) -> String {
         match self.service.get_timeline(limit).await {
             Ok((casts, _)) => {
@@ -94,17 +85,14 @@ pub struct ThreadProvider<'a> {
 }
 
 impl<'a> ThreadProvider<'a> {
-    /// Provider name.
     pub const NAME: &'static str = "farcaster_thread";
-    /// Provider description.
+    pub const TS_NAME: &'static str = "farcasterThread";
     pub const DESCRIPTION: &'static str = "Provides thread context for a Farcaster conversation";
 
-    /// Create a new thread provider.
     pub fn new(service: &'a FarcasterService) -> Self {
         Self { service }
     }
 
-    /// Get the thread context as a string.
     pub async fn get(&self, cast_hash: &str, max_depth: usize) -> String {
         let mut thread = Vec::new();
         let mut visited = std::collections::HashSet::new();
@@ -141,11 +129,6 @@ impl<'a> ThreadProvider<'a> {
         }
         lines.join("\n")
     }
-}
-
-#[cfg(test)]
-mod tests {
-    // Provider tests would require mocked services
 }
 
 

@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Create Issue Action
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -9,7 +8,6 @@ use crate::error::Result;
 use crate::types::CreateIssueParams;
 use crate::GitHubService;
 
-/// Action to create a new issue in a GitHub repository
 pub struct CreateIssueAction;
 
 #[async_trait]

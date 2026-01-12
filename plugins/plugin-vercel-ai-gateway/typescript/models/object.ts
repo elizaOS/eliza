@@ -1,14 +1,7 @@
-/**
- * Object generation model handlers for Vercel AI Gateway plugin.
- */
-
 import type { IAgentRuntime, ObjectGenerationParams } from "@elizaos/core";
 import { GatewayClient } from "../providers/client";
 import { buildConfig, getLargeModel, getSmallModel } from "../utils/config";
 
-/**
- * Handle OBJECT_SMALL model requests.
- */
 export async function handleObjectSmall(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
@@ -25,9 +18,6 @@ export async function handleObjectSmall(
   });
 }
 
-/**
- * Handle OBJECT_LARGE model requests.
- */
 export async function handleObjectLarge(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams

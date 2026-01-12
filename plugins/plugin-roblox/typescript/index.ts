@@ -20,22 +20,12 @@ export const robloxPlugin: Plugin = {
     const universeId = runtime.getSetting("ROBLOX_UNIVERSE_ID") as string;
 
     if (!apiKey || apiKey.trim() === "") {
-      runtime.logger.warn(
-        "ROBLOX_API_KEY not provided - Roblox plugin is loaded but will not be functional"
-      );
-      runtime.logger.warn(
-        "To enable Roblox functionality, please provide ROBLOX_API_KEY in your .env file"
-      );
+      runtime.logger.warn("ROBLOX_API_KEY not provided");
       return;
     }
 
     if (!universeId || universeId.trim() === "") {
-      runtime.logger.warn(
-        "ROBLOX_UNIVERSE_ID not provided - Roblox plugin is loaded but will not be functional"
-      );
-      runtime.logger.warn(
-        "To enable Roblox functionality, please provide ROBLOX_UNIVERSE_ID in your .env file"
-      );
+      runtime.logger.warn("ROBLOX_UNIVERSE_ID not provided");
       return;
     }
 

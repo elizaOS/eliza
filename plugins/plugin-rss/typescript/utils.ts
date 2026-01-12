@@ -9,7 +9,7 @@ export function createMessageReply(
   return {
     text: reply,
     attachments: [],
-    source: message.content.source ?? "unknown",
+    source: message.content.source ?? "",
     channelType: message.content.channelType,
     inReplyTo: createUniqueUuid(runtime, message.id ?? ""),
   };

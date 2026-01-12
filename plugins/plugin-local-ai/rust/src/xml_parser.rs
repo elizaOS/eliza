@@ -313,13 +313,10 @@ mod tests {
 
     #[test]
     fn test_unescape_numeric_entities() {
-        // Decimal entity
         assert_eq!(unescape_xml("&#60;"), "<");
         assert_eq!(unescape_xml("&#62;"), ">");
-        // Hex entity
         assert_eq!(unescape_xml("&#x3C;"), "<");
         assert_eq!(unescape_xml("&#x3E;"), ">");
-        // Combined
         assert_eq!(unescape_xml("&#60;test&#62;"), "<test>");
     }
 
@@ -389,37 +386,28 @@ function test() {
         assert!(code.contains("<div>"));
     }
 
-    // =========================================================================
-    // Cross-language parity tests - must match TypeScript and Python exactly
-    // =========================================================================
-
     #[test]
     fn test_parity_extract() {
-        // Must match: extractXmlTag(["<r><x>Y</x></r>","x"]) = "Y"
         assert_eq!(extract_xml_tag("<r><x>Y</x></r>", "x"), Some("Y".to_string()));
     }
 
     #[test]
     fn test_parity_escape() {
-        // Must match: escapeXml(["<>&\"'"]) = "&lt;&gt;&amp;&quot;&apos;"
         assert_eq!(escape_xml("<>&\"'"), "&lt;&gt;&amp;&quot;&apos;");
     }
 
     #[test]
     fn test_parity_unescape() {
-        // Must match: unescapeXml(["&lt;&gt;&amp;&#60;&#x3E;"]) = "<>&<>"
         assert_eq!(unescape_xml("&lt;&gt;&amp;&#60;&#x3E;"), "<>&<>");
     }
 
     #[test]
     fn test_parity_cdata_wrap() {
-        // Must match: wrapInCdata(["<x>"]) = "<![CDATA[<x>]]>"
         assert_eq!(wrap_in_cdata("<x>"), "<![CDATA[<x>]]>");
     }
 
     #[test]
     fn test_parity_cdata_nested() {
-        // Must match: wrapInCdata(["]]>"]) = "<![CDATA[]]]]><![CDATA[>]]>"
         assert_eq!(wrap_in_cdata("]]>"), "<![CDATA[]]]]><![CDATA[>]]>");
     }
 

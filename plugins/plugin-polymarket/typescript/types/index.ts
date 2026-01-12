@@ -627,22 +627,14 @@ export class PolymarketError extends Error {
 export type WebSocketSubscriptionType = "market" | "user" | "price" | "trade";
 
 /**
- * WebSocket message
  */
 export interface WebSocketMessage {
   readonly type: string;
   readonly channel?: string;
-  readonly data?: unknown;
+  readonly data?: Record<string, unknown>;
   readonly error?: string;
 }
 
-// =============================================================================
-// Price Types
-// =============================================================================
-
-/**
- * Token price data
- */
 export interface TokenPrice {
   readonly token_id: string;
   readonly price: string;
@@ -668,22 +660,10 @@ export const PriceHistoryEntrySchema = z.object({
   volume: z.string().optional(),
 });
 
-// =============================================================================
-// Utility Functions
-// =============================================================================
-
-/**
- * Parse and validate order parameters
- * @throws ZodError if validation fails
- */
 export function parseOrderParams(input: unknown): OrderParams {
   return OrderParamsSchema.parse(input);
 }
 
-/**
- * Parse and validate market filters
- * @throws ZodError if validation fails
- */
 export function parseMarketFilters(input: unknown): MarketFilters {
   return MarketFiltersSchema.parse(input);
 }

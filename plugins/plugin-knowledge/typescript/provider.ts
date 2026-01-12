@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, Provider } from "@elizaos/core";
-import { addHeader, logger } from "@elizaos/core";
+import { addHeader } from "@elizaos/core";
 import type { KnowledgeService } from "./service.ts";
 
 export const knowledgeProvider: Provider = {
@@ -36,35 +36,24 @@ export const knowledgeProvider: Provider = {
           return {
             fragmentId: fragment.id,
             documentTitle:
-              (fragmentMetadata?.filename as string) ||
-              (fragmentMetadata?.title as string) ||
-              "Unknown Document",
+              (fragmentMetadata?.filename as string) || (fragmentMetadata?.title as string) || "",
             similarityScore: (fragment as { similarity?: number }).similarity,
-            contentPreview: `${(fragment.content?.text || "No content").substring(0, 100)}...`,
+            contentPreview: `${(fragment.content?.text || "").substring(0, 100)}...`,
           };
         }),
-        queryText: message.content?.text || "Unknown query",
+        queryText: message.content?.text || "",
         totalFragments: knowledgeData.length,
         retrievalTimestamp: Date.now(),
       };
     }
 
     if (knowledgeData && knowledgeData.length > 0 && knowledgeService && ragMetadata) {
-      try {
-        knowledgeService.setPendingRAGMetadata(ragMetadata);
-
-        setTimeout(async () => {
-          try {
-            await knowledgeService.enrichRecentMemoriesWithPendingRAG();
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            logger.warn("RAG memory enrichment failed:", errorMessage);
-          }
-        }, 2000);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.warn("RAG memory enrichment failed:", errorMessage);
-      }
+      knowledgeService.setPendingRAGMetadata(ragMetadata);
+      setTimeout(async () => {
+        try {
+          await knowledgeService.enrichRecentMemoriesWithPendingRAG();
+        } catch {}
+      }, 2000);
     }
 
     return {

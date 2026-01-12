@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
-
 from elizaos_plugin_rss.client import RssClient, RssClientError
 from elizaos_plugin_rss.types import (
     FeedFormat,
@@ -13,9 +11,6 @@ from elizaos_plugin_rss.types import (
     RssConfig,
     RssFeed,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass

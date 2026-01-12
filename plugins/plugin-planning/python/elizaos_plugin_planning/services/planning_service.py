@@ -36,7 +36,7 @@ class PlanExecution:
 
 class PlanningService:
     SERVICE_TYPE = "planning"
-    CAPABILITY_DESCRIPTION = "Provides comprehensive planning and action coordination capabilities"
+    CAPABILITY_DESCRIPTION = "Planning and action coordination"
 
     def __init__(self, config: Optional[PlanningConfig] = None) -> None:
         self.config = config or PlanningConfig()
@@ -64,8 +64,6 @@ class PlanningService:
         response_content: Optional[dict[str, Any]] = None,
     ) -> Optional[ActionPlan]:
         try:
-            logger.debug("[PlanningService] Creating simple plan for message handling")
-
             actions: list[str] = []
             if response_content and response_content.get("actions"):
                 actions = response_content["actions"]
@@ -122,8 +120,6 @@ class PlanningService:
             )
 
             self.active_plans[plan_id] = plan
-            logger.debug(f"[PlanningService] Created simple plan {plan_id} with {len(steps)} steps")
-
             return plan
         except Exception as e:
             logger.error(f"[PlanningService] Error creating simple plan: {e}")
@@ -143,12 +139,7 @@ class PlanningService:
         if not isinstance(context.get("available_actions", []), list):
             raise ValueError("Planning context available_actions must be a list")
 
-        logger.info(f"[PlanningService] Creating comprehensive plan for goal: {goal}")
-
-        # Build planning prompt
         planning_prompt = self._build_planning_prompt(context, message, state)
-
-        # Use LLM to generate the plan
         if self.runtime:
             planning_response = await self.runtime.use_model(
                 "TEXT_LARGE",
@@ -159,20 +150,12 @@ class PlanningService:
                 },
             )
         else:
-            # Fallback for testing without runtime
             planning_response = self._create_fallback_plan_response(context)
 
-        # Parse the response
         parsed_plan = self._parse_planning_response(str(planning_response), context)
         enhanced_plan = await self._enhance_plan(parsed_plan, context)
 
         self.active_plans[enhanced_plan.id] = enhanced_plan
-
-        logger.info(
-            f"[PlanningService] Created comprehensive plan {enhanced_plan.id} "
-            f"with {len(enhanced_plan.steps)} steps"
-        )
-
         return enhanced_plan
 
     async def execute_plan(
@@ -196,7 +179,6 @@ class PlanningService:
         self.plan_executions[plan.id] = execution
 
         try:
-            logger.info(f"[PlanningService] Starting execution of plan {plan.id}")
 
             if plan.execution_model == "sequential":
                 await self._execute_sequential(plan, message, execution, callback)
@@ -218,11 +200,6 @@ class PlanningService:
                 results=results,
                 errors=errors if errors else None,
                 duration=(time.time() - start_time) * 1000,
-            )
-
-            logger.info(
-                f"[PlanningService] Plan {plan.id} execution completed. "
-                f"Success: {result.success}, Duration: {result.duration}ms"
             )
 
             return result
@@ -289,7 +266,6 @@ class PlanningService:
         results: list[dict[str, Any]],
         error: Optional[Exception] = None,
     ) -> ActionPlan:
-        logger.info(f"[PlanningService] Adapting plan {plan.id} at step {current_step_index}")
 
         adaptation_prompt = self._build_adaptation_prompt(plan, current_step_index, results, error)
 
@@ -328,8 +304,6 @@ class PlanningService:
         import time
 
         execution.state.end_time = time.time()
-
-        logger.info(f"[PlanningService] Plan {plan_id} cancelled")
         return True
 
     def _build_planning_prompt(
@@ -439,14 +413,13 @@ Focus on:
                             ActionStep(
                                 id=actual_id,
                                 action_name=action_match.group(1).strip(),
-                                parameters=parameters,
-                                dependencies=[],  # Resolved later
-                            )
+                        parameters=parameters,
+                        dependencies=[],
+                    )
                         )
-                        # Store temp data for dependency resolution
                         setattr(steps[-1], "_dependency_strings", dependency_strings)
-                except Exception as step_error:
-                    logger.warning(f"Failed to parse step: {step_match}: {step_error}")
+                except Exception:
+                    pass
 
             # Resolve dependencies
             for step in steps:
@@ -462,7 +435,6 @@ Focus on:
                 ) else None
 
             if not steps:
-                logger.warning("XML parsing failed, creating fallback plan")
                 steps.append(
                     ActionStep(
                         id=uuid4(),
@@ -529,10 +501,6 @@ Focus on:
                     None,
                 )
                 if not action:
-                    logger.warning(
-                        f"[PlanningService] Action '{step.action_name}' not found, "
-                        "replacing with REPLY"
-                    )
                     step.action_name = "REPLY"
                     step.parameters = {"text": f"Unable to find action: {step.action_name}"}
 
@@ -558,7 +526,6 @@ Focus on:
                 execution.results.append(result)
                 execution.state.current_step_index = i + 1
             except Exception as e:
-                logger.error(f"[PlanningService] Step {step.id} failed: {e}")
                 if step.on_error == "abort" or (
                     step.retry_policy and step.retry_policy.on_error == "abort"
                 ):
@@ -575,10 +542,8 @@ Focus on:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for result in results:
-            if isinstance(result, Exception):
-                logger.error(f"Step failed with error: {result}")
-            else:
-                    execution.results.append(result)
+            if not isinstance(result, Exception):
+                execution.results.append(result)
 
     async def _execute_dag(
         self,
@@ -607,9 +572,7 @@ Focus on:
                 pending.discard(step.id)
                 completed.add(step.id)
 
-                if isinstance(result, Exception):
-                    logger.error(f"Step {step.id} failed: {result}")
-                else:
+                if not isinstance(result, Exception):
                     execution.results.append(result)
 
     async def _execute_step(
@@ -620,7 +583,6 @@ Focus on:
         callback: Optional[Callable[[dict[str, Any]], Any]],
     ) -> dict[str, Any]:
         if not self.runtime:
-            # Simulate execution for testing
             return {
                 "step_id": str(step.id),
                 "action_name": step.action_name,
@@ -782,7 +744,6 @@ Return the adapted plan in the same XML format as the original planning response
                 },
             )
         except Exception as e:
-            logger.error(f"Failed to parse adaptation response: {e}")
             return ActionPlan(
                 id=uuid4(),
                 goal=original_plan.goal,

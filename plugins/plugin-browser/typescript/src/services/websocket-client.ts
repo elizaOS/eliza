@@ -1,22 +1,11 @@
 import { logger } from "@elizaos/core";
+import WebSocket from "ws";
 import type { NavigationResult, WebSocketMessage, WebSocketResponse } from "../types.js";
-
-type WebSocketLike = {
-  new (url: string): InstanceType<typeof import("ws").default>;
-  prototype: InstanceType<typeof import("ws").default>;
-} & typeof import("ws").default;
-
-let WebSocket: typeof import("ws").default;
-if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
-  WebSocket = window.WebSocket as unknown as WebSocketLike;
-} else {
-  WebSocket = require("ws");
-}
 
 type MessageHandler = (response: WebSocketResponse) => void;
 
 export class BrowserWebSocketClient {
-  private ws: InstanceType<typeof WebSocket> | null = null;
+  private ws: WebSocket | null = null;
   private messageHandlers = new Map<string, MessageHandler>();
   private connected = false;
   private reconnectAttempts = 0;
@@ -28,7 +17,7 @@ export class BrowserWebSocketClient {
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(this.serverUrl) as InstanceType<typeof WebSocket>;
+        this.ws = new WebSocket(this.serverUrl);
 
         this.ws.on("open", () => {
           this.connected = true;
@@ -37,9 +26,10 @@ export class BrowserWebSocketClient {
           resolve();
         });
 
-        this.ws.on("message", (data: Buffer | string) => {
+        this.ws.on("message", (data: WebSocket.RawData) => {
           try {
-            const message = JSON.parse(data.toString()) as WebSocketResponse;
+            const messageText = this.rawDataToString(data);
+            const message = JSON.parse(messageText) as WebSocketResponse;
 
             if (message.requestId && this.messageHandlers.has(message.requestId)) {
               const handler = this.messageHandlers.get(message.requestId);
@@ -75,6 +65,22 @@ export class BrowserWebSocketClient {
         reject(error);
       }
     });
+  }
+
+  private rawDataToString(data: WebSocket.RawData): string {
+    if (typeof data === "string") {
+      return data;
+    }
+    if (Buffer.isBuffer(data)) {
+      return data.toString("utf8");
+    }
+    if (data instanceof ArrayBuffer) {
+      return Buffer.from(data).toString("utf8");
+    }
+    if (Array.isArray(data)) {
+      return Buffer.concat(data).toString("utf8");
+    }
+    return String(data);
   }
 
   private async attemptReconnect(): Promise<void> {

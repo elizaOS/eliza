@@ -257,6 +257,8 @@ class LocalAIManager {
     // Pass the determined path to the download manager
     return await this.downloadManager.downloadModel(modelSpec, modelPathToDownload);
   }
+
+  async checkPlatformCapabilities(): Promise<void> {
     const platformManager = getPlatformManager();
     await platformManager.initialize();
     const capabilities = platformManager.getCapabilities();
@@ -613,10 +615,14 @@ class LocalAIManager {
           }
 
           // Ensure FFmpeg is available
-          const ffmpegReady =           await this.transcribeManager.ensureFFmpeg();
+          const ffmpegReady = await this.transcribeManager.ensureFFmpeg();
           if (!ffmpegReady) {
-            logger.error("FFmpeg is not available or not configured correctly. Cannot proceed with transcription.");
-            throw new Error("FFmpeg is required for transcription but is not available. Please see server logs for installation instructions.");
+            logger.error(
+              "FFmpeg is not available or not configured correctly. Cannot proceed with transcription."
+            );
+            throw new Error(
+              "FFmpeg is required for transcription but is not available. Please see server logs for installation instructions."
+            );
           }
 
           this.transcriptionInitialized = true;

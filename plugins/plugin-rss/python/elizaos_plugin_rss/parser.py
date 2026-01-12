@@ -2,15 +2,11 @@ from __future__ import annotations
 
 import html
 import re
-from typing import TYPE_CHECKING
 from xml.etree.ElementTree import Element
 
 from defusedxml import ElementTree as ET
 
 from elizaos_plugin_rss.types import RssEnclosure, RssFeed, RssImage, RssItem
-
-if TYPE_CHECKING:
-    pass
 
 
 def _get_text(element: Element | None, tag: str, namespaces: dict[str, str] | None = None) -> str:

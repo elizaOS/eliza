@@ -1,7 +1,5 @@
 #![allow(missing_docs)]
-//! Relationship schema for elizaOS database
 
-/// SQL for creating the relationships table
 pub const CREATE_RELATIONSHIPS_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS relationships (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

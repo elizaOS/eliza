@@ -1,5 +1,3 @@
-"""Todos provider for Todo plugin."""
-
 from __future__ import annotations
 
 import logging
@@ -22,16 +20,6 @@ async def get_todos(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """Get todos provider data.
-
-    Args:
-        runtime: The agent runtime.
-        message: The message.
-        state: Optional state.
-
-    Returns:
-        Provider result with todos information.
-    """
     try:
         logger.debug(
             "[TodosProvider] Received state: %s",
@@ -53,7 +41,6 @@ async def get_todos(
 
         logger.debug("TodosProvider - message: %s", message)
 
-        # Fetch room details directly to get worldId
         room_details = None
         if hasattr(runtime, "get_room"):
             room_details = await runtime.get_room(room_id)
@@ -65,19 +52,15 @@ async def get_todos(
         )
         logger.debug("TodosProvider - roomDetails: %s", room_details)
 
-        # Get data service
         data_service = create_todo_data_service(runtime.db if hasattr(runtime, "db") else None)
 
-        # Get ALL tasks for THIS ENTITY across all rooms/worlds
         filters = TodoFilters(entity_id=message.entity_id)
         all_entity_todos = await data_service.get_todos(filters)
 
         logger.debug("TodosProvider - allEntityTodos: %s", all_entity_todos)
 
-        # Filter out completed tasks from active
         pending_todos = [todo for todo in all_entity_todos if not todo.is_completed]
 
-        # Get completed tasks in the last 7 days
         completed_todos = [
             todo
             for todo in all_entity_todos
@@ -88,7 +71,6 @@ async def get_todos(
             )
         ]
 
-        # Format different types of tasks
         daily_todos = [todo for todo in pending_todos if todo.type == TaskType.DAILY]
         formatted_daily_tasks = "\n".join(
             [
@@ -128,15 +110,12 @@ async def get_todos(
         output += "\n## Daily Todos\n"
         output += formatted_daily_tasks or "No daily todos."
 
-        # One-off tasks
         output += "\n\n## One-off Todos\n"
         output += formatted_one_off_tasks or "No one-off todos."
 
-        # Aspirational tasks
         output += "\n\n## Aspirational Todos\n"
         output += formatted_aspirational_tasks or "No aspirational todos."
 
-        # Recently completed tasks
         output += "\n\n## Recently Completed (Last 7 Days)\n"
         output += formatted_completed_tasks or "No todos completed in the last 7 days."
 
@@ -146,7 +125,6 @@ async def get_todos(
             "to ground your answer in the information above which we know to be true from the database.\n\n"
         )
 
-        # Construct response object
         result = ProviderResult(
             data={
                 "dailyTodos": [
@@ -234,7 +212,6 @@ async def get_todos(
     except Exception as e:
         logger.error("Error in TodosProvider: %s", str(e), exc_info=True)
 
-        # Return a simple error message if something goes wrong
         return ProviderResult(
             data={},
             values={},
@@ -242,7 +219,6 @@ async def get_todos(
         )
 
 
-# Provider definition for elizaOS integration
 TODOS_PROVIDER = Provider(
     name="TODOS",
     description="Information about the user's current tasks, completed tasks, and points",

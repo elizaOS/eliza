@@ -1,5 +1,3 @@
-"""Complete todo action for Todo plugin."""
-
 from __future__ import annotations
 
 import logging
@@ -25,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CompleteTodoResult:
-    """Result of a complete todo action."""
-
     success: bool
     text: str
     todo_id: UUID | None = None
@@ -41,19 +37,6 @@ async def handle_complete_todo(
     callback: HandlerCallback | None = None,
     responses: list[Memory] | None = None,
 ) -> CompleteTodoResult | None:
-    """Handle complete todo action.
-
-    Args:
-        runtime: The agent runtime.
-        message: The message that triggered the action.
-        state: Optional state context.
-        options: Optional handler options.
-        callback: Optional callback for streaming responses.
-        responses: Optional previous responses.
-
-    Returns:
-        The action result.
-    """
     if not state:
         error_msg = "Unable to process request without state context."
         if callback:
@@ -80,7 +63,6 @@ async def handle_complete_todo(
 
     data_service = create_todo_data_service(runtime.db if hasattr(runtime, "db") else None)
 
-    # Get all incomplete todos for this room
     filters = TodoFilters(
         room_id=message.room_id,
         is_completed=False,
@@ -99,14 +81,11 @@ async def handle_complete_todo(
             )
         return CompleteTodoResult(success=False, text=error_msg)
 
-    # Extract which task to complete
-    # For now, use the first available task or check options for task_id
     task_id = None
     if options and options.parameters and "task_id" in options.parameters:
         task_id = UUID(str(options.parameters["task_id"]))
 
     if not task_id:
-        # Use first task as default
         task = available_todos[0]
     else:
         task = next((t for t in available_todos if t.id == task_id), None)
@@ -124,7 +103,6 @@ async def handle_complete_todo(
                 )
             return CompleteTodoResult(success=False, text=error_msg, error="Task not found")
 
-    # Mark the task as completed
     update_params = UpdateTodoParams(
         is_completed=True,
         completed_at=datetime.utcnow(),
@@ -132,7 +110,6 @@ async def handle_complete_todo(
     )
     await data_service.update_todo(task.id, update_params)
 
-    # Generate response text based on task type
     if task.type.value == "daily":
         response_text = f'✅ Daily task completed: "{task.name}"'
     elif task.type.value == "one-off":
@@ -162,16 +139,6 @@ async def handle_complete_todo(
 async def validate_complete_todo(
     runtime: IAgentRuntime, message: Memory, state: State | None = None
 ) -> bool:
-    """Validate if complete todo action can be executed.
-
-    Args:
-        runtime: The agent runtime.
-        message: The message.
-        state: Optional state.
-
-    Returns:
-        True if there are active todos to complete.
-    """
     if not message.room_id:
         return False
 
@@ -184,7 +151,6 @@ async def validate_complete_todo(
     return len(todos) > 0
 
 
-# Action definition for elizaOS integration
 COMPLETE_TODO_ACTION = {
     "name": "COMPLETE_TODO",
     "similes": ["MARK_COMPLETE", "FINISH_TASK", "DONE", "TASK_DONE", "TASK_COMPLETED"],

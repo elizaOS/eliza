@@ -1,7 +1,3 @@
-/**
- * Send cast action.
- */
-
 import {
   type Action,
   createUniqueUuid,
@@ -51,7 +47,7 @@ export const sendCastAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() || "";
-    const keywords = ["post", "cast", "share", "announce", "farcaster", "post"];
+    const keywords = ["post", "cast", "share", "announce", "farcaster"];
 
     const hasKeyword = keywords.some((keyword) => text.includes(keyword));
 
@@ -79,8 +75,7 @@ export const sendCastAction: Action = {
         const prompt = `Based on this request: "${message.content.text}", generate a concise Farcaster cast (max 320 characters). Be engaging and use appropriate hashtags if relevant.`;
 
         const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-        castContent =
-          typeof response === "string" ? response : (response as { text?: string }).text || "";
+        castContent = typeof response === "string" ? response : String(response);
       }
 
       if (castContent.length > 320) {

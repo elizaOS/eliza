@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Order placement actions for Polymarket
 
 use rust_decimal::Decimal;
 
@@ -7,7 +6,6 @@ use crate::client::ClobClient;
 use crate::error::{PolymarketError, Result};
 use crate::types::{OrderParams, OrderResponse, OrderSide, OrderType};
 
-/// Validate order parameters
 fn validate_order_params(params: &OrderParams) -> Result<()> {
     if params.token_id.is_empty() {
         return Err(PolymarketError::invalid_order("Token ID is required"));
@@ -49,18 +47,6 @@ pub async fn place_order(client: &ClobClient, params: OrderParams) -> Result<Ord
     client.place_order(params).await
 }
 
-/// Create order parameters helper
-///
-/// # Arguments
-///
-/// * `token_id` - The token ID to trade
-/// * `side` - Order side (BUY or SELL)
-/// * `price` - Price per share (0-1.0)
-/// * `size` - Order size
-///
-/// # Returns
-///
-/// Order parameters with default values
 #[must_use]
 pub fn create_order_params(
     token_id: impl Into<String>,
@@ -107,14 +93,6 @@ pub fn create_limit_order(
     }
 }
 
-/// Create market order parameters (FOK - Fill or Kill)
-///
-/// # Arguments
-///
-/// * `token_id` - The token ID to trade
-/// * `side` - Order side (BUY or SELL)
-/// * `price` - Maximum/minimum price
-/// * `size` - Order size
 #[must_use]
 pub fn create_market_order(
     token_id: impl Into<String>,
@@ -230,10 +208,3 @@ mod tests {
         assert_eq!(params.order_type, OrderType::Fok);
     }
 }
-
-
-
-
-
-
-

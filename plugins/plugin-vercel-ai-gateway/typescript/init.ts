@@ -1,14 +1,7 @@
-/**
- * Initialization for Vercel AI Gateway plugin.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getApiKeyOptional } from "./utils/config";
 
-/**
- * Plugin configuration interface.
- */
 export interface GatewayPluginConfig {
   AI_GATEWAY_API_KEY?: string;
   AIGATEWAY_API_KEY?: string;
@@ -22,12 +15,6 @@ export interface GatewayPluginConfig {
   AI_GATEWAY_TIMEOUT_MS?: string;
 }
 
-/**
- * Initialize the Vercel AI Gateway plugin.
- *
- * @param config - Plugin configuration
- * @param runtime - Agent runtime
- */
 export function initializeGateway(
   _config: GatewayPluginConfig | undefined,
   runtime: IAgentRuntime

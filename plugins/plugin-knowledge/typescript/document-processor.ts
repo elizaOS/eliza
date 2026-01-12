@@ -46,13 +46,6 @@ function getCtxKnowledgeEnabled(runtime?: IAgentRuntime): boolean {
   return result;
 }
 
-/**
- * Check if custom LLM should be used based on environment variables
- * Custom LLM is enabled when all three key variables are set:
- * - TEXT_PROVIDER
- * - TEXT_MODEL
- * - OPENROUTER_API_KEY (or provider-specific API key)
- */
 function shouldUseCustomLLM(): boolean {
   const textProvider = process.env.TEXT_PROVIDER;
   const textModel = process.env.TEXT_MODEL;
@@ -99,22 +92,19 @@ export async function processFragmentsSynchronously({
   documentTitle?: string;
 }): Promise<number> {
   if (!fullDocumentText || fullDocumentText.trim() === "") {
-    logger.warn(`No text content available to chunk for document ${documentId}.`);
+    logger.warn(`No text content available for document ${documentId}`);
     return 0;
   }
 
-  // Split the text into chunks using standard parameters
   const chunks = await splitDocumentIntoChunks(fullDocumentText);
 
   if (chunks.length === 0) {
-    logger.warn(`No chunks generated from text for ${documentId}. No fragments to save.`);
+    logger.warn(`No chunks generated for document ${documentId}`);
     return 0;
   }
 
-  const docName = documentTitle || documentId.substring(0, 8);
-  logger.info(`[Document Processor] "${docName}": Split into ${chunks.length} chunks`);
+  logger.info(`Split into ${chunks.length} chunks`);
 
-  // Get provider limits for rate limiting
   const providerLimits = await getProviderRateLimits(runtime);
   const CONCURRENCY_LIMIT = providerLimits.maxConcurrentRequests || 30;
   const rateLimiter = createRateLimiter(
@@ -122,16 +112,6 @@ export async function processFragmentsSynchronously({
     providerLimits.tokensPerMinute,
     providerLimits.rateLimitEnabled
   );
-
-  if (!providerLimits.rateLimitEnabled) {
-    logger.debug(
-      `[Document Processor] Rate limiting disabled: concurrency ${CONCURRENCY_LIMIT}, batch delay ${providerLimits.batchDelayMs}ms`
-    );
-  } else {
-    logger.debug(
-      `[Document Processor] Rate limits: ${providerLimits.requestsPerMinute} RPM, ${providerLimits.tokensPerMinute} TPM (${providerLimits.provider}, concurrency: ${CONCURRENCY_LIMIT})`
-    );
-  }
 
   // Process and save fragments
   const { savedCount, failedCount } = await processAndSaveFragments({
@@ -150,42 +130,13 @@ export async function processFragmentsSynchronously({
     batchDelayMs: providerLimits.batchDelayMs,
   });
 
-  const successRate = ((savedCount / chunks.length) * 100).toFixed(1);
-
   if (failedCount > 0) {
-    logger.warn(
-      `[Document Processor] "${docName}": ${failedCount}/${chunks.length} chunks failed processing`
-    );
+    logger.warn(`${failedCount}/${chunks.length} chunks failed processing`);
   }
-
-  logger.info(
-    `[Document Processor] "${docName}" complete: ${savedCount}/${chunks.length} fragments saved (${successRate}% success)`
-  );
-
-  logKnowledgeGenerationSummary({
-    documentId,
-    totalChunks: chunks.length,
-    savedCount,
-    failedCount,
-    successRate: parseFloat(successRate),
-    ctxEnabled: getCtxKnowledgeEnabled(runtime),
-    providerLimits,
-  });
 
   return savedCount;
 }
 
-// =============================================================================
-// DOCUMENT EXTRACTION & MEMORY FUNCTIONS
-// =============================================================================
-
-/**
- * Extract text from document buffer based on content type
- * @param fileBuffer Document buffer
- * @param contentType MIME type of the document
- * @param originalFilename Original filename
- * @returns Extracted text
- */
 export async function extractTextFromDocument(
   fileBuffer: Buffer,
   contentType: string,
@@ -221,11 +172,6 @@ export async function extractTextFromDocument(
   }
 }
 
-/**
- * Create a memory object for the main document
- * @param params Document parameters
- * @returns Memory object for the main document
- */
 export function createDocumentMemory({
   text,
   agentId,
@@ -321,10 +267,6 @@ async function processAndSaveFragments({
     const batchChunks = chunks.slice(i, i + concurrencyLimit);
     const batchOriginalIndices = Array.from({ length: batchChunks.length }, (_, k) => i + k);
 
-    logger.debug(
-      `[Document Processor] Batch ${Math.floor(i / concurrencyLimit) + 1}/${Math.ceil(chunks.length / concurrencyLimit)}: processing ${batchChunks.length} chunks`
-    );
-
     const contextualizedChunks = await getContextualizedChunks(
       runtime,
       fullDocumentText,
@@ -354,9 +296,6 @@ async function processAndSaveFragments({
       const embedding = result.embedding;
 
       if (!embedding || embedding.length === 0) {
-        logger.warn(
-          `Zero vector detected for chunk ${originalChunkIndex} (document ${documentId}). Embedding: ${JSON.stringify(result.embedding)}`
-        );
         failedCount++;
         failedChunks.push(originalChunkIndex);
         continue;
@@ -384,11 +323,7 @@ async function processAndSaveFragments({
         savedCount++;
       } catch (saveError) {
         const errorMessage = saveError instanceof Error ? saveError.message : String(saveError);
-        const errorStack = saveError instanceof Error ? saveError.stack : undefined;
-        logger.error(
-          `Error saving chunk ${originalChunkIndex} to database: ${errorMessage}`,
-          errorStack
-        );
+        logger.error(`Error saving chunk ${originalChunkIndex} to database: ${errorMessage}`);
         failedCount++;
         failedChunks.push(originalChunkIndex);
       }
@@ -441,12 +376,8 @@ async function generateEmbeddingsForChunks(
   const useBatchEmbeddings = shouldUseBatchEmbeddings(runtime);
 
   if (useBatchEmbeddings) {
-    logger.debug(`[Document Processor] Using batch embeddings for ${validChunks.length} chunks`);
     return await generateEmbeddingsBatch(runtime, validChunks, rateLimiter, results);
   } else {
-    logger.debug(
-      `[Document Processor] Using individual embeddings for ${validChunks.length} chunks`
-    );
     return await generateEmbeddingsIndividual(runtime, validChunks, rateLimiter, results);
   }
 }
@@ -470,14 +401,8 @@ async function generateEmbeddingsBatch(
     const batch = validChunks.slice(batchStart, batchEnd);
     const batchTexts = batch.map((c) => c.contextualizedText);
 
-    // Estimate tokens for rate limiting
     const totalTokens = batchTexts.reduce((sum, text) => sum + estimateTokens(text), 0);
     await rateLimiter(totalTokens);
-
-    logger.info(
-      `[Document Processor] Batch ${Math.floor(batchStart / EMBEDDING_BATCH_SIZE) + 1}/${Math.ceil(validChunks.length / EMBEDDING_BATCH_SIZE)}: ` +
-        `${batch.length} texts, ~${totalTokens} tokens`
-    );
 
     try {
       const embeddings = await generateBatchEmbeddingsViaRuntime(runtime, batchTexts);
@@ -504,8 +429,7 @@ async function generateEmbeddingsBatch(
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`[Document Processor] Batch embedding error: ${errorMessage}`);
-      // Fall back to individual processing for this batch
+      logger.error(`Batch embedding error: ${errorMessage}`);
       for (const chunk of batch) {
         try {
           const result = await generateEmbeddingWithValidation(runtime, chunk.contextualizedText);
@@ -559,9 +483,6 @@ async function generateBatchEmbeddingsViaRuntime(
   }
 
   if (isEmbeddingVector(batchResult)) {
-    logger.warn(
-      "[Document Processor] Runtime returned single embedding for batch request - falling back to individual calls"
-    );
     const embeddings: number[][] = await Promise.all(
       texts.map(async (text) => {
         const result = await runtime.useModel(ModelType.TEXT_EMBEDDING, { text });
@@ -575,7 +496,6 @@ async function generateBatchEmbeddingsViaRuntime(
     return embeddings;
   }
 
-  logger.error("[Document Processor] Unexpected batch result format:", typeof batchResult);
   throw new Error("Unexpected batch embedding result format");
 }
 
@@ -639,16 +559,6 @@ async function getContextualizedChunks(
 ): Promise<Array<{ contextualizedText: string; index: number; success: boolean }>> {
   const ctxEnabled = getCtxKnowledgeEnabled(runtime);
 
-  // Log configuration state once per document (not per batch)
-  if (batchOriginalIndices[0] === 0) {
-    const docName = documentTitle || "Document";
-    const provider = runtime?.getSetting("TEXT_PROVIDER") || process.env.TEXT_PROVIDER;
-    const model = runtime?.getSetting("TEXT_MODEL") || process.env.TEXT_MODEL;
-    logger.info(
-      `[Document Processor] "${docName}": CTX enrichment ${ctxEnabled ? "ENABLED" : "DISABLED"}${ctxEnabled ? ` (${provider}/${model})` : ""}`
-    );
-  }
-
   if (ctxEnabled && fullDocumentText) {
     return await generateContextsInBatch(
       runtime,
@@ -658,13 +568,8 @@ async function getContextualizedChunks(
       batchOriginalIndices,
       documentTitle
     );
-  } else if (!ctxEnabled && batchOriginalIndices[0] === 0) {
-    logger.debug(
-      `[Document Processor] To enable CTX: Set CTX_KNOWLEDGE_ENABLED=true and configure TEXT_PROVIDER/TEXT_MODEL`
-    );
   }
 
-  // If contextual Knowledge is disabled, prepare the chunks without modification
   return chunks.map((chunkText, idx) => ({
     contextualizedText: chunkText,
     index: batchOriginalIndices[idx],
@@ -691,7 +596,6 @@ async function generateContextsInBatch(
     providerLimits.rateLimitEnabled
   );
 
-  // Get active provider from validateModelConfig
   const config = validateModelConfig(runtime);
   const isUsingOpenRouter = config.TEXT_PROVIDER === "openrouter";
   const isUsingCacheCapableModel =
@@ -700,10 +604,9 @@ async function generateContextsInBatch(
       config.TEXT_MODEL?.toLowerCase().includes("gemini"));
 
   logger.debug(
-    `[Document Processor] Contextualizing ${chunks.length} chunks with ${config.TEXT_PROVIDER}/${config.TEXT_MODEL} (cache: ${isUsingCacheCapableModel})`
+    `Contextualizing ${chunks.length} chunks with ${config.TEXT_PROVIDER}/${config.TEXT_MODEL} (cache: ${isUsingCacheCapableModel})`
   );
 
-  // Prepare prompts or system messages in parallel
   const promptConfigs = prepareContextPrompts(
     chunks,
     fullDocumentText,
@@ -770,11 +673,7 @@ async function generateContextsInBatch(
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        const errorStack = error instanceof Error ? error.stack : undefined;
-        logger.error(
-          `Error generating context for chunk ${item.originalIndex}: ${errorMessage}`,
-          errorStack
-        );
+        logger.error(`Error generating context for chunk ${item.originalIndex}: ${errorMessage}`);
         return {
           contextualizedText: item.chunkText,
           success: false,
@@ -814,9 +713,6 @@ function prepareContextPrompts(
           : getCachingContextualizationPrompt(chunkText);
 
         if (cachingPromptInfo.prompt.startsWith("Error:")) {
-          logger.warn(
-            `Skipping contextualization for chunk ${originalIndex} due to: ${cachingPromptInfo.prompt}`
-          );
           return {
             originalIndex,
             chunkText,
@@ -835,13 +731,11 @@ function prepareContextPrompts(
           fullDocumentTextForContext: fullDocumentText,
         };
       } else {
-        // Original approach - embed document in the prompt
         const prompt = contentType
           ? getPromptForMimeType(contentType, fullDocumentText, chunkText)
           : getContextualizationPrompt(fullDocumentText, chunkText);
 
         if (prompt.startsWith("Error:")) {
-          logger.warn(`Skipping contextualization for chunk ${originalIndex} due to: ${prompt}`);
           return {
             prompt: null,
             originalIndex,
@@ -861,11 +755,7 @@ function prepareContextPrompts(
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : undefined;
-      logger.error(
-        `Error preparing prompt for chunk ${originalIndex}: ${errorMessage}`,
-        errorStack
-      );
+      logger.error(`Error preparing prompt for chunk ${originalIndex}: ${errorMessage}`);
       return {
         prompt: null,
         originalIndex,
@@ -888,13 +778,11 @@ async function generateEmbeddingWithValidation(
   try {
     const embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, { text });
 
-    // Handle different embedding result formats
     const embedding = Array.isArray(embeddingResult)
       ? embeddingResult
       : (embeddingResult as { embedding: number[] })?.embedding;
 
     if (!embedding || embedding.length === 0) {
-      logger.warn(`Zero vector detected`);
       return { embedding: null, success: false, error: new Error("Zero vector detected") };
     }
 
@@ -919,7 +807,6 @@ async function withRateLimitRetry<T>(
     const errorWithStatus = error as { status?: number; headers?: { "retry-after"?: number } };
     if (errorWithStatus.status === 429) {
       const delay = retryDelay || errorWithStatus.headers?.["retry-after"] || 5;
-      logger.warn(`Rate limit hit for ${errorContext}. Retrying after ${delay}s`);
       await new Promise((resolve) => setTimeout(resolve, delay * 1000));
 
       try {
@@ -969,9 +856,6 @@ function createRateLimiter(
         timeToWait = Math.max(timeToWait, tokenUsage[0].timestamp + intervalMs - now);
       }
       if (timeToWait > 0) {
-        if (timeToWait > 5000) {
-          logger.debug(`[Rate Limiter] Waiting ${Math.round(timeToWait / 1000)}s`);
-        }
         await new Promise((resolve) => setTimeout(resolve, timeToWait));
       }
     }
@@ -981,36 +865,4 @@ function createRateLimiter(
       tokenUsage.push({ timestamp: now, tokens: estimatedTokens });
     }
   };
-}
-
-interface ProviderLimits {
-  provider: string;
-  requestsPerMinute?: number;
-  tokensPerMinute?: number;
-  maxConcurrentRequests?: number;
-  rateLimitEnabled?: boolean;
-  batchDelayMs?: number;
-}
-
-function logKnowledgeGenerationSummary({
-  totalChunks,
-  savedCount,
-  failedCount,
-  ctxEnabled,
-  providerLimits,
-}: {
-  documentId: UUID;
-  totalChunks: number;
-  savedCount: number;
-  failedCount: number;
-  successRate: number;
-  ctxEnabled: boolean;
-  providerLimits: ProviderLimits;
-}) {
-  if (failedCount > 0 || process.env.NODE_ENV === "development") {
-    const status = failedCount > 0 ? "PARTIAL" : "SUCCESS";
-    logger.debug(
-      `[Document Processor] ${status}: ${savedCount}/${totalChunks} chunks, CTX: ${ctxEnabled ? "ON" : "OFF"}, Provider: ${providerLimits.provider}`
-    );
-  }
 }

@@ -105,7 +105,9 @@ impl VisionService {
     /// Capture current frame (placeholder for actual implementation).
     pub async fn capture_frame(&self) -> Result<Option<Vec<u8>>> {
         if !self.is_active() {
-            return Err(VisionError::ServiceNotRunning("Vision service not active".to_string()));
+            return Err(VisionError::ServiceNotRunning(
+                "Vision service not active".to_string(),
+            ));
         }
 
         // Placeholder - actual implementation would capture from camera
@@ -115,7 +117,9 @@ impl VisionService {
     /// Analyze the current scene (placeholder for actual implementation).
     pub async fn analyze_scene(&self) -> Result<SceneDescription> {
         if !self.is_active() {
-            return Err(VisionError::ServiceNotRunning("Vision service not active".to_string()));
+            return Err(VisionError::ServiceNotRunning(
+                "Vision service not active".to_string(),
+            ));
         }
 
         // Placeholder - actual implementation would use Florence-2 or similar

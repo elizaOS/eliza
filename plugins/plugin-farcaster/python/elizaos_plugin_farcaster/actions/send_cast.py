@@ -1,5 +1,3 @@
-"""Send cast action for Farcaster."""
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -10,8 +8,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class ActionResult:
-    """Result of an action execution."""
-
     success: bool
     text: str | None = None
     error: str | None = None
@@ -20,18 +16,11 @@ class ActionResult:
 
 @dataclass
 class ActionExample:
-    """Example of action usage."""
-
     name: str
     content: dict[str, object]
 
 
 class SendCastAction:
-    """Action for sending a cast on Farcaster.
-
-    Posts a new cast (message) to Farcaster.
-    """
-
     name = "SEND_CAST"
     similes = ["POST_CAST", "FARCASTER_POST", "CAST", "SHARE_ON_FARCASTER", "ANNOUNCE"]
     description = "Posts a cast (message) on Farcaster"
@@ -73,7 +62,6 @@ class SendCastAction:
 
     @staticmethod
     def _has_cast_intent(text: str) -> bool:
-        """Check if the message indicates intent to post a cast."""
         keywords = ["post", "cast", "share", "announce", "farcaster"]
         lower = text.lower()
         return any(keyword in lower for keyword in keywords)
@@ -83,20 +71,9 @@ class SendCastAction:
         message: dict[str, object],
         service: "FarcasterService | None" = None,
     ) -> bool:
-        """Validate if the action can run.
-
-        Args:
-            message: The incoming message
-            service: The Farcaster service
-
-        Returns:
-            True if the action can run
-        """
-        # Need service to be available
         if not service or not service.is_running:
             return False
 
-        # Check for cast intent keywords
         content = message.get("content", {})
         text = str(content.get("text", "") if isinstance(content, dict) else "")
 
@@ -108,16 +85,6 @@ class SendCastAction:
         service: "FarcasterService",
         text_to_cast: str,
     ) -> ActionResult:
-        """Handle the SEND_CAST action.
-
-        Args:
-            message: The incoming message
-            service: The Farcaster service
-            text_to_cast: The text to post as a cast
-
-        Returns:
-            Action result
-        """
         if not service.is_running:
             return ActionResult(
                 success=False,
@@ -125,11 +92,9 @@ class SendCastAction:
                 error="Service not started",
             )
 
-        # Truncate if needed (Farcaster limit is 320 characters)
         if len(text_to_cast) > 320:
             text_to_cast = text_to_cast[:317] + "..."
 
-        # Send the cast
         casts: list[Cast] = await service.send_cast(text_to_cast, reply_to=None)
 
         if not casts:

@@ -1,7 +1,3 @@
-"""Wallet Provider for Solana.
-
-Provides wallet portfolio information including balances and token holdings.
-"""
 
 from __future__ import annotations
 
@@ -20,8 +16,6 @@ WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112"
 
 @dataclass
 class WalletProviderResult:
-    """Result of the wallet provider."""
-
     data: WalletPortfolio
     values: dict[str, str] = field(default_factory=dict)
     text: str = ""
@@ -31,39 +25,24 @@ async def get_wallet_portfolio(
     client: SolanaClient,
     agent_name: str | None = None,
 ) -> WalletProviderResult:
-    """Get wallet portfolio information.
-
-    Args:
-        client: The Solana client.
-        agent_name: Optional agent name for the text output.
-
-    Returns:
-        The wallet portfolio result.
-
-    Raises:
-        Exception: If fetching portfolio fails.
-    """
     agent_name = agent_name or "The agent"
     pubkey = client.public_key
     pubkey_str = str(pubkey)
 
     logger.info("Fetching wallet portfolio for %s", pubkey_str)
 
-    # Get SOL balance
     try:
         sol_balance = await client.get_sol_balance()
     except Exception as e:
         logger.exception("Failed to get SOL balance")
         raise RuntimeError(f"Failed to get SOL balance: {e}") from e
 
-    # Get token accounts
     try:
         token_accounts = await client.get_token_accounts()
     except Exception:
         logger.warning("Failed to get token accounts, continuing with SOL only")
         token_accounts = []
 
-    # Try to get prices (optional, don't fail if unavailable)
     sol_price: float | None = None
     try:
         prices = await client.get_token_prices([WRAPPED_SOL_MINT])
@@ -71,15 +50,12 @@ async def get_wallet_portfolio(
     except Exception:
         logger.debug("Could not fetch SOL price")
 
-    # Calculate SOL USD value
     sol_value_usd = (
         sol_balance * Decimal(str(sol_price)) if sol_price else Decimal(0)
     )
 
-    # Build portfolio items
     items: list[PortfolioItem] = []
 
-    # Add SOL as first item
     sol_balance_lamports = int(sol_balance * Decimal(1_000_000_000))
     items.append(
         PortfolioItem(
@@ -95,13 +71,12 @@ async def get_wallet_portfolio(
         )
     )
 
-    # Add token accounts
     for account in token_accounts:
         if account.ui_amount > Decimal(0):
             items.append(
                 PortfolioItem(
-                    name=account.mint,  # Would need token registry for names
-                    symbol="TOKEN",  # Would need token registry for symbols
+                    name=account.mint,
+                    symbol="TOKEN",
                     address=account.mint,
                     decimals=account.decimals,
                     balance=account.amount,
@@ -115,16 +90,14 @@ async def get_wallet_portfolio(
     # Calculate total USD
     total_usd = sol_value_usd
 
-    # Build portfolio
     portfolio = WalletPortfolio(
         total_usd=str(total_usd),
         total_sol=str(sol_balance),
         items=items,
-        prices=None,  # Would need to fetch BTC/ETH prices
+        prices=None,
         last_updated=int(time.time() * 1000),
     )
 
-    # Build values map
     values: dict[str, str] = {
         "total_usd": str(total_usd),
         "total_sol": str(sol_balance),
@@ -133,7 +106,6 @@ async def get_wallet_portfolio(
     if sol_price is not None:
         values["sol_price"] = str(sol_price)
 
-    # Add token values
     for idx, item in enumerate(items):
         values[f"token_{idx}_name"] = item.name
         values[f"token_{idx}_symbol"] = item.symbol
@@ -142,7 +114,6 @@ async def get_wallet_portfolio(
         if item.value_sol:
             values[f"token_{idx}_sol"] = item.value_sol
 
-    # Build text output
     text = f"\n\n{agent_name}'s Main Solana Wallet ({pubkey_str})\n"
     text += f"Total Value: ${total_usd} ({sol_balance} SOL)\n\n"
     text += "Token Balances:\n"
@@ -164,7 +135,6 @@ async def get_wallet_portfolio(
     )
 
 
-# Provider definition for elizaOS integration
 WALLET_PROVIDER = {
     "name": "solana-wallet",
     "description": "your solana wallet information",

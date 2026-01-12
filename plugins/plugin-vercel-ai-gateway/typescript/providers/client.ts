@@ -1,9 +1,3 @@
-/**
- * Vercel AI Gateway HTTP Client
- *
- * Async HTTP client for Vercel AI Gateway API interactions.
- */
-
 import type {
   ChatCompletionResponse,
   EmbeddingParams,
@@ -19,9 +13,6 @@ import type {
 import { GatewayError } from "../types";
 import { modelSupportsTemperature } from "../utils/config";
 
-/**
- * Vercel AI Gateway HTTP client.
- */
 export class GatewayClient {
   private readonly config: GatewayConfig;
 
@@ -29,17 +20,11 @@ export class GatewayClient {
     this.config = config;
   }
 
-  /**
-   * Build URL for an endpoint.
-   */
   private url(endpoint: string): string {
     const base = this.config.baseUrl.replace(/\/$/, "");
     return `${base}${endpoint}`;
   }
 
-  /**
-   * Make an HTTP request to the gateway.
-   */
   private async request<T>(endpoint: string, options: RequestInit): Promise<T> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeoutMs);
@@ -85,13 +70,6 @@ export class GatewayClient {
     }
   }
 
-  // =========================================================================
-  // Text Generation
-  // =========================================================================
-
-  /**
-   * Generate text using the chat completions API.
-   */
   async generateText(params: TextGenerationParams): Promise<string> {
     const model = params.model || this.config.largeModel;
 
@@ -101,12 +79,14 @@ export class GatewayClient {
     }
     messages.push({ role: "user", content: params.prompt });
 
-    const body: Record<string, unknown> = {
+    const body: Record<
+      string,
+      string | number | boolean | string[] | Array<{ role: string; content: string }>
+    > = {
       model,
       messages,
     };
 
-    // Only add temperature/sampling params for models that support them
     if (modelSupportsTemperature(model)) {
       if (params.temperature !== undefined) {
         body.temperature = params.temperature;
@@ -124,7 +104,6 @@ export class GatewayClient {
         body.max_tokens = params.maxTokens;
       }
     } else {
-      // Reasoning models use max_completion_tokens instead of max_tokens
       if (params.maxTokens !== undefined) {
         body.max_completion_tokens = params.maxTokens;
       }
@@ -147,10 +126,7 @@ export class GatewayClient {
     return content;
   }
 
-  /**
-   * Stream text generation using the chat completions API.
-   */
-  async *streamText(params: TextGenerationParams): AsyncGenerator<string, void, unknown> {
+  async *streamText(params: TextGenerationParams): AsyncGenerator<string, void, void> {
     const model = params.model || this.config.largeModel;
 
     const messages: Array<{ role: string; content: string }> = [];
@@ -159,13 +135,15 @@ export class GatewayClient {
     }
     messages.push({ role: "user", content: params.prompt });
 
-    const body: Record<string, unknown> = {
+    const body: Record<
+      string,
+      string | number | boolean | Array<{ role: string; content: string }>
+    > = {
       model,
       messages,
       stream: true,
     };
 
-    // Only add temperature for models that support it
     if (modelSupportsTemperature(model)) {
       if (params.temperature !== undefined) {
         body.temperature = params.temperature;
@@ -229,9 +207,7 @@ export class GatewayClient {
             if (content) {
               yield content;
             }
-          } catch {
-            // Skip invalid JSON
-          }
+          } catch {}
         }
       }
     } finally {
@@ -239,13 +215,6 @@ export class GatewayClient {
     }
   }
 
-  // =========================================================================
-  // Embeddings
-  // =========================================================================
-
-  /**
-   * Generate an embedding for text.
-   */
   async createEmbedding(params: EmbeddingParams): Promise<number[]> {
     const model = params.model || this.config.embeddingModel;
     const dimensions = params.dimensions || this.config.embeddingDimensions;
@@ -281,7 +250,7 @@ export class GatewayClient {
   async generateImage(params: ImageGenerationParams): Promise<ImageGenerationResult[]> {
     const model = params.model || this.config.imageModel;
 
-    const body: Record<string, unknown> = {
+    const body: Record<string, string | number | undefined> = {
       model,
       prompt: params.prompt,
     };
@@ -343,7 +312,6 @@ export class GatewayClient {
       throw new GatewayError("API returned empty image description");
     }
 
-    // Parse title and description from response
     let title = "Image Analysis";
     let description = content;
 
@@ -356,13 +324,6 @@ export class GatewayClient {
     return { title, description };
   }
 
-  // =========================================================================
-  // Structured Output
-  // =========================================================================
-
-  /**
-   * Generate a structured JSON object.
-   */
   async generateObject(params: {
     prompt: string;
     model?: string;
@@ -377,7 +338,6 @@ export class GatewayClient {
       temperature: params.temperature,
     });
 
-    // Clean up potential markdown code blocks
     let cleaned = response.trim();
     if (cleaned.startsWith("```json")) {
       cleaned = cleaned.slice(7);

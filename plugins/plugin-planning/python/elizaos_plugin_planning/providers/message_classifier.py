@@ -8,11 +8,7 @@ logger = logging.getLogger(__name__)
 
 class MessageClassifierProvider:
     name = "messageClassifier"
-    description = (
-        "Classifies incoming messages by complexity and planning requirements "
-        "using intelligent LLM analysis. Use to determine if strategic planning, "
-        "sequential execution, or direct action is needed."
-    )
+    description = "Classifies messages by complexity and planning requirements"
 
     async def get(
         self,
@@ -116,7 +112,6 @@ CONFIDENCE: [0.0-1.0]"""
 
             planning_required = planning_type != "direct_action" and complexity != "simple"
 
-            # Map to message classification
             text_lower = text.lower()
             if "strategic" in text_lower or planning_type == "strategic_planning":
                 message_classification = "strategic"

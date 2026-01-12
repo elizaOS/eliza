@@ -4,8 +4,7 @@ use std::sync::Arc;
 use tracing::error;
 
 pub const BROWSER_STATE_NAME: &str = "BROWSER_STATE";
-pub const BROWSER_STATE_DESCRIPTION: &str =
-    "Provides current browser state information including active session status, current page URL, and page title";
+pub const BROWSER_STATE_DESCRIPTION: &str = "Provides current browser state information";
 
 #[derive(Debug)]
 pub struct ProviderResult {

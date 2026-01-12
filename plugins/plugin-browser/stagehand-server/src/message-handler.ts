@@ -460,7 +460,6 @@ export class MessageHandler {
       success: true,
       data: {
         status: "ok",
-        message: "Stagehand server is running",
       },
     };
   }

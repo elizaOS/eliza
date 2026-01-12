@@ -1,15 +1,10 @@
 #![allow(missing_docs)]
-//! Providers for the Roblox plugin.
-//!
-//! This module provides context providers that supply information about
-//! Roblox game state to elizaOS agents.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// Provider trait for elizaOS compatibility.
 #[async_trait]
 pub trait Provider: Send + Sync {
     fn name(&self) -> &'static str;
@@ -30,29 +25,19 @@ pub struct ProviderResult {
     pub data: Value,
 }
 
-/// Game state information provided to agents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameStateInfo {
-    /// Universe ID of the connected experience
     pub universe_id: String,
-    /// Optional Place ID
     pub place_id: Option<String>,
-    /// Experience name (if available)
     pub experience_name: Option<String>,
-    /// Current player count (if available)
     pub active_players: Option<u64>,
-    /// Total visits (if available)
     pub total_visits: Option<u64>,
-    /// Creator name
     pub creator_name: Option<String>,
-    /// Messaging topic
     pub messaging_topic: String,
-    /// Whether dry run mode is enabled
     pub dry_run: bool,
 }
 
 impl GameStateInfo {
-    /// Format as a readable string for agent context.
     pub fn to_context_string(&self) -> String {
         let mut parts = vec![
             "## Roblox Game Connection".to_string(),
@@ -91,7 +76,6 @@ impl GameStateInfo {
     }
 }
 
-/// Game state provider for Roblox.
 pub struct GameStateProvider;
 
 #[async_trait]
@@ -109,7 +93,6 @@ impl Provider for GameStateProvider {
     }
 
     async fn get(&self, _params: ProviderParams) -> ProviderResult {
-        // Note: In actual elizaOS integration, this would use the runtime's RobloxService.
         let values = HashMap::from([
             ("universeId".to_string(), "N/A".to_string()),
             ("placeId".to_string(), "N/A".to_string()),
@@ -126,7 +109,6 @@ impl Provider for GameStateProvider {
     }
 }
 
-/// Get all Roblox plugin provider names.
 pub fn get_roblox_provider_names() -> Vec<&'static str> {
     vec!["roblox-game-state"]
 }
@@ -173,10 +155,5 @@ mod tests {
         assert!(result.text.contains("Roblox"));
     }
 }
-
-
-
-
-
 
 

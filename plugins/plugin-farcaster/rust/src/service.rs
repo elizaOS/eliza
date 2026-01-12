@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! Farcaster service for elizaOS.
-//!
-//! Provides the main service interface for Farcaster integration.
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -13,13 +10,8 @@ use crate::config::FarcasterConfig;
 use crate::error::{FarcasterError, Result};
 use crate::types::{Cast, CastId, FidRequest, Profile};
 
-/// Callback type for mention handling.
 pub type MentionCallback = Arc<dyn Fn(Cast) + Send + Sync>;
 
-/// Farcaster service for elizaOS agents.
-///
-/// Manages the Farcaster client lifecycle and provides high-level
-/// operations for casting, mentions, and timeline interactions.
 pub struct FarcasterService {
     config: FarcasterConfig,
     client: Arc<RwLock<Option<FarcasterClient>>>,
@@ -28,7 +20,6 @@ pub struct FarcasterService {
 }
 
 impl FarcasterService {
-    /// Create a new Farcaster service.
     pub fn new(config: FarcasterConfig) -> Self {
         Self {
             config,
@@ -38,13 +29,11 @@ impl FarcasterService {
         }
     }
 
-    /// Create a service from environment variables.
     pub fn from_env() -> Result<Self> {
         let config = FarcasterConfig::from_env()?;
         Ok(Self::new(config))
     }
 
-    /// Start the Farcaster service.
     pub async fn start(&self) -> Result<()> {
         {
             let running = self.running.read().await;
@@ -68,7 +57,6 @@ impl FarcasterService {
 
         info!("Farcaster service started for FID {}", self.config.fid);
 
-        // Start polling loop if in polling mode
         if matches!(
             self.config.mode,
             crate::config::FarcasterMode::Polling
@@ -79,7 +67,6 @@ impl FarcasterService {
         Ok(())
     }
 
-    /// Stop the Farcaster service.
     pub async fn stop(&self) {
         {
             let mut running = self.running.write().await;
@@ -112,7 +99,6 @@ impl FarcasterService {
                     break;
                 }
 
-                // Check for mentions
                 let client_guard = client.read().await;
                 if let Some(ref client) = *client_guard {
                     let request = FidRequest::new(fid, 50);
@@ -136,13 +122,11 @@ impl FarcasterService {
         });
     }
 
-    /// Register a callback for new mentions.
     pub async fn on_mention(&self, callback: MentionCallback) {
         let mut cb = self.mention_callback.write().await;
         *cb = Some(callback);
     }
 
-    /// Send a cast.
     pub async fn send_cast(
         &self,
         text: &str,
@@ -157,7 +141,6 @@ impl FarcasterService {
         client.send_cast(text, in_reply_to).await
     }
 
-    /// Get a cast by hash.
     pub async fn get_cast(&self, cast_hash: &str) -> Result<Cast> {
         let client_guard = self.client.read().await;
         let client = client_guard
@@ -167,7 +150,6 @@ impl FarcasterService {
         client.get_cast(cast_hash).await
     }
 
-    /// Get a profile by FID.
     pub async fn get_profile(&self, fid: u64) -> Result<Profile> {
         let client_guard = self.client.read().await;
         let client = client_guard
@@ -177,7 +159,6 @@ impl FarcasterService {
         client.get_profile(fid).await
     }
 
-    /// Get timeline for the configured FID.
     pub async fn get_timeline(&self, limit: u32) -> Result<(Vec<Cast>, Option<String>)> {
         let client_guard = self.client.read().await;
         let client = client_guard
@@ -188,17 +169,14 @@ impl FarcasterService {
         client.get_timeline(&request).await
     }
 
-    /// Check if the service is running.
     pub async fn is_running(&self) -> bool {
         *self.running.read().await
     }
 
-    /// Get the configured FID.
     pub fn fid(&self) -> u64 {
         self.config.fid
     }
 
-    /// Get the configuration.
     pub fn config(&self) -> &FarcasterConfig {
         &self.config
     }

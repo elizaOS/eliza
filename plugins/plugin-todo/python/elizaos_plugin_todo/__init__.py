@@ -1,25 +1,3 @@
-"""
-elizaOS Todo Plugin - Task management with daily recurring and one-off tasks.
-
-This package provides comprehensive task management functionality including:
-- Daily recurring tasks with streak tracking
-- One-off tasks with due dates and priorities
-- Aspirational goals
-- Reminder notifications
-- Multi-platform integration
-
-Example:
-    >>> from elizaos_plugin_todo import TodoClient, TodoConfig
-    >>> config = TodoConfig.from_env()
-    >>> client = TodoClient(config)
-    >>> todo = await client.create_todo(
-    ...     name="Finish report",
-    ...     task_type=TaskType.ONE_OFF,
-    ...     priority=Priority.HIGH,
-    ...     due_date=datetime.now() + timedelta(days=1)
-    ... )
-    >>> print(todo.name)
-"""
 
 from elizaos_plugin_todo.cache_manager import CacheManager
 from elizaos_plugin_todo.client import TodoClient
@@ -33,7 +11,7 @@ from elizaos_plugin_todo.errors import (
     ValidationError,
 )
 from elizaos_plugin_todo.notification_manager import NotificationManager
-from elizaos_plugin_todo.reminder_service import ReminderService
+from elizaos_plugin_todo.reminder_service import ReminderService, TodoReminderService
 from elizaos_plugin_todo.actions import (
     CANCEL_TODO_ACTION,
     COMPLETE_TODO_ACTION,
@@ -79,6 +57,7 @@ __all__ = [
     # Services
     "TodoDataService",
     "ReminderService",
+    "TodoReminderService",
     "NotificationManager",
     "CacheManager",
     # Actions

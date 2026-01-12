@@ -61,7 +61,7 @@ const sendGameMessage: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
-    _options: Record<string, unknown>,
+    _options: Record<string, never>,
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
     try {
@@ -70,7 +70,7 @@ const sendGameMessage: Action = {
         logger.error("Roblox service not found");
         if (callback) {
           callback({
-            text: "I couldn't connect to the Roblox service. Please make sure it's configured correctly.",
+            text: "Roblox service not available.",
             action: "SEND_ROBLOX_MESSAGE",
           });
         }
@@ -130,7 +130,7 @@ const sendGameMessage: Action = {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       if (callback) {
         callback({
-          text: "I encountered an error sending the message to the game. Please try again.",
+          text: "Error sending message.",
           action: "SEND_ROBLOX_MESSAGE",
         });
       }

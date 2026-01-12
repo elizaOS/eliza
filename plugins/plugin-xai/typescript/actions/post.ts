@@ -55,7 +55,6 @@ export const postAction: Action = {
       return { success: false, error: "No text provided" };
     }
 
-    // Truncate if too long
     if (text.length > 280) {
       const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
       let truncated = "";
@@ -69,7 +68,6 @@ export const postAction: Action = {
       text = truncated.trim() || `${text.substring(0, 277)}...`;
     }
 
-    // Generate natural post if input is short/generic
     let finalText = text;
     if (
       text.length < 50 ||
@@ -105,7 +103,6 @@ Post:`;
     const result = await sendPost(clientBase, finalText);
 
     if (result) {
-      // Extract post ID from the nested PostResponse structure
       const postId = result.id || result.data?.id || result.data?.data?.id || Date.now().toString();
       const postUrl = `https://x.com/${clientBase.profile.username}/status/${postId}`;
 

@@ -1,21 +1,10 @@
-"""
-OpenAI Plugin Types
-
-Strong types with Pydantic validation for all API interactions.
-"""
-
 from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-# ============================================================================
-# Enums
-# ============================================================================
-
 
 class AudioFormat(str, Enum):
-    """Supported audio formats for transcription."""
 
     MP3 = "mp3"
     WAV = "wav"
@@ -88,13 +77,7 @@ class ImageStyle(str, Enum):
     NATURAL = "natural"
 
 
-# ============================================================================
-# Request Parameters
-# ============================================================================
-
-
 class TranscriptionParams(BaseModel):
-    """Parameters for audio transcription."""
 
     model: str = Field(default="whisper-1", description="The model to use for transcription")
     language: str | None = Field(default=None, description="The language of the audio (ISO-639-1)")
@@ -111,7 +94,6 @@ class TranscriptionParams(BaseModel):
 
 
 class TextToSpeechParams(BaseModel):
-    """Parameters for text-to-speech generation."""
 
     text: str = Field(..., min_length=1, max_length=4096, description="The text to convert")
     model: str = Field(default="tts-1", description="The model to use")
@@ -131,7 +113,6 @@ class EmbeddingParams(BaseModel):
 
 
 class ImageGenerationParams(BaseModel):
-    """Parameters for image generation."""
 
     prompt: str = Field(..., min_length=1, description="The prompt describing the image")
     model: str = Field(default="dall-e-3", description="The model to use")
@@ -142,7 +123,6 @@ class ImageGenerationParams(BaseModel):
 
 
 class ImageDescriptionParams(BaseModel):
-    """Parameters for image description/analysis."""
 
     image_url: str = Field(..., description="URL of the image to analyze")
     prompt: str = Field(
@@ -154,7 +134,6 @@ class ImageDescriptionParams(BaseModel):
 
 
 class TextGenerationParams(BaseModel):
-    """Parameters for text generation."""
 
     prompt: str = Field(..., min_length=1, description="The prompt for generation")
     model: str = Field(default="gpt-5-mini", description="The model to use")
@@ -168,34 +147,25 @@ class TextGenerationParams(BaseModel):
 
 
 class ObjectGenerationParams(BaseModel):
-    """Parameters for structured object generation."""
 
     prompt: str = Field(..., min_length=1, description="The prompt for generation")
     model: str = Field(default="gpt-5-mini", description="The model to use")
     temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Temperature for sampling")
 
 
-# ============================================================================
-# Response Types
-# ============================================================================
-
-
 class ImageDescriptionResult(BaseModel):
-    """Result of image description/analysis."""
 
     title: str = Field(..., description="A title for the image")
     description: str = Field(..., description="A detailed description of the image")
 
 
 class ImageGenerationResult(BaseModel):
-    """Result of image generation."""
 
     url: str = Field(..., description="URL of the generated image")
     revised_prompt: str | None = Field(default=None, description="Revised prompt if applicable")
 
 
 class TokenUsage(BaseModel):
-    """Token usage statistics."""
 
     prompt_tokens: int = Field(..., ge=0, description="Number of prompt tokens")
     completion_tokens: int = Field(
@@ -207,7 +177,6 @@ class TokenUsage(BaseModel):
 
 
 class EmbeddingData(BaseModel):
-    """Single embedding data."""
 
     object: Literal["embedding"] = "embedding"
     embedding: list[float] = Field(..., description="The embedding vector")
@@ -215,7 +184,6 @@ class EmbeddingData(BaseModel):
 
 
 class EmbeddingResponse(BaseModel):
-    """OpenAI embedding response."""
 
     object: Literal["list"] = "list"
     data: list[EmbeddingData] = Field(..., description="List of embeddings")
@@ -231,7 +199,6 @@ class ChatMessage(BaseModel):
 
 
 class ChatChoice(BaseModel):
-    """Chat completion choice."""
 
     index: int = Field(..., ge=0, description="Choice index")
     message: ChatMessage = Field(..., description="The message")
@@ -250,7 +217,6 @@ class ChatCompletionResponse(BaseModel):
 
 
 class ImageResponseData(BaseModel):
-    """Image generation response data."""
 
     url: str = Field(..., description="URL of the generated image")
     revised_prompt: str | None = Field(default=None, description="Revised prompt")
@@ -264,7 +230,6 @@ class ImageGenerationResponse(BaseModel):
 
 
 class TranscriptionResponse(BaseModel):
-    """OpenAI transcription response."""
 
     text: str = Field(..., description="Transcribed text")
     language: str | None = Field(default=None, description="Detected language")
@@ -272,7 +237,6 @@ class TranscriptionResponse(BaseModel):
 
 
 class ModelInfo(BaseModel):
-    """OpenAI model information."""
 
     id: str = Field(..., description="Model ID")
     object: Literal["model"] = "model"
@@ -281,19 +245,12 @@ class ModelInfo(BaseModel):
 
 
 class ModelsResponse(BaseModel):
-    """OpenAI models list response."""
 
     object: Literal["list"] = "list"
     data: list[ModelInfo] = Field(..., description="List of models")
 
 
-# ============================================================================
-# Configuration
-# ============================================================================
-
-
 class OpenAIConfig(BaseModel):
-    """OpenAI plugin configuration."""
 
     api_key: str = Field(..., min_length=1, description="OpenAI API key")
     base_url: str = Field(default="https://api.openai.com/v1", description="API base URL")
@@ -312,7 +269,6 @@ class OpenAIConfig(BaseModel):
     @field_validator("api_key")
     @classmethod
     def validate_api_key(cls, v: str) -> str:
-        """Validate API key format."""
         if not v.startswith("sk-"):
             raise ValueError("API key must start with 'sk-'")
         return v

@@ -37,3 +37,11 @@ class ChannelStateProvider:
         }
 
 
+class ChannelStateProviderCamel(ChannelStateProvider):
+    """TS-parity alias provider (camelCase name)."""
+
+    @property
+    def name(self) -> str:
+        return "channelState"
+
+

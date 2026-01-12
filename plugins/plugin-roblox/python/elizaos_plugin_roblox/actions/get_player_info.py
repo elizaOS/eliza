@@ -1,7 +1,3 @@
-"""
-Get player info action for the Roblox plugin.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,7 +6,6 @@ from elizaos_plugin_roblox.actions.send_game_message import ActionExample
 
 @dataclass
 class GetPlayerInfoAction:
-    """Action to look up a player by ID or username."""
 
     @property
     def name(self) -> str:

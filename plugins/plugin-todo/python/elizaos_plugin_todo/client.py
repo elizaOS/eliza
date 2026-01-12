@@ -1,7 +1,3 @@
-"""
-High-level client for the Todo Plugin.
-"""
-
 from datetime import datetime
 from types import TracebackType
 from uuid import UUID
@@ -24,30 +20,7 @@ from elizaos_plugin_todo.types import (
 
 
 class TodoClient:
-    """
-    High-level client for todo operations.
-
-    This client provides a simple interface for managing todos,
-    including creation, updates, completion, and querying.
-
-    Example:
-        >>> config = TodoConfig.from_env()
-        >>> async with TodoClient(config) as client:
-        ...     todo = await client.create_todo(
-        ...         name="Finish report",
-        ...         task_type=TaskType.ONE_OFF,
-        ...         priority=Priority.HIGH,
-        ...     )
-        ...     print(f"Created: {todo.name}")
-    """
-
     def __init__(self, config: TodoConfig | None = None) -> None:
-        """
-        Initialize the todo client.
-
-        Args:
-            config: Optional configuration
-        """
         self._config = config or TodoConfig.from_env()
         self._data_service: TodoDataService | None = None
         self._reminder_service: ReminderService | None = None
@@ -56,7 +29,6 @@ class TodoClient:
         self._started = False
 
     async def __aenter__(self) -> "TodoClient":
-        """Async context manager entry."""
         await self.start()
         return self
 
@@ -66,11 +38,9 @@ class TodoClient:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        """Async context manager exit."""
         await self.stop()
 
     async def start(self) -> None:
-        """Start the client and all services."""
         if self._started:
             return
 
@@ -94,7 +64,6 @@ class TodoClient:
         self._started = True
 
     async def stop(self) -> None:
-        """Stop the client and all services."""
         if not self._started:
             return
 
@@ -110,7 +79,6 @@ class TodoClient:
         self._started = False
 
     def _ensure_started(self) -> None:
-        """Ensure the client is started."""
         if not self._started or not self._data_service:
             raise RuntimeError("TodoClient not started. Use 'async with' or call start()")
 
@@ -128,28 +96,6 @@ class TodoClient:
         due_date: datetime | None = None,
         tags: list[str] | None = None,
     ) -> Todo:
-        """
-        Create a new todo.
-
-        Args:
-            name: Todo name
-            task_type: Type of task
-            agent_id: Agent UUID
-            world_id: World UUID
-            room_id: Room UUID
-            entity_id: Entity UUID
-            description: Optional description
-            priority: Optional priority (default: MEDIUM for one-off)
-            is_urgent: Whether the task is urgent
-            due_date: Optional due date
-            tags: Optional tags
-
-        Returns:
-            Created Todo object
-
-        Raises:
-            ValidationError: If parameters are invalid
-        """
         self._ensure_started()
 
         if not name or not name.strip():
@@ -195,15 +141,6 @@ class TodoClient:
         return todo
 
     async def get_todo(self, todo_id: UUID) -> Todo | None:
-        """
-        Get a todo by ID.
-
-        Args:
-            todo_id: The todo's UUID
-
-        Returns:
-            The todo if found, None otherwise
-        """
         self._ensure_started()
         assert self._data_service is not None
         return await self._data_service.get_todo(todo_id)
@@ -218,21 +155,6 @@ class TodoClient:
         tags: list[str] | None = None,
         limit: int | None = None,
     ) -> list[Todo]:
-        """
-        Get todos with optional filters.
-
-        Args:
-            agent_id: Filter by agent
-            room_id: Filter by room
-            entity_id: Filter by entity
-            task_type: Filter by task type
-            is_completed: Filter by completion status
-            tags: Filter by tags
-            limit: Maximum number to return
-
-        Returns:
-            List of matching todos
-        """
         self._ensure_started()
         assert self._data_service is not None
 
@@ -249,15 +171,6 @@ class TodoClient:
         return await self._data_service.get_todos(filters)
 
     async def complete_todo(self, todo_id: UUID) -> Todo:
-        """
-        Mark a todo as completed.
-
-        Args:
-            todo_id: The todo's UUID
-
-        Returns:
-            Updated Todo object
-        """
         self._ensure_started()
         assert self._data_service is not None
 
@@ -277,15 +190,6 @@ class TodoClient:
         return todo
 
     async def uncomplete_todo(self, todo_id: UUID) -> Todo:
-        """
-        Mark a todo as not completed.
-
-        Args:
-            todo_id: The todo's UUID
-
-        Returns:
-            Updated Todo object
-        """
         self._ensure_started()
         assert self._data_service is not None
 
@@ -311,20 +215,6 @@ class TodoClient:
         is_urgent: bool | None = None,
         due_date: datetime | None = None,
     ) -> Todo:
-        """
-        Update a todo.
-
-        Args:
-            todo_id: The todo's UUID
-            name: New name
-            description: New description
-            priority: New priority
-            is_urgent: New urgency
-            due_date: New due date
-
-        Returns:
-            Updated Todo object
-        """
         self._ensure_started()
         assert self._data_service is not None
 
@@ -345,15 +235,6 @@ class TodoClient:
         return todo
 
     async def delete_todo(self, todo_id: UUID) -> bool:
-        """
-        Delete a todo.
-
-        Args:
-            todo_id: The todo's UUID
-
-        Returns:
-            True if deletion succeeded
-        """
         self._ensure_started()
         assert self._data_service is not None
         return await self._data_service.delete_todo(todo_id)
@@ -363,16 +244,6 @@ class TodoClient:
         agent_id: UUID | None = None,
         room_id: UUID | None = None,
     ) -> list[Todo]:
-        """
-        Get overdue todos.
-
-        Args:
-            agent_id: Filter by agent
-            room_id: Filter by room
-
-        Returns:
-            List of overdue todos
-        """
         self._ensure_started()
         assert self._data_service is not None
 
@@ -384,16 +255,6 @@ class TodoClient:
         agent_id: UUID | None = None,
         room_id: UUID | None = None,
     ) -> int:
-        """
-        Reset daily todos for a new day.
-
-        Args:
-            agent_id: Filter by agent
-            room_id: Filter by room
-
-        Returns:
-            Number of todos reset
-        """
         self._ensure_started()
         assert self._data_service is not None
 
@@ -401,31 +262,11 @@ class TodoClient:
         return await self._data_service.reset_daily_todos(filters)
 
     async def add_tags(self, todo_id: UUID, tags: list[str]) -> bool:
-        """
-        Add tags to a todo.
-
-        Args:
-            todo_id: The todo's UUID
-            tags: Tags to add
-
-        Returns:
-            True if operation succeeded
-        """
         self._ensure_started()
         assert self._data_service is not None
         return await self._data_service.add_tags(todo_id, tags)
 
     async def remove_tags(self, todo_id: UUID, tags: list[str]) -> bool:
-        """
-        Remove tags from a todo.
-
-        Args:
-            todo_id: The todo's UUID
-            tags: Tags to remove
-
-        Returns:
-            True if operation succeeded
-        """
         self._ensure_started()
         assert self._data_service is not None
         return await self._data_service.remove_tags(todo_id, tags)

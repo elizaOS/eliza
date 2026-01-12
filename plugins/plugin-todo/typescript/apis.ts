@@ -14,7 +14,7 @@ import {
   type World,
 } from "@elizaos/core";
 import { sql } from "drizzle-orm";
-import { createTodoDataService } from "./services/todoDataService";
+import { createTodoDataService, type TodoData } from "./services/todoDataService";
 
 // Define the equivalent of __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -24,14 +24,8 @@ const __dirname = path.dirname(__filename);
 // relative to the package root (which is two levels up from src/plugin-todo)
 const frontendDist = path.resolve(__dirname, "../dist");
 
-const frontPagePath = path.resolve(frontendDist, "index.html");
+const _frontPagePath = path.resolve(frontendDist, "index.html");
 const assetsPath = path.resolve(frontendDist, "assets");
-console.log("*** frontPagePath", frontPagePath);
-console.log("*** assetsPath", assetsPath);
-/**
- * Definition of routes with type, path, and handler for each route.
- * Routes include fetching trending tokens, wallet information, posts, sentiment analysis, and signals.
- */
 
 export const routes: Route[] = [
   {
@@ -41,7 +35,6 @@ export const routes: Route[] = [
       const indexPath = path.resolve(frontendDist, "index.html");
       if (fs.existsSync(indexPath)) {
         const htmlContent = fs.readFileSync(indexPath, "utf-8");
-        // Set Content-Type header to text/html
         res.setHeader?.("Content-Type", "text/html");
         res.send(htmlContent);
       } else {
@@ -56,7 +49,6 @@ export const routes: Route[] = [
       const todosHtmlPath = path.resolve(frontendDist, "index.html");
       if (fs.existsSync(todosHtmlPath)) {
         const htmlContent = fs.readFileSync(todosHtmlPath, "utf-8");
-        // Set Content-Type header to text/html
         res.setHeader?.("Content-Type", "text/html");
         res.send(htmlContent);
       } else {
@@ -64,7 +56,6 @@ export const routes: Route[] = [
       }
     },
   },
-  // Route to serve JS files from frontendDist/assets
   {
     type: "GET",
     path: "/assets/*",
@@ -73,31 +64,25 @@ export const routes: Route[] = [
       res: RouteResponse,
       _runtime: IAgentRuntime
     ): Promise<void> => {
-      // Extract the relative path after '/assets/'
-      const assetRelativePath = req.params?.["0"]; // This captures everything after '/assets/'
+      const assetRelativePath = req.params?.["0"];
       if (!assetRelativePath) {
         res.status(400).send("Invalid asset path");
         return;
       }
-      // Construct the full path to the asset within the frontendDist/assets directory
-      const filePath = path.resolve(assetsPath, assetRelativePath); // Corrected base path
+      const filePath = path.resolve(assetsPath, assetRelativePath);
 
-      // Basic security check to prevent path traversal
       if (!filePath.startsWith(assetsPath)) {
         res.status(403).send("Forbidden");
         return;
       }
 
-      // Check if the file exists and serve it
       if (fs.existsSync(filePath)) {
-        // Let express handle MIME types based on file extension
         res.sendFile?.(filePath);
       } else {
         res.status(404).send("Asset not found");
       }
     },
   },
-  // API route to get all TODOs, structured by world and room
   {
     type: "GET",
     path: "/api/todos",
@@ -109,22 +94,19 @@ export const routes: Route[] = [
       try {
         const dataService = createTodoDataService(runtime);
 
-        // 1. Get all room IDs the agent is a participant in
         const agentRoomIds = await runtime.getRoomsForParticipant(runtime.agentId);
         if (!agentRoomIds || agentRoomIds.length === 0) {
           logger.debug(
             `[API /api/todos] Agent ${runtime.agentId} is not a participant in any rooms.`
           );
-          res.json([]); // No rooms for this agent
+          res.json([]);
           return;
         }
         logger.debug(
           `[API /api/todos] Agent ${runtime.agentId} is in rooms: ${agentRoomIds.join(", ")}`
         );
 
-        // 2. Fetch details for these specific rooms
         const agentRooms: Room[] = [];
-        // Fetch rooms in batches if needed, but likely fine for typical numbers
         for (const roomId of agentRoomIds) {
           const room = await runtime.getRoom(roomId);
           if (room) {
@@ -141,16 +123,13 @@ export const routes: Route[] = [
           return;
         }
 
-        // 3. Fetch all TODO tasks for these specific rooms using the data service
-        const tasksByRoom = new Map<string, unknown[]>();
+        const tasksByRoom = new Map<string, TodoData[]>();
 
-        // Fetch tasks per room
         for (const roomId of agentRoomIds) {
           const todos = await dataService.getTodos({ roomId });
           tasksByRoom.set(roomId, todos || []);
         }
 
-        // 4. Group rooms by World ID and fetch World details
         const roomsByWorld = new Map<string, Room[]>();
         const worldIds = new Set<UUID>();
         for (const room of agentRooms) {
@@ -163,7 +142,6 @@ export const routes: Route[] = [
             roomsByWorld.get(worldId)?.push(room);
           } else {
             logger.warn(`[API /api/todos] Room ${room.id} is missing worldId.`);
-            // Handle rooms without worldId (e.g., add to a default/unknown world)
             const unknownWorldId = "unknown-world";
             if (!roomsByWorld.has(unknownWorldId)) roomsByWorld.set(unknownWorldId, []);
             roomsByWorld.get(unknownWorldId)?.push(room);
@@ -175,7 +153,6 @@ export const routes: Route[] = [
           const world = await runtime.getWorld(worldId);
           if (world) worldsMap.set(worldId, world);
         }
-        // Add placeholder for unknown world if needed
         if (roomsByWorld.has("unknown-world")) {
           worldsMap.set("unknown-world", {
             id: "unknown-world" as UUID,
@@ -183,7 +160,6 @@ export const routes: Route[] = [
           } as World);
         }
 
-        // 5. Structure the final response
         const structuredResponse = Array.from(worldsMap.entries()).map(([worldId, world]) => {
           const rooms = roomsByWorld.get(worldId) || [];
           return {
@@ -208,7 +184,6 @@ export const routes: Route[] = [
       }
     },
   },
-  // API route to get all tags
   {
     type: "GET",
     path: "/api/tags",
@@ -220,7 +195,6 @@ export const routes: Route[] = [
       try {
         logger.debug("[API /api/tags] Fetching all distinct tags");
 
-        // Use runtime.db which should be the Drizzle instance from the adapter
         const db = runtime.db as { execute: (query: unknown) => Promise<unknown> };
         if (!db || typeof db.execute !== "function") {
           logger.error("[API /api/tags] runtime.db is not available or not a Drizzle instance.");
@@ -228,15 +202,12 @@ export const routes: Route[] = [
           return;
         }
 
-        // Detect database type
         let dbType: "sqlite" | "postgres" | "unknown" = "unknown";
         try {
-          // Try PostgreSQL detection
           const connection = await runtime.getConnection();
           if (connection && connection.constructor.name === "Pool") {
             dbType = "postgres";
           } else {
-            // Try SQLite detection
             try {
               await db.execute(sql`SELECT sqlite_version()`);
               dbType = "sqlite";
@@ -254,11 +225,9 @@ export const routes: Route[] = [
         let result: unknown;
 
         if (dbType === "postgres") {
-          // PostgreSQL query using unnest
           const query = sql`SELECT DISTINCT unnest(tags) as tag FROM todo_tags WHERE tag IS NOT NULL;`;
           result = await db.execute(query);
         } else {
-          // SQLite-compatible query
           const query = sql`
             SELECT DISTINCT tag 
             FROM todo_tags 
@@ -267,8 +236,6 @@ export const routes: Route[] = [
           result = await db.execute(query);
         }
 
-        // Drizzle's execute might return results differently depending on the driver
-        // Adapting for common patterns (e.g., pg driver returning 'rows')
         const tags = Array.isArray(result)
           ? result.map((row: { tag?: string }) => row.tag)
           : (result as { rows?: Array<{ tag?: string }> }).rows
@@ -286,7 +253,6 @@ export const routes: Route[] = [
       }
     },
   },
-  // API route to create a new TODO
   {
     type: "POST",
     path: "/api/todos",
@@ -317,14 +283,12 @@ export const routes: Route[] = [
         const tags = ["TODO"];
         const metadata: Record<string, unknown> = {};
 
-        // --- Determine Task Type and Tags ---
         if (type === "daily") {
           tags.push("daily", "recurring-daily");
           metadata.completedToday = false;
         } else if (type === "one-off") {
           tags.push("one-off");
           if (dueDate) {
-            // Validate date format if necessary
             try {
               new Date(dueDate);
             } catch (_e) {
@@ -335,14 +299,13 @@ export const routes: Route[] = [
           if (priority !== undefined && priority >= 1 && priority <= 4) {
             tags.push(`priority-${priority}`);
           } else {
-            tags.push("priority-4"); // Default priority
+            tags.push("priority-4");
           }
           if (isUrgent) {
             tags.push("urgent");
           }
         } else if (type === "aspirational") {
           tags.push("aspirational");
-          // No specific metadata needed initially
         } else {
           res.status(400).send("Invalid task type");
           return;
@@ -366,7 +329,7 @@ export const routes: Route[] = [
           roomId: roomId as UUID,
           entityId: runtime.agentId,
           name,
-          description: `User added TODO: ${name}`, // Simple description
+          description: `User added TODO: ${name}`,
           type: type as "daily" | "one-off" | "aspirational",
           priority: type === "one-off" ? priority || 4 : undefined,
           isUrgent: type === "one-off" ? isUrgent || false : false,
@@ -383,7 +346,6 @@ export const routes: Route[] = [
       }
     },
   },
-  // API route to complete a TODO
   {
     type: "PUT",
     path: "/api/todos/:id/complete",
@@ -391,7 +353,6 @@ export const routes: Route[] = [
       try {
         const taskId = req.params?.id;
 
-        // Task ID is required
         if (!taskId) {
           res.status(400).send("Missing taskId");
           return;
@@ -405,7 +366,6 @@ export const routes: Route[] = [
           return;
         }
 
-        // Check if already completed
         if (task.isCompleted) {
           res.status(400).send("Task already completed");
           return;
@@ -417,20 +377,17 @@ export const routes: Route[] = [
           completedAt: now.toISOString(),
         };
 
-        // Handle daily task metadata
         if (task.type === "daily") {
           metadataUpdate.completedToday = true;
           metadataUpdate.lastCompletedDate = now.toISOString().split("T")[0];
         }
 
-        // Update the task
         await dataService.updateTodo(taskId as UUID, {
           isCompleted: true,
           completedAt: now,
           metadata: metadataUpdate,
         });
 
-        // Return the final task state
         const updatedTask = await dataService.getTodo(taskId as UUID);
         res.json({
           message: `Task ${taskId} completed.`,
@@ -442,7 +399,6 @@ export const routes: Route[] = [
       }
     },
   },
-  // API route to uncomplete a TODO
   {
     type: "PUT",
     path: "/api/todos/:id/uncomplete",
@@ -501,14 +457,13 @@ export const routes: Route[] = [
       }
     },
   },
-  // API route to update an existing TODO
   {
     type: "PUT",
     path: "/api/todos/:id",
     handler: async (req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) => {
       try {
         const taskId = req.params?.id;
-        const updateData = req.body as TaskUpdate; // Directly use interface from updateTodo.ts
+        const updateData = req.body as TaskUpdate;
 
         if (!taskId) {
           res.status(400).send("Missing task ID");
@@ -527,7 +482,6 @@ export const routes: Route[] = [
           return;
         }
 
-        // --- Apply updates (similar logic to applyTaskUpdate in updateTodo.ts) ---
         const updatedTags = [...(task.tags || [])];
         const updatedMetadata = { ...(task.metadata || {}) };
         const updatedTaskData: Record<string, unknown> = {};
@@ -536,10 +490,8 @@ export const routes: Route[] = [
         if (updateData.description !== undefined)
           updatedTaskData.description = updateData.description;
 
-        // Update priority (for one-off tasks)
         if (updateData.priority && task.type === "one-off") {
           updatedTaskData.priority = updateData.priority;
-          // Update priority tag
           const priorityIndex = updatedTags.findIndex((tag) => tag.startsWith("priority-"));
           if (priorityIndex !== -1) {
             updatedTags.splice(priorityIndex, 1);
@@ -547,7 +499,6 @@ export const routes: Route[] = [
           updatedTags.push(`priority-${updateData.priority}`);
         }
 
-        // Update urgency (for one-off tasks)
         if (updateData.urgent !== undefined && task.type === "one-off") {
           updatedTaskData.isUrgent = updateData.urgent;
           const urgentIndex = updatedTags.indexOf("urgent");
@@ -559,7 +510,6 @@ export const routes: Route[] = [
           }
         }
 
-        // Update recurring pattern (for daily tasks)
         if (updateData.recurring && task.type === "daily") {
           const recurringIndex = updatedTags.findIndex((tag) => tag.startsWith("recurring-"));
           if (recurringIndex !== -1) {
@@ -569,7 +519,6 @@ export const routes: Route[] = [
           updatedMetadata.recurring = updateData.recurring;
         }
 
-        // Update due date (for one-off tasks)
         if (updateData.dueDate !== undefined) {
           if (updateData.dueDate === null) {
             updatedTaskData.dueDate = null;
@@ -578,13 +527,11 @@ export const routes: Route[] = [
           }
         }
 
-        // Apply all updates (tags are handled separately)
         await dataService.updateTodo(taskId as UUID, {
           ...updatedTaskData,
           metadata: updatedMetadata,
         });
 
-        // Update tags separately
         const currentTags = task.tags || [];
         const tagsToAdd = updatedTags.filter((tag) => !currentTags.includes(tag));
         const tagsToRemove = currentTags.filter((tag) => !updatedTags.includes(tag));
@@ -613,7 +560,6 @@ export const routes: Route[] = [
       }
     },
   },
-  // API route to delete a TODO
   {
     type: "DELETE",
     path: "/api/todos/:id",
@@ -652,7 +598,6 @@ export const routes: Route[] = [
 
 export default routes;
 
-// TaskUpdate interface for API updates
 interface TaskUpdate {
   name?: string;
   description?: string;

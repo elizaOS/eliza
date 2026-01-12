@@ -1,7 +1,3 @@
-//! Telegram providers module
-//!
-//! Contains provider implementations for Telegram state.
-
 mod chat_state;
 
 pub use chat_state::ChatStateProvider;
@@ -9,25 +5,25 @@ pub use chat_state::ChatStateProvider;
 use async_trait::async_trait;
 use serde_json::Value;
 
-/// Context for provider operations
 #[derive(Debug, Clone)]
+/// Context passed to Telegram providers.
 pub struct ProviderContext {
-    /// Chat ID
+    /// Optional chat ID associated with the current request.
     pub chat_id: Option<i64>,
-    /// User ID
+    /// Optional user ID associated with the current request.
     pub user_id: Option<i64>,
-    /// Thread ID
+    /// Optional thread/topic ID associated with the current request.
     pub thread_id: Option<i64>,
-    /// Room ID
+    /// Optional room identifier used by the higher-level runtime.
     pub room_id: Option<String>,
 }
 
-/// Trait for Telegram providers
 #[async_trait]
+/// Trait implemented by Telegram providers.
 pub trait TelegramProvider: Send + Sync {
-    /// Get provider name
+    /// Provider name used for registration and lookup.
     fn name(&self) -> &'static str;
 
-    /// Get current state
+    /// Returns provider data as JSON.
     async fn get(&self, context: &ProviderContext) -> Value;
 }

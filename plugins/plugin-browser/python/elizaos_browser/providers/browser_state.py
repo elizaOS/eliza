@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 BROWSER_STATE_PROVIDER = {
     "name": "BROWSER_STATE",
-    "description": "Provides current browser state information including active session status, current page URL, and page title",
+    "description": "Provides current browser state information",
 }
 
 

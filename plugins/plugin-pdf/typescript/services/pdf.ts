@@ -58,7 +58,7 @@ export class PdfService extends Service {
       return this.cleanUpContent(rawText);
     } catch (error) {
       logger.error(
-        `PdfService: Failed to convert PDF to text - error: ${error}, bufferSize: ${pdfBuffer.length}, runtimeId: ${this.runtime?.agentId || "unknown"}`
+        `PdfService: Failed to convert PDF to text - error: ${error}, bufferSize: ${pdfBuffer.length}`
       );
       throw error;
     }
@@ -102,7 +102,7 @@ export class PdfService extends Service {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error occurred",
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }

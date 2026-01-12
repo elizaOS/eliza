@@ -1,10 +1,3 @@
-"""
-elizaOS Telegram Plugin
-
-Telegram bot integration for elizaOS agents, supporting private chats,
-groups, supergroups, and forum topics.
-"""
-
 from elizaos_plugin_telegram.config import TelegramConfig
 from elizaos_plugin_telegram.error import (
     AuthorizationError,
@@ -25,15 +18,11 @@ from elizaos_plugin_telegram.types import (
     TelegramReactionPayload,
     TelegramWorldPayload,
 )
-
-# Actions
 from elizaos_plugin_telegram.actions import (
     SEND_MESSAGE_ACTION,
     SendMessageResult,
     handle_send_message,
 )
-
-# Providers
 from elizaos_plugin_telegram.providers import (
     CHAT_STATE_PROVIDER,
     ChatStateResult,
@@ -41,15 +30,12 @@ from elizaos_plugin_telegram.providers import (
 )
 
 __all__ = [
-    # Config
     "TelegramConfig",
-    # Errors
     "TelegramError",
     "AuthorizationError",
     "BotNotInitializedError",
     "ConfigError",
     "MessageSendError",
-    # Types
     "Button",
     "ButtonKind",
     "TelegramChannelType",
@@ -59,13 +45,10 @@ __all__ = [
     "TelegramMessagePayload",
     "TelegramReactionPayload",
     "TelegramWorldPayload",
-    # Service
     "TelegramService",
-    # Actions
     "SEND_MESSAGE_ACTION",
     "SendMessageResult",
     "handle_send_message",
-    # Providers
     "CHAT_STATE_PROVIDER",
     "ChatStateResult",
     "get_chat_state",

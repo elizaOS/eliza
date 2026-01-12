@@ -1,7 +1,3 @@
-/**
- * Tests for utility functions.
- */
-
 import { describe, expect, it } from "vitest";
 import {
   calculateSHA256,

@@ -1,7 +1,3 @@
-"""
-Vision Plugin Configuration
-Configuration management with validation and defaults
-"""
 
 from __future__ import annotations
 
@@ -16,14 +12,10 @@ from .types import VisionConfig, VisionMode
 logger = logging.getLogger(__name__)
 
 
-# Default configuration
 default_vision_config = VisionConfig()
 
 
 class ConfigSchema(BaseModel):
-    """Configuration schema with validation"""
-
-    # Camera configuration
     camera_name: str | None = None
     enable_camera: bool = True
 
@@ -84,22 +76,17 @@ class ConfigSchema(BaseModel):
 
 
 class RuntimeProtocol(Protocol):
-    """Protocol for runtime settings access"""
-
     def get_setting(self, key: str) -> str | None:
-        """Get a setting value by key"""
         ...
 
 
 class ConfigurationManager:
-    """Configuration manager with environment variable support"""
 
     def __init__(self, runtime: RuntimeProtocol | None = None):
         self._runtime = runtime
         self._config = self._load_configuration()
 
     def _get_setting(self, key: str) -> str | None:
-        """Get setting from runtime or environment"""
         vision_key = f"VISION_{key}"
 
         if self._runtime:
@@ -110,21 +97,18 @@ class ConfigurationManager:
             if value:
                 return value
 
-        # Fall back to environment variables
         value = os.environ.get(vision_key)
         if value:
             return value
         return os.environ.get(key)
 
     def _get_bool_setting(self, key: str, default: bool) -> bool:
-        """Get boolean setting"""
         value = self._get_setting(key)
         if value is None:
             return default
         return value.lower() == "true"
 
     def _get_int_setting(self, key: str, default: int) -> int:
-        """Get integer setting"""
         value = self._get_setting(key)
         if value is None:
             return default
@@ -134,7 +118,6 @@ class ConfigurationManager:
             return default
 
     def _get_float_setting(self, key: str, default: float) -> float:
-        """Get float setting"""
         value = self._get_setting(key)
         if value is None:
             return default
@@ -144,32 +127,25 @@ class ConfigurationManager:
             return default
 
     def _load_configuration(self) -> ConfigSchema:
-        """Load configuration from settings and environment"""
         raw_config: dict[str, Any] = {
-            # Camera
             "camera_name": self._get_setting("CAMERA_NAME"),
             "enable_camera": self._get_bool_setting("ENABLE_CAMERA", True),
-            # Vision processing
             "pixel_change_threshold": self._get_float_setting("PIXEL_CHANGE_THRESHOLD", 50),
             "update_interval": self._get_int_setting("UPDATE_INTERVAL", 100),
-            # Object detection
             "enable_object_detection": self._get_bool_setting("ENABLE_OBJECT_DETECTION", False),
             "object_confidence_threshold": self._get_float_setting(
                 "OBJECT_CONFIDENCE_THRESHOLD", 0.5
             ),
-            # Pose detection
             "enable_pose_detection": self._get_bool_setting("ENABLE_POSE_DETECTION", False),
             "pose_confidence_threshold": self._get_float_setting("POSE_CONFIDENCE_THRESHOLD", 0.5),
             # Face recognition
             "enable_face_recognition": self._get_bool_setting("ENABLE_FACE_RECOGNITION", False),
             "face_match_threshold": self._get_float_setting("FACE_MATCH_THRESHOLD", 0.6),
             "max_face_profiles": self._get_int_setting("MAX_FACE_PROFILES", 1000),
-            # Update intervals
             "tf_update_interval": self._get_int_setting("TF_UPDATE_INTERVAL", 1000),
             "vlm_update_interval": self._get_int_setting("VLM_UPDATE_INTERVAL", 10000),
             "tf_change_threshold": self._get_float_setting("TF_CHANGE_THRESHOLD", 10),
             "vlm_change_threshold": self._get_float_setting("VLM_CHANGE_THRESHOLD", 50),
-            # Screen capture
             "screen_capture_interval": self._get_int_setting("SCREEN_CAPTURE_INTERVAL", 2000),
             "tile_size": self._get_int_setting("TILE_SIZE", 256),
             "tile_processing_order": self._get_setting("TILE_PROCESSING_ORDER") or "priority",
@@ -178,7 +154,6 @@ class ConfigurationManager:
             "ocr_enabled": self._get_bool_setting("OCR_ENABLED", True),
             "ocr_language": self._get_setting("OCR_LANGUAGE") or "eng",
             "ocr_confidence_threshold": self._get_float_setting("OCR_CONFIDENCE_THRESHOLD", 60),
-            # Florence-2
             "florence2_enabled": self._get_bool_setting("FLORENCE2_ENABLED", True),
             "florence2_provider": self._get_setting("FLORENCE2_PROVIDER"),
             "florence2_endpoint": self._get_setting("FLORENCE2_ENDPOINT"),
@@ -186,7 +161,6 @@ class ConfigurationManager:
             # Entity tracking
             "entity_timeout": self._get_int_setting("ENTITY_TIMEOUT", 30000),
             "max_tracked_entities": self._get_int_setting("MAX_TRACKED_ENTITIES", 100),
-            # Performance
             "enable_gpu_acceleration": self._get_bool_setting("ENABLE_GPU_ACCELERATION", True),
             "max_memory_usage_mb": self._get_int_setting("MAX_MEMORY_USAGE_MB", 2000),
             # Logging
@@ -194,7 +168,6 @@ class ConfigurationManager:
             "log_level": self._get_setting("LOG_LEVEL") or "info",
         }
 
-        # Handle vision mode
         vision_mode_str = self._get_setting("VISION_MODE")
         if vision_mode_str:
             try:
@@ -202,7 +175,6 @@ class ConfigurationManager:
             except ValueError:
                 raw_config["vision_mode"] = VisionMode.CAMERA
 
-        # Filter out None values
         raw_config = {k: v for k, v in raw_config.items() if v is not None}
 
         try:
@@ -216,7 +188,6 @@ class ConfigurationManager:
             return ConfigSchema()
 
     def get(self) -> ConfigSchema:
-        """Get the current configuration"""
         return self._config
 
     def update(self, updates: dict[str, Any]) -> None:
@@ -231,7 +202,6 @@ class ConfigurationManager:
             raise
 
     def to_vision_config(self) -> VisionConfig:
-        """Convert to VisionConfig format"""
         return VisionConfig(
             camera_name=self._config.camera_name,
             pixel_change_threshold=self._config.pixel_change_threshold,
@@ -246,7 +216,7 @@ class ConfigurationManager:
             vision_mode=self._config.vision_mode,
             screen_capture_interval=self._config.screen_capture_interval,
             tile_size=self._config.tile_size,
-            tile_processing_order=self._config.tile_processing_order,  # type: ignore
+            tile_processing_order=self._config.tile_processing_order,
             ocr_enabled=self._config.ocr_enabled,
             florence2_enabled=self._config.florence2_enabled,
             entity_timeout=self._config.entity_timeout,
@@ -257,7 +227,6 @@ class ConfigurationManager:
 
     @staticmethod
     def get_preset(name: str) -> dict[str, Any]:
-        """Get a configuration preset by name"""
         presets: dict[str, dict[str, Any]] = {
             "high-performance": {
                 "update_interval": 50,

@@ -1,10 +1,3 @@
-/**
- * xAI (Grok) Model Integration
- *
- * Provides model handlers for xAI's Grok models, available with X premium.
- * This enables AI-powered post generation, content analysis, and more.
- */
-
 import {
   type GenerateTextParams,
   type IAgentRuntime,
@@ -12,10 +5,6 @@ import {
   type TextEmbeddingParams,
   type TextStreamResult,
 } from "@elizaos/core";
-
-// ============================================================================
-// Configuration
-// ============================================================================
 
 const XAI_API_BASE = "https://api.x.ai/v1";
 
@@ -60,10 +49,6 @@ function getAuthHeader(config: GrokConfig): Record<string, string> {
   };
 }
 
-// ============================================================================
-// Types
-// ============================================================================
-
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -103,19 +88,12 @@ interface EmbeddingResponse {
   };
 }
 
-// Use TextStreamResult from @elizaos/core instead of defining our own
-
-// ============================================================================
-// Text Generation
-// ============================================================================
-
 async function generateText(
   config: GrokConfig,
   model: string,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
   const messages: ChatMessage[] = [];
-  // GenerateTextParams has no system field - include system prompts in prompt itself
   messages.push({ role: "user", content: params.prompt });
 
   const body: Record<string, unknown> = {
@@ -123,7 +101,6 @@ async function generateText(
     messages,
   };
 
-  // Grok models support temperature
   if (params.temperature !== undefined) {
     body.temperature = params.temperature;
   }
@@ -134,7 +111,6 @@ async function generateText(
     body.stop = params.stopSequences;
   }
 
-  // Handle streaming
   if (params.stream && params.onStreamChunk) {
     body.stream = true;
 
@@ -181,7 +157,6 @@ async function generateText(
     return fullText;
   }
 
-  // Non-streaming
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: getAuthHeader(config),
@@ -201,10 +176,6 @@ async function generateText(
 
   return data.choices[0].message.content;
 }
-
-// ============================================================================
-// Embeddings
-// ============================================================================
 
 async function createEmbedding(config: GrokConfig, text: string): Promise<number[]> {
   const response = await fetch(`${config.baseUrl}/embeddings`, {
@@ -229,10 +200,6 @@ async function createEmbedding(config: GrokConfig, text: string): Promise<number
 
   return data.data[0].embedding;
 }
-
-// ============================================================================
-// Exported Handlers
-// ============================================================================
 
 export async function handleTextSmall(
   runtime: IAgentRuntime,
@@ -268,10 +235,7 @@ export async function handleTextEmbedding(
   return createEmbedding(config, text);
 }
 
-/**
- * List available Grok models
- */
-export async function listModels(runtime: IAgentRuntime): Promise<unknown[]> {
+export async function listModels(runtime: IAgentRuntime): Promise<Record<string, unknown>[]> {
   const config = getConfig(runtime);
 
   const response = await fetch(`${config.baseUrl}/models`, {
@@ -283,13 +247,10 @@ export async function listModels(runtime: IAgentRuntime): Promise<unknown[]> {
     throw new Error(`Grok API error (${response.status}): ${error}`);
   }
 
-  const data = (await response.json()) as { data: unknown[] };
+  const data = (await response.json()) as { data: Record<string, unknown>[] };
   return data.data;
 }
 
-/**
- * Check if xAI/Grok is configured
- */
 export function isGrokConfigured(runtime: IAgentRuntime): boolean {
   return !!runtime.getSetting("XAI_API_KEY");
 }

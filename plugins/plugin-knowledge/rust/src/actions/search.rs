@@ -1,17 +1,12 @@
-//! Search knowledge action
 
 use async_trait::async_trait;
 use serde_json::Value;
 
 use super::{ActionContext, ActionResult, KnowledgeAction};
 
-/// Keywords that indicate search intent
 const SEARCH_KEYWORDS: &[&str] = &["search", "find", "look up", "query", "what do you know about"];
-
-/// Keywords related to knowledge
 const KNOWLEDGE_KEYWORDS: &[&str] = &["knowledge", "information", "document", "database"];
 
-/// Action to search the knowledge base
 pub struct SearchKnowledgeAction;
 
 #[async_trait]
@@ -33,10 +28,7 @@ impl KnowledgeAction for SearchKnowledgeAction {
             .unwrap_or("")
             .to_lowercase();
 
-        // Check for search keywords
         let has_search_keyword = SEARCH_KEYWORDS.iter().any(|keyword| text.contains(keyword));
-
-        // Check for knowledge keywords
         let has_knowledge_keyword = KNOWLEDGE_KEYWORDS.iter().any(|keyword| text.contains(keyword));
 
         Ok(has_search_keyword && has_knowledge_keyword)
@@ -50,7 +42,6 @@ impl KnowledgeAction for SearchKnowledgeAction {
             .and_then(|t| t.as_str())
             .unwrap_or("");
 
-        // Extract the query by removing common prefixes
         let query = text
             .to_lowercase()
             .replace("search", "")

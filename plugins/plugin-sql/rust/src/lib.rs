@@ -1,31 +1,4 @@
 #![allow(missing_docs)]
-//! elizaOS Plugin SQL - Rust Implementation
-//!
-//! This crate provides database adapters for elizaOS, supporting both PGLite (for WASM/browser)
-//! and PostgreSQL (for native server deployments).
-//!
-//! # Features
-//!
-//! - `native` (default): Enables PostgreSQL adapter with sqlx
-//! - `wasm`: Enables PGLite adapter with JavaScript interop
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use elizaos_plugin_sql::{PostgresAdapter, DatabaseAdapter};
-//! use elizaos::UUID;
-//!
-//! async fn example() -> anyhow::Result<()> {
-//!     let agent_id = UUID::new_v4();
-//!     let adapter = PostgresAdapter::new("postgres://localhost/eliza", &agent_id).await?;
-//!     adapter.init().await?;
-//!     
-//!     let agent = adapter.get_agent(&agent_id).await?;
-//!     Ok(())
-//! }
-//! ```
-
-#![warn(missing_docs)]
 
 pub mod base;
 #[cfg(feature = "native")]
@@ -41,13 +14,6 @@ pub mod pglite;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Import directly from submodules:
-// - elizaos::types::* for core types
-// - base::DatabaseAdapter
-// - postgres::PostgresAdapter (with "native" feature)
-// - pglite::PgLiteAdapter (with "wasm" feature)
-
-/// Plugin definition for elizaOS
 pub fn plugin() -> elizaos::Plugin {
     elizaos::Plugin::new(
         "sql",

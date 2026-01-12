@@ -1,12 +1,5 @@
-"""
-Audio utilities for OpenAI plugin.
-
-Provides audio format detection from binary data.
-"""
-
 from typing import Literal
 
-# Type for known audio MIME types
 AudioMimeType = Literal[
     "audio/wav",
     "audio/mpeg",
@@ -17,7 +10,6 @@ AudioMimeType = Literal[
     "application/octet-stream",
 ]
 
-# Magic bytes for audio format detection
 _MAGIC_BYTES = {
     "wav_riff": bytes([0x52, 0x49, 0x46, 0x46]),  # "RIFF"
     "wav_wave": bytes([0x57, 0x41, 0x56, 0x45]),  # "WAVE"

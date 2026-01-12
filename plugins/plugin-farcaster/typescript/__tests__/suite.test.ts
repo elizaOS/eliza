@@ -1,11 +1,4 @@
-/**
- * Test suite for Farcaster plugin.
- * Converted to vitest format.
- */
-
 import { describe, expect, it } from "vitest";
-
-// Import the plugin to verify it exports correctly
 import { farcasterPlugin } from "../index";
 
 describe("Farcaster Plugin", () => {

@@ -1,7 +1,3 @@
-//! Discord service implementation
-//!
-//! Provides the main DiscordService for connecting to Discord and handling events.
-
 use async_trait::async_trait;
 use serenity::all::{ChannelId, GuildId, MessageId, UserId};
 use serenity::client::{Client, Context, EventHandler};
@@ -21,20 +17,23 @@ use crate::types::{
     DiscordMessagePayload, DiscordVoiceStatePayload, DiscordWorldPayload, Snowflake,
 };
 
-/// Maximum message length for Discord
+/// Maximum length of a single Discord message.
+///
+/// Discord limits message content to 2000 characters; this is used as a conservative cap when
+/// splitting outgoing messages.
 pub const MAX_MESSAGE_LENGTH: usize = 2000;
 
-/// Event callback type
+/// Callback invoked when the service emits a Discord event.
+///
+/// The callback receives the event type and an event-specific JSON payload.
 pub type EventCallback = Box<dyn Fn(DiscordEventType, serde_json::Value) + Send + Sync>;
 
-/// Discord service state
 #[derive(Default)]
 struct ServiceState {
     is_running: bool,
     event_callback: Option<EventCallback>,
 }
 
-/// Discord event handler for Serenity
 struct DiscordEventHandler {
     config: DiscordConfig,
     state: Arc<RwLock<ServiceState>>,
@@ -51,7 +50,6 @@ impl EventHandler for DiscordEventHandler {
             ready.user.name, discriminator
         );
 
-        // Emit connected event
         let state = self.state.read().await;
         if let Some(ref callback) = state.event_callback {
             callback(
@@ -66,24 +64,20 @@ impl EventHandler for DiscordEventHandler {
     }
 
     async fn message(&self, ctx: Context, msg: Message) {
-        // Skip if from self
         if msg.author.id == ctx.cache.current_user().id {
             return;
         }
 
-        // Skip bot messages if configured
         if msg.author.bot && self.config.should_ignore_bot_messages {
             debug!("Ignoring bot message from {}", msg.author.name);
             return;
         }
 
-        // Skip DMs if configured
         if msg.guild_id.is_none() && self.config.should_ignore_direct_messages {
             debug!("Ignoring DM from {}", msg.author.name);
             return;
         }
 
-        // Check channel allowlist
         if !self.config.channel_ids.is_empty() {
             let channel_id_str = msg.channel_id.to_string();
             if !self.config.channel_ids.contains(&channel_id_str) {
@@ -92,7 +86,6 @@ impl EventHandler for DiscordEventHandler {
             }
         }
 
-        // Check if bot is mentioned (if respond only to mentions)
         if self.config.should_respond_only_to_mentions {
             let bot_id = ctx.cache.current_user().id;
             if !msg.mentions.iter().any(|u| u.id == bot_id) {
@@ -101,7 +94,6 @@ impl EventHandler for DiscordEventHandler {
             }
         }
 
-        // Build payload
         let payload = DiscordMessagePayload {
             message_id: Snowflake::new(msg.id.to_string())
                 .unwrap_or_else(|_| panic!("Invalid message ID")),
@@ -180,7 +172,6 @@ impl EventHandler for DiscordEventHandler {
                 .collect(),
         };
 
-        // Emit event
         let state = self.state.read().await;
         if let Some(ref callback) = state.event_callback {
             callback(
@@ -245,7 +236,7 @@ impl EventHandler for DiscordEventHandler {
     async fn voice_state_update(&self, _ctx: Context, _old: Option<VoiceState>, new: VoiceState) {
         let guild_id = match new.guild_id {
             Some(id) => id,
-            None => return, // DM voice calls not supported
+            None => return,
         };
 
         let payload = DiscordVoiceStatePayload {
@@ -273,9 +264,10 @@ impl EventHandler for DiscordEventHandler {
     }
 }
 
-/// Discord service for elizaOS
+/// High-level Discord client/service wrapper.
 ///
-/// Manages connection to Discord and handles all Discord operations.
+/// Manages the Serenity client lifecycle and exposes helpers for sending messages and querying
+/// guild information.
 pub struct DiscordService {
     config: DiscordConfig,
     state: Arc<RwLock<ServiceState>>,
@@ -284,7 +276,7 @@ pub struct DiscordService {
 }
 
 impl DiscordService {
-    /// Create a new Discord service
+    /// Create a new service instance with the provided configuration.
     pub fn new(config: DiscordConfig) -> Self {
         Self {
             config,
@@ -294,7 +286,7 @@ impl DiscordService {
         }
     }
 
-    /// Get the configuration
+    /// Return the configuration used by this service.
     pub fn config(&self) -> &DiscordConfig {
         &self.config
     }

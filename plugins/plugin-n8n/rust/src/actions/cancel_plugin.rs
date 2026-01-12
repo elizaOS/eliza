@@ -30,7 +30,11 @@ impl N8nAction for CancelPluginAction {
     }
 
     fn similes(&self) -> Vec<&'static str> {
-        vec!["stop plugin creation", "abort plugin creation", "cancel plugin"]
+        vec![
+            "stop plugin creation",
+            "abort plugin creation",
+            "cancel plugin",
+        ]
     }
 
     async fn validate(&self, context: &ActionContext) -> Result<bool> {

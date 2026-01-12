@@ -11,8 +11,6 @@ class RepositoryRef(BaseModel):
 
 
 class FileChange(BaseModel):
-    """File content for commits."""
-
     model_config = ConfigDict(frozen=True)
 
     path: str
@@ -193,8 +191,6 @@ class ListPullRequestsParams(RepositoryRef):
 
 
 class MergePullRequestParams(RepositoryRef):
-    """Pull request merge parameters."""
-
     model_config = ConfigDict(frozen=True)
 
     pull_number: int
@@ -294,8 +290,6 @@ class GitHubCommit(BaseModel):
 
 
 class CreateCommitParams(RepositoryRef):
-    """Create commit parameters."""
-
     model_config = ConfigDict(frozen=True)
 
     message: str
@@ -320,8 +314,6 @@ class GitHubFileContent(BaseModel):
 
 
 class GitHubDirectoryEntry(BaseModel):
-    """Directory entry."""
-
     model_config = ConfigDict(frozen=True)
 
     name: str
@@ -372,8 +364,6 @@ class GitHubRepository(BaseModel):
 
 
 class GitHubEventType(str, Enum):
-    """GitHub event types."""
-
     PUSH = "push"
     PULL_REQUEST = "pull_request"
     PULL_REQUEST_REVIEW = "pull_request_review"

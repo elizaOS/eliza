@@ -4,13 +4,12 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::sam_engine::SamEngine;
-use crate::types::{SamTTSOptions, HardwareBridge, SAM_SERVICE_TYPE};
+use crate::types::{HardwareBridge, SamTTSOptions, SAM_SERVICE_TYPE};
 
 pub trait Runtime: Send + Sync {
     fn get_service(&self, service_type: &str) -> Option<Arc<dyn HardwareBridge>>;
 }
 
-/// SAM TTS Service - Generates 8-bit audio using SAM synthesis.
 pub struct SamTTSService {
     runtime: Option<Arc<dyn Runtime>>,
 }
@@ -34,7 +33,8 @@ impl SamTTSService {
     pub fn generate_audio(&self, text: &str, options: Option<SamTTSOptions>) -> Vec<u8> {
         let opts = options.unwrap_or_default();
 
-        info!("[SAM-TTS] Synthesizing: \"{}{}\"",
+        info!(
+            "[SAM-TTS] Synthesizing: \"{}{}\"",
             &text[..text.len().min(50)],
             if text.len() > 50 { "..." } else { "" }
         );
@@ -46,7 +46,6 @@ impl SamTTSService {
         audio
     }
 
-    /// Generate audio and send to hardware bridge.
     pub async fn speak_text(&self, text: &str, options: Option<SamTTSOptions>) -> Vec<u8> {
         let audio = self.generate_audio(text, options);
         let wav = self.create_wav_buffer(&audio, 22050);
@@ -88,7 +87,6 @@ impl SamTTSService {
         "SAM TTS: Retro 1980s text-to-speech synthesis"
     }
 }
-
 
 impl Default for SamTTSService {
     fn default() -> Self {

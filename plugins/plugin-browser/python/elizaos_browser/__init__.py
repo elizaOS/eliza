@@ -48,6 +48,3 @@ __all__ = [
     "BrowserPlugin",
     "create_browser_plugin",
 ]
-
-
-

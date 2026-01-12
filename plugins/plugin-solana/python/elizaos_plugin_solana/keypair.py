@@ -1,4 +1,3 @@
-"""Keypair utilities and key management."""
 
 import base64
 import re
@@ -11,24 +10,8 @@ from elizaos_plugin_solana.errors import InvalidKeypairError
 
 
 class KeypairUtils:
-    """Utility functions for working with Solana keypairs."""
-
     @staticmethod
     def from_string(s: str) -> Keypair:
-        """Parse a keypair from a Base58 or Base64 encoded string.
-
-        Tries Base58 first, then Base64 if that fails.
-
-        Args:
-            s: The encoded private key string.
-
-        Returns:
-            The decoded keypair.
-
-        Raises:
-            InvalidKeypairError: If the string cannot be decoded.
-        """
-        # Try Base58 first
         try:
             key_bytes = base58.b58decode(s)
             if len(key_bytes) == 64:
@@ -50,35 +33,14 @@ class KeypairUtils:
 
     @staticmethod
     def generate() -> Keypair:
-        """Generate a new random keypair.
-
-        Returns:
-            A new random keypair.
-        """
         return Keypair()
 
     @staticmethod
     def to_base58(keypair: Keypair) -> str:
-        """Convert a keypair to Base58-encoded string.
-
-        Args:
-            keypair: The keypair to encode.
-
-        Returns:
-            Base58-encoded private key.
-        """
         return base58.b58encode(bytes(keypair)).decode("utf-8")
 
     @staticmethod
     def is_valid_pubkey(pubkey_str: str) -> bool:
-        """Validate a public key string.
-
-        Args:
-            pubkey_str: Base58-encoded public key.
-
-        Returns:
-            True if the string is a valid Solana public key.
-        """
         try:
             Pubkey.from_string(pubkey_str)
             return True
@@ -87,17 +49,6 @@ class KeypairUtils:
 
     @staticmethod
     def is_on_curve(pubkey_str: str) -> bool | None:
-        """Validate a public key and check if it's on the Ed25519 curve.
-
-        On-curve keys are typically user wallets, while off-curve keys
-        are Program Derived Addresses (PDAs).
-
-        Args:
-            pubkey_str: Base58-encoded public key.
-
-        Returns:
-            True if on curve, False if PDA, None if invalid.
-        """
         try:
             pubkey = Pubkey.from_string(pubkey_str)
             return pubkey.is_on_curve()
@@ -106,15 +57,6 @@ class KeypairUtils:
 
     @staticmethod
     def detect_pubkeys_in_text(text: str, check_curve: bool = False) -> list[str]:
-        """Detect public keys in arbitrary text.
-
-        Args:
-            text: The text to search.
-            check_curve: Whether to verify keys are on the Ed25519 curve.
-
-        Returns:
-            A list of detected public key strings.
-        """
         results: list[str] = []
         # Base58 pattern for Solana public keys (32-44 chars)
         pattern = r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b"
@@ -137,17 +79,6 @@ class KeypairUtils:
 
     @staticmethod
     def detect_private_keys_in_text(text: str) -> list[dict[str, str]]:
-        """Detect private keys in text (Base58 or hex).
-
-        WARNING: This method handles sensitive private key material.
-        Never log or expose the returned values.
-
-        Args:
-            text: The text to search.
-
-        Returns:
-            A list of dicts with 'format' and 'match' keys.
-        """
         results: list[dict[str, str]] = []
 
         # Base58 private key pattern (86-90 chars for 64 bytes)

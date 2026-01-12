@@ -20,7 +20,6 @@ export const wait = (minTime = 1000, maxTime = 3000) => {
 };
 
 export const isValidPost = (post: Post): boolean => {
-  // Filter out posts with too many hashtags, @s, or $ signs, probably spam or garbage
   const hashtagCount = (post.text?.match(/#/g) || []).length;
   const atCount = (post.text?.match(/@/g) || []).length;
   const dollarSignCount = (post.text?.match(/\$/g) || []).length;
@@ -29,17 +28,10 @@ export const isValidPost = (post: Post): boolean => {
   return hashtagCount <= 1 && atCount <= 2 && dollarSignCount <= 1 && totalCount <= 3;
 };
 
-/**
- * Fetches media data from a list of attachments, supporting both HTTP URLs and local file paths.
- *
- * @param attachments Array of Media objects containing URLs or file paths to fetch media from
- * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
- */
 export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]> {
   return Promise.all(
     attachments.map(async (attachment: Media) => {
       if (/^(http|https):\/\//.test(attachment.url)) {
-        // Handle HTTP URLs
         const response = await fetch(attachment.url);
         if (!response.ok) {
           throw new Error(`Failed to fetch file: ${attachment.url}`);
@@ -49,7 +41,6 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
         return { data: mediaBuffer, type: mediaType };
       }
       if (fs.existsSync(attachment.url)) {
-        // Handle local file paths
         const mediaBuffer = await fs.promises.readFile(path.resolve(attachment.url));
         const mediaType = attachment.contentType || "image/png";
         return { data: mediaBuffer, type: mediaType };
@@ -59,44 +50,26 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
   );
 }
 
-/**
- * Handles sending a note post with optional media data.
- *
- * @param {ClientBase} client - The client object used for sending the note post.
- * @param {string} content - The content of the note post.
- * @param {string} [postId] - Optional Post ID to reply to.
- * @param {MediaData[]} [mediaData] - Optional media data to attach to the note post.
- * @returns {Promise<Object>} - The result of the note post operation.
- * @throws {Error} - If the note post operation fails.
- */
 async function _handleNotePost(
   client: ClientBase,
   content: string,
   postId?: string,
   mediaData?: MediaData[]
 ) {
-  // X API v2 handles long posts automatically
-  // Just use the regular sendPost method
   const convertedMediaData = mediaData?.map((m) => ({
     data: Buffer.isBuffer(m.data) ? m.data : Buffer.from(m.data),
     mediaType: m.type,
   }));
   const result = await client.xClient.sendPost(content, postId, convertedMediaData);
 
-  // Check if the result was successful
   if (!result || !result.ok) {
-    // Post failed. Falling back to truncated Post.
     const truncateContent = truncateToCompleteSentence(content, TWEET_MAX_LENGTH);
     return await sendStandardPost(client, truncateContent, postId);
   }
 
-  // Return the result directly
   return result;
 }
 
-/**
- * Send a standard post through the client
- */
 export async function sendStandardPost(
   client: ClientBase,
   content: string,
@@ -107,10 +80,7 @@ export async function sendStandardPost(
     data: Buffer.isBuffer(m.data) ? m.data : Buffer.from(m.data),
     mediaType: m.type,
   }));
-  const standardPostResult = await client.xClient.sendPost(content, postId, convertedMediaData);
-
-  // The result is already the response object
-  return standardPostResult;
+  return await client.xClient.sendPost(content, postId, convertedMediaData);
 }
 
 export async function sendPost(
@@ -131,21 +101,18 @@ export async function sendPost(
     }));
     result = await client.xClient.sendPost(postText, postToReplyTo, convertedMediaData);
     logger.log("Successfully posted Post");
-  } catch (error) {
+  } catch (error: unknown) {
     logger.error("Error posting Post:", error instanceof Error ? error.message : String(error));
     throw error;
   }
 
   try {
-    // The result from sendPost should have the post data
     const postData = result?.data || result;
 
-    // Extract the post ID and other data - parse to match PostResponse structure
     const rawResult = (postData?.data || postData) as
       | { id?: string; text?: string; data?: { id?: string; data?: { id?: string } } }
       | undefined;
 
-    // if we have a response
     const postId = rawResult && ("id" in rawResult ? rawResult.id : rawResult.data?.id);
     if (postId) {
       if (client.lastCheckedPostId && client.lastCheckedPostId < BigInt(postId)) {
@@ -155,7 +122,6 @@ export async function sendPost(
       }
       await client.cacheLatestCheckedPostId();
 
-      // Cache the post - ensure it has all required fields
       const postText = rawResult && ("text" in rawResult ? rawResult.text : undefined);
       if (postId && postText) {
         await client.cachePost({ id: postId, text: postText, ...rawResult } as Post);
@@ -163,7 +129,6 @@ export async function sendPost(
 
       logger.log("Successfully posted a post", postId);
 
-      // Return as PostResponse format
       const postResult: PostResponse = {
         id: rawResult.id,
         data: rawResult.data,
@@ -212,13 +177,11 @@ export async function sendChunkedPost(
     const chunk = chunks[i];
     const _isLastChunk = i === chunks.length - 1;
 
-    // Add the post number to the beginning of each chunk
     const postContent = `${chunk}`;
 
     logger.debug(`Sending post ${i + 1}/${chunks.length}: ${postContent}`);
 
     try {
-      // Convert Media[] to MediaData[] if needed
       let mediaData: MediaData[] = [];
       if (content.attachments && content.attachments.length > 0) {
         mediaData = await fetchMediaData(content.attachments);
@@ -230,10 +193,8 @@ export async function sendChunkedPost(
         throw new Error("Failed to send post - no result returned");
       }
 
-      // Extract post ID from the PostResponse structure
       const postId = result.id || result.data?.id || result.data?.data?.id;
 
-      // if we have a response
       if (postId) {
         const permanentUrl = `https://x.com/${xUsername}/status/${postId}`;
 
@@ -263,12 +224,6 @@ export async function sendChunkedPost(
   return messages;
 }
 
-/**
- * Splits the given content into individual posts based on the maximum length allowed for a post.
- * @param {string} content - The content to split into posts.
- * @param {number} maxLength - The maximum length allowed for a single post.
- * @returns {string[]} An array of strings representing individual posts.
- */
 function splitPostContent(content: string, maxLength: number): string[] {
   const paragraphs = content.split("\n\n").map((p) => p.trim());
   const posts: string[] = [];
@@ -305,25 +260,16 @@ function splitPostContent(content: string, maxLength: number): string[] {
   return posts;
 }
 
-/**
- * Extracts URLs from a given paragraph and replaces them with placeholders.
- *
- * @param {string} paragraph - The paragraph containing URLs that need to be replaced
- * @returns {Object} An object containing the updated text with placeholders and a map of placeholders to original URLs
- */
 function extractUrls(paragraph: string): {
   textWithPlaceholders: string;
   placeholderMap: Map<string, string>;
 } {
-  // replace https urls with placeholder
   const urlRegex = /https?:\/\/[^\s]+/g;
   const placeholderMap = new Map<string, string>();
 
   let urlIndex = 0;
   const textWithPlaceholders = paragraph.replace(urlRegex, (match) => {
-    // x url would be considered as 23 characters
-    // <<URL_CONSIDERER_23_1>> is also 23 characters
-    const placeholder = `<<URL_CONSIDERER_23_${urlIndex}>>`; // Placeholder without . ? ! etc
+    const placeholder = `<<URL_CONSIDERER_23_${urlIndex}>>`;
     placeholderMap.set(placeholder, match);
     urlIndex++;
     return placeholder;
@@ -355,16 +301,13 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
         currentChunk = sentence;
       }
     } else {
-      // Can't fit more, push currentChunk to results
       if (currentChunk) {
         chunks.push(currentChunk.trim());
       }
 
-      // If current sentence itself is less than or equal to maxLength
       if (sentence.length <= maxLength) {
         currentChunk = sentence;
       } else {
-        // Need to split sentence by spaces
         const words = sentence.split(" ");
         currentChunk = "";
         for (const word of words) {
@@ -385,7 +328,6 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
     }
   }
 
-  // Handle remaining content
   if (currentChunk) {
     chunks.push(currentChunk.trim());
   }
@@ -393,71 +335,35 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
   return chunks;
 }
 
-/**
- * Deduplicates mentions at the beginning of a paragraph.
- *
- * @param {string} paragraph - The input paragraph containing mentions.
- * @returns {string} - The paragraph with deduplicated mentions.
- */
 function _deduplicateMentions(paragraph: string) {
-  // Regex to match mentions at the beginning of the string
   const mentionRegex = /^@(\w+)(?:\s+@(\w+))*(\s+|$)/;
-
-  // Find all matches
   const matches = paragraph.match(mentionRegex);
 
   if (!matches) {
-    return paragraph; // If no matches, return the original string
+    return paragraph;
   }
 
-  // Extract mentions from the match groups
   let mentions = matches.slice(0, 1)[0].trim().split(" ");
-
-  // Deduplicate mentions
   mentions = Array.from(new Set(mentions));
 
-  // Reconstruct the string with deduplicated mentions
   const uniqueMentionsString = mentions.join(" ");
-
-  // Find where the mentions end in the original string
   const endOfMentions = paragraph.indexOf(matches[0]) + matches[0].length;
 
-  // Construct the result by combining unique mentions with the rest of the string
   return `${uniqueMentionsString} ${paragraph.slice(endOfMentions)}`;
 }
 
-/**
- * Restores the original URLs in the chunks by replacing placeholder URLs.
- *
- * @param {string[]} chunks - Array of strings representing chunks of text containing placeholder URLs.
- * @param {Map<string, string>} placeholderMap - Map with placeholder URLs as keys and original URLs as values.
- * @returns {string[]} - Array of strings with original URLs restored in each chunk.
- */
 function restoreUrls(chunks: string[], placeholderMap: Map<string, string>): string[] {
   return chunks.map((chunk) => {
-    // Replace all <<URL_CONSIDERER_23_>> in chunk back to original URLs using regex
     return chunk.replace(/<<URL_CONSIDERER_23_(\d+)>>/g, (match) => {
       const original = placeholderMap.get(match);
-      return original || match; // Return placeholder if not found (theoretically won't happen)
+      return original || match;
     });
   });
 }
 
-/**
- * Splits a paragraph into chunks of text with a maximum length, while preserving URLs.
- *
- * @param {string} paragraph - The paragraph to split.
- * @param {number} maxLength - The maximum length of each chunk.
- * @returns {string[]} An array of strings representing the splitted chunks of text.
- */
 function splitParagraph(paragraph: string, maxLength: number): string[] {
-  // 1) Extract URLs and replace with placeholders
   const { textWithPlaceholders, placeholderMap } = extractUrls(paragraph);
-
-  // 2) Use first section's logic to split by sentences first, then do secondary split
   const splittedChunks = splitSentencesAndWords(textWithPlaceholders, maxLength);
-
-  // 3) Replace placeholders back to original URLs
   const restoredChunks = restoreUrls(splittedChunks, placeholderMap);
 
   return restoredChunks;
@@ -479,24 +385,21 @@ export const parseActionResponseFromText = (text: string): { actions: ActionResp
     reply: false,
   };
 
-  // Regex patterns
   const likePattern = /\[LIKE\]/i;
-  const repostPattern = /\[REPOST\]|\[RETWEET\]/i; // Support both for backward compatibility
+  const repostPattern = /\[REPOST\]|\[RETWEET\]/i;
   const quotePattern = /\[QUOTE\]/i;
   const replyPattern = /\[REPLY\]/i;
 
-  // Check with regex
   actions.like = likePattern.test(text);
   actions.repost = repostPattern.test(text);
   actions.quote = quotePattern.test(text);
   actions.reply = replyPattern.test(text);
 
-  // Also do line by line parsing as backup
   const lines = text.split("\n");
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed === "[LIKE]") actions.like = true;
-    if (trimmed === "[REPOST]" || trimmed === "[RETWEET]") actions.repost = true; // Support both
+    if (trimmed === "[REPOST]" || trimmed === "[RETWEET]") actions.repost = true;
     if (trimmed === "[QUOTE]") actions.quote = true;
     if (trimmed === "[REPLY]") actions.reply = true;
   }
@@ -504,5 +407,4 @@ export const parseActionResponseFromText = (text: string): { actions: ActionResp
   return { actions };
 };
 
-// Export error handler utilities
 export * from "./utils/error-handler";
