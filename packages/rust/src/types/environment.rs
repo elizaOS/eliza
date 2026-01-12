@@ -131,8 +131,11 @@ impl World {
 }
 
 /// Channel type enumeration
+///
+/// Note: Uses SCREAMING_SNAKE_CASE to match TypeScript serialization.
+/// e.g., VoiceDm -> "VOICE_DM", VoiceGroup -> "VOICE_GROUP"
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "UPPERCASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ChannelType {
     /// Messages to self
     #[serde(rename = "SELF")]
@@ -276,6 +279,7 @@ mod tests {
 
     #[test]
     fn test_channel_type_serialization() {
+        // Simple cases
         let dm = ChannelType::Dm;
         let json = serde_json::to_string(&dm).unwrap();
         assert_eq!(json, "\"DM\"");
@@ -283,6 +287,20 @@ mod tests {
         let group = ChannelType::Group;
         let json = serde_json::to_string(&group).unwrap();
         assert_eq!(json, "\"GROUP\"");
+
+        // Multi-word cases - SCREAMING_SNAKE_CASE is required for TypeScript compatibility
+        // (VoiceDm must be "VOICE_DM", not "VOICEDM")
+        let voice_dm = ChannelType::VoiceDm;
+        let json = serde_json::to_string(&voice_dm).unwrap();
+        assert_eq!(json, "\"VOICE_DM\"");
+
+        let voice_group = ChannelType::VoiceGroup;
+        let json = serde_json::to_string(&voice_group).unwrap();
+        assert_eq!(json, "\"VOICE_GROUP\"");
+
+        // Deserialization should also work
+        let parsed: ChannelType = serde_json::from_str("\"VOICE_DM\"").unwrap();
+        assert_eq!(parsed, ChannelType::VoiceDm);
     }
 
     #[test]
