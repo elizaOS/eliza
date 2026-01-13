@@ -489,7 +489,10 @@ const ignoredFiles = new Set(['version.ts', 'version.js']);
  */
 function shouldIgnoreFile(filename) {
   if (!filename) return true;
-  return ignoredFiles.has(path.basename(filename));
+  // Only ignore version files at root level (no directory separators)
+  // This ignores 'version.ts' but NOT 'api/system/version.ts'
+  // The watcher callback provides the relative path from the watched directory root
+  return ignoredFiles.has(filename);
 }
 
 /**
