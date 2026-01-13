@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-atropos-textworld"
 version = "1.0.0"
-description = "TextWorld environment for ElizaOS RL training with Atropos"
+description = "TextWorld environment for elizaOS RL training with Atropos"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -39,6 +39,10 @@ dev = [
 ]
 openai = [
     "elizaos-plugin-openai>=1.0.0",
+]
+atropos = [
+    "atroposlib>=0.3.0",
+    "transformers>=4.36.0",
 ]
 
 [project.scripts]
