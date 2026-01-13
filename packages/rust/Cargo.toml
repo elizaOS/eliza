@@ -79,6 +79,15 @@ tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
+# Native examples
+[[example]]
+name = "basic_runtime"
+required-features = ["native"]
+
+[[example]]
+name = "with_handlers"
+required-features = ["native"]
+
 [profile.release]
 lto = true
 opt-level = "z"

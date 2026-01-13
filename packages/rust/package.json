@@ -26,9 +26,15 @@
     "build:native": "cargo build --release",
     "build:wasm": "wasm-pack build --target web --out-dir pkg/web --no-default-features --features wasm && wasm-pack build --target nodejs --out-dir pkg/node --no-default-features --features wasm",
     "test": "cargo test",
+    "test:wasm": "./wasm-test.sh node",
     "lint": "cargo clippy --all-targets --features native --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt",
     "lint:fix": "cargo clippy --all-targets --all-features --fix --allow-dirty",
-    "typecheck": "cargo check --all-targets --features native"
+    "typecheck": "cargo check --all-targets --features native",
+    "example:native:basic": "cargo run --example basic_runtime --features native",
+    "example:native:handlers": "cargo run --example with_handlers --features native",
+    "example:wasm:basic": "bun run examples/wasm/basic.ts",
+    "example:wasm:runtime": "bun run examples/wasm/runtime.ts",
+    "example:wasm:chat": "bun run examples/wasm/chat.ts"
   },
   "author": "elizaOS",
   "license": "MIT",
