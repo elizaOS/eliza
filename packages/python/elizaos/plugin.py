@@ -105,6 +105,15 @@ async def register_plugin(runtime: IAgentRuntime, plugin: Plugin) -> None:
                 )
                 logger.debug(f"Registered model: {model_type}")
 
+        if plugin.streaming_models:
+            for model_type, handler in plugin.streaming_models.items():
+                runtime.register_streaming_model(
+                    model_type,
+                    handler,
+                    provider=plugin.name,
+                )
+                logger.debug(f"Registered streaming model: {model_type}")
+
         if plugin.events:
             for event_type, event_handlers in plugin.events.items():
                 for event_handler in event_handlers:

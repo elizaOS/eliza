@@ -365,6 +365,30 @@ def create_openai_elizaos_plugin() -> Plugin:
         client = _get_client()
         return await client.create_embedding(params.get("text", ""))
 
+    async def text_large_stream_handler(
+        runtime: IAgentRuntime, params: dict[str, Any]
+    ) -> AsyncIterator[str]:
+        """Streaming handler for large text generation."""
+        client = _get_client()
+        async for chunk in client.stream_text(
+            params.get("prompt", ""),
+            system=params.get("system"),
+        ):
+            yield chunk
+
+    async def text_small_stream_handler(
+        runtime: IAgentRuntime, params: dict[str, Any]
+    ) -> AsyncIterator[str]:
+        """Streaming handler for small text generation."""
+        client = _get_client()
+        # Use small model for streaming
+        async for chunk in client.stream_text(
+            params.get("prompt", ""),
+            model=os.environ.get("OPENAI_SMALL_MODEL", "gpt-5-mini"),
+            system=params.get("system"),
+        ):
+            yield chunk
+
     return Plugin(
         name="openai",
         description="OpenAI model provider for elizaOS",
@@ -372,6 +396,10 @@ def create_openai_elizaos_plugin() -> Plugin:
             ModelType.TEXT_LARGE.value: text_large_handler,
             ModelType.TEXT_SMALL.value: text_small_handler,
             ModelType.TEXT_EMBEDDING.value: embedding_handler,
+        },
+        streaming_models={
+            ModelType.TEXT_LARGE_STREAM.value: text_large_stream_handler,
+            ModelType.TEXT_SMALL_STREAM.value: text_small_stream_handler,
         },
     )
 

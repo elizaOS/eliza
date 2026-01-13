@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -30,6 +30,10 @@ if TYPE_CHECKING:
     from elizaos.types.service import Service
     from elizaos.types.state import State
     from elizaos.types.task import TaskWorker
+
+
+# Type alias for streaming model handlers
+StreamingModelHandler = Callable[["IAgentRuntime", dict[str, Any]], AsyncIterator[str]]
 
 
 # Runtime settings type
@@ -281,6 +285,39 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
     def get_model(
         self, model_type: str
     ) -> Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]] | None: ...
+
+    @abstractmethod
+    def use_model_stream(
+        self,
+        model_type: str | ModelType,
+        params: dict[str, Any] | None = None,
+        provider: str | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        """
+        Use a streaming model handler to generate text token by token.
+
+        Args:
+            model_type: The model type (e.g., ModelType.TEXT_LARGE_STREAM)
+            params: Parameters for the model (prompt, system, temperature, etc.)
+            provider: Optional specific provider to use
+            **kwargs: Additional parameters merged into params
+
+        Returns:
+            An async iterator yielding text chunks as they are generated.
+        """
+        ...
+
+    @abstractmethod
+    def register_streaming_model(
+        self,
+        model_type: str | ModelType,
+        handler: StreamingModelHandler,
+        provider: str,
+        priority: int = 0,
+    ) -> None:
+        """Register a streaming model handler."""
+        ...
 
     # Event handling
     @abstractmethod

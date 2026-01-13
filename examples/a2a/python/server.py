@@ -245,13 +245,17 @@ async def chat_stream(
     request: ChatRequest,
     x_session_id: str | None = Header(None),
 ) -> StreamingResponse:
-    """Stream a response from the agent."""
+    """Stream a response from the agent using true token-by-token streaming."""
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message is required")
 
     session_id = request.sessionId or x_session_id or str(uuid7())
 
     async def generate():
+        import json
+
+        from elizaos.services.message_service import StreamingMessageResult
+
         runtime = await get_runtime()
         session = get_or_create_session(session_id)
 
@@ -267,15 +271,15 @@ async def chat_stream(
             content=content,
         )
 
-        result = await runtime.message_service.handle_message(runtime, msg)
+        # Use the streaming message handler for true token-by-token streaming
+        async for chunk in runtime.message_service.handle_message_stream(runtime, msg):
+            if isinstance(chunk, str):
+                # Text chunk - stream it immediately
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+            elif isinstance(chunk, StreamingMessageResult):
+                # Final result with metadata - streaming complete
+                pass
 
-        if result and result.response_content and result.response_content.text:
-            # For now, send the whole response as one chunk
-            # In a real streaming implementation, we'd yield chunks
-            import json
-            yield f"data: {json.dumps({'text': result.response_content.text})}\n\n"
-
-        import json
         yield f"data: {json.dumps({'done': True})}\n\n"
 
     return StreamingResponse(
