@@ -253,6 +253,7 @@ describe("Action parameters (optional)", () => {
 
   it("skips action execution when required parameters are missing", async () => {
     let executed = false;
+    let receivedErrors: string[] = [];
 
     const runtime = new AgentRuntime({
       character: createTestCharacter(),
@@ -274,8 +275,9 @@ describe("Action parameters (optional)", () => {
         },
       ],
       validate: async () => true,
-      handler: async () => {
+      handler: async (_runtime, _message, _state, options) => {
         executed = true;
+        receivedErrors = options?.parameterErrors ?? [];
         return {
           success: true,
           data: { actionName: "MOVE" },
@@ -309,6 +311,7 @@ describe("Action parameters (optional)", () => {
 
     await runtime.processActions(message, responses);
 
-    expect(executed).toBe(false);
+    expect(executed).toBe(true);
+    expect(receivedErrors.join("\n")).toContain("Required parameter 'direction'");
   });
 });

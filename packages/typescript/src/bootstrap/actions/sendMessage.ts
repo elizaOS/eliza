@@ -21,6 +21,7 @@ import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 interface TargetExtractionResult {
   targetType?: string;
   source?: string;
+  messageText?: string;
   identifiers?: {
     roomName?: string;
     userId?: string;
@@ -39,11 +40,13 @@ interface TargetExtractionResult {
  * 1. The target type (user or room)
  * 2. The target platform/source (e.g. telegram, discord, etc)
  * 3. Any identifying information about the target
+ * 4. The message text to send
  *
  * Return an XML response with:
  * <response>
  *   <targetType>user|room</targetType>
  *   <source>platform-name</source>
+ *   <messageText>text_to_send</messageText>
  *   <identifiers>
  *     <username>username_if_applicable</username>
  *     <roomName>room_name_if_applicable</roomName>
@@ -56,6 +59,7 @@ interface TargetExtractionResult {
  * <response>
  *   <targetType>user</targetType>
  *   <source>telegram</source>
+ *   <messageText>Hello!</messageText>
  *   <identifiers>
  *     <username>dev_guru</username>
  *   </identifiers>
@@ -65,6 +69,7 @@ interface TargetExtractionResult {
  * <response>
  *   <targetType>room</targetType>
  *   <source>discord</source>
+ *   <messageText>Important announcement!</messageText>
  *   <identifiers>
  *     <roomName>announcements</roomName>
  *   </identifiers>
@@ -80,6 +85,7 @@ Analyze the conversation to identify:
 1. The target type (user or room)
 2. The target platform/source (e.g. telegram, discord, etc)
 3. Any identifying information about the target
+4. The message text to send
 
 Do NOT include any thinking, reasoning, or <think> sections in your response. 
 Go directly to the XML response format without any preamble or explanation.
@@ -88,6 +94,7 @@ Return an XML response with:
 <response>
   <targetType>user|room</targetType>
   <source>platform-name</source>
+  <messageText>text_to_send</messageText>
   <identifiers>
     <username>username_if_applicable</username>
     <roomName>room_name_if_applicable</roomName>
@@ -99,6 +106,7 @@ Example outputs:
 <response>
   <targetType>user</targetType>
   <source>telegram</source>
+  <messageText>Hello!</messageText>
   <identifiers>
     <username>dev_guru</username>
   </identifiers>
@@ -108,6 +116,7 @@ Example outputs:
 <response>
   <targetType>room</targetType>
   <source>discord</source>
+  <messageText>Important announcement!</messageText>
   <identifiers>
     <roomName>announcements</roomName>
   </identifiers>
@@ -156,7 +165,7 @@ export const sendMessageAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: HandlerOptions,
+    options?: HandlerOptions,
     callback?: HandlerCallback,
     responses?: Memory[],
   ): Promise<ActionResult> => {
@@ -246,22 +255,56 @@ export const sendMessageAction: Action = {
 
     const worldId = room.worldId;
 
-    // Extract target and source information
-    const targetPrompt = composePromptFromState({
-      state,
-      template: targetExtractionTemplate,
-    });
+    const actionParams = options?.parameters;
+    const targetTypeParam = actionParams?.targetType;
+    const sourceParam = actionParams?.source;
+    const targetParam = actionParams?.target;
+    const textParam = actionParams?.text;
 
-    const targetResult = await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: targetPrompt,
-      stopSequences: [],
-    });
+    const canUseParams =
+      (targetTypeParam === "user" || targetTypeParam === "room") &&
+      typeof targetParam === "string" &&
+      typeof textParam === "string";
 
-    const targetData = parseKeyValueXml<TargetExtractionResult>(targetResult);
+    let targetData: TargetExtractionResult | null = null;
+    if (canUseParams) {
+      const resolvedSource =
+        typeof sourceParam === "string" && sourceParam.trim() !== ""
+          ? sourceParam.trim()
+          : message.content.source;
 
-    if (!targetData || !targetData.targetType || !targetData.source) {
+      targetData = {
+        targetType: targetTypeParam,
+        source: resolvedSource,
+        messageText: textParam,
+        identifiers:
+          targetTypeParam === "user"
+            ? { username: targetParam }
+            : { roomName: targetParam },
+      };
+    } else {
+      // Extract target, source, and message text via model (fallback when <params> isn't provided)
+      const targetPrompt = composePromptFromState({
+        state,
+        template: targetExtractionTemplate,
+      });
+
+      const targetResult = await runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: targetPrompt,
+        stopSequences: [],
+      });
+
+      targetData = parseKeyValueXml<TargetExtractionResult>(targetResult);
+    }
+
+    if (
+      !targetData ||
+      !targetData.targetType ||
+      !targetData.source ||
+      !targetData.messageText
+    ) {
       await callback({
-        text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",
+        text: "I couldn't determine the target, platform, or message text to send. Please specify who/where to send it and what you want me to say.",
         actions: ["SEND_MESSAGE_ERROR"],
         source: message.content.source,
       });
@@ -280,10 +323,19 @@ export const sendMessageAction: Action = {
     }
 
     const source = targetData.source.toLowerCase();
+    const messageText = targetData.messageText;
 
     if (targetData.targetType === "user") {
       // Try to find the target user entity
-      const targetEntity = await findEntityByName(runtime, message, state);
+      const lookupMessage: Memory =
+        typeof targetData.identifiers?.username === "string" &&
+        targetData.identifiers.username.trim() !== ""
+          ? {
+              ...message,
+              content: { ...message.content, text: targetData.identifiers.username },
+            }
+          : message;
+      const targetEntity = await findEntityByName(runtime, lookupMessage, state);
 
       if (!targetEntity) {
         await callback({
@@ -380,8 +432,8 @@ export const sendMessageAction: Action = {
         throw new Error("Target entity ID is required");
       }
       await sendDirectMessage(targetEntity.id, {
-        text: message.content.text,
-        source: message.content.source,
+        text: messageText,
+        source,
       });
 
       await callback({
@@ -405,7 +457,7 @@ export const sendMessageAction: Action = {
           targetId: targetEntity.id ?? null,
           targetName: targetEntity.names[0] ?? null,
           source,
-          messageContent: message.content.text ?? null,
+          messageContent: messageText ?? null,
         },
         success: true,
       };
@@ -490,8 +542,8 @@ export const sendMessageAction: Action = {
 
       // Send the message to the room
       await sendRoomMessage(targetRoom.id, {
-        text: message.content.text,
-        source: message.content.source,
+        text: messageText,
+        source,
       });
 
       await callback({
@@ -515,7 +567,7 @@ export const sendMessageAction: Action = {
           targetId: targetRoom.id ?? null,
           targetName: targetRoom.name ?? null,
           source,
-          messageContent: message.content.text ?? null,
+          messageContent: messageText ?? null,
         },
         success: true,
       };

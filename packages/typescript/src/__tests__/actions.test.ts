@@ -173,6 +173,38 @@ describe("Actions", () => {
       expect(formatted).toBe("- **greet**: Greet someone");
     });
 
+    it("should include parameter definitions and examples when present", () => {
+      const formatted = formatActions([
+        {
+          name: "MOVE",
+          description: "Move the agent.",
+          parameters: [
+            {
+              name: "direction",
+              description: "Direction to move.",
+              required: true,
+              schema: { type: "string", enum: ["north", "south"] },
+              examples: ["north", "south"],
+            },
+          ],
+          examples: [],
+          similes: [],
+          handler: async () => {
+            throw new Error("Not implemented");
+          },
+          validate: async () => {
+            throw new Error("Not implemented");
+          },
+        },
+      ]);
+
+      expect(formatted).toContain("- **MOVE**: Move the agent.");
+      expect(formatted).toContain("Parameters:");
+      expect(formatted).toContain("direction (required)");
+      expect(formatted).toContain("[examples:");
+      expect(formatted).toContain('"north"');
+    });
+
     it("should include commas and newlines between multiple actions", () => {
       const formatted = formatActions([mockActions[0], mockActions[1]]);
       const parts = formatted.split("\n");
