@@ -522,6 +522,38 @@
         }
       ],
       "category": "vercel"
+    },
+    {
+      "name": "xai",
+      "description": "A full-featured elizaOS agent that runs on **X (formerly Twitter)** and uses:",
+      "path": "/Users/shawwalters/eliza-ok/examples/xai",
+      "languages": [
+        {
+          "language": "python",
+          "path": "/Users/shawwalters/eliza-ok/examples/xai/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/xai/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/Users/shawwalters/eliza-ok/examples/xai/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "xai"
     }
   ],
   "categories": [
@@ -544,7 +576,8 @@
     "supabase",
     "text-adventure",
     "tic-tac-toe",
-    "vercel"
+    "vercel",
+    "xai"
   ],
   "languages": [
     "actix",
