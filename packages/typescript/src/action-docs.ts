@@ -41,7 +41,12 @@ export function withCanonicalActionDocs(action: Action): Action {
   return {
     ...action,
     description: action.description || doc.description,
-    similes: action.similes && action.similes.length > 0 ? action.similes : doc.similes,
+    similes:
+      action.similes && action.similes.length > 0
+        ? action.similes
+        : doc.similes
+          ? [...doc.similes]
+          : undefined,
     parameters,
   };
 }
