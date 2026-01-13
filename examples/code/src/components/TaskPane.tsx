@@ -19,6 +19,26 @@ const SUB_AGENT_TYPES: SubAgentType[] = [
   "elizaos-native",
 ];
 
+function reportTaskServiceError(
+  taskService: CodeTaskService,
+  taskId: string,
+  action: string,
+  err: Error,
+): void {
+  const msg = err.message;
+  const line = `UI error (${action}): ${msg}`;
+  taskService.appendOutput(taskId, line).then(
+    () => {},
+    (appendErr: Error) => {
+      const appendMsg = appendErr.message;
+      process.stderr.write(
+        `[TaskPane] Failed to append error output: ${appendMsg}\n`,
+      );
+    },
+  );
+  process.stderr.write(`[TaskPane] ${line}\n`);
+}
+
 interface TaskPaneProps {
   isFocused: boolean;
   paneHeight: number;
@@ -136,7 +156,9 @@ export function TaskPane({
         if (key.return) {
           const next = renameDraft.trim();
           if (next.length > 0 && currentTask?.id && taskService) {
-            taskService.renameTask(currentTask.id, next).catch(() => {});
+            taskService.renameTask(currentTask.id, next).catch((err: Error) => {
+              reportTaskServiceError(taskService, currentTask.id, "renameTask", err);
+            });
           }
           setIsRenaming(false);
           setRenameDraft("");
@@ -150,9 +172,13 @@ export function TaskPane({
         if (char === "y" || char === "Y") {
           if (taskService) {
             if (confirm.type === "cancel") {
-              taskService.cancelTask(confirm.taskId).catch(() => {});
+              taskService.cancelTask(confirm.taskId).catch((err: Error) => {
+                reportTaskServiceError(taskService, confirm.taskId, "cancelTask", err);
+              });
             } else {
-              taskService.deleteTask(confirm.taskId).catch(() => {});
+              taskService.deleteTask(confirm.taskId).catch((err: Error) => {
+                reportTaskServiceError(taskService, confirm.taskId, "deleteTask", err);
+              });
             }
           }
           setConfirm(null);
@@ -232,7 +258,9 @@ export function TaskPane({
         );
         const nextStatus: TaskUserStatus =
           currentUserStatus === "done" ? "open" : "done";
-        taskService.setUserStatus(currentTask.id, nextStatus).catch(() => {});
+        taskService.setUserStatus(currentTask.id, nextStatus).catch((err: Error) => {
+          reportTaskServiceError(taskService, currentTask.id, "setUserStatus", err);
+        });
       }
 
       // Edit mode commands
@@ -244,7 +272,9 @@ export function TaskPane({
         const current = currentTask.metadata?.subAgentType ?? "eliza";
         const idx = Math.max(0, SUB_AGENT_TYPES.indexOf(current));
         const next = SUB_AGENT_TYPES[(idx + 1) % SUB_AGENT_TYPES.length];
-        taskService.setTaskSubAgentType(currentTask.id, next).catch(() => {});
+        taskService.setTaskSubAgentType(currentTask.id, next).catch((err: Error) => {
+          reportTaskServiceError(taskService, currentTask.id, "setTaskSubAgentType", err);
+        });
         return;
       }
 
@@ -272,12 +302,21 @@ export function TaskPane({
         const status = currentTask.metadata?.status ?? "pending";
         const taskId = currentTask.id;
         if (status === "running") {
-          taskService.pauseTask(taskId).catch(() => {});
+          taskService.pauseTask(taskId).catch((err: Error) => {
+            reportTaskServiceError(taskService, taskId, "pauseTask", err);
+          });
         } else if (status === "paused" || status === "pending") {
           taskService
             .resumeTask(taskId)
-            .then(() => taskService.startTaskExecution(taskId).catch(() => {}))
-            .catch(() => {});
+            .then(
+              () =>
+                taskService.startTaskExecution(taskId).catch((err: Error) => {
+                  reportTaskServiceError(taskService, taskId, "startTaskExecution", err);
+                }),
+              (err: Error) => {
+                reportTaskServiceError(taskService, taskId, "resumeTask", err);
+              },
+            );
         }
         return;
       }

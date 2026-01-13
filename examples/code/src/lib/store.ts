@@ -451,7 +451,10 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
   restoreSession: (session: SessionState) => {
     // Restore CWD first
     if (session.cwd) {
-      setCwd(session.cwd).catch(() => {});
+      setCwd(session.cwd).catch((err: Error) => {
+        const msg = err.message;
+        console.error(`[store] Failed to restore cwd: ${msg}`);
+      });
     }
 
     // Restore identity (or create defaults for older sessions).
