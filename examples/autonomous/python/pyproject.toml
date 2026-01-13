@@ -25,8 +25,8 @@ autonomous-agent = "autonomous_agent:main"
 requires = ["setuptools>=75.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-where = ["."]
+[tool.setuptools]
+py-modules = ["autonomous_agent"]
 
 [tool.ruff]
 line-length = 100
