@@ -43,7 +43,7 @@ def play(
     """Watch an agent play Tic-Tac-Toe."""
 
     async def run() -> None:
-        config = TicTacToeConfig(opponent_type=opponent)
+        config = TicTacToeConfig(opponent=opponent)
         env = TicTacToeEnvironment(config)
         await env.initialize()
 
@@ -108,8 +108,9 @@ def interactive(
     """Play Tic-Tac-Toe interactively."""
 
     async def run() -> None:
-        agent_player = 2 if you_first else 1  # If you're X, agent is O
-        config = TicTacToeConfig(agent_player=agent_player, opponent_type="none")
+        ai_player_val = 2 if you_first else 1  # If you're X, agent is O
+        from elizaos_art.games.tic_tac_toe.types import Player
+        config = TicTacToeConfig(ai_player=Player(ai_player_val), opponent="none")
         env = TicTacToeEnvironment(config)
         await env.initialize()
 
@@ -181,7 +182,7 @@ def benchmark(
             for opp in opponents:
                 console.print(f"[cyan]{agent_name} vs {opp}...[/cyan]")
 
-                config = TicTacToeConfig(opponent_type=opp)
+                config = TicTacToeConfig(opponent=opp)
                 env = TicTacToeEnvironment(config)
                 await env.initialize()
 
@@ -258,7 +259,7 @@ def train(
     """Run GRPO training."""
 
     async def run() -> None:
-        config = TicTacToeConfig(opponent_type=opponent)
+        config = TicTacToeConfig(opponent=opponent)
         env = TicTacToeEnvironment(config)
         agent = TicTacToeAgent(model_name=model)
 
@@ -286,7 +287,7 @@ def pipeline(
     """Full training pipeline."""
 
     async def run() -> None:
-        config = TicTacToeConfig(opponent_type=opponent)
+        config = TicTacToeConfig(opponent=opponent)
         env = TicTacToeEnvironment(config)
         agent = TicTacToeAgent(model_name=model)
 

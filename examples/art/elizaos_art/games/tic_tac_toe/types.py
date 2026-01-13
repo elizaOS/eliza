@@ -21,6 +21,14 @@ class Player(IntEnum):
             return "."
         return self.name
 
+    def opponent(self) -> "Player":
+        """Get the opponent player."""
+        if self == Player.X:
+            return Player.O
+        elif self == Player.O:
+            return Player.X
+        return Player.EMPTY
+
 
 class TicTacToeAction(IntEnum):
     """
@@ -49,9 +57,18 @@ class TicTacToeAction(IntEnum):
         """Convert (row, col) to action."""
         return cls(row * 3 + col)
 
+    @classmethod
+    def from_coords(cls, row: int, col: int) -> "TicTacToeAction":
+        """Convert (row, col) to action. Alias for from_position."""
+        return cls.from_position(row, col)
+
     def to_position(self) -> tuple[int, int]:
         """Convert action to (row, col)."""
         return (self.value // 3, self.value % 3)
+
+    def to_coords(self) -> tuple[int, int]:
+        """Convert action to (row, col). Alias for to_position."""
+        return self.to_position()
 
     @classmethod
     def from_string(cls, s: str) -> "TicTacToeAction":
@@ -89,9 +106,10 @@ class TicTacToeState(State):
     """
 
     board: tuple[int, ...]  # 9 integers: 0=empty, 1=X, 2=O
-    current_player: Player
-    winner: Player | None = None
+    current_player: int  # Player value (1 for X, 2 for O)
+    winner: int | None = None  # Player value or 0 for draw
     is_draw: bool = False
+    move_count: int = 0
 
     SIZE: ClassVar[int] = 3
 
