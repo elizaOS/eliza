@@ -360,4 +360,3 @@ mod tests {
         accepts_platform_service(&value);
     }
 }
-

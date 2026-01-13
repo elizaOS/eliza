@@ -72,7 +72,11 @@ impl WasmError {
 
 impl WasmError {
     /// Creates a new WasmError with all fields.
-    pub fn new(code: impl Into<String>, message: impl Into<String>, source: Option<String>) -> Self {
+    pub fn new(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        source: Option<String>,
+    ) -> Self {
         Self {
             code: code.into(),
             message: message.into(),
@@ -133,7 +137,7 @@ impl std::error::Error for WasmError {}
 pub trait WasmResultExt<T> {
     /// Converts the error to a WasmError and returns as JsValue.
     fn to_wasm_err(self) -> Result<T, JsValue>;
-    
+
     /// Converts the error to a WasmError with additional source context.
     fn to_wasm_err_with_source(self, source: &str) -> Result<T, JsValue>;
 }
@@ -142,7 +146,7 @@ impl<T, E: std::fmt::Display> WasmResultExt<T> for Result<T, E> {
     fn to_wasm_err(self) -> Result<T, JsValue> {
         self.map_err(|e| WasmError::internal_error(e.to_string()).into_js_value())
     }
-    
+
     fn to_wasm_err_with_source(self, source: &str) -> Result<T, JsValue> {
         self.map_err(|e| {
             WasmError::new("ERROR", e.to_string(), Some(source.to_string())).into_js_value()
@@ -166,10 +170,11 @@ mod tests {
     fn test_wasm_error_to_string() {
         let err = WasmError::parse_error("invalid json", Some("character".to_string()));
         assert_eq!(err.to_string_js(), "[PARSE_ERROR] character: invalid json");
-        
+
         let err_no_source = WasmError::internal_error("something went wrong");
-        assert_eq!(err_no_source.to_string_js(), "[INTERNAL_ERROR] something went wrong");
+        assert_eq!(
+            err_no_source.to_string_js(),
+            "[INTERNAL_ERROR] something went wrong"
+        );
     }
 }
-
-

@@ -276,8 +276,7 @@ pub type ModelHandler =
 
 /// Model handler function type (WASM - no Send + Sync required)
 #[cfg(feature = "wasm")]
-pub type ModelHandler =
-    Arc<dyn Fn(&str, serde_json::Value) -> Result<serde_json::Value>>;
+pub type ModelHandler = Arc<dyn Fn(&str, serde_json::Value) -> Result<serde_json::Value>>;
 
 fn json_value_to_setting_value(value: &serde_json::Value) -> Option<SettingValue> {
     match value {

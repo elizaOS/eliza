@@ -63,14 +63,13 @@ impl JsModelHandler {
     #[wasm_bindgen(constructor)]
     pub fn new(js_object: Object) -> Result<JsModelHandler, JsValue> {
         // Get the handle property from the object
-        let handle_prop = Reflect::get(&js_object, &JsValue::from_str("handle"))
-            .map_err(|_| {
-                WasmError::validation_error(
-                    "Object must have a 'handle' property",
-                    Some("handle".to_string()),
-                )
-                .into_js_value()
-            })?;
+        let handle_prop = Reflect::get(&js_object, &JsValue::from_str("handle")).map_err(|_| {
+            WasmError::validation_error(
+                "Object must have a 'handle' property",
+                Some("handle".to_string()),
+            )
+            .into_js_value()
+        })?;
 
         // Verify it's a function
         let handle_func = handle_prop.dyn_into::<Function>().map_err(|_| {
@@ -194,5 +193,3 @@ mod tests {
     // Tests would use wasm_bindgen_test here
     // See wasm/tests/shims_test.rs for WASM-specific tests
 }
-
-

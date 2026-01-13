@@ -124,8 +124,7 @@ mod shim_tests {
 mod type_tests {
     use super::*;
     use elizaos::wasm::{
-        WasmCharacter, WasmState, WasmUUID,
-        generate_uuid, string_to_uuid, validate_uuid,
+        generate_uuid, string_to_uuid, validate_uuid, WasmCharacter, WasmState, WasmUUID,
     };
 
     #[wasm_bindgen_test]
@@ -161,7 +160,7 @@ mod type_tests {
         let uuid1 = string_to_uuid("test");
         let uuid2 = string_to_uuid("test");
         assert_eq!(uuid1, uuid2);
-        
+
         let uuid3 = string_to_uuid("different");
         assert_ne!(uuid1, uuid3);
     }
@@ -171,7 +170,7 @@ mod type_tests {
         let json = r#"{"name": "TestAgent", "bio": "A test agent"}"#;
         let result = WasmCharacter::from_json(json);
         assert!(result.is_ok());
-        
+
         let character = result.unwrap();
         assert_eq!(character.name(), "TestAgent");
     }
@@ -203,7 +202,7 @@ mod runtime_tests {
         let json = r#"{"name": "TestAgent", "bio": "A test agent"}"#;
         let result = WasmAgentRuntime::create(json);
         assert!(result.is_ok());
-        
+
         let runtime = result.unwrap();
         assert_eq!(runtime.character_name(), "TestAgent");
     }
@@ -218,7 +217,7 @@ mod runtime_tests {
     async fn test_runtime_initialize() {
         let json = r#"{"name": "TestAgent", "bio": "A test agent"}"#;
         let runtime = WasmAgentRuntime::create(json).unwrap();
-        
+
         // initialize() now returns a Promise
         assert!(!runtime.is_initialized());
         let promise = runtime.initialize();
@@ -230,7 +229,7 @@ mod runtime_tests {
     fn test_runtime_agent_id() {
         let json = r#"{"name": "TestAgent", "bio": "A test agent"}"#;
         let runtime = WasmAgentRuntime::create(json).unwrap();
-        
+
         let agent_id = runtime.agent_id();
         assert!(!agent_id.is_empty());
     }
@@ -239,10 +238,10 @@ mod runtime_tests {
     fn test_runtime_character() {
         let json = r#"{"name": "TestAgent", "bio": "A test agent", "system": "You are helpful"}"#;
         let runtime = WasmAgentRuntime::create(json).unwrap();
-        
+
         let character_json = runtime.character();
         assert!(character_json.is_ok());
-        
+
         let char_str = character_json.unwrap();
         assert!(char_str.contains("TestAgent"));
     }
@@ -253,7 +252,7 @@ mod runtime_tests {
         let runtime = WasmAgentRuntime::create(json).unwrap();
         let promise = runtime.initialize();
         wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
-        
+
         // Should not panic
         runtime.stop();
         assert!(!runtime.is_initialized());
@@ -276,7 +275,7 @@ mod interop_tests {
             "system": "You are a helpful assistant",
             "topics": ["testing", "rust"]
         }"#;
-        
+
         let result = test_character_round_trip(json);
         assert!(result.is_ok());
         assert!(result.unwrap());
@@ -290,7 +289,7 @@ mod interop_tests {
             "content": {"text": "Hello world"},
             "unique": true
         }"#;
-        
+
         let result = test_memory_round_trip(json);
         assert!(result.is_ok());
         assert!(result.unwrap());
@@ -304,8 +303,8 @@ mod interop_tests {
 mod additional_type_tests {
     use super::*;
     use elizaos::wasm::{
-        WasmMemory, WasmAgent, WasmPlugin, WasmRoom, WasmEntity,
-        parse_character, parse_memory, get_version,
+        get_version, parse_character, parse_memory, WasmAgent, WasmEntity, WasmMemory, WasmPlugin,
+        WasmRoom,
     };
 
     #[wasm_bindgen_test]
@@ -316,7 +315,7 @@ mod additional_type_tests {
             "content": {"text": "Hello world"},
             "unique": true
         }"#;
-        
+
         let memory = WasmMemory::from_json(json).unwrap();
         assert_eq!(memory.entity_id(), "550e8400-e29b-41d4-a716-446655440000");
         assert_eq!(memory.room_id(), "550e8400-e29b-41d4-a716-446655440001");
@@ -347,7 +346,7 @@ mod additional_type_tests {
             "roomId": "550e8400-e29b-41d4-a716-446655440001",
             "content": {"text": "Test message", "action": "REPLY"}
         }"#;
-        
+
         let memory = WasmMemory::from_json(json).unwrap();
         let content = memory.content().unwrap();
         assert!(content.contains("Test message"));
@@ -362,7 +361,7 @@ mod additional_type_tests {
             "createdAt": 1234567890,
             "updatedAt": 1234567890
         }"#;
-        
+
         let agent = WasmAgent::from_json(json).unwrap();
         assert_eq!(agent.name(), "TestAgent");
     }
@@ -387,7 +386,7 @@ mod additional_type_tests {
             "name": "test-plugin",
             "description": "A test plugin"
         }"#;
-        
+
         let plugin = WasmPlugin::from_json(json).unwrap();
         assert_eq!(plugin.name(), "test-plugin");
         assert_eq!(plugin.description(), Some("A test plugin".to_string()));
@@ -407,7 +406,7 @@ mod additional_type_tests {
             "source": "discord",
             "type": "DM"
         }"#;
-        
+
         let room = WasmRoom::from_json(json).unwrap();
         assert_eq!(room.id(), "550e8400-e29b-41d4-a716-446655440000");
     }
@@ -435,9 +434,12 @@ mod additional_type_tests {
             "metadata": {},
             "agentId": "550e8400-e29b-41d4-a716-446655440001"
         }"#;
-        
+
         let entity = WasmEntity::from_json(json).unwrap();
-        assert_eq!(entity.id(), Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
+        assert_eq!(
+            entity.id(),
+            Some("550e8400-e29b-41d4-a716-446655440000".to_string())
+        );
     }
 
     #[wasm_bindgen_test]
@@ -536,7 +538,7 @@ mod error_extension_tests {
         let bad_json = "{ not valid json }";
         let err: Result<serde_json::Value, _> = serde_json::from_str(bad_json);
         let json_err = err.unwrap_err();
-        
+
         let wasm_err = WasmError::from_json_error(&json_err, Some("test_field".to_string()));
         assert_eq!(wasm_err.code(), "PARSE_ERROR");
         assert!(wasm_err.message().contains("JSON parse error"));
@@ -583,7 +585,7 @@ mod advanced_shim_tests {
 
         let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
         let handler = JsModelHandler::new(obj).unwrap();
-        
+
         let promise = handler.handle_js("{}").unwrap();
         let result = JsFuture::from(promise).await.unwrap();
         let response = result.as_string().unwrap();
@@ -607,7 +609,7 @@ mod advanced_shim_tests {
 
         let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
         let handler = JsModelHandler::new(obj).unwrap();
-        
+
         let params = r#"{"prompt": "hello"}"#;
         let promise = handler.handle_js(params).unwrap();
         let result = JsFuture::from(promise).await.unwrap();
@@ -621,7 +623,7 @@ mod advanced_shim_tests {
         let code = r#"({ handle: function() { return "test"; }, customProp: 42 })"#;
         let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
         let handler = JsModelHandler::new(obj.clone()).unwrap();
-        
+
         // Should return the same object
         let returned_obj = handler.js_object();
         let custom_prop = js_sys::Reflect::get(&returned_obj, &"customProp".into()).unwrap();
@@ -646,7 +648,7 @@ mod advanced_shim_tests {
 }
 
 // ========================================
-// Advanced Runtime Tests  
+// Advanced Runtime Tests
 // ========================================
 
 // ========================================
@@ -656,14 +658,12 @@ mod advanced_shim_tests {
 mod core_trait_tests {
     use super::*;
     use elizaos::types::components::{
-        ActionDefinition, ActionHandler, ActionResult,
-        EvaluatorDefinition, EvaluatorHandler,
-        ProviderDefinition, ProviderHandler, ProviderResult,
-        HandlerOptions,
+        ActionDefinition, ActionHandler, ActionResult, EvaluatorDefinition, EvaluatorHandler,
+        HandlerOptions, ProviderDefinition, ProviderHandler, ProviderResult,
     };
     use elizaos::types::memory::Memory;
-    use elizaos::types::state::State;
     use elizaos::types::primitives::UUID;
+    use elizaos::types::state::State;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -763,7 +763,11 @@ mod core_trait_tests {
             }
         }
 
-        async fn get(&self, _message: &Memory, _state: &State) -> Result<ProviderResult, anyhow::Error> {
+        async fn get(
+            &self,
+            _message: &Memory,
+            _state: &State,
+        ) -> Result<ProviderResult, anyhow::Error> {
             let data = self.data.borrow().clone();
             Ok(ProviderResult {
                 text: Some(format!("Provider data: {}", data)),
@@ -820,14 +824,19 @@ mod core_trait_tests {
             _state: Option<&State>,
         ) -> Result<Option<ActionResult>, anyhow::Error> {
             let score = *self.threshold.borrow();
-            Ok(Some(ActionResult::success_with_text(&format!("Score: {}", score))))
+            Ok(Some(ActionResult::success_with_text(&format!(
+                "Score: {}",
+                score
+            ))))
         }
     }
 
     #[wasm_bindgen_test]
     async fn test_wasm_evaluator_handler_with_non_send() {
         let threshold = Rc::new(RefCell::new(0.75));
-        let handler = WasmEvaluatorHandler { threshold: threshold.clone() };
+        let handler = WasmEvaluatorHandler {
+            threshold: threshold.clone(),
+        };
 
         let def = handler.definition();
         assert_eq!(def.name, "wasm_evaluator");
@@ -863,9 +872,9 @@ mod core_trait_tests {
         for handler in handlers.iter() {
             let def = handler.definition();
             assert_eq!(def.name, "wasm_action");
-            
+
             let memory = create_test_memory();
-            
+
             let result = handler.handle(&memory, None, None).await.unwrap();
             assert!(result.is_some());
         }
@@ -961,7 +970,7 @@ mod platform_tests {
             id: 0,
         };
         assert_eq!(t.get_name(), "hello");
-        
+
         // Test that Clone bound works
         let cloned = t.clone();
         assert_eq!(cloned.get_name(), "hello");
@@ -1002,8 +1011,8 @@ mod platform_tests {
 
     // Test that non-Send types can be used in WASM traits
     // (This would fail on native due to Send + Sync bounds)
-    use std::rc::Rc;
     use std::cell::RefCell;
+    use std::rc::Rc;
 
     define_platform_trait! {
         /// A trait that uses non-Send types (only valid in WASM).
@@ -1029,7 +1038,7 @@ mod platform_tests {
             value: Rc::new(RefCell::new(100)),
         };
         assert_eq!(t.get_rc_value(), 100);
-        
+
         // Modify through RefCell
         *t.value.borrow_mut() = 200;
         assert_eq!(t.get_rc_value(), 200);
@@ -1040,7 +1049,7 @@ mod platform_tests {
     fn test_wasm_any_arc() {
         use elizaos::platform::AnyArc;
         use std::sync::Arc;
-        
+
         let value: AnyArc = Arc::new(42i32);
         // In WASM, AnyArc is Arc<dyn Any> - use downcast_ref
         let downcast_ref = value.downcast_ref::<i32>().unwrap();
@@ -1051,13 +1060,13 @@ mod platform_tests {
     #[wasm_bindgen_test]
     fn test_wasm_platform_service_bound() {
         use elizaos::platform::PlatformService;
-        
+
         fn accepts_platform_service<T: PlatformService>(_: &T) {}
-        
+
         // In WASM, any type should satisfy PlatformService (no bounds)
         let value = 42i32;
         accepts_platform_service(&value);
-        
+
         // Even non-Send types should work
         let rc_value = Rc::new(42);
         accepts_platform_service(&rc_value);
@@ -1066,8 +1075,8 @@ mod platform_tests {
 
 mod advanced_runtime_tests {
     use super::*;
-    use elizaos::wasm::{WasmAgentRuntime, WasmCharacter};
     use elizaos::wasm::shims::JsModelHandler;
+    use elizaos::wasm::{WasmAgentRuntime, WasmCharacter};
     use js_sys::Object;
     use wasm_bindgen::JsCast;
 
@@ -1075,11 +1084,11 @@ mod advanced_runtime_tests {
     fn test_runtime_register_model_handler() {
         let json = r#"{"name": "TestAgent", "bio": "Test"}"#;
         let runtime = WasmAgentRuntime::create(json).unwrap();
-        
+
         let code = r#"({ handle: async function(p) { return "{}"; } })"#;
         let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
         let handler = JsModelHandler::new(obj).unwrap();
-        
+
         // Should not panic
         runtime.register_model_handler("TEXT_LARGE", handler);
     }
@@ -1088,10 +1097,10 @@ mod advanced_runtime_tests {
     fn test_runtime_register_model_handler_fn() {
         let json = r#"{"name": "TestAgent", "bio": "Test"}"#;
         let runtime = WasmAgentRuntime::create(json).unwrap();
-        
+
         let code = r#"(async function(p) { return "{}"; })"#;
         let func: js_sys::Function = js_sys::eval(code).unwrap().dyn_into().unwrap();
-        
+
         // Should succeed
         let result = runtime.register_model_handler_fn("TEXT_LARGE", func);
         assert!(result.is_ok());
@@ -1103,7 +1112,7 @@ mod advanced_runtime_tests {
         let json = r#"{"name": "DeterministicAgent", "bio": "Test"}"#;
         let runtime1 = WasmAgentRuntime::create(json).unwrap();
         let runtime2 = WasmAgentRuntime::create(json).unwrap();
-        
+
         assert_eq!(runtime1.agent_id(), runtime2.agent_id());
     }
 
@@ -1115,7 +1124,7 @@ mod advanced_runtime_tests {
             "bio": "Test"
         }"#;
         let runtime = WasmAgentRuntime::create(json).unwrap();
-        
+
         assert_eq!(runtime.agent_id(), "550e8400-e29b-41d4-a716-446655440000");
     }
 
@@ -1125,7 +1134,7 @@ mod advanced_runtime_tests {
         let runtime = WasmAgentRuntime::create(json).unwrap();
         let promise = runtime.initialize();
         wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
-        
+
         // Multiple stops should be safe
         runtime.stop();
         runtime.stop();
@@ -1140,8 +1149,11 @@ mod advanced_runtime_tests {
             "system": "You are a helpful assistant"
         }"#;
         let character = WasmCharacter::from_json(json).unwrap();
-        
-        assert_eq!(character.system(), Some("You are a helpful assistant".to_string()));
+
+        assert_eq!(
+            character.system(),
+            Some("You are a helpful assistant".to_string())
+        );
     }
 
     #[wasm_bindgen_test]
@@ -1152,7 +1164,7 @@ mod advanced_runtime_tests {
             "topics": ["ai", "rust", "wasm"]
         }"#;
         let character = WasmCharacter::from_json(json).unwrap();
-        
+
         let topics = character.topics().unwrap();
         assert!(topics.contains("ai"));
         assert!(topics.contains("rust"));
@@ -1166,7 +1178,7 @@ mod advanced_runtime_tests {
             "bio": ["Line 1", "Line 2", "Line 3"]
         }"#;
         let character = WasmCharacter::from_json(json).unwrap();
-        
+
         let bio = character.bio().unwrap();
         assert!(bio.contains("Line 1"));
     }
@@ -1178,11 +1190,11 @@ mod advanced_runtime_tests {
 
 mod integration_tests_full {
     use super::*;
-    use elizaos::wasm::{WasmAgentRuntime, WasmCharacter, generate_uuid};
     use elizaos::wasm::shims::JsModelHandler;
-    use wasm_bindgen_futures::JsFuture;
+    use elizaos::wasm::{generate_uuid, WasmAgentRuntime, WasmCharacter};
     use js_sys::Object;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen_futures::JsFuture;
 
     /// Test the full runtime lifecycle: create -> initialize -> use -> stop
     #[wasm_bindgen_test]
@@ -1194,16 +1206,16 @@ mod integration_tests_full {
             "system": "You are a helpful assistant."
         }"#;
         let runtime = WasmAgentRuntime::create(json).unwrap();
-        
+
         // 2. Verify not initialized
         assert!(!runtime.is_initialized());
         assert_eq!(runtime.character_name(), "LifecycleAgent");
-        
+
         // 3. Initialize
         let promise = runtime.initialize();
         JsFuture::from(promise).await.unwrap();
         assert!(runtime.is_initialized());
-        
+
         // 4. Register a model handler
         let code = r#"
             ({
@@ -1218,25 +1230,28 @@ mod integration_tests_full {
         let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
         let handler = JsModelHandler::new(obj).unwrap();
         runtime.register_model_handler("TEXT_LARGE", handler);
-        
+
         // 5. Handle a message
         let entity_id = generate_uuid();
         let room_id = generate_uuid();
-        let message_json = format!(r#"{{
+        let message_json = format!(
+            r#"{{
             "entityId": "{}",
             "roomId": "{}",
             "content": {{"text": "Hello agent!"}}
-        }}"#, entity_id, room_id);
-        
+        }}"#,
+            entity_id, room_id
+        );
+
         let promise = runtime.handle_message(&message_json);
         let result = JsFuture::from(promise).await.unwrap();
         let result_str = result.as_string().unwrap();
-        
+
         // 6. Verify response
         assert!(result_str.contains("didRespond"));
         assert!(result_str.contains("true"));
         assert!(result_str.contains("Hello from model"));
-        
+
         // 7. Stop runtime
         runtime.stop();
         assert!(!runtime.is_initialized());
@@ -1249,7 +1264,7 @@ mod integration_tests_full {
         let runtime = WasmAgentRuntime::create(json).unwrap();
         let promise = runtime.initialize();
         JsFuture::from(promise).await.unwrap();
-        
+
         // Register model handler that echoes the input
         let code = r#"
             ({
@@ -1265,36 +1280,48 @@ mod integration_tests_full {
         let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
         let handler = JsModelHandler::new(obj).unwrap();
         runtime.register_model_handler("TEXT_LARGE", handler);
-        
+
         // Test with empty content
-        let msg1 = format!(r#"{{
+        let msg1 = format!(
+            r#"{{
             "entityId": "{}",
             "roomId": "{}",
             "content": {{}}
-        }}"#, generate_uuid(), generate_uuid());
+        }}"#,
+            generate_uuid(),
+            generate_uuid()
+        );
         let result1 = JsFuture::from(runtime.handle_message(&msg1)).await;
         assert!(result1.is_ok());
-        
+
         // Test with text only
-        let msg2 = format!(r#"{{
+        let msg2 = format!(
+            r#"{{
             "entityId": "{}",
             "roomId": "{}",
             "content": {{"text": "Test message"}}
-        }}"#, generate_uuid(), generate_uuid());
+        }}"#,
+            generate_uuid(),
+            generate_uuid()
+        );
         let result2 = JsFuture::from(runtime.handle_message(&msg2)).await;
         assert!(result2.is_ok());
         let result2_str = result2.unwrap().as_string().unwrap();
         assert!(result2_str.contains("Test message"));
-        
+
         // Test with action in content
-        let msg3 = format!(r#"{{
+        let msg3 = format!(
+            r#"{{
             "entityId": "{}",
             "roomId": "{}",
             "content": {{"text": "Hello", "action": "REPLY"}}
-        }}"#, generate_uuid(), generate_uuid());
+        }}"#,
+            generate_uuid(),
+            generate_uuid()
+        );
         let result3 = JsFuture::from(runtime.handle_message(&msg3)).await;
         assert!(result3.is_ok());
-        
+
         runtime.stop();
     }
 
@@ -1305,32 +1332,36 @@ mod integration_tests_full {
         let runtime = WasmAgentRuntime::create(json).unwrap();
         let promise = runtime.initialize();
         JsFuture::from(promise).await.unwrap();
-        
+
         // Register TEXT_LARGE handler
         let code1 = r#"({ handle: async function(p) { return JSON.stringify({text: "TEXT_LARGE response"}); } })"#;
         let obj1: Object = js_sys::eval(code1).unwrap().dyn_into().unwrap();
         runtime.register_model_handler("TEXT_LARGE", JsModelHandler::new(obj1).unwrap());
-        
+
         // Register TEXT_SMALL handler
         let code2 = r#"({ handle: async function(p) { return JSON.stringify({text: "TEXT_SMALL response"}); } })"#;
         let obj2: Object = js_sys::eval(code2).unwrap().dyn_into().unwrap();
         runtime.register_model_handler("TEXT_SMALL", JsModelHandler::new(obj2).unwrap());
-        
+
         // Register EMBEDDING handler
         let code3 = r#"({ handle: async function(p) { return JSON.stringify({embedding: [0.1, 0.2, 0.3]}); } })"#;
         let obj3: Object = js_sys::eval(code3).unwrap().dyn_into().unwrap();
         runtime.register_model_handler("EMBEDDING", JsModelHandler::new(obj3).unwrap());
-        
+
         // Send a message (uses TEXT_LARGE by default)
-        let msg = format!(r#"{{
+        let msg = format!(
+            r#"{{
             "entityId": "{}",
             "roomId": "{}",
             "content": {{"text": "Hello"}}
-        }}"#, generate_uuid(), generate_uuid());
+        }}"#,
+            generate_uuid(),
+            generate_uuid()
+        );
         let result = JsFuture::from(runtime.handle_message(&msg)).await.unwrap();
         let result_str = result.as_string().unwrap();
         assert!(result_str.contains("TEXT_LARGE response"));
-        
+
         runtime.stop();
     }
 
@@ -1341,18 +1372,22 @@ mod integration_tests_full {
         let runtime = WasmAgentRuntime::create(json).unwrap();
         let promise = runtime.initialize();
         JsFuture::from(promise).await.unwrap();
-        
+
         // Don't register any handlers - try to send a message
-        let msg = format!(r#"{{
+        let msg = format!(
+            r#"{{
             "entityId": "{}",
             "roomId": "{}",
             "content": {{"text": "Hello"}}
-        }}"#, generate_uuid(), generate_uuid());
-        
+        }}"#,
+            generate_uuid(),
+            generate_uuid()
+        );
+
         let result = JsFuture::from(runtime.handle_message(&msg)).await;
         // Should fail because no TEXT_LARGE handler is registered
         assert!(result.is_err());
-        
+
         runtime.stop();
     }
 
@@ -1372,23 +1407,23 @@ mod integration_tests_full {
                 "post": ["Be professional"]
             }
         }"#;
-        
+
         let runtime = WasmAgentRuntime::create(json).unwrap();
-        
+
         // Verify character was parsed correctly
         assert_eq!(runtime.character_name(), "ComplexAgent");
         assert_eq!(runtime.agent_id(), "550e8400-e29b-41d4-a716-446655440000");
-        
+
         let char_json = runtime.character().unwrap();
         assert!(char_json.contains("ComplexAgent"));
         assert!(char_json.contains("technology"));
         assert!(char_json.contains("intelligent"));
-        
+
         // Initialize and verify it works
         let promise = runtime.initialize();
         JsFuture::from(promise).await.unwrap();
         assert!(runtime.is_initialized());
-        
+
         runtime.stop();
     }
 
@@ -1399,27 +1434,31 @@ mod integration_tests_full {
         let runtime = WasmAgentRuntime::create(json).unwrap();
         let promise = runtime.initialize();
         JsFuture::from(promise).await.unwrap();
-        
+
         // Register handler
-        let code = r#"({ handle: async function(p) { return JSON.stringify({text: "Response"}); } })"#;
+        let code =
+            r#"({ handle: async function(p) { return JSON.stringify({text: "Response"}); } })"#;
         let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
         runtime.register_model_handler("TEXT_LARGE", JsModelHandler::new(obj).unwrap());
-        
+
         // Create message with specific IDs
         let entity_id = "11111111-1111-1111-1111-111111111111";
         let room_id = "22222222-2222-2222-2222-222222222222";
-        let msg = format!(r#"{{
+        let msg = format!(
+            r#"{{
             "entityId": "{}",
             "roomId": "{}",
             "content": {{"text": "Hello"}}
-        }}"#, entity_id, room_id);
-        
+        }}"#,
+            entity_id, room_id
+        );
+
         let result = JsFuture::from(runtime.handle_message(&msg)).await.unwrap();
         let result_str = result.as_string().unwrap();
-        
+
         // Response should contain the room ID
         assert!(result_str.contains(room_id));
-        
+
         runtime.stop();
     }
 
@@ -1430,7 +1469,7 @@ mod integration_tests_full {
         let runtime = WasmAgentRuntime::create(json).unwrap();
         let promise = runtime.initialize();
         JsFuture::from(promise).await.unwrap();
-        
+
         // Register handler with counter
         let code = r#"
             ({
@@ -1443,22 +1482,25 @@ mod integration_tests_full {
         "#;
         let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
         runtime.register_model_handler("TEXT_LARGE", JsModelHandler::new(obj).unwrap());
-        
+
         // Send multiple messages
         for i in 0..5 {
-            let msg = format!(r#"{{
+            let msg = format!(
+                r#"{{
                 "entityId": "{}",
                 "roomId": "{}",
                 "content": {{"text": "Message {}"}}
-            }}"#, generate_uuid(), generate_uuid(), i);
-            
+            }}"#,
+                generate_uuid(),
+                generate_uuid(),
+                i
+            );
+
             let result = JsFuture::from(runtime.handle_message(&msg)).await.unwrap();
             let result_str = result.as_string().unwrap();
             assert!(result_str.contains("Response #"));
         }
-        
+
         runtime.stop();
     }
 }
-
-
