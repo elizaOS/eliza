@@ -1172,4 +1172,293 @@ mod advanced_runtime_tests {
     }
 }
 
+// ========================================
+// Integration Tests - Full Runtime Flows
+// ========================================
+
+mod integration_tests_full {
+    use super::*;
+    use elizaos::wasm::{WasmAgentRuntime, WasmCharacter, generate_uuid};
+    use elizaos::wasm::shims::JsModelHandler;
+    use wasm_bindgen_futures::JsFuture;
+    use js_sys::Object;
+    use wasm_bindgen::JsCast;
+
+    /// Test the full runtime lifecycle: create -> initialize -> use -> stop
+    #[wasm_bindgen_test]
+    async fn test_full_runtime_lifecycle() {
+        // 1. Create runtime
+        let json = r#"{
+            "name": "LifecycleAgent",
+            "bio": "An agent for testing the full lifecycle",
+            "system": "You are a helpful assistant."
+        }"#;
+        let runtime = WasmAgentRuntime::create(json).unwrap();
+        
+        // 2. Verify not initialized
+        assert!(!runtime.is_initialized());
+        assert_eq!(runtime.character_name(), "LifecycleAgent");
+        
+        // 3. Initialize
+        let promise = runtime.initialize();
+        JsFuture::from(promise).await.unwrap();
+        assert!(runtime.is_initialized());
+        
+        // 4. Register a model handler
+        let code = r#"
+            ({
+                handle: async function(paramsJson) {
+                    const params = JSON.parse(paramsJson);
+                    return JSON.stringify({
+                        text: "Hello from model! Prompt was: " + (params.prompt || "").substring(0, 30)
+                    });
+                }
+            })
+        "#;
+        let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
+        let handler = JsModelHandler::new(obj).unwrap();
+        runtime.register_model_handler("TEXT_LARGE", handler);
+        
+        // 5. Handle a message
+        let entity_id = generate_uuid();
+        let room_id = generate_uuid();
+        let message_json = format!(r#"{{
+            "entityId": "{}",
+            "roomId": "{}",
+            "content": {{"text": "Hello agent!"}}
+        }}"#, entity_id, room_id);
+        
+        let promise = runtime.handle_message(&message_json);
+        let result = JsFuture::from(promise).await.unwrap();
+        let result_str = result.as_string().unwrap();
+        
+        // 6. Verify response
+        assert!(result_str.contains("didRespond"));
+        assert!(result_str.contains("true"));
+        assert!(result_str.contains("Hello from model"));
+        
+        // 7. Stop runtime
+        runtime.stop();
+        assert!(!runtime.is_initialized());
+    }
+
+    /// Test message handling with different content types
+    #[wasm_bindgen_test]
+    async fn test_message_handling_variations() {
+        let json = r#"{"name": "MsgAgent", "bio": "Test"}"#;
+        let runtime = WasmAgentRuntime::create(json).unwrap();
+        let promise = runtime.initialize();
+        JsFuture::from(promise).await.unwrap();
+        
+        // Register model handler that echoes the input
+        let code = r#"
+            ({
+                handle: async function(paramsJson) {
+                    const params = JSON.parse(paramsJson);
+                    return JSON.stringify({
+                        text: "Response to: " + (params.prompt || "unknown"),
+                        receivedSystem: params.system || null
+                    });
+                }
+            })
+        "#;
+        let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
+        let handler = JsModelHandler::new(obj).unwrap();
+        runtime.register_model_handler("TEXT_LARGE", handler);
+        
+        // Test with empty content
+        let msg1 = format!(r#"{{
+            "entityId": "{}",
+            "roomId": "{}",
+            "content": {{}}
+        }}"#, generate_uuid(), generate_uuid());
+        let result1 = JsFuture::from(runtime.handle_message(&msg1)).await;
+        assert!(result1.is_ok());
+        
+        // Test with text only
+        let msg2 = format!(r#"{{
+            "entityId": "{}",
+            "roomId": "{}",
+            "content": {{"text": "Test message"}}
+        }}"#, generate_uuid(), generate_uuid());
+        let result2 = JsFuture::from(runtime.handle_message(&msg2)).await;
+        assert!(result2.is_ok());
+        let result2_str = result2.unwrap().as_string().unwrap();
+        assert!(result2_str.contains("Test message"));
+        
+        // Test with action in content
+        let msg3 = format!(r#"{{
+            "entityId": "{}",
+            "roomId": "{}",
+            "content": {{"text": "Hello", "action": "REPLY"}}
+        }}"#, generate_uuid(), generate_uuid());
+        let result3 = JsFuture::from(runtime.handle_message(&msg3)).await;
+        assert!(result3.is_ok());
+        
+        runtime.stop();
+    }
+
+    /// Test multiple model handlers for different model types
+    #[wasm_bindgen_test]
+    async fn test_multiple_model_handlers() {
+        let json = r#"{"name": "MultiModelAgent", "bio": "Test"}"#;
+        let runtime = WasmAgentRuntime::create(json).unwrap();
+        let promise = runtime.initialize();
+        JsFuture::from(promise).await.unwrap();
+        
+        // Register TEXT_LARGE handler
+        let code1 = r#"({ handle: async function(p) { return JSON.stringify({text: "TEXT_LARGE response"}); } })"#;
+        let obj1: Object = js_sys::eval(code1).unwrap().dyn_into().unwrap();
+        runtime.register_model_handler("TEXT_LARGE", JsModelHandler::new(obj1).unwrap());
+        
+        // Register TEXT_SMALL handler
+        let code2 = r#"({ handle: async function(p) { return JSON.stringify({text: "TEXT_SMALL response"}); } })"#;
+        let obj2: Object = js_sys::eval(code2).unwrap().dyn_into().unwrap();
+        runtime.register_model_handler("TEXT_SMALL", JsModelHandler::new(obj2).unwrap());
+        
+        // Register EMBEDDING handler
+        let code3 = r#"({ handle: async function(p) { return JSON.stringify({embedding: [0.1, 0.2, 0.3]}); } })"#;
+        let obj3: Object = js_sys::eval(code3).unwrap().dyn_into().unwrap();
+        runtime.register_model_handler("EMBEDDING", JsModelHandler::new(obj3).unwrap());
+        
+        // Send a message (uses TEXT_LARGE by default)
+        let msg = format!(r#"{{
+            "entityId": "{}",
+            "roomId": "{}",
+            "content": {{"text": "Hello"}}
+        }}"#, generate_uuid(), generate_uuid());
+        let result = JsFuture::from(runtime.handle_message(&msg)).await.unwrap();
+        let result_str = result.as_string().unwrap();
+        assert!(result_str.contains("TEXT_LARGE response"));
+        
+        runtime.stop();
+    }
+
+    /// Test error handling when model handler is not registered
+    #[wasm_bindgen_test]
+    async fn test_missing_model_handler_error() {
+        let json = r#"{"name": "NoHandlerAgent", "bio": "Test"}"#;
+        let runtime = WasmAgentRuntime::create(json).unwrap();
+        let promise = runtime.initialize();
+        JsFuture::from(promise).await.unwrap();
+        
+        // Don't register any handlers - try to send a message
+        let msg = format!(r#"{{
+            "entityId": "{}",
+            "roomId": "{}",
+            "content": {{"text": "Hello"}}
+        }}"#, generate_uuid(), generate_uuid());
+        
+        let result = JsFuture::from(runtime.handle_message(&msg)).await;
+        // Should fail because no TEXT_LARGE handler is registered
+        assert!(result.is_err());
+        
+        runtime.stop();
+    }
+
+    /// Test runtime with complex character configuration
+    #[wasm_bindgen_test]
+    async fn test_complex_character_config() {
+        let json = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "ComplexAgent",
+            "bio": ["First line of bio", "Second line of bio", "Third line with details"],
+            "system": "You are a complex agent with multiple capabilities. Always be helpful and concise.",
+            "topics": ["technology", "science", "philosophy", "art"],
+            "adjectives": ["intelligent", "friendly", "precise", "creative"],
+            "style": {
+                "all": ["Use clear language", "Be concise"],
+                "chat": ["Engage naturally"],
+                "post": ["Be professional"]
+            }
+        }"#;
+        
+        let runtime = WasmAgentRuntime::create(json).unwrap();
+        
+        // Verify character was parsed correctly
+        assert_eq!(runtime.character_name(), "ComplexAgent");
+        assert_eq!(runtime.agent_id(), "550e8400-e29b-41d4-a716-446655440000");
+        
+        let char_json = runtime.character().unwrap();
+        assert!(char_json.contains("ComplexAgent"));
+        assert!(char_json.contains("technology"));
+        assert!(char_json.contains("intelligent"));
+        
+        // Initialize and verify it works
+        let promise = runtime.initialize();
+        JsFuture::from(promise).await.unwrap();
+        assert!(runtime.is_initialized());
+        
+        runtime.stop();
+    }
+
+    /// Test that the runtime preserves message IDs correctly
+    #[wasm_bindgen_test]
+    async fn test_message_id_preservation() {
+        let json = r#"{"name": "IdAgent", "bio": "Test"}"#;
+        let runtime = WasmAgentRuntime::create(json).unwrap();
+        let promise = runtime.initialize();
+        JsFuture::from(promise).await.unwrap();
+        
+        // Register handler
+        let code = r#"({ handle: async function(p) { return JSON.stringify({text: "Response"}); } })"#;
+        let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
+        runtime.register_model_handler("TEXT_LARGE", JsModelHandler::new(obj).unwrap());
+        
+        // Create message with specific IDs
+        let entity_id = "11111111-1111-1111-1111-111111111111";
+        let room_id = "22222222-2222-2222-2222-222222222222";
+        let msg = format!(r#"{{
+            "entityId": "{}",
+            "roomId": "{}",
+            "content": {{"text": "Hello"}}
+        }}"#, entity_id, room_id);
+        
+        let result = JsFuture::from(runtime.handle_message(&msg)).await.unwrap();
+        let result_str = result.as_string().unwrap();
+        
+        // Response should contain the room ID
+        assert!(result_str.contains(room_id));
+        
+        runtime.stop();
+    }
+
+    /// Test concurrent message handling (sequential in WASM, but tests stability)
+    #[wasm_bindgen_test]
+    async fn test_sequential_message_handling() {
+        let json = r#"{"name": "SeqAgent", "bio": "Test"}"#;
+        let runtime = WasmAgentRuntime::create(json).unwrap();
+        let promise = runtime.initialize();
+        JsFuture::from(promise).await.unwrap();
+        
+        // Register handler with counter
+        let code = r#"
+            ({
+                counter: 0,
+                handle: async function(p) {
+                    this.counter++;
+                    return JSON.stringify({text: "Response #" + this.counter});
+                }
+            })
+        "#;
+        let obj: Object = js_sys::eval(code).unwrap().dyn_into().unwrap();
+        runtime.register_model_handler("TEXT_LARGE", JsModelHandler::new(obj).unwrap());
+        
+        // Send multiple messages
+        for i in 0..5 {
+            let msg = format!(r#"{{
+                "entityId": "{}",
+                "roomId": "{}",
+                "content": {{"text": "Message {}"}}
+            }}"#, generate_uuid(), generate_uuid(), i);
+            
+            let result = JsFuture::from(runtime.handle_message(&msg)).await.unwrap();
+            let result_str = result.as_string().unwrap();
+            assert!(result_str.contains("Response #"));
+        }
+        
+        runtime.stop();
+    }
+}
+
 
