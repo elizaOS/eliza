@@ -555,7 +555,17 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
           `Resuming ${startupResumeTaskIds.length} task(s)…`,
         );
         for (const taskId of startupResumeTaskIds) {
-          service.startTaskExecution(taskId).catch(() => {});
+          service.startTaskExecution(taskId).then(
+            () => {},
+            (err: Error) => {
+              const msg = err.message;
+              addMessage(
+                currentRoomId,
+                "system",
+                `Failed to start task ${taskId.slice(0, 8)}: ${msg}`,
+              );
+            },
+          );
         }
         setStartupResumeTaskIds(null);
         return;

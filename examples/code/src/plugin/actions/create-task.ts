@@ -312,7 +312,9 @@ IMPORTANT:
     return parseTaskRequest(
       stripTaskContext(currentMessage).trim() || conversationContext.trim(),
     );
-  } catch {
+  } catch (err: Error) {
+    const msg = err.message;
+    logger.error(`CREATE_TASK planning model failed: ${msg}`);
     // Fallback to simple parsing if LLM fails
     const context = conversationContext.trim();
     const current = stripTaskContext(currentMessage).trim();

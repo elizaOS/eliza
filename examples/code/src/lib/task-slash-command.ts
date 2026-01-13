@@ -225,7 +225,13 @@ Aliases:
         return true;
       }
       await service.resumeTask(taskId);
-      service.startTaskExecution(taskId).catch(() => {});
+      service.startTaskExecution(taskId).then(
+        () => {},
+        (err: Error) => {
+          const msg = err.message;
+          addMessage(currentRoomId, "system", `Failed to start task: ${msg}`);
+        },
+      );
       addMessage(currentRoomId, "system", "Task resumed");
       return true;
     }
@@ -244,7 +250,13 @@ Aliases:
         return true;
       }
       // Ensure the runner is active (idempotent if already running in this process).
-      service.startTaskExecution(taskId).catch(() => {});
+      service.startTaskExecution(taskId).then(
+        () => {},
+        (err: Error) => {
+          const msg = err.message;
+          addMessage(currentRoomId, "system", `Failed to start task: ${msg}`);
+        },
+      );
       const task = await service.getTask(taskId);
       addMessage(
         currentRoomId,

@@ -440,11 +440,7 @@ export class CodeTaskService extends Service {
     const existing = this.executions.get(taskId);
     if (existing) return existing;
 
-    const run = this.runTaskExecution(taskId, options)
-      .catch(() => {
-        // Errors are persisted into task metadata via setTaskError; no need to throw.
-      })
-      .finally(() => {
+    const run = this.runTaskExecution(taskId, options).finally(() => {
         this.executions.delete(taskId);
       });
 
@@ -481,44 +477,56 @@ export class CodeTaskService extends Service {
     taskId: string,
     options?: TaskExecutionOptions,
   ): Promise<void> {
-    const task = await this.getTask(taskId);
-    if (!task) return;
-
-    // Reset control state (in case this task was previously paused/cancelled in this process).
-    this.clearControlState(taskId);
-    this.setControlState(taskId, { cancelled: false, paused: false });
-
-    const workingDirectory = task.metadata.workingDirectory;
-    const wasPaused = task.metadata.status === "paused";
-
-    await this.updateTaskStatus(taskId, "running");
-    await this.appendOutput(
-      taskId,
-      wasPaused ? `Resuming: ${task.name}` : `Starting: ${task.name}`,
-    );
-
-    const requestedType = task.metadata.subAgentType ?? "eliza";
-    const subAgent =
-      options?.subAgent ??
-      createSubAgent(
-        requestedType === "claude" ? "claude-code" : requestedType,
-      );
-    const tools = options?.tools ?? createTools(workingDirectory);
-
     try {
+      const task = await this.getTask(taskId);
+      if (!task) return;
+
+      // Reset control state (in case this task was previously paused/cancelled in this process).
+      this.clearControlState(taskId);
+      this.setControlState(taskId, { cancelled: false, paused: false });
+
+      const workingDirectory = task.metadata.workingDirectory;
+      const wasPaused = task.metadata.status === "paused";
+
+      await this.updateTaskStatus(taskId, "running");
+      await this.appendOutput(
+        taskId,
+        wasPaused ? `Resuming: ${task.name}` : `Starting: ${task.name}`,
+      );
+
+      const requestedType = task.metadata.subAgentType ?? "eliza";
+      const subAgent =
+        options?.subAgent ??
+        createSubAgent(
+          requestedType === "claude" ? "claude-code" : requestedType,
+        );
+      const tools = options?.tools ?? createTools(workingDirectory);
+
+      const reportInternalError = (where: string, err: Error): void => {
+        const msg = err.message;
+        // Avoid recursion by not writing back into the task from here; log loudly.
+        console.error(`[CodeTaskService] ${where}: ${msg}`);
+      };
+
       const extras = await this.buildSubAgentContextExtras(task, tools);
       const result = await subAgent.execute(task, {
         runtime: this.runtime,
         workingDirectory,
         tools,
         onProgress: (update) => {
-          this.updateTaskProgress(taskId, update.progress).catch(() => {});
+          this.updateTaskProgress(taskId, update.progress).catch((err: Error) => {
+            reportInternalError("updateTaskProgress", err);
+          });
           if (update.message) {
-            this.appendOutput(taskId, update.message).catch(() => {});
+            this.appendOutput(taskId, update.message).catch((err: Error) => {
+              reportInternalError("appendOutput(progress.message)", err);
+            });
           }
         },
         onMessage: (msg, priority) => {
-          this.appendOutput(taskId, msg).catch(() => {});
+          this.appendOutput(taskId, msg).catch((err: Error) => {
+            reportInternalError("appendOutput(onMessage)", err);
+          });
           this.emit("task:message", taskId, {
             message: msg,
             priority,
@@ -528,7 +536,9 @@ export class CodeTaskService extends Service {
           }
         },
         onTrace: (event) => {
-          this.appendTrace(taskId, event).catch(() => {});
+          this.appendTrace(taskId, event).catch((err: Error) => {
+            reportInternalError("appendTrace", err);
+          });
         },
         isCancelled: () => this.isTaskCancelled(taskId),
         isPaused: () => this.isTaskPaused(taskId),
@@ -1031,11 +1041,9 @@ function truncate(text: string, maxChars: number): string {
 
 function formatTimestamp(ms: number | undefined): string {
   if (!ms) return "unknown";
-  try {
-    return new Date(ms).toISOString();
-  } catch {
-    return "unknown";
-  }
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return "unknown";
+  return d.toISOString();
 }
 
 function takeTailByCharBudget(

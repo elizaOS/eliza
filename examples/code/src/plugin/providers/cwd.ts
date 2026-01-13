@@ -112,8 +112,9 @@ export const cwdProvider: Provider = {
       if (entries.length > 10) {
         contents += `\n(${entries.length} total items)`;
       }
-    } catch {
-      contents = "\n(Unable to list directory contents)";
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      contents = `\n(Unable to list directory contents: ${msg})`;
     }
 
     const contextText = `## Current Working Directory

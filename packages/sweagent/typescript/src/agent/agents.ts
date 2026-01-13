@@ -3,45 +3,60 @@
  * Converted from sweagent/agent/agents.py
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { AbstractModel, InstanceStats, getModel, HumanModel, HumanThoughtModel, ModelConfig } from './models';
-import { AbstractAgentHook, CombinedAgentHook } from './hooks';
-import { AbstractHistoryProcessor } from './history-processors';
-import { ProblemStatement, ProblemStatementConfig } from './problem-statement';
-import { getLogger } from '../utils/log';
+import * as fs from "fs";
+import * as path from "path";
 import {
-  AgentInfo,
-  AgentRunResult,
-  History,
-  HistoryItem,
-  StepOutput,
+  type AgentInfo,
+  type AgentRunResult,
+  type History,
+  type HistoryItem,
+  type StepOutput,
   StepOutputImpl,
-  Trajectory,
-  TrajectoryStep,
-} from '../types';
-import { renderTemplate, renderAdvancedTemplate } from './utils/template';
-import { parseYAML } from './utils/yaml';
-import { AbstractParseFunction, ThoughtActionParser, getParser } from './tools/parsing';
-import { AbstractActionSampler } from './action-sampler';
-import { ModelOutput } from './types';
+  type Trajectory,
+  type TrajectoryStep,
+} from "../types";
+import { getLogger } from "../utils/log";
+import type { AbstractActionSampler } from "./action-sampler";
+import type { AbstractHistoryProcessor } from "./history-processors";
+import { type AbstractAgentHook, CombinedAgentHook } from "./hooks";
+import {
+  type AbstractModel,
+  getModel,
+  HumanModel,
+  HumanThoughtModel,
+  InstanceStats,
+  type ModelConfig,
+} from "./models";
+import type {
+  ProblemStatement,
+  ProblemStatementConfig,
+} from "./problem-statement";
+import {
+  type AbstractParseFunction,
+  getParser,
+  ThoughtActionParser,
+} from "./tools/parsing";
+import type { ModelOutput } from "./types";
+import { renderAdvancedTemplate, renderTemplate } from "./utils/template";
+import { parseYAML } from "./utils/yaml";
 
-const logger = getLogger('agent');
+const logger = getLogger("agent");
 
 // Import error classes
 import {
   BlockedActionError,
+  ExitForfeitError,
   RetryWithOutputError,
   RetryWithoutOutputError,
-  ExitForfeitError,
   TotalExecutionTimeExceededError,
-} from '../exceptions';
+} from "../exceptions";
+
 // Dynamic import for ShellAgent to avoid circular dependency
 
 // Special tokens
-const RETRY_WITH_OUTPUT_TOKEN = '###SWE-AGENT-RETRY-WITH-OUTPUT###';
-const RETRY_WITHOUT_OUTPUT_TOKEN = '###SWE-AGENT-RETRY-WITHOUT-OUTPUT###';
-const EXIT_FORFEIT_TOKEN = '###SWE-AGENT-EXIT-FORFEIT###';
+const RETRY_WITH_OUTPUT_TOKEN = "###SWE-AGENT-RETRY-WITH-OUTPUT###";
+const RETRY_WITHOUT_OUTPUT_TOKEN = "###SWE-AGENT-RETRY-WITHOUT-OUTPUT###";
+const EXIT_FORFEIT_TOKEN = "###SWE-AGENT-EXIT-FORFEIT###";
 
 /**
  * Template configuration for agent messages
@@ -66,23 +81,24 @@ export interface TemplateConfig {
  * Default template values matching Python implementation
  */
 export const DEFAULT_TEMPLATE_CONFIG: Partial<TemplateConfig> = {
-  systemTemplate: '',
-  instanceTemplate: '',
-  nextStepTemplate: 'Observation: {{observation}}',
+  systemTemplate: "",
+  instanceTemplate: "",
+  nextStepTemplate: "Observation: {{observation}}",
   nextStepTruncatedObservationTemplate:
-    'Observation: {{observation[:max_observation_length]}}<response clipped>' +
-    '<NOTE>Observations should not exceeded {{max_observation_length}} characters. ' +
-    '{{elided_chars}} characters were elided. Please try a different command that produces less output ' +
-    'or use head/tail/grep/redirect the output to a file. Do not use interactive pagers.</NOTE>',
+    "Observation: {{observation[:max_observation_length]}}<response clipped>" +
+    "<NOTE>Observations should not exceeded {{max_observation_length}} characters. " +
+    "{{elided_chars}} characters were elided. Please try a different command that produces less output " +
+    "or use head/tail/grep/redirect the output to a file. Do not use interactive pagers.</NOTE>",
   maxObservationLength: 100000,
   demonstrations: [],
   putDemosInHistory: false,
   disableImageProcessing: false,
   shellCheckErrorTemplate:
-    'Your command contains syntax errors. Please fix them and try again.\n' +
-    'Error: {{error_message}}\n' +
-    'Hint: {{hint}}',
-  commandCancelledTimeoutTemplate: 'Command cancelled after {{timeout}} seconds. The command was: {{command}}',
+    "Your command contains syntax errors. Please fix them and try again.\n" +
+    "Error: {{error_message}}\n" +
+    "Hint: {{hint}}",
+  commandCancelledTimeoutTemplate:
+    "Command cancelled after {{timeout}} seconds. The command was: {{command}}",
 };
 
 /**
@@ -131,7 +147,7 @@ export class ToolHandler {
     this.tools = [];
 
     // Initialize parser
-    if (typeof config.parseFunction === 'string') {
+    if (typeof config.parseFunction === "string") {
       this.parser = getParser(config.parseFunction);
     } else if (config.parseFunction) {
       this.parser = config.parseFunction;
@@ -154,14 +170,17 @@ export class ToolHandler {
     // Set environment variables
     if (this.config.envVariables) {
       const stringEnvVars = Object.fromEntries(
-        Object.entries(this.config.envVariables).map(([key, value]) => [key, String(value)]),
+        Object.entries(this.config.envVariables).map(([key, value]) => [
+          key,
+          String(value),
+        ]),
       );
       await env.setEnvVariables(stringEnvVars);
     }
 
     // Install each bundle if they exist
     if (this.config.commands) {
-      const cwd = await env.communicate('pwd');
+      const cwd = await env.communicate("pwd");
 
       // Process each tool bundle
       for (const bundle of this.config.commands) {
@@ -188,7 +207,7 @@ export class ToolHandler {
     if (env.getOpenFiles) {
       const openFiles = env.getOpenFiles();
       if (openFiles && openFiles.length > 0) {
-        state.openFiles = openFiles.join(', ');
+        state.openFiles = openFiles.join(", ");
       }
     }
 
@@ -227,15 +246,20 @@ export class ToolHandler {
     }
 
     // Check standalone blocklist
-    if (this.config.filter.blocklistStandalone && this.config.filter.blocklistStandalone.includes(action)) {
+    if (
+      this.config.filter.blocklistStandalone &&
+      this.config.filter.blocklistStandalone.includes(action)
+    ) {
       return true;
     }
 
     // Check block unless regex
     if (this.config.filter.blockUnlessRegex) {
-      const commandName = action.split(' ')[0];
+      const commandName = action.split(" ")[0];
       if (commandName in this.config.filter.blockUnlessRegex) {
-        const regex = new RegExp(this.config.filter.blockUnlessRegex[commandName]);
+        const regex = new RegExp(
+          this.config.filter.blockUnlessRegex[commandName],
+        );
         if (!regex.test(action)) {
           return true;
         }
@@ -248,7 +272,7 @@ export class ToolHandler {
   checkForSubmissionCmd(observation: string): boolean {
     // Check if observation contains submission command
     // Look for the special submission marker used by SWE-agent
-    return observation?.includes('<<SWE_AGENT_SUBMISSION>>') || false;
+    return observation?.includes("<<SWE_AGENT_SUBMISSION>>") || false;
   }
 
   guardMultilineInput(action: string): string {
@@ -260,14 +284,14 @@ export class ToolHandler {
       const regex = new RegExp(`^${cmdName}\\b`);
       if (regex.test(action)) {
         // Check if it already has the heredoc syntax
-        if (!action.includes('<<')) {
+        if (!action.includes("<<")) {
           // Add heredoc syntax
-          const lines = action.split('\n');
+          const lines = action.split("\n");
           if (lines.length > 1) {
             // It's a multiline command that needs guarding
             lines[0] = `${lines[0]} << '${endName}'`;
             lines.push(endName);
-            return lines.join('\n');
+            return lines.join("\n");
           }
         }
         break; // Only handle the first matching command
@@ -290,7 +314,10 @@ export interface AgentEnvironment {
   readFile(path: string, encoding?: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
   setEnvVariables(vars: Record<string, string>): Promise<void>;
-  executeCommand(command: string, options?: Record<string, unknown>): Promise<void>;
+  executeCommand(
+    command: string,
+    options?: Record<string, unknown>,
+  ): Promise<void>;
   interruptSession(): Promise<void>;
   getCwd?(): string;
   getOpenFiles?(): string[];
@@ -344,7 +371,7 @@ export interface DefaultAgentConfig {
   model: ModelConfig;
   maxRequeries: number;
   actionSampler?: ActionSamplerConfig;
-  type: 'default' | 'retry' | 'shell';
+  type: "default" | "retry" | "shell";
 }
 
 /**
@@ -354,7 +381,7 @@ export interface RetryAgentConfig {
   name: string;
   agentConfigs: DefaultAgentConfig[];
   retryLoop: RetryLoopConfig;
-  type: 'retry';
+  type: "retry";
 }
 
 /**
@@ -367,17 +394,20 @@ export interface ShellAgentConfig {
   historyProcessors: AbstractHistoryProcessor[];
   model: ModelConfig;
   maxRequeries: number;
-  type: 'shell';
+  type: "shell";
 }
 
-export type AgentConfig = DefaultAgentConfig | RetryAgentConfig | ShellAgentConfig;
+export type AgentConfig =
+  | DefaultAgentConfig
+  | RetryAgentConfig
+  | ShellAgentConfig;
 
 /**
  * Abstract base class for agents
  */
 export abstract class AbstractAgent {
   static fromConfig(_config: AgentConfig): AbstractAgent {
-    throw new Error('fromConfig must be implemented by subclasses');
+    throw new Error("fromConfig must be implemented by subclasses");
   }
   abstract addHook(hook: AbstractAgentHook): void;
   abstract getTrajectoryData(): Record<string, unknown>;
@@ -427,7 +457,7 @@ export class DefaultAgent extends AbstractAgent {
     actionSamplerConfig?: ActionSamplerConfig;
   }) {
     super();
-    this.name = config.name || 'main';
+    this.name = config.name || "main";
     this.model = config.model;
     this.templates = config.templates;
     this.tools = config.tools;
@@ -438,14 +468,17 @@ export class DefaultAgent extends AbstractAgent {
 
     // Set parser based on model type
     if (this.model instanceof HumanThoughtModel) {
-      this.tools.config.parseFunction = 'thought_action';
+      this.tools.config.parseFunction = "thought_action";
     } else if (this.model instanceof HumanModel) {
-      this.tools.config.parseFunction = 'action_only';
+      this.tools.config.parseFunction = "action_only";
     }
 
     if (config.actionSamplerConfig) {
       // Initialize action sampler if configured
-      this._actionSampler = config.actionSamplerConfig.get(this.model, this.tools);
+      this._actionSampler = config.actionSamplerConfig.get(
+        this.model,
+        this.tools,
+      );
     }
   }
 
@@ -471,7 +504,8 @@ export class DefaultAgent extends AbstractAgent {
   get messages(): History {
     // Return processed history for this attempt
     const filteredHistory = this.history.filter(
-      (entry) => 'agent' in entry && (entry as { agent: string }).agent === this.name,
+      (entry) =>
+        "agent" in entry && (entry as { agent: string }).agent === this.name,
     );
 
     // Chain history processors
@@ -483,19 +517,24 @@ export class DefaultAgent extends AbstractAgent {
     return messages;
   }
 
-  private appendHistory(item: HistoryItem & { agent: string; messageType: string }): void {
+  private appendHistory(
+    item: HistoryItem & { agent: string; messageType: string },
+  ): void {
     this.chook.onQueryMessageAdded({
       agent: item.agent,
       role: item.role,
-      content: typeof item.content === 'string' ? item.content : JSON.stringify(item.content),
+      content:
+        typeof item.content === "string"
+          ? item.content
+          : JSON.stringify(item.content),
       messageType: item.messageType,
       isDemo: item.isDemo,
       thought: item.thought,
       action: item.action === null ? undefined : item.action,
       toolCalls: item.toolCalls
         ? item.toolCalls.map((tc) => ({
-            id: tc.id || '',
-            type: tc.type || 'function',
+            id: tc.id || "",
+            type: tc.type || "function",
             function: JSON.stringify(tc.function),
           }))
         : null,
@@ -504,8 +543,8 @@ export class DefaultAgent extends AbstractAgent {
         ? item.thinkingBlocks.map((tb) => ({
             type: tb.type,
             content: tb.content,
-            startTime: String(tb.startTime || ''),
-            endTime: String(tb.endTime || ''),
+            startTime: String(tb.startTime || ""),
+            endTime: String(tb.endTime || ""),
           }))
         : null,
     });
@@ -515,7 +554,7 @@ export class DefaultAgent extends AbstractAgent {
   async setup(
     env: AgentEnvironment,
     problemStatement: ProblemStatement | ProblemStatementConfig,
-    outputDir: string = '.',
+    outputDir: string = ".",
   ): Promise<void> {
     // Setup the agent for a new instance
     if (!fs.existsSync(outputDir)) {
@@ -537,10 +576,12 @@ export class DefaultAgent extends AbstractAgent {
     this.info = {};
     // Get version from package.json
     try {
-      const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf-8'));
-      this.info.sweAgentVersion = packageJson.version || '1.0.0';
+      const packageJson = JSON.parse(
+        fs.readFileSync(path.join(__dirname, "../../package.json"), "utf-8"),
+      );
+      this.info.sweAgentVersion = packageJson.version || "1.0.0";
     } catch {
-      this.info.sweAgentVersion = '1.0.0';
+      this.info.sweAgentVersion = "1.0.0";
     }
 
     // Add system message, demonstrations, and instance template to history
@@ -552,17 +593,19 @@ export class DefaultAgent extends AbstractAgent {
     this.chook.onSetupDone();
   }
 
-  private getFormatDict(kwargs?: Record<string, unknown>): Record<string, unknown> {
+  private getFormatDict(
+    kwargs?: Record<string, unknown>,
+  ): Record<string, unknown> {
     if (!this.problemStatement || !this.env) {
       return kwargs || {};
     }
 
     return {
-      commandDocs: this.tools.config.commandDocs || '',
+      commandDocs: this.tools.config.commandDocs || "",
       ...this.tools.config.envVariables,
       ...kwargs,
       problemStatement: this.problemStatement.getProblemStatement(),
-      repo: this.env.repo?.repoName || '',
+      repo: this.env.repo?.repoName || "",
       ...this.problemStatement.getExtraFields(),
     };
   }
@@ -572,13 +615,16 @@ export class DefaultAgent extends AbstractAgent {
       return;
     }
 
-    const systemMsg = renderAdvancedTemplate(this.templates.systemTemplate, this.getFormatDict());
+    const systemMsg = renderAdvancedTemplate(
+      this.templates.systemTemplate,
+      this.getFormatDict(),
+    );
     this.logger.info(`SYSTEM (${this.name})\n${systemMsg}`);
     this.appendHistory({
-      role: 'system',
+      role: "system",
       content: systemMsg,
       agent: this.name,
-      messageType: 'system',
+      messageType: "system",
     });
   }
 
@@ -589,17 +635,22 @@ export class DefaultAgent extends AbstractAgent {
   }
 
   private addDemonstrationToHistory(demonstrationPath: string): void {
-    if (!this.templates.demonstrationTemplate && !this.templates.putDemosInHistory) {
-      throw new Error('Cannot use demonstrations without a demonstration template or putDemosInHistory=true');
+    if (
+      !this.templates.demonstrationTemplate &&
+      !this.templates.putDemosInHistory
+    ) {
+      throw new Error(
+        "Cannot use demonstrations without a demonstration template or putDemosInHistory=true",
+      );
     }
 
     this.logger.info(`DEMONSTRATION: ${demonstrationPath}`);
-    const demoText = fs.readFileSync(demonstrationPath, 'utf-8');
+    const demoText = fs.readFileSync(demonstrationPath, "utf-8");
     let demoHistory: HistoryItem[];
 
-    if (demonstrationPath.endsWith('.yaml')) {
+    if (demonstrationPath.endsWith(".yaml")) {
       const parsed = parseYAML(demoText);
-      if (parsed && typeof parsed === 'object' && 'history' in parsed) {
+      if (parsed && typeof parsed === "object" && "history" in parsed) {
         demoHistory = (parsed as any).history;
       } else {
         throw new Error(`Invalid YAML demonstration file: no history found`);
@@ -612,31 +663,36 @@ export class DefaultAgent extends AbstractAgent {
     if (this.templates.putDemosInHistory) {
       // Add demonstrations to history step-by-step
       for (const entry of demoHistory) {
-        if (entry.role !== 'system') {
+        if (entry.role !== "system") {
           this.appendHistory({
             ...entry,
             isDemo: true,
             agent: entry.agent || this.name,
-            messageType: entry.messageType || 'demonstration',
+            messageType: entry.messageType || "demonstration",
           });
         }
       }
     } else {
       // Add as single message
-      const filteredDemo = demoHistory.filter((e) => e.role !== 'system');
+      const filteredDemo = demoHistory.filter((e) => e.role !== "system");
       const demoMessage = filteredDemo
-        .map((e) => (typeof e.content === 'string' ? e.content : JSON.stringify(e.content)))
-        .join('\n');
-      const demonstration = renderTemplate(this.templates.demonstrationTemplate || '', {
-        demonstration: demoMessage,
-      });
+        .map((e) =>
+          typeof e.content === "string" ? e.content : JSON.stringify(e.content),
+        )
+        .join("\n");
+      const demonstration = renderTemplate(
+        this.templates.demonstrationTemplate || "",
+        {
+          demonstration: demoMessage,
+        },
+      );
 
       this.appendHistory({
         agent: this.name,
         content: demonstration,
         isDemo: true,
-        role: 'user',
-        messageType: 'demonstration',
+        role: "user",
+        messageType: "demonstration",
       });
     }
   }
@@ -649,13 +705,15 @@ export class DefaultAgent extends AbstractAgent {
     }
 
     const formatDict = { ...this.getFormatDict(), ...state };
-    const message = templates.map((t) => renderAdvancedTemplate(t, formatDict)).join('\n');
+    const message = templates
+      .map((t) => renderAdvancedTemplate(t, formatDict))
+      .join("\n");
 
     this.appendHistory({
-      role: 'user',
+      role: "user",
       content: message,
       agent: this.name,
-      messageType: 'observation',
+      messageType: "observation",
     });
   }
 
@@ -675,8 +733,10 @@ export class DefaultAgent extends AbstractAgent {
       trajectory: this.trajectory,
       history: this.history,
       info: this.info,
-      replayConfig: this.replayConfig ? JSON.stringify(this.replayConfig) : null,
-      environment: this.env?.name || 'unknown',
+      replayConfig: this.replayConfig
+        ? JSON.stringify(this.replayConfig)
+        : null,
+      environment: this.env?.name || "unknown",
     };
 
     return attemptData;
@@ -699,24 +759,24 @@ export class DefaultAgent extends AbstractAgent {
 
     const step: StepOutput = {
       done: false,
-      thought: '',
-      action: '',
-      observation: '',
+      thought: "",
+      action: "",
+      observation: "",
       submission: null,
       exitStatus: null,
       executionTime: 0,
       state: {},
       query: [],
       extraInfo: {},
-      output: '',
+      output: "",
       toolCalls: null,
       toolCallIds: null,
       thinkingBlocks: null,
       toTemplateFormatDict: function () {
         return {
-          thought: this.thought || '',
-          action: this.action || '',
-          observation: this.observation || '',
+          thought: this.thought || "",
+          action: this.action || "",
+          observation: this.observation || "",
           exitStatus: this.exitStatus,
         };
       },
@@ -724,7 +784,8 @@ export class DefaultAgent extends AbstractAgent {
 
     step.query = history.map((h) => ({
       role: h.role,
-      content: typeof h.content === 'string' ? h.content : JSON.stringify(h.content),
+      content:
+        typeof h.content === "string" ? h.content : JSON.stringify(h.content),
       messageType: h.messageType,
     }));
 
@@ -732,14 +793,19 @@ export class DefaultAgent extends AbstractAgent {
       // Query model
       const historyForHook = history.map((h) => ({
         role: h.role,
-        content: typeof h.content === 'string' ? h.content : JSON.stringify(h.content),
-        agent: h.agent || '',
+        content:
+          typeof h.content === "string" ? h.content : JSON.stringify(h.content),
+        agent: h.agent || "",
       }));
       this.chook.onModelQuery(historyForHook, this.name);
 
       let output: ModelOutput;
       if (this._actionSampler && this.problemStatement) {
-        const best = await this._actionSampler.getAction(this.problemStatement, this.trajectory, history);
+        const best = await this._actionSampler.getAction(
+          this.problemStatement,
+          this.trajectory,
+          history,
+        );
         output = best.completion;
         step.extraInfo = { ...step.extraInfo, ...best.extraInfo };
       } else {
@@ -751,29 +817,37 @@ export class DefaultAgent extends AbstractAgent {
       [step.thought, step.action] = this.tools.parseActions(output);
       step.thinkingBlocks = output.thinkingBlocks
         ? output.thinkingBlocks.map((tb) => ({
-            type: 'thinking' as const,
+            type: "thinking" as const,
             content: String(tb.content),
-            startTime: typeof tb.startTime === 'number' ? tb.startTime : undefined,
-            endTime: typeof tb.endTime === 'number' ? tb.endTime : undefined,
+            startTime:
+              typeof tb.startTime === "number" ? tb.startTime : undefined,
+            endTime: typeof tb.endTime === "number" ? tb.endTime : undefined,
           }))
         : [];
 
       if (output.toolCalls) {
-        step.toolCallIds = output.toolCalls.map((call: { id: string }) => call.id);
+        step.toolCallIds = output.toolCalls.map(
+          (call: { id: string }) => call.id,
+        );
         step.toolCalls = output.toolCalls;
       }
 
-      this.logger.info(`💭 THOUGHT\n${step.thought}\n\n🎬 ACTION\n${step.action}`);
+      this.logger.info(
+        `💭 THOUGHT\n${step.thought}\n\n🎬 ACTION\n${step.action}`,
+      );
       this.chook.onActionsGenerated(step);
 
       return await this.handleAction(step);
     } catch (error) {
-      if (step.action === '' && step.thought === '') {
+      if (step.action === "" && step.thought === "") {
         // Parsing probably failed
         step.thought = step.output;
       }
       // Create a new error with step attached
-      const enhancedError = Object.assign(error instanceof Error ? error : new Error(String(error)), { step });
+      const enhancedError = Object.assign(
+        error instanceof Error ? error : new Error(String(error)),
+        { step },
+      );
       throw enhancedError;
     }
   }
@@ -784,13 +858,13 @@ export class DefaultAgent extends AbstractAgent {
       throw new BlockedActionError();
     }
 
-    if (step.action.trim() === 'exit') {
-      this.logger.info('Exiting agent');
+    if (step.action.trim() === "exit") {
+      this.logger.info("Exiting agent");
       step.done = true;
-      step.observation = 'Exited';
-      step.exitStatus = 'exit_command';
+      step.observation = "Exited";
+      step.exitStatus = "exit_command";
       if (!this.env) {
-        throw new Error('Environment not initialized');
+        throw new Error("Environment not initialized");
       }
       step.state = await this.tools.getState(this.env);
       return step;
@@ -804,28 +878,36 @@ export class DefaultAgent extends AbstractAgent {
     try {
       // Execute command in environment
       if (!this.env) {
-        throw new Error('Environment not initialized');
+        throw new Error("Environment not initialized");
       }
       step.observation = await this.env.communicate(runAction, {
         timeout: this.tools.config.executionTimeout,
       });
       this.nConsecutiveTimeouts = 0;
     } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'CommandTimeoutError') {
+      if (error instanceof Error && error.name === "CommandTimeoutError") {
         this.nConsecutiveTimeouts++;
-        if (this.nConsecutiveTimeouts >= this.tools.config.maxConsecutiveExecutionTimeouts) {
-          this.logger.critical('Exiting agent due to too many consecutive execution timeouts');
+        if (
+          this.nConsecutiveTimeouts >=
+          this.tools.config.maxConsecutiveExecutionTimeouts
+        ) {
+          this.logger.critical(
+            "Exiting agent due to too many consecutive execution timeouts",
+          );
           throw error;
         }
 
         if (this.env) {
           await this.env.interruptSession();
         }
-        step.observation = renderTemplate(this.templates.commandCancelledTimeoutTemplate, {
-          ...this.getFormatDict(),
-          timeout: this.tools.config.executionTimeout,
-          command: runAction,
-        });
+        step.observation = renderTemplate(
+          this.templates.commandCancelledTimeoutTemplate,
+          {
+            ...this.getFormatDict(),
+            timeout: this.tools.config.executionTimeout,
+            command: runAction,
+          },
+        );
       } else {
         throw error;
       }
@@ -836,16 +918,19 @@ export class DefaultAgent extends AbstractAgent {
 
     this.chook.onActionExecuted(step);
     if (!this.env) {
-      throw new Error('Environment not initialized');
+      throw new Error("Environment not initialized");
     }
     step.state = await this.tools.getState(this.env);
 
     // Check for special tokens in observation
     if (step.observation.includes(RETRY_WITH_OUTPUT_TOKEN)) {
-      step.observation = step.observation.replace(RETRY_WITH_OUTPUT_TOKEN, '');
+      step.observation = step.observation.replace(RETRY_WITH_OUTPUT_TOKEN, "");
       throw new RetryWithOutputError();
     } else if (step.observation.includes(RETRY_WITHOUT_OUTPUT_TOKEN)) {
-      step.observation = step.observation.replace(RETRY_WITHOUT_OUTPUT_TOKEN, '');
+      step.observation = step.observation.replace(
+        RETRY_WITHOUT_OUTPUT_TOKEN,
+        "",
+      );
       throw new RetryWithoutOutputError();
     } else if (step.observation.includes(EXIT_FORFEIT_TOKEN)) {
       throw new ExitForfeitError();
@@ -856,19 +941,24 @@ export class DefaultAgent extends AbstractAgent {
 
   private async handleSubmission(
     step: StepOutput,
-    observation: string = '',
+    observation: string = "",
     forceSubmission: boolean = false,
   ): Promise<StepOutput> {
     // Check for submission in observation
-    const isSubmission = this.tools.checkForSubmissionCmd(observation || step.observation);
+    const isSubmission = this.tools.checkForSubmissionCmd(
+      observation || step.observation,
+    );
 
     if (isSubmission || forceSubmission) {
       try {
         if (!this.env) {
-          throw new Error('Environment not initialized');
+          throw new Error("Environment not initialized");
         }
-        const submission = await this.env.readFile('/root/model.patch', 'utf-8');
-        if (submission.trim() !== '') {
+        const submission = await this.env.readFile(
+          "/root/model.patch",
+          "utf-8",
+        );
+        if (submission.trim() !== "") {
           step.submission = submission;
         } else {
           step.submission = null;
@@ -876,7 +966,7 @@ export class DefaultAgent extends AbstractAgent {
         step.observation = submission;
 
         if (!step.exitStatus) {
-          step.exitStatus = 'submitted';
+          step.exitStatus = "submitted";
         } else if (step.submission) {
           step.exitStatus = `submitted (${step.exitStatus})`;
         }
@@ -884,7 +974,7 @@ export class DefaultAgent extends AbstractAgent {
         step.done = true;
         this.logger.info(`Found submission: ${submission}`);
       } catch (error) {
-        this.logger.warning('Submission file not found');
+        this.logger.warning("Submission file not found");
       }
     }
 
@@ -907,7 +997,10 @@ export class DefaultAgent extends AbstractAgent {
   }
 
   async forwardWithHandling(history: History): Promise<StepOutput> {
-    const handleErrorWithAutosubmission = async (exitStatus: string, message: string): Promise<StepOutput> => {
+    const handleErrorWithAutosubmission = async (
+      exitStatus: string,
+      message: string,
+    ): Promise<StepOutput> => {
       this.logger.warning(message);
       return await this.attemptAutosubmissionAfterError({
         thought: message,
@@ -922,12 +1015,18 @@ export class DefaultAgent extends AbstractAgent {
       extraInfo?: Record<string, unknown>;
     }
 
-    const handleErrorWithRetry = (error: ErrorWithMetadata, template: string, nRequeries: number): History => {
-      this.logger.warning(`Requerying model after ${error.constructor.name} (${nRequeries}th requery)`);
+    const handleErrorWithRetry = (
+      error: ErrorWithMetadata,
+      template: string,
+      nRequeries: number,
+    ): History => {
+      this.logger.warning(
+        `Requerying model after ${error.constructor.name} (${nRequeries}th requery)`,
+      );
       const step = error.step || ({} as StepOutput);
       this.addStepToTrajectory(step);
 
-      const errorMessage = error.message || '';
+      const errorMessage = error.message || "";
       return this.getModelRequeryHistory(template, step, {
         exceptionMessage: errorMessage,
         ...error.extraInfo,
@@ -941,25 +1040,26 @@ export class DefaultAgent extends AbstractAgent {
       } catch (error) {
         // Handle different error types
         const errorObj = error as ErrorWithMetadata;
-        const errorName = error instanceof Error ? error.name : '';
+        const errorName = error instanceof Error ? error.name : "";
 
-        if (errorName === 'KeyboardInterrupt' || errorName === 'EOFError') {
+        if (errorName === "KeyboardInterrupt" || errorName === "EOFError") {
           throw error;
         }
 
         // Errors that cause requery
         if (
-          errorName === 'FormatError' ||
-          errorName === 'BlockedActionError' ||
-          errorName === 'BashIncorrectSyntaxError' ||
-          errorName === 'ContentPolicyViolationError'
+          errorName === "FormatError" ||
+          errorName === "BlockedActionError" ||
+          errorName === "BashIncorrectSyntaxError" ||
+          errorName === "ContentPolicyViolationError"
         ) {
           nFormatFails++;
 
           let template = this.tools.config.formatErrorTemplate;
-          if (errorName === 'BlockedActionError') {
-            template = this.tools.config.filter?.blocklistErrorTemplate || template;
-          } else if (errorName === 'BashIncorrectSyntaxError') {
+          if (errorName === "BlockedActionError") {
+            template =
+              this.tools.config.filter?.blocklistErrorTemplate || template;
+          } else if (errorName === "BashIncorrectSyntaxError") {
             template = this.templates.shellCheckErrorTemplate;
           }
 
@@ -968,66 +1068,92 @@ export class DefaultAgent extends AbstractAgent {
         }
 
         // Special retry tokens
-        if (errorName === 'RetryWithOutputError') {
-          history = handleErrorWithRetry(errorObj, this.templates.nextStepTemplate, nFormatFails);
+        if (errorName === "RetryWithOutputError") {
+          history = handleErrorWithRetry(
+            errorObj,
+            this.templates.nextStepTemplate,
+            nFormatFails,
+          );
           continue;
         }
 
-        if (errorName === 'RetryWithoutOutputError') {
+        if (errorName === "RetryWithoutOutputError") {
           continue; // Retry with same history
         }
 
         // Errors that cause exit
-        if (errorName === 'ExitForfeitError') {
-          return await handleErrorWithAutosubmission('exit_forfeit', 'Exiting due to forfeit');
-        }
-
-        if (errorName === 'TotalExecutionTimeExceededError') {
+        if (errorName === "ExitForfeitError") {
           return await handleErrorWithAutosubmission(
-            'exit_total_execution_time',
-            'Exit due to total execution time exceeded',
+            "exit_forfeit",
+            "Exiting due to forfeit",
           );
         }
 
-        if (errorName === 'CommandTimeoutError') {
+        if (errorName === "TotalExecutionTimeExceededError") {
           return await handleErrorWithAutosubmission(
-            'exit_command_timeout',
-            'Exit due to multiple consecutive command timeouts',
+            "exit_total_execution_time",
+            "Exit due to total execution time exceeded",
           );
         }
 
-        if (errorName === 'ContextWindowExceededError') {
-          return await handleErrorWithAutosubmission('exit_context', 'Exit due to context window');
+        if (errorName === "CommandTimeoutError") {
+          return await handleErrorWithAutosubmission(
+            "exit_command_timeout",
+            "Exit due to multiple consecutive command timeouts",
+          );
+        }
+
+        if (errorName === "ContextWindowExceededError") {
+          return await handleErrorWithAutosubmission(
+            "exit_context",
+            "Exit due to context window",
+          );
         }
 
         // Handle all cost limit errors (base class and derived classes)
         if (
-          errorName === 'CostLimitExceededError' ||
-          errorName === 'InstanceCostLimitExceededError' ||
-          errorName === 'TotalCostLimitExceededError' ||
-          errorName === 'InstanceCallLimitExceededError'
+          errorName === "CostLimitExceededError" ||
+          errorName === "InstanceCostLimitExceededError" ||
+          errorName === "TotalCostLimitExceededError" ||
+          errorName === "InstanceCallLimitExceededError"
         ) {
-          return await handleErrorWithAutosubmission('exit_cost', 'Exit due to cost limit');
+          return await handleErrorWithAutosubmission(
+            "exit_cost",
+            "Exit due to cost limit",
+          );
         }
 
         // Handle runtime/environment errors
-        if (errorName === 'RuntimeError' || (error instanceof Error && error.message === 'SwerexException')) {
-          return await handleErrorWithAutosubmission('exit_environment_error', 'Exit due to runtime error');
+        if (
+          errorName === "RuntimeError" ||
+          (error instanceof Error && error.message === "SwerexException")
+        ) {
+          return await handleErrorWithAutosubmission(
+            "exit_environment_error",
+            "Exit due to runtime error",
+          );
         }
 
         // Unknown errors
-        return await handleErrorWithAutosubmission('exit_error', `Exit due to error: ${String(error)}`);
+        return await handleErrorWithAutosubmission(
+          "exit_error",
+          `Exit due to error: ${String(error)}`,
+        );
       }
     }
 
     // Too many retries
     return await handleErrorWithAutosubmission(
-      'exit_format',
-      'Exit due to repeated format/blocklist/bash syntax errors',
+      "exit_format",
+      "Exit due to repeated format/blocklist/bash syntax errors",
     );
   }
 
-  getModelRequeryHistory(errorTemplate: string, step: StepOutput, kwargs: Record<string, unknown>): History {
+  getModelRequeryHistory(
+    errorTemplate: string,
+    step: StepOutput,
+    kwargs: Record<string, unknown>,
+  ): History {
     const formatDict = { ...kwargs, ...this.getFormatDict() };
     const errorMessage = renderTemplate(errorTemplate, formatDict);
 
@@ -1036,34 +1162,35 @@ export class DefaultAgent extends AbstractAgent {
     return [
       ...this.messages,
       {
-        role: 'assistant',
+        role: "assistant",
         content: step.output,
         agent: this.name,
-        messageType: 'assistant',
+        messageType: "assistant",
       },
       {
-        role: 'user',
+        role: "user",
         content: errorMessage,
         agent: this.name,
-        messageType: 'user',
+        messageType: "user",
       },
     ];
   }
 
   async attemptAutosubmissionAfterError(step: StepOutput): Promise<StepOutput> {
-    this.logger.warning('Attempting autosubmission after error');
+    this.logger.warning("Attempting autosubmission after error");
     step = { ...step, done: true };
 
     // Try to extract patch from environment
     if (this.env && this.env.isAlive && !this.env.isAlive()) {
-      this.logger.error('Runtime is no longer alive');
+      this.logger.error("Runtime is no longer alive");
 
       // Try to use diff from last trajectory step
       const lastStep = this.trajectory[this.trajectory.length - 1];
       if (lastStep && lastStep.state && lastStep.state.diff) {
         step.submission = lastStep.state.diff;
         if (step.submission) {
-          step.observation = 'Environment died unexpectedly. Exited (autosubmitted)';
+          step.observation =
+            "Environment died unexpectedly. Exited (autosubmitted)";
           step.exitStatus = `submitted (${step.exitStatus})`;
         }
       }
@@ -1071,16 +1198,22 @@ export class DefaultAgent extends AbstractAgent {
     }
 
     // Try to run submission command
-    const repoName = this.env?.repo?.repoName ? `/${this.env.repo.repoName}` : '/';
-    const submissionCommand = 'git add -A && git diff --cached > /root/model.patch';
+    const repoName = this.env?.repo?.repoName
+      ? `/${this.env.repo.repoName}`
+      : "/";
+    const submissionCommand =
+      "git add -A && git diff --cached > /root/model.patch";
 
     try {
-      this.env?.executeCommand(submissionCommand, { check: true, cwd: repoName });
+      this.env?.executeCommand(submissionCommand, {
+        check: true,
+        cwd: repoName,
+      });
     } catch (error) {
       this.logger.error(`Failed to execute submission command: ${error}`);
     }
 
-    return await this.handleSubmission(step, '', true);
+    return await this.handleSubmission(step, "", true);
   }
 
   async step(): Promise<StepOutput> {
@@ -1088,27 +1221,30 @@ export class DefaultAgent extends AbstractAgent {
     this.chook.onStepStart();
 
     const nStep = this.trajectory.length + 1;
-    this.logger.info(`${'='.repeat(25)} STEP ${nStep} ${'='.repeat(25)}`);
+    this.logger.info(`${"=".repeat(25)} STEP ${nStep} ${"=".repeat(25)}`);
 
     const stepOutput = await this.forwardWithHandling(this.messages);
 
     // Add to history
     this.appendHistory({
-      role: 'assistant',
+      role: "assistant",
       content: stepOutput.output,
       thought: stepOutput.thought,
       action: stepOutput.action,
       agent: this.name,
       toolCalls: stepOutput.toolCalls,
-      messageType: 'action',
+      messageType: "action",
       thinkingBlocks: stepOutput.thinkingBlocks,
     });
 
     // Add observation to history
     let templates = [this.templates.nextStepTemplate];
-    const observation = stepOutput.observation || '';
-    if (observation.trim() === '') {
-      templates = [this.templates.nextStepNoOutputTemplate || this.templates.nextStepTemplate];
+    const observation = stepOutput.observation || "";
+    if (observation.trim() === "") {
+      templates = [
+        this.templates.nextStepNoOutputTemplate ||
+          this.templates.nextStepTemplate,
+      ];
     } else if (observation.length > this.templates.maxObservationLength) {
       templates = [this.templates.nextStepTruncatedObservationTemplate];
     }
@@ -1120,20 +1256,24 @@ export class DefaultAgent extends AbstractAgent {
       max_observation_length: this.templates.maxObservationLength,
       ...stepOutput.state,
     };
-    const observationMessage = templates.map((t) => renderTemplate(t, formatDict)).join('\n');
+    const observationMessage = templates
+      .map((t) => renderTemplate(t, formatDict))
+      .join("\n");
 
     this.appendHistory({
-      role: 'user',
+      role: "user",
       content: observationMessage,
       agent: this.name,
-      messageType: 'observation',
+      messageType: "observation",
       toolCallIds: stepOutput.toolCallIds,
     });
 
     // Update info
     this.info.submission = stepOutput.submission;
     this.info.exitStatus =
-      stepOutput.exitStatus !== null && stepOutput.exitStatus !== undefined ? stepOutput.exitStatus.toString() : null;
+      stepOutput.exitStatus !== null && stepOutput.exitStatus !== undefined
+        ? stepOutput.exitStatus.toString()
+        : null;
     const stats = this.model.getStats();
     this.info.modelStats = {
       instanceCost: stats.instanceCost,
@@ -1151,7 +1291,7 @@ export class DefaultAgent extends AbstractAgent {
   async run(
     env: AgentEnvironment,
     problemStatement: ProblemStatement | ProblemStatementConfig,
-    outputDir: string = '.',
+    outputDir: string = ".",
   ): Promise<AgentRunResult> {
     // Run the agent on a problem instance
     await this.setup(env, problemStatement, outputDir);
@@ -1196,7 +1336,11 @@ export class RetryAgent extends AbstractAgent {
   private problemStatement: ProblemStatement | null = null;
   private env: AgentEnvironment | null = null;
   private outputDir: string | null = null;
-  private rloop: { getBest(): number | null; onSubmit(data: unknown): void; retry(): boolean } | null = null; // RetryLoop instance
+  private rloop: {
+    getBest(): number | null;
+    onSubmit(data: unknown): void;
+    retry(): boolean;
+  } | null = null; // RetryLoop instance
   private logger: AgentLogger;
 
   constructor(config: RetryAgentConfig) {
@@ -1219,7 +1363,7 @@ export class RetryAgent extends AbstractAgent {
   setup(
     env: AgentEnvironment,
     problemStatement: ProblemStatement | ProblemStatementConfig,
-    outputDir: string = '.',
+    outputDir: string = ".",
   ): void {
     this.totalInstanceAttemptStats = new InstanceStats();
     this.problemStatement = problemStatement as ProblemStatement;
@@ -1232,12 +1376,20 @@ export class RetryAgent extends AbstractAgent {
 
   private setupAgent(): DefaultAgent {
     const agentConfig = JSON.parse(
-      JSON.stringify(this.config.agentConfigs[this.iAttempt % this.config.agentConfigs.length]),
+      JSON.stringify(
+        this.config.agentConfigs[
+          this.iAttempt % this.config.agentConfigs.length
+        ],
+      ),
     );
 
-    const remainingBudget = this.config.retryLoop.costLimit - this.totalInstanceAttemptStats.instanceCost;
+    const remainingBudget =
+      this.config.retryLoop.costLimit -
+      this.totalInstanceAttemptStats.instanceCost;
     if (remainingBudget < agentConfig.model.perInstanceCostLimit) {
-      this.logger.debug(`Setting agent per-attempt cost limit to remaining budget: ${remainingBudget}`);
+      this.logger.debug(
+        `Setting agent per-attempt cost limit to remaining budget: ${remainingBudget}`,
+      );
       agentConfig.model.perInstanceCostLimit = remainingBudget;
     }
 
@@ -1246,9 +1398,12 @@ export class RetryAgent extends AbstractAgent {
       this.agent.addHook(hook);
     }
 
-    const subAgentOutputDir = path.join(this.outputDir!, `attempt_${this.iAttempt}`);
+    const subAgentOutputDir = path.join(
+      this.outputDir!,
+      `attempt_${this.iAttempt}`,
+    );
     if (!this.env) {
-      throw new Error('Environment not initialized');
+      throw new Error("Environment not initialized");
     }
     this.agent.setup(this.env, this.problemStatement!, subAgentOutputDir);
 
@@ -1265,26 +1420,38 @@ export class RetryAgent extends AbstractAgent {
 
   async step(): Promise<StepOutput> {
     if (!this.agent) {
-      throw new Error('Agent not initialized');
+      throw new Error("Agent not initialized");
     }
 
     // Failsafe cost check
     if (
-      this.totalInstanceAttemptStats.instanceCost > 1.1 * this.config.retryLoop.costLimit &&
+      this.totalInstanceAttemptStats.instanceCost >
+        1.1 * this.config.retryLoop.costLimit &&
       this.config.retryLoop.costLimit > 0
     ) {
-      this.logger.critical('Total instance cost exceeded cost limit. Triggering autosubmit.');
-      return await this.agent.attemptAutosubmissionAfterError(new StepOutputImpl());
+      this.logger.critical(
+        "Total instance cost exceeded cost limit. Triggering autosubmit.",
+      );
+      return await this.agent.attemptAutosubmissionAfterError(
+        new StepOutputImpl(),
+      );
     }
 
     try {
       return await this.agent.step();
     } catch (error) {
-      if (error instanceof Error && error.name === 'TotalCostLimitExceededError') {
+      if (
+        error instanceof Error &&
+        error.name === "TotalCostLimitExceededError"
+      ) {
         throw error;
       }
-      this.logger.critical(`Error in agent step: ${String(error)}. Triggering autosubmit.`);
-      return await this.agent.attemptAutosubmissionAfterError(new StepOutputImpl());
+      this.logger.critical(
+        `Error in agent step: ${String(error)}. Triggering autosubmit.`,
+      );
+      return await this.agent.attemptAutosubmissionAfterError(
+        new StepOutputImpl(),
+      );
     }
   }
 
@@ -1295,7 +1462,9 @@ export class RetryAgent extends AbstractAgent {
 
     this.agent.saveTrajectory();
     this.attemptData.push(this.agent.getTrajectoryData());
-    this.totalInstanceAttemptStats = this.totalInstanceAttemptStats.add(this.agent.model.getStats());
+    this.totalInstanceAttemptStats = this.totalInstanceAttemptStats.add(
+      this.agent.model.getStats(),
+    );
   }
 
   getTrajectoryData(choose: boolean = false): {
@@ -1306,7 +1475,10 @@ export class RetryAgent extends AbstractAgent {
       replayConfig: string | null;
       environment: string;
     }>;
-    info?: AgentInfo & { bestAttemptIdx: number; modelStats: Record<string, number> };
+    info?: AgentInfo & {
+      bestAttemptIdx: number;
+      modelStats: Record<string, number>;
+    };
     trajectory?: Trajectory;
   } {
     const data: {
@@ -1317,7 +1489,10 @@ export class RetryAgent extends AbstractAgent {
         replayConfig: string | null;
         environment: string;
       }>;
-      info?: AgentInfo & { bestAttemptIdx: number; modelStats: Record<string, number> };
+      info?: AgentInfo & {
+        bestAttemptIdx: number;
+        modelStats: Record<string, number>;
+      };
       trajectory?: Trajectory;
     } = {
       attempts: this.attemptData,
@@ -1330,16 +1505,24 @@ export class RetryAgent extends AbstractAgent {
         data.info = {
           ...attemptInfo,
           bestAttemptIdx: bestAttemptIdx,
-          modelStats: this.totalInstanceAttemptStats as unknown as Record<string, number>,
+          modelStats: this.totalInstanceAttemptStats as unknown as Record<
+            string,
+            number
+          >,
         };
         data.trajectory = this.attemptData[bestAttemptIdx].trajectory;
       } catch (error) {
-        this.logger.critical(`Error getting best attempt index: ${error}. Setting to 0.`);
+        this.logger.critical(
+          `Error getting best attempt index: ${error}. Setting to 0.`,
+        );
         const attemptInfo = this.attemptData[0].info;
         data.info = {
           ...attemptInfo,
           bestAttemptIdx: 0,
-          modelStats: this.totalInstanceAttemptStats as unknown as Record<string, number>,
+          modelStats: this.totalInstanceAttemptStats as unknown as Record<
+            string,
+            number
+          >,
         };
         data.trajectory = this.attemptData[0].trajectory;
       }
@@ -1358,7 +1541,7 @@ export class RetryAgent extends AbstractAgent {
   async run(
     env: AgentEnvironment,
     problemStatement: ProblemStatement | ProblemStatementConfig,
-    outputDir: string = '.',
+    outputDir: string = ".",
   ): Promise<AgentRunResult> {
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
@@ -1412,16 +1595,19 @@ export class RetryAgent extends AbstractAgent {
 /**
  * Factory function to get agent from configuration
  */
-export async function getAgentFromConfig(config: AgentConfig): Promise<AbstractAgent> {
+export async function getAgentFromConfig(
+  config: AgentConfig,
+): Promise<AbstractAgent> {
   switch (config.type) {
-    case 'default':
+    case "default":
       return DefaultAgent.fromConfig(config as DefaultAgentConfig);
-    case 'retry':
+    case "retry":
       return RetryAgent.fromConfig(config as RetryAgentConfig);
-    case 'shell':
+    case "shell": {
       // Dynamic import to avoid circular dependency
-      const { ShellAgent } = require('./extra/shell-agent');
+      const { ShellAgent } = await import("./extra/shell-agent");
       return ShellAgent.fromConfig(config as DefaultAgentConfig);
+    }
     default:
       throw new Error(`Unknown agent type: ${(config as AgentConfig).type}`);
   }
