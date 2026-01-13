@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+// Windowed editor open command
+const { WindowedEditor } = require('../dist/windowed/index.js');
+
+const args = process.argv.slice(2);
+const filePath = args[0];
+const lineNumber = args[1] ? parseInt(args[1]) : undefined;
+
+if (!filePath) {
+  const editor = new WindowedEditor();
+  editor.printWindow();
+} else {
+  const editor = new WindowedEditor();
+  editor.open(filePath, lineNumber);
+}

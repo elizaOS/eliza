@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+const { exitForfeit } = require('../dist/forfeit/index.js');
+exitForfeit();

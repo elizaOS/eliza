@@ -1,0 +1,55 @@
+# Build and output directories
+dist/
+node_modules/
+coverage/
+test_output/
+
+# Tool directories
+tools-js/
+trajectories/
+
+# Generated and vendor files
+*.min.js
+*.bundle.js
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Data files
+*.json
+*.yaml
+*.yml
+
+# Documentation files
+*.md
+
+# Python files
+*.py
+*.pyc
+__pycache__/
+
+# Test data
+tests/test_data/
+tests_python/test_data/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git files
+.git/
+.gitignore
+
+# Config files
+.eslintrc.json
+.prettierrc.json
+tsconfig.json
+tsconfig.*.json
+jest.config.js
+
+# Specific files to exclude
+src/inspector/fileViewer.js
+

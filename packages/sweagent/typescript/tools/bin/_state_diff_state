@@ -1,0 +1,4 @@
+#!/usr/bin/env node
+// Update diff state
+const { updateDiffState } = require('../dist/diff-state/index.js');
+updateDiffState();
