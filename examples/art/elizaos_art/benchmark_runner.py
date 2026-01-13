@@ -181,7 +181,7 @@ class BenchmarkRunner:
         """Benchmark Tic-Tac-Toe strategies."""
         console.print("[cyan]Benchmarking Tic-Tac-Toe...[/cyan]")
 
-        config = TicTacToeConfig(opponent_type="random")
+        config = TicTacToeConfig(opponent="random")
         env = TicTacToeEnvironment(config)
         await env.initialize()
 
