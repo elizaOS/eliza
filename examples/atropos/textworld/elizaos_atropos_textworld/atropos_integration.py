@@ -98,6 +98,7 @@ class AtroposConfig:
         use_elizaos: bool = True,
         win_bonus: float = 0.3,
         efficiency_weight: float = 0.2,
+        trust_remote_code: bool = False,
     ):
         """
         Initialize Atropos configuration.
@@ -122,6 +123,10 @@ class AtroposConfig:
                 Higher values reward faster solutions. 0.2 means using 50% of
                 allowed steps adds 0.1 to score. Set to 0 if you don't care
                 about solution length.
+            trust_remote_code: Whether to allow loading tokenizers with custom code.
+                SECURITY WARNING: When True, arbitrary Python code from model
+                repositories can execute on your machine. Only enable for trusted
+                models (e.g., official Llama, Mistral). Default False for security.
         """
         self.tokenizer_name = tokenizer_name
         self.game_type = game_type
@@ -130,6 +135,7 @@ class AtroposConfig:
         self.use_elizaos = use_elizaos
         self.win_bonus = win_bonus
         self.efficiency_weight = efficiency_weight
+        self.trust_remote_code = trust_remote_code
 
 
 # =============================================================================
@@ -329,9 +335,18 @@ class AtroposFormatter:
         if self._tokenizer is None:
             from transformers import AutoTokenizer
 
+            # SECURITY: trust_remote_code allows arbitrary code execution from model repos
+            # Only enable for trusted models; see config.trust_remote_code docstring
+            if self.config.trust_remote_code:
+                logger.warning(
+                    f"Loading tokenizer {self.config.tokenizer_name} with trust_remote_code=True. "
+                    f"This allows arbitrary code execution from the model repository. "
+                    f"Only use this with trusted models."
+                )
+
             self._tokenizer = AutoTokenizer.from_pretrained(
                 self.config.tokenizer_name,
-                trust_remote_code=True,  # Required for some models (Llama, Mistral)
+                trust_remote_code=self.config.trust_remote_code,
             )
             # Check if tokenizer supports chat templates (Llama, Mistral do; GPT-2 doesn't)
             self._has_chat_template = (
