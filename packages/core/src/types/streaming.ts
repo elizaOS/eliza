@@ -44,4 +44,33 @@ export interface IStreamExtractor {
    * @returns Text to stream to client (empty string = nothing to stream yet)
    */
   push(chunk: string): string;
+
+  /**
+   * Reset extractor state for retry or reuse.
+   * Clears buffer, resets done flag, and any internal state.
+   */
+  reset(): void;
+
+  /**
+   * Flush any buffered content that hasn't been returned yet.
+   * Called when stream ends unexpectedly to recover partial content.
+   * Optional - extractors that don't buffer can omit this.
+   * @returns Remaining buffered content (empty string if none)
+   */
+  flush?(): string;
+}
+
+/**
+ * Tracks extractor state for intelligent retry decisions.
+ * Enables:
+ * - Skip retry when text extraction is complete (isComplete)
+ * - Continuation prompts when text is cut mid-stream
+ */
+export interface IStreamingRetryState {
+  /** Text that has been streamed to the user */
+  getStreamedText: () => string;
+  /** Whether the extractor found the closing tag (text is complete) */
+  isComplete: () => boolean;
+  /** Reset extractor for fresh streaming on continuation */
+  reset: () => void;
 }
