@@ -289,8 +289,8 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
       if (!wasm) return;
 
       const memory: Memory = {
-        entityId: "entity-123",
-        roomId: "room-456",
+        entityId: "550e8400-e29b-41d4-a716-446655440001",
+        roomId: "550e8400-e29b-41d4-a716-446655440002",
         content: { text: "" },
       };
 
@@ -304,8 +304,8 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
       if (!wasm) return;
 
       const memory: Memory = {
-        entityId: "entity-123",
-        roomId: "room-456",
+        entityId: "550e8400-e29b-41d4-a716-446655440001",
+        roomId: "550e8400-e29b-41d4-a716-446655440002",
         content: { text: "Hello 世界 🎉 émojis and ñ characters" },
       };
 
@@ -321,8 +321,8 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
       if (!wasm) return;
 
       const memory: Memory = {
-        entityId: "entity-123",
-        roomId: "room-456",
+        entityId: "550e8400-e29b-41d4-a716-446655440001",
+        roomId: "550e8400-e29b-41d4-a716-446655440002",
         content: { text: "test" },
         createdAt: 9007199254740991, // Number.MAX_SAFE_INTEGER
       };
@@ -339,8 +339,8 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
       // Content.source is optional (string | undefined), but JSON.stringify converts undefined to null
       // Create a memory object with source explicitly set to null via JSON parsing
       const memoryJson = JSON.stringify({
-        entityId: "entity-123",
-        roomId: "room-456",
+        entityId: "550e8400-e29b-41d4-a716-446655440001",
+        roomId: "550e8400-e29b-41d4-a716-446655440002",
         content: {
           text: "test",
           source: null,
@@ -358,8 +358,8 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
 describe("TypeScript Type Verification", () => {
   it("should verify Memory type structure", () => {
     const memory: Memory = {
-      entityId: "entity-123",
-      roomId: "room-456",
+      entityId: "550e8400-e29b-41d4-a716-446655440001",
+      roomId: "550e8400-e29b-41d4-a716-446655440002",
       content: { text: "Hello" },
     };
 
@@ -371,6 +371,7 @@ describe("TypeScript Type Verification", () => {
   it("should verify Character type structure", () => {
     const character: Character = {
       name: "TestAgent",
+      bio: "A test agent",
       messageExamples: [],
       postExamples: [],
     };
