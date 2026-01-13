@@ -12,7 +12,7 @@ import {
   type TemplateConfig,
   type ToolConfig,
 } from "@elizaos/sweagent-root";
-import type { CodeTask, TaskResult, TaskTraceEvent } from "../../types.js";
+import type { CodeTask, JsonValue, TaskResult, TaskTraceEvent } from "../../types.js";
 import type { SubAgent, SubAgentContext, SubAgentTool } from "./types.js";
 
 const SUBMISSION_MARKER = "<<SWE_AGENT_SUBMISSION>>";
@@ -155,13 +155,13 @@ class RuntimeModel extends AbstractModel {
 interface SweAgentEnvironment {
   communicate: (
     command: string,
-    timeout?: number | Record<string, unknown>,
-    options?: Record<string, unknown>,
+    timeout?: number | Record<string, JsonValue>,
+    options?: Record<string, JsonValue>,
   ) => Promise<string>;
   readFile: (p: string, encoding?: string) => Promise<string>;
   writeFile: (p: string, content: string) => Promise<void>;
   setEnvVariables: (vars: Record<string, string>) => Promise<void>;
-  executeCommand: (command: string, options?: Record<string, unknown>) => Promise<void>;
+  executeCommand: (command: string, options?: Record<string, JsonValue>) => Promise<void>;
   interruptSession: () => Promise<void>;
   getCwd?: () => string;
   repo?: { repoName: string };
