@@ -29,35 +29,6 @@ import type {
 import { getCwd } from "../providers/cwd.js";
 
 /**
- * Safely converts a value to JsonValue by recursively validating and converting.
- * This ensures type safety without using unsafe casts.
- */
-function toJsonValue(value: unknown): JsonValue {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map(toJsonValue);
-  }
-  if (typeof value === "object") {
-    const result: Record<string, JsonValue> = {};
-    for (const [key, val] of Object.entries(value)) {
-      result[key] = toJsonValue(val);
-    }
-    return result;
-  }
-  // Fallback: convert to string for unsupported types
-  return String(value);
-}
-
-/**
  * CodeTaskService - Manages code tasks using core runtime.
  * Wraps runtime.createTask/getTasks with code-specific functionality.
  */
@@ -160,7 +131,7 @@ export class CodeTaskService extends Service {
       this.currentTaskId = taskId;
     }
 
-    this.emit("task:created", taskId, { task: toJsonValue(task) });
+    this.emit("task:created", taskId, { name: task.name });
     return task;
   }
 
@@ -324,7 +295,6 @@ export class CodeTaskService extends Service {
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
     this.emit("task:progress", taskId, {
-      step: toJsonValue(step),
       progress: metadata.progress,
     });
   }
@@ -349,10 +319,15 @@ export class CodeTaskService extends Service {
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
     if (metadata.status === "cancelled") {
-      this.emit("task:cancelled", taskId, { result: toJsonValue(result) });
+      this.emit("task:cancelled", taskId, {
+        success: false,
+        summary: result.summary,
+      });
     } else {
       this.emit(result.success ? "task:completed" : "task:failed", taskId, {
-        result: toJsonValue(result),
+        success: result.success,
+        summary: result.summary,
+        error: result.error ?? null,
       });
     }
   }
@@ -658,7 +633,7 @@ export class CodeTaskService extends Service {
       callTool: (
         serverName: string,
         toolName: string,
-        toolArguments?: Readonly<Record<string, unknown>>,
+        toolArguments?: Readonly<Record<string, JsonValue>>,
       ) => Promise<McpCallResult>;
     };
 
