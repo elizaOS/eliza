@@ -17,5 +17,6 @@ typescript/tools/.turbo/
 typescript/tools/.cache/
 
 # Large fixture corpora not required for builds
+python/tests/test_data/data_sources/ctf/
 typescript/tests/test_data/data_sources/ctf/
 

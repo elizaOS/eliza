@@ -373,6 +373,7 @@ impl DefaultAgent {
         });
     }
     
+    #[allow(dead_code)]
     fn get_trajectory(&self) -> Trajectory {
         self.trajectory.clone()
     }
@@ -465,7 +466,7 @@ impl DefaultAgent {
         
         // Execute command
         let observation = if let Some(ref env) = self.env {
-            let mut env_guard = env.lock().await;
+            let env_guard = env.lock().await;
             match env_guard
                 .communicate(&run_action, Some(self.tools.config.execution_timeout))
                 .await
@@ -831,7 +832,7 @@ impl RetryAgent {
         self.i_attempt += 1;
         
         // Reset environment if possible
-        if let Some(ref env) = self.env {
+        if let Some(ref _env) = self.env {
             // Would call hard_reset here
         }
         
