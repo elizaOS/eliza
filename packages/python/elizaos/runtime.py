@@ -692,39 +692,17 @@ class AgentRuntime(IAgentRuntime):
                     valid, validated_params, errors = self._validate_action_params(
                         action, extracted
                     )
-                    if not valid:
-                        error_text = (
-                            f"Action parameter validation failed for {action.name}: {errors}. "
-                            f"Include required parameters in a <params><{action.name}>...</{action.name}></params> block."
-                        )
-                        self.logger.error(error_text)
+                if not valid:
+                    self.logger.warning(
+                        "Action parameter validation incomplete",
+                        src="runtime:actions",
+                        actionName=action.name,
+                        errors=errors,
+                    )
+                    options_obj.parameter_errors = errors
 
-                        # Surface the error to the caller so the agent can self-correct.
-                        if callback is not None:
-                            # Never let callback failures break core action processing.
-                            with contextlib.suppress(Exception):
-                                await callback(Content(text=error_text, actions=[action.name]))
-
-                        # Store a failed ActionResult for trajectory/debugging.
-                        if message.id:
-                            message_id = str(message.id)
-                            if message_id not in self._action_results:
-                                self._action_results[message_id] = []
-                            self._action_results[message_id].append(
-                                ActionResult(
-                                    text=error_text,
-                                    values={"success": False},
-                                    data={
-                                        "actionName": action.name,
-                                        "validationErrors": errors,
-                                    },
-                                    success=False,
-                                    error=error_text,
-                                )
-                            )
-                        continue
-                    if validated_params:
-                        options_obj.parameters = validated_params
+                if validated_params:
+                    options_obj.parameters = validated_params
 
                 result = await action.handler(
                     self,
