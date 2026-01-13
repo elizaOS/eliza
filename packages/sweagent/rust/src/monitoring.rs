@@ -2,7 +2,7 @@
 //!
 //! Provides hooks for observability, metrics collection, and alerting.
 
-use crate::types::{AgentRunResult, ModelStats};
+use crate::types::AgentRunResult;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -279,6 +279,7 @@ pub struct MetricsMonitor {
     metrics: Arc<AgentMetrics>,
     thresholds: AlertThresholds,
     handlers: Vec<Box<dyn AlertHandler>>,
+    #[allow(dead_code)]
     last_check: std::sync::Mutex<Instant>,
 }
 

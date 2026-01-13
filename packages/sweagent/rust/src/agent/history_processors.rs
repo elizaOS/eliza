@@ -233,7 +233,7 @@ pub fn create_history_processor(config: &HistoryProcessorConfig) -> Box<dyn Hist
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::MessageType;
+    use crate::types::{HistoryItem, MessageType, Role};
 
     #[test]
     fn test_default_processor() {

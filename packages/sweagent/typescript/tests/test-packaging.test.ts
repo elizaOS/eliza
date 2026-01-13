@@ -99,8 +99,8 @@ describe('Packaging and Version', () => {
       // Should not contain spaces
       expect(name).not.toContain(' ');
 
-      // Should be a valid npm package name
-      expect(name).toMatch(/^[@a-z0-9][\w-.]*$/);
+      // Should be a valid npm package name (allows scoped packages with @scope/name)
+      expect(name).toMatch(/^(@[a-z0-9][\w-]*\/)?[a-z0-9][\w-.]*$/);
     });
 
     it('should have author information', () => {

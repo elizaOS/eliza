@@ -279,6 +279,7 @@ impl Deployment for DockerDeployment {
 pub struct LocalDeployment {
     is_running: bool,
     cwd: String,
+    #[allow(dead_code)]
     shell_process: Option<Arc<Mutex<Child>>>,
 }
 

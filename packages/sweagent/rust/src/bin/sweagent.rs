@@ -4,7 +4,7 @@
 
 use clap::{Parser, Subcommand};
 use elizaos_sweagent::run::{run_batch_from_config, run_from_config, RunBatchConfig, RunSingleConfig};
-use elizaos_sweagent::types::{Trajectory, TrajectoryStep};
+use elizaos_sweagent::types::Trajectory;
 use elizaos_sweagent::VERSION;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -538,11 +538,11 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Run {
             config,
-            model_name,
-            github_url,
-            repo_path,
-            issue_url,
-            problem_path,
+            model_name: _,
+            github_url: _,
+            repo_path: _,
+            issue_url: _,
+            problem_path: _,
             output_dir,
             open_pr,
             apply_patch,
