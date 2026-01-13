@@ -13,6 +13,7 @@
     "build": "bun build src/index.tsx --outdir dist --target bun",
     "build:deps": "bunx turbo run build --filter=@elizaos/sweagent-root --filter=@elizaos/plugin-mcp --filter=@elizaos/plugin-goals --filter=@elizaos/plugin-todo --filter=@elizaos/plugin-trajectory-logger",
     "test": "bun run build:deps && vitest run",
+    "e2e:subagents": "bun src/e2e/subagents.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "cli": "bun src/index.tsx",
