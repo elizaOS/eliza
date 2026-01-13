@@ -167,7 +167,8 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
 
     def get_available_actions(self, state: TicTacToeState) -> list[TicTacToeAction]:
         """Get empty positions."""
-        if state.winner is not None:
+        # Check terminal conditions - consistent with TicTacToeState.is_terminal()
+        if state.winner is not None or state.is_draw:
             return []
 
         return [
