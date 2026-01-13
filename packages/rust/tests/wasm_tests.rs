@@ -215,12 +215,15 @@ mod runtime_tests {
     }
 
     #[wasm_bindgen_test]
-    fn test_runtime_initialize() {
+    async fn test_runtime_initialize() {
         let json = r#"{"name": "TestAgent", "bio": "A test agent"}"#;
         let runtime = WasmAgentRuntime::create(json).unwrap();
         
-        let init_result = runtime.initialize();
-        assert!(init_result.is_ok());
+        // initialize() now returns a Promise
+        assert!(!runtime.is_initialized());
+        let promise = runtime.initialize();
+        wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
+        assert!(runtime.is_initialized());
     }
 
     #[wasm_bindgen_test]
@@ -245,13 +248,15 @@ mod runtime_tests {
     }
 
     #[wasm_bindgen_test]
-    fn test_runtime_stop() {
+    async fn test_runtime_stop() {
         let json = r#"{"name": "TestAgent", "bio": "A test agent"}"#;
         let runtime = WasmAgentRuntime::create(json).unwrap();
-        runtime.initialize().unwrap();
+        let promise = runtime.initialize();
+        wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
         
         // Should not panic
         runtime.stop();
+        assert!(!runtime.is_initialized());
     }
 }
 
@@ -1115,10 +1120,11 @@ mod advanced_runtime_tests {
     }
 
     #[wasm_bindgen_test]
-    fn test_runtime_multiple_stop_calls() {
+    async fn test_runtime_multiple_stop_calls() {
         let json = r#"{"name": "TestAgent", "bio": "Test"}"#;
         let runtime = WasmAgentRuntime::create(json).unwrap();
-        runtime.initialize().unwrap();
+        let promise = runtime.initialize();
+        wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
         
         // Multiple stops should be safe
         runtime.stop();

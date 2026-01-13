@@ -261,12 +261,23 @@ pub struct RuntimeOptions {
     pub enable_autonomy: bool,
 }
 
-/// Event handler function type
+/// Event handler function type (Native - requires Send + Sync)
+#[cfg(not(feature = "wasm"))]
 pub type EventHandler = Arc<dyn Fn(EventPayload) -> Result<()> + Send + Sync>;
 
-/// Model handler function type
+/// Event handler function type (WASM - no Send + Sync required)
+#[cfg(feature = "wasm")]
+pub type EventHandler = Arc<dyn Fn(EventPayload) -> Result<()>>;
+
+/// Model handler function type (Native - requires Send + Sync)
+#[cfg(not(feature = "wasm"))]
 pub type ModelHandler =
     Arc<dyn Fn(&str, serde_json::Value) -> Result<serde_json::Value> + Send + Sync>;
+
+/// Model handler function type (WASM - no Send + Sync required)
+#[cfg(feature = "wasm")]
+pub type ModelHandler =
+    Arc<dyn Fn(&str, serde_json::Value) -> Result<serde_json::Value>>;
 
 fn json_value_to_setting_value(value: &serde_json::Value) -> Option<SettingValue> {
     match value {

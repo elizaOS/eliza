@@ -57,7 +57,9 @@ use wasm_bindgen_futures::future_to_promise;
 use js_sys::{Function, Promise};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
+use crate::runtime::{AgentRuntime, RuntimeOptions};
 use crate::types::{Agent, Character, Content, Entity, Memory, Plugin, Room, State, UUID};
 
 /// Initialize the WASM module with panic hook for better error messages
@@ -467,17 +469,27 @@ async fn call_js_model_handler(
     handler.call(&params).await.map_err(|e| e.into_js_value())
 }
 
-/// WASM-compatible AgentRuntime
+/// WASM-compatible AgentRuntime that wraps the real AgentRuntime.
+///
+/// This provides JavaScript bindings to the full ElizaOS runtime functionality.
+/// Model handlers are registered via JavaScript callbacks that bridge to the
+/// actual LLM APIs in the browser/node environment.
 #[wasm_bindgen]
 pub struct WasmAgentRuntime {
+    /// The wrapped AgentRuntime (Rc for non-Send WASM context)
+    inner: Rc<RefCell<Option<AgentRuntime>>>,
+    /// Character configuration (kept for quick access without async)
     character: RefCell<Character>,
+    /// Agent ID
     agent_id: UUID,
-    initialized: RefCell<bool>,
 }
 
 #[wasm_bindgen]
 impl WasmAgentRuntime {
-    /// Create a new WasmAgentRuntime from a character JSON string
+    /// Create a new WasmAgentRuntime from a character JSON string.
+    ///
+    /// This creates the runtime but does NOT initialize it. Call `initialize()`
+    /// to complete setup and start services.
     #[wasm_bindgen(js_name = "create")]
     pub fn create(character_json: &str) -> Result<WasmAgentRuntime, JsValue> {
         let character: Character = serde_json::from_str(character_json)
@@ -489,20 +501,44 @@ impl WasmAgentRuntime {
             .unwrap_or_else(|| crate::types::string_to_uuid(&character.name));
 
         Ok(WasmAgentRuntime {
+            inner: Rc::new(RefCell::new(None)),
             character: RefCell::new(character),
             agent_id,
-            initialized: RefCell::new(false),
         })
     }
 
-    /// Initialize the runtime
+    /// Initialize the runtime asynchronously.
+    ///
+    /// This creates the underlying AgentRuntime and initializes all components.
+    /// Must be called before using any async operations.
     #[wasm_bindgen]
-    pub fn initialize(&self) -> Result<(), JsValue> {
-        *self.initialized.borrow_mut() = true;
-        Ok(())
+    pub fn initialize(&self) -> Promise {
+        let character = self.character.borrow().clone();
+        let inner = Rc::clone(&self.inner);
+
+        future_to_promise(async move {
+            let runtime = AgentRuntime::new(RuntimeOptions {
+                character: Some(character),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| WasmError::internal_error(format!("Failed to create runtime: {}", e)).into_js_value())?;
+
+            *inner.borrow_mut() = Some(runtime);
+            Ok(JsValue::undefined())
+        })
     }
 
-    /// Register a model handler using the new shim pattern
+    /// Check if the runtime has been initialized.
+    #[wasm_bindgen(getter, js_name = "isInitialized")]
+    pub fn is_initialized(&self) -> bool {
+        self.inner.borrow().is_some()
+    }
+
+    /// Register a model handler using the new shim pattern.
+    ///
+    /// Model handlers are JavaScript objects with a `handle(params: string): Promise<string>` method.
+    /// The params are passed as JSON and the response should be JSON.
     #[wasm_bindgen(js_name = "registerModelHandler")]
     pub fn register_model_handler(&self, model_type: &str, handler: JsModelHandler) {
         JS_MODEL_HANDLERS.with(|handlers| {
@@ -510,13 +546,12 @@ impl WasmAgentRuntime {
         });
     }
 
-    /// Register a model handler from a raw JavaScript function
+    /// Register a model handler from a raw JavaScript function.
     ///
     /// This is a convenience method for simple handlers. For more control,
     /// use `registerModelHandler` with a `JsModelHandler` instance.
     #[wasm_bindgen(js_name = "registerModelHandlerFn")]
     pub fn register_model_handler_fn(&self, model_type: &str, handler: Function) -> Result<(), JsValue> {
-        // Create a wrapper object with a handle method pointing to the function
         let obj = js_sys::Object::new();
         js_sys::Reflect::set(&obj, &JsValue::from_str("handle"), &handler)?;
         
@@ -525,7 +560,13 @@ impl WasmAgentRuntime {
         Ok(())
     }
 
-    /// Handle an incoming message
+    /// Handle an incoming message.
+    ///
+    /// This is the main entry point for message processing. It:
+    /// 1. Parses the message JSON
+    /// 2. Builds a prompt using the character configuration
+    /// 3. Calls the registered model handler
+    /// 4. Returns a response with the generated content
     #[wasm_bindgen(js_name = "handleMessage")]
     pub fn handle_message(&self, message_json: &str) -> Promise {
         let message_result: Result<Memory, _> = serde_json::from_str(message_json);
@@ -586,33 +627,80 @@ impl WasmAgentRuntime {
         })
     }
 
-    /// Get the agent ID
+    /// Get a setting value by key.
+    #[wasm_bindgen(js_name = "getSetting")]
+    pub fn get_setting(&self, key: &str) -> Promise {
+        let inner = Rc::clone(&self.inner);
+        let key = key.to_string();
+
+        future_to_promise(async move {
+            let runtime_ref = inner.borrow();
+            let runtime = runtime_ref.as_ref().ok_or_else(|| {
+                WasmError::not_initialized("Runtime not initialized").into_js_value()
+            })?;
+
+            let value = runtime.get_setting(&key).await;
+            match value {
+                Some(v) => {
+                    let json = serde_json::to_string(&v)
+                        .map_err(|e| WasmError::parse_error(e.to_string(), None).into_js_value())?;
+                    Ok(JsValue::from_str(&json))
+                }
+                None => Ok(JsValue::null()),
+            }
+        })
+    }
+
+    /// Set a setting value.
+    #[wasm_bindgen(js_name = "setSetting")]
+    pub fn set_setting(&self, key: &str, value_json: &str) -> Promise {
+        let inner = Rc::clone(&self.inner);
+        let key = key.to_string();
+        let value_json = value_json.to_string();
+
+        future_to_promise(async move {
+            let runtime_ref = inner.borrow();
+            let runtime = runtime_ref.as_ref().ok_or_else(|| {
+                WasmError::not_initialized("Runtime not initialized").into_js_value()
+            })?;
+
+            let value: crate::types::settings::SettingValue = serde_json::from_str(&value_json)
+                .map_err(|e| WasmError::from_json_error(&e, Some("value".to_string())).into_js_value())?;
+
+            runtime.set_setting(&key, value, false).await;
+
+            Ok(JsValue::undefined())
+        })
+    }
+
+    /// Get the agent ID.
     #[wasm_bindgen(getter, js_name = "agentId")]
     pub fn agent_id(&self) -> String {
         self.agent_id.to_string()
     }
 
-    /// Get the character name
+    /// Get the character name.
     #[wasm_bindgen(getter, js_name = "characterName")]
     pub fn character_name(&self) -> String {
         self.character.borrow().name.clone()
     }
 
-    /// Get the character as JSON
+    /// Get the character as JSON.
     #[wasm_bindgen(getter, js_name = "character")]
     pub fn character(&self) -> Result<String, JsValue> {
         serde_json::to_string(&*self.character.borrow())
             .map_err(|e| WasmError::parse_error(format!("Failed to serialize character: {}", e), None).into_js_value())
     }
 
-    /// Stop the runtime
+    /// Stop the runtime and clean up resources.
     #[wasm_bindgen]
     pub fn stop(&self) {
         // Clear JS model handlers
         JS_MODEL_HANDLERS.with(|handlers| {
             handlers.borrow_mut().clear();
         });
-        *self.initialized.borrow_mut() = false;
+        // Clear the inner runtime
+        *self.inner.borrow_mut() = None;
     }
 }
 
