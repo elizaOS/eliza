@@ -12,8 +12,8 @@ A multi-agent evolution simulation demonstrating elizaOS's ability to run autono
 ## Available Implementations
 
 - [TypeScript](./typescript/) - Full implementation with visual simulation
-- [Python](./python/) - Python implementation (coming soon)
-- [Rust](./rust/) - Rust implementation (coming soon)
+- [Python](./python/) - Minimal canonical pipeline demo (message_service + actions, no LLM)
+- [Rust](./rust/) - Minimal canonical pipeline demo (message_service + rule-based output, no LLM)
 
 ## How It Works
 

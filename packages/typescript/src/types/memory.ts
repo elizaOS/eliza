@@ -62,6 +62,17 @@ export interface FragmentMetadata extends BaseMetadata {
 
 export interface MessageMetadata extends BaseMetadata {
   type: MemoryType.MESSAGE;
+  /**
+   * Optional trajectory step identifier used for benchmark/training traces.
+   * When present, runtimes should bypass state caches and emit trajectory logs.
+   */
+  trajectoryStepId?: string;
+
+  /**
+   * Optional benchmark context payload (freeform text).
+   * When present, the CONTEXT_BENCH provider should set `benchmark_has_context=true`.
+   */
+  benchmarkContext?: string;
 }
 
 export interface DescriptionMetadata extends BaseMetadata {

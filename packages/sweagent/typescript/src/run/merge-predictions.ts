@@ -2,11 +2,11 @@
  * Merge multiple predictions into a single file
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
-import { getLogger } from '../utils/log';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { getLogger } from "../utils/log";
 
-const logger = getLogger('merge', '➕');
+const logger = getLogger("merge", "➕");
 
 /**
  * Merge predictions found in directories into a single JSON file
@@ -24,29 +24,33 @@ export function mergePredictions(directories: string[], output?: string): void {
   logger.info(`Found ${preds.length} predictions`);
 
   if (preds.length === 0) {
-    logger.warn(`No predictions found in ${directories.join(', ')}`);
+    logger.warn(`No predictions found in ${directories.join(", ")}`);
     return;
   }
 
   if (!output) {
-    output = path.join(directories[0], 'preds.json');
+    output = path.join(directories[0], "preds.json");
   }
 
-  const data: Record<string, any> = {};
+  const data: Record<string, Record<string, string | number>> = {};
 
   for (const pred of preds) {
-    const content = fs.readFileSync(pred, 'utf-8');
+    const content = fs.readFileSync(pred, "utf-8");
     const predData = JSON.parse(content);
     const instanceId = predData.instance_id;
 
-    if (!('model_patch' in predData)) {
-      logger.warn(`Prediction ${pred} does not contain a model patch. SKIPPING`);
+    if (!("model_patch" in predData)) {
+      logger.warn(
+        `Prediction ${pred} does not contain a model patch. SKIPPING`,
+      );
       continue;
     }
 
     // Ensure model_patch is a string
     predData.model_patch =
-      predData.model_patch !== null && predData.model_patch !== undefined ? String(predData.model_patch) : '';
+      predData.model_patch !== null && predData.model_patch !== undefined
+        ? String(predData.model_patch)
+        : "";
 
     if (instanceId in data) {
       throw new Error(`Duplicate instance ID found: ${instanceId}`);
@@ -84,7 +88,7 @@ function findPredFiles(directory: string): string[] {
 
       if (stat.isDirectory()) {
         walk(filePath);
-      } else if (file.endsWith('.pred')) {
+      } else if (file.endsWith(".pred")) {
         results.push(filePath);
       }
     }

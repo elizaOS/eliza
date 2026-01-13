@@ -70,6 +70,141 @@ pub fn parse_key_value_xml(xml: &str) -> Option<HashMap<String, String>> {
     }
 }
 
+/// Extract direct child XML elements from a string.
+///
+/// This is a small, non-validating parser intended for the simple XML produced by the prompts.
+/// It supports nested tags with the same name by tracking depth.
+fn extract_xml_children(xml: &str) -> Vec<(String, String)> {
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    let bytes = xml.as_bytes();
+    let mut i: usize = 0;
+    while i < bytes.len() {
+        // Find next '<'
+        let open_idx = match xml[i..].find('<') {
+            Some(off) => i + off,
+            None => break,
+        };
+
+        // Skip closing tags and comments/decls
+        if xml[open_idx..].starts_with("</")
+            || xml[open_idx..].starts_with("<!--")
+            || xml[open_idx..].starts_with("<?")
+        {
+            i = open_idx + 1;
+            continue;
+        }
+
+        // Parse tag name
+        let mut j = open_idx + 1;
+        let mut tag = String::new();
+        while j < bytes.len() {
+            let ch = bytes[j] as char;
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                tag.push(ch);
+                j += 1;
+            } else {
+                break;
+            }
+        }
+        if tag.is_empty() {
+            i = open_idx + 1;
+            continue;
+        }
+
+        // Find end of start tag
+        let start_tag_end = match xml[j..].find('>') {
+            Some(off) => j + off,
+            None => break,
+        };
+        let start_tag_text = &xml[open_idx..=start_tag_end];
+        // Self-closing
+        if start_tag_text.trim_end().ends_with("/>") {
+            i = start_tag_end + 1;
+            continue;
+        }
+
+        let close_seq = format!("</{}>", tag);
+        let mut depth: i32 = 1;
+        let mut search_start = start_tag_end + 1;
+        while depth > 0 && search_start < bytes.len() {
+            let next_open = xml[search_start..].find(&format!("<{}", tag)).map(|off| search_start + off);
+            let next_close = match xml[search_start..].find(&close_seq) {
+                Some(off) => search_start + off,
+                None => break,
+            };
+
+            if let Some(no) = next_open {
+                if no < next_close {
+                    // Check if the nested open is self-closing
+                    let nested_end = match xml[no..].find('>') {
+                        Some(off) => no + off,
+                        None => break,
+                    };
+                    let nested_text = &xml[no..=nested_end];
+                    if !nested_text.trim_end().ends_with("/>") {
+                        depth += 1;
+                    }
+                    search_start = nested_end + 1;
+                    continue;
+                }
+            }
+
+            // close tag
+            depth -= 1;
+            search_start = next_close + close_seq.len();
+        }
+
+        if depth != 0 {
+            i = start_tag_end + 1;
+            continue;
+        }
+
+        let close_idx = search_start - close_seq.len();
+        let inner = xml[start_tag_end + 1..close_idx].trim().to_string();
+        pairs.push((tag, inner));
+        i = search_start;
+    }
+
+    pairs
+}
+
+/// Parse a `<params>...</params>` block (or its inner XML) into per-action parameter maps.
+///
+/// Returns a map keyed by UPPERCASE action name, where each value is a map of parameter name
+/// to JSON string value.
+pub fn parse_action_params(params_xml: &str) -> HashMap<String, HashMap<String, serde_json::Value>> {
+    let mut out: HashMap<String, HashMap<String, serde_json::Value>> = HashMap::new();
+    let trimmed = params_xml.trim();
+    if trimmed.is_empty() {
+        return out;
+    }
+
+    // Accept either "<params>...</params>" or already-inner XML.
+    let inner = if let Some(start) = trimmed.find("<params>") {
+        let content_start = start + "<params>".len();
+        if let Some(end_off) = trimmed[content_start..].find("</params>") {
+            &trimmed[content_start..content_start + end_off]
+        } else {
+            trimmed
+        }
+    } else {
+        trimmed
+    };
+
+    for (action_name, action_body) in extract_xml_children(inner) {
+        let mut param_map: HashMap<String, serde_json::Value> = HashMap::new();
+        for (param_name, param_val) in extract_xml_children(&action_body) {
+            if !param_name.trim().is_empty() {
+                param_map.insert(param_name, serde_json::Value::String(param_val));
+            }
+        }
+        if !param_map.is_empty() {
+            out.insert(action_name.to_uppercase(), param_map);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,6 +239,51 @@ mod tests {
     fn test_parse_empty_returns_none() {
         let xml = "no xml here";
         assert!(parse_key_value_xml(xml).is_none());
+    }
+
+    #[test]
+    fn test_parse_action_params_inner_xml() {
+        let xml = r#"
+          <REPLY>
+            <foo>bar</foo>
+          </REPLY>
+          <SEND_MESSAGE>
+            <roomId>123</roomId>
+            <text>Hello</text>
+          </SEND_MESSAGE>
+        "#;
+        let parsed = parse_action_params(xml);
+        assert_eq!(
+            parsed
+                .get("REPLY")
+                .and_then(|m| m.get("foo"))
+                .and_then(|v| v.as_str()),
+            Some("bar")
+        );
+        assert_eq!(
+            parsed
+                .get("SEND_MESSAGE")
+                .and_then(|m| m.get("text"))
+                .and_then(|v| v.as_str()),
+            Some("Hello")
+        );
+    }
+
+    #[test]
+    fn test_parse_action_params_wrapped() {
+        let xml = r#"
+          <params>
+            <ACTION1><a>1</a></ACTION1>
+          </params>
+        "#;
+        let parsed = parse_action_params(xml);
+        assert_eq!(
+            parsed
+                .get("ACTION1")
+                .and_then(|m| m.get("a"))
+                .and_then(|v| v.as_str()),
+            Some("1")
+        );
     }
 }
 

@@ -183,7 +183,7 @@ class GAIAConfig:
 
     # Model settings - supports multiple providers
     # Format: "model_name" or "provider/model_name"
-    # Examples: "llama-3.1-8b-instant", "groq/llama-3.3-70b-versatile", "openai/gpt-4o"
+    # Examples: "llama-3.1-8b-instant", "groq/llama-3.3-70b-versatile", "openai/gpt-5"
     model_name: str = "llama-3.1-8b-instant"  # Default: Groq's fast Llama
     provider: str | None = None  # Provider override (groq, openai, anthropic, etc.)
     temperature: float = 0.0

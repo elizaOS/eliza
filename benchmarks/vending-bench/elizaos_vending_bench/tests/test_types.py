@@ -227,11 +227,11 @@ class TestVendingBenchConfig:
             num_runs=10,
             max_days_per_run=60,
             initial_cash=Decimal("1000.00"),
-            model_name="gpt-4o",
+            model_name="gpt-5",
         )
         assert config.num_runs == 10
         assert config.max_days_per_run == 60
-        assert config.model_name == "gpt-4o"
+        assert config.model_name == "gpt-5"
 
 
 class TestVendingBenchResult:

@@ -117,3 +117,22 @@ def with_canonical_evaluator_docs(evaluator: Evaluator) -> Evaluator:
 
     return evaluator.model_copy(update=update)
 
+
+def get_canonical_action_example_calls(action_name: str) -> list[dict[str, object]]:
+    """
+    Return canonical action-call examples for an action, if present.
+
+    These are the examples that include explicit `<actions>` and optional `<params>` payloads.
+    """
+    doc = _ACTION_DOCS.get(action_name)
+    if not doc:
+        return []
+    calls = doc.get("exampleCalls")
+    if not isinstance(calls, list):
+        return []
+    out: list[dict[str, object]] = []
+    for item in calls:
+        if isinstance(item, dict):
+            out.append(item)
+    return out
+

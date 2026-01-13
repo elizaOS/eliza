@@ -68,12 +68,14 @@ impl Default for SubmissionPresenceReviewer {
 #[async_trait]
 impl Reviewer for SubmissionPresenceReviewer {
     async fn review(&self, submission: &ReviewSubmission) -> Result<ReviewerResult> {
-        let has_submission = submission.submission.as_ref()
+        let has_submission = submission
+            .submission
+            .as_ref()
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false);
-        
+
         let score = if has_submission { 1.0 } else { 0.0 };
-        
+
         Ok(ReviewerResult {
             score,
             feedback: if has_submission {
@@ -108,14 +110,15 @@ impl Default for PatchPresenceReviewer {
 impl Reviewer for PatchPresenceReviewer {
     async fn review(&self, submission: &ReviewSubmission) -> Result<ReviewerResult> {
         let patch = submission.submission.as_deref().unwrap_or("");
-        let has_diff_content = patch.lines()
+        let has_diff_content = patch
+            .lines()
             .any(|line| line.starts_with('+') || line.starts_with('-'));
-        
+
         let line_count = patch.lines().count();
         let passes = has_diff_content && line_count >= self.min_lines;
-        
+
         let score = if passes { 1.0 } else { 0.0 };
-        
+
         Ok(ReviewerResult {
             score,
             feedback: if passes {
@@ -123,13 +126,19 @@ impl Reviewer for PatchPresenceReviewer {
             } else if !has_diff_content {
                 "Patch contains no diff content (+/- lines)".to_string()
             } else {
-                format!("Patch too short ({} lines, need {})", line_count, self.min_lines)
+                format!(
+                    "Patch too short ({} lines, need {})",
+                    line_count, self.min_lines
+                )
             },
             should_retry: !passes,
             extra: {
                 let mut m = HashMap::new();
                 m.insert("line_count".to_string(), serde_json::json!(line_count));
-                m.insert("has_diff_content".to_string(), serde_json::json!(has_diff_content));
+                m.insert(
+                    "has_diff_content".to_string(),
+                    serde_json::json!(has_diff_content),
+                );
                 m
             },
         })
@@ -159,10 +168,10 @@ impl Chooser for SimpleChooser {
     async fn choose(&self, submissions: &[ReviewSubmission]) -> Result<ChooserOutput> {
         if submissions.is_empty() {
             return Err(SWEAgentError::ConfigurationError(
-                "No submissions to choose from".to_string()
+                "No submissions to choose from".to_string(),
             ));
         }
-        
+
         // Score based on: has submission (0.5) + patch length normalized (0.5)
         let scores: Vec<f64> = submissions
             .iter()
@@ -174,14 +183,14 @@ impl Chooser for SimpleChooser {
                 base_score + len_score
             })
             .collect();
-        
+
         let best_index = scores
             .iter()
             .enumerate()
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
             .map(|(i, _)| i)
             .unwrap_or(0);
-        
+
         Ok(ChooserOutput {
             best_index,
             scores: scores.clone(),
@@ -198,10 +207,10 @@ impl Chooser for SimpleChooser {
 pub trait RetryLoop: Send + Sync {
     /// Called when a submission is made
     fn on_submit(&mut self, submission: ReviewSubmission);
-    
+
     /// Check if should retry
     fn should_retry(&self) -> bool;
-    
+
     /// Get the best submission index
     fn get_best(&self) -> Option<usize>;
 }
@@ -226,16 +235,16 @@ impl RetryLoop for MaxAttemptsRetryLoop {
     fn on_submit(&mut self, submission: ReviewSubmission) {
         self.submissions.push(submission);
     }
-    
+
     fn should_retry(&self) -> bool {
         self.submissions.len() < self.max_attempts
     }
-    
+
     fn get_best(&self) -> Option<usize> {
         if self.submissions.is_empty() {
             return None;
         }
-        
+
         // Return the last submission with a patch, or the last one
         self.submissions
             .iter()
@@ -264,9 +273,12 @@ impl ReviewerRetryLoop {
             score_threshold,
         }
     }
-    
+
     /// Async review and store - must be called separately from on_submit
-    pub async fn review_submission(&mut self, submission: ReviewSubmission) -> Result<ReviewerResult> {
+    pub async fn review_submission(
+        &mut self,
+        submission: ReviewSubmission,
+    ) -> Result<ReviewerResult> {
         let result = self.reviewer.review(&submission).await?;
         self.submissions.push((submission, result.clone()));
         Ok(result)
@@ -277,34 +289,37 @@ impl ReviewerRetryLoop {
 impl RetryLoop for ReviewerRetryLoop {
     fn on_submit(&mut self, submission: ReviewSubmission) {
         // Store with a placeholder review - actual review should use review_submission
-        self.submissions.push((submission, ReviewerResult {
-            score: 0.0,
-            feedback: "Not reviewed".to_string(),
-            should_retry: true,
-            extra: HashMap::new(),
-        }));
+        self.submissions.push((
+            submission,
+            ReviewerResult {
+                score: 0.0,
+                feedback: "Not reviewed".to_string(),
+                should_retry: true,
+                extra: HashMap::new(),
+            },
+        ));
     }
-    
+
     fn should_retry(&self) -> bool {
         if self.submissions.is_empty() {
             return true;
         }
-        
+
         // Stop if we've hit max attempts
         if self.submissions.len() >= self.max_attempts {
             return false;
         }
-        
+
         // Stop if last submission passed threshold
         if let Some((_, result)) = self.submissions.last() {
             if result.score >= self.score_threshold {
                 return false;
             }
         }
-        
+
         true
     }
-    
+
     fn get_best(&self) -> Option<usize> {
         self.submissions
             .iter()
@@ -314,16 +329,23 @@ impl RetryLoop for ReviewerRetryLoop {
     }
 }
 
+fn default_threshold() -> f64 {
+    0.5
+}
+
+fn default_min_lines() -> usize {
+    1
+}
+
 /// Configuration for retry loops
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RetryLoopConfig {
     /// No retry - run once
+    #[default]
     None,
     /// Retry up to max_attempts times
-    MaxAttempts {
-        max_attempts: usize,
-    },
+    MaxAttempts { max_attempts: usize },
     /// Retry based on submission presence
     SubmissionPresence {
         max_attempts: usize,
@@ -338,20 +360,6 @@ pub enum RetryLoopConfig {
     },
 }
 
-fn default_threshold() -> f64 {
-    0.5
-}
-
-fn default_min_lines() -> usize {
-    1
-}
-
-impl Default for RetryLoopConfig {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
 /// Create a retry loop from configuration
 pub fn get_retry_loop_from_config(config: &RetryLoopConfig) -> Box<dyn RetryLoop> {
     match config {
@@ -359,20 +367,22 @@ pub fn get_retry_loop_from_config(config: &RetryLoopConfig) -> Box<dyn RetryLoop
         RetryLoopConfig::MaxAttempts { max_attempts } => {
             Box::new(MaxAttemptsRetryLoop::new(*max_attempts))
         }
-        RetryLoopConfig::SubmissionPresence { max_attempts, threshold } => {
-            Box::new(ReviewerRetryLoop::new(
-                *max_attempts,
-                Box::new(SubmissionPresenceReviewer::new(*threshold)),
-                *threshold,
-            ))
-        }
-        RetryLoopConfig::PatchPresence { max_attempts, min_lines } => {
-            Box::new(ReviewerRetryLoop::new(
-                *max_attempts,
-                Box::new(PatchPresenceReviewer::new(*min_lines)),
-                0.5,
-            ))
-        }
+        RetryLoopConfig::SubmissionPresence {
+            max_attempts,
+            threshold,
+        } => Box::new(ReviewerRetryLoop::new(
+            *max_attempts,
+            Box::new(SubmissionPresenceReviewer::new(*threshold)),
+            *threshold,
+        )),
+        RetryLoopConfig::PatchPresence {
+            max_attempts,
+            min_lines,
+        } => Box::new(ReviewerRetryLoop::new(
+            *max_attempts,
+            Box::new(PatchPresenceReviewer::new(*min_lines)),
+            0.5,
+        )),
     }
 }
 
@@ -388,7 +398,7 @@ mod tests {
             info: AgentInfo::default(),
             submission: Some("test patch".to_string()),
         };
-        
+
         let result = reviewer.review(&submission).await.unwrap();
         assert_eq!(result.score, 1.0);
         assert!(!result.should_retry);
@@ -397,7 +407,7 @@ mod tests {
     #[tokio::test]
     async fn test_submission_presence_reviewer() {
         let reviewer = SubmissionPresenceReviewer::new(0.5);
-        
+
         // With submission
         let with_sub = ReviewSubmission {
             trajectory: vec![],
@@ -407,7 +417,7 @@ mod tests {
         let result = reviewer.review(&with_sub).await.unwrap();
         assert_eq!(result.score, 1.0);
         assert!(!result.should_retry);
-        
+
         // Without submission
         let no_sub = ReviewSubmission {
             trajectory: vec![],
@@ -422,7 +432,7 @@ mod tests {
     #[tokio::test]
     async fn test_patch_presence_reviewer() {
         let reviewer = PatchPresenceReviewer::new(2);
-        
+
         // Valid patch
         let valid = ReviewSubmission {
             trajectory: vec![],
@@ -431,7 +441,7 @@ mod tests {
         };
         let result = reviewer.review(&valid).await.unwrap();
         assert_eq!(result.score, 1.0);
-        
+
         // Invalid patch (no diff content)
         let invalid = ReviewSubmission {
             trajectory: vec![],
@@ -457,7 +467,7 @@ mod tests {
                 submission: Some("a longer patch content here".to_string()),
             },
         ];
-        
+
         let result = chooser.choose(&submissions).await.unwrap();
         assert_eq!(result.best_index, 1);
     }
@@ -465,30 +475,30 @@ mod tests {
     #[test]
     fn test_max_attempts_retry_loop() {
         let mut loop_runner = MaxAttemptsRetryLoop::new(3);
-        
+
         assert!(loop_runner.should_retry());
-        
+
         loop_runner.on_submit(ReviewSubmission {
             trajectory: vec![],
             info: AgentInfo::default(),
             submission: None,
         });
         assert!(loop_runner.should_retry());
-        
+
         loop_runner.on_submit(ReviewSubmission {
             trajectory: vec![],
             info: AgentInfo::default(),
             submission: Some("patch".to_string()),
         });
         assert!(loop_runner.should_retry());
-        
+
         loop_runner.on_submit(ReviewSubmission {
             trajectory: vec![],
             info: AgentInfo::default(),
             submission: None,
         });
         assert!(!loop_runner.should_retry());
-        
+
         // Best should be index 1 (the one with submission)
         assert_eq!(loop_runner.get_best(), Some(1));
     }

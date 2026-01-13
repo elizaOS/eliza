@@ -43,12 +43,12 @@ class TestARTRuntimeConfig:
         config = ARTRuntimeConfig(
             agent_id="custom-agent",
             agent_name="Custom Agent",
-            model_name="gpt-4o-mini",
+            model_name="gpt-5-mini",
             disable_basic_capabilities=False,  # Explicitly keep basic capabilities
         )
 
         assert config.agent_id == "custom-agent"
-        assert config.model_name == "gpt-4o-mini"
+        assert config.model_name == "gpt-5-mini"
         assert config.disable_basic_capabilities is False
 
 
@@ -319,11 +319,11 @@ class TestRulerScorer:
         from elizaos_art.trainer import RulerScorer
 
         scorer = RulerScorer(
-            judge_model="gpt-4o-mini",
+            judge_model="gpt-5-mini",
             temperature=0.0,
         )
 
-        assert scorer.judge_model == "gpt-4o-mini"
+        assert scorer.judge_model == "gpt-5-mini"
         assert scorer.temperature == 0.0
 
 

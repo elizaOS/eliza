@@ -119,7 +119,7 @@ class ElizaTerminalAgent:
         self,
         environment: TerminalEnvironment | None = None,
         max_iterations: int = 20,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "gpt-5-mini",
         temperature: float = 0.0,
         verbose: bool = False,
     ) -> None:

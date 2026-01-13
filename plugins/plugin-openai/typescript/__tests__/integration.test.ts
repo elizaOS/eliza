@@ -89,7 +89,7 @@ describe("OpenAI Plugin Integration Tests", () => {
       // Mock runtime with minimal config
       const mockRuntime = {
         getSetting: (key: string) => {
-          if (key === "OPENAI_SMALL_MODEL") return "gpt-4o-mini";
+          if (key === "OPENAI_SMALL_MODEL") return "gpt-5-mini";
           return undefined;
         },
         character: {},
@@ -109,7 +109,7 @@ describe("OpenAI Plugin Integration Tests", () => {
 
       const mockRuntime = {
         getSetting: (key: string) => {
-          if (key === "OPENAI_SMALL_MODEL") return "gpt-4o-mini";
+          if (key === "OPENAI_SMALL_MODEL") return "gpt-5-mini";
           return undefined;
         },
         character: {},

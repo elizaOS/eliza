@@ -49,7 +49,7 @@
     "@types/node": "^25.0.3"
   },
   "scripts": {
-    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./typescript/prompts ./typescript/generated/prompts --target all",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
     "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
     "build:ts": "cd typescript && bun run build.ts",
     "build:python": "test -d python && cd python && (python3 -m build 2>/dev/null || pyproject-build) || echo 'Python build skipped - no python directory'",

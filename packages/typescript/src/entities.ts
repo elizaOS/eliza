@@ -9,7 +9,7 @@ import {
   type UUID,
   type World,
 } from "./types";
-import { composePrompt, parseKeyValueXml, stringToUuid } from "./utils";
+import * as utils from "./utils.ts";
 
 interface EntityMatch {
   name?: string;
@@ -190,7 +190,7 @@ export async function findEntityByName(
     relationships,
   );
 
-  const prompt = composePrompt({
+  const prompt = utils.composePrompt({
     state: {
       roomName: (room.name || room.id) as string,
       worldName: (world?.name || "Unknown") as string,
@@ -206,7 +206,7 @@ export async function findEntityByName(
     stopSequences: [],
   });
 
-  const resolution = parseKeyValueXml(result);
+  const resolution = utils.parseKeyValueXml(result);
   if (!resolution) {
     logger.warn(
       { src: "core:entities" },
@@ -288,7 +288,7 @@ export const createUniqueUuid = (
   }
 
   const combinedString = `${baseUserId}:${runtime.agentId}`;
-  return stringToUuid(combinedString);
+  return utils.stringToUuid(combinedString);
 };
 
 export async function getEntityDetails({

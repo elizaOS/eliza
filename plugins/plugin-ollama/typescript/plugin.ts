@@ -7,23 +7,35 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 
-(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
+const _globalThis = globalThis as typeof globalThis & { AI_SDK_LOG_WARNINGS?: boolean };
+_globalThis.AI_SDK_LOG_WARNINGS ??= false;
 
 import { handleTextEmbedding } from "./models/embedding";
 import { handleObjectLarge, handleObjectSmall } from "./models/object";
 import { handleTextLarge, handleTextSmall } from "./models/text";
 import { getApiBase, getBaseURL } from "./utils/config";
 
+type ProcessEnvLike = Record<string, string | undefined>;
+
+function getProcessEnv(): ProcessEnvLike {
+  if (typeof process === "undefined" || !process.env) {
+    return {};
+  }
+  return process.env as ProcessEnvLike;
+}
+
+const env = getProcessEnv();
+
 export const ollamaPlugin: Plugin = {
   name: "ollama",
   description: "Ollama plugin for local LLM inference",
 
   config: {
-    OLLAMA_API_ENDPOINT: process.env.OLLAMA_API_ENDPOINT ?? null,
-    OLLAMA_SMALL_MODEL: process.env.OLLAMA_SMALL_MODEL ?? null,
-    OLLAMA_MEDIUM_MODEL: process.env.OLLAMA_MEDIUM_MODEL ?? null,
-    OLLAMA_LARGE_MODEL: process.env.OLLAMA_LARGE_MODEL ?? null,
-    OLLAMA_EMBEDDING_MODEL: process.env.OLLAMA_EMBEDDING_MODEL ?? null,
+    OLLAMA_API_ENDPOINT: env.OLLAMA_API_ENDPOINT ?? null,
+    OLLAMA_SMALL_MODEL: env.OLLAMA_SMALL_MODEL ?? null,
+    OLLAMA_MEDIUM_MODEL: env.OLLAMA_MEDIUM_MODEL ?? null,
+    OLLAMA_LARGE_MODEL: env.OLLAMA_LARGE_MODEL ?? null,
+    OLLAMA_EMBEDDING_MODEL: env.OLLAMA_EMBEDDING_MODEL ?? null,
   },
 
   async init(_config, runtime) {

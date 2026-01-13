@@ -1,0 +1,22 @@
+{
+  "name": "@elizaos/example-browser-extension-chrome",
+  "version": "1.0.0",
+  "description": "Chat with any webpage using AI - Chrome Extension powered by ElizaOS",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bunx tsup",
+    "dev": "bunx tsup --watch",
+    "clean": "rm -rf dist",
+    "package": "bun run build && cd .. && zip -r chrome/chrome-extension.zip chrome -x 'chrome/node_modules/*' -x 'chrome/src/*' -x 'chrome/*.ts' -x 'chrome/tsconfig.json' -x 'chrome/tsup.config.ts'"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.33",
+    "@types/uuid": "^11.0.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

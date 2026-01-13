@@ -6,9 +6,8 @@ use std::path::Path;
 
 /// Load a file's contents as a string
 pub fn load_file(path: &Path) -> Result<String> {
-    fs::read_to_string(path).map_err(|e| {
-        SWEAgentError::FileNotFound(format!("{}: {}", path.display(), e))
-    })
+    fs::read_to_string(path)
+        .map_err(|e| SWEAgentError::FileNotFound(format!("{}: {}", path.display(), e)))
 }
 
 /// Write contents to a file
@@ -45,7 +44,11 @@ pub fn get_extension(path: &Path) -> Option<String> {
 pub fn load_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
     let contents = load_file(path)?;
     serde_json::from_str(&contents).map_err(|e| {
-        SWEAgentError::SerializationError(format!("Failed to parse JSON from {}: {}", path.display(), e))
+        SWEAgentError::SerializationError(format!(
+            "Failed to parse JSON from {}: {}",
+            path.display(),
+            e
+        ))
     })
 }
 
@@ -53,7 +56,11 @@ pub fn load_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
 pub fn load_yaml<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
     let contents = load_file(path)?;
     serde_yaml::from_str(&contents).map_err(|e| {
-        SWEAgentError::SerializationError(format!("Failed to parse YAML from {}: {}", path.display(), e))
+        SWEAgentError::SerializationError(format!(
+            "Failed to parse YAML from {}: {}",
+            path.display(),
+            e
+        ))
     })
 }
 
@@ -73,7 +80,7 @@ pub fn save_yaml<T: serde::Serialize>(path: &Path, data: &T) -> Result<()> {
 pub fn find_files(base_dir: &Path, pattern: &str) -> Result<Vec<std::path::PathBuf>> {
     let full_pattern = base_dir.join(pattern);
     let pattern_str = full_pattern.to_string_lossy();
-    
+
     glob::glob(&pattern_str)
         .map_err(|e| SWEAgentError::IoError(format!("Invalid glob pattern: {}", e)))?
         .filter_map(|entry| entry.ok())
@@ -98,10 +105,10 @@ mod tests {
     fn test_write_and_load_file() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("test.txt");
-        
+
         write_file(&path, "hello world").unwrap();
         let contents = load_file(&path).unwrap();
-        
+
         assert_eq!(contents, "hello world");
     }
 
@@ -109,7 +116,7 @@ mod tests {
     fn test_file_exists() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("test.txt");
-        
+
         assert!(!file_exists(&path));
         write_file(&path, "test").unwrap();
         assert!(file_exists(&path));
@@ -117,8 +124,14 @@ mod tests {
 
     #[test]
     fn test_get_extension() {
-        assert_eq!(get_extension(Path::new("file.txt")), Some("txt".to_string()));
-        assert_eq!(get_extension(Path::new("file.tar.gz")), Some("gz".to_string()));
+        assert_eq!(
+            get_extension(Path::new("file.txt")),
+            Some("txt".to_string())
+        );
+        assert_eq!(
+            get_extension(Path::new("file.tar.gz")),
+            Some("gz".to_string())
+        );
         assert_eq!(get_extension(Path::new("file")), None);
     }
 }

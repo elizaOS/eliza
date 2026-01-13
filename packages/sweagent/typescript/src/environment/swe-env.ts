@@ -3,20 +3,35 @@
  * Converted from sweagent/environment/swe_env.py
  */
 
-import { z } from 'zod';
-import { getLogger } from '../utils/log';
-import { Repo, RepoConfig, RepoConfigSchema, PreExistingRepo, LocalRepo, GithubRepo } from './repo';
-import { AbstractDeployment, DockerDeployment, DeploymentConfig } from './deployment';
-import { EnvHook, CombinedEnvHooks } from './hooks/abstract';
+import { z } from "zod";
+import type { AgentEnvironment } from "../agent/agents";
+import { getLogger } from "../utils/log";
 import {
+  type AbstractDeployment,
+  type DeploymentConfig,
+  DockerDeployment,
+} from "./deployment";
+import {
+  CombinedEnvHooks,
+  type EnvHook,
+  type EnvironmentInstance,
+} from "./hooks/abstract";
+import {
+  GithubRepo,
+  LocalRepo,
+  PreExistingRepo,
+  type Repo,
+  type RepoConfig,
+  RepoConfigSchema,
+} from "./repo";
+import type {
   BashAction,
   BashInterruptAction,
+  Command,
   CreateBashSessionRequest,
   ReadFileRequest,
   WriteFileRequest,
-  Command,
-} from './runtime';
-import { AgentEnvironment } from '../agent/agents';
+} from "./runtime";
 
 /**
  * Environment configuration
@@ -24,11 +39,13 @@ import { AgentEnvironment } from '../agent/agents';
 export const EnvironmentConfigSchema = z.object({
   deployment: z
     .custom<DeploymentConfig>()
-    .default(() => ({ type: 'docker', image: 'python:3.11' }) as DeploymentConfig),
+    .default(
+      () => ({ type: "docker", image: "python:3.11" }) as DeploymentConfig,
+    ),
   repo: RepoConfigSchema.nullable().optional(),
   postStartupCommands: z.array(z.string()).default([]),
   postStartupCommandTimeout: z.number().default(500),
-  name: z.string().default('main'),
+  name: z.string().default("main"),
 });
 
 export type EnvironmentConfig = z.infer<typeof EnvironmentConfigSchema>;
@@ -44,8 +61,7 @@ export class SWEEnv implements AgentEnvironment {
   private _chook: CombinedEnvHooks; // Private with underscore to match Python
   public name: string; // Made public to match Python
   public cleanMultiLineFunctions: (x: string) => string = (x) => x;
-  public logger = getLogger('swe-env'); // Added logger property to match Python
-  // @ts-ignore - used in start() and reset() methods
+  public logger = getLogger("swe-env"); // Added logger property to match Python
   private _started: boolean = false; // Track if environment has been started
 
   constructor(config: {
@@ -60,7 +76,7 @@ export class SWEEnv implements AgentEnvironment {
     this.repo = this.resolveRepo(config.repo);
     this._postStartupCommands = config.postStartupCommands;
     this.postStartupCommandTimeout = config.postStartupCommandTimeout || 500;
-    this.name = config.name || 'main';
+    this.name = config.name || "main";
 
     this._chook = new CombinedEnvHooks();
     if (config.hooks) {
@@ -76,18 +92,18 @@ export class SWEEnv implements AgentEnvironment {
     }
 
     // If it's already a Repo instance, return it
-    if ('copy' in repo && typeof repo.copy === 'function') {
+    if ("copy" in repo && typeof repo.copy === "function") {
       return repo as Repo;
     }
 
     // Otherwise, create a Repo from config
     const config = repo as RepoConfig;
     switch (config.type) {
-      case 'preexisting':
+      case "preexisting":
         return new PreExistingRepo(config);
-      case 'local':
+      case "local":
         return new LocalRepo(config);
-      case 'github':
+      case "github":
         return new GithubRepo(config);
       default:
         throw new Error(`Unknown repo type: ${(config as RepoConfig).type}`);
@@ -109,12 +125,12 @@ export class SWEEnv implements AgentEnvironment {
 
   addHook(hook: EnvHook): void {
     // Create a compatible EnvironmentInstance object
-    const envInstance = {
+    const envInstance: EnvironmentInstance = {
       deployment: this.deployment,
       repo: this.repo,
       name: this.name,
       postStartupCommandTimeout: this.postStartupCommandTimeout,
-    } as any;
+    };
     hook.onInit(envInstance);
     this._chook.addHook(hook);
   }
@@ -127,7 +143,7 @@ export class SWEEnv implements AgentEnvironment {
       return; // Already started
     }
 
-    this.logger.info('Starting environment');
+    this.logger.info("Starting environment");
 
     // Initialize deployment first (matches Python _init_deployment)
     await this.initDeployment();
@@ -138,7 +154,7 @@ export class SWEEnv implements AgentEnvironment {
     // Run post-startup commands
     for (const command of this._postStartupCommands) {
       await this.communicate(command, this.postStartupCommandTimeout, {
-        check: 'raise',
+        check: "raise",
       });
     }
 
@@ -151,7 +167,9 @@ export class SWEEnv implements AgentEnvironment {
     }
 
     // Check if repo already exists in container
-    const folders = (await this.communicate('ls', 25, { check: 'raise' })).split('\n');
+    const folders = (
+      await this.communicate("ls", 25, { check: "raise" })
+    ).split("\n");
     if (folders.includes(this.repo.repoName)) {
       return;
     }
@@ -167,16 +185,22 @@ export class SWEEnv implements AgentEnvironment {
       return;
     }
 
-    this.logger.debug(`Resetting repository ${this.repo.repoName} to commit ${this.repo.baseCommit}`);
+    this.logger.debug(
+      `Resetting repository ${this.repo.repoName} to commit ${this.repo.baseCommit}`,
+    );
 
-    const startupCommands = [`cd /${this.repo.repoName}`, 'export ROOT=$(pwd -P)', ...this.repo.getResetCommands()];
+    const startupCommands = [
+      `cd /${this.repo.repoName}`,
+      "export ROOT=$(pwd -P)",
+      ...this.repo.getResetCommands(),
+    ];
 
     await this.communicate(
-      startupCommands.join(' && '),
+      startupCommands.join(" && "),
       120, // Sometimes slow due to index rebuilding
       {
-        check: 'raise',
-        errorMsg: 'Failed to clean repository',
+        check: "raise",
+        errorMsg: "Failed to clean repository",
       },
     );
   }
@@ -188,19 +212,19 @@ export class SWEEnv implements AgentEnvironment {
 
     // Create bash session with startup source
     await this.deployment.runtime.createSession({
-      startupSource: ['/root/.bashrc'],
+      startupSource: ["/root/.bashrc"],
       startupTimeout: 10,
     } as CreateBashSessionRequest);
 
     // Set default environment variables (matching Python)
     await this.setEnvVariables({
-      LANG: 'C.UTF-8',
-      LC_ALL: 'C.UTF-8',
-      PIP_PROGRESS_BAR: 'off',
-      PAGER: 'cat',
+      LANG: "C.UTF-8",
+      LC_ALL: "C.UTF-8",
+      PIP_PROGRESS_BAR: "off",
+      PAGER: "cat",
     });
 
-    this.logger.info('Environment Initialized');
+    this.logger.info("Environment Initialized");
   }
 
   /**
@@ -210,16 +234,17 @@ export class SWEEnv implements AgentEnvironment {
     input: string,
     timeout: number = 25,
     options: {
-      check?: 'warn' | 'ignore' | 'raise';
+      check?: "warn" | "ignore" | "raise";
       errorMsg?: string;
     } = {},
   ): Promise<string> {
-    const { check = 'ignore', errorMsg = 'Command failed' } = options;
+    const { check = "ignore", errorMsg = "Command failed" } = options;
 
     this.logger.debug(`Input:\n${input}`);
 
     // Convert check parameter to match BashAction interface
-    const rexCheck = check === 'raise' || check === 'warn' ? 'silent' : 'ignore';
+    const rexCheck =
+      check === "raise" || check === "warn" ? "silent" : "ignore";
     const result = await this.deployment.runtime.runInSession({
       command: input,
       timeout: timeout,
@@ -229,12 +254,12 @@ export class SWEEnv implements AgentEnvironment {
     const output = result.output;
     this.logger.debug(`Output:\n${output}`);
 
-    if (check !== 'ignore' && result.exitCode !== 0) {
+    if (check !== "ignore" && result.exitCode !== 0) {
       this.logger.error(`${errorMsg}:\n${output}`);
       const msg = `Command '${input}' failed (exit_code=${result.exitCode}): ${errorMsg}`;
       this.logger.error(msg);
 
-      if (check === 'raise') {
+      if (check === "raise") {
         await this.close();
         throw new Error(msg);
       }
@@ -246,7 +271,11 @@ export class SWEEnv implements AgentEnvironment {
   /**
    * Read a file from the environment
    */
-  async readFile(filePath: string, encoding?: string, errors?: string): Promise<string> {
+  async readFile(
+    filePath: string,
+    encoding?: string,
+    errors?: string,
+  ): Promise<string> {
     const response = await this.deployment.runtime.readFile({
       path: filePath,
       encoding: encoding,
@@ -302,9 +331,9 @@ export class SWEEnv implements AgentEnvironment {
    * Interrupt the current session
    */
   async interruptSession(): Promise<void> {
-    this.logger.info('Interrupting session');
+    this.logger.info("Interrupting session");
     await this.deployment.runtime.runInSession({
-      type: 'interrupt',
+      type: "interrupt",
     } as BashInterruptAction);
   }
 
@@ -313,7 +342,7 @@ export class SWEEnv implements AgentEnvironment {
    */
   getCwd(): string {
     // This would need actual implementation to track current directory
-    return '/';
+    return "/";
   }
 
   isAlive(): boolean {
@@ -335,7 +364,7 @@ export class SWEEnv implements AgentEnvironment {
 
   getGitStatus?(): string {
     // Optional method - return empty string for now
-    return '';
+    return "";
   }
 
   /**
@@ -344,7 +373,7 @@ export class SWEEnv implements AgentEnvironment {
    */
   async reset(): Promise<void> {
     // Change to root directory
-    await this.communicate('cd /', 25, { check: 'raise' });
+    await this.communicate("cd /", 25, { check: "raise" });
 
     // Copy repository if needed
     await this.copyRepo();
@@ -360,7 +389,7 @@ export class SWEEnv implements AgentEnvironment {
    * Hard reset - completely restart the environment and deployment
    */
   async hardReset(): Promise<void> {
-    this.logger.info('Hard resetting environment');
+    this.logger.info("Hard resetting environment");
 
     await this.close();
     await this.start();
@@ -370,7 +399,7 @@ export class SWEEnv implements AgentEnvironment {
    * Close the environment
    */
   async close(): Promise<void> {
-    this.logger.info('Beginning environment shutdown...');
+    this.logger.info("Beginning environment shutdown...");
 
     await this.deployment.stop();
     this._chook.onClose();

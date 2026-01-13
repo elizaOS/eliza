@@ -3,9 +3,9 @@
  * Converted from sweagent/utils/files.py
  */
 
-import fs from 'fs';
-import path from 'path';
-import yaml from 'js-yaml';
+import fs from "node:fs";
+import path from "node:path";
+import yaml from "js-yaml";
 
 /**
  * Load a file (JSON or YAML)
@@ -16,11 +16,11 @@ export function loadFile(filepath: string | null): unknown {
   }
 
   const ext = path.extname(filepath).toLowerCase();
-  const content = fs.readFileSync(filepath, 'utf-8');
+  const content = fs.readFileSync(filepath, "utf-8");
 
-  if (ext === '.json') {
+  if (ext === ".json") {
     return JSON.parse(content);
-  } else if (ext === '.yaml' || ext === '.yml') {
+  } else if (ext === ".yaml" || ext === ".yml") {
     return yaml.load(content);
   } else {
     // Try to parse as JSON first, then YAML

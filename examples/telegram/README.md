@@ -40,7 +40,7 @@ const character = {
   name: "TelegramEliza",
   bio: "A helpful AI assistant.",
   system: "Be friendly and concise...",
-  settings: { model: "gpt-4o-mini" },
+  settings: { model: "gpt-5-mini" },
   secrets: { TELEGRAM_BOT_TOKEN: "...", OPENAI_API_KEY: "..." },
 };
 ```

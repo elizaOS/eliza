@@ -2,19 +2,24 @@
  * Model tests converted from test_models.py
  */
 
-import { describe, it, expect } from '@jest/globals';
-import { GenericAPIModelConfig, getModel, InstanceStats, GlobalStats } from '../src/agent/models';
-import { ToolConfig } from '../src/agent/agents';
+import { describe, expect, it } from "@jest/globals";
+import type { ToolConfig } from "../src/agent/agents";
+import {
+  type GenericAPIModelConfig,
+  GlobalStats,
+  getModel,
+  InstanceStats,
+} from "../src/agent/models";
 
-describe('Models', () => {
-  describe('LiteLLM Mock', () => {
-    it('should handle mock responses', async () => {
+describe("Models", () => {
+  describe("LiteLLM Mock", () => {
+    it("should handle mock responses", async () => {
       const config: GenericAPIModelConfig = {
-        name: 'gpt-4o',
+        name: "gpt-4o",
         completionKwargs: {
-          mockResponse: 'Hello, world!',
+          mockResponse: "Hello, world!",
         },
-        apiKey: 'dummy_key',
+        apiKey: "dummy_key",
         topP: null,
         perInstanceCostLimit: 3.0,
         totalCostLimit: 0.0,
@@ -35,11 +40,11 @@ describe('Models', () => {
       const tools: ToolConfig = {
         commands: [],
         useFunctionCalling: false,
-        submitCommand: 'submit',
+        submitCommand: "submit",
         executionTimeout: 60,
         maxConsecutiveExecutionTimeouts: 3,
         totalExecutionTimeout: 300,
-        formatErrorTemplate: 'Error: {error}',
+        formatErrorTemplate: "Error: {error}",
       };
 
       const model = getModel(config, tools);
@@ -47,16 +52,16 @@ describe('Models', () => {
       // Note: This test would need mocking to actually work
       // For now, we're just testing that the model can be created
       expect(model).toBeDefined();
-      expect(config.name).toBe('gpt-4o');
+      expect(config.name).toBe("gpt-4o");
     });
   });
 
-  describe('Model configuration', () => {
-    it('should create model with custom configuration', () => {
+  describe("Model configuration", () => {
+    it("should create model with custom configuration", () => {
       const config: GenericAPIModelConfig = {
-        name: 'custom-model',
-        apiBase: 'https://api.custom.com',
-        apiKey: 'test-key',
+        name: "custom-model",
+        apiBase: "https://api.custom.com",
+        apiKey: "test-key",
         temperature: 0.7,
         topP: 0.9,
         maxOutputTokens: 2000,
@@ -76,27 +81,27 @@ describe('Models', () => {
         chooseApiKeyByThread: true,
       };
 
-      expect(config.name).toBe('custom-model');
-      expect(config.apiBase).toBe('https://api.custom.com');
+      expect(config.name).toBe("custom-model");
+      expect(config.apiBase).toBe("https://api.custom.com");
       expect(config.temperature).toBe(0.7);
       expect(config.topP).toBe(0.9);
       expect(config.maxOutputTokens).toBe(2000);
       expect(config.retry.retries).toBe(5);
     });
 
-    it('should handle human model configuration', () => {
+    it("should handle human model configuration", () => {
       const humanConfig = {
-        type: 'human',
-        name: 'human',
+        type: "human",
+        name: "human",
       };
 
-      expect(humanConfig.type).toBe('human');
-      expect(humanConfig.name).toBe('human');
+      expect(humanConfig.type).toBe("human");
+      expect(humanConfig.name).toBe("human");
     });
   });
 
-  describe('Model stats tracking', () => {
-    it('should track API usage stats', () => {
+  describe("Model stats tracking", () => {
+    it("should track API usage stats", () => {
       const stats = new InstanceStats();
       stats.tokensSent = 100;
       stats.tokensReceived = 50;
@@ -109,7 +114,7 @@ describe('Models', () => {
       expect(stats.instanceCost).toBe(0.005);
     });
 
-    it('should track instance stats addition', () => {
+    it("should track instance stats addition", () => {
       const stats1 = new InstanceStats();
       stats1.tokensSent = 100;
       stats1.tokensReceived = 50;
@@ -129,7 +134,7 @@ describe('Models', () => {
       expect(combined.instanceCost).toBeCloseTo(0.015);
     });
 
-    it('should track global stats', () => {
+    it("should track global stats", () => {
       const globalStats = new GlobalStats();
       globalStats.addCost(0.005);
       globalStats.addCost(0.01);
@@ -138,11 +143,11 @@ describe('Models', () => {
     });
   });
 
-  describe('Model retry logic', () => {
-    it('should handle retry configuration', () => {
+  describe("Model retry logic", () => {
+    it("should handle retry configuration", () => {
       const config: GenericAPIModelConfig = {
-        name: 'test-model',
-        apiKey: 'test-key',
+        name: "test-model",
+        apiKey: "test-key",
         perInstanceCostLimit: 3.0,
         totalCostLimit: 0.0,
         perInstanceCallLimit: 0,
@@ -163,7 +168,7 @@ describe('Models', () => {
 
       expect(config.retry.retries).toBe(3);
       expect(config.delay).toBe(0.5);
-      expect(config.name).toBe('test-model');
+      expect(config.name).toBe("test-model");
     });
   });
 });

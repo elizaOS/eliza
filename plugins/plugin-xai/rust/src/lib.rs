@@ -50,6 +50,7 @@ pub use crate::client::TwitterClient;
 pub use crate::grok::{EmbeddingParams, GrokClient, GrokConfig, TextGenerationParams};
 pub use crate::models::{TextEmbeddingHandler, TextLargeHandler, TextSmallHandler};
 pub use crate::types::TwitterConfig;
+pub use crate::services::{XService, XServiceSettings};
 
 /// Build a Twitter/X API client from environment configuration.
 ///
@@ -190,4 +191,15 @@ pub fn create_xai_elizaos_plugin() -> AnyhowResult<elizaos::types::Plugin> {
         model_handlers,
         ..Default::default()
     })
+}
+
+/// Start the X background service and register it with the runtime.
+///
+/// This reads `X_*` environment variables to configure polling and dry-run behavior.
+pub async fn start_x_service(runtime: Arc<elizaos::AgentRuntime>) -> AnyhowResult<Arc<XService>> {
+    let settings = XServiceSettings::from_env()?;
+    let service = XService::start(Arc::clone(&runtime), settings).await?;
+    let service_dyn: Arc<dyn elizaos::runtime::Service> = service.clone();
+    runtime.register_service(XService::SERVICE_TYPE, service_dyn).await;
+    Ok(service)
 }

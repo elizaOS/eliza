@@ -80,11 +80,16 @@ bun run examples/game-of-life/typescript/game.ts --fast --stats
 │  └── game-of-life-plugin (agent decision handlers)      │
 ├─────────────────────────────────────────────────────────┤
 │  For each agent, each tick:                             │
-│  runtime.useModel(TEXT_SMALL, { prompt: agentId })      │
+│  runtime.messageService.handleMessage(runtime, message)  │
 │           ↓                                             │
-│  agentModelHandler() ← NOT an LLM!                      │
+│  DefaultMessageService (full pipeline)                  │
+│   - store memory                                        │
+│   - compose state                                       │
+│   - runtime.useModel(TEXT_LARGE, { prompt })            │
 │           ↓                                             │
-│  perceive(agent, world) → decideAction() → move/reproduce │
+│  decisionModelHandler() ← NOT an LLM (rule-based XML)    │
+│           ↓                                             │
+│  runtime.processActions() → action handlers mutate world │
 └─────────────────────────────────────────────────────────┘
 ```
 

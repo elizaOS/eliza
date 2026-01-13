@@ -18,14 +18,14 @@ def test_eliza_cloud_config_defaults() -> None:
 
     assert config.api_key == "test_key"
     assert config.base_url == "https://www.elizacloud.ai/api/v1"
-    assert config.small_model == "gpt-4o-mini"
-    assert config.large_model == "gpt-4o"
+    assert config.small_model == "gpt-5-mini"
+    assert config.large_model == "gpt-5"
     assert config.embedding_model == "text-embedding-3-small"
     assert config.embedding_dimensions == 1536
     assert config.embedding_api_key is None
     assert config.embedding_url is None
     assert config.image_generation_model == "dall-e-3"
-    assert config.transcription_model == "gpt-4o-mini-transcribe"
+    assert config.transcription_model == "gpt-5-mini-transcribe"
 
 
 def test_text_generation_params_defaults() -> None:

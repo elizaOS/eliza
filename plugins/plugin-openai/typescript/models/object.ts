@@ -1,12 +1,13 @@
 import type { IAgentRuntime, ModelTypeName, ObjectGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { generateObject } from "ai";
+import { generateObject, type LanguageModel } from "ai";
 import { createOpenAIClient } from "../providers";
 import { getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { getJsonRepairFunction } from "../utils/json";
 
 type ModelNameGetter = (runtime: IAgentRuntime) => string;
+type ChatModelFactory = { chat: (modelName: string) => LanguageModel };
 
 async function generateObjectByModelType(
   runtime: IAgentRuntime,
@@ -14,7 +15,7 @@ async function generateObjectByModelType(
   modelType: ModelTypeName,
   getModelFn: ModelNameGetter
 ): Promise<Record<string, unknown>> {
-  const openai = createOpenAIClient(runtime);
+  const openai = createOpenAIClient(runtime) as ChatModelFactory;
   const modelName = getModelFn(runtime);
 
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);

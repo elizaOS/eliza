@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 
 import pytest
@@ -70,14 +69,55 @@ def test_is_from_github_url():
     assert _is_github_issue_url("https://github.com/SWE-agent/SWE-agent/issues/43")
 
 
-def test_get_associated_commit_urls():
+def test_get_associated_commit_urls(monkeypatch: pytest.MonkeyPatch):
+    class FakeEvent:
+        def __init__(self, event: str, commit_id: str | None):
+            self.event = event
+            self.commit_id = commit_id
+
+    class FakeCommit:
+        def __init__(self, message: str, html_url: str):
+            self.commit = type("CommitObj", (), {"message": message})()
+            self.html_url = html_url
+
+    class FakeIssues:
+        def list_events(self, _org: str, _repo: str, _issue_number: str):
+            return [
+                FakeEvent("referenced", "abc123"),
+                FakeEvent("commented", "zzz999"),
+                FakeEvent("referenced", None),
+            ]
+
+    class FakeRepos:
+        def get_commit(self, _org: str, _repo: str, commit_id: str):
+            if commit_id == "abc123":
+                return FakeCommit(
+                    message="Fixes #41: handle edge case",
+                    html_url="https://github.com/SWE-agent/SWE-agent/commit/abc123",
+                )
+            return FakeCommit(
+                message="Unrelated commit",
+                html_url="https://github.com/SWE-agent/SWE-agent/commit/zzz999",
+            )
+
+    class FakeGhApi:
+        def __init__(self, token: str = ""):
+            self.token = token
+            self.issues = FakeIssues()
+            self.repos = FakeRepos()
+
+    # Patch GhApi used inside sweagent.utils.github
+    import sweagent.utils.github as gh
+
+    monkeypatch.setattr(gh, "GhApi", FakeGhApi)
     assoc = _get_associated_commit_urls(
         org="SWE-agent",
         repo="SWE-agent",
         issue_number="41",
-        token=os.environ.get("GITHUB_TOKEN", ""),
+        token="",
     )
-    assert len(assoc) > 0
+
+    assert assoc == ["https://github.com/SWE-agent/SWE-agent/commit/abc123"]
 
 
 def clone_repo(tmp_path, repo_url):

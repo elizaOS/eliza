@@ -36,26 +36,27 @@ impl HistoryProcessor for LastNObservations {
         if self.n == 0 {
             return history;
         }
-        
+
         let mut result = Vec::new();
         let mut observation_count = 0;
-        
+
         // Iterate in reverse to count observations from the end
         for item in history.iter().rev() {
-            let is_observation = item.message_type
+            let is_observation = item
+                .message_type
                 .as_ref()
                 .map(|t| matches!(t, crate::types::MessageType::Observation))
                 .unwrap_or(false);
-            
+
             if is_observation {
                 observation_count += 1;
             }
-            
+
             if observation_count <= self.n || !is_observation {
                 result.push(item.clone());
             }
         }
-        
+
         result.reverse();
         result
     }
@@ -79,10 +80,8 @@ impl HistoryProcessor for TagToolCallObservations {
             .map(|mut item| {
                 if item.tool_call_ids.is_some() {
                     let content = item.content.as_str();
-                    item.content = Content::Text(format!(
-                        "<{}>\n{}\n</{}>",
-                        self.tag, content, self.tag
-                    ));
+                    item.content =
+                        Content::Text(format!("<{}>\n{}\n</{}>", self.tag, content, self.tag));
                 }
                 item
             })
@@ -151,7 +150,7 @@ impl HistoryProcessor for ImageParsingHistoryProcessor {
         if !self.disable_images {
             return history;
         }
-        
+
         // Remove image content parts
         history
             .into_iter()
@@ -191,9 +190,10 @@ impl HistoryProcessor for ChainedHistoryProcessor {
 }
 
 /// Configuration for history processors
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HistoryProcessorConfig {
+    #[default]
     Default,
     LastNObservations { n: usize },
     TagToolCallObservations { tag: String },
@@ -201,12 +201,6 @@ pub enum HistoryProcessorConfig {
     CacheControl,
     RemoveRegex { pattern: String },
     ImageParsing { disable_images: bool },
-}
-
-impl Default for HistoryProcessorConfig {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 /// Create a history processor from configuration
@@ -219,11 +213,9 @@ pub fn create_history_processor(config: &HistoryProcessorConfig) -> Box<dyn Hist
         }
         HistoryProcessorConfig::ClosedWindow => Box::new(ClosedWindowHistoryProcessor),
         HistoryProcessorConfig::CacheControl => Box::new(CacheControlHistoryProcessor),
-        HistoryProcessorConfig::RemoveRegex { pattern } => {
-            RemoveRegex::new(pattern)
-                .map(|p| Box::new(p) as Box<dyn HistoryProcessor>)
-                .unwrap_or_else(|| Box::new(DefaultHistoryProcessor))
-        }
+        HistoryProcessorConfig::RemoveRegex { pattern } => RemoveRegex::new(pattern)
+            .map(|p| Box::new(p) as Box<dyn HistoryProcessor>)
+            .unwrap_or_else(|| Box::new(DefaultHistoryProcessor)),
         HistoryProcessorConfig::ImageParsing { disable_images } => {
             Box::new(ImageParsingHistoryProcessor::new(*disable_images))
         }
@@ -266,7 +258,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        
+
         let result = processor.process(history);
         assert_eq!(result.len(), 2);
     }
@@ -278,7 +270,7 @@ mod tests {
             content: Content::Text("Hello [DEBUG] world".to_string()),
             ..Default::default()
         }];
-        
+
         let result = processor.process(history);
         assert_eq!(result[0].content.as_str(), "Hello  world");
     }

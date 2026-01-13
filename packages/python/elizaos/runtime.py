@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from elizaos.logger import Logger, create_logger
+from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
 from elizaos.settings import decrypt_secret, get_salt
 from elizaos.types.agent import Character, TemplateType
 from elizaos.types.components import (
@@ -409,10 +410,10 @@ class AgentRuntime(IAgentRuntime):
         self._providers.append(provider)
 
     def register_action(self, action: Action) -> None:
-        self._actions.append(action)
+        self._actions.append(with_canonical_action_docs(action))
 
     def register_evaluator(self, evaluator: Evaluator) -> None:
-        self._evaluators.append(evaluator)
+        self._evaluators.append(with_canonical_evaluator_docs(evaluator))
 
     @staticmethod
     def _parse_param_value(value: str) -> str | int | float | bool | None:

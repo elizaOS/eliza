@@ -2,61 +2,63 @@
  * Run replay tests converted from test_run_replay.py
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { RunReplay, RunReplayConfig } from '../src/run/run-replay';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { execSync } from 'child_process';
-import { Trajectory } from '../src/types';
+import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
+import { RunReplay, type RunReplayConfig } from "../src/run/run-replay";
+import type { Trajectory } from "../src/types";
 
-describe('Run Replay', () => {
+describe("Run Replay", () => {
   let tmpDir: string;
   let testTrajPath: string;
   let testRepoPath: string;
 
   beforeEach(() => {
     // Create temporary directory
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-replay-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "run-replay-test-"));
 
     // Create a test trajectory file
-    testTrajPath = path.join(tmpDir, 'test.traj');
+    testTrajPath = path.join(tmpDir, "test.traj");
     const trajData = {
       trajectory: [
         {
-          action: 'ls',
-          observation: 'file1.txt file2.txt',
-          thought: 'Looking at files',
+          action: "ls",
+          observation: "file1.txt file2.txt",
+          thought: "Looking at files",
         },
         {
           action: 'echo "test"',
-          observation: 'test',
-          thought: 'Testing echo',
+          observation: "test",
+          thought: "Testing echo",
         },
       ],
       info: {
-        exit_status: 'submitted',
-        submission: 'test submission',
+        exit_status: "submitted",
+        submission: "test submission",
       },
     };
     fs.writeFileSync(testTrajPath, JSON.stringify(trajData));
 
     // Create a test repository
-    testRepoPath = path.join(tmpDir, 'test-repo');
+    testRepoPath = path.join(tmpDir, "test-repo");
     fs.mkdirSync(testRepoPath);
 
     // Initialize git repo
     try {
-      execSync('git init', { cwd: testRepoPath });
-      execSync('git config user.email "test@example.com"', { cwd: testRepoPath });
+      execSync("git init", { cwd: testRepoPath });
+      execSync('git config user.email "test@example.com"', {
+        cwd: testRepoPath,
+      });
       execSync('git config user.name "Test User"', { cwd: testRepoPath });
 
       // Create initial file and commit
-      fs.writeFileSync(path.join(testRepoPath, 'test.txt'), 'initial content');
-      execSync('git add .', { cwd: testRepoPath });
+      fs.writeFileSync(path.join(testRepoPath, "test.txt"), "initial content");
+      execSync("git add .", { cwd: testRepoPath });
       execSync('git commit -m "Initial commit"', { cwd: testRepoPath });
     } catch (e) {
-      console.warn('Git setup failed:', e);
+      console.warn("Git setup failed:", e);
     }
   });
 
@@ -67,8 +69,8 @@ describe('Run Replay', () => {
     }
   });
 
-  describe('RunReplayConfig', () => {
-    it('should create config with required fields', () => {
+  describe("RunReplayConfig", () => {
+    it("should create config with required fields", () => {
       const config: RunReplayConfig = {
         trajPath: testTrajPath,
         outputDir: tmpDir,
@@ -78,22 +80,22 @@ describe('Run Replay', () => {
       expect(config.outputDir).toBe(tmpDir);
     });
 
-    it('should handle optional fields', () => {
+    it("should handle optional fields", () => {
       const config: RunReplayConfig = {
         trajPath: testTrajPath,
         outputDir: tmpDir,
-        envVarPath: path.join(tmpDir, '.env'),
-        updateConfig: ['option1', 'option2'],
+        envVarPath: path.join(tmpDir, ".env"),
+        updateConfig: ["option1", "option2"],
       };
 
       expect(config.trajPath).toBe(testTrajPath);
       expect(config.outputDir).toBe(tmpDir);
-      expect(config.envVarPath).toBe(path.join(tmpDir, '.env'));
-      expect(config.updateConfig).toEqual(['option1', 'option2']);
+      expect(config.envVarPath).toBe(path.join(tmpDir, ".env"));
+      expect(config.updateConfig).toEqual(["option1", "option2"]);
     });
   });
 
-  describe('RunReplay', () => {
+  describe("RunReplay", () => {
     let config: RunReplayConfig;
 
     beforeEach(() => {
@@ -103,14 +105,14 @@ describe('Run Replay', () => {
       };
     });
 
-    it('should create RunReplay instance from config', () => {
+    it("should create RunReplay instance from config", () => {
       const replay = RunReplay.fromConfig(config);
 
       expect(replay).toBeDefined();
       expect(replay.instanceId).toBeDefined();
     });
 
-    it('should load trajectory file', () => {
+    it("should load trajectory file", () => {
       const replay = RunReplay.fromConfig(config);
 
       // The trajectory is loaded automatically in constructor
@@ -118,48 +120,48 @@ describe('Run Replay', () => {
       // We can check the instance ID is derived from the trajectory
     });
 
-    it('should handle missing trajectory file', () => {
-      config.trajPath = path.join(tmpDir, 'nonexistent.traj');
+    it("should handle missing trajectory file", () => {
+      config.trajPath = path.join(tmpDir, "nonexistent.traj");
 
       expect(() => {
         RunReplay.fromConfig(config);
       }).toThrow();
     });
 
-    it('should handle malformed trajectory file', () => {
-      fs.writeFileSync(testTrajPath, 'not valid json');
+    it("should handle malformed trajectory file", () => {
+      fs.writeFileSync(testTrajPath, "not valid json");
 
       expect(() => {
         RunReplay.fromConfig(config);
       }).toThrow();
     });
 
-    it('should handle forward_only mode', () => {
+    it("should handle forward_only mode", () => {
       // Forward-only mode is not currently implemented in the TypeScript version
       // This test is skipped until the feature is added
       expect(true).toBe(true);
     });
 
-    it('should handle full replay mode', () => {
+    it("should handle full replay mode", () => {
       const replay = RunReplay.fromConfig(config);
 
       // Test that replay instance is created
       expect(replay).toBeDefined();
     });
 
-    it('should validate exit code requirements', () => {
+    it("should validate exit code requirements", () => {
       // Exit code validation is handled internally in the TypeScript version
       const replay = RunReplay.fromConfig(config);
       expect(replay).toBeDefined();
     });
 
-    it('should handle error catching mode', () => {
+    it("should handle error catching mode", () => {
       // Error catching is handled internally in the TypeScript version
       const replay = RunReplay.fromConfig(config);
       expect(replay).toBeDefined();
     });
 
-    it('should create output files', async () => {
+    it("should create output files", async () => {
       const replay = RunReplay.fromConfig(config);
 
       // Test that replay instance is created with output directory
@@ -167,49 +169,49 @@ describe('Run Replay', () => {
       // Output files are created during actual replay execution
     });
 
-    it('should handle repository setup', () => {
+    it("should handle repository setup", () => {
       // Repository setup is not exposed in the current API
       const replay = RunReplay.fromConfig(config);
       expect(replay).toBeDefined();
     });
 
-    it('should handle missing repository', () => {
+    it("should handle missing repository", () => {
       // Repository handling is internal in the TypeScript version
       const replay = RunReplay.fromConfig(config);
       expect(replay).toBeDefined();
     });
   });
 
-  describe('CLI Integration', () => {
-    it('should parse command line arguments', () => {
+  describe("CLI Integration", () => {
+    it("should parse command line arguments", () => {
       const args = [
-        'run-replay',
-        '--traj_path',
+        "run-replay",
+        "--traj_path",
         testTrajPath,
-        '--output_dir',
+        "--output_dir",
         tmpDir,
-        '--deployment.type',
-        'docker',
-        '--deployment.image',
-        'python:3.11',
+        "--deployment.type",
+        "docker",
+        "--deployment.image",
+        "python:3.11",
       ];
 
       // This would normally be tested through the actual CLI
       // Here we just verify the structure
-      expect(args[0]).toBe('run-replay');
-      expect(args).toContain('--traj_path');
-      expect(args).toContain('--deployment.image');
+      expect(args[0]).toBe("run-replay");
+      expect(args).toContain("--traj_path");
+      expect(args).toContain("--deployment.image");
     });
 
-    it('should support help command', () => {
+    it("should support help command", () => {
       // Test that help command would work
-      const helpOutput = execSync('node --help', { encoding: 'utf-8' });
+      const helpOutput = execSync("node --help", { encoding: "utf-8" });
       expect(helpOutput).toBeDefined();
     });
   });
 
-  describe('Trajectory replay logic', () => {
-    it('should replay actions in order', () => {
+  describe("Trajectory replay logic", () => {
+    it("should replay actions in order", () => {
       const localConfig: RunReplayConfig = {
         trajPath: testTrajPath,
         outputDir: tmpDir,
@@ -221,7 +223,7 @@ describe('Run Replay', () => {
       expect(replay).toBeDefined();
     });
 
-    it('should handle action failures', () => {
+    it("should handle action failures", () => {
       const localConfig: RunReplayConfig = {
         trajPath: testTrajPath,
         outputDir: tmpDir,
@@ -232,7 +234,7 @@ describe('Run Replay', () => {
       expect(replay).toBeDefined();
     });
 
-    it('should compare observations', () => {
+    it("should compare observations", () => {
       const localConfig: RunReplayConfig = {
         trajPath: testTrajPath,
         outputDir: tmpDir,
@@ -243,7 +245,7 @@ describe('Run Replay', () => {
       expect(replay).toBeDefined();
     });
 
-    it('should handle observation mismatches', () => {
+    it("should handle observation mismatches", () => {
       const localConfig: RunReplayConfig = {
         trajPath: testTrajPath,
         outputDir: tmpDir,
@@ -254,7 +256,7 @@ describe('Run Replay', () => {
       expect(replay).toBeDefined();
     });
 
-    it('should generate replay report', () => {
+    it("should generate replay report", () => {
       const localConfig: RunReplayConfig = {
         trajPath: testTrajPath,
         outputDir: tmpDir,
@@ -266,9 +268,9 @@ describe('Run Replay', () => {
     });
   });
 
-  describe('Edge cases', () => {
-    it('should handle empty trajectory', () => {
-      const emptyTrajPath = path.join(tmpDir, 'empty.traj');
+  describe("Edge cases", () => {
+    it("should handle empty trajectory", () => {
+      const emptyTrajPath = path.join(tmpDir, "empty.traj");
       fs.writeFileSync(emptyTrajPath, JSON.stringify({ trajectory: [] }));
 
       const localConfig: RunReplayConfig = {
@@ -281,12 +283,15 @@ describe('Run Replay', () => {
       expect(replay).toBeDefined();
     });
 
-    it('should handle trajectory with only thoughts', () => {
-      const thoughtTrajPath = path.join(tmpDir, 'thoughts.traj');
+    it("should handle trajectory with only thoughts", () => {
+      const thoughtTrajPath = path.join(tmpDir, "thoughts.traj");
       fs.writeFileSync(
         thoughtTrajPath,
         JSON.stringify({
-          trajectory: [{ thought: 'Thinking...' }, { thought: 'More thinking...' }],
+          trajectory: [
+            { thought: "Thinking..." },
+            { thought: "More thinking..." },
+          ],
         }),
       );
 
@@ -300,22 +305,22 @@ describe('Run Replay', () => {
       expect(replay).toBeDefined();
     });
 
-    it('should handle very long trajectories', () => {
+    it("should handle very long trajectories", () => {
       const longTraj: Trajectory = [];
       for (let i = 0; i < 1000; i++) {
         longTraj.push({
           action: `echo "step ${i}"`,
           observation: `step ${i}`,
-          response: '',
+          response: "",
           state: {},
-          thought: '',
+          thought: "",
           executionTime: 0,
           query: [],
           extraInfo: {},
         });
       }
 
-      const longTrajPath = path.join(tmpDir, 'long.traj');
+      const longTrajPath = path.join(tmpDir, "long.traj");
       fs.writeFileSync(longTrajPath, JSON.stringify({ trajectory: longTraj }));
 
       const localConfig: RunReplayConfig = {

@@ -3,25 +3,25 @@
  * Handles Docker and other deployment strategies
  */
 
-import Docker from 'dockerode';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as tar from 'tar-stream';
-import { z } from 'zod';
-import { getLogger } from '../utils/log';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import Docker, { type ContainerCreateOptions } from "dockerode";
+import * as tar from "tar-stream";
+import { z } from "zod";
+import { getLogger } from "../utils/log";
 import {
   AbstractRuntime,
-  BashAction,
-  BashActionResult,
-  BashInterruptAction,
-  Command,
-  CommandResult,
-  CreateBashSessionRequest,
-  ReadFileRequest,
-  ReadFileResponse,
-  UploadRequest,
-  WriteFileRequest,
-} from './runtime';
+  type BashAction,
+  type BashActionResult,
+  type BashInterruptAction,
+  type Command,
+  type CommandResult,
+  type CreateBashSessionRequest,
+  type ReadFileRequest,
+  type ReadFileResponse,
+  type UploadRequest,
+  type WriteFileRequest,
+} from "./runtime";
 
 // Re-export runtime types for convenience
 export {
@@ -36,9 +36,9 @@ export {
   ReadFileResponse,
   UploadRequest,
   WriteFileRequest,
-} from './runtime';
+} from "./runtime";
 
-const logger = getLogger('deployment');
+const logger = getLogger("deployment");
 
 /**
  * Abstract deployment interface
@@ -53,29 +53,32 @@ export abstract class AbstractDeployment {
  * Docker deployment configuration
  */
 export const DockerDeploymentConfigSchema = z.object({
-  type: z.literal('docker'),
-  image: z.string().default('python:3.11'),
+  type: z.literal("docker"),
+  image: z.string().default("python:3.11"),
   containerName: z.string().optional(),
-  pythonStandaloneDir: z.string().default('/root'),
+  pythonStandaloneDir: z.string().default("/root"),
   volumes: z.record(z.string(), z.string()).default(() => ({})),
   environment: z.record(z.string(), z.string()).default(() => ({})),
   network: z.string().optional(),
   removeOnStop: z.boolean().default(true),
-  workDir: z.string().default('/root'),
+  workDir: z.string().default("/root"),
 });
 
-export type DockerDeploymentConfig = z.infer<typeof DockerDeploymentConfigSchema>;
+export type DockerDeploymentConfig = z.infer<
+  typeof DockerDeploymentConfigSchema
+>;
 
 // Type aliases for Docker types
-type DockerContainer = any; // Docker.Container type not exported properly
-type DockerExec = any; // Docker.Exec type not exported properly
+type DockerContainer = ReturnType<Docker["getContainer"]>;
+type DockerExec = Awaited<ReturnType<DockerContainer["exec"]>>;
+type DockerSessionStream = Awaited<ReturnType<DockerExec["start"]>>;
 
 /**
  * Docker runtime implementation
  */
 class DockerRuntime extends AbstractRuntime {
   private container?: DockerContainer;
-  private sessionStream?: any;
+  private sessionStream?: DockerSessionStream;
   private sessionExec?: DockerExec;
 
   constructor(_docker: Docker) {
@@ -88,22 +91,30 @@ class DockerRuntime extends AbstractRuntime {
 
   async createSession(request: CreateBashSessionRequest): Promise<void> {
     if (!this.container) {
-      throw new Error('Container not started');
+      throw new Error("Container not started");
     }
 
     // Start an interactive bash session
-    this.sessionExec = (await this.container.exec({
-      Cmd: ['/bin/bash'],
+    this.sessionExec = await this.container.exec({
+      Cmd: ["/bin/bash"],
       AttachStdin: true,
       AttachStdout: true,
       AttachStderr: true,
       Tty: true,
-    })) as DockerExec;
+    });
 
-    this.sessionStream = await this.sessionExec!.start({
+    if (!this.sessionExec) {
+      throw new Error("Failed to create Docker exec session");
+    }
+
+    this.sessionStream = await this.sessionExec.start({
       hijack: true,
       stdin: true,
     });
+
+    if (!this.sessionStream) {
+      throw new Error("Failed to start Docker exec session");
+    }
 
     // Execute startup source if provided
     if (request.startupSource) {
@@ -116,39 +127,46 @@ class DockerRuntime extends AbstractRuntime {
     }
   }
 
-  async runInSession(action: BashAction | BashInterruptAction): Promise<BashActionResult> {
-    if ('type' in action && action.type === 'interrupt') {
+  async runInSession(
+    action: BashAction | BashInterruptAction,
+  ): Promise<BashActionResult> {
+    if ("type" in action && action.type === "interrupt") {
       // Send Ctrl+C to the session
       if (this.sessionStream) {
-        this.sessionStream.write('\x03');
+        this.sessionStream.write("\x03");
       }
-      return { output: '', exitCode: 0 };
+      return { output: "", exitCode: 0 };
     }
 
     if (!this.sessionStream) {
-      throw new Error('No session active');
+      throw new Error("No session active");
     }
 
     const bashAction = action as BashAction;
-    const command = bashAction.command + '\n';
+    const command = `${bashAction.command}\n`;
     const timeout = bashAction.timeout || 25;
 
     return new Promise((resolve) => {
-      let output = '';
+      let output = "";
       // let timeoutHandle: NodeJS.Timeout;
 
       const dataHandler = (chunk: Buffer) => {
         output += chunk.toString();
       };
 
-      this.sessionStream!.on('data', dataHandler);
+      if (!this.sessionStream) {
+        throw new Error("Session not created");
+      }
+
+      const stream = this.sessionStream;
+      stream.on("data", dataHandler);
 
       // Write command
-      this.sessionStream!.write(command);
+      stream.write(command);
 
       // Set timeout
       setTimeout(() => {
-        this.sessionStream!.removeListener('data', dataHandler);
+        stream.removeListener("data", dataHandler);
         resolve({ output, exitCode: 0 }); // Session commands don't easily provide exit codes
       }, timeout * 1000);
 
@@ -159,14 +177,18 @@ class DockerRuntime extends AbstractRuntime {
 
   async execute(command: Command): Promise<CommandResult> {
     if (!this.container) {
-      throw new Error('Container not started');
+      throw new Error("Container not started");
     }
 
     const exec: DockerExec = (await this.container.exec({
-      Cmd: command.shell ? ['/bin/bash', '-c', command.command] : command.command.split(' '),
+      Cmd: command.shell
+        ? ["/bin/bash", "-c", command.command]
+        : command.command.split(" "),
       AttachStdout: true,
       AttachStderr: true,
-      Env: command.env ? Object.entries(command.env).map(([k, v]) => `${k}=${v}`) : undefined,
+      Env: command.env
+        ? Object.entries(command.env).map(([k, v]) => `${k}=${v}`)
+        : undefined,
       WorkingDir: command.cwd,
     })) as DockerExec;
 
@@ -175,32 +197,34 @@ class DockerRuntime extends AbstractRuntime {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
 
-      stream.on('data', (chunk: Buffer) => {
+      stream.on("data", (chunk: Buffer) => {
         chunks.push(chunk);
       });
 
-      stream.on('end', async () => {
-        const output = Buffer.concat(chunks).toString('utf-8');
+      stream.on("end", async () => {
+        const output = Buffer.concat(chunks).toString("utf-8");
         const inspectResult = await exec.inspect();
         const exitCode = inspectResult.ExitCode || 0;
 
         if (command.check && exitCode !== 0) {
-          reject(new Error(`Command failed with exit code ${exitCode}: ${output}`));
+          reject(
+            new Error(`Command failed with exit code ${exitCode}: ${output}`),
+          );
         } else {
           resolve({
             exitCode: exitCode as number,
             stdout: output,
-            stderr: '', // Docker combines stdout/stderr in this mode
+            stderr: "", // Docker combines stdout/stderr in this mode
           });
         }
       });
 
-      stream.on('error', reject);
+      stream.on("error", reject);
 
       // Handle timeout
       if (command.timeout) {
         setTimeout(() => {
-          if (stream && typeof stream.destroy === 'function') {
+          if (stream && typeof stream.destroy === "function") {
             stream.destroy();
           }
           reject(new Error(`Command timeout after ${command.timeout}s`));
@@ -227,7 +251,7 @@ class DockerRuntime extends AbstractRuntime {
   async writeFile(request: WriteFileRequest): Promise<void> {
     // Create directory if needed
     const dir = path.dirname(request.path);
-    if (dir && dir !== '/' && dir !== '.') {
+    if (dir && dir !== "/" && dir !== ".") {
       await this.execute({
         command: `mkdir -p "${dir}"`,
         shell: true,
@@ -235,7 +259,7 @@ class DockerRuntime extends AbstractRuntime {
     }
 
     // Write file using echo and base64 to handle special characters
-    const base64Content = Buffer.from(request.content).toString('base64');
+    const base64Content = Buffer.from(request.content).toString("base64");
     const result = await this.execute({
       command: `echo "${base64Content}" | base64 -d > "${request.path}"`,
       shell: true,
@@ -248,11 +272,12 @@ class DockerRuntime extends AbstractRuntime {
 
   async upload(request: UploadRequest): Promise<void> {
     if (!this.container) {
-      throw new Error('Container not started');
+      throw new Error("Container not started");
     }
 
     // Create a tar stream from the local path
-    const pack = tar.pack() as any;
+    type TarPack = ReturnType<typeof tar.pack>;
+    const pack: TarPack = tar.pack();
 
     const addToTar = (sourcePath: string, targetPath: string) => {
       const stats = fs.statSync(sourcePath);
@@ -262,7 +287,7 @@ class DockerRuntime extends AbstractRuntime {
         const items = fs.readdirSync(sourcePath);
         for (const item of items) {
           // Skip .git and other hidden files/directories
-          if (item.startsWith('.')) {
+          if (item.startsWith(".")) {
             continue;
           }
 
@@ -273,7 +298,7 @@ class DockerRuntime extends AbstractRuntime {
       } else {
         // Add file to tar
         const content = fs.readFileSync(sourcePath);
-        const relativePath = path.relative('/', targetPath);
+        const relativePath = path.relative("/", targetPath);
         pack.entry({ name: relativePath }, content);
       }
     };
@@ -285,7 +310,7 @@ class DockerRuntime extends AbstractRuntime {
     pack.finalize();
 
     // Put archive to container at root
-    await this.container.putArchive(pack, { path: '/' });
+    await this.container.putArchive(pack, { path: "/" });
   }
 }
 
@@ -309,37 +334,28 @@ export class DockerDeployment extends AbstractDeployment {
     logger.info(`Starting Docker container with image ${this.config.image}`);
 
     // Check if image exists, pull if not
-    try {
-      const images = await this.docker.listImages();
-      const imageExists = images.some((img) => {
-        const repoTags = (img as any).RepoTags;
-        return Array.isArray(repoTags) && repoTags.includes(this.config.image);
-      });
-      if (!imageExists) {
-        throw new Error('Image not found');
-      }
-    } catch {
+    const images = await this.docker.listImages();
+    const imageExists = images.some((img) =>
+      Array.isArray(img.RepoTags)
+        ? img.RepoTags.includes(this.config.image)
+        : false,
+    );
+    if (!imageExists) {
       logger.info(`Pulling image ${this.config.image}`);
       const stream = await this.docker.pull(this.config.image);
-      await new Promise((resolve, reject) => {
-        // Docker modem is available but not properly typed in dockerode
-        const dockerWithModem = this.docker as Docker & {
-          modem: {
-            followProgress: (stream: unknown, callback: (err: Error | null, res: unknown[]) => void) => void;
-          };
-        };
-        dockerWithModem.modem.followProgress(stream, (err, res) => {
+      await new Promise<void>((resolve, reject) => {
+        this.docker.modem.followProgress(stream, (err, _res) => {
           if (err) {
             reject(err);
           } else {
-            resolve(res);
+            resolve();
           }
         });
       });
     }
 
     // Create container
-    const createOptions: Record<string, unknown> = {
+    const createOptions: ContainerCreateOptions = {
       Image: this.config.image,
       name: this.config.containerName,
       WorkingDir: this.config.workDir,
@@ -356,13 +372,13 @@ export class DockerDeployment extends AbstractDeployment {
       },
     };
 
-    this.container = (await this.docker.createContainer(createOptions)) as DockerContainer;
+    this.container = await this.docker.createContainer(createOptions);
     await this.container.start();
 
     // Set container in runtime
     this.runtime.setContainer(this.container);
 
-    logger.info('Docker container started successfully');
+    logger.info("Docker container started successfully");
   }
 
   async stop(): Promise<void> {
@@ -370,12 +386,12 @@ export class DockerDeployment extends AbstractDeployment {
       return;
     }
 
-    logger.info('Stopping Docker container');
+    logger.info("Stopping Docker container");
 
     try {
       await this.container.stop({ t: 10 });
     } catch (error) {
-      logger.warn('Container stop failed, forcing kill', error);
+      logger.warn("Container stop failed, forcing kill", error);
       await this.container.kill();
     }
 
@@ -390,7 +406,7 @@ export class DockerDeployment extends AbstractDeployment {
 /**
  * Union type for all deployment configurations
  */
-export const DeploymentConfigSchema = z.discriminatedUnion('type', [
+export const DeploymentConfigSchema = z.discriminatedUnion("type", [
   DockerDeploymentConfigSchema,
   // Add other deployment types here (e.g., local, kubernetes, etc.)
 ]);
@@ -402,7 +418,7 @@ export type DeploymentConfig = z.infer<typeof DeploymentConfigSchema>;
  */
 export function getDeployment(config: DeploymentConfig): AbstractDeployment {
   switch (config.type) {
-    case 'docker':
+    case "docker":
       return new DockerDeployment(config);
     default:
       throw new Error(`Unknown deployment type: ${config.type}`);

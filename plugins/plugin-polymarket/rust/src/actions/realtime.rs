@@ -138,25 +138,35 @@ pub fn handle_realtime_updates(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::client::ClobClient;
+
+    fn test_client() -> ClobClient {
+        futures::executor::block_on(ClobClient::new(None, &format!("0x{}", "11".repeat(32))))
+            .expect("client init")
+    }
 
     #[test]
     fn test_setup_websocket_empty_url() {
-        // This test would require a mock client
-        // For now, just verify the function signature compiles
-        assert!(true);
+        let client = test_client();
+        let err = setup_websocket(&client, "", &[], &[], false).unwrap_err();
+        assert!(err.to_string().contains("WebSocket URL is required"));
     }
 
     #[test]
     fn test_setup_websocket_invalid_channel() {
-        // This test would require a mock client
-        // For now, just verify the function signature compiles
-        assert!(true);
+        let client = test_client();
+
+        let channels = vec!["nope".to_string()];
+        let err = setup_websocket(&client, "wss://example.com/ws", &channels, &[], false).unwrap_err();
+        assert!(err.to_string().contains("Invalid channel"));
     }
 
     #[test]
     fn test_handle_realtime_updates_invalid_action() {
-        // This test would require a mock client
-        // For now, just verify the function signature compiles
-        assert!(true);
+        let client = test_client();
+
+        let err = handle_realtime_updates(&client, "nope", None, None).unwrap_err();
+        assert!(err.to_string().contains("Invalid action"));
     }
 }

@@ -244,7 +244,7 @@ LEADERBOARD_SCORES: dict[str, BaselineScore] = {
         java=0.86,
         javascript=0.87,
     ),
-    "gpt-4o": BaselineScore(
+    "gpt-5": BaselineScore(
         model_name="GPT-4o",
         overall=0.891,
         ast=0.918,

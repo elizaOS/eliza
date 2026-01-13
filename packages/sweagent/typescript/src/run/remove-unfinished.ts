@@ -2,25 +2,29 @@
  * Remove unfinished trajectories
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
-import { loadFile } from '../utils/files';
-import { getLogger } from '../utils/log';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { JsonObject, JsonValue } from "../json";
+import { loadFile } from "../utils/files";
+import { getLogger } from "../utils/log";
 
-const logger = getLogger('remove_unfinished');
+const logger = getLogger("remove_unfinished");
 
 interface TrajectoryFile {
   info?: {
     submission?: string | null;
-    [key: string]: unknown;
+    [key: string]: JsonValue | undefined;
   };
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 /**
  * Remove unfinished trajectories
  */
-export async function removeUnfinished(baseDir: string, dryRun: boolean = true): Promise<void> {
+export async function removeUnfinished(
+  baseDir: string,
+  dryRun: boolean = true,
+): Promise<void> {
   const basePath = path.resolve(baseDir);
   const toRemove: string[] = [];
 
@@ -33,13 +37,13 @@ export async function removeUnfinished(baseDir: string, dryRun: boolean = true):
       continue;
     }
 
-    if (!dirName.includes('__')) {
+    if (!dirName.includes("__")) {
       continue;
     }
 
     const trajs = fs
       .readdirSync(directory)
-      .filter((file) => file.endsWith('.traj'))
+      .filter((file) => file.endsWith(".traj"))
       .map((file) => path.join(directory, file));
 
     if (trajs.length === 0) {
@@ -55,23 +59,28 @@ export async function removeUnfinished(baseDir: string, dryRun: boolean = true):
     try {
       const traj = loadFile(trajs[0]);
 
-      if (!traj || typeof traj !== 'object') {
-        logger.warn(`Invalid trajectory format in ${trajs[0]}. Adding to remove list.`);
+      if (!traj || typeof traj !== "object") {
+        logger.warn(
+          `Invalid trajectory format in ${trajs[0]}. Adding to remove list.`,
+        );
         toRemove.push(directory);
         continue;
       }
 
-      const submission = (traj as TrajectoryFile).info?.submission || null;
+      const obj = traj as JsonObject;
+      const submission = (obj as TrajectoryFile).info?.submission ?? null;
 
       if (submission === null) {
-        logger.warn(`No submission found in ${directory}. Adding to remove list.`);
+        logger.warn(
+          `No submission found in ${directory}. Adding to remove list.`,
+        );
         toRemove.push(directory);
-        continue;
       }
     } catch (error) {
-      logger.warn(`Error loading trajectory ${trajs[0]}: ${error}. Adding to remove list.`);
+      logger.warn(
+        `Error loading trajectory ${trajs[0]}: ${error}. Adding to remove list.`,
+      );
       toRemove.push(directory);
-      continue;
     }
   }
 

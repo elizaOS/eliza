@@ -3,8 +3,8 @@
  * Converted from sweagent/agent/hooks/status.py
  */
 
-import { AbstractAgentHook } from './abstract';
-import { AgentInfo, StepOutput } from '../../types';
+import type { AgentInfo, StepOutput } from "../../types";
+import { AbstractAgentHook } from "./abstract";
 
 /**
  * Hook for setting status during agent execution
@@ -37,7 +37,7 @@ export class SetStatusAgentHook extends AbstractAgentHook {
 
   onStepStart(): void {
     this.iStep++;
-    const attemptStr = this.iAttempt > 1 ? `Attempt ${this.iAttempt} ` : '';
+    const attemptStr = this.iAttempt > 1 ? `Attempt ${this.iAttempt} ` : "";
     this.update(
       `${attemptStr}Step ${this.iStep.toString().padStart(3)} ($${(this.previousCost + this.cost).toFixed(2)})`,
     );
@@ -45,12 +45,12 @@ export class SetStatusAgentHook extends AbstractAgentHook {
 
   onStepDone(_step: StepOutput, info: AgentInfo): void {
     // Update cost from model stats
-    if (info.modelStats && typeof info.modelStats.instanceCost === 'number') {
+    if (info.modelStats && typeof info.modelStats.instanceCost === "number") {
       this.cost = info.modelStats.instanceCost;
     }
   }
 
   onToolsInstallationStarted(): void {
-    this.update('Installing tools');
+    this.update("Installing tools");
   }
 }

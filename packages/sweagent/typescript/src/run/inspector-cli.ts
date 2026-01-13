@@ -3,11 +3,12 @@
  * This is a simplified version - a full implementation would use a terminal UI library
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
-import * as readline from 'readline';
-import * as yaml from 'js-yaml';
-import { loadFile } from '../utils/files';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as readline from "node:readline";
+import * as yaml from "js-yaml";
+import type { JsonObject, JsonValue } from "../json";
+import { loadFile } from "../utils/files";
 
 interface TrajectoryStep {
   thought?: string;
@@ -15,16 +16,20 @@ interface TrajectoryStep {
   observation?: string;
   response?: string;
   execution_time?: number;
-  state?: Record<string, unknown>;
+  state?: JsonObject;
   query?: Array<{ role: string; content: string; messageType?: string }>;
-  extraInfo?: Record<string, unknown>;
+  extraInfo?: JsonObject;
 }
 
 interface TrajectoryData {
   trajectory: TrajectoryStep[];
-  info: Record<string, unknown>;
-  history?: Array<{ role: string; content: string | Record<string, unknown>; [key: string]: unknown }>;
-  replay_config?: Record<string, unknown>;
+  info: JsonObject;
+  history?: Array<{
+    role: string;
+    content: string | JsonObject;
+    [key: string]: JsonValue | undefined;
+  }>;
+  replay_config?: JsonObject;
 }
 
 /**
@@ -41,8 +46,8 @@ export class TrajectoryInspector {
     // this.trajPath = trajPath;  // Currently unused
 
     // Load trajectory
-    const content = fs.readFileSync(trajPath, 'utf-8');
-    if (trajPath.endsWith('.yaml') || trajPath.endsWith('.yml')) {
+    const content = fs.readFileSync(trajPath, "utf-8");
+    if (trajPath.endsWith(".yaml") || trajPath.endsWith(".yml")) {
       this.trajData = yaml.load(content) as TrajectoryData;
     } else {
       this.trajData = JSON.parse(content);
@@ -50,7 +55,10 @@ export class TrajectoryInspector {
 
     // Load gold patch if available
     if (dataPath) {
-      const data = loadFile(dataPath) as Record<string, { patch?: string }> | null;
+      const data = loadFile(dataPath) as Record<
+        string,
+        { patch?: string }
+      > | null;
       const instanceId = path.basename(path.dirname(trajPath));
       this.goldPatch = data?.[instanceId]?.patch;
     }
@@ -78,19 +86,19 @@ export class TrajectoryInspector {
     } else {
       // Simplified view
       if (step.thought) {
-        console.log('THOUGHT:');
+        console.log("THOUGHT:");
         console.log(step.thought);
         console.log();
       }
 
       if (step.action) {
-        console.log('ACTION:');
+        console.log("ACTION:");
         console.log(step.action);
         console.log();
       }
 
       if (step.observation) {
-        console.log('OBSERVATION:');
+        console.log("OBSERVATION:");
         console.log(step.observation);
       }
     }
@@ -100,7 +108,7 @@ export class TrajectoryInspector {
 
   private showInfo(): void {
     console.clear();
-    console.log('=== Trajectory Info ===\n');
+    console.log("=== Trajectory Info ===\n");
 
     const info = { ...this.trajData.info };
     if (this.goldPatch) {
@@ -113,16 +121,16 @@ export class TrajectoryInspector {
   }
 
   private showHelp(): void {
-    console.log('\n' + '='.repeat(80));
-    console.log('Commands:');
-    console.log('  l/right  - Next step');
-    console.log('  h/left   - Previous step');
-    console.log('  0        - Go to first step');
-    console.log('  $        - Go to last step');
-    console.log('  v        - Toggle view (simple/full)');
-    console.log('  i        - Show info');
-    console.log('  q        - Quit');
-    console.log('='.repeat(80));
+    console.log(`\n${"=".repeat(80)}`);
+    console.log("Commands:");
+    console.log("  l/right  - Next step");
+    console.log("  h/left   - Previous step");
+    console.log("  0        - Go to first step");
+    console.log("  $        - Go to last step");
+    console.log("  v        - Toggle view (simple/full)");
+    console.log("  i        - Show info");
+    console.log("  q        - Quit");
+    console.log("=".repeat(80));
   }
 
   async run(): Promise<void> {
@@ -143,14 +151,14 @@ export class TrajectoryInspector {
     this.showStep();
 
     // Handle keypress events
-    process.stdin.on('keypress', (_str, key) => {
+    process.stdin.on("keypress", (_str, key) => {
       if (!key) {
         return;
       }
 
       switch (key.name) {
-        case 'q':
-        case 'escape':
+        case "q":
+        case "escape":
           rl.close();
           if (process.stdin.isTTY) {
             process.stdin.setRawMode(false);
@@ -158,38 +166,38 @@ export class TrajectoryInspector {
           process.exit(0);
           break;
 
-        case 'l':
-        case 'right':
+        case "l":
+        case "right":
           if (this.currentStep < this.nSteps) {
             this.currentStep++;
             this.showStep();
           }
           break;
 
-        case 'h':
-        case 'left':
+        case "h":
+        case "left":
           if (this.currentStep > -1) {
             this.currentStep--;
             this.showStep();
           }
           break;
 
-        case '0':
+        case "0":
           this.currentStep = 0;
           this.showStep();
           break;
 
-        case '$':
+        case "$":
           this.currentStep = this.nSteps - 1;
           this.showStep();
           break;
 
-        case 'v':
+        case "v":
           this.showFull = !this.showFull;
           this.showStep();
           break;
 
-        case 'i':
+        case "i":
           this.currentStep = -1;
           this.showStep();
           break;
@@ -216,7 +224,7 @@ function findTrajFiles(dir: string): string[] {
 
       if (stat.isDirectory()) {
         walk(filePath);
-      } else if (file.endsWith('.traj')) {
+      } else if (file.endsWith(".traj")) {
         results.push(filePath);
       }
     }
@@ -234,7 +242,10 @@ function findTrajFiles(dir: string): string[] {
 /**
  * Main function for inspector CLI
  */
-export async function inspectorCli(trajectoryPath: string = '.', dataPath?: string): Promise<void> {
+export async function inspectorCli(
+  trajectoryPath: string = ".",
+  dataPath?: string,
+): Promise<void> {
   const trajPath = path.resolve(trajectoryPath);
 
   if (!fs.existsSync(trajPath)) {
@@ -244,7 +255,7 @@ export async function inspectorCli(trajectoryPath: string = '.', dataPath?: stri
   const trajFiles = findTrajFiles(trajPath);
 
   if (trajFiles.length === 0) {
-    throw new Error('No trajectory files found');
+    throw new Error("No trajectory files found");
   }
 
   if (trajFiles.length === 1) {
@@ -253,7 +264,7 @@ export async function inspectorCli(trajectoryPath: string = '.', dataPath?: stri
     await inspector.run();
   } else {
     // Multiple files - show selection menu
-    console.log('Multiple trajectory files found:');
+    console.log("Multiple trajectory files found:");
     trajFiles.forEach((file, index) => {
       console.log(`  ${index + 1}. ${file}`);
     });
@@ -264,12 +275,12 @@ export async function inspectorCli(trajectoryPath: string = '.', dataPath?: stri
     });
 
     const answer = await new Promise<string>((resolve) => {
-      rl.question('\nSelect file number (or q to quit): ', resolve);
+      rl.question("\nSelect file number (or q to quit): ", resolve);
     });
 
     rl.close();
 
-    if (answer === 'q') {
+    if (answer === "q") {
       process.exit(0);
     }
 
@@ -278,7 +289,7 @@ export async function inspectorCli(trajectoryPath: string = '.', dataPath?: stri
       const inspector = new TrajectoryInspector(trajFiles[index], dataPath);
       await inspector.run();
     } else {
-      console.log('Invalid selection');
+      console.log("Invalid selection");
       process.exit(1);
     }
   }

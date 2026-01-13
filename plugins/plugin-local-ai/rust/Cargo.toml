@@ -51,7 +51,7 @@ directories = "5.0"
 # NOTE: We vendor a patched `llama_cpp_rs` to fix a macOS build issue where
 # the upstream 0.3.0 build script expects `OUT_DIR/llama.cpp/ggml.o` but `cc`
 # emits hashed object filenames (e.g. `abcd1234-ggml.o`).
-llama_cpp_rs = { path = "../../../vendor/llama_cpp_rs", optional = true }
+llama_cpp_rs = { path = "vendor/llama_cpp_rs", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }

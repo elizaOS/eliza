@@ -3,8 +3,8 @@
  * Converted from sweagent/environment/hooks/status.py
  */
 
-import { EnvHook } from './abstract';
-import { Repo, RepoConfig } from '../repo';
+import type { Repo, RepoConfig } from "../repo";
+import { EnvHook } from "./abstract";
 
 /**
  * Status update callback type
@@ -29,23 +29,23 @@ export class SetStatusEnvironmentHook extends EnvHook {
   }
 
   onCopyRepoStarted(repo: Repo | RepoConfig): void {
-    const repoName = 'repoName' in repo ? repo.repoName : 'unknown';
+    const repoName = "repoName" in repo ? repo.repoName : "unknown";
     this.update(`Copying repo ${repoName}`);
   }
 
   onStartDeployment(): void {
-    this.update('Starting deployment');
+    this.update("Starting deployment");
   }
 
   onInstallEnvStarted(): void {
-    this.update('Installing environment');
+    this.update("Installing environment");
   }
 
   onEnvironmentStartup(): void {
-    this.update('Starting environment');
+    this.update("Starting environment");
   }
 
   onClose(): void {
-    this.update('Closing environment');
+    this.update("Closing environment");
   }
 }

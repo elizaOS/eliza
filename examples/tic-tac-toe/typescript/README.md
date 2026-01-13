@@ -89,7 +89,7 @@ The AI uses the classic minimax algorithm with depth-based scoring to find the o
 │  ├── plugin-sql         (persistence)                   │
 │  └── tic-tac-toe-plugin (custom model handlers)         │
 ├─────────────────────────────────────────────────────────┤
-│  runtime.useModel(TEXT_SMALL, { prompt: boardState })   │
+│  runtime.messageService.handleMessage(runtime, message) │
 │           ↓                                             │
 │  ticTacToeModelHandler() ← NOT an LLM!                  │
 │           ↓                                             │

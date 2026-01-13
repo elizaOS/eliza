@@ -21,7 +21,7 @@ async def main():
     from elizaos_vending_bench.providers.openai import OpenAIProvider
 
     try:
-        provider = OpenAIProvider(api_key=api_key, model="gpt-4o-mini")
+        provider = OpenAIProvider(api_key=api_key, model="gpt-5-mini")
 
         response, tokens = await provider.generate(
             system_prompt="You are a helpful assistant.",

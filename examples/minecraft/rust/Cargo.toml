@@ -1,0 +1,9 @@
+[package]
+name = "elizaos-minecraft-agent-example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+elizaos-plugin-minecraft = { path = "../../../plugins/plugin-minecraft/rust" }
+tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "time", "sync"] }
+

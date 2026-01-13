@@ -126,16 +126,42 @@ fn format_action_examples(docs: &[ActionDoc], max_examples: usize) -> String {
             if blocks.len() >= max_examples {
                 break;
             }
-            let params_pretty = if ex.params.is_empty() {
+            let actions_xml = ex
+                .actions
+                .iter()
+                .map(|a| format!("  <action>{}</action>", a))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            let mut params_blocks: Vec<String> = Vec::new();
+            for (action_name, params) in ex.params.iter() {
+                let mut inner: Vec<String> = Vec::new();
+                for (k, v) in params.iter() {
+                    let raw = if v.is_string() {
+                        v.as_str().unwrap_or_default().to_string()
+                    } else {
+                        v.to_string()
+                    };
+                    inner.push(format!("    <{}>{}</{}>", k, raw, k));
+                }
+                params_blocks.push(format!(
+                    "  <{}>\n{}\n  </{}>",
+                    action_name,
+                    inner.join("\n"),
+                    action_name
+                ));
+            }
+
+            let params_xml = if params_blocks.is_empty() {
                 String::new()
             } else {
-                serde_json::to_string_pretty(&ex.params).unwrap_or_default()
+                format!("\n<params>\n{}\n</params>", params_blocks.join("\n"))
             };
-            let mut b = format!("User: {}\nActions: {}", ex.user, ex.actions.join(","));
-            if !params_pretty.is_empty() {
-                b.push_str("\nParams:\n");
-                b.push_str(&params_pretty);
-            }
+
+            let b = format!(
+                "User: {}\nAssistant:\n<actions>\n{}\n</actions>{}",
+                ex.user, actions_xml, params_xml
+            );
             blocks.push(b);
         }
         if blocks.len() >= max_examples {
@@ -183,7 +209,11 @@ impl Provider for ActionsProvider {
 
         for a in actions.iter() {
             let doc = docs_by_name.get(&a.name);
-            let mut line = format!("- **{}**: {}", a.name, a.description);
+            let mut line = if let Some(d) = doc {
+                format!("- **{}**: {}", a.name, d.description)
+            } else {
+                format!("- **{}**: {}", a.name, a.description)
+            };
             if let Some(d) = doc {
                 if !d.parameters.is_empty() {
                     let params_text = format_action_parameters(&d.parameters);
@@ -194,7 +224,7 @@ impl Provider for ActionsProvider {
                 }
                 actions_data.push(serde_json::json!({
                     "name": a.name,
-                    "description": a.description,
+                    "description": d.description,
                     "parameters": d.parameters,
                     "similes": d.similes,
                 }));

@@ -15,9 +15,9 @@ mkdirSync(DIST, { recursive: true });
 
 console.log("Building @elizaos/plugin-simple-voice...");
 const result = await build({
-  entrypoints: [join(__dirname, "src", "index.ts")],
+  entrypoints: [join(__dirname, "index.ts")],
   outdir: DIST,
-  target: "node",
+  target: "browser",
   format: "esm",
   sourcemap: "linked",
   minify: false,

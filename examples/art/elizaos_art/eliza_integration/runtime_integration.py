@@ -72,7 +72,7 @@ class ARTRuntimeConfig:
 
     # Model configuration - for LLM provider
     model_provider: str = "openai"  # or "anthropic", "local"
-    model_name: str = "gpt-4o-mini"
+    model_name: str = "gpt-5-mini"
 
     # Training
     training_config: TrainingConfig = field(default_factory=TrainingConfig)
@@ -818,7 +818,7 @@ def create_art_runtime(
         agent = Game2048Agent()
         config = ARTRuntimeConfig(
             agent_id="2048-trainer",
-            model_name="gpt-4o-mini",
+            model_name="gpt-5-mini",
             enable_trajectory_logging=True,  # Enable trajectory logging
         )
 

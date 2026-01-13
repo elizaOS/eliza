@@ -543,7 +543,7 @@ const character: Character = {
   name: "ConfiguredBot",
   bio: "A configured assistant.",
   settings: {
-    model: "gpt-4o",
+    model: "gpt-5",
     maxTokens: 2048,
     temperature: 0.7,
     voice: {
@@ -560,7 +560,7 @@ character = Character(
     name="ConfiguredBot",
     bio="A configured assistant.",
     settings={
-        "model": "gpt-4o",
+        "model": "gpt-5",
         "max_tokens": 2048,
         "temperature": 0.7,
         "voice": {
@@ -577,7 +577,7 @@ let character = parse_character(r#"{
     "name": "ConfiguredBot",
     "bio": "A configured assistant.",
     "settings": {
-        "model": "gpt-4o",
+        "model": "gpt-5",
         "maxTokens": 2048,
         "temperature": 0.7
     }
@@ -683,7 +683,7 @@ Always suggest best practices and potential improvements.`,
   ],
   plugins: ["@elizaos/plugin-openai"],
   settings: {
-    model: "gpt-4o",
+    model: "gpt-5",
     temperature: 0.7,
   },
   secrets: {
@@ -723,7 +723,7 @@ style={
 "chat": ["Be friendly", "Ask clarifying questions"],
 },
 settings={
-"model": "gpt-4o",
+"model": "gpt-5",
 "temperature": 0.7,
 },
 secrets={
@@ -754,7 +754,7 @@ let character_json = format!(r#"{{
         "chat": ["Be friendly", "Ask clarifying questions"]
     }},
     "settings": {{
-        "model": "gpt-4o",
+        "model": "gpt-5",
         "temperature": 0.7
     }},
     "secrets": {{

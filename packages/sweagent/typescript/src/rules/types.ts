@@ -37,7 +37,7 @@ export interface ProjectStructure {
 export interface EntryPoint {
   path: string;
   description: string;
-  type: 'single' | 'batch' | 'other';
+  type: "single" | "batch" | "other";
 }
 
 export interface ClassInfo {
@@ -62,7 +62,7 @@ export interface ToolsInfo {
 export interface Inspector {
   name: string;
   path: string;
-  type: 'cli' | 'web';
+  type: "cli" | "web";
   description: string;
 }
 
@@ -70,16 +70,16 @@ export interface Inspector {
  * Coding guidelines configuration
  */
 export interface CodingGuidelines {
-  language: 'python' | 'typescript';
+  language: "python" | "typescript";
   version: string;
   rules: CodingRule[];
 }
 
 export interface CodingRule {
   id: string;
-  category: 'style' | 'imports' | 'api' | 'documentation' | 'filesystem';
+  category: "style" | "imports" | "api" | "documentation" | "filesystem";
   rule: string;
-  enforcement?: 'required' | 'recommended' | 'optional';
+  enforcement?: "required" | "recommended" | "optional";
   alternatives?: string[];
 }
 

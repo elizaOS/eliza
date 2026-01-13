@@ -5,7 +5,7 @@ Command-line interface for running GAIA benchmarks.
 
 Supports multiple LLM providers:
 - Groq (default): llama-3.1-8b-instant
-- OpenAI: gpt-4o, gpt-4o-mini, o1-preview
+- OpenAI: gpt-5, gpt-5-mini, o1-preview
 - Anthropic: claude-3-5-sonnet, claude-3-5-haiku
 - Ollama: local models
 - LocalAI: OpenAI-compatible local
@@ -112,7 +112,7 @@ Examples:
 
   # Run with specific provider/model
   gaia-benchmark --provider groq --model llama-3.3-70b-versatile
-  gaia-benchmark --provider openai --model gpt-4o
+  gaia-benchmark --provider openai --model gpt-5
   gaia-benchmark --provider anthropic --model claude-3-5-sonnet-20241022
 
   # Run with preset (predefined model configurations)
@@ -129,7 +129,7 @@ Examples:
 
 Supported Providers:
   groq        Groq Cloud (fastest) - llama-3.1-8b-instant, llama-3.3-70b
-  openai      OpenAI - gpt-4o, gpt-4o-mini, o1-preview
+  openai      OpenAI - gpt-5, gpt-5-mini, o1-preview
   anthropic   Anthropic - claude-3-5-sonnet, claude-3-5-haiku
   ollama      Ollama (local) - llama3.2, qwen2.5, mistral
   localai     LocalAI (local) - OpenAI-compatible

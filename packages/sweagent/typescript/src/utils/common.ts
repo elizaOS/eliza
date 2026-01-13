@@ -2,14 +2,14 @@
  * Common utility functions
  */
 
-import * as crypto from 'crypto';
+import * as crypto from "node:crypto";
 
 /**
  * Format duration in seconds to human readable format
  */
 export function formatDuration(seconds: number): string {
   if (seconds === 0) {
-    return '0s';
+    return "0s";
   }
 
   const isNegative = seconds < 0;
@@ -20,7 +20,7 @@ export function formatDuration(seconds: number): string {
   const minutes = Math.floor((absSeconds % 3600) / 60);
   const secs = absSeconds % 60;
 
-  let result = '';
+  let result = "";
 
   if (days > 0) {
     result = `${days}d ${hours}h ${minutes}m ${secs}s`;
@@ -42,16 +42,19 @@ export function truncateString(str: string, maxLength: number): string {
   if (!str || str.length <= maxLength) {
     return str;
   }
-  return str.substring(0, maxLength - 3) + '...';
+  return `${str.substring(0, maxLength - 3)}...`;
 }
 
 /**
  * Calculate hash of data
  */
 export function calculateHash(data: unknown): string {
-  const stringData = typeof data === 'object' ? JSON.stringify(data, Object.keys(data as object).sort()) : String(data);
+  const stringData =
+    typeof data === "object"
+      ? JSON.stringify(data, Object.keys(data as object).sort())
+      : String(data);
 
-  return crypto.createHash('sha256').update(stringData).digest('hex');
+  return crypto.createHash("sha256").update(stringData).digest("hex");
 }
 
 /**
@@ -66,10 +69,13 @@ interface RetryOptions {
 /**
  * Retry an async operation
  */
-export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
+export async function retry<T>(
+  fn: () => Promise<T>,
+  options: RetryOptions = {},
+): Promise<T> {
   const { retries = 3, delay = 1000, onRetry } = options;
 
-  let lastError: Error;
+  let lastError: Error = new Error("No attempts made");
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -89,13 +95,20 @@ export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {})
     }
   }
 
-  throw lastError!;
+  throw lastError;
 }
 
 /**
  * Debounce a function
  */
-export function debounce<T extends (...args: any[]) => any>(fn: T, delay: number): (...args: Parameters<T>) => void {
+type VariadicFn = (
+  ...args: Array<string | number | boolean | object | null | undefined>
+) => void;
+
+export function debounce<T extends VariadicFn>(
+  fn: T,
+  delay: number,
+): (...args: Parameters<T>) => void {
   let timeoutId: NodeJS.Timeout | null = null;
 
   return function debounced(...args: Parameters<T>) {
@@ -113,7 +126,10 @@ export function debounce<T extends (...args: any[]) => any>(fn: T, delay: number
 /**
  * Throttle a function
  */
-export function throttle<T extends (...args: any[]) => any>(fn: T, delay: number): (...args: Parameters<T>) => void {
+export function throttle<T extends VariadicFn>(
+  fn: T,
+  delay: number,
+): (...args: Parameters<T>) => void {
   let lastCallTime = 0;
   let timeoutId: NodeJS.Timeout | null = null;
 

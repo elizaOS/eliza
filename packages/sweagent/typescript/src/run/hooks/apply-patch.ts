@@ -2,43 +2,55 @@
  * Hook for saving and applying patches
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
-import { execSync } from 'child_process';
-import { AbstractRunHook } from './types';
-import { ProblemStatementConfig } from '../../agent/problem-statement';
-import { SWEEnv } from '../../environment/swe-env';
-import { LocalRepo } from '../../environment/repo';
-import { AgentRunResult, AgentInfo } from '../../types';
-import { getLogger } from '../../utils/log';
+import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { ProblemStatementConfig } from "../../agent/problem-statement";
+import { LocalRepo } from "../../environment/repo";
+import type { SWEEnv } from "../../environment/swe-env";
+import type { AgentInfo, AgentRunResult } from "../../types";
+import { getLogger } from "../../utils/log";
+import { AbstractRunHook } from "./types";
 
-const logger = getLogger('swea-save_apply_patch', '⚡️');
+const logger = getLogger("swea-save_apply_patch", "⚡️");
 
 /**
  * Check if patch is promising (likely to solve the issue)
  */
 function isPromisingPatch(info: AgentInfo): boolean {
   // The exit status can also be `submitted (exit_cost)` etc.
-  return info.exitStatus === 'submitted' && info.submission !== null && info.submission !== undefined;
+  return (
+    info.exitStatus === "submitted" &&
+    info.submission !== null &&
+    info.submission !== undefined
+  );
 }
 
 /**
  * Print patch message to console
  */
 function printPatchMessage(patchOutputFile: string): void {
-  console.log('\n🎉 Submission successful 🎉');
-  console.log('SWE-agent has produced a patch that it believes will solve the issue you submitted!');
-  console.log('Use the code snippet below to inspect or apply it!\n');
+  console.log("\n🎉 Submission successful 🎉");
+  console.log(
+    "SWE-agent has produced a patch that it believes will solve the issue you submitted!",
+  );
+  console.log("Use the code snippet below to inspect or apply it!\n");
 
-  console.log('```bash');
-  console.log('# The patch has been saved to your local filesystem at:');
-  console.log(`PATCH_FILE_PATH='${path.resolve(patchOutputFile)}'`);
-  console.log('# Inspect it:');
-  console.log('cat "${PATCH_FILE_PATH}"');
-  console.log('# Apply it to a local repository:');
-  console.log('cd <your local repo root>');
-  console.log('git apply "${PATCH_FILE_PATH}"');
-  console.log('```\n');
+  const patchPath = path.resolve(patchOutputFile);
+  const bashCommands = [
+    "```bash",
+    "# The patch has been saved to your local filesystem at:",
+    `PATCH_FILE_PATH='${patchPath}'`,
+    "# Inspect it:",
+    "cat $PATCH_FILE_PATH",
+    "# Apply it to a local repository:",
+    "cd <your local repo root>",
+    "git apply $PATCH_FILE_PATH",
+    "```\n",
+  ];
+  for (const line of bashCommands) {
+    console.log(line);
+  }
 }
 
 /**
@@ -51,7 +63,10 @@ export class SaveApplyPatchHook extends AbstractRunHook {
   private env?: SWEEnv;
   private problemStatement?: ProblemStatementConfig;
 
-  constructor(applyPatchLocally: boolean = false, showSuccessMessage: boolean = true) {
+  constructor(
+    applyPatchLocally: boolean = false,
+    showSuccessMessage: boolean = true,
+  ) {
     super();
     this.applyPatchLocally = applyPatchLocally;
     this.showSuccessMessage = showSuccessMessage;
@@ -61,7 +76,11 @@ export class SaveApplyPatchHook extends AbstractRunHook {
     this.outputDir = run.outputDir;
   }
 
-  onInstanceStart(params: { index: number; env: SWEEnv; problemStatement: ProblemStatementConfig }): void {
+  onInstanceStart(params: {
+    index: number;
+    env: SWEEnv;
+    problemStatement: ProblemStatementConfig;
+  }): void {
     this.env = params.env;
     this.problemStatement = params.problemStatement;
   }
@@ -117,7 +136,7 @@ export class SaveApplyPatchHook extends AbstractRunHook {
     const patchOutputFile = path.join(patchOutputDir, `${instanceId}.patch`);
 
     if (!info.submission) {
-      logger.info('No patch to save.');
+      logger.info("No patch to save.");
       return null;
     }
 
@@ -156,9 +175,12 @@ export class SaveApplyPatchHook extends AbstractRunHook {
     try {
       execSync(cmd, { cwd: localDir });
       logger.info(`Applied patch ${patchFile} to ${localDir}`);
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`Failed to apply patch ${patchFile} to ${localDir}: ${errorMessage}`);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      logger.error(
+        `Failed to apply patch ${patchFile} to ${localDir}: ${errorMessage}`,
+      );
     }
   }
 }

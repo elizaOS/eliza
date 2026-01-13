@@ -108,7 +108,7 @@ If you've fixed the issue, use SUBMIT. Otherwise, continue investigating or maki
 
 def create_swe_bench_character(
     name: str = "SWE-Agent",
-    model_name: str = "gpt-4o",
+    model_name: str = "gpt-5",
 ) -> Character:
     """Create a SWE-bench optimized character.
     

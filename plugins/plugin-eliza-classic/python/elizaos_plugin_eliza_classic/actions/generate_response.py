@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from elizaos_plugin_eliza_classic.plugin import generate_response
 
 if TYPE_CHECKING:
-    from typing import Any
+    from collections.abc import Mapping
 
 
 class GenerateResponseAction:
@@ -28,10 +28,10 @@ class GenerateResponseAction:
             "talk",
         ]
 
-    async def validate(self, context: "Any") -> bool:
+    async def validate(self, context: "Mapping[str, object] | object") -> bool:
         return True
 
-    async def handler(self, context: "Any") -> dict[str, "Any"]:
+    async def handler(self, context: "Mapping[str, object] | object") -> dict[str, object]:
         message = context.get("message", {}) if isinstance(context, dict) else {}
         content = message.get("content", {}) if isinstance(message, dict) else {}
 

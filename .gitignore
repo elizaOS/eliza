@@ -2,6 +2,9 @@ node_modules
 bun.lock
 /out
 
+.next/
+**/.next/**
+
 .env
 .env.production
 .env.local
@@ -304,6 +307,7 @@ packages/elizaos/examples/
 /3DAvatarChatbot/
 
 # Local vendored experiments (do not commit)
+/plugins/plugin-local-ai/rust/vendor/llama_cpp_rs/
 /vendor/llama_cpp_rs/
 
 # Ad-hoc benchmark output folders (generated during local runs)

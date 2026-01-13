@@ -1,0 +1,9 @@
+pydantic>=2.12.5
+pydantic-settings>=2.12.0
+protobuf>=5.29.0
+uuid6>=2024.1.12
+aiohttp>=3.13.3
+cryptography>=42.0.0
+structlog>=25.5.0
+typing-extensions>=4.9.0
+

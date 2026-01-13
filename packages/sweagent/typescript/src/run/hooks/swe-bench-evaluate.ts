@@ -3,24 +3,24 @@
  * Will be automatically added to `run_batch` if `SWEBenchInstances.evaluate` is set to true
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
-import { spawn, ChildProcess } from 'child_process';
-import { AbstractRunHook } from './types';
-import { AgentRunResult } from '../../types';
-import { getLogger } from '../../utils/log';
-import { mergePredictions } from '../merge-predictions';
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { AgentRunResult } from "../../types";
+import { getLogger } from "../../utils/log";
+import { mergePredictions } from "../merge-predictions";
+import { AbstractRunHook } from "./types";
 
-const logger = getLogger('SB-evaluate', '😬');
+const logger = getLogger("SB-evaluate", "😬");
 
 /**
  * SweBench evaluation hook
  */
 export class SweBenchEvaluate extends AbstractRunHook {
   private static readonly SUBSET_MAP: Record<string, string> = {
-    lite: 'swe-bench_lite',
-    verified: 'swe-bench_verified',
-    multimodal: 'swe-bench_multimodal',
+    lite: "swe-bench_lite",
+    verified: "swe-bench_verified",
+    multimodal: "swe-bench_multimodal",
   };
 
   private outputDir: string;
@@ -33,7 +33,12 @@ export class SweBenchEvaluate extends AbstractRunHook {
   private runningCalls: ChildProcess[] = [];
   private timeSuffix: string;
 
-  constructor(params: { outputDir: string; subset: string; split: string; continuousSubmissionEvery?: number }) {
+  constructor(params: {
+    outputDir: string;
+    subset: string;
+    split: string;
+    continuousSubmissionEvery?: number;
+  }) {
     super();
     this.outputDir = params.outputDir;
     this.subset = params.subset;
@@ -44,7 +49,7 @@ export class SweBenchEvaluate extends AbstractRunHook {
     // We need to add a suffix to the run_id to avoid collisions when you reuse the name of your run
     this.timeSuffix = new Date()
       .toISOString()
-      .replace(/[-:T.]/g, '')
+      .replace(/[-:T.]/g, "")
       .slice(0, -1);
   }
 
@@ -54,20 +59,27 @@ export class SweBenchEvaluate extends AbstractRunHook {
 
   getSbCall(predsPath: string, submitOnly: boolean = false): string[] {
     const args = [
-      'sb-cli',
-      'submit',
+      "sb-cli",
+      "submit",
       SweBenchEvaluate.SUBSET_MAP[this.subset],
       this.split,
-      '--predictions_path',
+      "--predictions_path",
       predsPath,
-      '--run_id',
+      "--run_id",
       this.runId,
-      '--output_dir',
-      path.join(this.outputDir, 'sb-cli-reports'),
+      "--output_dir",
+      path.join(this.outputDir, "sb-cli-reports"),
     ];
 
     if (submitOnly) {
-      args.push('--wait_for_evaluation', '0', '--gen_report', '0', '--verify_submission', '0');
+      args.push(
+        "--wait_for_evaluation",
+        "0",
+        "--gen_report",
+        "0",
+        "--verify_submission",
+        "0",
+      );
     }
 
     return args;
@@ -80,7 +92,7 @@ export class SweBenchEvaluate extends AbstractRunHook {
     this.runningCalls = this.runningCalls.filter((call) => {
       if (call.exitCode !== null) {
         if (call.exitCode !== 0) {
-          logger.error('Failed to submit results to SweBench eval');
+          logger.error("Failed to submit results to SweBench eval");
         }
         return false;
       }
@@ -105,12 +117,18 @@ export class SweBenchEvaluate extends AbstractRunHook {
 
     this.mergeLock = true;
     try {
-      mergePredictions([this.outputDir], path.join(this.outputDir, 'tmppreds.json'));
+      mergePredictions(
+        [this.outputDir],
+        path.join(this.outputDir, "tmppreds.json"),
+      );
       this.lastEvaluationTime = currentTime;
 
-      const sbCall = this.getSbCall(path.join(this.outputDir, 'tmppreds.json'), true);
+      const sbCall = this.getSbCall(
+        path.join(this.outputDir, "tmppreds.json"),
+        true,
+      );
       const child = spawn(sbCall[0], sbCall.slice(1), {
-        stdio: 'pipe',
+        stdio: "pipe",
       });
 
       this.runningCalls.push(child);
@@ -123,25 +141,27 @@ export class SweBenchEvaluate extends AbstractRunHook {
    * Move report from `sb-cli-reports` to `results.json`
    */
   moveSbCliReport(): void {
-    const outputDir = path.join(this.outputDir, 'sb-cli-reports');
+    const outputDir = path.join(this.outputDir, "sb-cli-reports");
 
     if (!fs.existsSync(outputDir)) {
       logger.warn(`No SweBench report found at ${outputDir}`);
       return;
     }
 
-    const resultsPath = path.join(this.outputDir, 'results.json');
+    const resultsPath = path.join(this.outputDir, "results.json");
     if (fs.existsSync(resultsPath)) {
       fs.unlinkSync(resultsPath);
     }
 
     const reports = fs
       .readdirSync(outputDir)
-      .filter((file) => file.endsWith('.json'))
+      .filter((file) => file.endsWith(".json"))
       .map((file) => path.join(outputDir, file));
 
     if (reports.length !== 1) {
-      logger.warn(`Expected 1 SweBench report at ${outputDir}, found ${reports.length}. Cannot rename.`);
+      logger.warn(
+        `Expected 1 SweBench report at ${outputDir}, found ${reports.length}. Cannot rename.`,
+      );
       return;
     }
 
@@ -149,13 +169,12 @@ export class SweBenchEvaluate extends AbstractRunHook {
   }
 
   onEnd(): void {
-    logger.info('Submitting results to SWE-Bench');
+    logger.info("Submitting results to SWE-Bench");
 
     try {
-      const sbCall = this.getSbCall(path.join(this.outputDir, 'preds.json'));
-      const { spawnSync } = require('child_process');
+      const sbCall = this.getSbCall(path.join(this.outputDir, "preds.json"));
       const result = spawnSync(sbCall[0], sbCall.slice(1), {
-        stdio: 'inherit',
+        stdio: "inherit",
       });
 
       if (result.status !== 0) {
@@ -163,15 +182,18 @@ export class SweBenchEvaluate extends AbstractRunHook {
       }
 
       // Remove temporary predictions if they exist
-      const tmpPredsPath = path.join(this.outputDir, 'tmppreds.json');
+      const tmpPredsPath = path.join(this.outputDir, "tmppreds.json");
       if (fs.existsSync(tmpPredsPath)) {
         fs.unlinkSync(tmpPredsPath);
       }
 
       this.moveSbCliReport();
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`Failed to submit results to SweBench eval: ${errorMessage}`);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      logger.error(
+        `Failed to submit results to SweBench eval: ${errorMessage}`,
+      );
     }
   }
 }

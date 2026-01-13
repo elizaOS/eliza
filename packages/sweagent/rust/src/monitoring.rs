@@ -34,42 +34,43 @@ impl AgentMetrics {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     pub fn record_run_start(&self) {
         self.runs_started.fetch_add(1, Ordering::SeqCst);
     }
-    
+
     pub fn record_run_complete(&self, result: &AgentRunResult) {
-        let is_error = result.info.exit_status
+        let is_error = result
+            .info
+            .exit_status
             .as_ref()
             .map(|s| s.contains("error"))
             .unwrap_or(false);
-        
+
         if is_error {
             self.runs_failed.fetch_add(1, Ordering::SeqCst);
         } else {
             self.runs_completed.fetch_add(1, Ordering::SeqCst);
         }
-        
+
         // Record model stats if available
         if let Some(ref stats) = result.info.model_stats {
-            self.total_cost_micros.fetch_add(
-                (stats.instance_cost * 1_000_000.0) as u64,
-                Ordering::SeqCst,
-            );
-            self.total_tokens_sent.fetch_add(stats.tokens_sent, Ordering::SeqCst);
-            self.total_tokens_received.fetch_add(stats.tokens_received, Ordering::SeqCst);
-            self.total_api_calls.fetch_add(stats.api_calls, Ordering::SeqCst);
+            self.total_cost_micros
+                .fetch_add((stats.instance_cost * 1_000_000.0) as u64, Ordering::SeqCst);
+            self.total_tokens_sent
+                .fetch_add(stats.tokens_sent, Ordering::SeqCst);
+            self.total_tokens_received
+                .fetch_add(stats.tokens_received, Ordering::SeqCst);
+            self.total_api_calls
+                .fetch_add(stats.api_calls, Ordering::SeqCst);
         }
     }
-    
+
     pub fn record_execution_time(&self, duration: Duration) {
-        self.total_execution_time_ms.fetch_add(
-            duration.as_millis() as u64,
-            Ordering::SeqCst,
-        );
+        self.total_execution_time_ms
+            .fetch_add(duration.as_millis() as u64, Ordering::SeqCst);
     }
-    
+
     /// Get current metrics as a snapshot
     pub fn snapshot(&self) -> MetricsSnapshot {
         MetricsSnapshot {
@@ -106,7 +107,7 @@ impl MetricsSnapshot {
         }
         self.runs_completed as f64 / self.runs_started as f64
     }
-    
+
     /// Calculate average cost per run
     pub fn avg_cost_per_run(&self) -> f64 {
         if self.runs_started == 0 {
@@ -114,7 +115,7 @@ impl MetricsSnapshot {
         }
         self.total_cost / self.runs_started as f64
     }
-    
+
     /// Calculate average execution time
     pub fn avg_execution_time_ms(&self) -> f64 {
         if self.runs_started == 0 {
@@ -152,12 +153,10 @@ impl Alert {
             context: HashMap::new(),
         }
     }
-    
+
     pub fn with_context(mut self, key: impl Into<String>, value: impl Serialize) -> Self {
-        self.context.insert(
-            key.into(),
-            serde_json::to_value(value).unwrap_or_default(),
-        );
+        self.context
+            .insert(key.into(), serde_json::to_value(value).unwrap_or_default());
         self
     }
 }
@@ -213,15 +212,15 @@ impl WebhookAlertHandler {
             min_severity,
         }
     }
-    
+
     fn should_send(&self, severity: AlertSeverity) -> bool {
-        match (self.min_severity, severity) {
-            (AlertSeverity::Critical, AlertSeverity::Critical) => true,
-            (AlertSeverity::Error, AlertSeverity::Critical | AlertSeverity::Error) => true,
-            (AlertSeverity::Warning, AlertSeverity::Critical | AlertSeverity::Error | AlertSeverity::Warning) => true,
-            (AlertSeverity::Info, _) => true,
-            _ => false,
-        }
+        matches!(
+            (self.min_severity, severity),
+            (AlertSeverity::Critical, AlertSeverity::Critical)
+                | (AlertSeverity::Error, AlertSeverity::Critical | AlertSeverity::Error)
+                | (AlertSeverity::Warning, AlertSeverity::Critical | AlertSeverity::Error | AlertSeverity::Warning)
+                | (AlertSeverity::Info, _)
+        )
     }
 }
 
@@ -230,7 +229,7 @@ impl AlertHandler for WebhookAlertHandler {
         if !self.should_send(alert.severity) {
             return;
         }
-        
+
         let url = self.url.clone();
         let payload = serde_json::json!({
             "severity": alert.severity,
@@ -238,9 +237,9 @@ impl AlertHandler for WebhookAlertHandler {
             "timestamp": alert.timestamp.to_rfc3339(),
             "context": alert.context,
         });
-        
+
         let client = self.client.clone();
-        
+
         // Fire and forget - don't block on webhook
         tokio::spawn(async move {
             if let Err(e) = client.post(&url).json(&payload).send().await {
@@ -266,10 +265,10 @@ pub struct AlertThresholds {
 impl Default for AlertThresholds {
     fn default() -> Self {
         Self {
-            cost_limit: 100.0,           // $100
-            failure_rate_percent: 20.0,  // 20%
-            execution_time_ms: 600_000,  // 10 minutes
-            api_calls_limit: 10_000,     // 10k calls
+            cost_limit: 100.0,          // $100
+            failure_rate_percent: 20.0, // 20%
+            execution_time_ms: 600_000, // 10 minutes
+            api_calls_limit: 10_000,    // 10k calls
         }
     }
 }
@@ -292,50 +291,65 @@ impl MetricsMonitor {
             last_check: std::sync::Mutex::new(Instant::now()),
         }
     }
-    
+
     pub fn add_handler(&mut self, handler: Box<dyn AlertHandler>) {
         self.handlers.push(handler);
     }
-    
+
     pub fn check(&self) {
         let snapshot = self.metrics.snapshot();
-        
+
         // Check cost limit
         if snapshot.total_cost > self.thresholds.cost_limit {
-            self.alert(Alert::new(
-                AlertSeverity::Warning,
-                format!("Cost limit exceeded: ${:.2} > ${:.2}", 
-                    snapshot.total_cost, self.thresholds.cost_limit),
-            ).with_context("total_cost", snapshot.total_cost));
+            self.alert(
+                Alert::new(
+                    AlertSeverity::Warning,
+                    format!(
+                        "Cost limit exceeded: ${:.2} > ${:.2}",
+                        snapshot.total_cost, self.thresholds.cost_limit
+                    ),
+                )
+                .with_context("total_cost", snapshot.total_cost),
+            );
         }
-        
+
         // Check failure rate
         let failure_rate = if snapshot.runs_started > 0 {
             100.0 * snapshot.runs_failed as f64 / snapshot.runs_started as f64
         } else {
             0.0
         };
-        
+
         if failure_rate > self.thresholds.failure_rate_percent && snapshot.runs_started >= 10 {
-            self.alert(Alert::new(
-                AlertSeverity::Error,
-                format!("High failure rate: {:.1}% > {:.1}%",
-                    failure_rate, self.thresholds.failure_rate_percent),
-            ).with_context("failure_rate", failure_rate)
-             .with_context("runs_failed", snapshot.runs_failed)
-             .with_context("runs_started", snapshot.runs_started));
+            self.alert(
+                Alert::new(
+                    AlertSeverity::Error,
+                    format!(
+                        "High failure rate: {:.1}% > {:.1}%",
+                        failure_rate, self.thresholds.failure_rate_percent
+                    ),
+                )
+                .with_context("failure_rate", failure_rate)
+                .with_context("runs_failed", snapshot.runs_failed)
+                .with_context("runs_started", snapshot.runs_started),
+            );
         }
-        
+
         // Check API calls
         if snapshot.total_api_calls > self.thresholds.api_calls_limit {
-            self.alert(Alert::new(
-                AlertSeverity::Warning,
-                format!("API call limit exceeded: {} > {}",
-                    snapshot.total_api_calls, self.thresholds.api_calls_limit),
-            ).with_context("api_calls", snapshot.total_api_calls));
+            self.alert(
+                Alert::new(
+                    AlertSeverity::Warning,
+                    format!(
+                        "API call limit exceeded: {} > {}",
+                        snapshot.total_api_calls, self.thresholds.api_calls_limit
+                    ),
+                )
+                .with_context("api_calls", snapshot.total_api_calls),
+            );
         }
     }
-    
+
     fn alert(&self, alert: Alert) {
         for handler in &self.handlers {
             handler.handle(&alert);
@@ -365,16 +379,24 @@ impl HealthStatus {
             timestamp: chrono::Utc::now(),
         }
     }
-    
-    pub fn add_component(&mut self, name: impl Into<String>, healthy: bool, message: impl Into<String>) {
+
+    pub fn add_component(
+        &mut self,
+        name: impl Into<String>,
+        healthy: bool,
+        message: impl Into<String>,
+    ) {
         let name = name.into();
         if !healthy {
             self.healthy = false;
         }
-        self.components.insert(name, ComponentHealth {
-            healthy,
-            message: message.into(),
-        });
+        self.components.insert(
+            name,
+            ComponentHealth {
+                healthy,
+                message: message.into(),
+            },
+        );
     }
 }
 
@@ -387,13 +409,13 @@ impl Default for HealthStatus {
 /// Perform a health check
 pub async fn health_check() -> HealthStatus {
     let mut status = HealthStatus::new();
-    
+
     // Check Docker availability
     let docker_check = tokio::process::Command::new("docker")
         .arg("info")
         .output()
         .await;
-    
+
     match docker_check {
         Ok(output) if output.status.success() => {
             status.add_component("docker", true, "Docker daemon is running");
@@ -405,17 +427,21 @@ pub async fn health_check() -> HealthStatus {
             status.add_component("docker", false, format!("Docker not available: {}", e));
         }
     }
-    
+
     // Check environment variables
-    let has_api_key = std::env::var("OPENAI_API_KEY").is_ok() 
-        || std::env::var("ANTHROPIC_API_KEY").is_ok();
-    
+    let has_api_key =
+        std::env::var("OPENAI_API_KEY").is_ok() || std::env::var("ANTHROPIC_API_KEY").is_ok();
+
     status.add_component(
         "api_keys",
         has_api_key,
-        if has_api_key { "API keys configured" } else { "No API keys found" },
+        if has_api_key {
+            "API keys configured"
+        } else {
+            "No API keys found"
+        },
     );
-    
+
     status
 }
 
@@ -429,7 +455,7 @@ mod tests {
         metrics.runs_started.store(10, Ordering::SeqCst);
         metrics.runs_completed.store(8, Ordering::SeqCst);
         metrics.runs_failed.store(2, Ordering::SeqCst);
-        
+
         let snapshot = metrics.snapshot();
         assert_eq!(snapshot.runs_started, 10);
         assert!((snapshot.success_rate() - 0.8).abs() < 0.001);
@@ -440,7 +466,7 @@ mod tests {
         let alert = Alert::new(AlertSeverity::Warning, "Test alert")
             .with_context("count", 42)
             .with_context("name", "test");
-        
+
         assert_eq!(alert.severity, AlertSeverity::Warning);
         assert_eq!(alert.context.len(), 2);
     }
@@ -449,7 +475,7 @@ mod tests {
     fn test_health_status() {
         let mut status = HealthStatus::new();
         assert!(status.healthy);
-        
+
         status.add_component("test", false, "Failed");
         assert!(!status.healthy);
     }

@@ -3,18 +3,31 @@
  * Converted from sweagent/run/run_replay.py
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
-import { z } from 'zod';
-import { DefaultAgent, DefaultAgentConfig, ToolHandler, ToolConfig } from '../agent/agents';
-import { getModel } from '../agent/models';
-import { SWEEnv } from '../environment/swe-env';
-import { AbstractDeployment, getDeployment, DeploymentConfig } from '../environment/deployment';
-import { getLogger, AgentLogger } from '../utils/log';
-import { loadEnvironmentVariables } from '../utils/config';
-import { TrajectoryData } from './types';
-import { RunSingleConfig } from './types';
-import { TextProblemStatement } from '../agent/problem-statement';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { z } from "zod";
+import {
+  DEFAULT_TEMPLATE_CONFIG,
+  DefaultAgent,
+  type DefaultAgentConfig,
+  type TemplateConfig,
+  type ToolConfig,
+  ToolHandler,
+} from "../agent/agents";
+import { getModel } from "../agent/models";
+import {
+  type ProblemStatement,
+  TextProblemStatement,
+} from "../agent/problem-statement";
+import {
+  type AbstractDeployment,
+  type DeploymentConfig,
+  getDeployment,
+} from "../environment/deployment";
+import { EnvironmentConfigSchema, SWEEnv } from "../environment/swe-env";
+import { loadEnvironmentVariables } from "../utils/config";
+import { type AgentLogger, getLogger } from "../utils/log";
+import type { RunSingleConfig, TrajectoryData } from "./types";
 
 /**
  * Run replay configuration
@@ -33,7 +46,7 @@ export interface RunReplayConfig {
 export const RunReplayConfigSchema = z.object({
   trajPath: z.string(),
   deployment: z.custom<DeploymentConfig>().optional(),
-  outputDir: z.string().default('DEFAULT'),
+  outputDir: z.string().default("DEFAULT"),
   envVarPath: z.string().optional(),
   updateConfig: z.array(z.string()).default([]),
 });
@@ -60,14 +73,14 @@ export class RunReplay {
   }) {
     this.trajPath = config.trajPath;
     // this.deployment = config.deployment;  // Not used currently
-    this.outputDir = config.outputDir || '.';
+    this.outputDir = config.outputDir || ".";
     // this._updateConfig = (config as any).updateConfig || [];  // Not implemented yet
     this.catchErrors = config.catchErrors !== false;
     this.requireZeroExitCode = config.requireZeroExitCode || false;
-    this.logger = getLogger('run-replay', '🔄');
+    this.logger = getLogger("run-replay", "🔄");
 
     // Load trajectory data
-    const trajContent = fs.readFileSync(this.trajPath, 'utf-8');
+    const trajContent = fs.readFileSync(this.trajPath, "utf-8");
     this.trajData = JSON.parse(trajContent);
   }
 
@@ -78,12 +91,14 @@ export class RunReplay {
     }
 
     // Create deployment if provided
-    const deployment = config.deployment ? getDeployment(config.deployment) : undefined;
+    const deployment = config.deployment
+      ? getDeployment(config.deployment)
+      : undefined;
 
     // Set default output directory
-    if (config.outputDir === 'DEFAULT') {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      config.outputDir = path.join('replays', `replay_${timestamp}`);
+    if (config.outputDir === "DEFAULT") {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      config.outputDir = path.join("replays", `replay_${timestamp}`);
     }
 
     return new RunReplay({
@@ -95,7 +110,9 @@ export class RunReplay {
   }
 
   get instanceId(): string {
-    return this.trajData.info?.instance_id || path.basename(this.trajPath, '.traj');
+    return (
+      this.trajData.info?.instance_id || path.basename(this.trajPath, ".traj")
+    );
   }
 
   private getConfigFromAgent(): Partial<RunSingleConfig> {
@@ -108,21 +125,56 @@ export class RunReplay {
     const config: Partial<RunSingleConfig> = {};
 
     if (this.trajData.environment) {
-      config.env = this.trajData.environment as any;
+      config.env = EnvironmentConfigSchema.parse(this.trajData.environment);
     }
 
-    config.agent = {
-      type: 'default' as const,
-      name: 'replay-agent',
-      model: {
-        name: 'replay' as const,
-        replayPath: this.trajPath,
-      } as any,
-      templates: {} as any,
-      tools: {} as any,
+    const templates: TemplateConfig = {
+      systemTemplate: DEFAULT_TEMPLATE_CONFIG.systemTemplate ?? "",
+      instanceTemplate: DEFAULT_TEMPLATE_CONFIG.instanceTemplate ?? "",
+      nextStepTemplate:
+        DEFAULT_TEMPLATE_CONFIG.nextStepTemplate ??
+        "Observation: {{observation}}",
+      nextStepTruncatedObservationTemplate:
+        DEFAULT_TEMPLATE_CONFIG.nextStepTruncatedObservationTemplate ??
+        "Observation: {{observation}}",
+      maxObservationLength:
+        DEFAULT_TEMPLATE_CONFIG.maxObservationLength ?? 100000,
+      demonstrations: DEFAULT_TEMPLATE_CONFIG.demonstrations ?? [],
+      putDemosInHistory: DEFAULT_TEMPLATE_CONFIG.putDemosInHistory ?? false,
+      disableImageProcessing:
+        DEFAULT_TEMPLATE_CONFIG.disableImageProcessing ?? false,
+      shellCheckErrorTemplate:
+        DEFAULT_TEMPLATE_CONFIG.shellCheckErrorTemplate ?? "",
+      commandCancelledTimeoutTemplate:
+        DEFAULT_TEMPLATE_CONFIG.commandCancelledTimeoutTemplate ?? "",
+      nextStepNoOutputTemplate:
+        DEFAULT_TEMPLATE_CONFIG.nextStepNoOutputTemplate,
+      strategyTemplate: DEFAULT_TEMPLATE_CONFIG.strategyTemplate,
+      demonstrationTemplate: DEFAULT_TEMPLATE_CONFIG.demonstrationTemplate,
+    };
+
+    const tools: ToolConfig = {
+      commands: [],
+      executionTimeout: 30,
+      maxConsecutiveExecutionTimeouts: 3,
+      totalExecutionTimeout: 1800,
+      submitCommand: "submit",
+      useFunctionCalling: false,
+      formatErrorTemplate: "",
+      commandDocs: "",
+      envVariables: {},
+    };
+
+    const agent: DefaultAgentConfig = {
+      type: "default",
+      name: "replay-agent",
+      model: { name: "replay", replayPath: this.trajPath },
+      templates,
+      tools,
       historyProcessors: [],
       maxRequeries: 0,
-    } as DefaultAgentConfig;
+    };
+    config.agent = agent;
 
     if (this.trajData.problemStatement) {
       config.problemStatement = this.trajData.problemStatement;
@@ -142,9 +194,9 @@ export class RunReplay {
     }
 
     // Save actions to file
-    const actionsPath = path.join(this.outputDir, 'actions.txt');
+    const actionsPath = path.join(this.outputDir, "actions.txt");
     fs.mkdirSync(this.outputDir, { recursive: true });
-    fs.writeFileSync(actionsPath, actions.join('\n'));
+    fs.writeFileSync(actionsPath, actions.join("\n"));
 
     this.logger.info(`Actions saved to ${actionsPath}`);
   }
@@ -157,15 +209,15 @@ export class RunReplay {
 
     // Create a default environment config if not present
     const envConfig = config.env || {
-      name: 'default',
+      name: "default",
       deployment: {
-        type: 'docker' as const,
-        image: 'python:3.11',
-        pythonStandaloneDir: '',
+        type: "docker" as const,
+        image: "python:3.11",
+        pythonStandaloneDir: "",
         volumes: {},
         environment: {},
         removeOnStop: true,
-        workDir: '/workspace',
+        workDir: "/workspace",
       },
       postStartupCommands: [],
       postStartupCommandTimeout: 300,
@@ -178,24 +230,12 @@ export class RunReplay {
     const config = this.getConfigFromAgent();
 
     // Create replay agent
-    const agentConfig = config.agent && config.agent.type === 'default' ? config.agent : null;
+    const agentConfig =
+      config.agent && config.agent.type === "default" ? config.agent : null;
 
     // Create default templates if not provided
-    const templates =
-      agentConfig?.templates ||
-      ({
-        systemTemplate: '',
-        instanceTemplate: '',
-        nextStepTemplate: '',
-        nextStepTruncatedObservationTemplate: '',
-        formatErrorTemplate: '',
-        demonstrationTemplate: '',
-        demonstrationObservationTemplate: '',
-        historyToMessagesPrompt: '',
-        historyTruncatedTemplate: '',
-        hypothesisTemplate: '',
-        hypothesisObservationTemplate: '',
-      } as any);
+    const templates: TemplateConfig =
+      agentConfig?.templates ?? (DEFAULT_TEMPLATE_CONFIG as TemplateConfig);
 
     // Create tool handler with default config
     const toolConfig: ToolConfig = agentConfig?.tools || {
@@ -203,16 +243,16 @@ export class RunReplay {
       executionTimeout: 500,
       maxConsecutiveExecutionTimeouts: 3,
       totalExecutionTimeout: 7200,
-      submitCommand: 'submit',
+      submitCommand: "submit",
       useFunctionCalling: false,
-      formatErrorTemplate: 'Invalid format',
+      formatErrorTemplate: "Invalid format",
     };
     const toolHandler = new ToolHandler(toolConfig);
 
     // Create model
     const model = getModel(
       {
-        name: 'replay',
+        name: "replay",
         replayPath: this.trajPath,
       },
       toolConfig,
@@ -243,37 +283,33 @@ export class RunReplay {
 
     try {
       // Get problem statement from trajectory
-      let problemStatement;
-      if (this.trajData.problemStatement) {
-        // If it's already a problem statement instance, use it
-        if ('getProblemStatement' in this.trajData.problemStatement) {
-          problemStatement = this.trajData.problemStatement;
-        } else {
-          // Otherwise create from config
-          problemStatement = new TextProblemStatement({
-            text: (this.trajData.problemStatement as any).text || 'Replay of previous run',
-            id: this.instanceId,
-          });
-        }
-      } else {
-        problemStatement = new TextProblemStatement({
-          text: 'Replay of previous run',
-          id: this.instanceId,
-        });
-      }
+      const fallbackText = "Replay of previous run";
+      const maybeText =
+        this.trajData.problemStatement &&
+        typeof this.trajData.problemStatement === "object" &&
+        "text" in this.trajData.problemStatement &&
+        typeof (this.trajData.problemStatement as { text?: string }).text ===
+          "string"
+          ? (this.trajData.problemStatement as { text: string }).text
+          : fallbackText;
+
+      const problemStatement: ProblemStatement = new TextProblemStatement({
+        text: maybeText,
+        id: this.instanceId,
+      });
 
       // Run agent
       const result = await agent.run(env, problemStatement, this.outputDir);
 
-      this.logger.info('Replay completed');
+      this.logger.info("Replay completed");
       this.logger.info(`Exit status: ${result.info.exitStatus}`);
 
       // Compare with original if available
       if (this.trajData.info?.submission && result.info.submission) {
         if (this.trajData.info.submission === result.info.submission) {
-          this.logger.info('✅ Replay produced identical submission');
+          this.logger.info("✅ Replay produced identical submission");
         } else {
-          this.logger.warning('⚠️ Replay produced different submission');
+          this.logger.warning("⚠️ Replay produced different submission");
         }
       }
     } finally {
@@ -286,7 +322,9 @@ export class RunReplay {
 /**
  * Run from configuration
  */
-export async function runReplayFromConfig(config: RunReplayConfig): Promise<void> {
+export async function runReplayFromConfig(
+  config: RunReplayConfig,
+): Promise<void> {
   const runner = RunReplay.fromConfig(config);
   await runner.main();
 }

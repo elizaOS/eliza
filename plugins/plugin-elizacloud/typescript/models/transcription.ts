@@ -11,7 +11,7 @@ export async function handleTranscription(
   let modelName = getSetting(
     runtime,
     "ELIZAOS_CLOUD_TRANSCRIPTION_MODEL",
-    "gpt-4o-mini-transcribe",
+    "gpt-5-mini-transcribe",
   );
   logger.log(`[ELIZAOS_CLOUD] Using TRANSCRIPTION model: ${modelName}`);
 

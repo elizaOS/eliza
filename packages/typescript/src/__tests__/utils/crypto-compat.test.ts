@@ -11,6 +11,8 @@ import {
   createHash,
   createHashAsync,
   decryptAsync,
+  decryptAes256Gcm,
+  encryptAes256Gcm,
   encryptAsync,
 } from "../../utils/crypto-compat";
 
@@ -248,6 +250,25 @@ describe("crypto-compat", () => {
       const encrypted2 = await encryptAsync(key, iv, plaintext);
 
       expect(encrypted1).toEqual(encrypted2);
+    });
+  });
+
+  describe("encryptAes256Gcm / decryptAes256Gcm (synchronous AEAD)", () => {
+    it("should encrypt and decrypt with an authentication tag", async () => {
+      const key = await createHashAsync("sha256", "test-key-seed-gcm");
+      const iv = new Uint8Array(12);
+      for (let i = 0; i < iv.length; i++) iv[i] = i;
+      const aad = new TextEncoder().encode("elizaos:settings:v2");
+      const plaintext = new TextEncoder().encode("Secret message");
+
+      const { ciphertext, tag } = encryptAes256Gcm(key, iv, plaintext, aad);
+      expect(ciphertext).toBeInstanceOf(Uint8Array);
+      expect(tag).toBeInstanceOf(Uint8Array);
+      expect(tag.length).toBe(16);
+      expect(ciphertext).not.toEqual(plaintext);
+
+      const decrypted = decryptAes256Gcm(key, iv, ciphertext, tag, aad);
+      expect(decrypted).toEqual(plaintext);
     });
   });
 

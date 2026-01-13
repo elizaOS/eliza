@@ -2,6 +2,8 @@
  * Common types for agent modules
  */
 
+import type { JsonValue } from "../json";
+
 /**
  * Model response output
  */
@@ -9,7 +11,9 @@ export interface ModelOutput {
   message: string;
   content?: string;
   toolCalls?: ToolCall[];
+  tool_calls?: ToolCall[];
   thinkingBlocks?: ThinkingBlock[];
+  thinking_blocks?: ThinkingBlock[];
   usage?: {
     promptTokens: number;
     completionTokens: number;
@@ -22,7 +26,7 @@ export interface ModelOutput {
  */
 export interface ToolCall {
   id: string;
-  type: 'function';
+  type: "function";
   function: {
     name: string;
     arguments: string;
@@ -35,7 +39,7 @@ export interface ToolCall {
 export interface ThinkingBlock {
   type: string;
   content: string;
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 /**
@@ -45,7 +49,7 @@ export interface Command {
   name: string;
   endName?: string;
   installScript?: string;
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 /**
@@ -59,7 +63,7 @@ export interface FormatDict {
  * Extra fields for problem statements and other configs
  */
 export interface ExtraFields {
-  [key: string]: string | number | boolean | object | null;
+  [key: string]: JsonValue | undefined;
 }
 
 /**
@@ -96,7 +100,7 @@ export interface APIResponse {
 export type MessageContent =
   | string
   | Array<{
-      type: 'text' | 'image_url';
+      type: "text" | "image_url";
       text?: string;
       image_url?: { url: string };
       cacheControl?: { type: string };

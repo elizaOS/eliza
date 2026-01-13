@@ -1,7 +1,4 @@
-import json
-import os
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
 
 try:
     from sweagent import TOOLS_DIR
@@ -53,10 +50,10 @@ class InsertInfo:
 class WindowedFile:
     def __init__(
         self,
-        path: Optional[Path] = None,
+        path: Path | None = None,
         *,
-        first_line: Optional[int] = None,
-        window: Optional[int] = None,
+        first_line: int | None = None,
+        window: int | None = None,
         exit_on_exception: bool = True,
     ):
         """
@@ -118,7 +115,7 @@ class WindowedFile:
         return self._first_line
 
     @first_line.setter
-    def first_line(self, value: Union[int, float]):
+    def first_line(self, value: int | float):
         self._original_first_line = self.first_line
         value = int(value)
         self._first_line = max(0, min(value, self.n_lines - self.window))
@@ -138,7 +135,7 @@ class WindowedFile:
         return len(self.text.splitlines())
 
     @property
-    def line_range(self) -> Tuple[int, int]:
+    def line_range(self) -> tuple[int, int]:
         """Return first and last line (inclusive) of the display window, such
         that exactly `window` many lines are displayed.
         This means `line_range[1] - line_range[0] == window-1` as long as there are
@@ -174,7 +171,7 @@ class WindowedFile:
                 out_lines.append(f"({self.n_lines - end_line - 1} more lines below)")
         return "\n".join(out_lines)
 
-    def set_window_text(self, new_text: str, *, line_range: Optional[Tuple[int, int]] = None) -> None:
+    def set_window_text(self, new_text: str, *, line_range: tuple[int, int] | None = None) -> None:
         """Replace the text in the current display window with a new string."""
         text = self.text.split("\n")
         if line_range is not None:
@@ -225,7 +222,7 @@ class WindowedFile:
             n_replacements=1,
         )
 
-    def find_all_occurrences(self, search: str, zero_based: bool = True) -> List[int]:
+    def find_all_occurrences(self, search: str, zero_based: bool = True) -> list[int]:
         """Returns the line numbers of all occurrences of the search string."""
         indices = list(_find_all(self.text, search))
         line_numbers = []
@@ -277,7 +274,7 @@ class WindowedFile:
         self.text = self._original_text
         self.first_line = self._original_first_line
 
-    def insert(self, text: str, line: Optional[int] = None, *, reset_first_line: str = "top") -> "InsertInfo":
+    def insert(self, text: str, line: int | None = None, *, reset_first_line: str = "top") -> "InsertInfo":
         # Standardize empty text handling
         if not text:
             return InsertInfo(first_inserted_line=(self.n_lines if line is None else line), n_lines_added=0)

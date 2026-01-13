@@ -1,0 +1,30 @@
+[package]
+name = "eliza-plugin-elevenlabs"
+version = "0.1.0"
+edition = "2021"
+description = "High-quality text-to-speech and speech-to-text plugin for ElizaOS using ElevenLabs API"
+license = "MIT"
+authors = ["ElizaOS Team"]
+repository = "https://github.com/elizaos-plugins/plugin-elevenlabs"
+keywords = ["elizaos", "plugin", "tts", "stt", "text-to-speech", "speech-to-text", "elevenlabs"]
+categories = ["multimedia::audio", "api-bindings"]
+
+[lib]
+name = "eliza_plugin_elevenlabs"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait = "0.1"
+tokio = { version = "1.0", features = ["full"] }
+thiserror = "1.0"
+tracing = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bytes = "1.5"
+reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
+futures = "0.3"
+tokio-stream = "0.1"
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockall = "0.13"

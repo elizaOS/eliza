@@ -2,11 +2,8 @@
 
 """This helper command is used to parse and print flake8 output."""
 
-# ruff: noqa: UP007 UP006 UP035
-
 import subprocess
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 try:
     from sweagent import TOOLS_DIR
@@ -57,8 +54,10 @@ class Flake8Error:
 
 
 def _update_previous_errors(
-    previous_errors: List[Flake8Error], replacement_window: Tuple[int, int], replacement_n_lines: int
-) -> List[Flake8Error]:
+    previous_errors: list[Flake8Error],
+    replacement_window: tuple[int, int],
+    replacement_n_lines: int,
+) -> list[Flake8Error]:
     """Update the line numbers of the previous errors to what they would be after the edit window.
     This is a helper function for `_filter_previous_errors`.
 
@@ -94,8 +93,8 @@ def format_flake8_output(
     show_line_numbers: bool = False,
     *,
     previous_errors_string: str = "",
-    replacement_window: Optional[Tuple[int, int]] = None,
-    replacement_n_lines: Optional[int] = None,
+    replacement_window: tuple[int, int] | None = None,
+    replacement_n_lines: int | None = None,
 ) -> str:
     """Filter flake8 output for previous errors and print it for a given file.
 
@@ -139,6 +138,10 @@ def flake8(file_path: str) -> str:
     if Path(file_path).suffix != ".py":
         return ""
     cmd = registry.get("LINT_COMMAND", "flake8 --isolated --select=F821,F822,F831,E111,E112,E113,E999,E902 {file_path}")
-    # don't use capture_output because it's not compatible with python3.6
-    out = subprocess.run(cmd.format(file_path=file_path), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return out.stdout.decode()
+    out = subprocess.run(
+        cmd.format(file_path=file_path),
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    return out.stdout

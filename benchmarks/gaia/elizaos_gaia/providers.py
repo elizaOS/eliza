@@ -43,7 +43,7 @@ class ModelProvider(str, Enum):
 # Default models for each provider
 DEFAULT_MODELS: dict[ModelProvider, str] = {
     ModelProvider.GROQ: "llama-3.1-8b-instant",
-    ModelProvider.OPENAI: "gpt-4o",
+    ModelProvider.OPENAI: "gpt-5",
     ModelProvider.ANTHROPIC: "claude-3-5-sonnet-20241022",
     ModelProvider.OLLAMA: "llama3.2:latest",
     ModelProvider.LOCALAI: "gpt-4",
@@ -67,8 +67,8 @@ SUPPORTED_MODELS: dict[ModelProvider, list[str]] = {
         "qwen2.5-32b",  # May need OpenRouter for this
     ],
     ModelProvider.OPENAI: [
-        "gpt-4o",
-        "gpt-4o-mini",
+        "gpt-5",
+        "gpt-5-mini",
         "gpt-4-turbo",
         "gpt-4",
         "gpt-3.5-turbo",
@@ -117,7 +117,7 @@ SUPPORTED_MODELS: dict[ModelProvider, list[str]] = {
         "deepseek/deepseek-chat",
         "deepseek/deepseek-r1",
         # OpenAI through router
-        "openai/gpt-4o",
+        "openai/gpt-5",
         "openai/o1-preview",
         # Anthropic through router
         "anthropic/claude-3.5-sonnet",
@@ -202,7 +202,7 @@ class ModelConfig:
 
         Examples:
         - "llama-3.1-8b-instant" -> Groq
-        - "gpt-4o" -> OpenAI
+        - "gpt-5" -> OpenAI
         - "groq/llama-3.1-8b-instant" -> Groq
         - "openrouter/qwen/qwen-2.5-32b-instruct" -> OpenRouter
         """
@@ -590,7 +590,7 @@ def get_default_config() -> ModelConfig:
 
     Priority:
     1. Groq with llama-3.1-8b-instant (if GROQ_API_KEY set)
-    2. OpenAI with gpt-4o (if OPENAI_API_KEY set)
+    2. OpenAI with gpt-5 (if OPENAI_API_KEY set)
     3. Ollama with llama3.2:latest (always available locally)
     """
     # Check Groq first (preferred default)
@@ -604,7 +604,7 @@ def get_default_config() -> ModelConfig:
     if os.getenv("OPENAI_API_KEY"):
         return ModelConfig(
             provider=ModelProvider.OPENAI,
-            model_name="gpt-4o",
+            model_name="gpt-5",
         )
 
     # Check Anthropic
@@ -650,11 +650,11 @@ PRESETS: dict[str, ModelConfig] = {
     # OpenAI presets
     "openai-fast": ModelConfig(
         provider=ModelProvider.OPENAI,
-        model_name="gpt-4o-mini",
+        model_name="gpt-5-mini",
     ),
     "openai-best": ModelConfig(
         provider=ModelProvider.OPENAI,
-        model_name="gpt-4o",
+        model_name="gpt-5",
     ),
     "openai-reasoning": ModelConfig(
         provider=ModelProvider.OPENAI,

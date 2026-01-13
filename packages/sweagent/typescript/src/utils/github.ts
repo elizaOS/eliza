@@ -3,12 +3,12 @@
  * Converted from sweagent/utils/github.py
  */
 
-import axios from 'axios';
+import axios from "axios";
 
 export class InvalidGithubURL extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'InvalidGithubURL';
+    this.name = "InvalidGithubURL";
   }
 }
 
@@ -35,8 +35,12 @@ export function isGithubIssueUrl(dataPath: string): boolean {
 /**
  * Parse GitHub issue URL
  */
-export function parseGhIssueUrl(issueUrl: string): { owner: string; repo: string; issueNumber: string } {
-  const match = issueUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/);
+export function parseGhIssueUrl(issueUrl: string): {
+  owner: string;
+  repo: string;
+  issueNumber: string;
+} {
+  const match = issueUrl.match(/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/);
   if (!match) {
     throw new InvalidGithubURL(`Invalid GitHub issue URL: ${issueUrl}`);
   }
@@ -50,35 +54,63 @@ export function parseGhIssueUrl(issueUrl: string): { owner: string; repo: string
 /**
  * Parse GitHub repository URL
  */
-export function parseGhRepoUrl(repoUrl: string): { owner: string; repo: string } {
-  let match = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)/);
+export function parseGhRepoUrl(repoUrl: string): {
+  owner: string;
+  repo: string;
+} {
+  let match = repoUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
   if (!match) {
-    match = repoUrl.match(/^gh:([^\/]+)\/([^\/]+)$/);
+    match = repoUrl.match(/^gh:([^/]+)\/([^/]+)$/);
   }
   if (!match) {
     throw new InvalidGithubURL(`Invalid GitHub repository URL: ${repoUrl}`);
   }
   return {
     owner: match[1],
-    repo: match[2].replace(/\.git$/, ''),
+    repo: match[2].replace(/\.git$/, ""),
   };
 }
 
 /**
  * Get GitHub issue data
  */
-export async function getGhIssueData(issueUrl: string, token: string = ''): Promise<any> {
+/**
+ * GitHub issue data interface
+ */
+export interface GithubIssueData {
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;
+  created_at: string;
+  updated_at: string;
+  user: { login: string } | null;
+  labels: Array<{ name: string }>;
+  comments: number;
+  html_url: string;
+  locked: boolean;
+  assignee?: { login: string } | null;
+  [key: string]: unknown;
+}
+
+export async function getGhIssueData(
+  issueUrl: string,
+  token: string = "",
+): Promise<GithubIssueData> {
   const { owner, repo, issueNumber } = parseGhIssueUrl(issueUrl);
 
   const headers: Record<string, string> = {
-    Accept: 'application/vnd.github.v3+json',
+    Accept: "application/vnd.github.v3+json",
   };
 
   if (token) {
-    headers['Authorization'] = `token ${token}`;
+    headers.Authorization = `token ${token}`;
   }
 
-  const response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, { headers });
+  const response = await axios.get<GithubIssueData>(
+    `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,
+    { headers },
+  );
 
   return response.data;
 }
@@ -90,20 +122,23 @@ export async function getProblemStatementFromGithubIssue(
   owner: string,
   repo: string,
   issueNumber: string,
-  token: string = '',
+  token: string = "",
 ): Promise<string> {
   const headers: Record<string, string> = {
-    Accept: 'application/vnd.github.v3+json',
+    Accept: "application/vnd.github.v3+json",
   };
 
   if (token) {
-    headers['Authorization'] = `token ${token}`;
+    headers.Authorization = `token ${token}`;
   }
 
-  const response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, { headers });
+  const response = await axios.get(
+    `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,
+    { headers },
+  );
 
   const issue = response.data;
-  return `${issue.title}\n\n${issue.body || ''}`;
+  return `${issue.title}\n\n${issue.body || ""}`;
 }
 
 /**
@@ -113,25 +148,30 @@ export async function getAssociatedCommitUrls(
   org: string,
   repo: string,
   issueNumber: string,
-  token: string = '',
+  token: string = "",
 ): Promise<string[]> {
   const headers: Record<string, string> = {
-    Accept: 'application/vnd.github.v3+json',
+    Accept: "application/vnd.github.v3+json",
   };
 
   if (token) {
-    headers['Authorization'] = `token ${token}`;
+    headers.Authorization = `token ${token}`;
   }
 
   // Get events for the issue
-  const response = await axios.get(`https://api.github.com/repos/${org}/${repo}/issues/${issueNumber}/events`, {
-    headers,
-  });
+  const response = await axios.get(
+    `https://api.github.com/repos/${org}/${repo}/issues/${issueNumber}/events`,
+    {
+      headers,
+    },
+  );
 
   const commitUrls: string[] = [];
   for (const event of response.data) {
-    if (event.event === 'referenced' && event.commit_id) {
-      commitUrls.push(`https://github.com/${org}/${repo}/commit/${event.commit_id}`);
+    if (event.event === "referenced" && event.commit_id) {
+      commitUrls.push(
+        `https://github.com/${org}/${repo}/commit/${event.commit_id}`,
+      );
     }
   }
 

@@ -5,6 +5,7 @@ export { capabilitiesProvider } from "./capabilities";
 export { characterProvider } from "./character";
 export { choiceProvider } from "./choice";
 export { contactsProvider } from "./contacts";
+export { contextBenchProvider } from "./contextBench";
 export { entitiesProvider } from "./entities";
 export { evaluatorsProvider } from "./evaluators";
 export { factsProvider } from "./facts";

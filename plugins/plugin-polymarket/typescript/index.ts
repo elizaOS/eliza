@@ -30,6 +30,18 @@ import {
 } from "./actions";
 import { polymarketProvider } from "./providers";
 import { PolymarketService } from "./services";
+export { initializeClobClient, initializeClobClientWithCreds, getWalletAddress } from "./utils/clobClient";
+export type {
+  ApiKeyCreds,
+  Market,
+  MarketsResponse,
+  OrderBook,
+  OrderResponse,
+  SimplifiedMarket,
+  SimplifiedMarketsResponse,
+  Token,
+} from "./types";
+export { POLYGON_CHAIN_ID, DEFAULT_CLOB_API_URL } from "./constants";
 
 const configSchema = z.object({
   CLOB_API_URL: z

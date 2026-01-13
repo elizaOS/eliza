@@ -28,7 +28,7 @@ dependencies = [
     "web3>=7.0.0",
     "pydantic>=2.10.0",
     "httpx>=0.28.0",
-    "eth-account>=0.14.0",
+    "eth-account>=0.14.0b1",
     "eth-typing>=5.0.0",
     "websockets>=12.0",
     "py-clob-client>=0.17.0",
@@ -64,9 +64,10 @@ include = [
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
-addopts = "-v -p no:anchorpy"
+addopts = "-v -p no:anchorpy -m \"not integration\""
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+markers = ["integration: live network tests requiring external credentials"]
 
 [tool.mypy]
 python_version = "3.11"

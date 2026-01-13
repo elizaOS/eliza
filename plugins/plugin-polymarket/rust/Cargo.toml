@@ -42,7 +42,7 @@ anyhow = "1.0"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 
 # HTTP client for CLOB API
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip", "brotli", "deflate", "zstd"] }
 
 # WebSocket client for real-time updates
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }

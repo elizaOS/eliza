@@ -3,8 +3,8 @@
  */
 
 // import * as path from 'path';  // Currently unused
-import * as fs from 'fs';
-import * as yaml from 'js-yaml';
+import * as fs from "node:fs";
+import * as yaml from "js-yaml";
 
 /**
  * Interface for tracking instance statistics
@@ -54,23 +54,29 @@ export class RunBatchProgressManager {
   updateExitStatusTable(): void {
     // Update the exit status table display
     // In a real implementation, this would update a terminal UI
-    const sorted = Array.from(this.instancesByExitStatus.entries()).sort((a, b) => b[1].length - a[1].length);
+    const sorted = Array.from(this.instancesByExitStatus.entries()).sort(
+      (a, b) => b[1].length - a[1].length,
+    );
 
-    console.log('\n=== Exit Status Summary ===');
+    console.log("\n=== Exit Status Summary ===");
     for (const [status, instances] of sorted) {
-      const instancesStr = this.shortenStr(instances.reverse().join(', '), 55);
+      const instancesStr = this.shortenStr(instances.reverse().join(", "), 55);
       console.log(`${status}: ${instances.length} - ${instancesStr}`);
     }
   }
 
-  private shortenStr(s: string, maxLen: number, shortenLeft: boolean = false): string {
+  private shortenStr(
+    s: string,
+    maxLen: number,
+    shortenLeft: boolean = false,
+  ): string {
     if (!shortenLeft) {
       if (s.length > maxLen) {
-        return s.substring(0, maxLen - 3) + '...';
+        return `${s.substring(0, maxLen - 3)}...`;
       }
     } else {
       if (s.length > maxLen) {
-        return '...' + s.substring(s.length - maxLen + 3);
+        return `...${s.substring(s.length - maxLen + 3)}`;
       }
     }
     return s.padEnd(maxLen);
@@ -84,7 +90,7 @@ export class RunBatchProgressManager {
   onInstanceStart(instanceId: string): void {
     // Mark instance as started
     this.spinnerTasks.set(instanceId, {
-      status: 'Task initialized',
+      status: "Task initialized",
       startTime: Date.now(),
     });
   }
@@ -94,7 +100,7 @@ export class RunBatchProgressManager {
     if (!this.instancesByExitStatus.has(exitStatus)) {
       this.instancesByExitStatus.set(exitStatus, []);
     }
-    this.instancesByExitStatus.get(exitStatus)!.push(instanceId);
+    this.instancesByExitStatus.get(exitStatus)?.push(instanceId);
 
     this.spinnerTasks.delete(instanceId);
     this.updateExitStatusTable();
@@ -109,7 +115,7 @@ export class RunBatchProgressManager {
   }
 
   printReport(): void {
-    console.log('\n=== Final Report ===');
+    console.log("\n=== Final Report ===");
     for (const [status, instances] of this.instancesByExitStatus.entries()) {
       console.log(`${status}: ${instances.length}`);
       for (const instance of instances) {
@@ -118,10 +124,13 @@ export class RunBatchProgressManager {
     }
   }
 
-  private getOverviewData(): Record<string, any> {
+  private getOverviewData(): {
+    instances_by_exit_status: Record<string, string[]>;
+    total_cost: number;
+  } {
     const instancesByStatus: Record<string, string[]> = {};
     for (const [status, instances] of this.instancesByExitStatus.entries()) {
-      instancesByStatus[status || 'unknown'] = instances;
+      instancesByStatus[status || "unknown"] = instances;
     }
 
     return {

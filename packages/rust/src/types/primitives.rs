@@ -263,6 +263,13 @@ pub struct Content {
     /// Providers to use for context generation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub providers: Option<Vec<String>>,
+    /// Action parameters (inner XML of <params>...</params>)
+    ///
+    /// This mirrors the TypeScript/Python `content.params` field. When present, it contains
+    /// nested XML with action names as wrappers, e.g.:
+    /// `<ACTION><foo>bar</foo></ACTION>`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<String>,
     /// Source/origin of the content (e.g., 'discord', 'telegram')
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,

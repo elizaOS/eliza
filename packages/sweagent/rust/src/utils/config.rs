@@ -98,7 +98,7 @@ mod tests {
     fn test_parse_api_keys() {
         let keys = parse_api_keys("key1:::key2:::key3");
         assert_eq!(keys, vec!["key1", "key2", "key3"]);
-        
+
         let single = parse_api_keys("single_key");
         assert_eq!(single, vec!["single_key"]);
     }

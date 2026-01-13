@@ -13,33 +13,44 @@ import {
 } from "./models";
 import { getApiKey, getBaseURL } from "./utils/config";
 
+type ProcessEnvLike = Record<string, string | undefined>;
+
+function getProcessEnv(): ProcessEnvLike {
+  if (typeof process === "undefined") {
+    return {};
+  }
+  return process.env as ProcessEnvLike;
+}
+
+const env = getProcessEnv();
+
 export const elizaOSCloudPlugin: Plugin = {
   name: "elizaOSCloud",
   description:
     "ElizaOS Cloud plugin - Multi-model AI generation with text, image, and video support",
   config: {
-    ELIZAOS_CLOUD_API_KEY: process.env.ELIZAOS_CLOUD_API_KEY ?? null,
-    ELIZAOS_CLOUD_BASE_URL: process.env.ELIZAOS_CLOUD_BASE_URL ?? null,
-    ELIZAOS_CLOUD_SMALL_MODEL: process.env.ELIZAOS_CLOUD_SMALL_MODEL ?? null,
-    ELIZAOS_CLOUD_LARGE_MODEL: process.env.ELIZAOS_CLOUD_LARGE_MODEL ?? null,
-    SMALL_MODEL: process.env.SMALL_MODEL ?? null,
-    LARGE_MODEL: process.env.LARGE_MODEL ?? null,
+    ELIZAOS_CLOUD_API_KEY: env.ELIZAOS_CLOUD_API_KEY ?? null,
+    ELIZAOS_CLOUD_BASE_URL: env.ELIZAOS_CLOUD_BASE_URL ?? null,
+    ELIZAOS_CLOUD_SMALL_MODEL: env.ELIZAOS_CLOUD_SMALL_MODEL ?? null,
+    ELIZAOS_CLOUD_LARGE_MODEL: env.ELIZAOS_CLOUD_LARGE_MODEL ?? null,
+    SMALL_MODEL: env.SMALL_MODEL ?? null,
+    LARGE_MODEL: env.LARGE_MODEL ?? null,
     ELIZAOS_CLOUD_EMBEDDING_MODEL:
-      process.env.ELIZAOS_CLOUD_EMBEDDING_MODEL ?? null,
+      env.ELIZAOS_CLOUD_EMBEDDING_MODEL ?? null,
     ELIZAOS_CLOUD_EMBEDDING_API_KEY:
-      process.env.ELIZAOS_CLOUD_EMBEDDING_API_KEY ?? null,
+      env.ELIZAOS_CLOUD_EMBEDDING_API_KEY ?? null,
     ELIZAOS_CLOUD_EMBEDDING_URL:
-      process.env.ELIZAOS_CLOUD_EMBEDDING_URL ?? null,
+      env.ELIZAOS_CLOUD_EMBEDDING_URL ?? null,
     ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS:
-      process.env.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? null,
+      env.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? null,
     ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL:
-      process.env.ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL ?? null,
+      env.ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL ?? null,
     ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS:
-      process.env.ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS ?? null,
+      env.ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS ?? null,
     ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY:
-      process.env.ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY ?? null,
+      env.ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY ?? null,
     ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL:
-      process.env.ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL ?? null,
+      env.ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL ?? null,
   },
   async init(config, runtime) {
     initializeOpenAI(config, runtime);

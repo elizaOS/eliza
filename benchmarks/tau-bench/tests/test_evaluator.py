@@ -228,13 +228,13 @@ class TestPassKCalculation:
         ]
 
         leaderboard = {
-            "gpt-4o": {"retail": 0.485, "airline": 0.462},
+            "gpt-5": {"retail": 0.485, "airline": 0.462},
             "claude-3-opus": {"retail": 0.512, "airline": 0.489},
         }
 
         comparison = evaluator.compare_to_leaderboard(results, leaderboard)
 
         # Our retail score is 0.5 (1/2 success)
-        # gpt-4o retail is 0.485, difference should be +0.015
-        assert "gpt-4o" in comparison
+        # gpt-5 retail is 0.485, difference should be +0.015
+        assert "gpt-5" in comparison
         assert "claude-3-opus" in comparison

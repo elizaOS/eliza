@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import base64
 import functools
-import requests
 import sys
 from enum import Enum
 from pathlib import Path
 
+import requests
 from flask import jsonify, request
 
 
@@ -114,7 +114,8 @@ def _handle_screenshot(screenshot_data, mode):
     elif mode == ScreenshotMode.PRINT:
         print(f"![Screenshot](data:image/png;base64,{screenshot_data})")
     else:
-        raise ValueError(f"Invalid screenshot mode: {mode}")
+        message = f"Invalid screenshot mode: {mode}"
+        raise ValueError(message)
 
 
 def _autosave_screenshot_from_response(response, mode):

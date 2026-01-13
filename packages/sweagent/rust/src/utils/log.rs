@@ -5,8 +5,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 /// Initialize the logging system
 pub fn init_logging() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     tracing_subscriber::registry()
         .with(fmt::layer())
@@ -46,12 +45,17 @@ pub fn log_agent_error(agent_name: &str, message: &str) {
 
 /// Log step information
 pub fn log_step(step_num: usize, thought: &str, action: &str) {
-    info!(step = step_num, "💭 THOUGHT\n{}\n\n🎬 ACTION\n{}", thought, action);
+    info!(
+        step = step_num,
+        "💭 THOUGHT\n{}\n\n🎬 ACTION\n{}", thought, action
+    );
 }
 
 /// Log observation
 pub fn log_observation(observation: &str) {
-    debug!(len = observation.len(), "📋 OBSERVATION: {}", 
+    debug!(
+        len = observation.len(),
+        "📋 OBSERVATION: {}",
         if observation.len() > 200 {
             format!("{}...", &observation[..200])
         } else {

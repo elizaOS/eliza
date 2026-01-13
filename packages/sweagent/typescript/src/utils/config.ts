@@ -3,10 +3,10 @@
  * Converted from sweagent/utils/config.py
  */
 
-import path from 'path';
-import fs from 'fs';
-import dotenv from 'dotenv';
-import * as yaml from 'js-yaml';
+import fs from "node:fs";
+import path from "node:path";
+import dotenv from "dotenv";
+import * as yaml from "js-yaml";
 
 /**
  * Convert path relative to repository root
@@ -15,11 +15,11 @@ export function convertPathRelativeToRepoRoot(
   inputPath: string | path.ParsedPath,
   root?: string,
 ): string | path.ParsedPath {
-  if (typeof inputPath === 'string' && inputPath.startsWith('/')) {
+  if (typeof inputPath === "string" && inputPath.startsWith("/")) {
     return inputPath;
   }
   const rootPath = root || process.cwd();
-  return typeof inputPath === 'string'
+  return typeof inputPath === "string"
     ? path.resolve(rootPath, inputPath)
     : path.parse(path.resolve(rootPath, path.format(inputPath)));
 }
@@ -28,17 +28,17 @@ export function convertPathRelativeToRepoRoot(
  * Check if a value could be a path
  */
 export function couldBeAPath(value: unknown): boolean {
-  if (typeof value !== 'string') {
+  if (typeof value !== "string") {
     return false;
   }
-  return value.includes('/') || value.includes('\\') || value.includes('.');
+  return value.includes("/") || value.includes("\\") || value.includes(".");
 }
 
 /**
  * Strip absolute paths from dictionary
  */
 export function stripAbspathFromDict(value: unknown, root?: string): unknown {
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const rootPath = root || process.cwd();
     if (value.startsWith(rootPath)) {
       return path.relative(rootPath, value);
@@ -50,7 +50,7 @@ export function stripAbspathFromDict(value: unknown, root?: string): unknown {
     return value.map((v) => stripAbspathFromDict(v, root));
   }
 
-  if (value && typeof value === 'object') {
+  if (value && typeof value === "object") {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
       result[k] = stripAbspathFromDict(v, root);
@@ -64,8 +64,10 @@ export function stripAbspathFromDict(value: unknown, root?: string): unknown {
 /**
  * Convert path to absolute path
  */
-export function convertPathToAbspath(inputPath: string | path.ParsedPath): path.ParsedPath {
-  if (typeof inputPath === 'string') {
+export function convertPathToAbspath(
+  inputPath: string | path.ParsedPath,
+): path.ParsedPath {
+  if (typeof inputPath === "string") {
     // Check for SWE_AGENT_CONFIG_ROOT environment variable
     const configRoot = process.env.SWE_AGENT_CONFIG_ROOT;
     if (configRoot && !path.isAbsolute(inputPath)) {
@@ -79,7 +81,9 @@ export function convertPathToAbspath(inputPath: string | path.ParsedPath): path.
 /**
  * Convert paths array to absolute paths
  */
-export function convertPathsToAbspath(paths: Array<string | path.ParsedPath>): path.ParsedPath[] {
+export function convertPathsToAbspath(
+  paths: Array<string | path.ParsedPath>,
+): path.ParsedPath[] {
   return paths.map((p) => convertPathToAbspath(p));
 }
 
@@ -95,13 +99,27 @@ export function loadEnvironmentVariables(envPath?: string): void {
 }
 
 /**
+ * Config value type for parsed configurations
+ */
+export type ConfigValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ConfigValue[]
+  | { [key: string]: ConfigValue };
+
+/**
  * Parse config file content
  */
-export function parseConfigFile(content: string, format: 'yaml' | 'json'): any {
-  if (format === 'yaml') {
-    return yaml.load(content);
-  } else if (format === 'json') {
-    return JSON.parse(content);
+export function parseConfigFile(
+  content: string,
+  format: "yaml" | "json",
+): ConfigValue {
+  if (format === "yaml") {
+    return yaml.load(content) as ConfigValue;
+  } else if (format === "json") {
+    return JSON.parse(content) as ConfigValue;
   } else {
     throw new Error(`Unsupported format: ${format}`);
   }
@@ -110,24 +128,32 @@ export function parseConfigFile(content: string, format: 'yaml' | 'json'): any {
 /**
  * Merge two config objects deeply
  */
-export function mergeConfigs(baseConfig: any, overrideConfig: any): any {
-  const result = { ...baseConfig };
+export function mergeConfigs(
+  baseConfig: Record<string, ConfigValue>,
+  overrideConfig: Record<string, ConfigValue>,
+): Record<string, ConfigValue> {
+  const result: Record<string, ConfigValue> = { ...baseConfig };
 
   for (const key in overrideConfig) {
-    if (overrideConfig.hasOwnProperty(key)) {
+    if (Object.hasOwn(overrideConfig, key)) {
+      const overrideValue = overrideConfig[key];
+      const baseValue = baseConfig[key];
       if (
-        typeof overrideConfig[key] === 'object' &&
-        overrideConfig[key] !== null &&
-        !Array.isArray(overrideConfig[key]) &&
-        typeof baseConfig[key] === 'object' &&
-        baseConfig[key] !== null &&
-        !Array.isArray(baseConfig[key])
+        typeof overrideValue === "object" &&
+        overrideValue !== null &&
+        !Array.isArray(overrideValue) &&
+        typeof baseValue === "object" &&
+        baseValue !== null &&
+        !Array.isArray(baseValue)
       ) {
         // Recursively merge nested objects
-        result[key] = mergeConfigs(baseConfig[key], overrideConfig[key]);
+        result[key] = mergeConfigs(
+          baseValue as Record<string, ConfigValue>,
+          overrideValue as Record<string, ConfigValue>,
+        );
       } else {
         // Replace value
-        result[key] = overrideConfig[key];
+        result[key] = overrideValue;
       }
     }
   }
@@ -138,13 +164,14 @@ export function mergeConfigs(baseConfig: any, overrideConfig: any): any {
 /**
  * Validate config structure
  */
-export function validateConfig(config: any): void {
-  if (!config || typeof config !== 'object') {
-    throw new Error('Config must be an object');
+export function validateConfig(config: unknown): void {
+  if (!config || typeof config !== "object") {
+    throw new Error("Config must be an object");
   }
 
-  if (config.agent && typeof config.agent !== 'object') {
-    throw new Error('Config agent property must be an object');
+  const configObj = config as Record<string, unknown>;
+  if (configObj.agent && typeof configObj.agent !== "object") {
+    throw new Error("Config agent property must be an object");
   }
 
   // Add more validation as needed

@@ -28,12 +28,10 @@ pub fn is_github_repo_url(url: &str) -> bool {
         r"^https?://github\.com/[\w.-]+/[\w.-]+\.git$",
         r"^git@github\.com:[\w.-]+/[\w.-]+\.git$",
     ];
-    
-    patterns.iter().any(|p| {
-        Regex::new(p)
-            .map(|re| re.is_match(url))
-            .unwrap_or(false)
-    })
+
+    patterns
+        .iter()
+        .any(|p| Regex::new(p).map(|re| re.is_match(url)).unwrap_or(false))
 }
 
 /// Check if a string is a GitHub issue URL
@@ -49,7 +47,7 @@ pub fn parse_github_repo_url(url: &str) -> Result<GithubRepoInfo> {
     // Handle HTTPS URLs
     let https_pattern = Regex::new(r"^https?://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
         .map_err(|e| SWEAgentError::Unknown(e.to_string()))?;
-    
+
     if let Some(caps) = https_pattern.captures(url) {
         let owner = caps.get(1).unwrap().as_str().to_string();
         let repo = caps.get(2).unwrap().as_str().to_string();
@@ -59,11 +57,11 @@ pub fn parse_github_repo_url(url: &str) -> Result<GithubRepoInfo> {
             repo,
         });
     }
-    
+
     // Handle SSH URLs
     let ssh_pattern = Regex::new(r"^git@github\.com:([\w.-]+)/([\w.-]+?)(?:\.git)?$")
         .map_err(|e| SWEAgentError::Unknown(e.to_string()))?;
-    
+
     if let Some(caps) = ssh_pattern.captures(url) {
         let owner = caps.get(1).unwrap().as_str().to_string();
         let repo = caps.get(2).unwrap().as_str().to_string();
@@ -73,7 +71,7 @@ pub fn parse_github_repo_url(url: &str) -> Result<GithubRepoInfo> {
             repo,
         });
     }
-    
+
     Err(SWEAgentError::InvalidGithubUrl(format!(
         "Could not parse GitHub URL: {}",
         url
@@ -84,7 +82,7 @@ pub fn parse_github_repo_url(url: &str) -> Result<GithubRepoInfo> {
 pub fn parse_github_issue_url(url: &str) -> Result<GithubIssueInfo> {
     let pattern = Regex::new(r"^https?://github\.com/([\w.-]+)/([\w.-]+)/issues/(\d+)$")
         .map_err(|e| SWEAgentError::Unknown(e.to_string()))?;
-    
+
     if let Some(caps) = pattern.captures(url) {
         let owner = caps.get(1).unwrap().as_str().to_string();
         let repo = caps.get(2).unwrap().as_str().to_string();
@@ -94,7 +92,7 @@ pub fn parse_github_issue_url(url: &str) -> Result<GithubIssueInfo> {
             .as_str()
             .parse()
             .map_err(|_| SWEAgentError::InvalidGithubUrl("Invalid issue number".to_string()))?;
-        
+
         return Ok(GithubIssueInfo {
             full_name: format!("{}/{}", owner, repo),
             owner,
@@ -102,7 +100,7 @@ pub fn parse_github_issue_url(url: &str) -> Result<GithubIssueInfo> {
             issue_number,
         });
     }
-    
+
     Err(SWEAgentError::InvalidGithubUrl(format!(
         "Could not parse GitHub issue URL: {}",
         url
@@ -116,7 +114,10 @@ pub fn build_github_repo_url(owner: &str, repo: &str) -> String {
 
 /// Build a GitHub issue URL
 pub fn build_github_issue_url(owner: &str, repo: &str, issue_number: u64) -> String {
-    format!("https://github.com/{}/{}/issues/{}", owner, repo, issue_number)
+    format!(
+        "https://github.com/{}/{}/issues/{}",
+        owner, repo, issue_number
+    )
 }
 
 /// Build a GitHub raw content URL
@@ -143,9 +144,13 @@ mod tests {
 
     #[test]
     fn test_is_github_issue_url() {
-        assert!(is_github_issue_url("https://github.com/owner/repo/issues/123"));
+        assert!(is_github_issue_url(
+            "https://github.com/owner/repo/issues/123"
+        ));
         assert!(!is_github_issue_url("https://github.com/owner/repo"));
-        assert!(!is_github_issue_url("https://github.com/owner/repo/pull/123"));
+        assert!(!is_github_issue_url(
+            "https://github.com/owner/repo/pull/123"
+        ));
     }
 
     #[test]

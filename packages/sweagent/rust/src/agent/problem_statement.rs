@@ -12,10 +12,10 @@ use std::path::Path;
 pub trait ProblemStatement: Send + Sync {
     /// Get the problem statement text
     fn get_problem_statement(&self) -> String;
-    
+
     /// Get the unique identifier for this problem
     fn id(&self) -> &str;
-    
+
     /// Get any extra fields for template rendering
     fn get_extra_fields(&self) -> HashMap<String, String> {
         HashMap::new()
@@ -45,7 +45,7 @@ impl ProblemStatement for EmptyProblemStatement {
     fn get_problem_statement(&self) -> String {
         String::new()
     }
-    
+
     fn id(&self) -> &str {
         &self.id
     }
@@ -71,7 +71,7 @@ impl ProblemStatement for TextProblemStatement {
     fn get_problem_statement(&self) -> String {
         self.text.clone()
     }
-    
+
     fn id(&self) -> &str {
         &self.id
     }
@@ -94,7 +94,7 @@ impl FileProblemStatement {
             cached_text: None,
         }
     }
-    
+
     pub fn load(&mut self) -> Result<()> {
         let content = std::fs::read_to_string(&self.path)?;
         self.cached_text = Some(content);
@@ -107,10 +107,10 @@ impl ProblemStatement for FileProblemStatement {
         if let Some(ref text) = self.cached_text {
             return text.clone();
         }
-        
+
         std::fs::read_to_string(&self.path).unwrap_or_default()
     }
-    
+
     fn id(&self) -> &str {
         &self.id
     }
@@ -139,37 +139,37 @@ impl GithubIssue {
             body: None,
         })
     }
-    
+
     /// Fetch issue data from GitHub API
     pub async fn fetch(&mut self) -> Result<()> {
         let info = self.info.as_ref().ok_or_else(|| {
             SWEAgentError::InvalidGithubUrl("No issue info available".to_string())
         })?;
-        
+
         let client = reqwest::Client::new();
         let api_url = format!(
             "https://api.github.com/repos/{}/{}/issues/{}",
             info.owner, info.repo, info.issue_number
         );
-        
+
         let response = client
             .get(&api_url)
             .header("User-Agent", "swe-agent-rust")
             .send()
             .await?;
-        
+
         if !response.status().is_success() {
             return Err(SWEAgentError::ApiError(format!(
                 "Failed to fetch issue: {}",
                 response.status()
             )));
         }
-        
+
         let data: serde_json::Value = response.json().await?;
-        
+
         self.title = data["title"].as_str().map(String::from);
         self.body = data["body"].as_str().map(String::from);
-        
+
         Ok(())
     }
 }
@@ -180,14 +180,14 @@ impl ProblemStatement for GithubIssue {
         let body = self.body.as_deref().unwrap_or("(No description)");
         format!("# {}\n\n{}", title, body)
     }
-    
+
     fn id(&self) -> &str {
         self.info
             .as_ref()
             .map(|i| i.full_name.as_str())
             .unwrap_or("unknown")
     }
-    
+
     fn get_extra_fields(&self) -> HashMap<String, String> {
         let mut fields = HashMap::new();
         if let Some(ref info) = self.info {
@@ -211,10 +211,7 @@ pub struct SWEBenchMultimodalProblemStatement {
 }
 
 impl SWEBenchMultimodalProblemStatement {
-    pub fn new(
-        instance_id: impl Into<String>,
-        problem_statement: impl Into<String>,
-    ) -> Self {
+    pub fn new(instance_id: impl Into<String>, problem_statement: impl Into<String>) -> Self {
         Self {
             instance_id: instance_id.into(),
             problem_statement: problem_statement.into(),
@@ -228,11 +225,11 @@ impl ProblemStatement for SWEBenchMultimodalProblemStatement {
     fn get_problem_statement(&self) -> String {
         self.problem_statement.clone()
     }
-    
+
     fn id(&self) -> &str {
         &self.instance_id
     }
-    
+
     fn get_extra_fields(&self) -> HashMap<String, String> {
         let mut fields = HashMap::new();
         if !self.hints.is_empty() {
@@ -243,13 +240,22 @@ impl ProblemStatement for SWEBenchMultimodalProblemStatement {
 }
 
 /// Configuration for problem statements
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProblemStatementConfig {
+    #[default]
     Empty,
-    Text { text: String, id: String },
-    File { path: String, id: String },
-    GithubIssue { github_url: String },
+    Text {
+        text: String,
+        id: String,
+    },
+    File {
+        path: String,
+        id: String,
+    },
+    GithubIssue {
+        github_url: String,
+    },
     SweBenchMultimodal {
         instance_id: String,
         problem_statement: String,
@@ -258,22 +264,14 @@ pub enum ProblemStatementConfig {
     },
 }
 
-impl Default for ProblemStatementConfig {
-    fn default() -> Self {
-        Self::Empty
-    }
-}
-
 /// Create a problem statement from simplified input
-pub fn problem_statement_from_simplified_input(
-    input: &str,
-) -> Result<Box<dyn ProblemStatement>> {
+pub fn problem_statement_from_simplified_input(input: &str) -> Result<Box<dyn ProblemStatement>> {
     // Check if it's a GitHub URL
     if input.starts_with("https://github.com/") && input.contains("/issues/") {
         let issue = GithubIssue::new(input)?;
         return Ok(Box::new(issue));
     }
-    
+
     // Check if it's a file path
     if Path::new(input).exists() {
         let id = Path::new(input)
@@ -285,9 +283,12 @@ pub fn problem_statement_from_simplified_input(
         statement.load()?;
         return Ok(Box::new(statement));
     }
-    
+
     // Treat as plain text
-    let id = format!("text_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
+    let id = format!(
+        "text_{}",
+        uuid::Uuid::new_v4().to_string().split('-').next().unwrap()
+    );
     Ok(Box::new(TextProblemStatement::new(input, id)))
 }
 
@@ -297,9 +298,10 @@ pub fn create_problem_statement(
 ) -> Result<Box<dyn ProblemStatement>> {
     match config {
         ProblemStatementConfig::Empty => Ok(Box::new(EmptyProblemStatement::new())),
-        ProblemStatementConfig::Text { text, id } => {
-            Ok(Box::new(TextProblemStatement::new(text.clone(), id.clone())))
-        }
+        ProblemStatementConfig::Text { text, id } => Ok(Box::new(TextProblemStatement::new(
+            text.clone(),
+            id.clone(),
+        ))),
         ProblemStatementConfig::File { path, id } => {
             let mut statement = FileProblemStatement::new(path.clone(), id.clone());
             statement.load()?;

@@ -294,7 +294,7 @@ async def test_with_openai(results: TestResults):
 
         provider = OpenAIProvider(
             api_key=api_key,
-            model="gpt-4o-mini",  # Use mini for faster/cheaper tests
+            model="gpt-5-mini",  # Use mini for faster/cheaper tests
         )
 
         env = VendingEnvironment(initial_cash=Decimal("500"), seed=42)

@@ -146,7 +146,7 @@ class ElizaVendingRunner:
     def __init__(
         self,
         config: VendingBenchConfig,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "gpt-5-mini",
     ) -> None:
         self.config = config
         self.model_name = model_name
@@ -528,7 +528,7 @@ Yesterday's Summary:
 async def run_eliza_benchmark(
     num_runs: int = 3,
     max_days: int = 30,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5-mini",
     output_dir: str | None = None,
 ) -> VendingBenchReport:
     """
@@ -585,7 +585,7 @@ if __name__ == "__main__":
         run_eliza_benchmark(
             num_runs=1,
             max_days=10,
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             output_dir="./benchmark_results/eliza-test",
         )
     )

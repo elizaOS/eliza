@@ -3,61 +3,73 @@
  * Exports all rule configurations, validators, and utilities
  */
 
-// Type exports
-export * from './types';
+// Configuration exports
+export {
+  CURSOR_RULES,
+  exportAllRulesToCursor,
+  exportToCursorFormat,
+  RULES_CONFIG,
+} from "./config";
 
 // General coding rules
 export {
-  PYTHON_CODING_RULES,
-  TYPESCRIPT_CODING_RULES,
   GENERAL_CODING_GUIDELINES,
-  TYPESCRIPT_CODING_GUIDELINES,
-  validateAgainstRules,
   getApplicableRules,
-} from './general';
+  PYTHON_CODING_RULES,
+  TYPESCRIPT_CODING_GUIDELINES,
+  TYPESCRIPT_CODING_RULES,
+  validateAgainstRules,
+} from "./general";
 
 // Project structure and overview
 export {
   ENTRY_POINTS,
-  MAIN_AGENT_CLASS,
-  SWE_ENV_CLASS,
   EXECUTION_ENVIRONMENT,
-  TOOLS_INFO,
-  INSPECTORS,
-  PROJECT_STRUCTURE,
-  PROJECT_OVERVIEW,
   getComponentByPath,
   getPythonModules,
+  INSPECTORS,
+  MAIN_AGENT_CLASS,
+  PROJECT_OVERVIEW,
+  PROJECT_STRUCTURE,
+  SWE_ENV_CLASS,
+  TOOLS_INFO,
   TYPESCRIPT_EQUIVALENTS,
-} from './project-overview';
-
+} from "./project-overview";
+// Type exports
+export * from "./types";
 // Validators
 export {
+  formatValidationResults,
+  getValidator,
   PythonValidator,
   TypeScriptValidator,
-  getValidator,
-  validateFile,
-  validateFiles,
-  formatValidationResults,
   type ValidationResult,
   type Violation,
-} from './validators';
+  validateFile,
+  validateFiles,
+} from "./validators";
 
-// Configuration exports
-export { RULES_CONFIG, CURSOR_RULES, exportAllRulesToCursor, exportToCursorFormat } from './config';
+import { RULES_CONFIG } from "./config";
+import { getApplicableRules } from "./general";
+import { getComponentByPath } from "./project-overview";
+import {
+  PythonValidator,
+  TypeScriptValidator,
+  validateFile,
+} from "./validators";
 
 /**
  * Default export with all rules and utilities
  */
 export default {
-  config: require('./config').RULES_CONFIG,
+  config: RULES_CONFIG,
   validators: {
-    python: new (require('./validators').PythonValidator)(),
-    typescript: new (require('./validators').TypeScriptValidator)(),
+    python: new PythonValidator(),
+    typescript: new TypeScriptValidator(),
   },
   utils: {
-    getComponentByPath: require('./project-overview').getComponentByPath,
-    getApplicableRules: require('./general').getApplicableRules,
-    validateFile: require('./validators').validateFile,
+    getComponentByPath,
+    getApplicableRules,
+    validateFile,
   },
 };

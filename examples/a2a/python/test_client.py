@@ -12,14 +12,14 @@ import httpx
 BASE_URL = os.environ.get("A2A_URL", "http://localhost:3000")
 
 
-async def main() -> None:
+async def run_a2a_test_client(base_url: str) -> None:
     print("🧪 Testing elizaOS A2A Server\n")
-    print(f"   URL: {BASE_URL}\n")
+    print(f"   URL: {base_url}\n")
 
     async with httpx.AsyncClient() as client:
         # Test 1: Get agent info
         print("ℹ️  Getting agent info...")
-        info_response = await client.get(f"{BASE_URL}/")
+        info_response = await client.get(f"{base_url}/")
         info = info_response.json()
         print(f"   Name: {info['name']}")
         print(f"   Bio: {info['bio']}")
@@ -29,7 +29,7 @@ async def main() -> None:
 
         # Test 2: Health check
         print("🏥 Health check...")
-        health_response = await client.get(f"{BASE_URL}/health")
+        health_response = await client.get(f"{base_url}/health")
         health = health_response.json()
         print(f"   Status: {health['status']}")
         print()
@@ -48,7 +48,7 @@ async def main() -> None:
             print(f"   User: {message}")
 
             chat_response = await client.post(
-                f"{BASE_URL}/chat",
+                f"{base_url}/chat",
                 json={"message": message, "sessionId": session_id},
                 headers={"X-Agent-Id": "test-agent-001"},
             )
@@ -65,7 +65,7 @@ async def main() -> None:
 
         async with client.stream(
             "POST",
-            f"{BASE_URL}/chat/stream",
+            f"{base_url}/chat/stream",
             json={
                 "message": "Count from 1 to 5, one number per line",
                 "sessionId": session_id,
@@ -86,5 +86,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_a2a_test_client(BASE_URL))
 

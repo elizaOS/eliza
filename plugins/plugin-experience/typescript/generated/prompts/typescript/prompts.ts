@@ -41,3 +41,4 @@ Respond with JSON array of experiences (max 3):
 Return empty array [] if no novel experiences found.`;
 
 export const EXTRACT_EXPERIENCES_TEMPLATE = extractExperiencesTemplate;
+

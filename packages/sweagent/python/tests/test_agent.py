@@ -186,8 +186,6 @@ def test_run_step_by_step_checking_history(dummy_env: SWEEnv, default_agent: Def
     assert a.info["exit_status"] == "exit_cost"  # type: ignore
 
 
-# todo: fixme; Needs real environment or mocking of read_file
-@pytest.mark.xfail
 def test_run_autosubmit(dummy_env: SWEEnv, default_agent: DefaultAgent, tmp_path):
     a = default_agent
     a.model = PredeterminedTestModel(["raise_cost"])  # type: ignore
@@ -219,8 +217,6 @@ def test_show_no_output_template(dummy_env: SWEEnv, default_agent: DefaultAgent,
     # todo: actually test that the template is used
 
 
-# todo: fixme; Needs real environment or mocking of read_file
-@pytest.mark.xfail
 def test_successful_submission(dummy_env: SWEEnv, default_agent: DefaultAgent, tmp_path):
     a = default_agent
     a.model = PredeterminedTestModel(["```\nsubmit\n```"])  # type: ignore

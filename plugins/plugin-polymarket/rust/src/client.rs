@@ -2,13 +2,14 @@
 
 use alloy::primitives::Address;
 use alloy::signers::local::PrivateKeySigner;
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_ENCODING};
 use reqwest::Client;
 use std::time::Duration;
 
 use crate::constants::{DEFAULT_CLOB_API_URL, DEFAULT_REQUEST_TIMEOUT_SECS, POLYGON_CHAIN_ID};
 use crate::error::{PolymarketError, Result};
 use crate::types::{
-    ApiKeyCreds, Market, MarketsResponse, OrderBook, OrderParams, OrderResponse,
+    ApiKeyCreds, Market, MarketsResponse, OrderBook,
     SimplifiedMarketsResponse,
 };
 
@@ -35,8 +36,18 @@ impl ClobClient {
 
         let address = signer.address();
 
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+        // Avoid content-encoding variants we can't reliably decode everywhere.
+        headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
+
         let http = Client::builder()
             .timeout(Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SECS))
+            .default_headers(headers)
+            .no_gzip()
+            .no_brotli()
+            .no_deflate()
+            .no_zstd()
             .build()
             .map_err(|e| {
                 PolymarketError::network_error(format!("Failed to create HTTP client: {e}"))
@@ -290,51 +301,7 @@ impl ClobClient {
         Ok(data.spread)
     }
 
-    // =========================================================================
-    // Order Methods (require authentication)
-    // =========================================================================
-
-    /// Place an order
-    ///
-    /// # Arguments
-    ///
-    /// * `params` - Order parameters
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if not authenticated or order fails
-    pub async fn place_order(&self, params: OrderParams) -> Result<OrderResponse> {
-        if self.creds.is_none() {
-            return Err(PolymarketError::new(
-                crate::error::PolymarketErrorCode::AuthError,
-                "API credentials required for placing orders",
-            ));
-        }
-
-        // Build signed order request
-        let url = format!("{}/order", self.base_url);
-
-        let response = self
-            .http
-            .post(&url)
-            .json(&params)
-            .send()
-            .await
-            .map_err(|e| PolymarketError::network_error(format!("Failed to place order: {e}")))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(PolymarketError::api_error(format!(
-                "Order placement failed: {status} - {body}"
-            )));
-        }
-
-        response
-            .json()
-            .await
-            .map_err(|e| PolymarketError::api_error(format!("Failed to parse order response: {e}")))
-    }
+    // Rust order placement isn't implemented (EIP-712 + L2 auth missing).
 }
 
 #[cfg(test)]

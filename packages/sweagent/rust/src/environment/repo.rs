@@ -9,13 +9,13 @@ use std::path::{Path, PathBuf};
 pub trait Repo: Send + Sync {
     /// Get the repository name
     fn repo_name(&self) -> &str;
-    
+
     /// Get the clone URL if available
     fn clone_url(&self) -> Option<&str>;
-    
+
     /// Get the local path if available
     fn local_path(&self) -> Option<&Path>;
-    
+
     /// Get the base commit if specified
     fn base_commit(&self) -> Option<&str>;
 }
@@ -40,15 +40,15 @@ impl Repo for PreExistingRepo {
     fn repo_name(&self) -> &str {
         &self.repo_name
     }
-    
+
     fn clone_url(&self) -> Option<&str> {
         None
     }
-    
+
     fn local_path(&self) -> Option<&Path> {
         Some(&self.path)
     }
-    
+
     fn base_commit(&self) -> Option<&str> {
         None
     }
@@ -70,21 +70,21 @@ impl LocalRepo {
             .and_then(|n| n.to_str())
             .unwrap_or("local-repo")
             .to_string();
-        
+
         if !path.exists() {
             return Err(SWEAgentError::FileNotFound(format!(
                 "Repository path does not exist: {}",
                 path.display()
             )));
         }
-        
+
         Ok(Self {
             path,
             repo_name,
             base_commit: None,
         })
     }
-    
+
     pub fn with_base_commit(mut self, commit: impl Into<String>) -> Self {
         self.base_commit = Some(commit.into());
         self
@@ -95,15 +95,15 @@ impl Repo for LocalRepo {
     fn repo_name(&self) -> &str {
         &self.repo_name
     }
-    
+
     fn clone_url(&self) -> Option<&str> {
         None
     }
-    
+
     fn local_path(&self) -> Option<&Path> {
         Some(&self.path)
     }
-    
+
     fn base_commit(&self) -> Option<&str> {
         self.base_commit.as_deref()
     }
@@ -122,7 +122,7 @@ impl GithubRepo {
     pub fn new(github_url: impl Into<String>) -> Result<Self> {
         let url = github_url.into();
         let info = parse_github_repo_url(&url)?;
-        
+
         Ok(Self {
             github_url: url,
             info: Some(info),
@@ -130,12 +130,12 @@ impl GithubRepo {
             clone_timeout: 300,
         })
     }
-    
+
     pub fn with_base_commit(mut self, commit: impl Into<String>) -> Self {
         self.base_commit = Some(commit.into());
         self
     }
-    
+
     pub fn with_clone_timeout(mut self, timeout: u64) -> Self {
         self.clone_timeout = timeout;
         self
@@ -149,15 +149,15 @@ impl Repo for GithubRepo {
             .map(|i| i.full_name.as_str())
             .unwrap_or("unknown")
     }
-    
+
     fn clone_url(&self) -> Option<&str> {
         Some(&self.github_url)
     }
-    
+
     fn local_path(&self) -> Option<&Path> {
         None
     }
-    
+
     fn base_commit(&self) -> Option<&str> {
         self.base_commit.as_deref()
     }
@@ -207,13 +207,13 @@ pub fn repo_from_simplified_input(input: &str) -> Result<Box<dyn Repo>> {
     if input.starts_with("https://github.com/") || input.starts_with("git@github.com:") {
         return Ok(Box::new(GithubRepo::new(input)?));
     }
-    
+
     // Check if it's a local path
     let path = Path::new(input);
     if path.exists() {
         return Ok(Box::new(LocalRepo::new(path)?));
     }
-    
+
     Err(SWEAgentError::InvalidConfiguration(format!(
         "Could not parse repository input: {}",
         input

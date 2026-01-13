@@ -3,14 +3,23 @@
  * Converted from sweagent/agent/reviewer.py
  */
 
-import { AbstractModel, InstanceStats, getModel, ModelConfig } from './models';
-import { ProblemStatement } from './problem-statement';
-import { ToolConfig } from './agents';
-import { AgentInfo, Trajectory, TrajectoryStep, History } from '../types';
-import { getLogger, AgentLogger } from '../utils/log';
-import { renderTemplate, renderAdvancedTemplate } from './utils/template';
+import type { AgentInfo, History, Trajectory, TrajectoryStep } from "../types";
+import { type AgentLogger, getLogger } from "../utils/log";
+import type { ToolConfig } from "./agents";
+import {
+  type AbstractModel,
+  getModel,
+  InstanceStats,
+  type ModelConfig,
+} from "./models";
+import type { ProblemStatement } from "./problem-statement";
+import {
+  renderAdvancedTemplate,
+  renderTemplate,
+  type TemplateContext,
+} from "./utils/template";
 
-const logger = getLogger('reviewer');
+const logger = getLogger("reviewer");
 
 /**
  * Information passed to the reviewer
@@ -20,7 +29,7 @@ export interface ReviewSubmission {
   info: AgentInfo;
   modelStats: InstanceStats;
 
-  toFormatDict(suffix?: string): Record<string, unknown>;
+  toFormatDict(suffix?: string): TemplateContext;
 }
 
 export class ReviewSubmissionImpl implements ReviewSubmission {
@@ -28,28 +37,43 @@ export class ReviewSubmissionImpl implements ReviewSubmission {
   info: AgentInfo;
   modelStats: InstanceStats;
 
-  constructor(data: { trajectory: Trajectory; info: AgentInfo; modelStats: InstanceStats }) {
+  constructor(data: {
+    trajectory: Trajectory;
+    info: AgentInfo;
+    modelStats: InstanceStats;
+  }) {
     this.trajectory = data.trajectory;
     this.info = data.info;
     this.modelStats = data.modelStats;
   }
 
-  toFormatDict(suffix: string = ''): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
+  toFormatDict(suffix: string = ""): TemplateContext {
+    const out: TemplateContext = {};
     const info = { ...this.info };
 
     if (!info.submission) {
-      info.submission = '';
+      info.submission = "";
     }
 
     for (const [k, v] of Object.entries(info)) {
-      if (typeof v === 'string') {
+      if (v === undefined) continue;
+
+      if (
+        typeof v === "string" ||
+        typeof v === "number" ||
+        typeof v === "boolean"
+      ) {
         out[`${k}${suffix}`] = v;
-      } else if (typeof v === 'object' && v !== null) {
-        for (const [k2, v2] of Object.entries(v)) {
-          out[`${k}_${k2}${suffix}`] = v2;
-        }
+        continue;
       }
+
+      if (v === null) {
+        out[`${k}${suffix}`] = null;
+        continue;
+      }
+
+      // Keep templates stable by stringifying complex objects/arrays.
+      out[`${k}${suffix}`] = JSON.stringify(v);
     }
 
     return out;
@@ -88,7 +112,10 @@ export interface ChooserOutput {
  * Abstract reviewer interface
  */
 export abstract class AbstractReviewer {
-  abstract review(instance: ProblemStatement, submission: ReviewSubmission): Promise<ReviewerResult>;
+  abstract review(
+    instance: ProblemStatement,
+    submission: ReviewSubmission,
+  ): Promise<ReviewerResult>;
 }
 
 /**
@@ -139,7 +166,7 @@ export interface ReviewerConfig {
   nSample: number;
   reduceByStd: number;
   scoreRange: [number | null, number | null];
-  type: 'reviewer';
+  type: "reviewer";
 }
 
 /**
@@ -169,7 +196,7 @@ export interface PreselectorConfig {
  * Configuration for chooser retry loop
  */
 export interface ChooserRetryLoopConfig {
-  type: 'chooser';
+  type: "chooser";
   chooser: ChooserConfig;
   maxAttempts: number;
   minBudgetForNewAttempt: number;
@@ -180,7 +207,7 @@ export interface ChooserRetryLoopConfig {
  * Configuration for score retry loop
  */
 export interface ScoreRetryLoopConfig {
-  type: 'score';
+  type: "score";
   reviewerConfig: ReviewerConfig;
   acceptScore: number;
   maxAccepts: number;
@@ -212,8 +239,15 @@ export class TrajectoryFormatter {
     return true;
   }
 
-  private includeStepOutput(item: TrajectoryStep, iStep: number, nSteps: number): boolean {
-    if (this.config.onlyShowLastNOutput > 0 && iStep < nSteps - this.config.onlyShowLastNOutput) {
+  private includeStepOutput(
+    item: TrajectoryStep,
+    iStep: number,
+    nSteps: number,
+  ): boolean {
+    if (
+      this.config.onlyShowLastNOutput > 0 &&
+      iStep < nSteps - this.config.onlyShowLastNOutput
+    ) {
       return false;
     }
 
@@ -226,11 +260,16 @@ export class TrajectoryFormatter {
     return true;
   }
 
-  private formatTrajectoryStep(step: TrajectoryStep, iStep: number, nSteps: number, iTraj: number = 1): string {
+  private formatTrajectoryStep(
+    step: TrajectoryStep,
+    iStep: number,
+    nSteps: number,
+    iTraj: number = 1,
+  ): string {
     const stepCopy = { ...step };
 
     if (!this.includeStepOutput(step, iStep, nSteps)) {
-      stepCopy.observation = '[Output omitted]';
+      stepCopy.observation = "[Output omitted]";
     }
 
     return renderTemplate(this.config.itemTemplate, {
@@ -244,8 +283,10 @@ export class TrajectoryFormatter {
     const trajMessages = trajectory.filter((step) => this.includeStep(step));
 
     return trajMessages
-      .map((step, iStep) => this.formatTrajectoryStep(step, iStep, trajMessages.length, iTraj))
-      .join('\n\n');
+      .map((step, iStep) =>
+        this.formatTrajectoryStep(step, iStep, trajMessages.length, iTraj),
+      )
+      .join("\n\n");
   }
 }
 
@@ -266,7 +307,10 @@ export class Reviewer extends AbstractReviewer {
     this.logger = logger;
   }
 
-  private formatMessages(instance: ProblemStatement, submission: ReviewSubmission): History {
+  private formatMessages(
+    instance: ProblemStatement,
+    submission: ReviewSubmission,
+  ): History {
     const systemMessage = this.config.systemTemplate;
     this.logger.debug(`MODEL INPUT (system)\n${systemMessage}`);
 
@@ -280,13 +324,13 @@ export class Reviewer extends AbstractReviewer {
     this.logger.debug(`MODEL INPUT (user)\n${userMessage}`);
 
     return [
-      { role: 'system', content: systemMessage, messageType: 'system' },
-      { role: 'user', content: userMessage, messageType: 'user' },
+      { role: "system", content: systemMessage, messageType: "system" },
+      { role: "user", content: userMessage, messageType: "user" },
     ];
   }
 
   private interpret(response: string): number {
-    const lastLine = response.trim().split('\n').pop()?.trim() || '';
+    const lastLine = response.trim().split("\n").pop()?.trim() || "";
     const numbers = lastLine.match(/-?\d+\.?\d*/g);
 
     if (!numbers || numbers.length === 0) {
@@ -295,22 +339,35 @@ export class Reviewer extends AbstractReviewer {
 
     const score = parseFloat(numbers[numbers.length - 1]);
 
-    if (this.config.scoreRange[0] !== null && score < this.config.scoreRange[0]) {
-      throw new Error(`Score ${score} is below the minimum score ${this.config.scoreRange[0]}`);
+    if (
+      this.config.scoreRange[0] !== null &&
+      score < this.config.scoreRange[0]
+    ) {
+      throw new Error(
+        `Score ${score} is below the minimum score ${this.config.scoreRange[0]}`,
+      );
     }
 
-    if (this.config.scoreRange[1] !== null && score > this.config.scoreRange[1]) {
-      throw new Error(`Score ${score} is above the maximum score ${this.config.scoreRange[1]}`);
+    if (
+      this.config.scoreRange[1] !== null &&
+      score > this.config.scoreRange[1]
+    ) {
+      throw new Error(
+        `Score ${score} is above the maximum score ${this.config.scoreRange[1]}`,
+      );
     }
 
     return score;
   }
 
-  async review(instance: ProblemStatement, submission: ReviewSubmission): Promise<ReviewerResult> {
+  async review(
+    instance: ProblemStatement,
+    submission: ReviewSubmission,
+  ): Promise<ReviewerResult> {
     const exitStatus = submission.info.exitStatus;
     let penalty = 0.0;
 
-    if (!exitStatus || exitStatus.trim() !== 'submitted') {
+    if (!exitStatus || exitStatus.trim() !== "submitted") {
       penalty = this.config.failureScorePenalty;
     }
 
@@ -322,23 +379,26 @@ export class Reviewer extends AbstractReviewer {
     for (let i = 0; i < this.config.nSample; i++) {
       try {
         const answer = await this.model.query(messages);
-        const message = Array.isArray(answer) ? answer[0].message : answer.message;
+        const message = Array.isArray(answer)
+          ? answer[0].message
+          : answer.message;
         const score = this.interpret(message);
         answers.push(message);
         accepts.push(score);
       } catch (error) {
         this.logger.warning(`Could not interpret response: ${error}`);
-        continue;
       }
     }
 
     if (accepts.length === 0) {
-      answers.push('No valid scores found, failing submission');
+      answers.push("No valid scores found, failing submission");
       accepts.push(-100.0);
     }
 
     const mean = accepts.reduce((a, b) => a + b, 0) / accepts.length;
-    const std = Math.sqrt(accepts.reduce((sq, n) => sq + Math.pow(n - mean, 2), 0) / accepts.length);
+    const std = Math.sqrt(
+      accepts.reduce((sq, n) => sq + (n - mean) ** 2, 0) / accepts.length,
+    );
 
     let accept = mean - penalty;
     if (this.config.reduceByStd > 0) {
@@ -346,7 +406,9 @@ export class Reviewer extends AbstractReviewer {
     }
 
     this.logger.info(`First answer: ${answers[0]}`);
-    this.logger.info(`Final score: ${accept} (penalty: ${penalty}, std: ${std}), individual: ${accepts}`);
+    this.logger.info(
+      `Final score: ${accept} (penalty: ${penalty}, std: ${std}), individual: ${accepts}`,
+    );
 
     return {
       accept,
@@ -375,18 +437,22 @@ export class Chooser {
   private interpret(response: string): number {
     const numbers = response.match(/\d+/g);
     if (!numbers || numbers.length === 0) {
-      this.logger.error('No numbers found in response');
+      this.logger.error("No numbers found in response");
       return 0;
     }
-    return parseInt(numbers[numbers.length - 1]);
+    return parseInt(numbers[numbers.length - 1], 10);
   }
 
-  private formatSubmission(_problemStatement: string, submission: ReviewSubmission): string {
+  private formatSubmission(
+    _problemStatement: string,
+    submission: ReviewSubmission,
+  ): string {
     if (
       !submission.info.submission ||
-      (this.config.maxLenSubmission > 0 && submission.info.submission.length > this.config.maxLenSubmission)
+      (this.config.maxLenSubmission > 0 &&
+        submission.info.submission.length > this.config.maxLenSubmission)
     ) {
-      return 'Solution invalid.';
+      return "Solution invalid.";
     }
 
     return renderTemplate(this.config.submissionTemplate, {
@@ -394,31 +460,54 @@ export class Chooser {
     });
   }
 
-  private buildMessages(problemStatement: string, input: ReviewSubmission[]): History {
-    const instanceMessage = renderAdvancedTemplate(this.config.instanceTemplate, {
-      problem_statement: problemStatement,
-      submissions: input.map((s) => this.formatSubmission(problemStatement, s)),
-    });
+  private buildMessages(
+    problemStatement: string,
+    input: ReviewSubmission[],
+  ): History {
+    const instanceMessage = renderAdvancedTemplate(
+      this.config.instanceTemplate,
+      {
+        problem_statement: problemStatement,
+        submissions: input.map((s) =>
+          this.formatSubmission(problemStatement, s),
+        ),
+      },
+    );
 
     this.logger.debug(`MODEL INPUT (user)\n${instanceMessage}`);
 
     return [
-      { role: 'system', content: this.config.systemTemplate, messageType: 'system' },
-      { role: 'user', content: instanceMessage, messageType: 'user' },
+      {
+        role: "system",
+        content: this.config.systemTemplate,
+        messageType: "system",
+      },
+      { role: "user", content: instanceMessage, messageType: "user" },
     ];
   }
 
-  async choose(problemStatement: string, input: ReviewSubmission[]): Promise<ChooserOutput> {
+  async choose(
+    problemStatement: string,
+    input: ReviewSubmission[],
+  ): Promise<ChooserOutput> {
     const preselectorOutput: PreselectorOutput | null = null;
     let selectedIndices = Array.from({ length: input.length }, (_, i) => i);
 
-    const nSubmitted = input.filter((s) => s.info.exitStatus === 'submitted').length;
+    const nSubmitted = input.filter(
+      (s) => s.info.exitStatus === "submitted",
+    ).length;
 
     if (nSubmitted >= 2) {
-      this.logger.debug(`Got ${nSubmitted} submitted submissions, only using them`);
-      selectedIndices = input.map((s, i) => (s.info.exitStatus === 'submitted' ? i : -1)).filter((i) => i >= 0);
+      this.logger.debug(
+        `Got ${nSubmitted} submitted submissions, only using them`,
+      );
+      selectedIndices = input
+        .map((s, i) => (s.info.exitStatus === "submitted" ? i : -1))
+        .filter((i) => i >= 0);
     } else {
-      this.logger.debug(`Got only ${nSubmitted} submitted submissions, disabling exit status filtering`);
+      this.logger.debug(
+        `Got only ${nSubmitted} submitted submissions, disabling exit status filtering`,
+      );
     }
 
     // Handle preselector if configured
@@ -432,7 +521,7 @@ export class Chooser {
     );
 
     let chosenIdx: number | null = null;
-    let response = '';
+    let response = "";
 
     try {
       const result = await this.model.query(messages);
@@ -443,8 +532,14 @@ export class Chooser {
       chosenIdx = null;
     }
 
-    if (chosenIdx === null || chosenIdx < 0 || chosenIdx >= selectedIndices.length) {
-      this.logger.error(`Invalid chosen index: ${chosenIdx}, using first index`);
+    if (
+      chosenIdx === null ||
+      chosenIdx < 0 ||
+      chosenIdx >= selectedIndices.length
+    ) {
+      this.logger.error(
+        `Invalid chosen index: ${chosenIdx}, using first index`,
+      );
       chosenIdx = selectedIndices[0];
     } else {
       chosenIdx = selectedIndices[chosenIdx];
@@ -471,7 +566,10 @@ export class ChooserRetryLoop extends AbstractRetryLoop {
   private logger: AgentLogger;
   private chooserOutput: ChooserOutput | null = null;
 
-  constructor(config: ChooserRetryLoopConfig, problemStatement: ProblemStatement) {
+  constructor(
+    config: ChooserRetryLoopConfig,
+    problemStatement: ProblemStatement,
+  ) {
     super();
     this.config = config;
     this.problemStatement = problemStatement;
@@ -480,7 +578,10 @@ export class ChooserRetryLoop extends AbstractRetryLoop {
   }
 
   private get totalStats(): InstanceStats {
-    return this.submissions.reduce((acc, s) => acc.add(s.modelStats), new InstanceStats());
+    return this.submissions.reduce(
+      (acc, s) => acc.add(s.modelStats),
+      new InstanceStats(),
+    );
   }
 
   get reviewModelStats(): InstanceStats {
@@ -498,7 +599,10 @@ export class ChooserRetryLoop extends AbstractRetryLoop {
   retry(): boolean {
     const statStr = `n_samples=${this.nAttempts}`;
 
-    if (this.config.costLimit > 0 && this.totalStats.instanceCost > this.config.costLimit) {
+    if (
+      this.config.costLimit > 0 &&
+      this.totalStats.instanceCost > this.config.costLimit
+    ) {
       this.logger.info(
         `Exiting retry loop (${statStr}): Total attempt cost ` +
           `(${this.totalStats.instanceCost}) exceeds cost limit (${this.config.costLimit})`,
@@ -506,13 +610,22 @@ export class ChooserRetryLoop extends AbstractRetryLoop {
       return false;
     }
 
-    if (this.config.maxAttempts > 0 && this.nAttempts >= this.config.maxAttempts) {
-      this.logger.info(`Exiting retry loop (${statStr}): max_attempts=${this.config.maxAttempts} reached`);
+    if (
+      this.config.maxAttempts > 0 &&
+      this.nAttempts >= this.config.maxAttempts
+    ) {
+      this.logger.info(
+        `Exiting retry loop (${statStr}): max_attempts=${this.config.maxAttempts} reached`,
+      );
       return false;
     }
 
-    const remainingBudget = this.config.costLimit - this.totalStats.instanceCost;
-    if (this.config.minBudgetForNewAttempt > 0 && remainingBudget < this.config.minBudgetForNewAttempt) {
+    const remainingBudget =
+      this.config.costLimit - this.totalStats.instanceCost;
+    if (
+      this.config.minBudgetForNewAttempt > 0 &&
+      remainingBudget < this.config.minBudgetForNewAttempt
+    ) {
       this.logger.info(
         `Exiting retry loop (${statStr}): Not enough budget left for a new attempt ` +
           `(${remainingBudget} remaining, ${this.config.minBudgetForNewAttempt} required)`,
@@ -532,7 +645,10 @@ export class ChooserRetryLoop extends AbstractRetryLoop {
       return null;
     }
 
-    this.chooserOutput = await this.chooser.choose(this.problemStatement.getProblemStatement(), this.submissions);
+    this.chooserOutput = await this.chooser.choose(
+      this.problemStatement.getProblemStatement(),
+      this.submissions,
+    );
 
     return this.chooserOutput.chosenIdx;
   }
@@ -548,10 +664,12 @@ export class ScoreRetryLoop extends AbstractRetryLoop {
   private config: ScoreRetryLoopConfig;
   private submissions: ReviewSubmission[] = [];
   private reviews: ReviewerResult[] = [];
-  private nConsecExitCost: number = 0;
   private logger: AgentLogger;
 
-  constructor(config: ScoreRetryLoopConfig, problemStatement: ProblemStatement) {
+  constructor(
+    config: ScoreRetryLoopConfig,
+    problemStatement: ProblemStatement,
+  ) {
     super();
     this.config = config;
     this.problemStatement = problemStatement;
@@ -574,11 +692,17 @@ export class ScoreRetryLoop extends AbstractRetryLoop {
   }
 
   private get nAccepted(): number {
-    return this.reviews.filter((r) => typeof r.accept === 'number' && r.accept >= this.config.acceptScore).length;
+    return this.reviews.filter(
+      (r) =>
+        typeof r.accept === "number" && r.accept >= this.config.acceptScore,
+    ).length;
   }
 
   private get totalStats(): InstanceStats {
-    const submissionStats = this.submissions.reduce((acc, s) => acc.add(s.modelStats), new InstanceStats());
+    const submissionStats = this.submissions.reduce(
+      (acc, s) => acc.add(s.modelStats),
+      new InstanceStats(),
+    );
     return submissionStats.add(this.model.getStats());
   }
 
@@ -588,24 +712,28 @@ export class ScoreRetryLoop extends AbstractRetryLoop {
   }
 
   private async review(): Promise<number> {
-    const review = await this.reviewer.review(this.problemStatement, this.submissions[this.submissions.length - 1]);
+    const review = await this.reviewer.review(
+      this.problemStatement,
+      this.submissions[this.submissions.length - 1],
+    );
     this.reviews.push(review);
 
-    const exitStatus = this.submissions[this.submissions.length - 1].info.exitStatus || '';
-    if (exitStatus && exitStatus.toLowerCase().includes('exit_cost')) {
-      this.nConsecExitCost++;
-    } else {
-      this.nConsecExitCost = 0;
-    }
-
-    return typeof review.accept === 'number' ? review.accept : 0;
+    return typeof review.accept === "number" ? review.accept : 0;
   }
 
   retry(): boolean {
-    const maxScore = Math.max(...this.reviews.map((r) => (typeof r.accept === 'number' ? r.accept : -100)), -100);
+    const maxScore = Math.max(
+      ...this.reviews.map((r) =>
+        typeof r.accept === "number" ? r.accept : -100,
+      ),
+      -100,
+    );
     const statStr = `n_samples=${this.nAttempts}, max_score=${maxScore}, n_accepted=${this.nAccepted}`;
 
-    if (this.config.costLimit > 0 && this.totalStats.instanceCost > this.config.costLimit) {
+    if (
+      this.config.costLimit > 0 &&
+      this.totalStats.instanceCost > this.config.costLimit
+    ) {
       this.logger.info(
         `Exiting retry loop (${statStr}): Total attempt cost ` +
           `(${this.totalStats.instanceCost}) exceeds cost limit (${this.config.costLimit})`,
@@ -613,18 +741,32 @@ export class ScoreRetryLoop extends AbstractRetryLoop {
       return false;
     }
 
-    if (this.config.maxAttempts > 0 && this.nAttempts >= this.config.maxAttempts) {
-      this.logger.info(`Exiting retry loop (${statStr}): max_attempts=${this.config.maxAttempts} reached`);
+    if (
+      this.config.maxAttempts > 0 &&
+      this.nAttempts >= this.config.maxAttempts
+    ) {
+      this.logger.info(
+        `Exiting retry loop (${statStr}): max_attempts=${this.config.maxAttempts} reached`,
+      );
       return false;
     }
 
-    if (this.config.maxAccepts > 0 && this.nAccepted >= this.config.maxAccepts) {
-      this.logger.info(`Exiting retry loop (${statStr}): max_accepts=${this.config.maxAccepts} reached`);
+    if (
+      this.config.maxAccepts > 0 &&
+      this.nAccepted >= this.config.maxAccepts
+    ) {
+      this.logger.info(
+        `Exiting retry loop (${statStr}): max_accepts=${this.config.maxAccepts} reached`,
+      );
       return false;
     }
 
-    const remainingBudget = this.config.costLimit - this.totalStats.instanceCost;
-    if (this.config.minBudgetForNewAttempt > 0 && remainingBudget < this.config.minBudgetForNewAttempt) {
+    const remainingBudget =
+      this.config.costLimit - this.totalStats.instanceCost;
+    if (
+      this.config.minBudgetForNewAttempt > 0 &&
+      remainingBudget < this.config.minBudgetForNewAttempt
+    ) {
       this.logger.info(
         `Exiting retry loop (${statStr}): Not enough budget left for a new attempt ` +
           `(${remainingBudget} remaining, ${this.config.minBudgetForNewAttempt} required)`,
@@ -640,7 +782,9 @@ export class ScoreRetryLoop extends AbstractRetryLoop {
       return null;
     }
 
-    const scores = this.reviews.map((r) => (typeof r.accept === 'number' ? r.accept : -100));
+    const scores = this.reviews.map((r) =>
+      typeof r.accept === "number" ? r.accept : -100,
+    );
     const maxScore = Math.max(...scores);
 
     // Find all indices with max score
@@ -671,11 +815,13 @@ export function getRetryLoopFromConfig(
   problemStatement: ProblemStatement,
 ): ScoreRetryLoop | ChooserRetryLoop {
   switch (config.type) {
-    case 'score':
+    case "score":
       return new ScoreRetryLoop(config, problemStatement);
-    case 'chooser':
+    case "chooser":
       return new ChooserRetryLoop(config, problemStatement);
     default:
-      throw new Error(`Unknown retry loop type: ${(config as RetryLoopConfig).type}`);
+      throw new Error(
+        `Unknown retry loop type: ${(config as RetryLoopConfig).type}`,
+      );
   }
 }

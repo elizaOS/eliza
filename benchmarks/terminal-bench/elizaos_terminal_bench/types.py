@@ -202,7 +202,7 @@ class TerminalBenchConfig:
     
     # Model settings
     # Use an accessible, inexpensive default for quick validation.
-    model_name: str = "gpt-4o-mini"
+    model_name: str = "gpt-5-mini"
     temperature: float = 0.0
     max_tokens: int = 4096
     

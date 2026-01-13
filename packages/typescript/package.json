@@ -51,6 +51,7 @@
     "build:watch": "bun run build.ts --watch",
     "dev": "bun run build:watch",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
+    "perf:settings": "bun run scripts/perf-settings.ts",
     "test": "vitest run --coverage",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

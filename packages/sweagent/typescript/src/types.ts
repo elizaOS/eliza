@@ -3,6 +3,8 @@
  * Converted from sweagent/types.py
  */
 
+import type { JsonObject, JsonValue } from "./json";
+
 // ============================================================================
 // CORE TYPE DEFINITIONS (moved here to be available for interfaces below)
 // ============================================================================
@@ -12,10 +14,10 @@
  */
 export interface ToolCall {
   id?: string;
-  type?: 'function';
+  type?: "function";
   function: {
     name: string;
-    arguments: string | Record<string, unknown>;
+    arguments: string | JsonObject;
   };
 }
 
@@ -25,14 +27,14 @@ export interface ToolCall {
 export interface QueryObject {
   type?: string;
   content?: string;
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 /**
  * Thinking block structure
  */
 export interface ThinkingBlock {
-  type: 'thinking';
+  type: "thinking";
   content: string;
   startTime?: number;
   endTime?: number;
@@ -42,9 +44,9 @@ export interface ThinkingBlock {
  * Cache control configuration
  */
 export interface CacheControl {
-  type: 'ephemeral' | 'persistent';
+  type: "ephemeral" | "persistent";
   maxAge?: number;
-  scope?: 'user' | 'global';
+  scope?: "user" | "global";
 }
 
 /**
@@ -64,9 +66,12 @@ export interface StepOutput {
   toolCalls?: ToolCall[] | null;
   toolCallIds?: string[] | null;
   thinkingBlocks?: ThinkingBlock[] | null;
-  extraInfo: Record<string, unknown>;
+  extraInfo: JsonObject;
 
-  toTemplateFormatDict(): Record<string, string | number | boolean | null | undefined>;
+  toTemplateFormatDict(): Record<
+    string,
+    string | number | boolean | null | undefined
+  >;
 }
 
 /**
@@ -74,10 +79,10 @@ export interface StepOutput {
  */
 export class StepOutputImpl implements StepOutput {
   query: QueryObject[] = [{}];
-  thought: string = '';
-  action: string = '';
-  output: string = '';
-  observation: string = '';
+  thought: string = "";
+  action: string = "";
+  output: string = "";
+  observation: string = "";
   executionTime: number = 0.0;
   done: boolean = false;
   exitStatus?: number | string | null = null;
@@ -86,9 +91,12 @@ export class StepOutputImpl implements StepOutput {
   toolCalls?: ToolCall[] | null = null;
   toolCallIds?: string[] | null = null;
   thinkingBlocks?: ThinkingBlock[] | null = null;
-  extraInfo: Record<string, unknown> = {};
+  extraInfo: JsonObject = {};
 
-  toTemplateFormatDict(): Record<string, string | number | boolean | null | undefined> {
+  toTemplateFormatDict(): Record<
+    string,
+    string | number | boolean | null | undefined
+  > {
     return {
       thought: this.thought,
       action: this.action,
@@ -113,7 +121,7 @@ export interface TrajectoryStep {
   thought: string;
   executionTime: number;
   query: QueryObject[];
-  extraInfo: Record<string, unknown>;
+  extraInfo: JsonObject;
 }
 
 /**
@@ -126,8 +134,21 @@ export type Trajectory = TrajectoryStep[];
  */
 interface BaseHistoryItem {
   role: string;
-  content: string | Array<{ type: string; text?: string; [key: string]: unknown }>;
-  messageType?: 'thought' | 'action' | 'observation' | 'system' | 'user' | 'assistant' | 'demonstration';
+  content:
+    | string
+    | Array<{
+        type: string;
+        text?: string;
+        [key: string]: JsonValue | undefined;
+      }>;
+  messageType?:
+    | "thought"
+    | "action"
+    | "observation"
+    | "system"
+    | "user"
+    | "assistant"
+    | "demonstration";
 }
 
 /**
@@ -157,16 +178,16 @@ export interface AgentInfo {
   modelStats?: Record<string, number>;
   exitStatus?: string | null;
   submission?: string | null;
-  review?: Record<string, unknown>;
+  review?: JsonObject;
   editedFiles30?: string;
   editedFiles50?: string;
   editedFiles70?: string;
-  summarizer?: Record<string, unknown>;
+  summarizer?: JsonObject;
   sweAgentHash?: string;
   sweAgentVersion?: string;
   sweRexVersion?: string;
   sweRexHash?: string;
-  [key: string]: unknown; // Allow additional properties
+  [key: string]: JsonValue | undefined; // Allow additional JSON-like properties
 }
 
 /**
@@ -189,7 +210,9 @@ export interface ModelResponse {
   toolCalls?: ToolCall[];
   tool_calls?: ToolCall[];
   role?: string;
-  content?: string | Array<{ type: string; text?: string; [key: string]: unknown }>;
+  content?:
+    | string
+    | Array<{ type: string; text?: string; [key: string]: unknown }>;
 }
 
 /**
@@ -333,7 +356,13 @@ export interface GithubEvent {
  */
 export type TemplateContext = Record<
   string,
-  string | number | boolean | unknown[] | Record<string, unknown> | null | undefined
+  | string
+  | number
+  | boolean
+  | unknown[]
+  | Record<string, unknown>
+  | null
+  | undefined
 >;
 
 /**

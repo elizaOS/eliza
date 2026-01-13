@@ -3,28 +3,29 @@
  * Converted from sweagent/run/run_batch.py
  */
 
-import path from 'path';
-import fs from 'fs';
-import { z } from 'zod';
-import { AgentConfig, getAgentFromConfig } from '../agent/agents';
-import { SWEEnv } from '../environment/swe-env';
-import { BatchInstance, createInstanceSource } from './batch-instances';
-import { RunHook } from './hooks';
-import { getLogger, AgentLogger } from '../utils/log';
-import { loadEnvironmentVariables } from '../utils/config';
-import { AgentRunResult } from '../types';
-import { savePredictions } from './common';
-import { RunBatchConfig } from './types';
-export { RunBatchConfig } from './types';
+import fs from "node:fs";
+import path from "node:path";
+import { z } from "zod";
+import { type AgentConfig, getAgentFromConfig } from "../agent/agents";
+import { SWEEnv } from "../environment/swe-env";
+import type { AgentRunResult } from "../types";
+import { loadEnvironmentVariables } from "../utils/config";
+import { type AgentLogger, getLogger } from "../utils/log";
+import { type BatchInstance, createInstanceSource } from "./batch-instances";
+import { savePredictions } from "./common";
+import type { RunHook } from "./hooks";
+import type { BatchInstanceSourceConfig, RunBatchConfig } from "./types";
+
+export { RunBatchConfig } from "./types";
 
 /**
  * Configuration schema
  */
 export const RunBatchConfigSchema = z.object({
-  instances: z.any(),
-  agent: z.any(),
-  outputDir: z.string().default('DEFAULT'),
-  suffix: z.string().default(''),
+  instances: z.custom<BatchInstanceSourceConfig>(),
+  agent: z.custom<AgentConfig>(),
+  outputDir: z.string().default("DEFAULT"),
+  suffix: z.string().default(""),
   raiseExceptions: z.boolean().default(false),
   redoExisting: z.boolean().default(false),
   envVarPath: z.string().optional(),
@@ -44,12 +45,14 @@ class BatchProgressManager {
 
   constructor(numInstances: number) {
     this.totalInstances = numInstances;
-    this.logger = getLogger('progress', '📊');
+    this.logger = getLogger("progress", "📊");
   }
 
   onInstanceStart(instanceId: string): void {
-    this.instanceStatuses.set(instanceId, 'running');
-    this.logger.info(`Starting instance ${instanceId} (${this.completedInstances}/${this.totalInstances} completed)`);
+    this.instanceStatuses.set(instanceId, "running");
+    this.logger.info(
+      `Starting instance ${instanceId} (${this.completedInstances}/${this.totalInstances} completed)`,
+    );
   }
 
   onInstanceEnd(instanceId: string, exitStatus: string): void {
@@ -61,14 +64,16 @@ class BatchProgressManager {
   }
 
   onUncaughtException(instanceId: string, error: Error): void {
-    this.logger.error(`Uncaught exception in instance ${instanceId}: ${error.message}`);
-    this.onInstanceEnd(instanceId, 'error');
+    this.logger.error(
+      `Uncaught exception in instance ${instanceId}: ${error.message}`,
+    );
+    this.onInstanceEnd(instanceId, "error");
   }
 
   printReport(): void {
-    this.logger.info(`\n${'='.repeat(50)}`);
-    this.logger.info('BATCH RUN SUMMARY');
-    this.logger.info(`${'='.repeat(50)}`);
+    this.logger.info(`\n${"=".repeat(50)}`);
+    this.logger.info("BATCH RUN SUMMARY");
+    this.logger.info(`${"=".repeat(50)}`);
     this.logger.info(`Total instances: ${this.totalInstances}`);
     this.logger.info(`Completed: ${this.completedInstances}`);
 
@@ -78,11 +83,11 @@ class BatchProgressManager {
       statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
     }
 
-    this.logger.info('\nStatus breakdown:');
+    this.logger.info("\nStatus breakdown:");
     for (const [status, count] of statusCounts) {
       this.logger.info(`  ${status}: ${count}`);
     }
-    this.logger.info(`${'='.repeat(50)}\n`);
+    this.logger.info(`${"=".repeat(50)}\n`);
   }
 }
 
@@ -97,8 +102,6 @@ export class RunBatch {
   private raiseExceptions: boolean;
   private redoExisting: boolean;
   private numWorkers: number;
-  // @ts-ignore - This field is reserved for future use (progress bar display)
-  private _progressBar: boolean;
   private randomDelayMultiplier: number;
   private logger: AgentLogger;
   private progressManager: BatchProgressManager;
@@ -116,14 +119,13 @@ export class RunBatch {
   }) {
     this.instances = config.instances;
     this.agentConfig = config.agentConfig;
-    this.outputDir = config.outputDir || '.';
+    this.outputDir = config.outputDir || ".";
     this.hooks = config.hooks || [];
     this.raiseExceptions = config.raiseExceptions || false;
     this.redoExisting = config.redoExisting || false;
     this.numWorkers = config.numWorkers || 1;
-    this._progressBar = config.progressBar || true;
     this.randomDelayMultiplier = config.randomDelayMultiplier || 0.3;
-    this.logger = getLogger('run-batch', '🏃');
+    this.logger = getLogger("run-batch", "🏃");
     this.progressManager = new BatchProgressManager(this.instances.length);
   }
 
@@ -138,10 +140,13 @@ export class RunBatch {
     const instances = instanceSource.getInstanceConfigs();
 
     // Set default output directory
-    if (config.outputDir === 'DEFAULT') {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const suffix = config.suffix ? `_${config.suffix}` : '';
-      config.outputDir = path.join('trajectories', `batch_${timestamp}${suffix}`);
+    if (config.outputDir === "DEFAULT") {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const suffix = config.suffix ? `_${config.suffix}` : "";
+      config.outputDir = path.join(
+        "trajectories",
+        `batch_${timestamp}${suffix}`,
+      );
     }
 
     return new RunBatch({
@@ -161,7 +166,9 @@ export class RunBatch {
   }
 
   async main(): Promise<void> {
-    this.logger.info(`Starting batch run with ${this.instances.length} instances`);
+    this.logger.info(
+      `Starting batch run with ${this.instances.length} instances`,
+    );
 
     // Create output directory
     fs.mkdirSync(this.outputDir, { recursive: true });
@@ -199,7 +206,10 @@ export class RunBatch {
     await Promise.all(workers);
   }
 
-  private async worker(queue: BatchInstance[], _workerId: number): Promise<void> {
+  private async worker(
+    queue: BatchInstance[],
+    _workerId: number,
+  ): Promise<void> {
     while (queue.length > 0) {
       const instance = queue.shift();
       if (!instance) {
@@ -208,7 +218,8 @@ export class RunBatch {
 
       // Random delay to avoid race conditions
       if (this.randomDelayMultiplier > 0) {
-        const delay = Math.random() * this.randomDelayMultiplier * this.numWorkers * 1000;
+        const delay =
+          Math.random() * this.randomDelayMultiplier * this.numWorkers * 1000;
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
 
@@ -219,7 +230,8 @@ export class RunBatch {
   }
 
   async runInstance(instance: BatchInstance): Promise<void> {
-    const instanceId = (instance.problemStatement as { id?: string }).id || 'unknown';
+    const instanceId =
+      (instance.problemStatement as { id?: string }).id || "unknown";
 
     this.progressManager.onInstanceStart(instanceId);
 
@@ -229,7 +241,7 @@ export class RunBatch {
       // Save predictions
       savePredictions(this.outputDir, instanceId, result);
 
-      const exitStatus = result.info.exitStatus || 'unknown';
+      const exitStatus = result.info.exitStatus || "unknown";
       this.progressManager.onInstanceEnd(instanceId, exitStatus);
     } catch (error) {
       this.logger.error(`Error running instance ${instanceId}: ${error}`);
@@ -259,8 +271,12 @@ export class RunBatch {
     await env.start();
 
     try {
-      // Run agent - cast env to any to avoid type issues
-      const result = await agent.run(env as any, instance.problemStatement, this.outputDir);
+      // Run agent - SWEEnv implements AgentEnvironment
+      const result = await agent.run(
+        env,
+        instance.problemStatement,
+        this.outputDir,
+      );
 
       return result;
     } finally {
@@ -274,12 +290,13 @@ export class RunBatch {
       return false;
     }
 
-    const instanceId = (instance.problemStatement as { id?: string }).id || 'unknown';
+    const instanceId =
+      (instance.problemStatement as { id?: string }).id || "unknown";
     const trajPath = path.join(this.outputDir, `${instanceId}.traj`);
 
     if (fs.existsSync(trajPath)) {
       try {
-        const content = fs.readFileSync(trajPath, 'utf-8');
+        const content = fs.readFileSync(trajPath, "utf-8");
         const data = JSON.parse(content);
 
         if (data.info?.exitStatus) {
@@ -298,7 +315,9 @@ export class RunBatch {
 /**
  * Run from configuration
  */
-export async function runBatchFromConfig(config: RunBatchConfig): Promise<void> {
+export async function runBatchFromConfig(
+  config: RunBatchConfig,
+): Promise<void> {
   const runner = RunBatch.fromConfig(config);
   await runner.main();
 }

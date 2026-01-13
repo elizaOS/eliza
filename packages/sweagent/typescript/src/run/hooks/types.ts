@@ -2,9 +2,24 @@
  * Type definitions for run hooks
  */
 
-import { ProblemStatement, ProblemStatementConfig } from '../../agent/problem-statement';
-import { SWEEnv } from '../../environment/swe-env';
-import { AgentRunResult } from '../../types';
+import type {
+  ProblemStatement,
+  ProblemStatementConfig,
+} from "../../agent/problem-statement";
+import type { SWEEnv } from "../../environment/swe-env";
+import type { JsonValue } from "../../json";
+import type { AgentRunResult } from "../../types";
+
+export type RunHookInit = {
+  env?: SWEEnv;
+  problemStatement?: ProblemStatement | ProblemStatementConfig;
+  [key: string]:
+    | JsonValue
+    | SWEEnv
+    | ProblemStatement
+    | ProblemStatementConfig
+    | undefined;
+};
 
 /**
  * Hook structure for the web server or other addons to interface with
@@ -13,7 +28,7 @@ export interface RunHook {
   /**
    * Called when hook is initialized
    */
-  onInit(run: Record<string, unknown>): void;
+  onInit(run: RunHookInit): void;
 
   /**
    * Called at the beginning of Main.main
@@ -49,7 +64,7 @@ export interface RunHook {
  * Abstract base class for run hooks
  */
 export abstract class AbstractRunHook implements RunHook {
-  onInit(_run: Record<string, unknown>): void {
+  onInit(_run: RunHookInit): void {
     // Default implementation - can be overridden
   }
 
@@ -92,7 +107,7 @@ export class CombinedRunHooks implements RunHook {
     return this._hooks;
   }
 
-  onInit(run: Record<string, unknown>): void {
+  onInit(run: RunHookInit): void {
     for (const hook of this._hooks) {
       hook.onInit(run);
     }

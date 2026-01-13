@@ -1,32 +1,46 @@
 #!/usr/bin/env node
+
 /**
  * Registry tool
  * Manages environment variables and state in a JSON file
  * Converted from tools/registry/
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { program } from 'commander';
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { program } from "commander";
+import type { JsonObject, JsonValue } from "../json";
 
 /**
  * Registry class for managing environment state
  */
 export class EnvRegistry {
   private envFile: string;
-  private data: Record<string, any> = {};
+  private data: JsonObject = {};
 
   constructor(envFile?: string) {
-    this.envFile = envFile || process.env.SWE_AGENT_ENV_FILE || path.join(os.homedir(), '.swe-agent-env');
+    this.envFile =
+      envFile ||
+      process.env.SWE_AGENT_ENV_FILE ||
+      path.join(os.homedir(), ".swe-agent-env");
     this.loadData();
   }
 
   private loadData(): void {
     if (fs.existsSync(this.envFile)) {
       try {
-        const content = fs.readFileSync(this.envFile, 'utf-8');
-        this.data = JSON.parse(content);
+        const content = fs.readFileSync(this.envFile, "utf-8");
+        const parsed: JsonValue = JSON.parse(content) as JsonValue;
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          !Array.isArray(parsed)
+        ) {
+          this.data = parsed as JsonObject;
+        } else {
+          this.data = {};
+        }
       } catch (error) {
         console.error(`Error reading registry file: ${error}`);
         this.data = {};
@@ -48,19 +62,23 @@ export class EnvRegistry {
     }
   }
 
-  get(key: string, defaultValue: unknown = '', fallbackToEnv: boolean = true): unknown {
-    if (this.data.hasOwnProperty(key)) {
+  get(
+    key: string,
+    defaultValue: JsonValue = "",
+    fallbackToEnv: boolean = true,
+  ): JsonValue {
+    if (Object.hasOwn(this.data, key)) {
       return this.data[key];
     }
-    
+
     if (fallbackToEnv && process.env[key]) {
       return process.env[key];
     }
-    
+
     return defaultValue;
   }
 
-  set(key: string, value: unknown): void {
+  set(key: string, value: JsonValue): void {
     this.data[key] = value;
     this.saveData();
   }
@@ -70,7 +88,7 @@ export class EnvRegistry {
     this.saveData();
   }
 
-  getAll(): Record<string, any> {
+  getAll(): JsonObject {
     return { ...this.data };
   }
 }
@@ -81,38 +99,38 @@ export const registry = new EnvRegistry();
 // CLI setup
 function setupCLI() {
   program
-    .name('registry')
-    .description('Environment registry management')
-    .version('1.0.0');
+    .name("registry")
+    .description("Environment registry management")
+    .version("1.0.0");
 
   program
-    .command('get <key>')
-    .description('Get a value from the registry')
-    .option('-d, --default <value>', 'Default value if key not found')
+    .command("get <key>")
+    .description("Get a value from the registry")
+    .option("-d, --default <value>", "Default value if key not found")
     .action((key, options) => {
-      const value = registry.get(key, options.default || '');
+      const value = registry.get(key, options.default || "");
       console.log(value);
     });
 
   program
-    .command('set <key> <value>')
-    .description('Set a value in the registry')
+    .command("set <key> <value>")
+    .description("Set a value in the registry")
     .action((key, value) => {
       registry.set(key, value);
       console.log(`Set ${key} = ${value}`);
     });
 
   program
-    .command('delete <key>')
-    .description('Delete a key from the registry')
+    .command("delete <key>")
+    .description("Delete a key from the registry")
     .action((key) => {
       registry.delete(key);
       console.log(`Deleted ${key}`);
     });
 
   program
-    .command('list')
-    .description('List all registry entries')
+    .command("list")
+    .description("List all registry entries")
     .action(() => {
       const all = registry.getAll();
       console.log(JSON.stringify(all, null, 2));
@@ -122,6 +140,9 @@ function setupCLI() {
 }
 
 // Run CLI if called directly or from bin script
-if (require.main === module || require.main?.filename?.endsWith('/bin/registry')) {
+if (
+  require.main === module ||
+  require.main?.filename?.endsWith("/bin/registry")
+) {
   setupCLI();
 }

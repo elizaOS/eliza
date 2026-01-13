@@ -1,32 +1,33 @@
 module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
-  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  preset: "ts-jest",
+  testEnvironment: "node",
+  roots: ["<rootDir>/src", "<rootDir>/tests"],
   testMatch: [
-    '**/__tests__/**/*.+(ts|tsx|js)',
-    '**/?(*.)+(spec|test).+(ts|tsx|js)'
+    "**/__tests__/**/*.+(ts|tsx|js)",
+    "**/?(*.)+(spec|test).+(ts|tsx|js)",
   ],
   transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', {
-      tsconfig: {
-        allowJs: true
-      }
-    }]
+    "^.+\\.(ts|tsx)$": [
+      "ts-jest",
+      {
+        tsconfig: {
+          allowJs: true,
+        },
+      },
+    ],
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!(@octokit)/)'
-  ],
+  transformIgnorePatterns: ["node_modules/(?!(@octokit)/)"],
   collectCoverageFrom: [
-    'src/**/*.{ts,tsx}',
-    '!src/**/*.d.ts',
-    '!src/index.ts',
-    '!src/**/*.test.ts'
+    "src/**/*.{ts,tsx}",
+    "!src/**/*.d.ts",
+    "!src/index.ts",
+    "!src/**/*.test.ts",
   ],
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
+    "^@/(.*)$": "<rootDir>/src/$1",
   },
-  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
-  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  setupFilesAfterEnv: ["<rootDir>/tests/setup.ts"],
+  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
   verbose: true,
-  testTimeout: 30000
+  testTimeout: 30000,
 };

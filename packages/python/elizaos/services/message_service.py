@@ -65,6 +65,64 @@ def _parse_providers_from_xml(xml_response: str) -> list[str]:
     return []
 
 
+def _parse_tag(xml: str, tag: str) -> str | None:
+    open_tag = f"<{tag}>"
+    close_tag = f"</{tag}>"
+    start = xml.find(open_tag)
+    if start == -1:
+        return None
+    inner_start = start + len(open_tag)
+    end = xml.find(close_tag, inner_start)
+    if end == -1:
+        return None
+    return xml[inner_start:end].strip()
+
+
+def _parse_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "yes", "1", "on")
+    return False
+
+
+def _parse_int(value: object, *, default: int) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except Exception:
+            return default
+    return default
+
+
+def _format_action_results(results: list[object]) -> str:
+    # Avoid importing ActionResult at module import time.
+    if not results:
+        return ""
+    lines: list[str] = []
+    for r in results:
+        # ActionResult has fields: success, text, data
+        name = ""
+        success = True
+        text = ""
+        data = getattr(r, "data", None)
+        if isinstance(data, dict):
+            v = data.get("actionName")
+            if isinstance(v, str):
+                name = v
+        s = getattr(r, "success", None)
+        if isinstance(s, bool):
+            success = s
+        t = getattr(r, "text", None)
+        if isinstance(t, str):
+            text = t
+        status = "success" if success else "failed"
+        lines.append(f"- {name} ({status}): {text}".strip())
+    return "\n".join(lines)
+
+
 def _parse_text_from_xml(xml_response: str) -> str:
     """Parse text content from XML response."""
     import re
@@ -200,14 +258,14 @@ def _parse_params_from_xml(xml_response: str) -> dict[str, list[dict[str, str]]]
                             for k, v in loaded.items():
                                 action_params[str(k)] = str(v)
                     except json.JSONDecodeError:
-                        pass
+                        return result
 
             if action_params:
                 result.setdefault(action_name, []).append(action_params)
 
         return result
     except ET.ParseError:
-        pass
+        return result
 
     # Fall back to JSON inside <params>...</params>
     if not params_content.startswith("{"):
@@ -264,7 +322,12 @@ class DefaultMessageService(IMessageService):
             MessageProcessingResult with response content and state.
 
         """
-        from elizaos.prompts import MESSAGE_HANDLER_TEMPLATE
+        from elizaos.prompts import (
+            MESSAGE_HANDLER_TEMPLATE,
+            MULTI_STEP_DECISION_TEMPLATE,
+            MULTI_STEP_SUMMARY_TEMPLATE,
+        )
+        from elizaos.utils import compose_prompt_from_state
 
         _ = runtime.start_run(message.room_id)
 
@@ -351,6 +414,31 @@ class DefaultMessageService(IMessageService):
             # Step 2: Compose state from providers
             state = await runtime.compose_state(message)
 
+            # Optional: multi-step strategy (TypeScript parity)
+            use_multi_step = _parse_bool(runtime.get_setting("USE_MULTI_STEP"))
+            max_multi_step_iterations = _parse_int(
+                runtime.get_setting("MAX_MULTISTEP_ITERATIONS"), default=6
+            )
+            if use_multi_step:
+                return await self._run_multi_step_core(
+                    runtime=runtime,
+                    message=message,
+                    state=state,
+                    callback=callback,
+                    max_iterations=max_multi_step_iterations,
+                    decision_template=runtime.character.templates.get(
+                        "multiStepDecisionTemplate", MULTI_STEP_DECISION_TEMPLATE
+                    )
+                    if runtime.character.templates
+                    else MULTI_STEP_DECISION_TEMPLATE,
+                    summary_template=runtime.character.templates.get(
+                        "multiStepSummaryTemplate", MULTI_STEP_SUMMARY_TEMPLATE
+                    )
+                    if runtime.character.templates
+                    else MULTI_STEP_SUMMARY_TEMPLATE,
+                    compose_prompt_from_state=compose_prompt_from_state,
+                )
+
             # Step 3: Build prompt using template (custom or default MESSAGE_HANDLER_TEMPLATE)
             prompt = self._build_canonical_prompt(runtime, message, state, template)
 
@@ -391,7 +479,7 @@ class DefaultMessageService(IMessageService):
 
             # Log parsed action selection / params as a structured provider access
             if traj_step_id and traj_logger is not None:
-                with contextlib.suppress(Exception):
+                try:
                     traj_logger.log_provider_access(
                         step_id=traj_step_id,
                         provider_name="MESSAGE_SERVICE",
@@ -404,6 +492,8 @@ class DefaultMessageService(IMessageService):
                         purpose="parsed_response",
                         query={"roomId": _as_json_scalar(str(message.room_id))},
                     )
+                except Exception as e:
+                    runtime.logger.debug(f"Trajectory logger failed: {e}")
 
             # If no text parsed, use raw response (fallback for non-XML responses)
             if not response_text:
@@ -545,6 +635,145 @@ class DefaultMessageService(IMessageService):
             prompt = prompt.replace(placeholder, str(value))
 
         return prompt
+
+    async def _run_multi_step_core(
+        self,
+        *,
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: State,
+        callback: HandlerCallback | None,
+        max_iterations: int,
+        decision_template: str,
+        summary_template: str,
+        compose_prompt_from_state: Callable[..., str],
+    ) -> MessageProcessingResult:
+        """Iterative multi-step workflow (TypeScript parity).
+
+        Each iteration:
+        - (Re)compose core state (RECENT_MESSAGES/ACTIONS/PROVIDERS/ACTION_STATE)
+        - Ask the model for the next providers + at most one action
+        - Run selected providers (optional)
+        - Execute selected action (optional)
+        - Accumulate action results
+        """
+        from elizaos.types.components import ActionResult
+
+        trace_results: list[ActionResult] = []
+        last_action_results_len = 0
+        last_thought = ""
+
+        iteration = 0
+        while iteration < max(1, int(max_iterations)):
+            iteration += 1
+
+            # Keep state fresh each iteration; include descriptions lists
+            state = await runtime.compose_state(
+                message,
+                include_list=["RECENT_MESSAGES", "ACTION_STATE", "ACTIONS", "PROVIDERS"],
+                only_include=True,
+                skip_cache=True,
+            )
+            state.data.action_results = list(trace_results)
+            state.values["actionResults"] = _format_action_results(trace_results)
+
+            decision_prompt = compose_prompt_from_state(state=state, template=decision_template)
+            decision_raw = await runtime.use_model(
+                ModelType.TEXT_LARGE.value,
+                {
+                    "prompt": decision_prompt,
+                    "system": runtime.character.system,
+                    "temperature": 0.7,
+                },
+            )
+            decision_str = str(decision_raw)
+
+            thought = _parse_tag(decision_str, "thought") or ""
+            action_name = (_parse_tag(decision_str, "action") or "").strip()
+            providers_csv = (_parse_tag(decision_str, "providers") or "").strip()
+            is_finish_raw = (_parse_tag(decision_str, "isFinish") or "").strip().lower()
+            is_finish = is_finish_raw in ("true", "yes", "1")
+
+            last_thought = thought
+
+            if is_finish:
+                break
+
+            providers = [p.strip() for p in providers_csv.split(",") if p.strip()]
+            if providers:
+                # Execute selected providers only; bypass cache so they run
+                state = await runtime.compose_state(
+                    message,
+                    include_list=providers,
+                    only_include=True,
+                    skip_cache=True,
+                )
+
+            if action_name:
+                # Synthetic response memory to drive runtime.process_actions()
+                response_id = as_uuid(str(uuid.uuid4()))
+                response_content = Content(
+                    text="",
+                    thought=thought if thought else None,
+                    actions=[action_name],
+                    providers=providers if providers else None,
+                )
+                response_memory = Memory(
+                    id=response_id,
+                    entityId=runtime.agent_id,
+                    agentId=runtime.agent_id,
+                    roomId=message.room_id,
+                    content=response_content,
+                    createdAt=int(time.time() * 1000),
+                )
+                await runtime.process_actions(message, [response_memory], state, callback)
+
+                # Pull newly recorded action results from runtime (if message.id is set)
+                if message.id:
+                    all_results = runtime.get_action_results(message.id)
+                    if len(all_results) > last_action_results_len:
+                        trace_results.extend(all_results[last_action_results_len:])
+                        last_action_results_len = len(all_results)
+
+        # Final summary
+        state = await runtime.compose_state(
+            message,
+            include_list=["RECENT_MESSAGES", "ACTION_STATE", "ACTIONS", "PROVIDERS"],
+            only_include=True,
+            skip_cache=True,
+        )
+        state.data.action_results = list(trace_results)
+        state.values["actionResults"] = _format_action_results(trace_results)
+        state.values["recentMessage"] = last_thought
+        # Best-effort fill template values
+        bio_val = runtime.character.bio if isinstance(runtime.character.bio, str) else ""
+        state.values["bio"] = bio_val
+        state.values["system"] = runtime.character.system or ""
+        state.values["messageDirections"] = ""
+
+        summary_prompt = compose_prompt_from_state(state=state, template=summary_template)
+        summary_raw = await runtime.use_model(
+            ModelType.TEXT_LARGE.value,
+            {
+                "prompt": summary_prompt,
+                "system": runtime.character.system,
+                "temperature": 0.7,
+            },
+        )
+        summary_str = str(summary_raw)
+        final_thought = _parse_tag(summary_str, "thought") or ""
+        final_text = _parse_tag(summary_str, "text") or summary_str
+
+        final_content = Content(text=final_text, thought=final_thought)
+        if callback:
+            await callback(final_content)
+
+        return MessageProcessingResult(
+            did_respond=True,
+            response_content=final_content,
+            response_messages=[],
+            state=state,
+        )
 
     async def _repair_missing_action_params(
         self,

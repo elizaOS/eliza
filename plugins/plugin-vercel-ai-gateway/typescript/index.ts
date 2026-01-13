@@ -150,20 +150,31 @@ const pluginTests = [
   },
 ];
 
+type ProcessEnvLike = Record<string, string | undefined>;
+
+function getProcessEnv(): ProcessEnvLike {
+  if (typeof process === "undefined") {
+    return {};
+  }
+  return process.env as ProcessEnvLike;
+}
+
+const env = getProcessEnv();
+
 export const gatewayPlugin: Plugin = {
   name: "gateway",
   description: "Vercel AI Gateway integration for text, image, audio, and embedding models",
 
   config: {
-    AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY ?? null,
-    AIGATEWAY_API_KEY: process.env.AIGATEWAY_API_KEY ?? null,
-    VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN ?? null,
-    AI_GATEWAY_BASE_URL: process.env.AI_GATEWAY_BASE_URL ?? null,
-    AI_GATEWAY_SMALL_MODEL: process.env.AI_GATEWAY_SMALL_MODEL ?? null,
-    AI_GATEWAY_LARGE_MODEL: process.env.AI_GATEWAY_LARGE_MODEL ?? null,
-    AI_GATEWAY_EMBEDDING_MODEL: process.env.AI_GATEWAY_EMBEDDING_MODEL ?? null,
-    AI_GATEWAY_EMBEDDING_DIMENSIONS: process.env.AI_GATEWAY_EMBEDDING_DIMENSIONS ?? null,
-    AI_GATEWAY_IMAGE_MODEL: process.env.AI_GATEWAY_IMAGE_MODEL ?? null,
+    AI_GATEWAY_API_KEY: env.AI_GATEWAY_API_KEY ?? null,
+    AIGATEWAY_API_KEY: env.AIGATEWAY_API_KEY ?? null,
+    VERCEL_OIDC_TOKEN: env.VERCEL_OIDC_TOKEN ?? null,
+    AI_GATEWAY_BASE_URL: env.AI_GATEWAY_BASE_URL ?? null,
+    AI_GATEWAY_SMALL_MODEL: env.AI_GATEWAY_SMALL_MODEL ?? null,
+    AI_GATEWAY_LARGE_MODEL: env.AI_GATEWAY_LARGE_MODEL ?? null,
+    AI_GATEWAY_EMBEDDING_MODEL: env.AI_GATEWAY_EMBEDDING_MODEL ?? null,
+    AI_GATEWAY_EMBEDDING_DIMENSIONS: env.AI_GATEWAY_EMBEDDING_DIMENSIONS ?? null,
+    AI_GATEWAY_IMAGE_MODEL: env.AI_GATEWAY_IMAGE_MODEL ?? null,
   },
 
   async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {

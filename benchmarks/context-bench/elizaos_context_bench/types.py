@@ -270,7 +270,7 @@ LEADERBOARD_SCORES: dict[str, dict[str, float]] = {
         "multi_hop_3": 0.72,
         "overall": 0.91,
     },
-    "gpt-4o": {
+    "gpt-5": {
         "niah_4k": 0.99,
         "niah_8k": 0.98,
         "niah_16k": 0.97,

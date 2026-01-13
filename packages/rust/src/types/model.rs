@@ -14,14 +14,22 @@ use serde::{Deserialize, Serialize};
 /// While not recommended for production, it can be a fast way to make the agent run cheaper.
 ///
 /// # Example
-/// ```rust,ignore
+/// ```rust,no_run
 /// use elizaos::runtime::{AgentRuntime, RuntimeOptions};
 /// use elizaos::types::LLMMode;
 ///
-/// let runtime = AgentRuntime::new(RuntimeOptions {
-///     llm_mode: Some(LLMMode::Small), // All LLM calls will use TEXT_SMALL
-///     ..Default::default()
-/// }).await?;
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let rt = tokio::runtime::Runtime::new()?;
+///     rt.block_on(async {
+///         let _runtime = AgentRuntime::new(RuntimeOptions {
+///             llm_mode: Some(LLMMode::Small), // All LLM calls will use TEXT_SMALL
+///             ..Default::default()
+///         })
+///         .await?;
+///         Ok::<(), Box<dyn std::error::Error>>(())
+///     })?;
+///     Ok(())
+/// }
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]

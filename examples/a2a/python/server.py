@@ -2,15 +2,16 @@
 elizaOS A2A (Agent-to-Agent) Server - Python
 
 An HTTP server that exposes an elizaOS agent for agent-to-agent communication.
-Uses real elizaOS runtime with OpenAI plugin.
+Uses real elizaOS runtime (OpenAI optional).
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any
 
 from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +21,8 @@ from uuid6 import uuid7
 
 from elizaos import Character, ChannelType, Content, Memory
 from elizaos.runtime import AgentRuntime
+from elizaos_plugin_eliza_classic.plugin import get_eliza_classic_plugin
+from elizaos_plugin_localdb import localdb_plugin
 from elizaos_plugin_openai import get_openai_plugin
 
 # ============================================================================
@@ -40,7 +43,20 @@ CHARACTER = Character(
 # ============================================================================
 
 _runtime: AgentRuntime | None = None
-_sessions: dict[str, dict[str, Any]] = {}
+
+
+@dataclass(frozen=True)
+class Session:
+    room_id: str
+    user_id: str
+
+
+_sessions: dict[str, Session] = {}
+
+
+def _should_use_openai() -> bool:
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    return bool(key)
 
 
 async def get_runtime() -> AgentRuntime:
@@ -52,9 +68,15 @@ async def get_runtime() -> AgentRuntime:
 
     print("🚀 Initializing elizaOS runtime...")
 
+    plugins = [localdb_plugin]
+    if _should_use_openai():
+        plugins.append(get_openai_plugin())
+    else:
+        plugins.append(get_eliza_classic_plugin())
+
     _runtime = AgentRuntime(
         character=CHARACTER,
-        plugins=[get_openai_plugin()],
+        plugins=plugins,
         log_level="INFO",
     )
 
@@ -64,44 +86,41 @@ async def get_runtime() -> AgentRuntime:
     return _runtime
 
 
-def get_or_create_session(session_id: str) -> dict[str, Any]:
+def get_or_create_session(session_id: str) -> Session:
     """Get or create a session for the given session ID."""
     if session_id not in _sessions:
-        _sessions[session_id] = {
-            "room_id": uuid7(),
-            "user_id": uuid7(),
-        }
+        _sessions[session_id] = Session(room_id=str(uuid7()), user_id=str(uuid7()))
     return _sessions[session_id]
 
 
 async def handle_chat(
     message: str,
     session_id: str,
-    metadata: dict[str, Any] | None = None,
+    metadata: dict[str, object] | None = None,
+    callback: Callable[[Content], Awaitable[list[Memory]]] | None = None,
 ) -> str:
     """Send a message to the agent and get a response."""
     runtime = await get_runtime()
     session = get_or_create_session(session_id)
 
-    # Create message memory
-    content = Content(
-        text=message,
-        source="a2a",
-        channel_type=ChannelType.DM.value,
-    )
-
+    # Create message memory. Content allows extra fields.
+    content_kwargs: dict[str, object] = {
+        "text": message,
+        "source": "a2a",
+        "channelType": ChannelType.DM.value,
+    }
     if metadata:
-        # Add metadata to content if needed
-        pass
+        content_kwargs.update(metadata)
+    content = Content(**content_kwargs)
 
     msg = Memory(
-        entity_id=session["user_id"],
-        room_id=session["room_id"],
+        entity_id=session.user_id,
+        room_id=session.room_id,
         content=content,
     )
 
     # Process message
-    result = await runtime.message_service.handle_message(runtime, msg)
+    result = await runtime.message_service.handle_message(runtime, msg, callback=callback)
 
     if result and result.response_content and result.response_content.text:
         return result.response_content.text
@@ -119,7 +138,7 @@ class ChatRequest(BaseModel):
 
     message: str
     sessionId: str | None = None
-    context: dict[str, Any] | None = None
+    context: dict[str, object] | None = None
 
 
 class ChatResponse(BaseModel):
@@ -223,9 +242,9 @@ async def chat(
     session_id = request.sessionId or x_session_id or str(uuid7())
 
     # Build metadata
-    metadata: dict[str, Any] = {}
+    metadata: dict[str, object] = {}
     if request.context:
-        metadata.update(request.context)
+        metadata["context"] = request.context
     if x_agent_id:
         metadata["callerAgentId"] = x_agent_id
 
@@ -244,6 +263,7 @@ async def chat(
 async def chat_stream(
     request: ChatRequest,
     x_session_id: str | None = Header(None),
+    x_agent_id: str | None = Header(None),
 ) -> StreamingResponse:
     """Stream a response from the agent."""
     if not request.message or not request.message.strip():
@@ -251,31 +271,45 @@ async def chat_stream(
 
     session_id = request.sessionId or x_session_id or str(uuid7())
 
+    metadata: dict[str, object] = {}
+    if request.context:
+        metadata["context"] = request.context
+    if x_agent_id:
+        metadata["callerAgentId"] = x_agent_id
+
+    queue: asyncio.Queue[str] = asyncio.Queue()
+    done = asyncio.Event()
+
+    async def on_chunk(content: Content) -> list[Memory]:
+        if content.text:
+            await queue.put(content.text)
+        return []
+
+    async def run_message() -> None:
+        try:
+            _ = await handle_chat(
+                request.message,
+                session_id,
+                metadata,
+                callback=on_chunk,
+            )
+        finally:
+            done.set()
+
+    asyncio.create_task(run_message())
+
     async def generate():
-        runtime = await get_runtime()
-        session = get_or_create_session(session_id)
-
-        content = Content(
-            text=request.message,
-            source="a2a",
-            channel_type=ChannelType.DM.value,
-        )
-
-        msg = Memory(
-            entity_id=session["user_id"],
-            room_id=session["room_id"],
-            content=content,
-        )
-
-        result = await runtime.message_service.handle_message(runtime, msg)
-
-        if result and result.response_content and result.response_content.text:
-            # For now, send the whole response as one chunk
-            # In a real streaming implementation, we'd yield chunks
-            import json
-            yield f"data: {json.dumps({'text': result.response_content.text})}\n\n"
-
         import json
+
+        while True:
+            if done.is_set() and queue.empty():
+                break
+            try:
+                chunk = await asyncio.wait_for(queue.get(), timeout=0.25)
+            except asyncio.TimeoutError:
+                continue
+            yield f"data: {json.dumps({'text': chunk})}\n\n"
+
         yield f"data: {json.dumps({'done': True})}\n\n"
 
     return StreamingResponse(

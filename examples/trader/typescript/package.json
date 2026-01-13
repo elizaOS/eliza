@@ -1,0 +1,28 @@
+{
+  "name": "@elizaos/example-trader-ts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-auto-trader": "workspace:*",
+    "@elizaos/plugin-solana": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.0.0"
+  }
+}

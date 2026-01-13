@@ -131,8 +131,8 @@ For more information, visit: https://tbench.ai
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4o-mini",
-        help="Model to use for generation (default: gpt-4o-mini)",
+        default="gpt-5-mini",
+        help="Model to use for generation (default: gpt-5-mini)",
     )
     parser.add_argument(
         "--temperature",

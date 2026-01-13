@@ -32,11 +32,12 @@ def test_startup_commands(test_env_args):
         pass
 
 
-@pytest.mark.xfail
 @pytest.mark.slow
 def test_read_file(tmp_path, test_env_args):
     with swe_env_context(test_env_args) as env:
-        content = env.read_file(Path("tests/filetoread.txt"))
+        target = "/root/filetoread.txt"
+        env.write_file(target, "hello\nSWEEnv.read_file\n")
+        content = env.read_file(target)
         assert content.splitlines()[-1].strip() == "SWEEnv.read_file"
 
 

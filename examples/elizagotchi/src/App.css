@@ -465,6 +465,103 @@ body {
 }
 
 /* ============================================================================
+   AGENT LOG OVERLAY (Developer)
+   ============================================================================ */
+
+.agent-log {
+  position: fixed;
+  left: 20px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+  width: min(420px, calc(100vw - 40px));
+  max-height: 40vh;
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  border-radius: 16px;
+  padding: 12px;
+  z-index: 200;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.agent-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-log-title {
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.agent-log-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.agent-log-btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.agent-log-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.agent-log-list {
+  margin-top: 10px;
+  overflow: auto;
+  max-height: calc(40vh - 54px);
+  padding-right: 6px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 12px;
+}
+
+.agent-log-empty {
+  opacity: 0.8;
+  padding: 8px 0;
+}
+
+.agent-log-entry {
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.agent-log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  opacity: 0.9;
+}
+
+.agent-log-kind {
+  font-weight: 700;
+}
+
+.agent-log-action {
+  font-weight: 700;
+}
+
+.agent-log-status {
+  opacity: 0.8;
+}
+
+.agent-log-text {
+  margin-top: 6px;
+  opacity: 0.85;
+  line-height: 1.35;
+}
+
+/* ============================================================================
    KEYFRAMES
    ============================================================================ */
 

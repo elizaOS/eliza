@@ -5,7 +5,7 @@ An HTTP server that exposes an elizaOS agent for agent-to-agent communication us
 ## Requirements
 
 - Bun 1.0+ (or Node.js 18+)
-- OpenAI API key
+- Optional: OpenAI API key (enables OpenAI-backed responses)
 
 ## Setup
 
@@ -13,7 +13,7 @@ An HTTP server that exposes an elizaOS agent for agent-to-agent communication us
 # Install dependencies
 bun install
 
-# Set up environment
+# Optional: enable OpenAI-backed responses
 export OPENAI_API_KEY=your-api-key
 ```
 
@@ -31,6 +31,8 @@ The server runs on `http://localhost:3000` by default.
 ```bash
 bun run test
 ```
+
+`bun run test` starts the server on an ephemeral port, runs the test client, and shuts down (no separate server process required).
 
 ## API Endpoints
 
@@ -73,5 +75,5 @@ Stream a response from the agent (Server-Sent Events).
 ## Configuration
 
 - `PORT` - Server port (default: 3000)
-- `OPENAI_API_KEY` - OpenAI API key (required)
+- `OPENAI_API_KEY` - OpenAI API key (optional)
 - `OPENAI_BASE_URL` - Custom OpenAI endpoint

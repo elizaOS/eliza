@@ -159,7 +159,7 @@ training:
   max_steps: 100
 
 ruler:
-  judge_model: "openai/gpt-4o-mini"  # or "anthropic/claude-3-haiku"
+  judge_model: "openai/gpt-5-mini"  # or "anthropic/claude-3-haiku"
   temperature: 0.0
 
 checkpoints:

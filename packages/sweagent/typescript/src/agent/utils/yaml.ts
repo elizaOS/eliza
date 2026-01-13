@@ -4,13 +4,19 @@
  */
 
 // Type for parsed YAML data
-export type YamlData = string | number | boolean | null | YamlData[] | { [key: string]: YamlData };
+export type YamlData =
+  | string
+  | number
+  | boolean
+  | null
+  | YamlData[]
+  | { [key: string]: YamlData };
 
 /**
  * Parse a simple YAML string
  */
 export function parseYAML(yamlString: string): YamlData {
-  const lines = yamlString.split('\n');
+  const lines = yamlString.split("\n");
   const result: Record<string, YamlData> = {};
   const stack: Array<Record<string, YamlData> | YamlData[]> = [result];
   const indentStack: number[] = [0];
@@ -22,7 +28,7 @@ export function parseYAML(yamlString: string): YamlData {
     const trimmedLine = line.trim();
 
     // Skip empty lines and comments
-    if (!trimmedLine || trimmedLine.startsWith('#')) {
+    if (!trimmedLine || trimmedLine.startsWith("#")) {
       continue;
     }
 
@@ -30,11 +36,14 @@ export function parseYAML(yamlString: string): YamlData {
     const indent = line.length - line.trimStart().length;
 
     // Handle list items
-    if (trimmedLine.startsWith('- ')) {
+    if (trimmedLine.startsWith("- ")) {
       const value = trimmedLine.substring(2).trim();
 
       // Pop stack to appropriate level
-      while (indentStack.length > 1 && indent <= indentStack[indentStack.length - 1]) {
+      while (
+        indentStack.length > 1 &&
+        indent <= indentStack[indentStack.length - 1]
+      ) {
         stack.pop();
         indentStack.pop();
         if (currentListIndent >= indentStack[indentStack.length - 1]) {
@@ -56,13 +65,13 @@ export function parseYAML(yamlString: string): YamlData {
         } else {
           // Standalone list
           if (!Array.isArray(parent)) {
-            parent['items'] = currentList;
+            (parent as { items?: YamlData[] }).items = currentList;
           }
         }
       }
 
       // Parse the list item value
-      if (value.includes(': ')) {
+      if (value.includes(": ")) {
         // List item is an object
         const obj = parseKeyValue(value);
         currentList.push(obj);
@@ -70,23 +79,26 @@ export function parseYAML(yamlString: string): YamlData {
         // Simple value
         currentList.push(parseValue(value));
       }
-    } else if (trimmedLine.includes(': ')) {
+    } else if (trimmedLine.includes(": ")) {
       // Handle key-value pairs
-      const colonIndex = trimmedLine.indexOf(': ');
+      const colonIndex = trimmedLine.indexOf(": ");
       const key = trimmedLine.substring(0, colonIndex).trim();
       const value = trimmedLine.substring(colonIndex + 2).trim();
 
       // Pop stack to appropriate level
-      while (indentStack.length > 1 && indent < indentStack[indentStack.length - 1]) {
+      while (
+        indentStack.length > 1 &&
+        indent < indentStack[indentStack.length - 1]
+      ) {
         stack.pop();
         indentStack.pop();
       }
 
       const parent = stack[stack.length - 1];
 
-      if (!value || value === '|' || value === '>') {
+      if (!value || value === "|" || value === ">") {
         // Multi-line string or nested object
-        if (value === '|' || value === '>') {
+        if (value === "|" || value === ">") {
           // Multi-line string
           const multilineValue = parseMultilineString(lines, i + 1, indent + 2);
           if (!Array.isArray(parent)) {
@@ -144,7 +156,7 @@ function parseMultilineString(
     if (indent >= expectedIndent) {
       result.push(line.substring(expectedIndent));
     } else if (!line.trim()) {
-      result.push('');
+      result.push("");
     } else {
       break;
     }
@@ -153,7 +165,7 @@ function parseMultilineString(
   }
 
   return {
-    value: result.join('\n').trimEnd(),
+    value: result.join("\n").trimEnd(),
     nextIndex: i,
   };
 }
@@ -161,13 +173,13 @@ function parseMultilineString(
 /**
  * Parse a key-value pair string into an object
  */
-function parseKeyValue(str: string): Record<string, any> {
-  const result: Record<string, any> = {};
-  const pairs = str.split(', ');
+function parseKeyValue(str: string): Record<string, YamlData> {
+  const result: Record<string, YamlData> = {};
+  const pairs = str.split(", ");
 
   for (const pair of pairs) {
-    if (pair.includes(': ')) {
-      const [key, value] = pair.split(': ');
+    if (pair.includes(": ")) {
+      const [key, value] = pair.split(": ");
       result[key.trim()] = parseValue(value.trim());
     }
   }
@@ -180,46 +192,49 @@ function parseKeyValue(str: string): Record<string, any> {
  */
 function parseValue(value: string): YamlData {
   // Null
-  if (value === 'null' || value === '~' || value === '') {
+  if (value === "null" || value === "~" || value === "") {
     return null;
   }
 
   // Boolean
-  if (value === 'true' || value === 'yes' || value === 'on') {
+  if (value === "true" || value === "yes" || value === "on") {
     return true;
   }
-  if (value === 'false' || value === 'no' || value === 'off') {
+  if (value === "false" || value === "no" || value === "off") {
     return false;
   }
 
   // Number
-  if (!isNaN(Number(value)) && value !== '') {
-    if (value.includes('.')) {
+  if (!Number.isNaN(Number(value)) && value !== "") {
+    if (value.includes(".")) {
       return parseFloat(value);
     }
     return parseInt(value, 10);
   }
 
   // String with quotes
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
     return value.slice(1, -1);
   }
 
   // Array notation
-  if (value.startsWith('[') && value.endsWith(']')) {
+  if (value.startsWith("[") && value.endsWith("]")) {
     const items = value
       .slice(1, -1)
-      .split(',')
+      .split(",")
       .map((item) => parseValue(item.trim()));
     return items;
   }
 
   // Object notation
-  if (value.startsWith('{') && value.endsWith('}')) {
-    const obj: Record<string, any> = {};
-    const pairs = value.slice(1, -1).split(',');
+  if (value.startsWith("{") && value.endsWith("}")) {
+    const obj: Record<string, YamlData> = {};
+    const pairs = value.slice(1, -1).split(",");
     for (const pair of pairs) {
-      const [key, val] = pair.split(':').map((s) => s.trim());
+      const [key, val] = pair.split(":").map((s) => s.trim());
       obj[key] = parseValue(val);
     }
     return obj;
@@ -234,30 +249,30 @@ function parseValue(value: string): YamlData {
  */
 export function stringifyYAML(obj: YamlData, indent: number = 0): string {
   const lines: string[] = [];
-  const indentStr = '  '.repeat(indent);
+  const indentStr = "  ".repeat(indent);
 
   if (Array.isArray(obj)) {
     for (const item of obj) {
-      if (typeof item === 'object' && item !== null) {
+      if (typeof item === "object" && item !== null) {
         lines.push(`${indentStr}- ${stringifyYAML(item, 0).trim()}`);
       } else {
         lines.push(`${indentStr}- ${item}`);
       }
     }
-  } else if (typeof obj === 'object' && obj !== null) {
+  } else if (typeof obj === "object" && obj !== null) {
     for (const [key, value] of Object.entries(obj)) {
       if (value === null || value === undefined) {
         lines.push(`${indentStr}${key}:`);
       } else if (Array.isArray(value)) {
         lines.push(`${indentStr}${key}:`);
         lines.push(stringifyYAML(value, indent + 1));
-      } else if (typeof value === 'object') {
+      } else if (typeof value === "object") {
         lines.push(`${indentStr}${key}:`);
         lines.push(stringifyYAML(value, indent + 1));
-      } else if (typeof value === 'string' && value.includes('\n')) {
+      } else if (typeof value === "string" && value.includes("\n")) {
         lines.push(`${indentStr}${key}: |`);
-        value.split('\n').forEach((line) => {
-          lines.push(`${'  '.repeat(indent + 1)}${line}`);
+        value.split("\n").forEach((line) => {
+          lines.push(`${"  ".repeat(indent + 1)}${line}`);
         });
       } else {
         lines.push(`${indentStr}${key}: ${value}`);
@@ -267,5 +282,5 @@ export function stringifyYAML(obj: YamlData, indent: number = 0): string {
     return String(obj);
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
 }

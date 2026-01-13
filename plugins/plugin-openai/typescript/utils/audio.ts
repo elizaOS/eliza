@@ -104,27 +104,6 @@ export function getFilenameForMimeType(mimeType: AudioMimeType): string {
   return `recording.${ext}`;
 }
 
-export async function webStreamToNodeStream(
-  webStream: ReadableStream<Uint8Array>
-): Promise<NodeJS.ReadableStream> {
-  const { Readable } = await import("node:stream");
-  const reader = webStream.getReader();
-
-  return new Readable({
-    async read() {
-      const { done, value } = await reader.read();
-      if (done) {
-        this.push(null);
-      } else {
-        this.push(value);
-      }
-    },
-    destroy(error, callback) {
-      reader.cancel().finally(() => callback(error));
-    },
-  });
-}
-
 export function validateAudioFormat(buffer: Buffer): AudioMimeType {
   const mimeType = detectAudioMimeType(buffer);
   if (mimeType === "application/octet-stream") {

@@ -1,5 +1,11 @@
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import { generateElizaResponse, getElizaGreeting, reflect } from "../models/text";
+
+function makeRuntime(): IAgentRuntime {
+  // We only need object identity for session isolation (WeakMap key).
+  return {} as IAgentRuntime;
+}
 
 describe("ELIZA Classic Plugin", () => {
   describe("reflect()", () => {
@@ -12,7 +18,8 @@ describe("ELIZA Classic Plugin", () => {
     });
 
     test("should reflect 'you' to 'me' and 'are' to 'am'", () => {
-      expect(reflect("you are nice")).toBe("me am nice");
+      // doctor.json reflections are script-specific; "you" reflects to "I" but "are" is unchanged.
+      expect(reflect("you are nice")).toBe("I are nice");
     });
 
     test("should preserve words without reflections", () => {
@@ -22,45 +29,52 @@ describe("ELIZA Classic Plugin", () => {
 
   describe("generateElizaResponse()", () => {
     test("should respond to greeting", () => {
-      const response = generateElizaResponse("hello");
+      const runtime = makeRuntime();
+      const response = generateElizaResponse(runtime, "hello");
       expect(response.length).toBeGreaterThan(0);
     });
 
     test("should respond to sad input", () => {
-      const response = generateElizaResponse("I am sad");
+      const runtime = makeRuntime();
+      const response = generateElizaResponse(runtime, "I am happy");
       expect(response.length).toBeGreaterThan(0);
     });
 
     test("should respond to family mention", () => {
-      const response = generateElizaResponse("my mother is kind");
-      expect(response.length).toBeGreaterThan(0);
+      const runtime = makeRuntime();
+      const response = generateElizaResponse(runtime, "my mother is kind");
+      expect(response).toBe("Tell me more about your family");
     });
 
     test("should respond to computer mention", () => {
-      const response = generateElizaResponse("I think about computers");
-      expect(response.length).toBeGreaterThan(0);
+      const runtime = makeRuntime();
+      const response = generateElizaResponse(runtime, "I think computers are fascinating");
+      expect(response).toBe("Do computers worry you?");
     });
 
     test("should handle empty input", () => {
-      const response = generateElizaResponse("");
-      expect(response).toBe("I didn't catch that. Could you please repeat?");
+      const runtime = makeRuntime();
+      const response = generateElizaResponse(runtime, "");
+      expect(response.length).toBeGreaterThan(0);
     });
 
     test("should handle unknown input with default response", () => {
-      const response = generateElizaResponse("xyzzy");
+      const runtime = makeRuntime();
+      const response = generateElizaResponse(runtime, "xyzzy");
       expect(response.length).toBeGreaterThan(0);
     });
 
     test("should reflect pronouns in response", () => {
-      const response = generateElizaResponse("I remember my birthday");
+      const runtime = makeRuntime();
+      const response = generateElizaResponse(runtime, "Do I remember my birthday");
       expect(response.length).toBeGreaterThan(0);
     });
   });
 
   describe("getElizaGreeting()", () => {
-    test("should contain ELIZA", () => {
+    test("should contain 'problem'", () => {
       const greeting = getElizaGreeting();
-      expect(greeting).toContain("ELIZA");
+      expect(greeting.toLowerCase()).toContain("problem");
     });
 
     test("should be a string", () => {

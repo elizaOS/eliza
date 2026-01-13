@@ -16,7 +16,7 @@ jobs:
     # Skip duplicate runs: run on push to main, or on pull_request events only
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -53,6 +53,36 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: bun run test:core
 
+      - name: Run interop (TypeScript) tests
+        timeout-minutes: 10
+        run: cd packages/interop && bun run test
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r packages/python/requirements-dev.lock
+          python -m pip install -e packages/python --no-deps
+
+      - name: Run Python tests (@elizaos/python)
+        timeout-minutes: 10
+        run: cd packages/python && python -m pytest -q
+
+      - name: Run Python tests (@elizaos/interop python)
+        timeout-minutes: 10
+        run: cd packages/interop/python && python -m pytest -q
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Rust tests (@elizaos/rust)
+        timeout-minutes: 10
+        run: cd packages/rust && cargo test -q --locked
+
   # Lint and format job
   lint-and-format:
     # Skip duplicate runs: run on push to main, or on pull_request events only
@@ -78,6 +108,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      - name: Prompt secret scan
+        run: cd packages/prompts && bun run check:secrets
 
       - name: Check format
         run: bun run format:check

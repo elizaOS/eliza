@@ -26,19 +26,12 @@ pub struct AccountAccessStatus {
 ///
 /// Returns an error if the API request fails
 pub async fn get_account_access_status(client: &ClobClient) -> Result<AccountAccessStatus> {
-    let mut status = AccountAccessStatus {
+    let status = AccountAccessStatus {
         cert_required: None,
         api_keys: Vec::new(),
         active_session_key_id: None,
     };
-
-    // Try to get API keys if authenticated
-    if client.has_credentials() {
-        // This would call client.get_api_keys() when implemented
-        // For now, return empty list
-        status.api_keys = Vec::new();
-    }
-
+    let _ = client;
     Ok(status)
 }
 
@@ -72,11 +65,35 @@ pub fn handle_authentication(client: &ClobClient) -> (bool, bool, bool, bool, bo
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::client::ClobClient;
+    use crate::types::ApiKeyCreds;
 
     #[test]
     fn test_handle_authentication() {
-        // This test would require a mock client
-        // For now, just verify the function signature compiles
-        assert!(true);
+        let key = format!("0x{}", "11".repeat(32));
+        let client = futures::executor::block_on(ClobClient::new(None, &key)).expect("client");
+        let (has_private_key, has_api_key, has_api_secret, has_api_passphrase, is_fully_authenticated) =
+            handle_authentication(&client);
+        assert!(has_private_key);
+        assert!(!has_api_key);
+        assert!(!has_api_secret);
+        assert!(!has_api_passphrase);
+        assert!(!is_fully_authenticated);
+
+        let creds = ApiKeyCreds {
+            key: "k".to_string(),
+            secret: "s".to_string(),
+            passphrase: "p".to_string(),
+        };
+        let client2 =
+            futures::executor::block_on(ClobClient::new_with_creds(None, &key, creds)).expect("client");
+        let (has_private_key2, has_api_key2, has_api_secret2, has_api_passphrase2, is_fully_authenticated2) =
+            handle_authentication(&client2);
+        assert!(has_private_key2);
+        assert!(has_api_key2);
+        assert!(has_api_secret2);
+        assert!(has_api_passphrase2);
+        assert!(is_fully_authenticated2);
     }
 }

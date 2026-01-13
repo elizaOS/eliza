@@ -162,19 +162,30 @@ const pluginTests = [
   },
 ];
 
+type ProcessEnvLike = Record<string, string | undefined>;
+
+function getProcessEnv(): ProcessEnvLike {
+  if (typeof process === "undefined") {
+    return {};
+  }
+  return process.env as ProcessEnvLike;
+}
+
+const env = getProcessEnv();
+
 export const googleGenAIPlugin: Plugin = {
   name: "google-genai",
   description: "Google Generative AI plugin for Gemini models",
 
   config: {
-    GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? null,
-    GOOGLE_SMALL_MODEL: process.env.GOOGLE_SMALL_MODEL ?? null,
-    GOOGLE_LARGE_MODEL: process.env.GOOGLE_LARGE_MODEL ?? null,
-    GOOGLE_IMAGE_MODEL: process.env.GOOGLE_IMAGE_MODEL ?? null,
-    GOOGLE_EMBEDDING_MODEL: process.env.GOOGLE_EMBEDDING_MODEL ?? null,
-    SMALL_MODEL: process.env.SMALL_MODEL ?? null,
-    LARGE_MODEL: process.env.LARGE_MODEL ?? null,
-    IMAGE_MODEL: process.env.IMAGE_MODEL ?? null,
+    GOOGLE_GENERATIVE_AI_API_KEY: env.GOOGLE_GENERATIVE_AI_API_KEY ?? null,
+    GOOGLE_SMALL_MODEL: env.GOOGLE_SMALL_MODEL ?? null,
+    GOOGLE_LARGE_MODEL: env.GOOGLE_LARGE_MODEL ?? null,
+    GOOGLE_IMAGE_MODEL: env.GOOGLE_IMAGE_MODEL ?? null,
+    GOOGLE_EMBEDDING_MODEL: env.GOOGLE_EMBEDDING_MODEL ?? null,
+    SMALL_MODEL: env.SMALL_MODEL ?? null,
+    LARGE_MODEL: env.LARGE_MODEL ?? null,
+    IMAGE_MODEL: env.IMAGE_MODEL ?? null,
   },
 
   async init(config, runtime) {

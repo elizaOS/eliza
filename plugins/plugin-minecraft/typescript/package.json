@@ -1,0 +1,49 @@
+{
+  "name": "@elizaos/plugin-minecraft",
+  "description": "Minecraft automation plugin for ElizaOS (Mineflayer bridge)",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "keywords": ["plugin", "elizaos", "minecraft", "mineflayer"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": ["dist", "README.md", "package.json"],
+  "dependencies": {
+    "ws": "^8.18.0",
+    "zod": "^4.3.5"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
+  },
+  "scripts": {
+    "dev": "bun --hot build.ts",
+    "test": "vitest run || echo 'TypeScript tests skipped - no tests found'",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  }
+}

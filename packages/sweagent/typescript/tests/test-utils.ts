@@ -2,12 +2,20 @@
  * Test utilities tests
  */
 
-import { execSync } from 'child_process';
-import * as fs from 'fs';
-import { DefaultAgentConfig, ToolConfig } from '../src/agent/agents';
-import { InstantEmptySubmitModel, PredeterminedTestModel, ModelConfig } from '../src/agent/models';
-import { EmptyProblemStatement, TextProblemStatement } from '../src/agent/problem-statement';
-import { DockerDeploymentConfig } from '../src/environment/deployment';
+import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import type { DefaultAgentConfig, ToolConfig } from "../src/agent/agents";
+import {
+  InstantEmptySubmitModel,
+  type ModelConfig,
+  type ModelOutput,
+  PredeterminedTestModel,
+} from "../src/agent/models";
+import {
+  EmptyProblemStatement,
+  TextProblemStatement,
+} from "../src/agent/problem-statement";
+import type { DockerDeploymentConfig } from "../src/environment/deployment";
 
 /**
  * Check if Docker is available on the system
@@ -15,12 +23,15 @@ import { DockerDeploymentConfig } from '../src/environment/deployment';
 export function isDockerAvailable(): boolean {
   try {
     // Check if Docker socket exists
-    if (process.platform !== 'win32' && !fs.existsSync('/var/run/docker.sock')) {
+    if (
+      process.platform !== "win32" &&
+      !fs.existsSync("/var/run/docker.sock")
+    ) {
       return false;
     }
 
     // Try to run docker version command
-    execSync('docker version', { stdio: 'ignore' });
+    execSync("docker version", { stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -30,27 +41,32 @@ export function isDockerAvailable(): boolean {
 /**
  * Skip test if Docker is not available
  */
-export function skipIfNoDocker(testName: string = 'test'): void {
+export function skipIfNoDocker(testName: string = "test"): void {
   if (!isDockerAvailable()) {
     console.warn(`⚠️  Skipping ${testName}: Docker is not available`);
     // Use Jest's conditional test skipping
-    return process.exit(0); // This will cause the test to be skipped
+    process.exit(0); // This will cause the test to be skipped
   }
 }
 
 /**
  * Conditionally run test based on Docker availability
  */
-export const describeWithDocker = isDockerAvailable() ? describe : describe.skip;
+export const describeWithDocker = isDockerAvailable()
+  ? describe
+  : describe.skip;
 export const itWithDocker = isDockerAvailable() ? it : it.skip;
 
 /**
  * Create a test agent configuration
  */
-export function createTestAgentConfig(options: { model: ModelConfig; parseFunction?: unknown }): DefaultAgentConfig {
+export function createTestAgentConfig(options: {
+  model: ModelConfig;
+  parseFunction?: unknown;
+}): DefaultAgentConfig {
   return {
-    name: 'test-agent',
-    type: 'default',
+    name: "test-agent",
+    type: "default",
     model: options.model,
     tools: {
       commands: [],
@@ -58,21 +74,21 @@ export function createTestAgentConfig(options: { model: ModelConfig; parseFuncti
       executionTimeout: 10,
       maxConsecutiveExecutionTimeouts: 3,
       totalExecutionTimeout: 100,
-      submitCommand: 'submit',
+      submitCommand: "submit",
       useFunctionCalling: false,
-      formatErrorTemplate: 'Error: {error}',
+      formatErrorTemplate: "Error: {error}",
     } as ToolConfig,
     templates: {
-      systemTemplate: '',
-      instanceTemplate: '',
-      nextStepTemplate: 'Observation: {observation}',
-      nextStepTruncatedObservationTemplate: 'Observation: {observation}',
+      systemTemplate: "",
+      instanceTemplate: "",
+      nextStepTemplate: "Observation: {observation}",
+      nextStepTruncatedObservationTemplate: "Observation: {observation}",
       maxObservationLength: 10000,
       demonstrations: [],
       putDemosInHistory: false,
       disableImageProcessing: false,
-      shellCheckErrorTemplate: 'Shell check error',
-      commandCancelledTimeoutTemplate: 'Command cancelled',
+      shellCheckErrorTemplate: "Shell check error",
+      commandCancelledTimeoutTemplate: "Command cancelled",
     },
     historyProcessors: [],
     maxRequeries: 3,
@@ -89,10 +105,13 @@ export function createEmptyProblemStatement(): EmptyProblemStatement {
 /**
  * Create a text problem statement
  */
-export function createTextProblemStatement(text: string, id?: string): TextProblemStatement {
+export function createTextProblemStatement(
+  text: string,
+  id?: string,
+): TextProblemStatement {
   return new TextProblemStatement({
     text,
-    id: id || 'test-id',
+    id: id || "test-id",
     extraFields: {},
   });
 }
@@ -102,7 +121,7 @@ export function createTextProblemStatement(text: string, id?: string): TextProbl
  */
 export function createInstantEmptySubmitModel(): InstantEmptySubmitModel {
   const config = {
-    name: 'instant_empty_submit' as const,
+    name: "instant_empty_submit" as const,
     delay: 0,
     perInstanceCostLimit: 0,
     totalCostLimit: 0,
@@ -111,11 +130,11 @@ export function createInstantEmptySubmitModel(): InstantEmptySubmitModel {
   const tools: ToolConfig = {
     commands: [],
     useFunctionCalling: false,
-    submitCommand: 'submit',
+    submitCommand: "submit",
     executionTimeout: 10,
     maxConsecutiveExecutionTimeouts: 3,
     totalExecutionTimeout: 100,
-    formatErrorTemplate: 'Error: {error}',
+    formatErrorTemplate: "Error: {error}",
   };
 
   return new InstantEmptySubmitModel(config, tools);
@@ -124,15 +143,17 @@ export function createInstantEmptySubmitModel(): InstantEmptySubmitModel {
 /**
  * Create a predetermined test model
  */
-export function createPredeterminedTestModel(responses: Array<string | any>): PredeterminedTestModel {
+export function createPredeterminedTestModel(
+  responses: Array<string | ModelOutput>,
+): PredeterminedTestModel {
   const tools: ToolConfig = {
     commands: [],
     useFunctionCalling: false,
-    submitCommand: 'submit',
+    submitCommand: "submit",
     executionTimeout: 10,
     maxConsecutiveExecutionTimeouts: 3,
     totalExecutionTimeout: 100,
-    formatErrorTemplate: 'Error: {error}',
+    formatErrorTemplate: "Error: {error}",
   };
 
   return new PredeterminedTestModel(responses, tools);
@@ -143,12 +164,12 @@ export function createPredeterminedTestModel(responses: Array<string | any>): Pr
  */
 export function createTestDeploymentConfig(): DockerDeploymentConfig {
   return {
-    type: 'docker',
-    image: 'python:3.11',
-    pythonStandaloneDir: '/root',
+    type: "docker",
+    image: "python:3.11",
+    pythonStandaloneDir: "/root",
     volumes: {},
     environment: {},
     removeOnStop: true,
-    workDir: '/workspace',
+    workDir: "/workspace",
   };
 }

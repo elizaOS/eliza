@@ -31,7 +31,12 @@ export class Flake8ErrorClass implements Flake8Error {
 
     const [, file, lineNum, colNum, message] = match;
 
-    return new Flake8ErrorClass(file, parseInt(lineNum, 10), parseInt(colNum, 10), message);
+    return new Flake8ErrorClass(
+      file,
+      parseInt(lineNum, 10),
+      parseInt(colNum, 10),
+      message,
+    );
   }
 
   toString(): string {
@@ -50,7 +55,7 @@ export function formatFlake8Output(
   showLineNumbers: boolean = false,
 ): string {
   if (!currentErrors.trim()) {
-    return '';
+    return "";
   }
 
   // Parse current errors
@@ -58,14 +63,18 @@ export function formatFlake8Output(
   const previousErrorsList = parseFlake8Output(previousErrorsString);
 
   // Update previous errors based on replacement window
-  const updatedPreviousErrors = updatePreviousErrors(previousErrorsList, replacementWindow, replacementNLines);
+  const updatedPreviousErrors = updatePreviousErrors(
+    previousErrorsList,
+    replacementWindow,
+    replacementNLines,
+  );
 
   // Find new errors (errors in current that aren't in updated previous)
   const newErrors = findNewErrors(currentErrorsList, updatedPreviousErrors);
 
   // Format output
   if (newErrors.length === 0) {
-    return '';
+    return "";
   }
 
   return formatErrorsForDisplay(newErrors, showLineNumbers);
@@ -79,7 +88,7 @@ function parseFlake8Output(output: string): Flake8ErrorClass[] {
     return [];
   }
 
-  const lines = output.trim().split('\n');
+  const lines = output.trim().split("\n");
   const errors: Flake8ErrorClass[] = [];
 
   for (const line of lines) {
@@ -117,7 +126,14 @@ function updatePreviousErrors(
 
     // Adjust line numbers for errors after the replacement
     if (error.line > endLine) {
-      updated.push(new Flake8ErrorClass(error.file, error.line + linesDelta, error.column, error.message));
+      updated.push(
+        new Flake8ErrorClass(
+          error.file,
+          error.line + linesDelta,
+          error.column,
+          error.message,
+        ),
+      );
     } else {
       updated.push(error);
     }
@@ -129,7 +145,10 @@ function updatePreviousErrors(
 /**
  * Find errors that are new (not in the previous errors)
  */
-function findNewErrors(currentErrors: Flake8ErrorClass[], previousErrors: Flake8ErrorClass[]): Flake8ErrorClass[] {
+function findNewErrors(
+  currentErrors: Flake8ErrorClass[],
+  previousErrors: Flake8ErrorClass[],
+): Flake8ErrorClass[] {
   const previousSet = new Set(previousErrors.map((e) => e.toString()));
 
   return currentErrors.filter((error) => !previousSet.has(error.toString()));
@@ -138,9 +157,12 @@ function findNewErrors(currentErrors: Flake8ErrorClass[], previousErrors: Flake8
 /**
  * Format errors for display
  */
-function formatErrorsForDisplay(errors: Flake8ErrorClass[], showLineNumbers: boolean): string {
+function formatErrorsForDisplay(
+  errors: Flake8ErrorClass[],
+  showLineNumbers: boolean,
+): string {
   if (errors.length === 0) {
-    return '';
+    return "";
   }
 
   return errors
@@ -150,5 +172,5 @@ function formatErrorsForDisplay(errors: Flake8ErrorClass[], showLineNumbers: boo
       }
       return `- ${error.message}`;
     })
-    .join('\n');
+    .join("\n");
 }

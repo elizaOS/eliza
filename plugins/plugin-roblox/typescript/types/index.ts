@@ -3,6 +3,10 @@ import type { UUID } from "@elizaos/core";
 export const ROBLOX_SERVICE_NAME = "roblox";
 export const ROBLOX_SOURCE = "roblox";
 
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValueOrUndefined = JsonValue | undefined;
+
 export interface RobloxConfig {
   apiKey: string;
   universeId: string;
@@ -51,7 +55,7 @@ export interface RobloxGameAction {
   targetPlayerIds?: number[];
 }
 
-export interface DataStoreEntry<T = unknown> {
+export interface DataStoreEntry<T = JsonValue> {
   key: string;
   value: T;
   version: string;
@@ -59,14 +63,7 @@ export interface DataStoreEntry<T = unknown> {
   updatedAt: Date;
 }
 
-export type MessagingServiceDataValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | number[]
-  | Record<string, string | number | boolean | null>;
+export type MessagingServiceDataValue = JsonValueOrUndefined;
 
 export interface MessagingServiceMessage {
   topic: string;
