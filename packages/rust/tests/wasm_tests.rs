@@ -645,6 +645,245 @@ mod advanced_shim_tests {
 // ========================================
 
 // ========================================
+// Core Trait Tests (WASM) - Tests for PR #3
+// ========================================
+
+mod core_trait_tests {
+    use super::*;
+    use elizaos::types::components::{
+        ActionDefinition, ActionHandler, ActionResult,
+        EvaluatorDefinition, EvaluatorHandler,
+        ProviderDefinition, ProviderHandler, ProviderResult,
+        HandlerOptions,
+    };
+    use elizaos::types::memory::Memory;
+    use elizaos::types::state::State;
+    use elizaos::types::primitives::UUID;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    // Helper to create a test memory
+    fn create_test_memory() -> Memory {
+        Memory {
+            id: None,
+            entity_id: UUID::new_v4(),
+            agent_id: None,
+            room_id: UUID::new_v4(),
+            content: Default::default(),
+            created_at: None,
+            embedding: None,
+            world_id: None,
+            unique: None,
+            similarity: None,
+            metadata: None,
+        }
+    }
+
+    // Test ActionHandler with non-Send types (only works in WASM)
+    struct WasmActionHandler {
+        // Non-Send type - would fail on native with Send + Sync bounds
+        call_count: Rc<RefCell<u32>>,
+    }
+
+    #[async_trait::async_trait(?Send)]
+    impl ActionHandler for WasmActionHandler {
+        fn definition(&self) -> ActionDefinition {
+            ActionDefinition {
+                name: "wasm_action".to_string(),
+                description: "A WASM-only action".to_string(),
+                similes: None,
+                examples: None,
+                priority: None,
+                tags: None,
+                parameters: None,
+            }
+        }
+
+        async fn validate(&self, _message: &Memory, _state: Option<&State>) -> bool {
+            true
+        }
+
+        async fn handle(
+            &self,
+            _message: &Memory,
+            _state: Option<&State>,
+            _options: Option<&HandlerOptions>,
+        ) -> Result<Option<ActionResult>, anyhow::Error> {
+            *self.call_count.borrow_mut() += 1;
+            Ok(Some(ActionResult::success_with_text("handled")))
+        }
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_wasm_action_handler_with_non_send() {
+        let call_count = Rc::new(RefCell::new(0u32));
+        let handler = WasmActionHandler {
+            call_count: call_count.clone(),
+        };
+
+        // Verify definition
+        let def = handler.definition();
+        assert_eq!(def.name, "wasm_action");
+
+        let memory = create_test_memory();
+
+        // Validate should return true
+        assert!(handler.validate(&memory, None).await);
+
+        // Handle should increment call count
+        let result = handler.handle(&memory, None, None).await.unwrap();
+        assert!(result.is_some());
+        assert!(result.unwrap().success);
+        assert_eq!(*call_count.borrow(), 1);
+
+        // Call again
+        let _ = handler.handle(&memory, None, None).await;
+        assert_eq!(*call_count.borrow(), 2);
+    }
+
+    // Test ProviderHandler with non-Send types
+    struct WasmProviderHandler {
+        data: Rc<RefCell<String>>,
+    }
+
+    #[async_trait::async_trait(?Send)]
+    impl ProviderHandler for WasmProviderHandler {
+        fn definition(&self) -> ProviderDefinition {
+            ProviderDefinition {
+                name: "wasm_provider".to_string(),
+                description: Some("A WASM-only provider".to_string()),
+                dynamic: None,
+                position: None,
+                private: None,
+            }
+        }
+
+        async fn get(&self, _message: &Memory, _state: &State) -> Result<ProviderResult, anyhow::Error> {
+            let data = self.data.borrow().clone();
+            Ok(ProviderResult {
+                text: Some(format!("Provider data: {}", data)),
+                values: None,
+                data: None,
+            })
+        }
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_wasm_provider_handler_with_non_send() {
+        let data = Rc::new(RefCell::new("test_data".to_string()));
+        let handler = WasmProviderHandler { data: data.clone() };
+
+        let def = handler.definition();
+        assert_eq!(def.name, "wasm_provider");
+
+        let memory = create_test_memory();
+        let state = State::default();
+
+        let result = handler.get(&memory, &state).await.unwrap();
+        assert!(result.text.unwrap().contains("test_data"));
+
+        // Modify data and verify provider sees change
+        *data.borrow_mut() = "modified".to_string();
+        let result2 = handler.get(&memory, &state).await.unwrap();
+        assert!(result2.text.unwrap().contains("modified"));
+    }
+
+    // Test EvaluatorHandler with non-Send types
+    struct WasmEvaluatorHandler {
+        threshold: Rc<RefCell<f64>>,
+    }
+
+    #[async_trait::async_trait(?Send)]
+    impl EvaluatorHandler for WasmEvaluatorHandler {
+        fn definition(&self) -> EvaluatorDefinition {
+            EvaluatorDefinition {
+                name: "wasm_evaluator".to_string(),
+                description: "A WASM-only evaluator".to_string(),
+                always_run: None,
+                similes: None,
+                examples: vec![],
+            }
+        }
+
+        async fn validate(&self, _message: &Memory, _state: Option<&State>) -> bool {
+            *self.threshold.borrow() > 0.5
+        }
+
+        async fn handle(
+            &self,
+            _message: &Memory,
+            _state: Option<&State>,
+        ) -> Result<Option<ActionResult>, anyhow::Error> {
+            let score = *self.threshold.borrow();
+            Ok(Some(ActionResult::success_with_text(&format!("Score: {}", score))))
+        }
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_wasm_evaluator_handler_with_non_send() {
+        let threshold = Rc::new(RefCell::new(0.75));
+        let handler = WasmEvaluatorHandler { threshold: threshold.clone() };
+
+        let def = handler.definition();
+        assert_eq!(def.name, "wasm_evaluator");
+
+        let memory = create_test_memory();
+
+        // Should validate with threshold > 0.5
+        assert!(handler.validate(&memory, None).await);
+
+        // Lower threshold
+        *threshold.borrow_mut() = 0.3;
+        assert!(!handler.validate(&memory, None).await);
+
+        // Handle still works regardless
+        let result = handler.handle(&memory, None).await.unwrap();
+        assert!(result.unwrap().text.unwrap().contains("0.3"));
+    }
+
+    // Test multiple handlers in a Vec (trait object collection)
+    #[wasm_bindgen_test]
+    async fn test_wasm_action_handler_collection() {
+        // Create multiple handlers
+        let handlers: Vec<Box<dyn ActionHandler>> = vec![
+            Box::new(WasmActionHandler {
+                call_count: Rc::new(RefCell::new(0)),
+            }),
+            Box::new(WasmActionHandler {
+                call_count: Rc::new(RefCell::new(0)),
+            }),
+        ];
+
+        // Verify we can iterate and call them
+        for handler in handlers.iter() {
+            let def = handler.definition();
+            assert_eq!(def.name, "wasm_action");
+            
+            let memory = create_test_memory();
+            
+            let result = handler.handle(&memory, None, None).await.unwrap();
+            assert!(result.is_some());
+        }
+    }
+
+    // Test that ActionResult helper methods work
+    #[wasm_bindgen_test]
+    fn test_action_result_helpers() {
+        let success = ActionResult::success();
+        assert!(success.success);
+        assert!(success.text.is_none());
+
+        let success_text = ActionResult::success_with_text("done!");
+        assert!(success_text.success);
+        assert_eq!(success_text.text.unwrap(), "done!");
+
+        let failure = ActionResult::failure("something went wrong");
+        assert!(!failure.success);
+        assert_eq!(failure.error.unwrap(), "something went wrong");
+    }
+}
+
+// ========================================
 // Platform Macros Tests (WASM)
 // ========================================
 
