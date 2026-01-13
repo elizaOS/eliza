@@ -2837,7 +2837,11 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    const paramsObj = params as Record<string, unknown> | null | undefined;
+    // Only treat params as an object if it's actually an object (not a string or primitive)
+    const paramsObj =
+      params && typeof params === "object" && !Array.isArray(params)
+        ? (params as Record<string, unknown>)
+        : null;
     const promptContent =
       (paramsObj &&
       "prompt" in paramsObj &&
@@ -2849,7 +2853,8 @@ export class AgentRuntime implements IAgentRuntime {
         : null) ||
       (paramsObj && "messages" in paramsObj && Array.isArray(paramsObj.messages)
         ? JSON.stringify(paramsObj.messages)
-        : null);
+        : null) ||
+      (typeof params === "string" ? params : null);
     const model = this.getModel(modelKey);
     const modelsForKey = this.models.get(modelKey);
     const modelWithProvider =
