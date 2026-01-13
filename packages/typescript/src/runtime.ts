@@ -2515,7 +2515,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   /// ensures servicePromises & servicePromiseHandlers for a serviceType
-  private _createServiceResolver(serviceType: ServiceTypeName) {
+  private _createServiceResolver(serviceType: ServiceTypeName | string) {
     let resolver: ServiceResolver | undefined;
     let rejecter: ServiceRejecter | undefined;
     this.servicePromises.set(
@@ -2543,7 +2543,10 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   /// returns a promise that's resolved once this service is loaded
-  getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service> {
+  ///
+  /// Note: Plugins can register arbitrary service type strings; callers may
+  /// therefore provide either a core `ServiceTypeName` or a plugin-defined string.
+  getServiceLoadPromise(serviceType: ServiceTypeName | string): Promise<Service> {
     // if this.isInitialized then the this p will exist and already be resolved
     let p = this.servicePromises.get(serviceType);
     if (!p) {

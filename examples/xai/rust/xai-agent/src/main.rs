@@ -18,6 +18,7 @@ use elizaos::{
 };
 use elizaos_plugin_sql::plugin as sql_plugin;
 use elizaos_plugin_xai::{create_xai_elizaos_plugin, TwitterClient, TwitterConfig};
+use elizaos_plugin_xai::error::XAIError;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -176,14 +177,13 @@ async fn main() -> Result<()> {
                 let resp = { x.lock().await.search_posts(&query, 50, Some("recency")).await };
                 let resp = match resp {
                     Ok(r) => r,
+                    Err(XAIError::TwitterApiError { status: 429, .. }) => {
+                        warn!("Rate limited (429). Backing off for 60s.");
+                        tokio::time::sleep(Duration::from_secs(60)).await;
+                        return;
+                    }
                     Err(e) => {
-                        let msg = e.to_string();
-                        if msg.contains("(429)") {
-                            warn!("Rate limited (429). Backing off for 60s.");
-                            tokio::time::sleep(Duration::from_secs(60)).await;
-                            return;
-                        }
-                        warn!("X API error: {}", msg);
+                        warn!("X API error: {}", e);
                         tokio::time::sleep(Duration::from_secs(15)).await;
                         return;
                     }
@@ -210,6 +210,7 @@ async fn main() -> Result<()> {
 
                 if let Err(e) = save_cursor(last_seen) {
                     warn!("Failed to persist cursor: {}", e);
+                    return;
                 }
 
                 let minutes = random_minutes("X_ENGAGEMENT_INTERVAL_MIN", "X_ENGAGEMENT_INTERVAL_MAX", 20, 40);

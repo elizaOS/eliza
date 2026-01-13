@@ -254,6 +254,12 @@ async def main() -> None:
     )
     await runtime.initialize()
 
+    # Fail fast if SQL persistence is not available. The Python message service can
+    # run without an adapter (benchmark mode), but this example is intended to be
+    # production-like and must persist dedupe state.
+    if runtime._adapter is None:  # noqa: SLF001
+        raise RuntimeError("SQL adapter not initialized (plugin-sql failed to register an adapter)")
+
     config = TwitterConfig.from_env()
     config.validate_credentials()
 
