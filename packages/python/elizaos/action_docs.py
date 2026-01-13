@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from elizaos.generated.action_docs import core_action_docs, core_evaluator_docs
+from elizaos.generated.action_docs import all_action_docs, all_evaluator_docs
 
 if TYPE_CHECKING:
     from elizaos.types import Action, Evaluator
 
 
 def _action_doc_by_name() -> dict[str, dict[str, object]]:
-    actions = core_action_docs.get("actions")
+    actions = all_action_docs.get("actions")
     if not isinstance(actions, list):
         return {}
     by_name: dict[str, dict[str, object]] = {}
@@ -22,7 +22,7 @@ def _action_doc_by_name() -> dict[str, dict[str, object]]:
 
 
 def _evaluator_doc_by_name() -> dict[str, dict[str, object]]:
-    evaluators = core_evaluator_docs.get("evaluators")
+    evaluators = all_evaluator_docs.get("evaluators")
     if not isinstance(evaluators, list):
         return {}
     by_name: dict[str, dict[str, object]] = {}

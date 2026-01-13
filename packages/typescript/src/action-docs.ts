@@ -1,9 +1,9 @@
-import { coreActionDocs } from "./generated/action-docs.ts";
+import { allActionDocs } from "./generated/action-docs.ts";
 import type { Action, ActionParameter } from "./types/index.ts";
 
-type ActionDocByName = Record<string, (typeof coreActionDocs)[number]>;
+type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
-const coreActionDocByName: ActionDocByName = coreActionDocs.reduce<ActionDocByName>(
+const coreActionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(
   (acc, doc) => {
     acc[doc.name] = doc;
     return acc;
@@ -11,7 +11,9 @@ const coreActionDocByName: ActionDocByName = coreActionDocs.reduce<ActionDocByNa
   {},
 );
 
-function toActionParameter(param: (typeof coreActionDocs)[number]["parameters"][number]): ActionParameter {
+function toActionParameter(
+  param: (typeof allActionDocs)[number]["parameters"][number],
+): ActionParameter {
   return {
     name: param.name,
     description: param.description,

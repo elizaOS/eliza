@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 use crate::error::PluginResult;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
-use crate::generated::action_docs::CORE_ACTION_DOCS_JSON;
+use crate::generated::action_docs::ALL_ACTION_DOCS_JSON;
 
 use super::Provider;
 
@@ -53,7 +53,7 @@ fn action_docs_by_name() -> &'static HashMap<String, ActionDoc> {
     static CACHE: OnceLock<HashMap<String, ActionDoc>> = OnceLock::new();
     CACHE.get_or_init(|| {
         let parsed: serde_json::Value =
-            serde_json::from_str(CORE_ACTION_DOCS_JSON).expect("invalid CORE_ACTION_DOCS_JSON");
+            serde_json::from_str(ALL_ACTION_DOCS_JSON).expect("invalid ALL_ACTION_DOCS_JSON");
         let root: ActionDocsRoot = serde_json::from_value(parsed).expect("invalid action docs root");
         root.actions.into_iter().map(|a| (a.name.clone(), a)).collect()
     })

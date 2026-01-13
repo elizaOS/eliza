@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 use crate::error::PluginResult;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
-use crate::generated::action_docs::CORE_EVALUATOR_DOCS_JSON;
+use crate::generated::action_docs::ALL_EVALUATOR_DOCS_JSON;
 
 use super::Provider;
 
@@ -43,8 +43,8 @@ struct EvaluatorMessageDoc {
 fn evaluator_docs_by_name() -> &'static HashMap<String, EvaluatorDoc> {
     static CACHE: OnceLock<HashMap<String, EvaluatorDoc>> = OnceLock::new();
     CACHE.get_or_init(|| {
-        let parsed: serde_json::Value = serde_json::from_str(CORE_EVALUATOR_DOCS_JSON)
-            .expect("invalid CORE_EVALUATOR_DOCS_JSON");
+        let parsed: serde_json::Value = serde_json::from_str(ALL_EVALUATOR_DOCS_JSON)
+            .expect("invalid ALL_EVALUATOR_DOCS_JSON");
         let root: EvaluatorDocsRoot =
             serde_json::from_value(parsed).expect("invalid evaluator docs root");
         root.evaluators
