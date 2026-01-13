@@ -177,7 +177,7 @@ async def run_benchmark_mode(num_episodes: int = 100, difficulty: str = "medium"
     )
     from elizaos_atropos_textworld.agent import create_heuristic_policy, create_random_policy
 
-    print("\n📖 ElizaOS Atropos - TextWorld Benchmark")
+    print("\n📖 elizaOS Atropos - TextWorld Benchmark")
     print("=" * 50)
     print(f"Episodes per strategy: {num_episodes}")
     print(f"Difficulty: {difficulty}")
@@ -224,23 +224,89 @@ async def run_benchmark_mode(num_episodes: int = 100, difficulty: str = "medium"
     await env.close()
 
 
+async def run_atropos_gen_mode(
+    num_episodes: int = 100,
+    output: str = "trajectories.jsonl",
+    use_elizaos: bool = True,
+    difficulty: str = "medium",
+    tokenizer: str = "meta-llama/Llama-3.2-3B-Instruct",
+) -> None:
+    """Generate Atropos training data from elizaOS gameplay."""
+    _load_dotenv()
+
+    try:
+        from elizaos_atropos_textworld.atropos_integration import (
+            generate_training_data,
+            AtroposConfig,
+        )
+    except ImportError as e:
+        print(f"❌ Atropos integration not available: {e}")
+        print("Install with: pip install -e '.[atropos]'")
+        sys.exit(1)
+
+    print("\n📖 elizaOS TextWorld - Atropos Data Generation")
+    print("=" * 50)
+    print(f"Episodes: {num_episodes}")
+    print(f"Agent: {'elizaOS' if use_elizaos else 'heuristic'}")
+    print(f"Difficulty: {difficulty}")
+    print(f"Tokenizer: {tokenizer}")
+    print(f"Output: {output}")
+    print("=" * 50 + "\n")
+
+    config = AtroposConfig(
+        tokenizer_name=tokenizer,
+        difficulty=difficulty,
+        use_elizaos=use_elizaos,
+    )
+
+    trajectories = await generate_training_data(
+        num_episodes=num_episodes,
+        config=config,
+        output_path=output,
+        verbose=True,
+    )
+
+    # Summary
+    print("\n" + "=" * 50)
+    print("GENERATION COMPLETE")
+    print("=" * 50)
+    print(f"Total trajectories: {len(trajectories)}")
+
+    if trajectories:
+        scores = [t["scores"] for t in trajectories]
+        tokens = [len(t["tokens"]) for t in trajectories]
+        wins = sum(1 for t in trajectories if t["overrides"]["won"])
+
+        print(f"Win rate: {wins / len(trajectories):.1%}")
+        print(f"Avg score: {sum(scores) / len(scores):.3f}")
+        print(f"Avg tokens: {sum(tokens) / len(tokens):.0f}")
+        print(f"Max tokens: {max(tokens)}")
+
+    print("=" * 50)
+
+
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="ElizaOS Atropos TextWorld Environment",
+        description="elizaOS Atropos TextWorld Environment",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   elizaos-textworld --mode auto              # Watch AI play
   elizaos-textworld --mode interactive       # Play interactively
   elizaos-textworld --mode benchmark         # Compare strategies
+  elizaos-textworld --mode atropos-gen       # Generate Atropos training data
   elizaos-textworld --difficulty hard        # Play hard difficulty
+
+Atropos data generation:
+  elizaos-textworld --mode atropos-gen --episodes 500 --use-elizaos -o train.jsonl
+  elizaos-textworld --mode atropos-gen --episodes 500 --no-use-elizaos -o baseline.jsonl
         """,
     )
 
     parser.add_argument(
         "--mode",
-        choices=["auto", "interactive", "benchmark"],
+        choices=["auto", "interactive", "benchmark", "atropos-gen"],
         default="auto",
         help="Game mode (default: auto)",
     )
@@ -261,6 +327,31 @@ Examples:
         action="store_true",
         help="Use LLM for decisions (requires OPENAI_API_KEY)",
     )
+    # Atropos-specific arguments
+    parser.add_argument(
+        "--use-elizaos",
+        action="store_true",
+        default=True,
+        help="Use elizaOS agent for atropos-gen (default: True)",
+    )
+    parser.add_argument(
+        "--no-use-elizaos",
+        action="store_false",
+        dest="use_elizaos",
+        help="Use heuristic agent instead of elizaOS for atropos-gen",
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        default="trajectories.jsonl",
+        help="Output file for atropos-gen (default: trajectories.jsonl)",
+    )
+    parser.add_argument(
+        "--tokenizer",
+        type=str,
+        default="meta-llama/Llama-3.2-3B-Instruct",
+        help="HuggingFace tokenizer for atropos-gen",
+    )
 
     args = parser.parse_args()
 
@@ -270,6 +361,10 @@ Examples:
         print("⚠️ OPENAI_API_KEY not set. Falling back to heuristic mode.")
         args.llm = False
 
+    if args.mode == "atropos-gen" and args.use_elizaos and not os.environ.get("OPENAI_API_KEY"):
+        print("⚠️ OPENAI_API_KEY not set. Falling back to heuristic agent.")
+        args.use_elizaos = False
+
     try:
         if args.mode == "auto":
             asyncio.run(run_auto_mode(args.episodes, args.difficulty, args.llm))
@@ -277,6 +372,14 @@ Examples:
             asyncio.run(run_interactive_mode(args.difficulty))
         elif args.mode == "benchmark":
             asyncio.run(run_benchmark_mode(args.episodes, args.difficulty))
+        elif args.mode == "atropos-gen":
+            asyncio.run(run_atropos_gen_mode(
+                num_episodes=args.episodes,
+                output=args.output,
+                use_elizaos=args.use_elizaos,
+                difficulty=args.difficulty,
+                tokenizer=args.tokenizer,
+            ))
     except KeyboardInterrupt:
         print("\n\nGoodbye! 👋")
         sys.exit(0)

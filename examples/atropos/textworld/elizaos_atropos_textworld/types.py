@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TypeAlias
+from typing import Literal, TypeAlias
 
 
 class GameType(str, Enum):
@@ -202,3 +202,75 @@ class TrainingStats:
             f"Avg Completion: {self.avg_completion:.1%} | "
             f"Avg Steps: {self.avg_steps:.1f}"
         )
+
+
+# =============================================================================
+# Atropos Integration Types
+# =============================================================================
+#
+# These types bridge gameplay and RL training. They're separate from game types
+# (GameState, StepResult) because they represent different concepts:
+#
+# - GameState: What the game engine knows (rooms, items, valid commands)
+# - Trajectory: What the training system needs (conversation format, scores)
+#
+# WHY CONVERSATION FORMAT:
+# Modern LLMs are trained on conversations (system/user/assistant turns).
+# By representing gameplay as a conversation, we can:
+# 1. Use standard chat model training techniques
+# 2. Apply chat-specific tokenization (chat templates)
+# 3. Transfer learning from pre-trained chat models
+
+
+@dataclass
+class Turn:
+    """
+    Single turn of gameplay for trajectory recording.
+    
+    WHY THESE ROLES:
+    Chat models understand three roles:
+    - "system": Instructions that set up the task (appears once at start)
+    - "user": Input from the environment (game descriptions, what player sees)
+    - "assistant": Model output (the actions we want to learn)
+    
+    WHY REWARD FIELD (currently unused):
+    This field exists for future per-turn reward shaping. Currently we only
+    use final trajectory scores, but per-turn rewards could enable:
+    - Credit assignment (which specific action caused the win?)
+    - Intermediate feedback (reward for finding items, not just winning)
+    
+    For now, it defaults to 0.0 and is ignored in scoring.
+    """
+
+    role: Literal["system", "user", "assistant"]
+    content: str
+    reward: float = 0.0  # Reserved for future per-turn reward shaping
+
+
+@dataclass
+class Trajectory:
+    """
+    Complete game trajectory for Atropos training.
+    
+    WHY THIS STRUCTURE:
+    A trajectory is everything needed to create one training example:
+    - turns: The conversation (system setup + alternating user/assistant)
+    - final_score: Normalized outcome (0.0 = total failure, 1.0 = perfect)
+    - won: Binary success flag (used for win_bonus in scoring)
+    - steps: How many turns taken (used for efficiency scoring)
+    - max_steps: Game's step limit (for normalizing efficiency)
+    - agent_type: Which agent generated this (for analysis)
+    - seed: Game seed (for reproducibility and GRPO grouping)
+    
+    WHY MUTABLE DEFAULTS:
+    Using field(default_factory=list) instead of turns=[] because mutable
+    defaults in dataclasses are shared across instances (Python gotcha).
+    """
+
+    turns: list[Turn] = field(default_factory=list)
+    final_score: float = 0.0  # Normalized: score/max_score
+    won: bool = False
+    steps: int = 0
+    max_steps: int = 100
+    agent_type: str = "unknown"  # "elizaos", "heuristic", "random", etc.
+    seed: int = 0  # Game seed for reproducibility
