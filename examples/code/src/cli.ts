@@ -66,7 +66,7 @@ Options:
   -h, --help              Show this help message
   -v, --version           Show version number
   -j, --json              Output response as JSON
-  -s, --stream            Stream response (not yet implemented)
+  -s, --stream            Stream response as it's generated
   -f, --file <path>       Read message from file
   -c, --cwd <path>        Set working directory
   -i, --interactive       Force interactive mode (TUI)
@@ -320,12 +320,26 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
 
     appendSessionMessage(session, room, "user", message);
 
+    const shouldStream = options.stream && !options.json;
+    let didPrintStreaming = false;
+
     // Send message and get response
     const response = await agentClient.sendMessage({
       room,
       text: message,
       identity: session.identity,
+      onDelta: shouldStream
+        ? (delta) => {
+            // Write deltas directly for real-time streaming.
+            process.stdout.write(delta);
+            didPrintStreaming = true;
+          }
+        : undefined,
     });
+
+    if (didPrintStreaming) {
+      process.stdout.write("\n");
+    }
 
     appendSessionMessage(session, room, "assistant", response);
 

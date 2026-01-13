@@ -17,6 +17,11 @@ export interface SendMessageParams {
   userName?: string;
   source?: string;
   channelType?: ChannelType;
+  /**
+   * Optional streaming callback. Called with each incremental text chunk
+   * produced by the runtime.
+   */
+  onDelta?: (delta: string) => void;
 }
 
 /**
@@ -41,6 +46,7 @@ export class AgentClient {
     const source = params.source ?? "eliza-code";
     const channelType = params.channelType ?? ChannelType.DM;
     const userName = params.userName ?? "User";
+    const onDelta = params.onDelta;
 
     await runtime.ensureConnection({
       entityId: identity.userId,
@@ -70,6 +76,7 @@ export class AgentClient {
         const maybeText = content.text;
         if (typeof maybeText === "string") {
           response += maybeText;
+          onDelta?.(maybeText);
         }
       }
       return [];

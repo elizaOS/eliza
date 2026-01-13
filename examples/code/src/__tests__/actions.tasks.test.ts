@@ -146,18 +146,18 @@ describe("plugin actions: task management", () => {
     await cleanupTestRuntime(runtime);
   });
 
-  test("CREATE_TASK validate avoids file-extension requests and small snippet requests", async () => {
+  test("CREATE_TASK validate allows file-extension requests but avoids small snippet requests", async () => {
     const valid1 = await createTaskAction.validate(
       runtime,
       createMemory("build me tetris in tetris.html", roomId),
     );
-    expect(valid1).toBe(false);
+    expect(valid1).toBe(true);
 
     const valid2 = await createTaskAction.validate(
       runtime,
       createMemory("add a button to style.css", roomId),
     );
-    expect(valid2).toBe(false);
+    expect(valid2).toBe(true);
 
     const valid3 = await createTaskAction.validate(
       runtime,

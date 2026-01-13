@@ -91,6 +91,14 @@ interface ElizaCodeState {
     content: string,
     taskId?: string,
   ) => Message;
+  /** Append text to an existing message (used for streaming). No-op if not found. */
+  appendToMessage: (roomId: string, messageId: string, delta: string) => void;
+  /** Replace message content (used for streaming finalization). No-op if not found. */
+  setMessageContent: (
+    roomId: string,
+    messageId: string,
+    content: string,
+  ) => void;
   clearMessages: (roomId: string) => void;
 
   // Task Actions (for UI sync - actual data managed by CodeTaskService)
@@ -250,6 +258,33 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
 
     debouncedSave(get());
     return message;
+  },
+
+  appendToMessage: (roomId: string, messageId: string, delta: string) => {
+    if (!delta) return;
+    set((state) => ({
+      rooms: state.rooms.map((room) => {
+        if (room.id !== roomId) return room;
+        const nextMessages = room.messages.map((m) =>
+          m.id === messageId ? { ...m, content: `${m.content}${delta}` } : m,
+        );
+        return { ...room, messages: nextMessages };
+      }),
+    }));
+    debouncedSave(get());
+  },
+
+  setMessageContent: (roomId: string, messageId: string, content: string) => {
+    set((state) => ({
+      rooms: state.rooms.map((room) => {
+        if (room.id !== roomId) return room;
+        const nextMessages = room.messages.map((m) =>
+          m.id === messageId ? { ...m, content } : m,
+        );
+        return { ...room, messages: nextMessages };
+      }),
+    }));
+    debouncedSave(get());
   },
 
   clearMessages: (roomId: string) => {

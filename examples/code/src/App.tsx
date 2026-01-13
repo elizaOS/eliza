@@ -99,6 +99,7 @@ export function App({ runtime }: AppProps) {
     deleteRoom,
     rooms,
     addMessage,
+    appendToMessage,
     clearMessages,
     setTasks,
     setCurrentTaskId,
@@ -159,6 +160,18 @@ export function App({ runtime }: AppProps) {
           const currentId = service.getCurrentTaskId();
           if (currentId) setCurrentTaskId(currentId);
         }
+
+        // Mirror key task messages into the chat log (so users can watch work happen).
+        if (event.type === "task:message") {
+          const msg = event.data?.message;
+          const taskId = event.taskId;
+          const text =
+            typeof msg === "string" && msg.length > 0 ? msg : undefined;
+          if (text) {
+            const activeRoomId = useStore.getState().currentRoomId;
+            addMessage(activeRoomId, "assistant", text, taskId);
+          }
+        }
       };
 
       service.on("task", handleTaskEvent);
@@ -167,7 +180,7 @@ export function App({ runtime }: AppProps) {
         service.off("task", handleTaskEvent);
       };
     }
-  }, [runtime, initialized, setTasks, setCurrentTaskId]);
+  }, [runtime, initialized, setTasks, setCurrentTaskId, addMessage]);
 
   // On startup: detect tasks that were left in "running" state (e.g., after exit/crash),
   // pause them, and prompt user whether to resume.
@@ -571,17 +584,38 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
         addMessage(roomId, "user", text);
 
         const agentClient = getAgentClient();
-        const response = await agentClient.sendMessage({
+        const placeholder = addMessage(roomId, "assistant", "", undefined);
+        const _response = await agentClient.sendMessage({
           room,
           text,
           identity: state.identity,
+          onDelta: (delta) => {
+            appendToMessage(roomId, placeholder.id, delta);
+          },
         });
 
         const service = runtime.getService(
           "CODE_TASK",
         ) as CodeTaskService | null;
         const currentTask = service ? await service.getCurrentTask() : null;
-        addMessage(roomId, "assistant", response, currentTask?.id);
+        // Ensure the streamed message is tagged with the current task (if any).
+        if (currentTask?.id) {
+          useStore.setState((s) => ({
+            rooms: s.rooms.map((r) =>
+              r.id === roomId
+                ? {
+                    ...r,
+                    messages: r.messages.map((m) =>
+                      m.id === placeholder.id
+                        ? { ...m, taskId: currentTask.id }
+                        : m,
+                    ),
+                  }
+                : r,
+            ),
+          }));
+        }
+        // (placeholder content is already updated via streaming)
       } finally {
         setLoading(false);
         setAgentTyping(false);
@@ -590,6 +624,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
     [
       currentRoomId,
       addMessage,
+      appendToMessage,
       setLoading,
       setAgentTyping,
       handleSlashCommand,
