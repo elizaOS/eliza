@@ -93,17 +93,31 @@ cargo run --release
 
 ## How it works (canonical pipeline)
 
-For each incoming mention:
+For each incoming mention, the examples aim to route the event through the elizaOS “message service” so you get consistent state composition and response generation.
+
+### TypeScript (most complete, service-driven)
+
+- Mentions/timeline/posting are handled by `@elizaos/plugin-xai`’s `XService` background clients.
+- Incoming mentions are routed into the runtime via `runtime.messageService.handleMessage(...)` inside the plugin.
+
+### Python (pipeline-driven)
+
+- The example explicitly polls mentions and calls `runtime.message_service.handle_message(...)`.
+- The Python `DefaultMessageService` implements the canonical flow (state → model → parse actions/providers → optional action execution → evaluators).
+
+### Rust (currently response-only message service)
+
+- The example explicitly polls mentions and calls `runtime.message_service().handle_message(...)`.
+- **Important**: the current Rust `DefaultMessageService` is not yet feature-parity with TypeScript/Python (it saves the incoming message, composes state, calls the text model, persists the response, and returns it; it does not yet implement `shouldRespond`, action planning, or evaluators).
+
+### Steps
+
+For each incoming mention, we:
 
 1. **Create a `Memory`** for the X post (stable IDs per post/conversation).\n
 2. **Ensure connection/room** exists in elizaOS (world + room + entity).\n
-3. Call **`messageService.handleMessage()`** which:\n
-   - composes state (providers)\n
-   - evaluates `shouldRespond`\n
-   - plans actions (if enabled)\n
-   - generates a response\n
-   - runs evaluators\n
-4. The **callback posts a reply** to X (unless `X_DRY_RUN=true`).\n
+3. Call the language runtime’s **message service**.\n
+4. Post a reply to X (unless `X_DRY_RUN=true`).\n
 
 TypeScript relies on the `plugin-xai` X service background clients for polling and posting; Python/Rust run explicit polling loops in the example.\n
 

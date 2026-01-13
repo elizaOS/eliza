@@ -59,6 +59,10 @@ async function main(): Promise<void> {
   console.log("⏳ Initializing runtime...");
   await runtime.initialize();
 
+  // Fail fast if the X service did not start (registerPlugin starts services async).
+  // This prevents "agent is running" logs when the X integration is actually down.
+  await runtime.getServiceLoadPromise("x");
+
   console.log(`\n✅ Agent "${character.name}" is now running on X.`);
   console.log(`   Dry run mode: ${process.env.X_DRY_RUN === "true"}`);
   console.log(`   Replies enabled: ${(process.env.X_ENABLE_REPLIES ?? "true") !== "false"}`);
