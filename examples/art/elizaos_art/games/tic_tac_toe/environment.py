@@ -39,7 +39,7 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
         self.config = config or TicTacToeConfig()
         self._rng: random.Random | None = None
         self._current_state: TicTacToeState | None = None
-        self._agent_player = Player(self.config.agent_player)
+        self._agent_player = Player(self.config.ai_player)
         self._initialized = False
 
     @property
@@ -202,13 +202,13 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
         if not available:
             return None
 
-        if self.config.opponent_type == "random":
+        if self.config.opponent == "random":
             if self._rng is None:
                 self._rng = random.Random()
             return self._rng.choice(available)
-        elif self.config.opponent_type == "optimal":
+        elif self.config.opponent == "optimal":
             return self._minimax_move(state)
-        elif self.config.opponent_type == "minimax":
+        elif self.config.opponent == "minimax":
             return self._minimax_move(state)
         else:
             return available[0]

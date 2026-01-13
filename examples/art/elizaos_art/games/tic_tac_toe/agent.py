@@ -239,6 +239,53 @@ class TicTacToeOptimalAgent(BaseAgent[TicTacToeState, TicTacToeAction]):
         return None
 
 
+class TicTacToeHeuristicAgent(BaseAgent[TicTacToeState, TicTacToeAction]):
+    """
+    Heuristic Tic-Tac-Toe agent using simple position priority.
+
+    Uses center > corners > edges strategy without full minimax search.
+    """
+
+    @property
+    def name(self) -> str:
+        return "TicTacToeHeuristic"
+
+    def get_system_prompt(self) -> str:
+        return ""
+
+    def format_action_prompt(
+        self,
+        state: TicTacToeState,
+        available_actions: list[TicTacToeAction],
+    ) -> str:
+        return ""
+
+    def parse_action(
+        self,
+        response: str,
+        available_actions: list[TicTacToeAction],
+    ) -> TicTacToeAction:
+        return available_actions[0]
+
+    async def decide(
+        self,
+        state: TicTacToeState,
+        available_actions: list[TicTacToeAction],
+    ) -> TicTacToeAction:
+        """Use simple heuristic: center > corners > edges."""
+        if not available_actions:
+            raise ValueError("No available actions")
+
+        # Priority: center, then corners, then edges
+        priority = [4, 0, 2, 6, 8, 1, 3, 5, 7]
+        for pos in priority:
+            action = TicTacToeAction(pos)
+            if action in available_actions:
+                return action
+
+        return available_actions[0]
+
+
 class TicTacToeRandomAgent(BaseAgent[TicTacToeState, TicTacToeAction]):
     """Random agent for baseline."""
 
