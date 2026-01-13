@@ -197,12 +197,24 @@ Respond with exactly one command from the available options."""
         In chat models, "user" represents external input the model must respond to.
         The game state IS external input - it's what the environment tells us.
         This maps naturally to the chat paradigm.
+        
+        WHY SET max_steps HERE:
+        The game's step limit is known from the first observation. We capture it
+        early so efficiency calculations are correct even if finish() isn't called
+        (e.g., during debugging or if an exception occurs mid-game).
 
         Args:
             state: Current game state
         """
         if self._current is None:
             raise RuntimeError("Must call start() before observe()")
+        
+        # Capture max_steps from the first observation
+        # WHY: Ensures trajectory has correct step limit for efficiency scoring
+        # even before finish() is called
+        if self._current.max_steps == 100:  # Still at default
+            self._current.max_steps = state.max_steps
+        
         content = self._format_state(state)
         self._current.turns.append(Turn(role="user", content=content))
 
