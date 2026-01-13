@@ -35,7 +35,10 @@ describe('ElizaOS Update Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, ()
 
   // Helper function to create project
   const makeProj = async (name: string) => {
-    bunExecSync(`elizaos create ${name} --yes`, { encoding: 'utf8' });
+    bunExecSync(`elizaos create ${name} --yes`, {
+      encoding: 'utf8',
+      timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+    });
     process.chdir(join(testTmpDir, name));
   };
 
