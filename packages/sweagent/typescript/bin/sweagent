@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+
+// This is a wrapper script for the sweagent CLI
+// It delegates to the actual CLI implementation in dist/run/cli.js
+
+require('../dist/run/cli.js');

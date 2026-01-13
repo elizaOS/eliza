@@ -1,0 +1,2 @@
+#!/usr/bin/env node
+require('../dist/edit-anthropic/str-replace-editor.js');
