@@ -19,48 +19,40 @@ async def get_character_context(
 
     sections.append(f"# Agent: {character.name}")
 
-    if character.bio:
-        bio_text = character.bio if isinstance(character.bio, str) else "\n".join(character.bio)
+    bio = getattr(character, "bio", None)
+    if bio:
+        bio_text = bio if isinstance(bio, str) else "\n".join(bio)
         sections.append(f"\n## Bio\n{bio_text}")
 
-    if character.adjectives:
-        adjectives = (
-            character.adjectives
-            if isinstance(character.adjectives, list)
-            else [character.adjectives]
-        )
-        sections.append(f"\n## Personality Traits\n{', '.join(adjectives)}")
+    adjectives = getattr(character, "adjectives", None)
+    if adjectives:
+        adjectives_list = adjectives if isinstance(adjectives, list) else [adjectives]
+        sections.append(f"\n## Personality Traits\n{', '.join(adjectives_list)}")
 
-    if character.lore:
-        lore_text = character.lore if isinstance(character.lore, str) else "\n".join(character.lore)
+    lore = getattr(character, "lore", None)
+    if lore:
+        lore_text = lore if isinstance(lore, str) else "\n".join(lore)
         sections.append(f"\n## Background\n{lore_text}")
 
-    if character.topics:
-        topics = character.topics if isinstance(character.topics, list) else [character.topics]
-        sections.append(f"\n## Knowledge Areas\n{', '.join(topics)}")
+    topics = getattr(character, "topics", None)
+    if topics:
+        topics_list = topics if isinstance(topics, list) else [topics]
+        sections.append(f"\n## Knowledge Areas\n{', '.join(topics_list)}")
 
-    if character.style:
+    style = getattr(character, "style", None)
+    if style:
         style_sections: list[str] = []
-        if character.style.all:
-            all_style = (
-                character.style.all
-                if isinstance(character.style.all, list)
-                else [character.style.all]
-            )
+        style_all = getattr(style, "all", None)
+        if style_all:
+            all_style = style_all if isinstance(style_all, list) else [style_all]
             style_sections.append(f"General: {', '.join(all_style)}")
-        if character.style.chat:
-            chat_style = (
-                character.style.chat
-                if isinstance(character.style.chat, list)
-                else [character.style.chat]
-            )
+        style_chat = getattr(style, "chat", None)
+        if style_chat:
+            chat_style = style_chat if isinstance(style_chat, list) else [style_chat]
             style_sections.append(f"Chat: {', '.join(chat_style)}")
-        if character.style.post:
-            post_style = (
-                character.style.post
-                if isinstance(character.style.post, list)
-                else [character.style.post]
-            )
+        style_post = getattr(style, "post", None)
+        if style_post:
+            post_style = style_post if isinstance(style_post, list) else [style_post]
             style_sections.append(f"Posts: {', '.join(post_style)}")
         if style_sections:
             sections.append("\n## Communication Style\n" + "\n".join(style_sections))
