@@ -276,10 +276,14 @@ class InMemoryDatabaseAdapter:
         self, memory: dict[str, Any] | Any, table_name: str, unique: bool = False
     ) -> str:
         # Convert Pydantic model to dict if needed
+        # WHY by_alias=True: Pydantic models use snake_case attrs (room_id) but define
+        # camelCase aliases (roomId). All filter functions expect camelCase keys.
+        # Without by_alias=True, memories get stored with snake_case keys but filters
+        # look for camelCase, causing get_memories() to never find anything.
         if hasattr(memory, "model_dump"):
-            memory_dict = memory.model_dump(exclude_none=True)
+            memory_dict = memory.model_dump(exclude_none=True, by_alias=True)
         elif hasattr(memory, "dict"):
-            memory_dict = memory.dict(exclude_none=True)
+            memory_dict = memory.dict(exclude_none=True, by_alias=True)
         elif isinstance(memory, dict):
             memory_dict = memory
         else:
@@ -310,10 +314,12 @@ class InMemoryDatabaseAdapter:
 
     async def update_memory(self, memory: dict[str, Any] | Any) -> bool:
         # Convert Pydantic model to dict if needed
+        # WHY by_alias=True: Same as create_memory - we need camelCase keys to match
+        # filter expectations in get_memories(), count_memories(), etc.
         if hasattr(memory, "model_dump"):
-            memory_dict = memory.model_dump(exclude_none=True)
+            memory_dict = memory.model_dump(exclude_none=True, by_alias=True)
         elif hasattr(memory, "dict"):
-            memory_dict = memory.dict(exclude_none=True)
+            memory_dict = memory.dict(exclude_none=True, by_alias=True)
         elif isinstance(memory, dict):
             memory_dict = memory
         else:
