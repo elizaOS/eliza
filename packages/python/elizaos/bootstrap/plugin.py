@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from elizaos.types import Plugin
 
+from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
 from .actions import BASIC_ACTIONS, EXTENDED_ACTIONS
 from .autonomy import (
     AutonomyService,
@@ -77,8 +78,8 @@ def create_bootstrap_plugin(config: CapabilityConfig | None = None) -> Plugin:
         config = CapabilityConfig()
 
     providers = _get_providers(config)
-    actions = _get_actions(config)
-    evaluators = _get_evaluators(config)
+    actions = [with_canonical_action_docs(a) for a in _get_actions(config)]
+    evaluators = [with_canonical_evaluator_docs(e) for e in _get_evaluators(config)]
     services = _get_services(config)
 
     async def init_plugin(

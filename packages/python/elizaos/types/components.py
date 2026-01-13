@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypeAlias
 
 from pydantic import BaseModel, Field
 
@@ -11,6 +11,9 @@ from elizaos.types.primitives import Content
 if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
     from elizaos.types.state import State
+
+
+JsonPrimitive: TypeAlias = str | int | float | bool | None
 
 
 class ActionExample(BaseModel):
@@ -24,10 +27,10 @@ class ActionExample(BaseModel):
 
 class ActionResult(BaseModel):
     text: str | None = Field(default=None, description="Optional text description of the result")
-    values: dict[str, Any] | None = Field(
+    values: dict[str, object] | None = Field(
         default=None, description="Values to merge into the state"
     )
-    data: dict[str, Any] | None = Field(
+    data: dict[str, object] | None = Field(
         default=None, description="Data payload containing action-specific results"
     )
     success: bool = Field(..., description="Whether the action succeeded")
@@ -99,9 +102,14 @@ class HandlerOptions(BaseModel):
         description="Optional stream chunk callback for streaming responses",
         exclude=True,  # Don't serialize the callback
     )
-    parameters: dict[str, Any] | None = Field(
+    parameters: dict[str, object] | None = Field(
         default=None,
         description="Validated input parameters extracted from conversation",
+    )
+    parameter_errors: list[str] | None = Field(
+        default=None,
+        alias="parameterErrors",
+        description="Parameter validation errors (if extraction/validation was incomplete)",
     )
 
     model_config = {"populate_by_name": True, "extra": "allow", "arbitrary_types_allowed": True}
@@ -137,10 +145,10 @@ class ActionParameterSchema(BaseModel):
     enum: list[str] | None = Field(
         default=None, description="Allowed values for enum-style parameters"
     )
-    properties: dict[str, Any] | None = Field(
+    properties: dict[str, ActionParameterSchema] | None = Field(
         default=None, description="For object types, define nested properties"
     )
-    items: dict[str, Any] | None = Field(
+    items: ActionParameterSchema | None = Field(
         default=None, description="For array types, define the item schema"
     )
     minimum: int | float | None = Field(default=None, description="Minimum value for numbers")
@@ -156,6 +164,9 @@ class ActionParameter(BaseModel):
     name: str = Field(..., description="Parameter name (used as key in parameters object)")
     description: str = Field(..., description="Human-readable description for LLM guidance")
     required: bool | None = Field(default=None, description="Whether this parameter is required")
+    examples: list[object] | None = Field(
+        default=None, description="Optional example values for this parameter"
+    )
     schema_def: ActionParameterSchema = Field(
         ..., alias="schema", description="JSON Schema for parameter validation"
     )
@@ -163,8 +174,7 @@ class ActionParameter(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-# Validated parameters passed to an action handler
-ActionParameters = dict[str, str | int | float | bool | None | dict[str, Any] | list[Any]]
+ActionParameters: TypeAlias = dict[str, object]
 
 
 class Action(BaseModel):
@@ -215,10 +225,10 @@ class ProviderResult(BaseModel):
     text: str | None = Field(
         default=None, description="Human-readable text for LLM prompt inclusion"
     )
-    values: dict[str, Any] | None = Field(
+    values: dict[str, object] | None = Field(
         default=None, description="Key-value pairs for template variable substitution"
     )
-    data: dict[str, Any] | None = Field(
+    data: dict[str, object] | None = Field(
         default=None, description="Structured data for programmatic access"
     )
 
