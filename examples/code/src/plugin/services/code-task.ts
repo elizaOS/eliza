@@ -185,6 +185,17 @@ export class CodeTaskService extends Service {
     this.emit("task:message", taskId, { renamed: true, name: next });
   }
 
+  async setTaskSubAgentType(taskId: string, subAgentType: SubAgentType): Promise<void> {
+    const task = await this.getTask(taskId);
+    if (!task) return;
+
+    const metadata = { ...task.metadata } as CodeTaskMetadata;
+    metadata.subAgentType = subAgentType;
+    await this.runtime.updateTask(taskId as UUID, { metadata });
+    this.emit("task:message", taskId, { subAgentType });
+    await this.appendOutput(taskId, `Sub-agent: ${subAgentType}`);
+  }
+
   async getTasksByStatus(status: TaskStatus): Promise<CodeTask[]> {
     const tasks = await this.getTasks();
     return tasks.filter(

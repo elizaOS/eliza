@@ -202,4 +202,27 @@ describe("TUI /task slash commands", () => {
     expect(started).toContain(task.id ?? "");
     expect(messages.join("\n")).toContain("Restarting:");
   });
+
+  test("/task agent sets sub-agent type on the current task", async () => {
+    const task = await service.createCodeTask("Runner", "desc");
+    service.setCurrentTask(task.id ?? null);
+
+    const ok = await handleTaskSlashCommand("agent opencode", {
+      service,
+      currentRoomId: "room",
+      addMessage: (_roomId, _role, content) => messages.push(content),
+      setCurrentTaskId: () => {},
+      setTaskPaneVisibility: (v) => {
+        taskPaneVisibility = v;
+      },
+      taskPaneVisibility,
+      showTaskPane: true,
+    });
+
+    expect(ok).toBe(true);
+    expect((await service.getTask(task.id ?? ""))?.metadata.subAgentType).toBe(
+      "opencode",
+    );
+    expect(messages.join("\n")).toContain("Set sub-agent");
+  });
 });

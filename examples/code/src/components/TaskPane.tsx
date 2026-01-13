@@ -3,7 +3,21 @@ import TextInput from "ink-text-input";
 import React, { useState } from "react";
 import { useStore } from "../lib/store.js";
 import type { CodeTaskService } from "../plugin/services/code-task.js";
-import type { TaskStatus, TaskTraceEvent, TaskUserStatus } from "../types.js";
+import type {
+  SubAgentType,
+  TaskStatus,
+  TaskTraceEvent,
+  TaskUserStatus,
+} from "../types.js";
+
+const SUB_AGENT_TYPES: SubAgentType[] = [
+  "eliza",
+  "claude-code",
+  "codex",
+  "opencode",
+  "sweagent",
+  "elizaos-native",
+];
 
 interface TaskPaneProps {
   isFocused: boolean;
@@ -225,6 +239,15 @@ export function TaskPane({
       if (!editMode) return;
       if (!currentTask?.id || !taskService) return;
 
+      // Cycle sub-agent
+      if (char === "a" && !key.ctrl && !key.meta) {
+        const current = currentTask.metadata?.subAgentType ?? "eliza";
+        const idx = Math.max(0, SUB_AGENT_TYPES.indexOf(current));
+        const next = SUB_AGENT_TYPES[(idx + 1) % SUB_AGENT_TYPES.length];
+        taskService.setTaskSubAgentType(currentTask.id, next).catch(() => {});
+        return;
+      }
+
       // Rename
       if (char === "r" && !key.ctrl && !key.meta) {
         setRenameDraft(currentTask.name);
@@ -383,6 +406,12 @@ export function TaskPane({
             </Box>
           )}
 
+          <Box marginY={0}>
+            <Text dimColor wrap="truncate">
+              Sub-agent: {currentTask.metadata?.subAgentType ?? "eliza"}
+            </Text>
+          </Box>
+
           {/* Output / Trace */}
           <Box
             flexDirection="column"
@@ -524,7 +553,7 @@ export function TaskPane({
             : confirm
               ? `Confirm ${confirm.type}? (y/n)`
               : editMode
-                ? "Edit: r rename • p pause/resume • c cancel • x delete • t trace • e exit • f finished"
+                ? "Edit: a agent • r rename • p pause/resume • c cancel • x delete • t trace • e exit • f finished"
                 : "↑↓ select • Enter switch • e edit • t trace • d done/open • f finished"}
         </Text>
       </Box>
