@@ -10,6 +10,7 @@ import { EmbeddingGenerationService } from "../services/embedding.ts";
 import { FollowUpService } from "../services/followUp.ts";
 import { RolodexService } from "../services/rolodex.ts";
 import { TaskService } from "../services/task.ts";
+import { TrajectoryLoggerService } from "../services/trajectoryLogger.ts";
 import { Role } from "../types/environment.ts";
 import { EventType } from "../types/events.ts";
 import type {
@@ -41,6 +42,7 @@ import type { ServiceClass } from "../types/plugin.ts";
 import { ChannelType, ContentType } from "../types/primitives.ts";
 import { getLocalServerUrl } from "../utils/node.ts";
 import { composePromptFromState, parseKeyValueXml } from "../utils.ts";
+import { withCanonicalActionDocs } from "../action-docs.ts";
 import * as actions from "./actions/index.ts";
 import * as autonomy from "./autonomy/index.ts";
 import * as evaluators from "./evaluators/index.ts";
@@ -1197,6 +1199,7 @@ const basic = {
     providers.attachmentsProvider,
     providers.capabilitiesProvider,
     providers.characterProvider,
+    providers.contextBenchProvider,
     providers.entitiesProvider,
     providers.evaluatorsProvider,
     providers.providersProvider,
@@ -1204,9 +1207,17 @@ const basic = {
     providers.timeProvider,
     providers.worldProvider,
   ],
-  actions: [actions.replyAction, actions.ignoreAction, actions.noneAction],
+  actions: [
+    withCanonicalActionDocs(actions.replyAction),
+    withCanonicalActionDocs(actions.ignoreAction),
+    withCanonicalActionDocs(actions.noneAction),
+  ],
   evaluators: [],
-  services: [TaskService, EmbeddingGenerationService] as ServiceClass[],
+  services: [
+    TaskService,
+    EmbeddingGenerationService,
+    TrajectoryLoggerService,
+  ] as ServiceClass[],
 };
 
 const extended = {
@@ -1221,21 +1232,21 @@ const extended = {
     providers.settingsProvider,
   ],
   actions: [
-    actions.addContactAction,
-    actions.choiceAction,
-    actions.followRoomAction,
-    actions.generateImageAction,
-    actions.muteRoomAction,
-    actions.removeContactAction,
-    actions.scheduleFollowUpAction,
-    actions.searchContactsAction,
-    actions.sendMessageAction,
-    actions.unfollowRoomAction,
-    actions.unmuteRoomAction,
-    actions.updateContactAction,
-    actions.updateEntityAction,
-    actions.updateRoleAction,
-    actions.updateSettingsAction,
+    withCanonicalActionDocs(actions.addContactAction),
+    withCanonicalActionDocs(actions.choiceAction),
+    withCanonicalActionDocs(actions.followRoomAction),
+    withCanonicalActionDocs(actions.generateImageAction),
+    withCanonicalActionDocs(actions.muteRoomAction),
+    withCanonicalActionDocs(actions.removeContactAction),
+    withCanonicalActionDocs(actions.scheduleFollowUpAction),
+    withCanonicalActionDocs(actions.searchContactsAction),
+    withCanonicalActionDocs(actions.sendMessageAction),
+    withCanonicalActionDocs(actions.unfollowRoomAction),
+    withCanonicalActionDocs(actions.unmuteRoomAction),
+    withCanonicalActionDocs(actions.updateContactAction),
+    withCanonicalActionDocs(actions.updateEntityAction),
+    withCanonicalActionDocs(actions.updateRoleAction),
+    withCanonicalActionDocs(actions.updateSettingsAction),
   ],
   evaluators: [
     evaluators.reflectionEvaluator,
@@ -1248,7 +1259,7 @@ const extended = {
 // Provides autonomous operation with continuous agent thinking loop
 const autonomyCapabilities = {
   providers: [autonomy.adminChatProvider, autonomy.autonomyStatusProvider],
-  actions: [autonomy.sendToAdminAction],
+  actions: [withCanonicalActionDocs(autonomy.sendToAdminAction)],
   evaluators: [],
   services: [autonomy.AutonomyService] as ServiceClass[],
   routes: autonomy.autonomyRoutes,

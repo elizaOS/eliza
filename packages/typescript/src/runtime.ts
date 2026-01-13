@@ -20,6 +20,7 @@ import {
   getStreamingContext,
   runWithStreamingContext,
 } from "./streaming-context";
+import { getTrajectoryContext } from "./trajectory-context";
 import {
   type Action,
   type ActionContext,
@@ -1335,55 +1336,19 @@ export class AgentRuntime implements IAgentRuntime {
             actionParamsByName.get(actionKey);
           const validation = validateActionParams(action, extractedParams);
           if (!validation.valid) {
-            const errorMsg = `Invalid parameters for action ${action.name}: ${validation.errors.join("; ")}`;
-            this.logger.error(
+            this.logger.warn(
               {
                 src: "agent",
                 agentId: this.agentId,
                 action: action.name,
                 errors: validation.errors,
               },
-              "Action parameter validation failed",
+              "Action parameter validation incomplete; continuing to handler",
             );
-
-            if (actionPlan?.steps?.[actionIndex]) {
-              actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-                status: "failed",
-                error: errorMsg,
-              });
-            }
-
-            const failureResult: ActionResult = {
-              success: false,
-              text: errorMsg,
-              error: errorMsg,
-              data: { actionName: action.name },
-            };
-            actionResults.push(failureResult);
-
-            const actionMemory: Memory = {
-              id: uuidv4() as UUID,
-              entityId: message.entityId,
-              roomId: message.roomId,
-              worldId: message.worldId,
-              content: {
-                thought: errorMsg,
-                source: "auto",
-                type: "action_result",
-                actionName: action.name,
-                actionStatus: "failed",
-                runId,
-              },
-            };
-            await this.createMemory(actionMemory, "messages");
-
-            actionIndex++;
-            continue;
+            options.parameterErrors = validation.errors;
           }
 
-          if (validation.params) {
-            options.parameters = validation.params;
-          }
+          if (validation.params) options.parameters = validation.params;
         }
 
         const actionId = uuidv4() as UUID;
@@ -2166,6 +2131,24 @@ export class AgentRuntime implements IAgentRuntime {
     onlyInclude = false,
     skipCache = false,
   ): Promise<State> {
+    const trajectoryStepIdFromMessage =
+      typeof message.metadata === "object" &&
+      message.metadata !== null &&
+      "trajectoryStepId" in message.metadata
+        ? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
+        : undefined;
+    const trajectoryStepId =
+      typeof trajectoryStepIdFromMessage === "string" &&
+      trajectoryStepIdFromMessage.trim() !== ""
+        ? trajectoryStepIdFromMessage
+        : getTrajectoryContext()?.trajectoryStepId;
+
+    // If we're running inside a trajectory step, always bypass the state cache so
+    // providers are executed and can be logged for training/benchmark traces.
+    if (trajectoryStepId) {
+      skipCache = true;
+    }
+
     const filterList = onlyInclude ? includeList : null;
     const emptyObj = {
       values: {},
@@ -2194,6 +2177,18 @@ export class AgentRuntime implements IAgentRuntime {
     const providersToGet = Array.from(
       new Set(this.providers.filter((p) => providerNames.has(p.name))),
     ).sort((a, b) => (a.position || 0) - (b.position || 0));
+
+    // Optional trajectory logging service (no-op by default).
+    type TrajectoryLogger = {
+      logProviderAccess: (params: {
+        stepId: string;
+        providerName: string;
+        data: Record<string, string | number | boolean | null>;
+        purpose: string;
+        query?: Record<string, string | number | boolean | null>;
+      }) => void;
+    };
+    const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
     const providerData = await Promise.all(
       providersToGet.map(async (provider) => {
         const start = Date.now();
@@ -2222,6 +2217,25 @@ export class AgentRuntime implements IAgentRuntime {
         };
       }),
     );
+
+    if (trajectoryStepId && trajLogger) {
+      const userText =
+        typeof message.content?.text === "string" ? message.content.text : "";
+      for (const r of providerData) {
+        try {
+          const textLen = typeof r.text === "string" ? r.text.length : 0;
+          trajLogger.logProviderAccess({
+            stepId: trajectoryStepId,
+            providerName: r.providerName,
+            data: { textLength: textLen },
+            purpose: "compose_state",
+            query: { message: userText.slice(0, 2000) },
+          });
+        } catch {
+          // Trajectory logging must never break core message flow.
+        }
+      }
+    }
     const currentProviderResults: Record<
       string,
       { text?: string; values?: Record<string, unknown>; providerName: string }
@@ -2992,6 +3006,51 @@ export class AgentRuntime implements IAgentRuntime {
         provider,
         fullText,
       );
+
+      // Optional trajectory logging: associate model calls with current trajectory step
+      try {
+        type TrajectoryLogger = {
+          logLlmCall: (params: {
+            stepId: string;
+            model: string;
+            systemPrompt: string;
+            userPrompt: string;
+            response: string;
+            temperature: number;
+            maxTokens: number;
+            purpose: string;
+            actionType: string;
+            latencyMs: number;
+          }) => void;
+        };
+        const stepId = getTrajectoryContext()?.trajectoryStepId;
+        const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
+        if (stepId && trajLogger) {
+          const tempRaw = isPlainObject(modelParams)
+            ? (modelParams as { temperature?: number }).temperature
+            : undefined;
+          const maxTokensRaw = isPlainObject(modelParams)
+            ? (modelParams as { maxTokens?: number }).maxTokens
+            : undefined;
+          trajLogger.logLlmCall({
+            stepId,
+            model: String(modelKey),
+            systemPrompt: typeof this.character.system === "string"
+              ? this.character.system
+              : "",
+            userPrompt: promptContent ?? "",
+            response: fullText,
+            temperature: typeof tempRaw === "number" ? tempRaw : 0,
+            maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+            purpose: "action",
+            actionType: "runtime.useModel",
+            latencyMs: Math.max(0, Math.round(elapsedTime)),
+          });
+        }
+      } catch {
+        // Trajectory logging must never break core model flow.
+      }
+
       return fullText as R;
     }
 
@@ -3021,6 +3080,49 @@ export class AgentRuntime implements IAgentRuntime {
       provider,
       response,
     );
+
+    // Optional trajectory logging: associate model calls with current trajectory step
+    try {
+      type TrajectoryLogger = {
+        logLlmCall: (params: {
+          stepId: string;
+          model: string;
+          systemPrompt: string;
+          userPrompt: string;
+          response: string;
+          temperature: number;
+          maxTokens: number;
+          purpose: string;
+          actionType: string;
+          latencyMs: number;
+        }) => void;
+      };
+      const stepId = getTrajectoryContext()?.trajectoryStepId;
+      const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
+      if (stepId && trajLogger) {
+        const tempRaw = isPlainObject(modelParams)
+          ? (modelParams as { temperature?: number }).temperature
+          : undefined;
+        const maxTokensRaw = isPlainObject(modelParams)
+          ? (modelParams as { maxTokens?: number }).maxTokens
+          : undefined;
+        trajLogger.logLlmCall({
+          stepId,
+          model: String(modelKey),
+          systemPrompt:
+            typeof this.character.system === "string" ? this.character.system : "",
+          userPrompt: promptContent ?? "",
+          response: typeof response === "string" ? response : JSON.stringify(response),
+          temperature: typeof tempRaw === "number" ? tempRaw : 0,
+          maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+          purpose: "action",
+          actionType: "runtime.useModel",
+          latencyMs: Math.max(0, Math.round(elapsedTime)),
+        });
+      }
+    } catch {
+      // Trajectory logging must never break core model flow.
+    }
     return response as R;
   }
 

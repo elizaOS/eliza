@@ -125,8 +125,12 @@ export function formatActionParameters(parameters: ActionParameter[]): string {
       const enumStr = param.schema.enum
         ? ` [values: ${param.schema.enum.join(", ")}]`
         : "";
+      const examplesStr =
+        param.examples && param.examples.length > 0
+          ? ` [examples: ${param.examples.map((v) => JSON.stringify(v)).join(", ")}]`
+          : "";
 
-      return `    - ${param.name}${requiredStr}: ${param.description} (${typeStr}${enumStr}${defaultStr})`;
+      return `    - ${param.name}${requiredStr}: ${param.description} (${typeStr}${enumStr}${defaultStr}${examplesStr})`;
     })
     .join("\n");
 }
