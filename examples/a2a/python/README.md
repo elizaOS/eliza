@@ -4,18 +4,22 @@ An HTTP server that exposes an elizaOS agent for agent-to-agent communication us
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+ (required by elizaos packages)
 - OpenAI API key
 
 ## Setup
 
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Use the existing Python venv from packages/python (recommended)
+source packages/python/venv/bin/activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Or create a new venv and install all required packages:
+python -m venv venv
+source venv/bin/activate
+pip install -e packages/python
+pip install -e plugins/plugin-openai/python
+pip install -e plugins/plugin-inmemorydb/python
+pip install -r examples/a2a/python/requirements.txt
 
 # Set up environment
 export OPENAI_API_KEY=your-api-key
