@@ -79,7 +79,8 @@ impl RelationshipExtractionEvaluator {
     }
 }
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Evaluator for RelationshipExtractionEvaluator {
     fn name(&self) -> &'static str {
         "RELATIONSHIP_EXTRACTION"

@@ -13,7 +13,8 @@ use super::Action;
 /// Action for unmuting a room.
 pub struct UnmuteRoomAction;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Action for UnmuteRoomAction {
     fn name(&self) -> &'static str {
         "UNMUTE_ROOM"

@@ -11,7 +11,8 @@ use super::Provider;
 /// Provider for recent message history.
 pub struct RecentMessagesProvider;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Provider for RecentMessagesProvider {
     fn name(&self) -> &'static str {
         "RECENT_MESSAGES"

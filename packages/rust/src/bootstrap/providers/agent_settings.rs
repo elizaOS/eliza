@@ -16,7 +16,8 @@ const SENSITIVE_PATTERNS: &[&str] = &[
 /// Provider for agent settings.
 pub struct AgentSettingsProvider;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Provider for AgentSettingsProvider {
     fn name(&self) -> &'static str {
         "AGENT_SETTINGS"

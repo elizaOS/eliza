@@ -12,7 +12,8 @@ use super::Provider;
 /// Provider for current time information.
 pub struct CurrentTimeProvider;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Provider for CurrentTimeProvider {
     fn name(&self) -> &'static str {
         "CURRENT_TIME"

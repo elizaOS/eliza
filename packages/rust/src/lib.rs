@@ -30,6 +30,7 @@
 #![warn(rustdoc::missing_crate_level_docs)]
 
 pub mod character;
+pub mod platform;
 pub mod plugin;
 pub mod prompts;
 pub mod runtime;
@@ -68,6 +69,9 @@ pub use types::task::{Task, TaskStatus};
 
 // Re-export plugin types
 pub use types::plugin::Plugin;
+
+// Re-export platform utilities
+pub use platform::{AnyArc, PlatformService};
 
 /// Initialize the library (sets up panic hooks for WASM, logging, etc.)
 pub fn init() {

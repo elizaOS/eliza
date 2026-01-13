@@ -21,7 +21,7 @@ interface WasmModule {
   WasmMemory: {
     fromJson(json: string): {
       toJson: () => string;
-      id: string | null;
+      id: string | undefined;
       entityId: string;
       roomId: string;
       content: string;
@@ -31,13 +31,13 @@ interface WasmModule {
     fromJson(json: string): {
       toJson: () => string;
       name: string;
-      system: string | null;
+      system: string | undefined;
     };
   };
   WasmAgent: {
     fromJson(json: string): {
       toJson: () => string;
-      id: string;
+      id: string | undefined;
       name: string;
     };
   };
@@ -45,7 +45,7 @@ interface WasmModule {
     fromJson(json: string): {
       toJson: () => string;
       name: string;
-      description: string | null;
+      description: string | undefined;
     };
   };
   parseCharacter(
@@ -217,6 +217,8 @@ describeWasm("WASM Bindings", () => {
       bio: "A test agent",
       status: "active",
       enabled: true,
+      createdAt: 1704067200000,
+      updatedAt: 1704067200000,
     });
 
     it("should parse agent from JSON", () => {

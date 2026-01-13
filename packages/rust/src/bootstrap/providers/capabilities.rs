@@ -11,7 +11,8 @@ use super::Provider;
 /// Provider for agent capabilities.
 pub struct CapabilitiesProvider;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Provider for CapabilitiesProvider {
     fn name(&self) -> &'static str {
         "CAPABILITIES"

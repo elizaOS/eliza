@@ -24,7 +24,8 @@ const SENSITIVE_PATTERNS: &[&str] = &[
 /// Note: This provider intentionally filters out sensitive values.
 pub struct SettingsProvider;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Provider for SettingsProvider {
     fn name(&self) -> &'static str {
         "SETTINGS"
