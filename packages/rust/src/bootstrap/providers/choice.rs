@@ -11,7 +11,8 @@ use super::Provider;
 /// Provider for choice options.
 pub struct ChoiceProvider;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Provider for ChoiceProvider {
     fn name(&self) -> &'static str {
         "CHOICE"

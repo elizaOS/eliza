@@ -46,9 +46,41 @@ use crate::types::{ActionResult, Memory, State};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-/// Trait that all actions must implement.
+/// Trait that all actions must implement (Native version).
+///
+/// # Platform Differences
+///
+/// - **Native**: Requires `Send + Sync` for thread-safe sharing
+/// - **WASM**: No bounds (single-threaded)
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 pub trait Action: Send + Sync {
+    /// Get the action name.
+    fn name(&self) -> &'static str;
+
+    /// Get action similes (alternative names).
+    fn similes(&self) -> &[&'static str];
+
+    /// Get action description.
+    fn description(&self) -> &'static str;
+
+    /// Validate whether the action can be executed.
+    async fn validate(&self, runtime: &dyn IAgentRuntime, message: &Memory) -> bool;
+
+    /// Execute the action.
+    async fn handler(
+        &self,
+        runtime: Arc<dyn IAgentRuntime>,
+        message: &Memory,
+        state: Option<&State>,
+        responses: Option<&[Memory]>,
+    ) -> PluginResult<ActionResult>;
+}
+
+/// Trait that all actions must implement (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait(?Send)]
+pub trait Action {
     /// Get the action name.
     fn name(&self) -> &'static str;
 

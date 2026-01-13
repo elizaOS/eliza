@@ -12,7 +12,8 @@ use super::Action;
 /// Action to remove a contact from the rolodex.
 pub struct RemoveContactAction;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Action for RemoveContactAction {
     fn name(&self) -> &'static str {
         "REMOVE_CONTACT"

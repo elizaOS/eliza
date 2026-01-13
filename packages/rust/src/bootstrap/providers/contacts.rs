@@ -11,7 +11,8 @@ use super::Provider;
 /// Provider for contact information from the rolodex.
 pub struct ContactsProvider;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Provider for ContactsProvider {
     fn name(&self) -> &'static str {
         "CONTACTS"

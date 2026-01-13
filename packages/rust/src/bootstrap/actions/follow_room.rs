@@ -13,7 +13,8 @@ use super::Action;
 /// Action for following a room.
 pub struct FollowRoomAction;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Action for FollowRoomAction {
     fn name(&self) -> &'static str {
         "FOLLOW_ROOM"

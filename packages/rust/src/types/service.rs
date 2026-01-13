@@ -56,7 +56,13 @@ pub struct ServiceDefinition {
     pub config: Option<Metadata>,
 }
 
-/// Service trait for all services
+/// Service trait for all services (Native version).
+///
+/// # Platform Differences
+///
+/// - **Native**: Requires `Send + Sync` for thread-safe sharing
+/// - **WASM**: No bounds (single-threaded)
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 pub trait Service: Send + Sync {
     /// Get the service type
@@ -74,8 +80,36 @@ pub trait Service: Send + Sync {
     async fn stop(&self) -> Result<(), anyhow::Error>;
 }
 
-/// Typed service trait for services with specific input/output types
+/// Service trait for all services (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait(?Send)]
+pub trait Service {
+    /// Get the service type
+    fn service_type(&self) -> &str;
+
+    /// Get the capability description
+    fn capability_description(&self) -> &str;
+
+    /// Get the service configuration
+    fn config(&self) -> Option<&Metadata> {
+        None
+    }
+
+    /// Stop the service
+    async fn stop(&self) -> Result<(), anyhow::Error>;
+}
+
+/// Typed service trait for services with specific input/output types (Native version).
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
+pub trait TypedService<Input, Output>: Service {
+    /// Process an input
+    async fn process(&self, input: Input) -> Result<Output, anyhow::Error>;
+}
+
+/// Typed service trait for services with specific input/output types (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait(?Send)]
 pub trait TypedService<Input, Output>: Service {
     /// Process an input
     async fn process(&self, input: Input) -> Result<Output, anyhow::Error>;

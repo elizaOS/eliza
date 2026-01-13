@@ -13,9 +13,37 @@ use crate::runtime::IAgentRuntime;
 use crate::types::{EvaluatorResult, Memory, State};
 use async_trait::async_trait;
 
-/// Trait that all evaluators must implement.
+/// Trait that all evaluators must implement (Native version).
+///
+/// # Platform Differences
+///
+/// - **Native**: Requires `Send + Sync` for thread-safe sharing
+/// - **WASM**: No bounds (single-threaded)
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 pub trait Evaluator: Send + Sync {
+    /// Get the evaluator name.
+    fn name(&self) -> &'static str;
+
+    /// Get evaluator description.
+    fn description(&self) -> &'static str;
+
+    /// Validate whether evaluation can be performed.
+    async fn validate(&self, runtime: &dyn IAgentRuntime, message: &Memory) -> bool;
+
+    /// Perform the evaluation.
+    async fn evaluate(
+        &self,
+        runtime: &dyn IAgentRuntime,
+        message: &Memory,
+        state: Option<&State>,
+    ) -> PluginResult<EvaluatorResult>;
+}
+
+/// Trait that all evaluators must implement (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait(?Send)]
+pub trait Evaluator {
     /// Get the evaluator name.
     fn name(&self) -> &'static str;
 

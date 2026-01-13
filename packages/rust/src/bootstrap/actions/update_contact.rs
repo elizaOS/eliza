@@ -12,7 +12,8 @@ use super::Action;
 /// Action to update contact information in the rolodex.
 pub struct UpdateContactAction;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Action for UpdateContactAction {
     fn name(&self) -> &'static str {
         "UPDATE_CONTACT"

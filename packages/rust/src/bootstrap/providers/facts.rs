@@ -11,7 +11,8 @@ use super::Provider;
 /// Provider for known facts about entities.
 pub struct FactsProvider;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Provider for FactsProvider {
     fn name(&self) -> &'static str {
         "FACTS"

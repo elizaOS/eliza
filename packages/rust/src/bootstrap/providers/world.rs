@@ -11,7 +11,8 @@ use super::Provider;
 /// Provider for world/server context.
 pub struct WorldProvider;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Provider for WorldProvider {
     fn name(&self) -> &'static str {
         "WORLD"

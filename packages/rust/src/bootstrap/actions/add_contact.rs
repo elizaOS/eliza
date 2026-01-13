@@ -12,7 +12,8 @@ use super::Action;
 /// Action to add a new contact to the rolodex.
 pub struct AddContactAction;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Action for AddContactAction {
     fn name(&self) -> &'static str {
         "ADD_CONTACT"

@@ -31,9 +31,32 @@ pub enum ServiceType {
     External,
 }
 
-/// Trait that all services must implement.
+/// Trait that all services must implement (Native version).
+///
+/// # Platform Differences
+///
+/// - **Native**: Requires `Send + Sync` for thread-safe sharing
+/// - **WASM**: No bounds (single-threaded)
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 pub trait Service: Send + Sync {
+    /// Get the service name.
+    fn name(&self) -> &'static str;
+
+    /// Get the service type.
+    fn service_type(&self) -> ServiceType;
+
+    /// Start the service.
+    async fn start(&mut self, runtime: Arc<dyn IAgentRuntime>) -> PluginResult<()>;
+
+    /// Stop the service.
+    async fn stop(&mut self) -> PluginResult<()>;
+}
+
+/// Trait that all services must implement (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait(?Send)]
+pub trait Service {
     /// Get the service name.
     fn name(&self) -> &'static str;
 

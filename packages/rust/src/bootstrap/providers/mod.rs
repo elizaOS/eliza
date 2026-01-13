@@ -51,9 +51,39 @@ use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 use async_trait::async_trait;
 
-/// Trait that all providers must implement.
+/// Trait that all providers must implement (Native version).
+///
+/// # Platform Differences
+///
+/// - **Native**: Requires `Send + Sync` for thread-safe sharing
+/// - **WASM**: No bounds (single-threaded)
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 pub trait Provider: Send + Sync {
+    /// Get the provider name.
+    fn name(&self) -> &'static str;
+
+    /// Get provider description.
+    fn description(&self) -> &'static str;
+
+    /// Whether this provider is dynamic (changes frequently).
+    fn is_dynamic(&self) -> bool {
+        true
+    }
+
+    /// Get the provider context.
+    async fn get(
+        &self,
+        runtime: &dyn IAgentRuntime,
+        message: &Memory,
+        state: Option<&State>,
+    ) -> PluginResult<ProviderResult>;
+}
+
+/// Trait that all providers must implement (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait(?Send)]
+pub trait Provider {
     /// Get the provider name.
     fn name(&self) -> &'static str;
 

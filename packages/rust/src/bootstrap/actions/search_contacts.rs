@@ -12,7 +12,8 @@ use super::Action;
 /// Action to search contacts in the rolodex.
 pub struct SearchContactsAction;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Action for SearchContactsAction {
     fn name(&self) -> &'static str {
         "SEARCH_CONTACTS"

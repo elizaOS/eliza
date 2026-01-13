@@ -119,7 +119,8 @@ pub struct WalletPortfolio {
 }
 
 /// Token data service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait TokenDataService: Service {
     /// Fetch detailed information for a single token
     async fn get_token_details(
@@ -153,7 +154,8 @@ pub trait TokenDataService: Service {
 }
 
 /// Wallet service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait WalletService: Service {
     /// Get wallet portfolio
     async fn get_portfolio(&self, owner: Option<&str>) -> Result<WalletPortfolio, anyhow::Error>;
@@ -307,7 +309,8 @@ pub struct RemoveLiquidityParams {
 }
 
 /// Liquidity pool service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait LpService: Service {
     /// Get DEX name
     fn get_dex_name(&self) -> &str;
@@ -509,7 +512,8 @@ pub struct VoiceInfo {
 }
 
 /// Transcription service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait TranscriptionService: Service {
     /// Transcribe audio to text
     async fn transcribe_audio(
@@ -678,7 +682,8 @@ pub struct VideoProcessingOptions {
 }
 
 /// Video service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait VideoService: Service {
     /// Get video info
     async fn get_video_info(&self, url: &str) -> Result<VideoInfo, anyhow::Error>;
@@ -872,7 +877,8 @@ pub struct TypeOptions {
 }
 
 /// Browser service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait BrowserService: Service {
     /// Navigate to URL
     async fn navigate(
@@ -1017,7 +1023,8 @@ pub struct PdfConversionOptions {
 }
 
 /// PDF service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait PdfService: Service {
     /// Extract text from PDF
     async fn extract_text(&self, pdf: &[u8]) -> Result<PdfExtractionResult, anyhow::Error>;
@@ -1166,7 +1173,8 @@ pub struct PageInfo {
 }
 
 /// Web search service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait WebSearchService: Service {
     /// Perform web search
     async fn search(
@@ -1397,7 +1405,8 @@ pub struct EmailAccount {
 }
 
 /// Email service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait EmailService: Service {
     /// Send email
     async fn send_email(
@@ -1740,7 +1749,8 @@ pub struct MessageChannel {
 }
 
 /// Messaging service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait MessagingService: Service {
     /// Send message
     async fn send_message(
@@ -2195,7 +2205,8 @@ pub struct PostAnalytics {
 }
 
 /// Post service trait
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait PostService: Service {
     /// Create post
     async fn create_post(

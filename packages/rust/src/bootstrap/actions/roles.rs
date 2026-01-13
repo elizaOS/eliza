@@ -34,7 +34,8 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
 /// Action for updating entity roles.
 pub struct UpdateRoleAction;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Action for UpdateRoleAction {
     fn name(&self) -> &'static str {
         "UPDATE_ROLE"

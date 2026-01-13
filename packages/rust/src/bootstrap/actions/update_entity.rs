@@ -15,7 +15,8 @@ use super::Action;
 /// Action for updating entity information.
 pub struct UpdateEntityAction;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Action for UpdateEntityAction {
     fn name(&self) -> &'static str {
         "UPDATE_ENTITY"

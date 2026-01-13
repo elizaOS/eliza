@@ -13,7 +13,8 @@ use super::Action;
 /// Action to schedule a follow-up reminder.
 pub struct ScheduleFollowUpAction;
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl Action for ScheduleFollowUpAction {
     fn name(&self) -> &'static str {
         "SCHEDULE_FOLLOW_UP"
