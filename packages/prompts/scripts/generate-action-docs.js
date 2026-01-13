@@ -279,6 +279,16 @@ function escapeRustRawString(content) {
   return { content, hashCount };
 }
 
+/**
+ * Escape a string for use in Python triple-quoted string.
+ * JSON won't normally contain `"""` but we escape defensively.
+ * @param {string} content
+ * @returns {string}
+ */
+function escapePythonTripleQuoted(content) {
+  return content.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
+}
+
 function generateTypeScript(actionsSpec, evaluatorsSpec) {
   const outDir = path.join(
     REPO_ROOT,
@@ -395,12 +405,25 @@ function generatePython(actionsSpec, evaluatorsSpec) {
     fs.writeFileSync(initPath, '"""Auto-generated module package."""\n');
   }
 
+  const actionsJson = JSON.stringify(
+    { version: actionsSpec.version, actions: actionsSpec.actions },
+    null,
+    2,
+  );
+  const evaluatorsJson = JSON.stringify(
+    { version: evaluatorsSpec.version, evaluators: evaluatorsSpec.evaluators },
+    null,
+    2,
+  );
+
   const content = `"""
 Auto-generated canonical action/evaluator docs.
 DO NOT EDIT - Generated from packages/prompts/specs/**.
 """
 
 from __future__ import annotations
+
+import json
 
 from typing import Literal, TypedDict
 
@@ -469,17 +492,11 @@ class EvaluatorDoc(TypedDict, total=False):
 core_actions_spec_version: str = ${JSON.stringify(actionsSpec.version)}
 core_evaluators_spec_version: str = ${JSON.stringify(evaluatorsSpec.version)}
 
-core_action_docs: dict[str, object] = ${JSON.stringify(
-    { version: actionsSpec.version, actions: actionsSpec.actions },
-    null,
-    2,
-  )}
+_CORE_ACTION_DOCS_JSON = """${escapePythonTripleQuoted(actionsJson)}"""
+_CORE_EVALUATOR_DOCS_JSON = """${escapePythonTripleQuoted(evaluatorsJson)}"""
 
-core_evaluator_docs: dict[str, object] = ${JSON.stringify(
-    { version: evaluatorsSpec.version, evaluators: evaluatorsSpec.evaluators },
-    null,
-    2,
-  )}
+core_action_docs: dict[str, object] = json.loads(_CORE_ACTION_DOCS_JSON)
+core_evaluator_docs: dict[str, object] = json.loads(_CORE_EVALUATOR_DOCS_JSON)
 
 __all__ = [
     "ActionDoc",
