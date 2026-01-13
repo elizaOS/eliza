@@ -396,11 +396,11 @@ Respond with ONLY the action command, nothing else.""",
         try:
             from elizaos import AgentRuntime
             from elizaos_plugin_openai import get_openai_plugin
-            from elizaos_plugin_inmemorydb import get_inmemorydb_plugin
+            from elizaos_plugin_inmemorydb import plugin as inmemorydb_plugin
 
             self._runtime = AgentRuntime(
                 character=self.character,
-                plugins=[get_openai_plugin(), get_inmemorydb_plugin()],
+                plugins=[get_openai_plugin(), inmemorydb_plugin],
             )
             await self._runtime.initialize()
             self._initialized = True
