@@ -37,8 +37,8 @@ class OpenAIPlugin:
         self,
         api_key: str | None = None,
         base_url: str = "https://api.openai.com/v1",
-        small_model: str = "gpt-5-mini",
-        large_model: str = "gpt-5",
+        small_model: str = "gpt-4o-mini",
+        large_model: str = "gpt-4o",
         embedding_model: str = "text-embedding-3-small",
         embedding_dimensions: int = 1536,
     ) -> None:

@@ -178,18 +178,31 @@ class InMemoryDatabaseAdapter:
            get_memories(room_id="...", count=10)
 
         When both are provided, explicit kwargs take precedence over params dict values.
+        Note: We use 'is None' checks to properly handle falsy values like 0 or empty string.
         """
         if params:
-            entity_id = entity_id or params.get("entityId") or params.get("entity_id")
-            agent_id = agent_id or params.get("agentId") or params.get("agent_id")
-            room_id = room_id or params.get("roomId") or params.get("room_id")
-            world_id = world_id or params.get("worldId") or params.get("world_id")
-            table_name = table_name or params.get("tableName") or params.get("table_name")
-            count = count if count is not None else (params.get("limit") or params.get("count"))
-            offset = offset if offset is not None else params.get("offset")
-            unique = unique if unique is not None else params.get("unique")
-            start = start if start is not None else params.get("start")
-            end = end if end is not None else params.get("end")
+            # Use 'is None' to allow falsy values (0, "") to take precedence
+            if entity_id is None:
+                entity_id = params.get("entityId") or params.get("entity_id")
+            if agent_id is None:
+                agent_id = params.get("agentId") or params.get("agent_id")
+            if room_id is None:
+                room_id = params.get("roomId") or params.get("room_id")
+            if world_id is None:
+                world_id = params.get("worldId") or params.get("world_id")
+            if table_name is None:
+                table_name = params.get("tableName") or params.get("table_name")
+            if count is None:
+                # Check limit first, then count - use 'in' to handle 0 values
+                count = params.get("limit") if "limit" in params else params.get("count")
+            if offset is None:
+                offset = params.get("offset")
+            if unique is None:
+                unique = params.get("unique")
+            if start is None:
+                start = params.get("start")
+            if end is None:
+                end = params.get("end")
 
         memories = await self._storage.get_where(
             COLLECTIONS.MEMORIES,
@@ -210,9 +223,11 @@ class InMemoryDatabaseAdapter:
 
         memories.sort(key=lambda m: m.get("createdAt") or 0, reverse=True)
 
-        if offset:
+        # Use 'is not None' to handle offset=0 and count=0 correctly
+        # count=0 should return empty list, not all memories
+        if offset is not None and offset > 0:
             memories = memories[offset:]
-        if count:
+        if count is not None:
             memories = memories[:count]
 
         return memories
