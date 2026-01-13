@@ -178,7 +178,8 @@ In each step, decide:
 
 1. **Which providers (if any)** should be called to gather necessary data.
 2. **Which action (if any)** should be executed after providers return.
-3. Decide whether the task is complete. If so, set \`isFinish: true\`. Do not select the \`REPLY\` action; replies are handled separately after task completion.
+3. **What parameters** the action requires (if any).
+4. Decide whether the task is complete. If so, set \`isFinish: true\`. Do not select the \`REPLY\` action; replies are handled separately after task completion.
 
 You can select **multiple providers** and at most **one action** per step.
 
@@ -186,7 +187,7 @@ If the task is fully resolved and no further steps are needed, mark the step as 
 
 ---
 
-{{actionsWithDescriptions}}
+{{actionsWithParams}}
 
 {{providersWithDescriptions}}
 
@@ -196,7 +197,8 @@ These are the actions or data provider calls that have already been used in this
 
 <keys>
 "thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
-"action"  Name of the action to execute after providers return (can be empty if no action is needed).
+"action" Name of the action to execute after providers return. Omit or use empty string "" if isFinish: true or no action needed.
+"parameters" JSON object with exact parameter names and values for the action. Use empty object {} if no parameters are needed.
 "providers" List of provider names to call in this step (can be empty if none are needed).
 "isFinish" Set to true only if the task is fully complete.
 </keys>
@@ -206,7 +208,13 @@ These are the actions or data provider calls that have already been used in this
 <output>
 <response>
   <thought>Your thought here</thought>
-  <action>ACTION</action>
+  <action>ACTION_NAME or ""</action>
+  <parameters>
+    {
+      "param1": "value1",
+      "param2": "value2"
+    }
+  </parameters>
   <providers>PROVIDER1,PROVIDER2</providers>
   <isFinish>true | false</isFinish>
 </response>

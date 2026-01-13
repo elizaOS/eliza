@@ -504,6 +504,183 @@ describe('Multi-Step Workflow Functionality', () => {
       expect(result.responseContent).toBeDefined();
     });
   });
+
+  describe('Retry Logic', () => {
+    it('should retry XML parsing on failure', async () => {
+      // Mock parseKeyValueXml to fail twice then succeed
+      mockParseKeyValueXml
+        .mockReturnValueOnce(null) // First attempt fails
+        .mockReturnValueOnce(null) // Second attempt fails
+        .mockReturnValueOnce({
+          // Third attempt succeeds
+          thought: 'Parsed after retries',
+          providers: [],
+          action: null,
+          isFinish: true,
+        });
+
+      const result = await runMultiStepCoreTestWithRetry({
+        runtime: mockRuntime,
+        message: testMessage,
+        state: testState,
+        callback: mockCallback,
+        maxParseRetries: 3,
+      });
+
+      // Verify it eventually succeeded
+      expect(result.parseAttempts).toBe(3);
+      expect(result.success).toBe(true);
+    });
+
+    it('should fail after max parse retries exceeded', async () => {
+      // Mock parseKeyValueXml to always fail
+      mockParseKeyValueXml.mockReturnValue(null);
+
+      const result = await runMultiStepCoreTestWithRetry({
+        runtime: mockRuntime,
+        message: testMessage,
+        state: testState,
+        callback: mockCallback,
+        maxParseRetries: 3,
+      });
+
+      // Verify it failed after max retries
+      expect(result.parseAttempts).toBe(3);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to parse step result after 3 attempts');
+    });
+
+    it('should use fallback response when summary parsing fails', async () => {
+      // First mock successful step parsing that finishes
+      mockParseKeyValueXml
+        .mockReturnValueOnce({
+          thought: 'Task complete',
+          providers: [],
+          action: null,
+          isFinish: true,
+        })
+        // Then mock summary parsing to fail
+        .mockReturnValue(null);
+
+      const result = await runMultiStepCoreTestWithSummaryRetry({
+        runtime: mockRuntime,
+        message: testMessage,
+        state: testState,
+        callback: mockCallback,
+        maxSummaryRetries: 3,
+      });
+
+      // Verify fallback response was used
+      expect(result.responseContent?.text).toContain('encountered an issue generating the summary');
+    });
+  });
+
+  describe('Parameter Extraction', () => {
+    it('should extract and store parameters from parsed step', async () => {
+      const testParams = { query: 'test query', limit: 10 };
+
+      mockParseKeyValueXml
+        .mockReturnValueOnce({
+          thought: 'Execute action with params',
+          providers: [],
+          action: 'SEARCH_ACTION',
+          parameters: testParams,
+          isFinish: false,
+        })
+        .mockReturnValueOnce({
+          thought: 'Task complete',
+          providers: [],
+          action: null,
+          isFinish: true,
+        });
+
+      // Mock final summary
+      mockParseKeyValueXml.mockReturnValueOnce({
+        thought: 'Summary',
+        text: 'Final response',
+      });
+
+      const result = await runMultiStepCoreTestWithParams({
+        runtime: mockRuntime,
+        message: testMessage,
+        state: testState,
+        callback: mockCallback,
+      });
+
+      // Verify parameters were stored in state
+      expect(result.extractedParams).toEqual(testParams);
+      expect(result.state.data.actionParams).toEqual(testParams);
+    });
+
+    it('should parse parameters from JSON string', async () => {
+      const testParams = { query: 'test query', limit: 10 };
+
+      mockParseKeyValueXml
+        .mockReturnValueOnce({
+          thought: 'Execute action with string params',
+          providers: [],
+          action: 'SEARCH_ACTION',
+          parameters: JSON.stringify(testParams),
+          isFinish: false,
+        })
+        .mockReturnValueOnce({
+          thought: 'Task complete',
+          providers: [],
+          action: null,
+          isFinish: true,
+        });
+
+      // Mock final summary
+      mockParseKeyValueXml.mockReturnValueOnce({
+        thought: 'Summary',
+        text: 'Final response',
+      });
+
+      const result = await runMultiStepCoreTestWithParams({
+        runtime: mockRuntime,
+        message: testMessage,
+        state: testState,
+        callback: mockCallback,
+      });
+
+      // Verify parameters were parsed and stored
+      expect(result.extractedParams).toEqual(testParams);
+    });
+
+    it('should handle invalid JSON parameters gracefully', async () => {
+      mockParseKeyValueXml
+        .mockReturnValueOnce({
+          thought: 'Execute action with invalid params',
+          providers: [],
+          action: 'SEARCH_ACTION',
+          parameters: 'not valid json',
+          isFinish: false,
+        })
+        .mockReturnValueOnce({
+          thought: 'Task complete',
+          providers: [],
+          action: null,
+          isFinish: true,
+        });
+
+      // Mock final summary
+      mockParseKeyValueXml.mockReturnValueOnce({
+        thought: 'Summary',
+        text: 'Final response',
+      });
+
+      const result = await runMultiStepCoreTestWithParams({
+        runtime: mockRuntime,
+        message: testMessage,
+        state: testState,
+        callback: mockCallback,
+      });
+
+      // Verify workflow continued despite invalid params
+      expect(result.extractedParams).toEqual({});
+      expect(mockRuntime.logger.warn).toHaveBeenCalled();
+    });
+  });
 });
 
 // Test helper function to simulate the multi-step core execution
@@ -707,5 +884,255 @@ async function runMultiStepCoreTest({
     responseMessages,
     state: accumulatedState,
     mode: responseContent ? 'simple' : 'none',
+  };
+}
+
+// Test helper function to test retry logic for XML parsing
+async function runMultiStepCoreTestWithRetry({
+  runtime,
+  message,
+  state,
+  callback,
+  maxParseRetries = 5,
+}: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: any;
+  callback: any;
+  maxParseRetries?: number;
+}) {
+  let accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+  accumulatedState.data.actionResults = [];
+
+  const prompt = mockComposePromptFromState({
+    state: accumulatedState,
+    template: 'multiStepDecisionTemplate',
+  });
+
+  let parseAttempts = 0;
+  let parsedStep: any = null;
+  let error: string | undefined;
+
+  for (let attempt = 1; attempt <= maxParseRetries; attempt++) {
+    parseAttempts = attempt;
+    await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    parsedStep = mockParseKeyValueXml('');
+
+    if (parsedStep) {
+      runtime.logger.debug(`[MultiStep] Successfully parsed on attempt ${attempt}`);
+      break;
+    } else {
+      runtime.logger.warn(`[MultiStep] Failed to parse on attempt ${attempt}/${maxParseRetries}`);
+      if (attempt < maxParseRetries) {
+        // Simulate retry delay (skipped in tests)
+      }
+    }
+  }
+
+  if (!parsedStep) {
+    error = `Failed to parse step result after ${maxParseRetries} attempts`;
+    runtime.logger.warn(`[MultiStep] ${error}`);
+  }
+
+  return {
+    success: !!parsedStep,
+    parseAttempts,
+    error,
+    parsedStep,
+  };
+}
+
+// Test helper function to test summary retry with fallback
+async function runMultiStepCoreTestWithSummaryRetry({
+  runtime,
+  message,
+  state,
+  callback,
+  maxSummaryRetries = 5,
+}: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: any;
+  callback: any;
+  maxSummaryRetries?: number;
+}) {
+  let accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+  accumulatedState.data.actionResults = [];
+
+  // Simulate step completion
+  const prompt = mockComposePromptFromState({
+    state: accumulatedState,
+    template: 'multiStepDecisionTemplate',
+  });
+
+  await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+  const stepResult = mockParseKeyValueXml('');
+
+  // Check for completion
+  if (stepResult?.isFinish === true) {
+    await callback({ text: '', thought: stepResult.thought ?? '' });
+  }
+
+  // Generate summary with retry
+  const summaryPrompt = mockComposePromptFromState({
+    state: accumulatedState,
+    template: 'multiStepSummaryTemplate',
+  });
+
+  let summary: any = null;
+  for (let attempt = 1; attempt <= maxSummaryRetries; attempt++) {
+    await runtime.useModel(ModelType.TEXT_LARGE, { prompt: summaryPrompt });
+    summary = mockParseKeyValueXml('');
+
+    if (summary?.text) {
+      runtime.logger.debug(`[MultiStep] Successfully parsed summary on attempt ${attempt}`);
+      break;
+    } else {
+      runtime.logger.warn(
+        `[MultiStep] Failed to parse summary on attempt ${attempt}/${maxSummaryRetries}`
+      );
+    }
+  }
+
+  let responseContent: Content | null = null;
+  if (summary?.text) {
+    responseContent = {
+      actions: ['MULTI_STEP_SUMMARY'],
+      text: summary.text,
+      thought: summary.thought || 'Final user-facing message after task completion.',
+      simple: true,
+    };
+  } else {
+    // Fallback response
+    runtime.logger.warn('[MultiStep] Using fallback response');
+    responseContent = {
+      actions: ['MULTI_STEP_SUMMARY'],
+      text: 'I completed the requested actions, but encountered an issue generating the summary.',
+      thought: 'Summary generation failed after retries.',
+      simple: true,
+    };
+  }
+
+  return {
+    responseContent,
+    state: accumulatedState,
+    summaryAttempts: maxSummaryRetries,
+  };
+}
+
+// Test helper function to test parameter extraction
+async function runMultiStepCoreTestWithParams({
+  runtime,
+  message,
+  state,
+  callback,
+}: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: any;
+  callback: any;
+}) {
+  const traceActionResult: any[] = [];
+  let accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+  accumulatedState.data.actionResults = traceActionResult;
+  let extractedParams: Record<string, unknown> = {};
+
+  const maxIterations = 6;
+  let iterationCount = 0;
+
+  while (iterationCount < maxIterations) {
+    iterationCount++;
+
+    const prompt = mockComposePromptFromState({
+      state: accumulatedState,
+      template: 'multiStepDecisionTemplate',
+    });
+
+    await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    const parsedStep = mockParseKeyValueXml('');
+
+    if (!parsedStep) {
+      break;
+    }
+
+    const { thought, providers = [], action, isFinish, parameters } = parsedStep;
+
+    // Extract and parse parameters
+    let actionParams: Record<string, unknown> = {};
+    if (parameters) {
+      if (typeof parameters === 'string') {
+        try {
+          const parsed = JSON.parse(parameters);
+          // Validate that parsed result is a non-null object (not array, primitive, or null)
+          if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            actionParams = parsed as Record<string, unknown>;
+            runtime.logger.debug(`[MultiStep] Parsed parameters from string`);
+          } else {
+            runtime.logger.warn(`[MultiStep] Parsed parameters is not a valid object, ignoring`);
+          }
+        } catch (e) {
+          runtime.logger.warn(`[MultiStep] Failed to parse parameters JSON`);
+        }
+      } else if (
+        typeof parameters === 'object' &&
+        parameters !== null &&
+        !Array.isArray(parameters)
+      ) {
+        actionParams = parameters as Record<string, unknown>;
+        runtime.logger.debug(`[MultiStep] Using parameters object directly`);
+      } else if (Array.isArray(parameters)) {
+        runtime.logger.warn(`[MultiStep] Parameters is an array, expected object, ignoring`);
+      }
+    }
+
+    // Store parameters in state
+    if (action && Object.keys(actionParams).length > 0) {
+      accumulatedState.data.actionParams = actionParams;
+      extractedParams = actionParams;
+
+      const actionKey = action.toLowerCase().replace(/_/g, '');
+      accumulatedState.data[actionKey] = {
+        ...actionParams,
+        // Metadata properties prefixed with underscore to match production code
+        _source: 'multiStepDecisionTemplate',
+        _timestamp: Date.now(),
+      };
+
+      runtime.logger.info(`[MultiStep] Stored parameters for ${action}`);
+    }
+
+    if (isFinish === true || isFinish === 'true') {
+      await callback({ text: '', thought: thought ?? '' });
+      break;
+    }
+
+    if ((!providers || providers.length === 0) && !action) {
+      break;
+    }
+  }
+
+  // Generate summary
+  const summaryPrompt = mockComposePromptFromState({
+    state: accumulatedState,
+    template: 'multiStepSummaryTemplate',
+  });
+
+  await runtime.useModel(ModelType.TEXT_LARGE, { prompt: summaryPrompt });
+  const summary = mockParseKeyValueXml('');
+
+  let responseContent: Content | null = null;
+  if (summary?.text) {
+    responseContent = {
+      actions: ['MULTI_STEP_SUMMARY'],
+      text: summary.text,
+      thought: summary.thought || 'Final user-facing message after task completion.',
+      simple: true,
+    };
+  }
+
+  return {
+    responseContent,
+    state: accumulatedState,
+    extractedParams,
   };
 }
