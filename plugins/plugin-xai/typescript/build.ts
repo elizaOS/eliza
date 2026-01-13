@@ -96,6 +96,7 @@ async function build(): Promise<void> {
   await $`tsc --project tsconfig.build.json`;
 
   // Create output directories
+  await mkdir("dist", { recursive: true });
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });
   await mkdir("dist/cjs", { recursive: true });
