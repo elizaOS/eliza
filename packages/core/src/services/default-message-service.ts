@@ -1451,7 +1451,9 @@ Wrap your continuation in <text></text> tags.`;
 
       // Total timeout for all providers running in parallel (configurable via PROVIDERS_TOTAL_TIMEOUT_MS env var)
       // Since providers run in parallel, this is the max wall-clock time allowed
-      const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(String(runtime.getSetting('PROVIDERS_TOTAL_TIMEOUT_MS') || '1000'));
+      const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
+        String(runtime.getSetting('PROVIDERS_TOTAL_TIMEOUT_MS') || '1000')
+      );
 
       // Track which providers have completed (for timeout diagnostics)
       const completedProviders = new Set<string>();
@@ -1628,7 +1630,7 @@ Wrap your continuation in <text></text> tags.`;
           async () => {
             return [];
           },
-          // Pass through optional streaming callback for action execution
+          // Pass through optional streaming callback for action execution (used by multi-step mode)
           { onStreamChunk: opts.onStreamChunk }
         );
 
