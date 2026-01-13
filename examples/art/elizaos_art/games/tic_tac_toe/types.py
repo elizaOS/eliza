@@ -107,8 +107,8 @@ class TicTacToeState(State):
 
     board: tuple[int, ...]  # 9 integers: 0=empty, 1=X, 2=O
     current_player: int  # Player value (1 for X, 2 for O)
-    winner: int | None = None  # Player value or 0 for draw
-    is_draw: bool = False
+    winner: int | None = None  # None = no winner yet; 1 = X won; 2 = O won
+    is_draw: bool = False  # True when game ended in draw (check this, not winner)
     move_count: int = 0
 
     SIZE: ClassVar[int] = 3
@@ -162,6 +162,7 @@ class TicTacToeState(State):
             "current_player": self.current_player,
             "winner": self.winner,
             "is_draw": self.is_draw,
+            "move_count": self.move_count,
         }
 
     def is_terminal(self) -> bool:
@@ -187,7 +188,8 @@ class TicTacToeState(State):
 
         lines.append("└───┴───┴───┘")
 
-        # Convert int to Player enum for display (shows "X" or "O" instead of "1" or "2")
+        # Display game result or current player
+        # Note: winner is 1 (X) or 2 (O), never 0; draws use is_draw flag
         if self.winner:
             lines.append(f"Winner: {Player(self.winner)}!")
         elif self.is_draw:
