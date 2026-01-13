@@ -503,8 +503,12 @@ impl TwitterClient {
     pub async fn create_post(&self, text: &str) -> Result<PostCreateResult> {
         if self.config.dry_run {
             debug!("Dry run: would post: {}", text);
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
             return Ok(PostCreateResult {
-                id: "dry-run".to_string(),
+                id: format!("dry-run-{}", nonce),
                 text: text.to_string(),
             });
         }
@@ -534,8 +538,12 @@ impl TwitterClient {
     pub async fn create_reply(&self, text: &str, reply_to_id: &str) -> Result<PostCreateResult> {
         if self.config.dry_run {
             debug!("Dry run: would reply to {}: {}", reply_to_id, text);
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
             return Ok(PostCreateResult {
-                id: "dry-run".to_string(),
+                id: format!("dry-run-{}", nonce),
                 text: text.to_string(),
             });
         }
