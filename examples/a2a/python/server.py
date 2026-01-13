@@ -21,6 +21,7 @@ from uuid6 import uuid7
 from elizaos import Character, ChannelType, Content, Memory
 from elizaos.runtime import AgentRuntime
 from elizaos_plugin_openai import get_openai_plugin
+from elizaos_plugin_inmemorydb import plugin as inmemorydb_plugin
 
 # ============================================================================
 # Configuration
@@ -54,7 +55,7 @@ async def get_runtime() -> AgentRuntime:
 
     _runtime = AgentRuntime(
         character=CHARACTER,
-        plugins=[get_openai_plugin()],
+        plugins=[inmemorydb_plugin, get_openai_plugin()],
         log_level="INFO",
     )
 
