@@ -59,6 +59,8 @@ async def get_character_context(
 
     context_text = "\n".join(sections)
 
+    # Use variables retrieved via getattr above to avoid AttributeError
+    # if these optional attributes are missing from the character object
     return ProviderResult(
         text=context_text,
         values={
@@ -67,9 +69,9 @@ async def get_character_context(
         },
         data={
             "name": character.name,
-            "bio": character.bio,
-            "adjectives": character.adjectives,
-            "topics": character.topics,
+            "bio": bio,
+            "adjectives": adjectives,
+            "topics": topics,
         },
     )
 
