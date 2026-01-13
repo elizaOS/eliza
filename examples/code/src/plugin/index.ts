@@ -4,7 +4,6 @@ import { askAction } from "./actions/ask.js";
 import { changeDirectoryAction } from "./actions/change-directory.js";
 // Task management
 import { createTaskAction } from "./actions/create-task.js";
-import { editFileAction } from "./actions/edit-file.js";
 // Execution
 import { executeShellAction } from "./actions/execute-shell.js";
 import { explainAction } from "./actions/explain.js";
@@ -27,7 +26,6 @@ import {
   switchTaskAction,
 } from "./actions/task-management.js";
 import { testAction } from "./actions/test.js";
-import { writeFileAction } from "./actions/write-file.js";
 import { actionStateProvider } from "./providers/actionState.js";
 import { actionsProvider } from "./providers/actions.js";
 import { attachmentsProvider } from "./providers/attachments.js";
@@ -60,8 +58,6 @@ export const elizaCodePlugin: Plugin = {
   actions: [
     // File operations
     readFileAction,
-    writeFileAction,
-    editFileAction,
     listFilesAction,
     searchFilesAction,
     changeDirectoryAction,
@@ -109,8 +105,6 @@ export const elizaCodePlugin: Plugin = {
 export {
   // File operations
   readFileAction,
-  writeFileAction,
-  editFileAction,
   listFilesAction,
   searchFilesAction,
   changeDirectoryAction,

@@ -338,8 +338,6 @@ USE THIS ACTION WHEN:
 - User describes a complex feature without specifying individual files
 
 DO NOT USE WHEN:
-- User wants a single file created (use WRITE_FILE)
-- User provides an explicit file path like "create tetris.html" (use WRITE_FILE)
 - User wants a small code snippet or function (use GENERATE)
 - User wants to understand or plan something (use PLAN or ASK)
 - Request is simple enough to complete in one action
@@ -366,13 +364,18 @@ INPUTS:
       text.includes("implement") ||
       text.includes("build") ||
       text.includes("create") ||
-      text.includes("develop");
+      text.includes("develop") ||
+      text.includes("add") ||
+      text.includes("update") ||
+      text.includes("modify") ||
+      text.includes("change") ||
+      text.includes("refactor") ||
+      text.includes("fix");
 
     if (!isExplicitTaskRequest && !hasBuildIntent) return false;
 
-    // If the user provided an explicit file path (e.g., "tetris.html"), prefer WRITE_FILE / EDIT_FILE.
-    const hasFileExtension = /\.[a-z0-9]{1,8}\b/i.test(text);
-    if (hasFileExtension && !isExplicitTaskRequest) return false;
+    // In orchestrator mode, we allow tasks even for explicit file edits/creates,
+    // so the main agent does not write/edit files directly.
 
     // Avoid spawning tasks for tiny “generate a function/class” requests unless explicitly asked.
     const looksLikeSmallSnippet =
