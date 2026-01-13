@@ -20,7 +20,6 @@ from elizaos_art.base import (
     TrainingMetrics,
     Trajectory,
 )
-from elizaos_art.trainer import GRPOTrainer, RulerScorer
 
 __version__ = "1.0.0"
 
@@ -33,8 +32,6 @@ __all__ = [
     "EpisodeResult",
     "Trajectory",
     # Training
-    "GRPOTrainer",
-    "RulerScorer",
     "TrainingConfig",
     "TrainingMetrics",
 ]
@@ -58,5 +55,11 @@ def __getattr__(name: str):
         from elizaos_art import eliza_integration
 
         return getattr(eliza_integration, name)
+
+    if name in {"GRPOTrainer", "RulerScorer"}:
+        # Avoid importing heavy training deps (openpipe-art, torch, etc.) unless needed.
+        from elizaos_art.trainer import GRPOTrainer, RulerScorer
+
+        return GRPOTrainer if name == "GRPOTrainer" else RulerScorer
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -12,9 +12,8 @@ use elizaos_plugin_openai::{
 fn create_test_client() -> OpenAIClient {
     dotenvy::dotenv().ok();
 
-    let api_key = std::env::var("OPENAI_API_KEY").expect(
-        "OPENAI_API_KEY must be set. Create a .env file with OPENAI_API_KEY=your-key",
-    );
+    let api_key = std::env::var("OPENAI_API_KEY")
+        .expect("OPENAI_API_KEY must be set. Create a .env file with OPENAI_API_KEY=your-key");
 
     let config = OpenAIConfig::new(&api_key);
     OpenAIClient::new(config).expect("Failed to create client")

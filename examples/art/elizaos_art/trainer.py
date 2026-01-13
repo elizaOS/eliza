@@ -94,6 +94,7 @@ class TrainingState:
     step: int = 0
     total_trajectories: int = 0
     best_reward: float = float("-inf")
+    model_name: str = ""
     metrics_history: list[dict] = field(default_factory=list)
 
     def save(self, path: Path) -> None:
@@ -104,6 +105,7 @@ class TrainingState:
                     "step": self.step,
                     "total_trajectories": self.total_trajectories,
                     "best_reward": self.best_reward,
+                    "model_name": self.model_name,
                     "metrics_history": self.metrics_history,
                 },
                 f,
@@ -119,6 +121,7 @@ class TrainingState:
         state.step = data["step"]
         state.total_trajectories = data["total_trajectories"]
         state.best_reward = data["best_reward"]
+        state.model_name = data.get("model_name", "")
         state.metrics_history = data["metrics_history"]
         return state
 

@@ -280,5 +280,3 @@ class OpenRouterClient:
                         best = candidate
 
         return best
-
-

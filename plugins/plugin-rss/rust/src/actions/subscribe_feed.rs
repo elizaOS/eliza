@@ -1,6 +1,6 @@
+use super::get_feed::{Action, ActionExample};
 use async_trait::async_trait;
 use serde_json::Value;
-use super::get_feed::{Action, ActionExample};
 
 pub struct SubscribeFeedAction;
 

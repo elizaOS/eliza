@@ -100,5 +100,3 @@ async fn test_shell_service_security() {
     let result = service.execute_command("cd ../../..", None).await.unwrap();
     assert!(!result.success);
 }
-
-

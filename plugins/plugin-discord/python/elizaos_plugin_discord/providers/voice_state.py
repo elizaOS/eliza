@@ -17,7 +17,7 @@ class VoiceStateProvider:
     def description(self) -> str:
         return "Provides information about voice channel state, including connected users and speaking status."
 
-    async def get(self, context: "ProviderContext") -> dict:
+    async def get(self, context: "ProviderContext") -> dict[str, object]:
         """Get the provider's data for the current context."""
         # This would be populated from the Discord service when running
         return {
@@ -45,5 +45,3 @@ class VoiceStateProviderCamel(VoiceStateProvider):
     @property
     def name(self) -> str:
         return "voiceState"
-
-

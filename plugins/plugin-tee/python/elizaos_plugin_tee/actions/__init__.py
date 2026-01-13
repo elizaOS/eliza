@@ -7,4 +7,3 @@ __all__ = [
     "REMOTE_ATTESTATION_ACTION",
     "handle_remote_attestation",
 ]
-

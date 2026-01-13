@@ -272,4 +272,3 @@ def get_gateway_plugin() -> Plugin:
     if _gateway_plugin_instance is None:
         _gateway_plugin_instance = create_gateway_elizaos_plugin()
     return _gateway_plugin_instance
-

@@ -15,9 +15,7 @@ except ImportError:
     HAS_ELIZAOS = False
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Skip all tests if elizaos is not installed."""
     if not HAS_ELIZAOS:
         skip_marker = pytest.mark.skip(reason="elizaos not installed")
@@ -55,8 +53,3 @@ def test_ids() -> dict[str, str]:
         "room_id": uuid4(),
         "entity_id": uuid4(),
     }
-
-
-
-
-

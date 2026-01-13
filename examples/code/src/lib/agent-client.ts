@@ -57,7 +57,11 @@ export class AgentClient {
       id: uuidv4() as UUID,
       entityId: identity.userId,
       roomId: room.elizaRoomId,
-      content: { text },
+      content: {
+        text,
+        source,
+        channelType,
+      },
     });
 
     let response = "";

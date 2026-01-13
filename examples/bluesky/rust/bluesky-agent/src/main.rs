@@ -1,146 +1,57 @@
 //! Bluesky Agent - A full-featured AI agent running on Bluesky
 //!
-//! This agent:
-//! - Monitors and responds to @mentions
-//! - Processes and replies to direct messages
-//! - Optionally posts automated content on a schedule
+//! This agent uses the COMPLETE elizaOS runtime pipeline:
+//! - Full message processing through message_service.handle_message()
+//! - State composition with all registered providers
+//! - Action planning and execution
+//! - Response generation via messageHandlerTemplate
+//! - Evaluator execution
+//! - basicCapabilities enabled by default (REPLY, IGNORE, NONE actions)
+//!
+//! NO shortcuts, NO bypassing the pipeline - this is canonical elizaOS.
 
 mod character;
 mod handlers;
 
 use anyhow::{Context, Result};
+use elizaos::{
+    runtime::{AgentRuntime, RuntimeOptions},
+    string_to_uuid,
+};
 use elizaos_plugin_bluesky::{BlueSkyClient, BlueSkyConfig};
-use elizaos_plugin_bluesky::types::NotificationReason;
+use elizaos_plugin_openai::create_openai_elizaos_plugin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
-use tokio::sync::watch;
-use tracing::{error, info, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tokio::sync::Mutex;
+use tracing::{error, info, Level};
+use tracing_subscriber::FmtSubscriber;
 
-use character::AgentCharacter;
-use handlers::{handle_create_post, handle_mention_received};
+use character::create_character;
+use handlers::handle_mention_received;
 
-/// Validate required environment variables
 fn validate_environment() -> Result<()> {
     let required = ["BLUESKY_HANDLE", "BLUESKY_PASSWORD"];
     let missing: Vec<_> = required
         .iter()
-        .filter(|&key| std::env::var(key).is_err())
+        .filter(|key| std::env::var(key).is_err())
         .collect();
 
     if !missing.is_empty() {
-        let missing_str: Vec<&str> = missing.into_iter().copied().collect();
         anyhow::bail!(
-            "Missing required environment variables: {}. Copy env.example to .env and fill in your credentials.",
-            missing_str.join(", ")
+            "Missing required environment variables: {:?}\n\
+             Copy env.example to .env and fill in your credentials.",
+            missing
         );
     }
 
-    Ok(())
-}
+    let has_model_provider = std::env::var("OPENAI_API_KEY").is_ok()
+        || std::env::var("ANTHROPIC_API_KEY").is_ok();
 
-/// Main agent loop - polls for notifications
-async fn run_agent(
-    client: Arc<BlueSkyClient>,
-    character: Arc<AgentCharacter>,
-    mut shutdown_rx: watch::Receiver<bool>,
-) -> Result<()> {
-    let config = BlueSkyConfig::from_env()?;
-    let poll_interval = Duration::from_secs(config.poll_interval());
-    let mut poll_timer = tokio::time::interval(poll_interval);
-
-    let mut last_seen_at: Option<String> = None;
-
-    info!("Starting notification polling (interval: {:?})", poll_interval);
-
-    loop {
-        tokio::select! {
-            _ = poll_timer.tick() => {
-                // Poll for notifications
-                match client.get_notifications(50, None).await {
-                    Ok((notifications, _cursor)) => {
-                        // Filter to new notifications
-                        let new_notifications: Vec<_> = if let Some(ref last) = last_seen_at {
-                            notifications.iter()
-                                .filter(|n| &n.indexed_at > last)
-                                .collect()
-                        } else {
-                            notifications.iter().collect()
-                        };
-
-                        if !new_notifications.is_empty() {
-                            if let Some(first) = notifications.first() {
-                                last_seen_at = Some(first.indexed_at.clone());
-                            }
-
-                            for notification in new_notifications {
-                                if notification.reason == NotificationReason::Mention
-                                    || notification.reason == NotificationReason::Reply
-                                {
-                                    if let Err(e) = handle_mention_received(&client, &character, notification).await {
-                                        error!(error = %e, "Error handling mention");
-                                    }
-                                }
-                            }
-
-                            if let Err(e) = client.update_seen_notifications().await {
-                                warn!(error = %e, "Failed to update seen notifications");
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!(error = %e, "Error polling notifications");
-                    }
-                }
-            }
-            _ = shutdown_rx.changed() => {
-                if *shutdown_rx.borrow() {
-                    info!("Shutdown signal received");
-                    break;
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Run automated posting loop
-async fn run_automated_posting(
-    client: Arc<BlueSkyClient>,
-    character: Arc<AgentCharacter>,
-    mut shutdown_rx: watch::Receiver<bool>,
-) -> Result<()> {
-    use rand::Rng;
-
-    let config = BlueSkyConfig::from_env()?;
-    let min_interval = config.post_interval_min();
-    let max_interval = config.post_interval_max();
-
-    info!(
-        "Starting automated posting (interval: {}s-{}s)",
-        min_interval, max_interval
-    );
-
-    loop {
-        // Random interval between min and max
-        let interval_secs = rand::thread_rng().gen_range(min_interval..=max_interval);
-        let wait_duration = Duration::from_secs(interval_secs);
-
-        tokio::select! {
-            _ = tokio::time::sleep(wait_duration) => {
-                if let Err(e) = handle_create_post(&client, &character).await {
-                    error!(error = %e, "Error creating automated post");
-                }
-            }
-            _ = shutdown_rx.changed() => {
-                if *shutdown_rx.borrow() {
-                    info!("Automated posting shutdown");
-                    break;
-                }
-            }
-        }
+    if !has_model_provider {
+        anyhow::bail!(
+            "No model provider configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY."
+        );
     }
 
     Ok(())
@@ -148,88 +59,126 @@ async fn run_automated_posting(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load environment variables
-    let _ = dotenvy::from_filename("../../.env");
-    let _ = dotenvy::dotenv();
-
     // Initialize logging
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,bluesky_agent=debug".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::INFO)
+        .with_target(false)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)?;
 
-    info!("🦋 Starting Bluesky Agent...");
+    println!("🦋 Starting Bluesky Agent...\n");
 
+    // Load environment
+    let _ = dotenvy::dotenv();
     validate_environment()?;
 
-    // Create character
-    let character = Arc::new(AgentCharacter::new());
+    // Create the character
+    let character = create_character();
 
-    // Create Bluesky client
+    // Create the runtime with plugins
+    // Note: disable_basic_capabilities is false by default (provides REPLY, IGNORE, NONE actions)
+    let runtime = AgentRuntime::new(RuntimeOptions {
+        character: Some(character.clone()),
+        plugins: vec![create_openai_elizaos_plugin()?],
+        ..Default::default()
+    })
+    .await
+    .context("Failed to create AgentRuntime")?;
+
+    // Initialize the runtime
+    println!("⏳ Initializing runtime...");
+    runtime.initialize().await?;
+
+    // Create BlueSky client
     let config = BlueSkyConfig::from_env()?;
-    let client = BlueSkyClient::new(config.clone())?;
+    let mut client = BlueSkyClient::new(config)?;
+
+    // Authenticate
+    println!("🔐 Authenticating with Bluesky...");
     client.authenticate().await?;
 
-    let client = Arc::new(client);
+    let client = Arc::new(Mutex::new(client));
 
-    // Setup shutdown handling
-    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    // Ensure the Bluesky world exists
+    let world_id = string_to_uuid("bluesky-world");
+    runtime.ensure_world_exists(
+        &world_id,
+        "Bluesky",
+        &runtime.agent_id(),
+        Some(&world_id),
+    ).await?;
 
-    info!("✅ Agent '{}' is now running on Bluesky!", character.name);
-    info!(
-        "   Handle: {}",
-        std::env::var("BLUESKY_HANDLE").unwrap_or_default()
-    );
-    info!("   Polling interval: {}s", config.poll_interval());
-    info!("   Automated posting: {}", config.enable_posting());
-    info!("   Dry run: {}", config.dry_run());
-    info!("   Press Ctrl+C to stop.");
+    // Get config values for display
+    let handle = std::env::var("BLUESKY_HANDLE").unwrap_or_default();
+    let poll_interval: u64 = std::env::var("BLUESKY_POLL_INTERVAL")
+        .unwrap_or_else(|_| "60".to_string())
+        .parse()
+        .unwrap_or(60);
+    let enable_posting = std::env::var("BLUESKY_ENABLE_POSTING")
+        .map(|v| v != "false")
+        .unwrap_or(true);
+    let enable_dms = std::env::var("BLUESKY_ENABLE_DMS")
+        .map(|v| v != "false")
+        .unwrap_or(true);
+    let dry_run = std::env::var("BLUESKY_DRY_RUN")
+        .map(|v| v == "true")
+        .unwrap_or(false);
 
-    // Spawn agent tasks
-    let agent_handle = {
-        let client = Arc::clone(&client);
-        let character = Arc::clone(&character);
-        let shutdown_rx = shutdown_rx.clone();
-        tokio::spawn(async move {
-            if let Err(e) = run_agent(client, character, shutdown_rx).await {
-                error!(error = %e, "Agent error");
+    println!("\n✅ Agent '{}' is now running on Bluesky!", character.name);
+    println!("   Handle: {}", handle);
+    println!("   Polling interval: {}s", poll_interval);
+    println!("   Automated posting: {}", enable_posting);
+    println!("   DM processing: {}", enable_dms);
+    println!("   Dry run mode: {}", dry_run);
+    println!("\n   Using FULL elizaOS pipeline:");
+    println!("   - State composition with providers");
+    println!("   - shouldRespond evaluation");
+    println!("   - Action planning & execution");
+    println!("   - Evaluators");
+    println!("\n   Press Ctrl+C to stop.\n");
+
+    // Start polling loop
+    let poll_duration = Duration::from_secs(poll_interval);
+
+    loop {
+        tokio::select! {
+            _ = signal::ctrl_c() => {
+                info!("Received Ctrl+C, shutting down...");
+                break;
             }
-        })
-    };
+            _ = async {
+                // Fetch notifications
+                let client_guard = client.lock().await;
+                match client_guard.get_notifications(50, None).await {
+                    Ok((notifications, _cursor)) => {
+                        drop(client_guard); // Release lock before processing
 
-    let posting_handle = if config.enable_posting() {
-        let client = Arc::clone(&client);
-        let character = Arc::clone(&character);
-        let shutdown_rx = shutdown_rx.clone();
-        Some(tokio::spawn(async move {
-            if let Err(e) = run_automated_posting(client, character, shutdown_rx).await {
-                error!(error = %e, "Automated posting error");
-            }
-        }))
-    } else {
-        None
-    };
+                        for notification in notifications {
+                            if !notification.is_read {
+                                if let Err(e) = handle_mention_received(
+                                    &runtime,
+                                    &notification,
+                                    Arc::clone(&client),
+                                ).await {
+                                    error!(error = %e, "Error handling notification");
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!(error = %e, "Error fetching notifications");
+                    }
+                }
 
-    // Wait for shutdown signal
-    signal::ctrl_c()
-        .await
-        .context("Failed to listen for ctrl+c")?;
-
-    info!("Shutting down gracefully...");
-    let _ = shutdown_tx.send(true);
-
-    // Wait for tasks to complete
-    let _ = agent_handle.await;
-    if let Some(handle) = posting_handle {
-        let _ = handle.await;
+                tokio::time::sleep(poll_duration).await;
+            } => {}
+        }
     }
 
-    // Close client
-    client.close().await;
-
-    info!("👋 Goodbye!");
+    // Shutdown
+    println!("\n⏳ Shutting down...");
+    runtime.stop().await?;
+    println!("👋 Goodbye!");
 
     Ok(())
 }

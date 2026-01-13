@@ -58,7 +58,10 @@ impl BrowserService {
             return Err("Browser service not initialized".to_string());
         }
 
-        let response = self.client.send_message("createSession", HashMap::new()).await?;
+        let response = self
+            .client
+            .send_message("createSession", HashMap::new())
+            .await?;
 
         let server_session_id = response
             .data
@@ -69,7 +72,10 @@ impl BrowserService {
             .to_string();
 
         let session = BrowserSession::new(server_session_id);
-        self.sessions.write().await.insert(session_id.to_string(), session.clone());
+        self.sessions
+            .write()
+            .await
+            .insert(session_id.to_string(), session.clone());
         *self.current_session_id.write().await = Some(session_id.to_string());
 
         Ok(session)
@@ -89,7 +95,11 @@ impl BrowserService {
             return Ok(session);
         }
 
-        let session_id = format!("session-{}-{}", Utc::now().timestamp_millis(), Uuid::new_v4());
+        let session_id = format!(
+            "session-{}-{}",
+            Utc::now().timestamp_millis(),
+            Uuid::new_v4()
+        );
         self.create_session(&session_id).await
     }
 
@@ -132,10 +142,16 @@ impl BrowserService {
                     return Ok(());
                 }
                 Ok(false) => {
-                    debug!("Health check attempt {}/{} returned false", attempt, max_attempts);
+                    debug!(
+                        "Health check attempt {}/{} returned false",
+                        attempt, max_attempts
+                    );
                 }
                 Err(e) => {
-                    debug!("Health check attempt {}/{} failed: {}", attempt, max_attempts, e);
+                    debug!(
+                        "Health check attempt {}/{} failed: {}",
+                        attempt, max_attempts, e
+                    );
                 }
             }
 
@@ -154,4 +170,3 @@ impl BrowserService {
         ))
     }
 }
-

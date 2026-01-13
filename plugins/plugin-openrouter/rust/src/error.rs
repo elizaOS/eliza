@@ -7,14 +7,10 @@ pub type Result<T> = std::result::Result<T, OpenRouterError>;
 #[derive(Error, Debug)]
 pub enum OpenRouterError {
     #[error("API key error: {message}")]
-    ApiKeyError {
-        message: String,
-    },
+    ApiKeyError { message: String },
 
     #[error("Configuration error: {message}")]
-    ConfigError {
-        message: String,
-    },
+    ConfigError { message: String },
 
     #[error("HTTP error: {message}")]
     HttpError {
@@ -23,14 +19,10 @@ pub enum OpenRouterError {
     },
 
     #[error("Rate limit exceeded. Retry after {retry_after_seconds} seconds")]
-    RateLimitError {
-        retry_after_seconds: u64,
-    },
+    RateLimitError { retry_after_seconds: u64 },
 
     #[error("JSON error: {message}")]
-    JsonError {
-        message: String,
-    },
+    JsonError { message: String },
 
     #[error("Network error: {0}")]
     NetworkError(#[from] reqwest::Error),
@@ -68,4 +60,3 @@ impl OpenRouterError {
         }
     }
 }
-

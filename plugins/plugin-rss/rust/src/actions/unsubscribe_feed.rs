@@ -1,13 +1,16 @@
+use super::get_feed::{Action, ActionExample};
 use async_trait::async_trait;
 use serde_json::Value;
-use super::get_feed::{Action, ActionExample};
 
 pub struct UnsubscribeFeedAction;
 
 impl UnsubscribeFeedAction {
     fn is_unsubscribe_request(text: &str) -> bool {
         let lower = text.to_lowercase();
-        (lower.contains("unsubscribe") || lower.contains("remove") || lower.contains("delete") || lower.contains("stop"))
+        (lower.contains("unsubscribe")
+            || lower.contains("remove")
+            || lower.contains("delete")
+            || lower.contains("stop"))
             && (lower.contains("rss") || lower.contains("feed"))
     }
 }

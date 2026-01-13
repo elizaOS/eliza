@@ -28,7 +28,13 @@ impl Action for SendGameMessageAction {
     }
 
     fn similes(&self) -> Vec<&'static str> {
-        vec!["ROBLOX_MESSAGE", "GAME_MESSAGE", "SEND_TO_GAME", "BROADCAST_MESSAGE", "TELL_PLAYERS"]
+        vec![
+            "ROBLOX_MESSAGE",
+            "GAME_MESSAGE",
+            "SEND_TO_GAME",
+            "BROADCAST_MESSAGE",
+            "TELL_PLAYERS",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -37,16 +43,21 @@ impl Action for SendGameMessageAction {
 
     async fn validate(&self, message_text: &str) -> bool {
         let lower = message_text.to_lowercase();
-        (lower.contains("send") || lower.contains("tell") || lower.contains("message") || lower.contains("broadcast"))
+        (lower.contains("send")
+            || lower.contains("tell")
+            || lower.contains("message")
+            || lower.contains("broadcast"))
             && (lower.contains("game") || lower.contains("player") || lower.contains("roblox"))
     }
 
     async fn handler(&self, params: Value) -> Result<Value, String> {
-        let content = params.get("content")
+        let content = params
+            .get("content")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "Missing 'content' parameter".to_string())?;
-        
-        let target_player_ids = params.get("target_player_ids")
+
+        let target_player_ids = params
+            .get("target_player_ids")
             .and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect::<Vec<_>>());
 
@@ -61,7 +72,8 @@ impl Action for SendGameMessageAction {
     fn examples(&self) -> Vec<ActionExample> {
         vec![
             ActionExample {
-                input: "Tell everyone in the game that there's a special event happening".to_string(),
+                input: "Tell everyone in the game that there's a special event happening"
+                    .to_string(),
                 output: "I'll announce the special event to all players in the game!".to_string(),
             },
             ActionExample {
@@ -75,12 +87,8 @@ impl Action for SendGameMessageAction {
 pub struct ExecuteGameActionAction;
 
 /// Known in-game action names supported by the TypeScript implementation.
-pub const AVAILABLE_GAME_ACTION_NAMES: &[&str] = &[
-    "give_coins",
-    "teleport",
-    "spawn_entity",
-    "start_event",
-];
+pub const AVAILABLE_GAME_ACTION_NAMES: &[&str] =
+    &["give_coins", "teleport", "spawn_entity", "start_event"];
 
 #[async_trait]
 impl Action for ExecuteGameActionAction {
@@ -89,7 +97,13 @@ impl Action for ExecuteGameActionAction {
     }
 
     fn similes(&self) -> Vec<&'static str> {
-        vec!["ROBLOX_ACTION", "GAME_ACTION", "DO_IN_GAME", "TRIGGER_EVENT", "RUN_GAME_COMMAND"]
+        vec![
+            "ROBLOX_ACTION",
+            "GAME_ACTION",
+            "DO_IN_GAME",
+            "TRIGGER_EVENT",
+            "RUN_GAME_COMMAND",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -98,17 +112,23 @@ impl Action for ExecuteGameActionAction {
 
     async fn validate(&self, message_text: &str) -> bool {
         let lower = message_text.to_lowercase();
-        (lower.contains("execute") || lower.contains("trigger") || lower.contains("spawn") 
-         || lower.contains("give") || lower.contains("teleport") || lower.contains("start"))
+        (lower.contains("execute")
+            || lower.contains("trigger")
+            || lower.contains("spawn")
+            || lower.contains("give")
+            || lower.contains("teleport")
+            || lower.contains("start"))
             && (lower.contains("game") || lower.contains("roblox") || lower.contains("player"))
     }
 
     async fn handler(&self, params: Value) -> Result<Value, String> {
-        let action_name = params.get("action_name")
+        let action_name = params
+            .get("action_name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "Missing 'action_name' parameter".to_string())?;
-        
-        let parameters = params.get("parameters")
+
+        let parameters = params
+            .get("parameters")
             .cloned()
             .unwrap_or(Value::Object(serde_json::Map::new()));
 
@@ -150,7 +170,12 @@ impl Action for GetPlayerInfoAction {
     }
 
     fn similes(&self) -> Vec<&'static str> {
-        vec!["ROBLOX_PLAYER_INFO", "LOOKUP_PLAYER", "PLAYER_DETAILS", "WHO_IS_PLAYER"]
+        vec![
+            "ROBLOX_PLAYER_INFO",
+            "LOOKUP_PLAYER",
+            "PLAYER_DETAILS",
+            "WHO_IS_PLAYER",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -159,12 +184,16 @@ impl Action for GetPlayerInfoAction {
 
     async fn validate(&self, message_text: &str) -> bool {
         let lower = message_text.to_lowercase();
-        (lower.contains("who") || lower.contains("lookup") || lower.contains("info") || lower.contains("find"))
+        (lower.contains("who")
+            || lower.contains("lookup")
+            || lower.contains("info")
+            || lower.contains("find"))
             && lower.contains("player")
     }
 
     async fn handler(&self, params: Value) -> Result<Value, String> {
-        let identifier = params.get("identifier")
+        let identifier = params
+            .get("identifier")
             .ok_or_else(|| "Missing 'identifier' parameter".to_string())?;
 
         Ok(serde_json::json!({
@@ -224,5 +253,3 @@ mod tests {
         assert!(!action.validate("hello world").await);
     }
 }
-
-

@@ -14,8 +14,6 @@ pub enum FarcasterMode {
     Webhook,
 }
 
-
-
 impl std::str::FromStr for FarcasterMode {
     type Err = FarcasterError;
 
@@ -88,7 +86,11 @@ fn default_max_actions() -> u32 {
 }
 
 impl FarcasterConfig {
-    pub fn new(fid: u64, signer_uuid: impl Into<String>, neynar_api_key: impl Into<String>) -> Self {
+    pub fn new(
+        fid: u64,
+        signer_uuid: impl Into<String>,
+        neynar_api_key: impl Into<String>,
+    ) -> Self {
         Self {
             fid,
             signer_uuid: signer_uuid.into(),
@@ -198,19 +200,29 @@ impl FarcasterConfig {
 
     pub fn validate(&self) -> Result<()> {
         if self.fid == 0 {
-            return Err(FarcasterError::validation("FARCASTER_FID must be a positive integer"));
+            return Err(FarcasterError::validation(
+                "FARCASTER_FID must be a positive integer",
+            ));
         }
         if self.signer_uuid.is_empty() {
-            return Err(FarcasterError::validation("FARCASTER_SIGNER_UUID is required"));
+            return Err(FarcasterError::validation(
+                "FARCASTER_SIGNER_UUID is required",
+            ));
         }
         if self.neynar_api_key.is_empty() {
-            return Err(FarcasterError::validation("FARCASTER_NEYNAR_API_KEY is required"));
+            return Err(FarcasterError::validation(
+                "FARCASTER_NEYNAR_API_KEY is required",
+            ));
         }
         if self.max_cast_length == 0 || self.max_cast_length > 1024 {
-            return Err(FarcasterError::validation("MAX_CAST_LENGTH must be between 1 and 1024"));
+            return Err(FarcasterError::validation(
+                "MAX_CAST_LENGTH must be between 1 and 1024",
+            ));
         }
         if self.poll_interval == 0 {
-            return Err(FarcasterError::validation("FARCASTER_POLL_INTERVAL must be positive"));
+            return Err(FarcasterError::validation(
+                "FARCASTER_POLL_INTERVAL must be positive",
+            ));
         }
         if self.cast_interval_max < self.cast_interval_min {
             return Err(FarcasterError::validation(
@@ -261,8 +273,14 @@ mod tests {
 
     #[test]
     fn test_mode_parsing() {
-        assert_eq!("polling".parse::<FarcasterMode>().unwrap(), FarcasterMode::Polling);
-        assert_eq!("webhook".parse::<FarcasterMode>().unwrap(), FarcasterMode::Webhook);
+        assert_eq!(
+            "polling".parse::<FarcasterMode>().unwrap(),
+            FarcasterMode::Polling
+        );
+        assert_eq!(
+            "webhook".parse::<FarcasterMode>().unwrap(),
+            FarcasterMode::Webhook
+        );
         assert!("invalid".parse::<FarcasterMode>().is_err());
     }
 }

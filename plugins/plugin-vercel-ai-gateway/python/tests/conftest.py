@@ -24,4 +24,3 @@ def api_key() -> str:
             "AIGATEWAY_API_KEY, or VERCEL_OIDC_TOKEN to be set."
         )
     return key
-

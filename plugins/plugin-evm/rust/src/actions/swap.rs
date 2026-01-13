@@ -154,26 +154,20 @@ impl SwapAction {
         let quote_response: LifiQuoteResponse = response.json().await?;
         let tx_request = quote_response.transaction_request;
 
-        let to: Address = tx_request.to.parse().map_err(|_| {
-            EVMError::invalid_params("Invalid to address in quote")
-        })?;
+        let to: Address = tx_request
+            .to
+            .parse()
+            .map_err(|_| EVMError::invalid_params("Invalid to address in quote"))?;
 
-        let value = U256::from_str_radix(
-            tx_request.value.trim_start_matches("0x"),
-            16,
-        )
-        .unwrap_or(U256::ZERO);
+        let value = U256::from_str_radix(tx_request.value.trim_start_matches("0x"), 16)
+            .unwrap_or(U256::ZERO);
 
         let data = Bytes::from(
-            hex::decode(tx_request.data.trim_start_matches("0x")).map_err(|e| {
-                EVMError::invalid_params(format!("Invalid data in quote: {e}"))
-            })?,
+            hex::decode(tx_request.data.trim_start_matches("0x"))
+                .map_err(|e| EVMError::invalid_params(format!("Invalid data in quote: {e}")))?,
         );
 
-        let gas_limit = tx_request
-            .gas_limit
-            .as_ref()
-            .and_then(|g| g.parse().ok());
+        let gas_limit = tx_request.gas_limit.as_ref().and_then(|g| g.parse().ok());
 
         Ok(SwapQuote {
             aggregator: "lifi".to_string(),
@@ -201,15 +195,12 @@ impl SwapAction {
             tx = tx.with_gas_limit(gas_limit);
         }
 
-        let pending = chain_provider
-            .send_transaction(tx)
-            .await
-            .map_err(|e| {
-                EVMError::new(
-                    EVMErrorCode::TransactionFailed,
-                    format!("Failed to send swap transaction: {e}"),
-                )
-            })?;
+        let pending = chain_provider.send_transaction(tx).await.map_err(|e| {
+            EVMError::new(
+                EVMErrorCode::TransactionFailed,
+                format!("Failed to send swap transaction: {e}"),
+            )
+        })?;
 
         let tx_hash = *pending.tx_hash();
         let receipt = pending.get_receipt().await.map_err(|e| {

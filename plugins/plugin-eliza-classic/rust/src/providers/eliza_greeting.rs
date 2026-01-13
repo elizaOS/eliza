@@ -48,7 +48,10 @@ mod tests {
 
         assert!(result.text.contains("ELIZA"));
         assert!(result.data["greeting"].as_str().unwrap().contains("ELIZA"));
-        assert!(result.values["greeting"].as_str().unwrap().contains("ELIZA"));
+        assert!(result.values["greeting"]
+            .as_str()
+            .unwrap()
+            .contains("ELIZA"));
     }
 
     #[test]

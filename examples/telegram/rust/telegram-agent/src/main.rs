@@ -1,188 +1,103 @@
-//! Eliza Telegram Agent Example - Rust
+//! Telegram bot using elizaOS with full message pipeline.
 //!
-//! A complete Telegram bot powered by elizaOS with SQL persistence.
-//!
-//! Features:
-//! - Full Telegram integration (private/group chats, reactions, inline buttons)
-//! - PostgreSQL or PGLite database persistence
-//! - OpenAI for language model capabilities
-//!
-//! Required environment variables:
-//! - TELEGRAM_BOT_TOKEN: Your Telegram bot token from @BotFather
-//! - OPENAI_API_KEY: Your OpenAI API key
-//! - POSTGRES_URL (optional): PostgreSQL connection string (falls back to PGLite)
+//! Required env vars: TELEGRAM_BOT_TOKEN, OPENAI_API_KEY
+//! Optional: POSTGRES_URL (defaults to PGLite)
 
 use anyhow::{Context, Result};
 use elizaos::{
     parse_character,
     runtime::{AgentRuntime, RuntimeOptions},
     services::IMessageService,
-    Content, Memory, UUID,
+    types::primitives::string_to_uuid,
+    Content, Memory,
 };
 use elizaos_plugin_openai::create_openai_elizaos_plugin;
 use elizaos_plugin_sql::plugin as sql_plugin;
 use elizaos_plugin_telegram::{TelegramConfig, TelegramEventType, TelegramService};
 use std::sync::Arc;
 use tokio::signal;
+use tokio::sync::RwLock;
 use tracing::{error, info};
 
-/// Character definition for the Telegram bot
 const CHARACTER_JSON: &str = r#"{
     "name": "TelegramEliza",
-    "bio": "A helpful and friendly AI assistant available on Telegram. I can answer questions, have conversations, and help with various tasks.",
-    "system": "You are TelegramEliza, a helpful AI assistant on Telegram. You are friendly, knowledgeable, and concise in your responses. When users greet you with /start, welcome them warmly. Keep responses appropriate for chat format - not too long, easy to read. You can use emojis sparingly to make conversations more engaging."
+    "bio": "A helpful AI assistant on Telegram.",
+    "system": "You are TelegramEliza, a helpful AI assistant on Telegram. Be friendly, concise, and genuinely helpful. Keep responses short - suitable for mobile chat."
 }"#;
 
-/// Application state shared across async tasks
-struct AppState {
+struct State {
     runtime: AgentRuntime,
-    character_name: String,
+    name: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
     tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("elizaos=info".parse()?)
-                .add_directive("telegram_agent=info".parse()?)
-                .add_directive("teloxide=warn".parse()?),
-        )
+        .with_env_filter("elizaos=info,telegram_agent=info,teloxide=warn")
         .init();
 
-    // Load environment variables from .env file
     let _ = dotenvy::dotenv();
 
-    // Validate required environment variables
-    std::env::var("TELEGRAM_BOT_TOKEN")
-        .context("❌ TELEGRAM_BOT_TOKEN environment variable is required.\n   Get your bot token from @BotFather on Telegram")?;
+    std::env::var("TELEGRAM_BOT_TOKEN").context("Missing TELEGRAM_BOT_TOKEN")?;
+    std::env::var("OPENAI_API_KEY").context("Missing OPENAI_API_KEY")?;
 
-    std::env::var("OPENAI_API_KEY")
-        .context("❌ OPENAI_API_KEY environment variable is required")?;
+    info!("Starting TelegramEliza...");
 
-    println!("🚀 Starting TelegramEliza...\n");
+    let character = parse_character(CHARACTER_JSON)?;
+    let name = character.name.clone();
 
-    // Parse the character definition
-    let character = parse_character(CHARACTER_JSON)
-        .context("Failed to parse character definition")?;
-
-    let character_name = character.name.clone();
-
-    // Create the agent runtime with all plugins
     let runtime = AgentRuntime::new(RuntimeOptions {
         character: Some(character),
-        plugins: vec![
-            sql_plugin(),                    // Database persistence
-            create_openai_elizaos_plugin()?, // Language model capabilities
-        ],
+        plugins: vec![sql_plugin(), create_openai_elizaos_plugin()?],
         ..Default::default()
     })
-    .await
-    .context("Failed to create agent runtime")?;
+    .await?;
 
-    // Initialize the runtime
-    runtime
-        .initialize()
-        .await
-        .context("Failed to initialize runtime")?;
+    runtime.initialize().await?;
 
-    // Create application state
-    let app_state = Arc::new(AppState {
+    let state = Arc::new(State {
         runtime,
-        character_name: character_name.clone(),
+        name: name.clone(),
     });
 
-    // Create Telegram configuration
-    let telegram_config = TelegramConfig::from_env()
-        .context("Failed to create Telegram configuration")?;
+    let telegram = Arc::new(RwLock::new(TelegramService::new(TelegramConfig::from_env()?)));
 
-    // Create the Telegram service
-    let mut telegram_service = TelegramService::new(telegram_config);
-
-    // Set up event callback to handle messages and commands
-    let state_for_callback = Arc::clone(&app_state);
-    telegram_service.set_event_callback(move |event_type, payload| {
-        let state = Arc::clone(&state_for_callback);
-
-        match event_type {
-            TelegramEventType::SlashStart => {
-                handle_start_command(&state.character_name, &payload);
-            }
+    let s = Arc::clone(&state);
+    let t = Arc::clone(&telegram);
+    telegram.write().await.set_event_callback(move |event, payload| {
+        let state = Arc::clone(&s);
+        let telegram = Arc::clone(&t);
+        match event {
             TelegramEventType::MessageReceived => {
-                // Spawn async task to handle message
-                let state_clone = Arc::clone(&state);
-                let payload_clone = payload.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = handle_message(&state_clone, &payload_clone).await {
-                        error!("Error handling message: {}", e);
+                    if let Err(e) = process(&state, &telegram, payload).await {
+                        error!("Error: {}", e);
                     }
                 });
             }
-            _ => {
-                // Log other events for debugging
-                tracing::debug!("Received event: {:?}", event_type);
-            }
+            _ => {}
         }
     });
 
-    // Start the Telegram service
-    telegram_service
-        .start()
-        .await
-        .context("Failed to start Telegram service")?;
+    telegram.write().await.start().await?;
+    info!("{} is running. Press Ctrl+C to stop.", name);
 
-    println!("\n✅ {} is now running on Telegram!", character_name);
-    println!("   Send a message to your bot to start chatting.\n");
-    println!("Press Ctrl+C to stop.\n");
-
-    // Wait for shutdown signal
     signal::ctrl_c().await?;
-
-    println!("\n\n🛑 Shutting down...");
-
-    // Clean up
-    telegram_service.stop().await?;
-    app_state.runtime.stop().await?;
-
-    println!("👋 Goodbye!\n");
+    telegram.write().await.stop().await?;
+    state.runtime.stop().await?;
     Ok(())
 }
 
-/// Handle the /start command
-fn handle_start_command(character_name: &str, payload: &serde_json::Value) {
-    let username = payload
-        .get("from")
-        .and_then(|f| f.get("first_name"))
-        .and_then(|n| n.as_str())
-        .unwrap_or("friend");
-
-    let chat_id = payload
-        .get("chat")
-        .and_then(|c| c.get("id"))
-        .and_then(|id| id.as_i64());
-
-    info!(
-        "New user {} started bot in chat {:?}",
-        username, chat_id
-    );
-
-    // In a full implementation, you would send a welcome message here
-    // using the TelegramService's send_message method
-    info!(
-        "Welcome message: 👋 Hello, {}! I'm {}. I'm here to help you with questions, conversations, and more!",
-        username, character_name
-    );
-}
-
-/// Handle incoming messages
-async fn handle_message(state: &AppState, payload: &serde_json::Value) -> Result<()> {
-    // Extract message details from payload
+async fn process(
+    state: &State,
+    telegram: &Arc<RwLock<TelegramService>>,
+    payload: serde_json::Value,
+) -> Result<()> {
     let text = payload
         .get("text")
         .and_then(|t| t.as_str())
-        .unwrap_or("");
-
+        .unwrap_or("")
+        .trim();
     if text.is_empty() {
         return Ok(());
     }
@@ -191,58 +106,66 @@ async fn handle_message(state: &AppState, payload: &serde_json::Value) -> Result
         .get("chat")
         .and_then(|c| c.get("id"))
         .and_then(|id| id.as_i64())
-        .context("Missing chat ID")?;
+        .context("Missing chat.id")?;
 
-    let username = payload
-        .get("from")
-        .and_then(|f| f.get("username"))
-        .and_then(|u| u.as_str())
-        .or_else(|| {
-            payload
-                .get("from")
-                .and_then(|f| f.get("first_name"))
-                .and_then(|n| n.as_str())
-        })
-        .unwrap_or("unknown");
+    let message_id = payload
+        .get("message_id")
+        .and_then(|id| id.as_i64())
+        .context("Missing message_id")?;
 
-    info!(
-        "Message from {} in chat {}: {}...",
-        username,
-        chat_id,
-        &text[..text.len().min(50)]
-    );
+    let thread_id = payload.get("thread_id").and_then(|id| id.as_i64());
 
-    // Create IDs for the conversation
-    let entity_id = UUID::new_v4();
-    let room_id = UUID::new_v4();
+    let user_id = payload
+        .get("from_user")
+        .and_then(|f| f.get("id"))
+        .and_then(|id| id.as_i64())
+        .unwrap_or(0);
 
-    // Create content from the message
+    // Deterministic IDs (matches TS/Python `string_to_uuid` parity)
+    let entity_id = string_to_uuid(format!("telegram-user-{}", user_id));
+    let room_key = match thread_id {
+        Some(tid) => format!("telegram-room-{}-{}", chat_id, tid),
+        None => format!("telegram-room-{}", chat_id),
+    };
+    let room_id = string_to_uuid(room_key);
+
+    // Handle Telegram `/start` without invoking the LLM.
+    if text.starts_with("/start") {
+        let from_user = payload.get("from_user");
+        let first_name = from_user
+            .and_then(|u| u.get("first_name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("friend");
+        let greeting = format!("👋 Hey {first_name}! I'm {}. How can I help?", state.name);
+        telegram.read().await.send_message(chat_id, &greeting).await?;
+        return Ok(());
+    }
+
+    // Match chat/main.rs pattern: Content with text, Memory::new
     let content = Content {
         text: Some(text.to_string()),
+        source: Some("telegram".to_string()),
         ..Default::default()
     };
-
-    // Create a memory from the incoming message
     let mut message = Memory::new(entity_id, room_id, content);
 
-    // Process through the runtime's message service
     let result = state
         .runtime
         .message_service()
         .handle_message(&state.runtime, &mut message, None, None)
         .await?;
 
-    // Log the response
-    if let Some(response_text) = result.response_content.and_then(|c| c.text) {
-        info!(
-            "Response for chat {} from {}: {}",
-            chat_id,
-            state.character_name,
-            response_text
-        );
-        // In a full implementation, send this via telegram_service.send_message()
-    } else {
-        info!("No response generated for chat {}", chat_id);
+    if let Some(text) = result.response_content.and_then(|c| c.text) {
+        let message_id_i32 = i32::try_from(message_id).unwrap_or(0);
+        if message_id_i32 > 0 {
+            telegram
+                .read()
+                .await
+                .reply_to_message(chat_id, message_id_i32, &text)
+                .await?;
+        } else {
+            telegram.read().await.send_message(chat_id, &text).await?;
+        }
     }
 
     Ok(())

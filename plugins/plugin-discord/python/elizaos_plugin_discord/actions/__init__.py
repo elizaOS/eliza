@@ -4,9 +4,8 @@ Discord actions for elizaOS.
 Actions define what the agent can do on Discord.
 """
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from elizaos_plugin_discord.actions.add_reaction import AddReactionAction
 from elizaos_plugin_discord.actions.chat_with_attachments import ChatWithAttachmentsAction
@@ -65,9 +64,7 @@ class ActionResult:
     data: dict[str, Any] | None = None
 
     @classmethod
-    def success_result(
-        cls, response: str, data: dict[str, Any] | None = None
-    ) -> "ActionResult":
+    def success_result(cls, response: str, data: dict[str, Any] | None = None) -> "ActionResult":
         """Create a successful result."""
         return cls(success=True, response=response, data=data)
 
@@ -77,7 +74,7 @@ class ActionResult:
         return cls(success=False, response=message)
 
 
-class DiscordAction(ABC):
+class DiscordAction(Protocol):
     """Base class for Discord actions.
 
     Actions define what the agent can do on Discord. Each action must implement:
@@ -88,13 +85,11 @@ class DiscordAction(ABC):
     """
 
     @property
-    @abstractmethod
     def name(self) -> str:
         """Action name (unique identifier)."""
         ...
 
     @property
-    @abstractmethod
     def description(self) -> str:
         """Action description for the LLM."""
         ...
@@ -104,7 +99,6 @@ class DiscordAction(ABC):
         """Similar names/aliases for this action."""
         return []
 
-    @abstractmethod
     async def validate(self, context: ActionContext) -> bool:
         """Validate the action can be executed.
 
@@ -116,7 +110,6 @@ class DiscordAction(ABC):
         """
         ...
 
-    @abstractmethod
     async def handler(
         self,
         context: ActionContext,

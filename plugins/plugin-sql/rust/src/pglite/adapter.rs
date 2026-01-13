@@ -423,7 +423,10 @@ impl DatabaseAdapter for PgLiteAdapter {
         let result = self.manager.query(&sql, &[]).await?;
         let rows = self.parse_rows(&result)?;
 
-        Ok(rows.into_iter().filter_map(|row| self.parse_entity(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| self.parse_entity(&row))
+            .collect())
     }
 
     async fn get_entities_for_room(
@@ -442,7 +445,10 @@ impl DatabaseAdapter for PgLiteAdapter {
         let result = self.manager.query(sql, &params).await?;
         let rows = self.parse_rows(&result)?;
 
-        Ok(rows.into_iter().filter_map(|row| self.parse_entity(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| self.parse_entity(&row))
+            .collect())
     }
 
     async fn create_entities(&self, entities: &[Entity]) -> Result<bool> {
@@ -537,7 +543,10 @@ impl DatabaseAdapter for PgLiteAdapter {
         let result = self.manager.query(sql, &params).await?;
         let rows = self.parse_rows(&result)?;
 
-        Ok(rows.into_iter().filter_map(|row| self.parse_component(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| self.parse_component(&row))
+            .collect())
     }
 
     async fn create_component(&self, component: &Component) -> Result<bool> {
@@ -623,7 +632,9 @@ impl DatabaseAdapter for PgLiteAdapter {
             .into_iter()
             .filter_map(|row| {
                 let id = self.get_uuid(&row, "id")?;
-                let entity_id = self.get_uuid(&row, "entity_id").unwrap_or_else(UUID::new_v4);
+                let entity_id = self
+                    .get_uuid(&row, "entity_id")
+                    .unwrap_or_else(UUID::new_v4);
                 let room_id = self.get_uuid(&row, "room_id").unwrap_or_else(UUID::new_v4);
                 let content: elizaos::Content = self.get_json(&row, "content").unwrap_or_default();
 
@@ -710,7 +721,9 @@ impl DatabaseAdapter for PgLiteAdapter {
             .into_iter()
             .filter_map(|row| {
                 let id = self.get_uuid(&row, "id")?;
-                let entity_id = self.get_uuid(&row, "entity_id").unwrap_or_else(UUID::new_v4);
+                let entity_id = self
+                    .get_uuid(&row, "entity_id")
+                    .unwrap_or_else(UUID::new_v4);
                 let room_id = self.get_uuid(&row, "room_id").unwrap_or_else(UUID::new_v4);
                 let content: elizaos::Content = self.get_json(&row, "content").unwrap_or_default();
 
@@ -768,7 +781,9 @@ impl DatabaseAdapter for PgLiteAdapter {
             .into_iter()
             .filter_map(|row| {
                 let id = self.get_uuid(&row, "id")?;
-                let entity_id = self.get_uuid(&row, "entity_id").unwrap_or_else(UUID::new_v4);
+                let entity_id = self
+                    .get_uuid(&row, "entity_id")
+                    .unwrap_or_else(UUID::new_v4);
                 let room_id = self.get_uuid(&row, "room_id").unwrap_or_else(UUID::new_v4);
                 let content: elizaos::Content = self.get_json(&row, "content").unwrap_or_default();
 
@@ -965,7 +980,9 @@ impl DatabaseAdapter for PgLiteAdapter {
             .into_iter()
             .filter_map(|row| {
                 let id = self.get_uuid(&row, "id")?;
-                let entity_id = self.get_uuid(&row, "entity_id").unwrap_or_else(UUID::new_v4);
+                let entity_id = self
+                    .get_uuid(&row, "entity_id")
+                    .unwrap_or_else(UUID::new_v4);
                 let room_id = self.get_uuid(&row, "room_id").unwrap_or_else(UUID::new_v4);
                 let content: elizaos::Content = self.get_json(&row, "content").unwrap_or_default();
 
@@ -1045,7 +1062,10 @@ impl DatabaseAdapter for PgLiteAdapter {
         let result = self.manager.query(&sql, &js_params).await?;
         let rows = self.parse_rows(&result)?;
 
-        Ok(rows.into_iter().filter_map(|row| self.parse_log(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| self.parse_log(&row))
+            .collect())
     }
 
     async fn delete_log(&self, log_id: &UUID) -> Result<()> {
@@ -1108,7 +1128,10 @@ impl DatabaseAdapter for PgLiteAdapter {
         let result = self.manager.query(sql, &[]).await?;
         let rows = self.parse_rows(&result)?;
 
-        Ok(rows.into_iter().filter_map(|row| self.parse_world(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| self.parse_world(&row))
+            .collect())
     }
 
     async fn update_world(&self, world: &World) -> Result<()> {
@@ -1152,7 +1175,10 @@ impl DatabaseAdapter for PgLiteAdapter {
         let result = self.manager.query(&sql, &[]).await?;
         let rows = self.parse_rows(&result)?;
 
-        Ok(rows.into_iter().filter_map(|row| self.parse_room(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| self.parse_room(&row))
+            .collect())
     }
 
     async fn create_rooms(&self, rooms: &[Room]) -> Result<Vec<UUID>> {
@@ -1238,7 +1264,10 @@ impl DatabaseAdapter for PgLiteAdapter {
         let result = self.manager.query(sql, &params).await?;
         let rows = self.parse_rows(&result)?;
 
-        Ok(rows.into_iter().filter_map(|row| self.parse_room(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| self.parse_room(&row))
+            .collect())
     }
 
     // =========================================================================
@@ -1317,7 +1346,8 @@ impl DatabaseAdapter for PgLiteAdapter {
     }
 
     async fn is_room_participant(&self, room_id: &UUID, entity_id: &UUID) -> Result<bool> {
-        let sql = "SELECT COUNT(*) as count FROM participants WHERE room_id = $1 AND entity_id = $2";
+        let sql =
+            "SELECT COUNT(*) as count FROM participants WHERE room_id = $1 AND entity_id = $2";
         let params = vec![
             JsValue::from_str(room_id.as_str()),
             JsValue::from_str(entity_id.as_str()),
@@ -1452,10 +1482,7 @@ impl DatabaseAdapter for PgLiteAdapter {
         Ok(rows.first().and_then(|row| self.parse_relationship(row)))
     }
 
-    async fn get_relationships(
-        &self,
-        params: GetRelationshipsParams,
-    ) -> Result<Vec<Relationship>> {
+    async fn get_relationships(&self, params: GetRelationshipsParams) -> Result<Vec<Relationship>> {
         let sql = r#"
             SELECT id, source_entity_id, target_entity_id, agent_id, tags, metadata, created_at
             FROM relationships
@@ -1597,7 +1624,10 @@ impl DatabaseAdapter for PgLiteAdapter {
         let result = self.manager.query(&sql, &js_params).await?;
         let rows = self.parse_rows(&result)?;
 
-        Ok(rows.into_iter().filter_map(|row| self.parse_task(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| self.parse_task(&row))
+            .collect())
     }
 
     async fn get_task(&self, id: &UUID) -> Result<Option<Task>> {
@@ -1615,7 +1645,10 @@ impl DatabaseAdapter for PgLiteAdapter {
         let result = self.manager.query(sql, &params).await?;
         let rows = self.parse_rows(&result)?;
 
-        Ok(rows.into_iter().filter_map(|row| self.parse_task(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| self.parse_task(&row))
+            .collect())
     }
 
     async fn update_task(&self, id: &UUID, task: &Task) -> Result<()> {

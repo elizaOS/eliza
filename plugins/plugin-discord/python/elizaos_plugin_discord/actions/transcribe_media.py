@@ -16,10 +16,7 @@ class TranscribeMediaAction:
 
     @property
     def description(self) -> str:
-        return (
-            "Transcribe audio or video content from a URL or attachment "
-            "in a Discord message."
-        )
+        return "Transcribe audio or video content from a URL or attachment in a Discord message."
 
     @property
     def similes(self) -> list[str]:
@@ -33,8 +30,8 @@ class TranscribeMediaAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord"
 
     async def handler(
         self,
@@ -71,8 +68,7 @@ class TranscribeMediaAction:
         transcription = await service.transcribe_media(media_url)
         if not transcription:
             return ActionResult.failure_result(
-                "I couldn't transcribe the media. "
-                "The format might not be supported."
+                "I couldn't transcribe the media. The format might not be supported."
             )
 
         # Truncate if too long

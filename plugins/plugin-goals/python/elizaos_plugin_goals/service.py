@@ -14,11 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseProtocol(Protocol):
-    async def execute(self, query: str, params: dict[str, object] | None = None) -> list[dict[str, object]]:
-        ...
+    async def execute(
+        self, query: str, params: dict[str, object] | None = None
+    ) -> list[dict[str, object]]: ...
 
-    async def execute_one(self, query: str, params: dict[str, object] | None = None) -> dict[str, object] | None:
-        ...
+    async def execute_one(
+        self, query: str, params: dict[str, object] | None = None
+    ) -> dict[str, object] | None: ...
 
 
 class GoalDataService:
@@ -149,7 +151,9 @@ class GoalDataService:
                         owner_type=GoalOwnerType(str(result["owner_type"])),
                         owner_id=str(result["owner_id"]),
                         name=str(result["name"]),
-                        description=str(result["description"]) if result.get("description") else None,
+                        description=str(result["description"])
+                        if result.get("description")
+                        else None,
                         is_completed=bool(result.get("is_completed", False)),
                         completed_at=result.get("completed_at"),  # type: ignore[arg-type]
                         created_at=result["created_at"],  # type: ignore[arg-type]

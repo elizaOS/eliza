@@ -2,7 +2,9 @@
 
 #![cfg(feature = "native")]
 
-use elizaos_plugin_sql::migration::{MigrationService, MigrationTracker, SnapshotStorage, JournalStorage};
+use elizaos_plugin_sql::migration::{
+    JournalStorage, MigrationService, MigrationTracker, SnapshotStorage,
+};
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
@@ -48,11 +50,15 @@ async fn test_migration_service_initialization() {
     };
 
     let service = MigrationService::new(pool.clone());
-    
+
     // Initialize should create migration tables
     let result = service.initialize().await;
-    assert!(result.is_ok(), "Failed to initialize migration service: {:?}", result.err());
-    
+    assert!(
+        result.is_ok(),
+        "Failed to initialize migration service: {:?}",
+        result.err()
+    );
+
     pool.close().await;
 }
 
@@ -87,11 +93,18 @@ async fn test_record_migration() {
 
     let hash = "abcdef1234567890";
     let result = service.record_migration(plugin_name, hash, &snapshot).await;
-    assert!(result.is_ok(), "Failed to record migration: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Failed to record migration: {:?}",
+        result.err()
+    );
 
     // Verify status
     let status = service.get_status(plugin_name).await.unwrap();
-    assert!(status.get("hasRun").and_then(|v| v.as_bool()).unwrap_or(false));
+    assert!(status
+        .get("hasRun")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false));
 
     cleanup_test_data(&pool, plugin_name).await.unwrap();
     pool.close().await;
@@ -112,7 +125,11 @@ async fn test_migration_tracker() {
 
     // Ensure tables exist
     let result = tracker.ensure_tables().await;
-    assert!(result.is_ok(), "Failed to ensure tables: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Failed to ensure tables: {:?}",
+        result.err()
+    );
 
     let plugin_name = "@test/tracker-test";
     let _ = cleanup_test_data(&pool, plugin_name).await;
@@ -124,8 +141,14 @@ async fn test_migration_tracker() {
         .unwrap()
         .as_millis() as i64;
 
-    let result = tracker.record_migration(plugin_name, hash, created_at).await;
-    assert!(result.is_ok(), "Failed to record migration: {:?}", result.err());
+    let result = tracker
+        .record_migration(plugin_name, hash, created_at)
+        .await;
+    assert!(
+        result.is_ok(),
+        "Failed to record migration: {:?}",
+        result.err()
+    );
 
     // Get last migration
     let last = tracker.get_last_migration(plugin_name).await.unwrap();
@@ -164,14 +187,21 @@ async fn test_snapshot_storage() {
 
     // Save snapshot
     let result = storage.save_snapshot(plugin_name, 0, &snapshot).await;
-    assert!(result.is_ok(), "Failed to save snapshot: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Failed to save snapshot: {:?}",
+        result.err()
+    );
 
     // Get latest snapshot
     let latest = storage.get_latest_snapshot(plugin_name).await.unwrap();
     assert!(latest.is_some());
-    
+
     let retrieved = latest.unwrap();
-    assert_eq!(retrieved.get("version").and_then(|v| v.as_str()), Some("1.0.0"));
+    assert_eq!(
+        retrieved.get("version").and_then(|v| v.as_str()),
+        Some("1.0.0")
+    );
 
     cleanup_test_data(&pool, plugin_name).await.unwrap();
     pool.close().await;
@@ -201,9 +231,18 @@ async fn test_multiple_snapshots() {
     let snapshot2 = json!({"version": "2.0.0"});
     let snapshot3 = json!({"version": "3.0.0"});
 
-    storage.save_snapshot(plugin_name, 0, &snapshot1).await.unwrap();
-    storage.save_snapshot(plugin_name, 1, &snapshot2).await.unwrap();
-    storage.save_snapshot(plugin_name, 2, &snapshot3).await.unwrap();
+    storage
+        .save_snapshot(plugin_name, 0, &snapshot1)
+        .await
+        .unwrap();
+    storage
+        .save_snapshot(plugin_name, 1, &snapshot2)
+        .await
+        .unwrap();
+    storage
+        .save_snapshot(plugin_name, 2, &snapshot3)
+        .await
+        .unwrap();
 
     // Get all snapshots
     let all = storage.get_all_snapshots(plugin_name).await.unwrap();
@@ -211,7 +250,10 @@ async fn test_multiple_snapshots() {
 
     // Latest should be version 3.0.0
     let latest = storage.get_latest_snapshot(plugin_name).await.unwrap();
-    assert_eq!(latest.unwrap().get("version").and_then(|v| v.as_str()), Some("3.0.0"));
+    assert_eq!(
+        latest.unwrap().get("version").and_then(|v| v.as_str()),
+        Some("3.0.0")
+    );
 
     // Next index should be 3
     let next_idx = storage.get_next_idx(plugin_name).await.unwrap();
@@ -245,16 +287,21 @@ async fn test_journal_storage() {
         {"idx": 0, "version": "0000_initial", "breakpoints": true}
     ]);
 
-    let result = storage.save_journal(plugin_name, "0.0.1", "postgresql", &entries).await;
+    let result = storage
+        .save_journal(plugin_name, "0.0.1", "postgresql", &entries)
+        .await;
     assert!(result.is_ok(), "Failed to save journal: {:?}", result.err());
 
     // Load journal
     let journal = storage.load_journal(plugin_name).await.unwrap();
     assert!(journal.is_some());
-    
+
     let j = journal.unwrap();
     assert_eq!(j.get("version").and_then(|v| v.as_str()), Some("0.0.1"));
-    assert_eq!(j.get("dialect").and_then(|v| v.as_str()), Some("postgresql"));
+    assert_eq!(
+        j.get("dialect").and_then(|v| v.as_str()),
+        Some("postgresql")
+    );
 
     cleanup_test_data(&pool, plugin_name).await.unwrap();
     pool.close().await;
@@ -280,15 +327,27 @@ async fn test_multiple_plugins() {
     let _ = cleanup_test_data(&pool, plugin2).await;
 
     // Record migrations for different plugins
-    service.record_migration(plugin1, "hash1", &json!({"v": 1})).await.unwrap();
-    service.record_migration(plugin2, "hash2", &json!({"v": 2})).await.unwrap();
+    service
+        .record_migration(plugin1, "hash1", &json!({"v": 1}))
+        .await
+        .unwrap();
+    service
+        .record_migration(plugin2, "hash2", &json!({"v": 2}))
+        .await
+        .unwrap();
 
     // Each plugin should have its own status
     let status1 = service.get_status(plugin1).await.unwrap();
     let status2 = service.get_status(plugin2).await.unwrap();
 
-    assert!(status1.get("hasRun").and_then(|v| v.as_bool()).unwrap_or(false));
-    assert!(status2.get("hasRun").and_then(|v| v.as_bool()).unwrap_or(false));
+    assert!(status1
+        .get("hasRun")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false));
+    assert!(status2
+        .get("hasRun")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false));
 
     cleanup_test_data(&pool, plugin1).await.unwrap();
     cleanup_test_data(&pool, plugin2).await.unwrap();
@@ -367,7 +426,9 @@ mod edge_cases {
         let _ = cleanup_test_data(&pool, plugin_name).await;
 
         // Test with a very short hash (should not panic)
-        let result = service.record_migration(plugin_name, "abc", &json!({})).await;
+        let result = service
+            .record_migration(plugin_name, "abc", &json!({}))
+            .await;
         assert!(result.is_ok(), "Should handle short hash without panicking");
 
         cleanup_test_data(&pool, plugin_name).await.unwrap();
@@ -391,7 +452,9 @@ mod edge_cases {
         let _ = cleanup_test_data(&pool, plugin_name).await;
 
         // Record with empty snapshot
-        let result = service.record_migration(plugin_name, "hash", &json!({})).await;
+        let result = service
+            .record_migration(plugin_name, "hash", &json!({}))
+            .await;
         assert!(result.is_ok());
 
         let snapshot = service.get_latest_snapshot(plugin_name).await.unwrap();
@@ -423,17 +486,20 @@ mod edge_cases {
             "data": {"key": "value with émojis 🎉"}
         });
 
-        let result = service.record_migration(plugin_name, "unicode_hash", &snapshot).await;
+        let result = service
+            .record_migration(plugin_name, "unicode_hash", &snapshot)
+            .await;
         assert!(result.is_ok());
 
         let retrieved = service.get_latest_snapshot(plugin_name).await.unwrap();
         assert!(retrieved.is_some());
         let s = retrieved.unwrap();
-        assert_eq!(s.get("description").and_then(|v| v.as_str()), Some("Unicode: 你好世界 🚀 émojis 日本語"));
+        assert_eq!(
+            s.get("description").and_then(|v| v.as_str()),
+            Some("Unicode: 你好世界 🚀 émojis 日本語")
+        );
 
         cleanup_test_data(&pool, plugin_name).await.unwrap();
         pool.close().await;
     }
 }
-
-

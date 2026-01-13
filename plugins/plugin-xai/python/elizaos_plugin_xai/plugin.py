@@ -93,6 +93,7 @@ def get_xai_elizaos_plugin() -> Plugin:
     - XAI_EMBEDDING_MODEL (optional, default: grok-embedding)
     - X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET (for X API)
     """
+
     async def init_plugin(
         plugin_config: dict[str, str | int | float | bool | None],
         runtime: IAgentRuntime,

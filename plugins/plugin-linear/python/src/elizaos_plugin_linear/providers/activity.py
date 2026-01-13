@@ -1,4 +1,3 @@
-
 from datetime import datetime
 
 from elizaos_plugin_linear.providers.base import Provider, ProviderResult, RuntimeProtocol

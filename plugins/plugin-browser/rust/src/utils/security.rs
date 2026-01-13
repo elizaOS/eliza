@@ -86,9 +86,11 @@ impl UrlValidator {
             }
 
             if !self.config.allowed_domains.is_empty() {
-                let allowed = self.config.allowed_domains.iter().any(|domain| {
-                    host == domain || host.ends_with(&format!(".{}", domain))
-                });
+                let allowed = self
+                    .config
+                    .allowed_domains
+                    .iter()
+                    .any(|domain| host == domain || host.ends_with(&format!(".{}", domain)));
                 if !allowed {
                     return ValidationResult {
                         valid: false,

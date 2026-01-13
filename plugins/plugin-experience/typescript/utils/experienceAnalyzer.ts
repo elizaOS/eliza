@@ -74,7 +74,10 @@ export async function analyzeExperience(
   };
 }
 
-function findSimilarExperiences(partial: Partial<Experience>, experiences: Experience[]): Experience[] {
+function findSimilarExperiences(
+  partial: Partial<Experience>,
+  experiences: Experience[]
+): Experience[] {
   return experiences.filter(
     (e) =>
       e.action === partial.action &&
@@ -85,8 +88,7 @@ function findSimilarExperiences(partial: Partial<Experience>, experiences: Exper
 
 function findContradictions(partial: Partial<Experience>, experiences: Experience[]): Experience[] {
   return experiences.filter(
-    (e) =>
-      e.action === partial.action && e.context === partial.context && e.type !== partial.type
+    (e) => e.action === partial.action && e.context === partial.context && e.type !== partial.type
   );
 }
 
@@ -104,7 +106,10 @@ interface FailurePattern {
   insights: string[];
 }
 
-function detectFailurePattern(partial: Partial<Experience>, experiences: Experience[]): FailurePattern | null {
+function detectFailurePattern(
+  partial: Partial<Experience>,
+  experiences: Experience[]
+): FailurePattern | null {
   const recentFailures = experiences.filter((e) => e.type === ExperienceType.FAILURE).slice(0, 10);
 
   // Check for repeated failures
@@ -132,9 +137,7 @@ function detectFailurePattern(partial: Partial<Experience>, experiences: Experie
   return null;
 }
 
-export async function detectPatterns(
-  experiences: Experience[]
-): Promise<
+export async function detectPatterns(experiences: Experience[]): Promise<
   Array<{
     description: string;
     frequency: number;
@@ -240,4 +243,3 @@ function groupByHour(experiences: Experience[]): Map<number, Experience[]> {
 
   return groups;
 }
-

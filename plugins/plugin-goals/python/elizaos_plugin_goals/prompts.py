@@ -156,8 +156,7 @@ def build_check_similarity_prompt(
         Formatted prompt string
     """
     goals_text = "\n".join(
-        f"- {goal['name']}: {goal.get('description', 'No description')}"
-        for goal in existing_goals
+        f"- {goal['name']}: {goal.get('description', 'No description')}" for goal in existing_goals
     )
 
     return (
@@ -173,9 +172,7 @@ def build_extract_goal_prompt(text: str, message_history: str) -> str:
     )
 
 
-def build_extract_cancellation_prompt(
-    text: str, message_history: str, available_tasks: str
-) -> str:
+def build_extract_cancellation_prompt(text: str, message_history: str, available_tasks: str) -> str:
     return (
         EXTRACT_CANCELLATION_TEMPLATE.replace("{{text}}", text)
         .replace("{{messageHistory}}", message_history)
@@ -183,9 +180,7 @@ def build_extract_cancellation_prompt(
     )
 
 
-def build_extract_confirmation_prompt(
-    text: str, message_history: str, pending_task: str
-) -> str:
+def build_extract_confirmation_prompt(text: str, message_history: str, pending_task: str) -> str:
     return (
         EXTRACT_CONFIRMATION_TEMPLATE.replace("{{text}}", text)
         .replace("{{messageHistory}}", message_history)

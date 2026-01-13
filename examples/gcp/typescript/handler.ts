@@ -74,7 +74,10 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
   if (initializationPromise) {
     await initializationPromise;
-    return runtime!;
+    if (!runtime) {
+      throw new Error("elizaOS runtime initialization failed");
+    }
+    return runtime;
   }
 
   initializationPromise = (async () => {
@@ -91,7 +94,10 @@ async function initializeRuntime(): Promise<AgentRuntime> {
   })();
 
   await initializationPromise;
-  return runtime!;
+  if (!runtime) {
+    throw new Error("elizaOS runtime initialization failed");
+  }
+  return runtime;
 }
 
 /**
@@ -174,7 +180,11 @@ async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     id: uuidv4() as UUID,
     entityId: userId,
     roomId,
-    content: { text: request.message },
+    content: {
+      text: request.message,
+      source: "client_chat",
+      channelType: ChannelType.DM,
+    },
   });
 
   // Process message and collect response

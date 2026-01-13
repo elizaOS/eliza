@@ -1,9 +1,9 @@
 //! Integration tests for browser plugin.
 
 use elizaos_browser::{
-    BrowserConfig, BrowserSession, ActionResult, NavigationResult,
-    ExtractResult, ScreenshotResult, CaptchaResult, CaptchaType,
-    SecurityConfig, RetryConfig, RateLimitConfig, ErrorCode,
+    ActionResult, BrowserConfig, BrowserSession, CaptchaResult, CaptchaType, ErrorCode,
+    ExtractResult, NavigationResult, RateLimitConfig, RetryConfig, ScreenshotResult,
+    SecurityConfig,
 };
 use std::collections::HashMap;
 
@@ -31,7 +31,7 @@ fn test_browser_session_new() {
 fn test_action_result_success() {
     let mut data = HashMap::new();
     data.insert("key".to_string(), serde_json::json!("value"));
-    
+
     let result = ActionResult::success(data.clone());
     assert!(result.success);
     assert!(result.data.is_some());
@@ -93,7 +93,7 @@ fn test_navigation_result_serialization() {
         title: "Example".to_string(),
         error: None,
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("example.com"));
     assert!(json.contains("Example"));
@@ -107,7 +107,7 @@ fn test_extract_result_serialization() {
         data: Some("extracted data".to_string()),
         error: None,
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("extracted data"));
 }
@@ -122,7 +122,7 @@ fn test_screenshot_result_serialization() {
         title: Some("Example".to_string()),
         error: None,
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("base64data"));
     assert!(json.contains("image/png"));
@@ -138,7 +138,7 @@ fn test_captcha_result_serialization() {
         token: None,
         error: None,
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("detected"));
     assert!(json.contains("recaptcha-v2"));
@@ -147,10 +147,10 @@ fn test_captcha_result_serialization() {
 #[test]
 fn test_detect_captcha_type_turnstile() {
     use elizaos_browser::detect_captcha_type;
-    
+
     let html = r#"<div class="cf-turnstile" data-sitekey="test-key-123"></div>"#;
     let (captcha_type, site_key) = detect_captcha_type(html);
-    
+
     assert_eq!(captcha_type, CaptchaType::Turnstile);
     assert_eq!(site_key, Some("test-key-123".to_string()));
 }
@@ -158,10 +158,10 @@ fn test_detect_captcha_type_turnstile() {
 #[test]
 fn test_detect_captcha_type_recaptcha_v2() {
     use elizaos_browser::detect_captcha_type;
-    
+
     let html = r#"<div class="g-recaptcha" data-sitekey="recaptcha-key"></div>"#;
     let (captcha_type, site_key) = detect_captcha_type(html);
-    
+
     assert_eq!(captcha_type, CaptchaType::RecaptchaV2);
     assert_eq!(site_key, Some("recaptcha-key".to_string()));
 }
@@ -169,22 +169,22 @@ fn test_detect_captcha_type_recaptcha_v2() {
 #[test]
 fn test_detect_captcha_type_recaptcha_v3() {
     use elizaos_browser::detect_captcha_type;
-    
+
     let html = r#"<script src="https://www.google.com/recaptcha/api.js?render=v3-key"></script>
                   <div data-sitekey="v3-key"></div>
                   <script>grecaptcha.execute('v3-key')</script>"#;
     let (captcha_type, _) = detect_captcha_type(html);
-    
+
     assert_eq!(captcha_type, CaptchaType::RecaptchaV3);
 }
 
 #[test]
 fn test_detect_captcha_type_hcaptcha() {
     use elizaos_browser::detect_captcha_type;
-    
+
     let html = r#"<div class="h-captcha" data-sitekey="hcaptcha-key"></div>"#;
     let (captcha_type, site_key) = detect_captcha_type(html);
-    
+
     assert_eq!(captcha_type, CaptchaType::Hcaptcha);
     assert_eq!(site_key, Some("hcaptcha-key".to_string()));
 }
@@ -192,10 +192,10 @@ fn test_detect_captcha_type_hcaptcha() {
 #[test]
 fn test_detect_captcha_type_none() {
     use elizaos_browser::detect_captcha_type;
-    
+
     let html = r#"<html><body><p>No captcha here</p></body></html>"#;
     let (captcha_type, site_key) = detect_captcha_type(html);
-    
+
     assert_eq!(captcha_type, CaptchaType::None);
     assert!(site_key.is_none());
 }
@@ -203,9 +203,9 @@ fn test_detect_captcha_type_none() {
 #[test]
 fn test_generate_captcha_injection_script_turnstile() {
     use elizaos_browser::generate_captcha_injection_script;
-    
+
     let script = generate_captcha_injection_script(&CaptchaType::Turnstile, "test-token");
-    
+
     assert!(script.contains("cf-turnstile-response"));
     assert!(script.contains("test-token"));
     assert!(script.contains("turnstileCallback"));
@@ -214,9 +214,9 @@ fn test_generate_captcha_injection_script_turnstile() {
 #[test]
 fn test_generate_captcha_injection_script_recaptcha() {
     use elizaos_browser::generate_captcha_injection_script;
-    
+
     let script = generate_captcha_injection_script(&CaptchaType::RecaptchaV2, "recaptcha-token");
-    
+
     assert!(script.contains("g-recaptcha-response"));
     assert!(script.contains("recaptcha-token"));
     assert!(script.contains("onRecaptchaSuccess"));
@@ -225,9 +225,9 @@ fn test_generate_captcha_injection_script_recaptcha() {
 #[test]
 fn test_generate_captcha_injection_script_hcaptcha() {
     use elizaos_browser::generate_captcha_injection_script;
-    
+
     let script = generate_captcha_injection_script(&CaptchaType::Hcaptcha, "hcaptcha-token");
-    
+
     assert!(script.contains("h-captcha-response"));
     assert!(script.contains("hcaptcha-token"));
     assert!(script.contains("hcaptchaCallback"));
@@ -236,8 +236,8 @@ fn test_generate_captcha_injection_script_hcaptcha() {
 #[test]
 fn test_generate_captcha_injection_script_none() {
     use elizaos_browser::generate_captcha_injection_script;
-    
+
     let script = generate_captcha_injection_script(&CaptchaType::None, "token");
-    
+
     assert!(script.is_empty());
 }

@@ -73,7 +73,7 @@ class ReasoningAgent:
             Response with answer and reasoning
         """
         if self._use_llm and self._runtime is not None:
-            return await self._reason_with_llm(state)
+            return await self._reason_with_eliza(state)
         return self._reason_with_heuristics(state)
 
     def _reason_with_heuristics(self, state: StepResult) -> Response:
@@ -84,54 +84,38 @@ class ReasoningAgent:
             reasoning="Heuristic mode cannot solve this problem.",
         )
 
-    async def _reason_with_llm(self, state: StepResult) -> Response:
-        """Use LLM for reasoning."""
+    async def _reason_with_eliza(self, state: StepResult, *, trajectory_step_id: str | None = None) -> Response:
+        """Use canonical ElizaOS message pipeline for reasoning."""
         if self._runtime is None:
             return self._reason_with_heuristics(state)
 
-        problem = state.problem
-
-        # Build chain-of-thought prompt
-        prompt = f"""Solve this {problem.task_type.value} problem step by step.
-
-PROBLEM:
-{problem.question}
-
-INSTRUCTIONS:
-1. Think through the problem step by step
-2. Show your reasoning clearly
-3. State your final answer explicitly
-
-{f"Previous feedback: {state.feedback}" if state.attempts > 0 else ""}
-
-Think step by step, then provide your answer:
-"""
-
         try:
-            from elizaos.types.model import ModelType
-
-            result = await self._runtime.use_model(
-                ModelType.TEXT_LARGE.value,
-                {"prompt": prompt, "maxTokens": 500, "temperature": 0.3},
+            from elizaos_atropos_shared.canonical_eliza import run_with_context
+            from elizaos_atropos_reasoning.eliza_plugin import (
+                REASONING_STORE,
+                ReasoningDecisionContext,
             )
 
-            response_text = str(result).strip()
+            result, ctx = await run_with_context(
+                self._runtime,
+                REASONING_STORE,
+                ReasoningDecisionContext(state=state),
+                source="atropos_reasoning",
+                text="Solve the problem and provide the final answer.",
+                trajectory_step_id=trajectory_step_id,
+            )
+            chosen_answer = ctx.chosen_answer
 
-            # Extract answer from response
-            answer = extract_answer_from_text(response_text)
+            response_text = result.response_content.text if result.response_content else ""
+            answer = extract_answer_from_text(chosen_answer or response_text)
 
-            # Parse reasoning steps
-            steps = []
+            steps: list[str] = []
             for line in response_text.split("\n"):
-                line = line.strip()
-                if line and not line.startswith("ANSWER"):
-                    steps.append(line)
+                t = line.strip()
+                if t:
+                    steps.append(t)
 
-            return Response(
-                answer=answer,
-                reasoning=response_text,
-                steps=steps,
-            )
+            return Response(answer=answer, reasoning=response_text, steps=steps)
 
         except Exception:
             return self._reason_with_heuristics(state)

@@ -1,4 +1,3 @@
-
 from elizaos_plugin_google_genai.client import GoogleGenAIClient
 from elizaos_plugin_google_genai.config import GoogleGenAIConfig
 from elizaos_plugin_google_genai.errors import (
@@ -29,7 +28,9 @@ from elizaos_plugin_google_genai.types import (
 __version__ = "1.0.0"
 
 PLUGIN_NAME = "google-genai"
-PLUGIN_DESCRIPTION = "Google GenAI Gemini API client with text generation, embeddings, and image analysis support"
+PLUGIN_DESCRIPTION = (
+    "Google GenAI Gemini API client with text generation, embeddings, and image analysis support"
+)
 PLUGIN_VERSION = __version__
 
 

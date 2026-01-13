@@ -68,4 +68,3 @@ class TranscriptionParams:
 class TranscriptionResult:
     text: str
     language: str
-

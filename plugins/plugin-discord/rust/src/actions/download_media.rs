@@ -91,7 +91,10 @@ impl DiscordAction for DownloadMediaAction {
             .send_file(
                 &channel_id,
                 file_path,
-                &format!("I downloaded the video \"{}\" and attached it below.", title),
+                &format!(
+                    "I downloaded the video \"{}\" and attached it below.",
+                    title
+                ),
             )
             .await?;
 

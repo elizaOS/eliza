@@ -26,4 +26,3 @@ impl BlueSkyService {
         &self.client
     }
 }
-

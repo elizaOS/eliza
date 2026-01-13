@@ -12,8 +12,9 @@ import {
   AgentRuntime,
   ChannelType,
   type Character,
+  type Content,
   createMessageMemory,
-  ModelType,
+  type Memory,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -196,38 +197,48 @@ export async function sendMessage(
 ): Promise<string> {
   const runtime = await getRuntime();
 
-  // Create a message memory for storage
-  const message = createMessageMemory({
+  if (!runtime.messageService) {
+    throw new Error("Runtime message service not available");
+  }
+
+  const useStreaming = typeof onChunk === "function";
+  let responseText = "";
+
+  // Create message memory (the messageService will persist it)
+  const messageMemory = createMessageMemory({
     id: uuidv4() as UUID,
     entityId: userId,
     roomId,
-    content: { text },
+    content: {
+      text,
+      source: "client_chat",
+      channelType: ChannelType.DM,
+    },
   });
 
-  // Store the user message
-  await runtime.createMemory(message, "messages");
+  const result = await runtime.messageService.handleMessage(
+    runtime,
+    messageMemory,
+    async (content: Content): Promise<Memory[]> => {
+      // In non-streaming mode, callback is typically called with the final reply.
+      if (!useStreaming && typeof content.text === "string") {
+        responseText = content.text;
+      }
+      return [];
+    },
+    useStreaming
+      ? {
+          onStreamChunk: async (chunk: string): Promise<void> => {
+            responseText += chunk;
+            onChunk?.(chunk);
+          },
+        }
+      : undefined,
+  );
 
-  // Use the model directly - our ELIZA plugin handles TEXT_LARGE
-  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-    prompt: text,
-  });
-
-  const responseText =
-    typeof response === "string" ? response : String(response);
-
-  // Notify via callback if provided
-  if (onChunk) {
-    onChunk(responseText);
+  if (!responseText && typeof result.responseContent?.text === "string") {
+    responseText = result.responseContent.text;
   }
-
-  // Store the ELIZA response
-  const elizaMessage = createMessageMemory({
-    id: uuidv4() as UUID,
-    entityId: runtime.agentId,
-    roomId,
-    content: { text: responseText },
-  });
-  await runtime.createMemory(elizaMessage, "messages");
 
   return responseText;
 }

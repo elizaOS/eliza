@@ -11,7 +11,8 @@ pub struct RssService {
 
 impl RssService {
     pub const SERVICE_TYPE: &'static str = "RSS";
-    pub const CAPABILITY_DESCRIPTION: &'static str = "The agent is able to deal with RSS/atom feeds";
+    pub const CAPABILITY_DESCRIPTION: &'static str =
+        "The agent is able to deal with RSS/atom feeds";
 
     pub fn try_new() -> Result<Self> {
         Ok(Self {
@@ -37,4 +38,3 @@ impl Default for RssService {
         Self::new()
     }
 }
-

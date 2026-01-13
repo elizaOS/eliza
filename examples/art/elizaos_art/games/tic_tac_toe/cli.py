@@ -6,6 +6,7 @@ import asyncio
 
 import typer
 from rich.console import Console
+from rich.live import Live
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
@@ -13,11 +14,11 @@ from rich.table import Table
 from elizaos_art.base import TrainingConfig
 from elizaos_art.games.tic_tac_toe.agent import (
     TicTacToeAgent,
-    TicTacToeOptimalAgent,
+    TicTacToeHeuristicAgent,
     TicTacToeRandomAgent,
 )
 from elizaos_art.games.tic_tac_toe.environment import TicTacToeEnvironment
-from elizaos_art.games.tic_tac_toe.types import TicTacToeAction, TicTacToeConfig
+from elizaos_art.games.tic_tac_toe.types import TicTacToeAction, TicTacToeConfig, Player
 from elizaos_art.trainer import GRPOTrainer
 
 app = typer.Typer(
@@ -29,216 +30,208 @@ console = Console()
 
 @app.command()
 def play(
-    episodes: int = typer.Option(10, help="Number of games to play"),
-    agent_type: str = typer.Option(
-        "optimal",
-        help="Agent type: optimal, random, or llm",
-    ),
-    opponent: str = typer.Option(
-        "random",
-        help="Opponent type: random, optimal",
-    ),
-    delay: float = typer.Option(0.5, help="Delay between moves"),
+    episodes: int = typer.Option(10, help="Number of episodes to play"),
+    agent_type: str = typer.Option("heuristic", help="Agent type: heuristic, random"),
+    opponent: str = typer.Option("random", help="Opponent: random, heuristic, minimax"),
+    delay: float = typer.Option(0.5, help="Delay between moves (seconds)"),
+    seed: int | None = typer.Option(None, help="Random seed"),
 ) -> None:
     """Watch an agent play Tic-Tac-Toe."""
 
     async def run() -> None:
-        config = TicTacToeConfig(opponent_type=opponent)
+        config = TicTacToeConfig(opponent=opponent)
         env = TicTacToeEnvironment(config)
         await env.initialize()
 
+        # Select agent
         if agent_type == "random":
-            agent = TicTacToeRandomAgent()
-        elif agent_type == "llm":
-            agent = TicTacToeAgent()
+            agent = TicTacToeRandomAgent(seed)
         else:
-            agent = TicTacToeOptimalAgent()
+            agent = TicTacToeHeuristicAgent()
 
-        console.print(f"\n[bold]Tic-Tac-Toe - {agent.name} vs {opponent}[/bold]\n")
+        console.print(f"\n[bold]Tic-Tac-Toe - {episodes} episodes with {agent.name}[/bold]")
+        console.print(f"Opponent: {opponent}\n")
 
         wins = 0
         losses = 0
         draws = 0
 
         for ep in range(episodes):
-            state = await env.reset(seed=ep)
+            state = await env.reset(seed=seed + ep if seed else None)
 
-            console.print(f"\n[bold cyan]Game {ep + 1}/{episodes}[/bold cyan]")
+            with Live(console=console, refresh_per_second=4) as live:
+                while not state.is_terminal():
+                    actions = env.get_available_actions(state)
+                    if not actions:
+                        break
 
-            while not state.is_terminal():
-                console.print(env.render(state))
+                    action = await agent.decide(state, actions)
 
-                actions = env.get_available_actions(state)
-                if not actions:
-                    break
+                    panel = Panel(
+                        env.render(state),
+                        title=f"Episode {ep + 1}/{episodes}",
+                        subtitle=f"AI places at position {action.value}",
+                    )
+                    live.update(panel)
 
-                action = await agent.decide(state, actions)
-                row, col = action.to_coords()
-                console.print(f"[dim]Agent plays: position {action.value} ({row},{col})[/dim]")
+                    state, _, _ = await env.step(action)
+                    await asyncio.sleep(delay)
 
-                state, reward, done = await env.step(action)
-                await asyncio.sleep(delay)
+                # Final state
+                style = "green" if state.winner == config.ai_player else "red" if state.winner else "yellow"
+                panel = Panel(
+                    env.render(state),
+                    title=f"Episode {ep + 1}/{episodes}",
+                    style=style,
+                )
+                live.update(panel)
 
-            console.print(env.render(state))
-
-            if state.winner == 0:
-                console.print("[yellow]Draw![/yellow]")
-                draws += 1
-            elif reward > 0:
-                console.print("[green]Agent wins![/green]")
+            if state.winner == config.ai_player:
                 wins += 1
-            else:
-                console.print("[red]Agent loses![/red]")
+            elif state.winner:
                 losses += 1
+            else:
+                draws += 1
 
-        console.print("\n[bold]Results[/bold]")
-        console.print(f"  Wins: {wins}")
-        console.print(f"  Losses: {losses}")
-        console.print(f"  Draws: {draws}")
-        console.print(f"  Win Rate: {wins / episodes:.1%}")
+            result = "WIN" if state.winner == config.ai_player else "LOSS" if state.winner else "DRAW"
+            console.print(f"Episode {ep + 1}: {result}")
+
+        # Summary
+        console.print("\n[bold]Summary[/bold]")
+        console.print(f"  Wins: {wins} ({wins / episodes:.1%})")
+        console.print(f"  Losses: {losses} ({losses / episodes:.1%})")
+        console.print(f"  Draws: {draws} ({draws / episodes:.1%})")
 
     asyncio.run(run())
 
 
 @app.command()
 def interactive(
-    opponent: str = typer.Option("optimal", help="Opponent: random, optimal"),
-    you_first: bool = typer.Option(True, help="You play first (X)"),
+    opponent: str = typer.Option("heuristic", help="Opponent: random, heuristic, minimax"),
 ) -> None:
     """Play Tic-Tac-Toe interactively."""
 
     async def run() -> None:
-        agent_player = 2 if you_first else 1  # If you're X, agent is O
-        config = TicTacToeConfig(agent_player=agent_player, opponent_type="none")
+        config = TicTacToeConfig(opponent=opponent, ai_player=Player.O)  # Human is X
         env = TicTacToeEnvironment(config)
         await env.initialize()
 
-        opponent_agent = TicTacToeOptimalAgent() if opponent == "optimal" else TicTacToeRandomAgent()
+        console.print("\n[bold]Tic-Tac-Toe Interactive Mode[/bold]")
+        console.print("You are X, opponent is O")
+        console.print("Enter position 0-8 to place your mark.\n")
 
         state = await env.reset()
-        console.print("\n[bold]Tic-Tac-Toe Interactive[/bold]")
-        console.print(f"You are {'X' if you_first else 'O'}")
-        console.print("Enter position 0-8 or quit with 'q'\n")
-
-        your_turn = you_first
 
         while not state.is_terminal():
             console.print(env.render(state))
-            actions = env.get_available_actions(state)
 
+            actions = env.get_available_actions(state)
             if not actions:
                 break
 
-            if your_turn:
-                valid = False
-                while not valid:
-                    inp = console.input("Your move (0-8): ").strip()
-                    if inp.lower() == "q":
-                        console.print("Thanks for playing!")
-                        return
-                    try:
-                        action = TicTacToeAction.from_string(inp)
-                        if action in actions:
-                            valid = True
-                        else:
-                            console.print("[red]Position taken![/red]")
-                    except ValueError:
-                        console.print("[red]Enter 0-8[/red]")
-            else:
-                action = await opponent_agent.decide(state, actions)
-                console.print(f"[dim]Opponent plays: {action.value}[/dim]")
+            # Get human input
+            valid = False
+            while not valid:
+                try:
+                    user_input = console.input("Your move (0-8): ").strip()
+                    action = TicTacToeAction.from_string(user_input)
+                    if action in actions:
+                        valid = True
+                    else:
+                        console.print("[red]Position not available![/red]")
+                except ValueError:
+                    console.print("[red]Enter a number 0-8[/red]")
 
             state, _, _ = await env.step(action)
-            your_turn = not your_turn
+            console.print()
 
+        console.print("\n[bold]Game Over![/bold]")
         console.print(env.render(state))
-        if state.winner == 0:
-            console.print("[yellow]It's a draw![/yellow]")
-        elif (state.winner == 1) == you_first:
+
+        if state.winner == Player.X:
             console.print("[green]You win![/green]")
+        elif state.winner == Player.O:
+            console.print("[red]Opponent wins![/red]")
         else:
-            console.print("[red]You lose![/red]")
+            console.print("[yellow]It's a draw![/yellow]")
 
     asyncio.run(run())
 
 
 @app.command()
 def benchmark(
-    episodes: int = typer.Option(1000, help="Games per matchup"),
+    episodes: int = typer.Option(100, help="Episodes per configuration"),
 ) -> None:
-    """Benchmark different strategies."""
+    """Benchmark different strategies and opponents."""
 
     async def run() -> None:
-        agents = [
-            ("Random", TicTacToeRandomAgent()),
-            ("Optimal", TicTacToeOptimalAgent()),
+        results: dict[str, dict] = {}
+
+        configurations = [
+            ("Heuristic vs Random", TicTacToeHeuristicAgent(), "random"),
+            ("Heuristic vs Heuristic", TicTacToeHeuristicAgent(), "heuristic"),
+            ("Heuristic vs Minimax", TicTacToeHeuristicAgent(), "minimax"),
+            ("Random vs Random", TicTacToeRandomAgent(), "random"),
         ]
-        opponents = ["random", "optimal"]
 
-        results: list[dict] = []
+        for name, agent, opponent in configurations:
+            console.print(f"\n[cyan]Benchmarking {name}...[/cyan]")
 
-        for agent_name, agent in agents:
-            for opp in opponents:
-                console.print(f"[cyan]{agent_name} vs {opp}...[/cyan]")
+            config = TicTacToeConfig(opponent=opponent)
+            env = TicTacToeEnvironment(config)
+            await env.initialize()
 
-                config = TicTacToeConfig(opponent_type=opp)
-                env = TicTacToeEnvironment(config)
-                await env.initialize()
+            wins = 0
+            losses = 0
+            draws = 0
 
-                wins = 0
-                losses = 0
-                draws = 0
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                task = progress.add_task(name, total=episodes)
 
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    console=console,
-                ) as progress:
-                    task = progress.add_task("Playing", total=episodes)
+                for ep in range(episodes):
+                    state = await env.reset(seed=ep)
+                    while not state.is_terminal():
+                        actions = env.get_available_actions(state)
+                        if not actions:
+                            break
+                        action = await agent.decide(state, actions)
+                        state, _, _ = await env.step(action)
 
-                    for ep in range(episodes):
-                        state = await env.reset(seed=ep)
-                        while not state.is_terminal():
-                            actions = env.get_available_actions(state)
-                            if not actions:
-                                break
-                            action = await agent.decide(state, actions)
-                            state, reward, _ = await env.step(action)
+                    if state.winner == config.ai_player:
+                        wins += 1
+                    elif state.winner:
+                        losses += 1
+                    else:
+                        draws += 1
 
-                        if state.winner == 0:
-                            draws += 1
-                        elif reward > 0:
-                            wins += 1
-                        else:
-                            losses += 1
+                    progress.update(task, advance=1)
 
-                        progress.update(task, advance=1)
+            results[name] = {
+                "wins": wins,
+                "losses": losses,
+                "draws": draws,
+                "win_rate": wins / episodes,
+            }
 
-                results.append({
-                    "agent": agent_name,
-                    "opponent": opp,
-                    "wins": wins,
-                    "losses": losses,
-                    "draws": draws,
-                    "win_rate": wins / episodes,
-                })
-
-        table = Table(title="Tic-Tac-Toe Benchmark")
-        table.add_column("Agent")
-        table.add_column("Opponent")
+        # Display results
+        table = Table(title="Tic-Tac-Toe Benchmark Results")
+        table.add_column("Configuration")
         table.add_column("Wins", justify="right")
         table.add_column("Losses", justify="right")
         table.add_column("Draws", justify="right")
         table.add_column("Win Rate", justify="right")
 
-        for r in results:
+        for name, data in results.items():
             table.add_row(
-                r["agent"],
-                r["opponent"],
-                str(r["wins"]),
-                str(r["losses"]),
-                str(r["draws"]),
-                f"{r['win_rate']:.1%}",
+                name,
+                str(data["wins"]),
+                str(data["losses"]),
+                str(data["draws"]),
+                f"{data['win_rate']:.1%}",
             )
 
         console.print("\n")
@@ -249,27 +242,27 @@ def benchmark(
 
 @app.command()
 def train(
-    steps: int = typer.Option(50, help="Training steps"),
+    steps: int = typer.Option(50, help="Number of training steps"),
     rollouts: int = typer.Option(8, help="Rollouts per group"),
-    opponent: str = typer.Option("random", help="Training opponent"),
-    model: str = typer.Option("meta-llama/Llama-3.2-3B-Instruct"),
+    opponent: str = typer.Option("random", help="Opponent: random, heuristic"),
+    model: str = typer.Option("meta-llama/Llama-3.2-3B-Instruct", help="Model to train"),
     resume: bool = typer.Option(False, help="Resume from checkpoint"),
 ) -> None:
     """Run GRPO training."""
 
     async def run() -> None:
-        config = TicTacToeConfig(opponent_type=opponent)
+        config = TicTacToeConfig(opponent=opponent)
         env = TicTacToeEnvironment(config)
         agent = TicTacToeAgent(model_name=model)
 
-        train_config = TrainingConfig(
+        trainer_config = TrainingConfig(
             model_name=model,
-            max_steps=steps,
             rollouts_per_group=rollouts,
+            max_steps=steps,
             resume_from="./checkpoints/tic_tac_toe" if resume else None,
         )
 
-        trainer = GRPOTrainer(env=env, agent=agent, config=train_config)
+        trainer = GRPOTrainer(env=env, agent=agent, config=trainer_config)
         await trainer.initialize()
         await trainer.train(steps)
 
@@ -280,26 +273,28 @@ def train(
 def pipeline(
     steps: int = typer.Option(50, help="Training steps"),
     eval_episodes: int = typer.Option(100, help="Evaluation episodes"),
-    opponent: str = typer.Option("random", help="Training opponent"),
-    model: str = typer.Option("meta-llama/Llama-3.2-3B-Instruct"),
+    opponent: str = typer.Option("random", help="Opponent: random, heuristic"),
+    model: str = typer.Option("meta-llama/Llama-3.2-3B-Instruct", help="Model to train"),
+    resume: bool = typer.Option(False, help="Resume from checkpoint"),
 ) -> None:
-    """Full training pipeline."""
+    """Run full training pipeline."""
 
     async def run() -> None:
-        config = TicTacToeConfig(opponent_type=opponent)
+        config = TicTacToeConfig(opponent=opponent)
         env = TicTacToeEnvironment(config)
         agent = TicTacToeAgent(model_name=model)
 
-        train_config = TrainingConfig(
+        trainer_config = TrainingConfig(
             model_name=model,
             max_steps=steps,
             eval_episodes=eval_episodes,
+            resume_from="./checkpoints/tic_tac_toe" if resume else None,
         )
 
-        trainer = GRPOTrainer(env=env, agent=agent, config=train_config)
+        trainer = GRPOTrainer(env=env, agent=agent, config=trainer_config)
         results = await trainer.pipeline(steps, eval_episodes)
 
-        console.print(f"\n[bold green]Pipeline Complete![/bold green]")
+        console.print("\n[bold green]Pipeline Complete![/bold green]")
         console.print(f"Win rate improvement: {results['improvement']['win_rate']:+.1%}")
 
     asyncio.run(run())

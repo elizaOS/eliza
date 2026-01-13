@@ -26,12 +26,16 @@ fn test_config_from_env() {
     std::env::set_var("DISCORD_APPLICATION_ID", "123456789012345678");
 
     let config = DiscordConfig::from_env();
-    
+
     // Clean up immediately after reading
     std::env::remove_var("DISCORD_API_TOKEN");
     std::env::remove_var("DISCORD_APPLICATION_ID");
-    
-    assert!(config.is_ok(), "Config should load successfully: {:?}", config.err());
+
+    assert!(
+        config.is_ok(),
+        "Config should load successfully: {:?}",
+        config.err()
+    );
 
     let config = config.unwrap();
     assert_eq!(config.token, "test_token_config_env");
@@ -43,22 +47,28 @@ fn test_config_from_env() {
 fn test_config_validation() {
     // Test with programmatic config instead of env vars to avoid race conditions
     let config = DiscordConfig::new("".to_string(), "123456789012345678".to_string());
-    assert!(config.validate().is_err(), "Empty token should fail validation");
+    assert!(
+        config.validate().is_err(),
+        "Empty token should fail validation"
+    );
 
     let config = DiscordConfig::new("test_token".to_string(), "".to_string());
-    assert!(config.validate().is_err(), "Empty application_id should fail validation");
-    
+    assert!(
+        config.validate().is_err(),
+        "Empty application_id should fail validation"
+    );
+
     let config = DiscordConfig::new("test_token".to_string(), "123456789012345678".to_string());
-    assert!(config.validate().is_ok(), "Valid config should pass validation");
+    assert!(
+        config.validate().is_ok(),
+        "Valid config should pass validation"
+    );
 }
 
 /// Test service creation
 #[test]
 fn test_service_creation() {
-    let config = DiscordConfig::new(
-        "test_token".to_string(),
-        "123456789".to_string(),
-    );
+    let config = DiscordConfig::new("test_token".to_string(), "123456789".to_string());
 
     let service = DiscordService::new(config);
     assert!(!service.config().token.is_empty());
@@ -91,7 +101,9 @@ async fn test_send_message() {
     use elizaos_plugin_discord::Snowflake;
 
     let config = DiscordConfig::from_env().expect("Failed to load config");
-    let channel_id = config.test_channel_id.clone()
+    let channel_id = config
+        .test_channel_id
+        .clone()
         .expect("DISCORD_TEST_CHANNEL_ID required for this test");
 
     let service = DiscordService::new(config);
@@ -101,7 +113,9 @@ async fn test_send_message() {
 
     // Send a test message
     let snowflake = Snowflake::new(channel_id).expect("Invalid channel ID");
-    let result = service.send_message(&snowflake, "Integration test message").await;
+    let result = service
+        .send_message(&snowflake, "Integration test message")
+        .await;
 
     // In a real test, we'd verify the message was sent
     // For now, this will fail because we're not actually connected
@@ -197,7 +211,9 @@ async fn test_send_message_action() {
 /// Test provider output
 #[tokio::test]
 async fn test_channel_state_provider() {
-    use elizaos_plugin_discord::providers::{ChannelStateProvider, DiscordProvider, ProviderContext};
+    use elizaos_plugin_discord::providers::{
+        ChannelStateProvider, DiscordProvider, ProviderContext,
+    };
 
     let provider = ChannelStateProvider;
     let context = ProviderContext {
@@ -211,4 +227,3 @@ async fn test_channel_state_provider() {
     assert_eq!(state["channel_id"], "123456789012345678");
     assert_eq!(state["is_dm"], false);
 }
-

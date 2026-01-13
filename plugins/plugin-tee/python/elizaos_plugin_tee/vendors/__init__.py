@@ -19,4 +19,3 @@ __all__ = [
     "PhalaVendor",
     "get_vendor",
 ]
-

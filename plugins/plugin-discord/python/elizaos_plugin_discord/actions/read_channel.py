@@ -16,10 +16,7 @@ class ReadChannelAction:
 
     @property
     def description(self) -> str:
-        return (
-            "Read recent messages from a Discord channel to understand "
-            "the conversation context."
-        )
+        return "Read recent messages from a Discord channel to understand the conversation context."
 
     @property
     def similes(self) -> list[str]:
@@ -33,8 +30,8 @@ class ReadChannelAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord"
 
     async def handler(
         self,
@@ -67,16 +64,14 @@ class ReadChannelAction:
         # Fetch messages
         messages = await service.get_channel_messages(channel_id, limit)
         if not messages:
-            return ActionResult.failure_result(
-                "I couldn't fetch any messages from the channel."
-            )
+            return ActionResult.failure_result("I couldn't fetch any messages from the channel.")
 
         # Format messages
         formatted_messages = []
         for msg in messages:
-            author = msg.get("author", {}).get("username", "Unknown")
-            msg_content = msg.get("content", "")
-            timestamp = msg.get("timestamp", "")
+            author = msg["author"]["username"]
+            msg_content = msg["content"]
+            timestamp = msg["timestamp"]
             formatted_messages.append(f"[{timestamp}] {author}: {msg_content}")
 
         channel_name = await service.get_channel_name(channel_id)

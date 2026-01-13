@@ -11,14 +11,19 @@ class ActionExample:
 
 @dataclass
 class SendGameMessageAction:
-
     @property
     def name(self) -> str:
         return "SEND_ROBLOX_MESSAGE"
 
     @property
     def similes(self) -> list[str]:
-        return ["ROBLOX_MESSAGE", "GAME_MESSAGE", "SEND_TO_GAME", "BROADCAST_MESSAGE", "TELL_PLAYERS"]
+        return [
+            "ROBLOX_MESSAGE",
+            "GAME_MESSAGE",
+            "SEND_TO_GAME",
+            "BROADCAST_MESSAGE",
+            "TELL_PLAYERS",
+        ]
 
     @property
     def description(self) -> str:

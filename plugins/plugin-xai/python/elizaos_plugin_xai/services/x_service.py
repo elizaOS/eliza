@@ -56,9 +56,8 @@ class XService:
         service._post_enabled = runtime.get_setting("X_ENABLE_POST") == "true"
         service._replies_enabled = runtime.get_setting("X_ENABLE_REPLIES") != "false"
         service._actions_enabled = runtime.get_setting("X_ENABLE_ACTIONS") == "true"
-        service._discovery_enabled = (
-            runtime.get_setting("X_ENABLE_DISCOVERY") == "true"
-            or (service._actions_enabled and runtime.get_setting("X_ENABLE_DISCOVERY") != "false")
+        service._discovery_enabled = runtime.get_setting("X_ENABLE_DISCOVERY") == "true" or (
+            service._actions_enabled and runtime.get_setting("X_ENABLE_DISCOVERY") != "false"
         )
 
         if service._post_enabled:

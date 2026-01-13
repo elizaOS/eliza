@@ -61,10 +61,7 @@ impl DiscordAction for UnpinMessageAction {
         };
 
         // Check permissions
-        if !service
-            .has_manage_messages_permission(&channel_id)
-            .await
-        {
+        if !service.has_manage_messages_permission(&channel_id).await {
             return Ok(ActionResult::failure(
                 "I don't have permission to unpin messages in this channel. \
                 I need the 'Manage Messages' permission.",

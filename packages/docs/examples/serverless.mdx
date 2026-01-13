@@ -164,7 +164,23 @@ async def handler(event, context):
         }
 
     message = body.get("message", "")
-    response = await rt.use_model("TEXT_LARGE", {"prompt": message})
+    from elizaos import ChannelType, Content, Memory, string_to_uuid
+
+    msg = Memory(
+        entity_id=string_to_uuid(body.get("userId", "serverless-user")),
+        room_id=string_to_uuid(body.get("conversationId", "serverless-room")),
+        content=Content(
+            text=message,
+            source="serverless",
+            channel_type=ChannelType.DM.value,
+        ),
+    )
+    result = await rt.message_service.handle_message(rt, msg)
+    response = (
+        result.response_content.text
+        if result.response_content and result.response_content.text
+        else ""
+    )
 
     return {
         "statusCode": 200,
@@ -207,7 +223,25 @@ event.payload.body.as_deref().unwrap_or("{}")
 )?;
 
     let message = body["message"].as_str().unwrap_or("");
-    let response = runtime.use_model("TEXT_LARGE", message).await?;
+    let content = elizaos::types::Content {
+        text: Some(message.to_string()),
+        source: Some("serverless".to_string()),
+        channel_type: Some(elizaos::types::ChannelType::Dm),
+        ..Default::default()
+    };
+
+    let mut msg =
+        elizaos::types::Memory::new(elizaos::types::UUID::new_v4(), elizaos::types::UUID::new_v4(), content);
+
+    let result = runtime
+        .message_service()
+        .handle_message(runtime, &mut msg, None, None)
+        .await?;
+
+    let response = result
+        .response_content
+        .and_then(|c| c.text)
+        .unwrap_or_default();
 
     Ok(ApiGatewayProxyResponse {
         status_code: 200,

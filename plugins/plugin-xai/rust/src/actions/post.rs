@@ -79,7 +79,7 @@ impl PostAction {
     /// Execute the POST action: validate input, truncate, and create the post.
     pub async fn handle(client: &TwitterClient, text: &str) -> PostActionResult {
         let text = text.trim();
-        
+
         if text.is_empty() {
             return PostActionResult {
                 success: false,
@@ -92,7 +92,10 @@ impl PostAction {
 
         let final_text = Self::truncate_text(text);
 
-        info!("Executing POST action with text: {}", &final_text[..final_text.len().min(50)]);
+        info!(
+            "Executing POST action with text: {}",
+            &final_text[..final_text.len().min(50)]
+        );
 
         match client.create_post(&final_text).await {
             Ok(result) => {
@@ -131,7 +134,10 @@ pub const POST_EXAMPLES: &[&[(&str, &str)]] = &[
         ("{{agent}}", "I'll post about today's weather."),
     ],
     &[
-        ("{{user1}}", "Post: The future of AI is collaborative intelligence"),
+        (
+            "{{user1}}",
+            "Post: The future of AI is collaborative intelligence",
+        ),
         ("{{agent}}", "I'll post that for you."),
     ],
 ];

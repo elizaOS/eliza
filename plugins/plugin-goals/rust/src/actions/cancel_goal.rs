@@ -159,10 +159,7 @@ mod tests {
         let result = action.execute(&context).await.unwrap();
         assert_eq!(result["success"], true);
         assert_eq!(result["goal_id"], "goal-789");
-        assert!(result["message"]
-            .as_str()
-            .unwrap()
-            .contains("Learn Rust"));
+        assert!(result["message"].as_str().unwrap().contains("Learn Rust"));
     }
 
     #[test]

@@ -310,7 +310,10 @@ fn test_extract_text_quoted_double() {
 
 #[test]
 fn test_extract_text_speak_quoted() {
-    assert_eq!(extract_text_to_speak("speak 'test message'"), "test message");
+    assert_eq!(
+        extract_text_to_speak("speak 'test message'"),
+        "test message"
+    );
 }
 
 #[test]

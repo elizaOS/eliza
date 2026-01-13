@@ -1,141 +1,21 @@
 """
 Codenames Agents for ART Training
-
-LLM-based agents for both Spymaster and Guesser roles.
 """
 
 import re
 
 from elizaos_art.base import BaseAgent
 from elizaos_art.games.codenames.types import (
-    CardType,
-    Clue,
+    CardColor,
     CodenamesAction,
     CodenamesState,
     Role,
-    Team,
-    WordCard,
 )
 
 
-class CodenamesSpymasterAgent(BaseAgent[CodenamesState, CodenamesAction]):
+class CodenamesAgent(BaseAgent[CodenamesState, CodenamesAction]):
     """
-    LLM-based Spymaster agent.
-
-    Gives clues to help guessers identify team words.
-    """
-
-    def __init__(
-        self,
-        model_name: str = "meta-llama/Llama-3.2-3B-Instruct",
-        temperature: float = 0.7,
-    ):
-        self.model_name = model_name
-        self.temperature = temperature
-        self._pending_clue: Clue | None = None
-
-    @property
-    def name(self) -> str:
-        return f"CodenamesSpymaster({self.model_name})"
-
-    def get_system_prompt(self) -> str:
-        return """You are a Codenames Spymaster. Your goal is to give one-word clues that help your team identify their words while avoiding opponent words and the assassin.
-
-Rules:
-1. Your clue must be ONE WORD only
-2. Your clue cannot be any word on the board
-3. Include a NUMBER indicating how many words relate to your clue
-4. Your clue cannot be part of any board word
-
-Strategy:
-1. Look for thematic connections between your team's words
-2. Avoid clues that might lead to opponent words or assassin
-3. Start with safe, clear connections before risky multi-word clues
-4. Consider word associations your guesser might make
-
-Respond with: CLUE_WORD NUMBER
-Example: OCEAN 2 (if you have FISH and BEACH)"""
-
-    def format_action_prompt(
-        self,
-        state: CodenamesState,
-        available_actions: list[CodenamesAction],
-    ) -> str:
-        """Format prompt for giving a clue."""
-        team = state.current_team
-        team_type = CardType.RED if team == Team.RED else CardType.BLUE
-        opp_type = CardType.BLUE if team == Team.RED else CardType.RED
-
-        # Get word categories
-        team_words = [c.word for c in state.board if c.card_type == team_type and not c.revealed]
-        opp_words = [c.word for c in state.board if c.card_type == opp_type and not c.revealed]
-        neutral = [c.word for c in state.board if c.card_type == CardType.NEUTRAL and not c.revealed]
-        assassin = [c.word for c in state.board if c.card_type == CardType.ASSASSIN and not c.revealed]
-
-        prompt = f"""{state.to_prompt()}
-
-Your team's words to find: {", ".join(team_words)}
-Opponent's words (AVOID): {", ".join(opp_words)}
-Neutral words: {", ".join(neutral)}
-ASSASSIN (NEVER lead to): {", ".join(assassin)}
-
-Give a clue in format: WORD NUMBER
-The word should connect to some of your team's words.
-Respond with just the clue:"""
-
-        return prompt
-
-    def parse_action(
-        self,
-        response: str,
-        available_actions: list[CodenamesAction],
-    ) -> CodenamesAction:
-        """Parse response into a clue (stored) and return dummy action."""
-        # Try to parse clue from response
-        match = re.search(r"([A-Za-z]+)\s+(\d+)", response.strip())
-        if match:
-            word = match.group(1).upper()
-            number = int(match.group(2))
-            self._pending_clue = Clue(word=word, number=number)
-        else:
-            # Default clue
-            self._pending_clue = Clue(word="HINT", number=1)
-
-        # Return dummy action (spymaster doesn't use actions)
-        return CodenamesAction.PASS
-
-    def get_pending_clue(self) -> Clue | None:
-        """Get the clue parsed from the last response."""
-        return self._pending_clue
-
-    async def decide(
-        self,
-        state: CodenamesState,
-        available_actions: list[CodenamesAction],
-    ) -> CodenamesAction:
-        """Generate a simple heuristic clue."""
-        team_type = CardType.RED if state.current_team == Team.RED else CardType.BLUE
-
-        team_words = [
-            c.word for c in state.board
-            if c.card_type == team_type and not c.revealed
-        ]
-
-        if team_words:
-            # Simple clue based on first word
-            first_word = team_words[0]
-            self._pending_clue = Clue(word=f"{first_word[:2]}CLUE", number=1)
-        else:
-            self._pending_clue = Clue(word="PASS", number=0)
-
-        return CodenamesAction.PASS
-
-
-class CodenamesGuesserAgent(BaseAgent[CodenamesState, CodenamesAction]):
-    """
-    LLM-based Guesser agent.
-
-    Interprets clues and selects words.
+    Generic Codenames agent that can play both roles.
     """
 
     def __init__(
@@ -148,47 +28,55 @@ class CodenamesGuesserAgent(BaseAgent[CodenamesState, CodenamesAction]):
 
     @property
     def name(self) -> str:
-        return f"CodenamesGuesser({self.model_name})"
+        return f"CodenamesAgent({self.model_name})"
 
     def get_system_prompt(self) -> str:
-        return """You are a Codenames Guesser. Your spymaster gives you clues, and you must identify your team's words on the board.
+        """Get system prompt for the LLM."""
+        return """You are an expert Codenames player. You can play both Spymaster and Guesser roles.
 
-Rules:
-1. The clue word relates to one or more of your team's words
-2. The number tells you how many words relate to the clue
-3. You can guess up to (number + 1) words
-4. Stop guessing if you're unsure - hitting wrong words helps opponents
+As SPYMASTER:
+- You see the true colors of all words
+- Give a one-word clue and a number (how many words relate to it)
+- Your clue cannot be any word on the board
+- Try to link multiple team words with clever associations
+- AVOID clues that might lead to the ASSASSIN (💀)
 
-Strategy:
-1. Think about how the clue word connects to each unrevealed word
-2. Start with the most confident guess
-3. Consider common associations and wordplay
-4. If unsure, pass rather than risk hitting opponent or assassin
+As GUESSER:
+- Use the clue to identify your team's words
+- Think about common associations with the clue word
+- You can guess up to (number + 1) words
+- Say PASS to end your turn if unsure
+- NEVER guess if you might hit the ASSASSIN
 
-Respond with either:
-- A word from the board
-- PASS to end your turn"""
+Remember:
+- RED and BLUE are teams
+- NEUTRAL ends your turn harmlessly
+- ASSASSIN instantly loses the game for your team
+
+Respond with just the action: a word number (0-24) for guessing, or PASS."""
 
     def format_action_prompt(
         self,
         state: CodenamesState,
         available_actions: list[CodenamesAction],
     ) -> str:
-        """Format prompt for guessing."""
-        unrevealed = [
-            state.board[a.value].word
-            for a in available_actions
-            if a != CodenamesAction.PASS
-        ]
+        """Format prompt for action selection."""
+        action_strs = []
+        for a in available_actions:
+            if a == CodenamesAction.PASS:
+                action_strs.append("PASS")
+            elif a == CodenamesAction.GIVE_CLUE:
+                action_strs.append("GIVE_CLUE (provide word and number)")
+            else:
+                idx = a.value
+                if idx < len(state.words):
+                    action_strs.append(f"{idx}:{state.words[idx]}")
 
         prompt = f"""{state.to_prompt()}
 
-Unrevealed words: {", ".join(unrevealed)}
+Available actions: {", ".join(action_strs[:10])}{"..." if len(action_strs) > 10 else ""}
 
-Think about which word(s) best match the clue "{state.current_clue}".
-Consider word associations, categories, and meanings.
-
-Respond with one word from the list above, or PASS:"""
+What is your action?"""
 
         return prompt
 
@@ -197,73 +85,34 @@ Respond with one word from the list above, or PASS:"""
         response: str,
         available_actions: list[CodenamesAction],
     ) -> CodenamesAction:
-        """Parse response into an action."""
+        """Parse LLM response into an action."""
         response = response.strip().upper()
 
+        # Check for PASS
         if "PASS" in response:
+            if CodenamesAction.PASS in available_actions:
+                return CodenamesAction.PASS
+
+        # Try to extract a number
+        match = re.search(r"\b(\d{1,2})\b", response)
+        if match:
+            try:
+                idx = int(match.group(1))
+                if 0 <= idx <= 24:
+                    action = CodenamesAction.from_word_index(idx)
+                    if action in available_actions:
+                        return action
+            except ValueError:
+                pass
+
+        # Default to first available non-pass action, or pass
+        for action in available_actions:
+            if action != CodenamesAction.PASS and action != CodenamesAction.GIVE_CLUE:
+                return action
+
+        if CodenamesAction.PASS in available_actions:
             return CodenamesAction.PASS
 
-        # Try to match a word
-        for action in available_actions:
-            if action == CodenamesAction.PASS:
-                continue
-            # Get the word for this position - need board access
-            # For now, just match by position mentioned
-            match = re.search(r"(\d+)", response)
-            if match:
-                pos = int(match.group(1))
-                if 0 <= pos <= 24:
-                    candidate = CodenamesAction(pos)
-                    if candidate in available_actions:
-                        return candidate
-
-        # Try word match (would need board context)
-        # Default to first available non-pass action
-        for action in available_actions:
-            if action != CodenamesAction.PASS:
-                return action
-
-        return CodenamesAction.PASS
-
-    async def decide(
-        self,
-        state: CodenamesState,
-        available_actions: list[CodenamesAction],
-    ) -> CodenamesAction:
-        """Heuristic decision - pick first unrevealed."""
-        for action in available_actions:
-            if action != CodenamesAction.PASS:
-                return action
-        return CodenamesAction.PASS
-
-
-class CodenamesRandomAgent(BaseAgent[CodenamesState, CodenamesAction]):
-    """Random agent for baseline."""
-
-    def __init__(self, seed: int | None = None):
-        import random
-
-        self._rng = random.Random(seed)
-
-    @property
-    def name(self) -> str:
-        return "CodenamesRandom"
-
-    def get_system_prompt(self) -> str:
-        return ""
-
-    def format_action_prompt(
-        self,
-        state: CodenamesState,
-        available_actions: list[CodenamesAction],
-    ) -> str:
-        return ""
-
-    def parse_action(
-        self,
-        response: str,
-        available_actions: list[CodenamesAction],
-    ) -> CodenamesAction:
         return available_actions[0]
 
     async def decide(
@@ -271,8 +120,162 @@ class CodenamesRandomAgent(BaseAgent[CodenamesState, CodenamesAction]):
         state: CodenamesState,
         available_actions: list[CodenamesAction],
     ) -> CodenamesAction:
-        """Random choice excluding pass most of the time."""
-        non_pass = [a for a in available_actions if a != CodenamesAction.PASS]
-        if non_pass and self._rng.random() > 0.2:
-            return self._rng.choice(non_pass)
+        """Heuristic decision for standalone use."""
+        if state.current_role == Role.GUESSER and state.current_clue:
+            # Simple heuristic: pick first available unrevealed word
+            for action in available_actions:
+                if action != CodenamesAction.PASS and action != CodenamesAction.GIVE_CLUE:
+                    return action
+
+        return CodenamesAction.PASS if CodenamesAction.PASS in available_actions else available_actions[0]
+
+
+class CodenamesSpymasterAgent(BaseAgent[CodenamesState, CodenamesAction]):
+    """
+    Specialized Spymaster agent.
+    """
+
+    def __init__(self, model_name: str = "meta-llama/Llama-3.2-3B-Instruct"):
+        self.model_name = model_name
+
+    @property
+    def name(self) -> str:
+        return f"CodenamesSpymaster({self.model_name})"
+
+    def get_system_prompt(self) -> str:
+        return """You are a Codenames Spymaster. Your job is to give clever one-word clues.
+
+Rules:
+- Give ONE word and a number (how many board words relate to it)
+- Your clue cannot be a word on the board
+- Link multiple team words with common themes
+- AVOID associations with the ASSASSIN at all costs
+- Consider: synonyms, categories, rhymes, compound words
+
+Format your response as: WORD NUMBER
+Example: FRUIT 2 (to hint at APPLE and ORANGE)"""
+
+    def format_action_prompt(
+        self,
+        state: CodenamesState,
+        available_actions: list[CodenamesAction],
+    ) -> str:
+        """Format prompt for giving a clue."""
+        # Show spymaster view
+        team_words = []
+        avoid_words = []
+
+        for i in range(25):
+            if not state.revealed[i]:
+                color = CardColor(state.colors[i])
+                if color == state.current_team:
+                    team_words.append(state.words[i])
+                elif color == CardColor.ASSASSIN:
+                    avoid_words.append(f"{state.words[i]} (ASSASSIN!)")
+                elif color != CardColor.NEUTRAL:
+                    avoid_words.append(state.words[i])
+
+        prompt = f"""{state.to_prompt()}
+
+Your team's words: {", ".join(team_words)}
+AVOID: {", ".join(avoid_words)}
+
+Give a clue (WORD NUMBER):"""
+
+        return prompt
+
+    def parse_action(
+        self,
+        response: str,
+        available_actions: list[CodenamesAction],
+    ) -> CodenamesAction:
+        """Parse response into GIVE_CLUE action."""
+        return CodenamesAction.GIVE_CLUE
+
+    async def decide(
+        self,
+        state: CodenamesState,
+        available_actions: list[CodenamesAction],
+    ) -> CodenamesAction:
+        return CodenamesAction.GIVE_CLUE
+
+
+class CodenamesGuesserAgent(BaseAgent[CodenamesState, CodenamesAction]):
+    """
+    Specialized Guesser agent.
+    """
+
+    def __init__(self, model_name: str = "meta-llama/Llama-3.2-3B-Instruct"):
+        self.model_name = model_name
+
+    @property
+    def name(self) -> str:
+        return f"CodenamesGuesser({self.model_name})"
+
+    def get_system_prompt(self) -> str:
+        return """You are a Codenames Guesser. Interpret clues to find your team's words.
+
+Strategy:
+- Think about what words relate to the clue
+- Consider multiple meanings of the clue word
+- Be cautious - wrong guesses help the opponent
+- If unsure, PASS to save guesses for later
+- NEVER guess randomly - that could hit the ASSASSIN
+
+Respond with a number (0-24) to guess that word, or PASS."""
+
+    def format_action_prompt(
+        self,
+        state: CodenamesState,
+        available_actions: list[CodenamesAction],
+    ) -> str:
+        """Format prompt for guessing."""
+        unrevealed = []
+        for i in range(25):
+            if not state.revealed[i]:
+                unrevealed.append(f"{i}:{state.words[i]}")
+
+        prompt = f"""{state.to_prompt()}
+
+Unrevealed words: {", ".join(unrevealed)}
+
+Your clue is: {state.current_clue}
+Guesses remaining: {state.guesses_remaining}
+
+Which word best matches the clue? (number or PASS):"""
+
+        return prompt
+
+    def parse_action(
+        self,
+        response: str,
+        available_actions: list[CodenamesAction],
+    ) -> CodenamesAction:
+        """Parse LLM response."""
+        response = response.strip().upper()
+
+        if "PASS" in response:
+            if CodenamesAction.PASS in available_actions:
+                return CodenamesAction.PASS
+
+        match = re.search(r"\b(\d{1,2})\b", response)
+        if match:
+            idx = int(match.group(1))
+            if 0 <= idx <= 24:
+                action = CodenamesAction.from_word_index(idx)
+                if action in available_actions:
+                    return action
+
+        return available_actions[0]
+
+    async def decide(
+        self,
+        state: CodenamesState,
+        available_actions: list[CodenamesAction],
+    ) -> CodenamesAction:
+        """Heuristic fallback."""
+        # Pick first unrevealed word
+        for action in available_actions:
+            if action != CodenamesAction.PASS and action != CodenamesAction.GIVE_CLUE:
+                return action
         return CodenamesAction.PASS

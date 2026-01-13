@@ -13,7 +13,7 @@ An async coding agent terminal app built on ElizaOS - like Claude Code, but with
 ## Prerequisites
 
 - [Bun](https://bun.sh/) runtime
-- Anthropic API key (for Claude)
+- OpenAI or Anthropic API key
 
 ## Installation
 
@@ -28,7 +28,7 @@ Copy the environment example and add your API key:
 
 ```bash
 cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
+# Edit .env and add your OPENAI_API_KEY or ANTHROPIC_API_KEY
 ```
 
 ## Usage

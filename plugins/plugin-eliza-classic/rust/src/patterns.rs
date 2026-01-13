@@ -103,7 +103,8 @@ pub fn get_default_patterns() -> Vec<ElizaPattern> {
                 pattern: Regex::new(r".*").unwrap(),
                 responses: vec![
                     "I am not interested in names.".to_string(),
-                    "I've told you before, I don't care about names -- please continue.".to_string(),
+                    "I've told you before, I don't care about names -- please continue."
+                        .to_string(),
                 ],
             }],
         },
@@ -531,5 +532,3 @@ pub fn get_default_patterns() -> Vec<ElizaPattern> {
         },
     ]
 }
-
-

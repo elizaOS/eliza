@@ -528,5 +528,3 @@ pub enum GitHubEventType {
     CheckSuite,
     Status,
 }
-
-

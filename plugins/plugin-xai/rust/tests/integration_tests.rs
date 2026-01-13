@@ -1,8 +1,8 @@
 //! Integration tests for xAI plugin.
 
 use elizaos_plugin_xai::{
-    GrokClient, GrokConfig, PostAction, TextGenerationParams, TwitterClient, TwitterConfig,
-    TextSmallHandler, TextLargeHandler, TextEmbeddingHandler,
+    GrokClient, GrokConfig, PostAction, TextEmbeddingHandler, TextGenerationParams,
+    TextLargeHandler, TextSmallHandler, TwitterClient, TwitterConfig,
 };
 
 #[test]
@@ -124,7 +124,10 @@ fn test_text_generation_params_builder() {
         .temperature(0.9)
         .max_tokens(100);
 
-    assert_eq!(params.system, Some("You are a helpful assistant".to_string()));
+    assert_eq!(
+        params.system,
+        Some("You are a helpful assistant".to_string())
+    );
     assert_eq!(params.temperature, 0.9);
     assert_eq!(params.max_tokens, Some(100));
 }
@@ -152,7 +155,7 @@ async fn test_grok_client_text_generation_requires_auth() {
     let config = GrokConfig::new("invalid_test_key");
     let client = GrokClient::new(config).expect("Failed to create client");
     let params = TextGenerationParams::new("Hello");
-    
+
     // This will fail with authentication error, not config error
     let result = client.generate_text(&params, false).await;
     assert!(result.is_err());
@@ -162,7 +165,7 @@ async fn test_grok_client_text_generation_requires_auth() {
 async fn test_text_small_handler_requires_valid_client() {
     let config = GrokConfig::new("invalid_test_key");
     let client = GrokClient::new(config).expect("Failed to create client");
-    
+
     // This will fail without a real API key, but we can test the handler is called correctly
     let result = TextSmallHandler::handle(&client, "Hello", None, None).await;
     // Should fail with authentication error
@@ -174,7 +177,7 @@ async fn test_text_small_handler_requires_valid_client() {
 async fn test_text_large_handler_requires_valid_client() {
     let config = GrokConfig::new("invalid_test_key");
     let client = GrokClient::new(config).expect("Failed to create client");
-    
+
     // This will fail without a real API key, but we can test the handler is called correctly
     let result = TextLargeHandler::handle(&client, "Hello", None, None).await;
     // Should fail with authentication error
@@ -186,7 +189,7 @@ async fn test_text_large_handler_requires_valid_client() {
 async fn test_text_embedding_handler_requires_valid_client() {
     let config = GrokConfig::new("invalid_test_key");
     let client = GrokClient::new(config).expect("Failed to create client");
-    
+
     // This will fail without a real API key
     let result = TextEmbeddingHandler::handle(&client, "Hello, world!").await;
     // Should fail with authentication error

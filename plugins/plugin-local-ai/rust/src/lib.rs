@@ -137,7 +137,11 @@ mod llm_impl {
     }
 
     impl ModelHolder {
-        pub fn load(path: &std::path::Path, config: &LocalAIConfig) -> Result<Self> {
+        pub fn load(
+            path: &std::path::Path,
+            config: &LocalAIConfig,
+            embeddings: bool,
+        ) -> Result<Self> {
             let model_name = path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -149,10 +153,12 @@ mod llm_impl {
             let options = ModelOptions {
                 n_gpu_layers: config.gpu_layers as i32,
                 context_size: config.context_size as i32,
+                embeddings,
                 ..Default::default()
             };
 
-            let model = LLama::new(path.to_path_buf(), &options)
+            let model_path = path.to_string_lossy().to_string();
+            let model = LLama::new(model_path, &options)
                 .map_err(|e| LocalAIError::ModelLoadError(e.to_string()))?;
 
             tracing::info!("Model loaded successfully: {}", model_name);
@@ -180,6 +186,13 @@ mod llm_impl {
                 model: self.model_name.clone(),
             })
         }
+
+        pub fn embed(&self, text: &str) -> Result<Vec<f32>> {
+            let mut predict_options = PredictOptions::default();
+            self.model
+                .embeddings(text.to_string(), &mut predict_options)
+                .map_err(|e| LocalAIError::InferenceError(e.to_string()))
+        }
     }
 }
 
@@ -193,7 +206,11 @@ mod llm_impl {
     }
 
     impl ModelHolder {
-        pub fn load(path: &std::path::Path, _config: &LocalAIConfig) -> Result<Self> {
+        pub fn load(
+            path: &std::path::Path,
+            _config: &LocalAIConfig,
+            _embeddings: bool,
+        ) -> Result<Self> {
             let model_name = path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -214,24 +231,20 @@ mod llm_impl {
         }
 
         pub fn generate(&self, params: &TextGenerationParams) -> Result<TextGenerationResult> {
-            // Return a mock response indicating the feature is not enabled
-            let prompt_preview = if params.prompt.len() > 50 {
-                format!("{}...", &params.prompt[..50])
-            } else {
-                params.prompt.clone()
-            };
+            let _ = params;
+            Err(LocalAIError::ConfigError(format!(
+                "Local inference is not available because the `llm` feature is disabled (model: {}). \
+Enable it with Cargo features: `elizaos-plugin-local-ai = {{ ..., features = [\"llm\"] }}`",
+                self.model_name
+            )))
+        }
 
-            Ok(TextGenerationResult {
-                text: format!(
-                    "[Mock Response - enable 'llm' feature for real inference]\n\
-                     Prompt: {}\n\
-                     This is a placeholder response. To enable actual LLM inference:\n\
-                     cargo build --features llm",
-                    prompt_preview
-                ),
-                tokens_used: 0,
-                model: self.model_name.clone(),
-            })
+        pub fn embed(&self, _text: &str) -> Result<Vec<f32>> {
+            Err(LocalAIError::ConfigError(format!(
+                "Embeddings are not available because the `llm` feature is disabled (model: {}). \
+Enable it with Cargo features: `elizaos-plugin-local-ai = {{ ..., features = [\"llm\"] }}`",
+                self.model_name
+            )))
         }
     }
 }
@@ -249,6 +262,7 @@ pub struct LocalAIPlugin {
     config: LocalAIConfig,
     small_model: Arc<Mutex<Option<ModelHolder>>>,
     large_model: Arc<Mutex<Option<ModelHolder>>>,
+    embedding_model: Arc<Mutex<Option<ModelHolder>>>,
 }
 
 impl LocalAIPlugin {
@@ -263,6 +277,7 @@ impl LocalAIPlugin {
             config,
             small_model: Arc::new(Mutex::new(None)),
             large_model: Arc::new(Mutex::new(None)),
+            embedding_model: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -339,7 +354,9 @@ impl LocalAIPlugin {
         };
 
         if !model_path.exists() {
-            return Err(LocalAIError::ModelNotFound(model_path.display().to_string()));
+            return Err(LocalAIError::ModelNotFound(
+                model_path.display().to_string(),
+            ));
         }
 
         // Get or load the appropriate model
@@ -353,7 +370,7 @@ impl LocalAIPlugin {
 
         // Lazy load the model if not already loaded
         if model_guard.is_none() {
-            let holder = ModelHolder::load(&model_path, &self.config)?;
+            let holder = ModelHolder::load(&model_path, &self.config, false)?;
             *model_guard = Some(holder);
         }
 
@@ -371,22 +388,35 @@ impl LocalAIPlugin {
     }
 
     /// Create an embedding with full parameters.
-    pub async fn create_embedding_with_params(&self, _params: &EmbeddingParams) -> Result<Vec<f32>> {
+    pub async fn create_embedding_with_params(&self, params: &EmbeddingParams) -> Result<Vec<f32>> {
         let model_path = self.config.models_dir.join(&self.config.embedding_model);
 
         if !model_path.exists() {
-            return Err(LocalAIError::ModelNotFound(model_path.display().to_string()));
+            return Err(LocalAIError::ModelNotFound(
+                model_path.display().to_string(),
+            ));
         }
 
-        // Note: llama_cpp_rs doesn't have native embedding support in 0.3.x
-        // For now, return zeros. A proper implementation would use a dedicated
-        // embedding library or a newer version of llama.cpp bindings.
-        tracing::warn!(
-            "Embedding model validated but embeddings not yet implemented. \
-             Returning zero vector."
-        );
+        let mut model_guard = self.embedding_model.lock().await;
 
-        Ok(vec![0.0; self.config.embedding_dimensions])
+        // Lazy load embedding model if not already loaded
+        if model_guard.is_none() {
+            let holder = ModelHolder::load(&model_path, &self.config, true)?;
+            *model_guard = Some(holder);
+        }
+
+        let holder = model_guard.as_ref().unwrap();
+        let embedding = holder.embed(&params.text)?;
+
+        if embedding.len() != self.config.embedding_dimensions {
+            tracing::warn!(
+                "Embedding dimensions mismatch: config={} model={}",
+                self.config.embedding_dimensions,
+                embedding.len()
+            );
+        }
+
+        Ok(embedding)
     }
 
     /// Check if the LLM feature is enabled.

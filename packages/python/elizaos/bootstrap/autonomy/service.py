@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 import uuid
 from typing import TYPE_CHECKING
 
@@ -185,6 +186,19 @@ class AutonomyService(Service):
         return self._is_thinking
 
     async def _perform_autonomous_think(self) -> None:
+        """
+        Perform one iteration of autonomous thinking using the Eliza agent pipeline.
+
+        This processes the message through:
+        - All registered providers (context gathering)
+        - The LLM generation pipeline (response creation)
+        - Action processing (executing decided actions)
+        - Evaluators (post-response analysis)
+
+        Note: Python runtime uses event-based handling (MESSAGE_RECEIVED).
+        When message_service is available in Python, this should be updated
+        to use runtime.message_service.handle_message() for canonical processing.
+        """
         if not self._runtime:
             return
 
@@ -226,41 +240,51 @@ class AutonomyService(Service):
         monologue_prompt = self._create_monologue_prompt(last_thought, is_first_thought)
 
         entity_id = agent_entity.id if agent_entity.id else self._runtime.agent_id
+        current_time_ms = int(time.time() * 1000)
         autonomous_message = Memory(
             id=as_uuid(str(uuid.uuid4())),
             entityId=as_uuid(str(entity_id)),
-            content=Content(text=monologue_prompt, source="autonomous-trigger"),
+            content=Content(
+                text=monologue_prompt,
+                source="autonomy-service",
+                metadata={
+                    "type": "autonomous-prompt",
+                    "isAutonomous": True,
+                    "isInternalThought": True,
+                    "channelId": "autonomous",
+                    "timestamp": current_time_ms,
+                    "isContinuation": not is_first_thought,
+                },
+            ),
             roomId=self._autonomous_room_id,
             agentId=self._runtime.agent_id,
-            createdAt=int(asyncio.get_event_loop().time() * 1000),
+            createdAt=current_time_ms,
         )
 
-        self._log("debug", "Processing autonomous message through agent pipeline...")
+        self._log(
+            "debug",
+            "Processing through Eliza agent pipeline (providers, actions, evaluators)...",
+        )
 
         async def callback(content: Content) -> None:
             if self._runtime:
                 self._log("debug", f"Response generated: {(content.text or '')[:100]}...")
+                # Note: When message_service is available, it handles memory storage.
+                # For event-based handling, we let the event handler manage storage.
 
-                if content.text:
-                    response_memory = Memory(
-                        id=as_uuid(str(uuid.uuid4())),
-                        entityId=as_uuid(str(entity_id)),
-                        agentId=self._runtime.agent_id,
-                        content=Content(text=content.text, source=content.source or "autonomous"),
-                        roomId=self._autonomous_room_id,
-                        createdAt=int(asyncio.get_event_loop().time() * 1000),
-                    )
-
-                    await self._runtime.create_memory(response_memory, "messages")
-
+        # Emit MESSAGE_RECEIVED event for the agent pipeline to process
+        # This triggers the full agent processing: providers, LLM, actions, evaluators
         await self._runtime.emit_event(
             EventType.MESSAGE_RECEIVED.value,
             {
                 "runtime": self._runtime,
                 "message": autonomous_message,
                 "callback": callback,
+                "source": "autonomy-service",
             },
         )
+
+        self._log("debug", "Autonomous message event emitted to agent pipeline")
 
     def _create_monologue_prompt(self, last_thought: str | None, is_first_thought: bool) -> str:
         if is_first_thought:

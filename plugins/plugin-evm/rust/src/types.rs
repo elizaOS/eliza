@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use alloy::primitives::{Address, Bytes, U256, B256};
+use alloy::primitives::{Address, Bytes, B256, U256};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -50,8 +50,14 @@ impl SupportedChain {
     #[must_use]
     pub const fn native_symbol(&self) -> &'static str {
         match self {
-            Self::Mainnet | Self::Sepolia | Self::Base | Self::BaseSepolia
-            | Self::Arbitrum | Self::Optimism | Self::Linea | Self::Scroll
+            Self::Mainnet
+            | Self::Sepolia
+            | Self::Base
+            | Self::BaseSepolia
+            | Self::Arbitrum
+            | Self::Optimism
+            | Self::Linea
+            | Self::Scroll
             | Self::Zksync => "ETH",
             Self::Polygon => "MATIC",
             Self::Avalanche => "AVAX",
@@ -301,9 +307,18 @@ mod tests {
 
     #[test]
     fn test_chain_from_str() {
-        assert_eq!("mainnet".parse::<SupportedChain>().unwrap(), SupportedChain::Mainnet);
-        assert_eq!("ethereum".parse::<SupportedChain>().unwrap(), SupportedChain::Mainnet);
-        assert_eq!("base".parse::<SupportedChain>().unwrap(), SupportedChain::Base);
+        assert_eq!(
+            "mainnet".parse::<SupportedChain>().unwrap(),
+            SupportedChain::Mainnet
+        );
+        assert_eq!(
+            "ethereum".parse::<SupportedChain>().unwrap(),
+            SupportedChain::Mainnet
+        );
+        assert_eq!(
+            "base".parse::<SupportedChain>().unwrap(),
+            SupportedChain::Base
+        );
         assert!("invalid".parse::<SupportedChain>().is_err());
     }
 
@@ -332,5 +347,3 @@ mod tests {
         assert_eq!(format_amount(amount, 6), "100");
     }
 }
-
-

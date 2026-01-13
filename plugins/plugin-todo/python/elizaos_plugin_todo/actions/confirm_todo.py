@@ -109,7 +109,7 @@ async def handle_confirm_todo(
         pending_name = (
             pending_todo.get("name", "task") if isinstance(pending_todo, dict) else "task"
         )
-        error_msg = f"I'm still waiting for your confirmation on the task \"{pending_name}\". Would you like me to create it?"
+        error_msg = f'I\'m still waiting for your confirmation on the task "{pending_name}". Would you like me to create it?'
         if callback:
             await callback(
                 {
@@ -144,12 +144,8 @@ async def handle_confirm_todo(
     )
     existing_todos = await data_service.get_todos(filters)
 
-    pending_name = (
-        pending_todo.get("name", "").strip() if isinstance(pending_todo, dict) else ""
-    )
-    duplicate_todo = next(
-        (t for t in existing_todos if t.name.strip() == pending_name), None
-    )
+    pending_name = pending_todo.get("name", "").strip() if isinstance(pending_todo, dict) else ""
+    duplicate_todo = next((t for t in existing_todos if t.name.strip() == pending_name), None)
 
     if duplicate_todo:
         if state.data and isinstance(state.data, dict):
@@ -167,14 +163,24 @@ async def handle_confirm_todo(
 
     room = await runtime.get_room(message.room_id) if hasattr(runtime, "get_room") else None
     world_id = (
-        room.world_id if room and hasattr(room, "world_id") else message.world_id or runtime.agent_id
+        room.world_id
+        if room and hasattr(room, "world_id")
+        else message.world_id or runtime.agent_id
     )
 
     if isinstance(pending_todo, dict):
         task_type_str = pending_todo.get("taskType", "one-off")
-        task_type = TaskType(task_type_str) if task_type_str in ["daily", "one-off", "aspirational"] else TaskType.ONE_OFF
+        task_type = (
+            TaskType(task_type_str)
+            if task_type_str in ["daily", "one-off", "aspirational"]
+            else TaskType.ONE_OFF
+        )
         priority_val = pending_todo.get("priority")
-        priority = Priority(priority_val) if priority_val else (Priority.MEDIUM if task_type == TaskType.ONE_OFF else None)
+        priority = (
+            Priority(priority_val)
+            if priority_val
+            else (Priority.MEDIUM if task_type == TaskType.ONE_OFF else None)
+        )
         urgent = pending_todo.get("urgent", False)
         pending_todo.get("dueDate")
         due_date = None
@@ -194,7 +200,9 @@ async def handle_confirm_todo(
         room_id=message.room_id,
         entity_id=message.entity_id,
         name=pending_name,
-        description=pending_todo.get("description", pending_name) if isinstance(pending_todo, dict) else pending_name,
+        description=pending_todo.get("description", pending_name)
+        if isinstance(pending_todo, dict)
+        else pending_name,
         type=task_type,
         priority=priority if task_type == TaskType.ONE_OFF else None,
         is_urgent=urgent if task_type == TaskType.ONE_OFF else False,
@@ -212,7 +220,9 @@ async def handle_confirm_todo(
         state.data.pop("pendingTodo", None)
 
     if task_type == TaskType.DAILY:
-        success_message = f'✅ Created daily task: "{pending_name}". Complete it regularly to build your streak!'
+        success_message = (
+            f'✅ Created daily task: "{pending_name}". Complete it regularly to build your streak!'
+        )
     elif task_type == TaskType.ONE_OFF:
         priority_text = f"Priority {priority.value if priority else 3}"
         urgent_text = ", Urgent" if urgent else ""

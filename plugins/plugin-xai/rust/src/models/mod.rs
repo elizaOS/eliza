@@ -1,7 +1,7 @@
 //! Model handlers for the xAI plugin.
 
-mod text;
 mod embedding;
+mod text;
 
-pub use text::{TextSmallHandler, TextLargeHandler};
 pub use embedding::TextEmbeddingHandler;
+pub use text::{TextLargeHandler, TextSmallHandler};

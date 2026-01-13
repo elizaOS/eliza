@@ -4,8 +4,8 @@ Discord providers for elizaOS.
 Providers supply contextual information for agent decision-making.
 """
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Protocol
 
 from elizaos_plugin_discord.providers.channel_state import (
     ChannelStateProvider,
@@ -31,23 +31,20 @@ class ProviderContext:
     room_id: str | None = None
 
 
-class DiscordProvider(ABC):
+class DiscordProvider(Protocol):
     """Base class for Discord providers."""
 
     @property
-    @abstractmethod
     def name(self) -> str:
         """Provider name."""
         ...
 
     @property
-    @abstractmethod
     def description(self) -> str:
         """Provider description."""
         ...
 
-    @abstractmethod
-    async def get(self, context: ProviderContext) -> dict:
+    async def get(self, context: ProviderContext) -> dict[str, object]:
         """Get the provider's data for the current context."""
         ...
 
@@ -72,5 +69,3 @@ __all__ = [
     "GuildInfoProviderCamel",
     "get_all_providers",
 ]
-
-

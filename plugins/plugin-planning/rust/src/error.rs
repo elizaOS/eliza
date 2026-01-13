@@ -39,5 +39,3 @@ pub enum PlanningError {
     #[error("{0}")]
     General(String),
 }
-
-

@@ -198,5 +198,3 @@ mod tests {
         assert!(url.contains("test-key"));
     }
 }
-
-

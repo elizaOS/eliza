@@ -17,10 +17,7 @@ pub enum EmbedType {
     Unknown,
 }
 
-
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum FarcasterMessageType {
     #[serde(rename = "CAST")]
     #[default]
@@ -28,8 +25,6 @@ pub enum FarcasterMessageType {
     #[serde(rename = "REPLY")]
     Reply,
 }
-
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FarcasterEventType {
@@ -263,7 +258,7 @@ mod tests {
     #[test]
     fn test_cast_is_reply() {
         let profile = Profile::new(12345, "test".to_string());
-        
+
         let cast = Cast {
             hash: "0xabc".to_string(),
             author_fid: 12345,

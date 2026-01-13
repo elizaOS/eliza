@@ -1,4 +1,3 @@
-
 __version__ = "1.7.4"
 
 from elizaos_plugin_elizacloud.models import (

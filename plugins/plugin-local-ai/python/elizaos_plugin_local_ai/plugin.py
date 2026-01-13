@@ -122,8 +122,8 @@ class LocalAIPlugin:
             stop=params.stop_sequences if params.stop_sequences else None,
         )
 
-        text = response["choices"][0]["text"]  # type: ignore
-        tokens_used = response["usage"]["total_tokens"]  # type: ignore
+        text = response["choices"][0]["text"]
+        tokens_used = response["usage"]["total_tokens"]
 
         return TextGenerationResult(
             text=text,
@@ -168,7 +168,7 @@ class LocalAIPlugin:
                 result = model.transcribe(temp_path, language=params.language)
 
                 return TranscriptionResult(
-                    text=result["text"],  # type: ignore
+                    text=result["text"],
                     language=params.language,
                 )
             finally:
@@ -198,4 +198,3 @@ def create_plugin(config: LocalAIConfig | None = None) -> LocalAIPlugin:
     if config is None:
         return get_local_ai_plugin()
     return LocalAIPlugin(config)
-

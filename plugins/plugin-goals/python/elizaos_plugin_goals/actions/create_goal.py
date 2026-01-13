@@ -18,24 +18,21 @@ from elizaos_plugin_goals.types import (
 class RuntimeProtocol(Protocol):
     agent_id: str
 
-    async def use_model(self, model_type: str, params: dict[str, object]) -> str:
-        ...
+    async def use_model(self, model_type: str, params: dict[str, object]) -> str: ...
 
-    async def compose_state(self, message: dict[str, object], providers: list[str]) -> dict[str, object]:
-        ...
+    async def compose_state(
+        self, message: dict[str, object], providers: list[str]
+    ) -> dict[str, object]: ...
 
 
 class GoalServiceProtocol(Protocol):
-    async def create_goal(self, params: CreateGoalParams) -> str | None:
-        ...
+    async def create_goal(self, params: CreateGoalParams) -> str | None: ...
 
-    async def get_goals(self, filters: GoalFilters | None = None) -> list[Goal]:
-        ...
+    async def get_goals(self, filters: GoalFilters | None = None) -> list[Goal]: ...
 
     async def count_goals(
         self, owner_type: GoalOwnerType, owner_id: str, is_completed: bool | None = None
-    ) -> int:
-        ...
+    ) -> int: ...
 
 
 @dataclass
@@ -98,7 +95,11 @@ class CreateGoalAction:
         message: dict[str, object],
         message_history: str,
     ) -> ExtractedGoalInfo | None:
-        text = str(message.get("content", {}).get("text", "") if isinstance(message.get("content"), dict) else "")
+        text = str(
+            message.get("content", {}).get("text", "")
+            if isinstance(message.get("content"), dict)
+            else ""
+        )
         prompt = build_extract_goal_prompt(text, message_history)
         result = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
 
@@ -178,8 +179,8 @@ class CreateGoalAction:
                     message_history = "\n".join(
                         str(m.get("content", {}).get("text", ""))
                         for m in messages
-                        if isinstance(m, dict                    )
-                )
+                        if isinstance(m, dict)
+                    )
 
             goal_info = await self._extract_goal_info(runtime, message, message_history)
 
@@ -191,7 +192,9 @@ class CreateGoalAction:
                 )
 
             entity_id = str(message.get("entityId", ""))
-            owner_id = runtime.agent_id if goal_info.owner_type == GoalOwnerType.AGENT else entity_id
+            owner_id = (
+                runtime.agent_id if goal_info.owner_type == GoalOwnerType.AGENT else entity_id
+            )
             active_goal_count = await goal_service.count_goals(
                 goal_info.owner_type,
                 owner_id,

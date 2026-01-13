@@ -197,8 +197,3 @@ def create_todo_data_service(db_connection: object | None = None) -> TodoDataSer
     if isinstance(db_connection, TodoDataService):
         return db_connection
     return TodoDataService(db_connection)
-
-
-
-
-

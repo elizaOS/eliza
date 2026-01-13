@@ -81,6 +81,10 @@ warn_unused_configs = true
 module = ["discord.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["elizaos_plugin_discord.service"]
+disallow_untyped_decorators = false
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100

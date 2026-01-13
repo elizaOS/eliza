@@ -130,9 +130,7 @@ class TestCreateFromDescriptionAction:
         assert action.name == "createPluginFromDescription"
 
     @pytest.mark.asyncio
-    async def test_validate_short_message(
-        self, action: CreateFromDescriptionAction
-    ) -> None:
+    async def test_validate_short_message(self, action: CreateFromDescriptionAction) -> None:
         """Test validation with short message."""
         context = ActionContext(
             message_text="short",
@@ -142,9 +140,7 @@ class TestCreateFromDescriptionAction:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_validate_long_message(
-        self, action: CreateFromDescriptionAction
-    ) -> None:
+    async def test_validate_long_message(self, action: CreateFromDescriptionAction) -> None:
         """Test validation with long message."""
         context = ActionContext(
             message_text="I need a plugin that helps manage weather data and forecasts",
@@ -154,9 +150,7 @@ class TestCreateFromDescriptionAction:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_execute_weather_plugin(
-        self, action: CreateFromDescriptionAction
-    ) -> None:
+    async def test_execute_weather_plugin(self, action: CreateFromDescriptionAction) -> None:
         """Test execute for weather plugin."""
         context = ActionContext(
             message_text="I need a plugin that shows weather information",

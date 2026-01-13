@@ -1,5 +1,6 @@
 import {
   type ActionResult,
+  composePrompt,
   type Evaluator,
   type HandlerCallback,
   type HandlerOptions,
@@ -8,7 +9,6 @@ import {
   type Memory,
   ModelType,
   type State,
-  composePrompt,
 } from "@elizaos/core";
 import { EXTRACT_EXPERIENCES_TEMPLATE } from "../generated/prompts/typescript/prompts.js";
 import type { ExperienceService } from "../service";
@@ -180,7 +180,8 @@ export const experienceEvaluator: Evaluator = {
 
       await experienceService.recordExperience({
         type: experienceType,
-        outcome: experienceType === ExperienceType.CORRECTION ? OutcomeType.POSITIVE : OutcomeType.NEUTRAL,
+        outcome:
+          experienceType === ExperienceType.CORRECTION ? OutcomeType.POSITIVE : OutcomeType.NEUTRAL,
         context: sanitizeContext(exp.context || "Conversation analysis"),
         action: "pattern_recognition",
         result: exp.learning,
@@ -246,8 +247,8 @@ function sanitizeContext(text: string): string {
   return text
     .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, "[EMAIL]") // emails
     .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "[IP]") // IP addresses
-    .replace(/\/Users\/[^\/\s]+/g, "/Users/[USER]") // user directories
-    .replace(/\/home\/[^\/\s]+/g, "/home/[USER]") // home directories
+    .replace(/\/Users\/[^/\s]+/g, "/Users/[USER]") // user directories
+    .replace(/\/home\/[^/\s]+/g, "/home/[USER]") // home directories
     .replace(/\b[A-Z0-9]{20,}\b/g, "[TOKEN]") // API keys/tokens
     .replace(/\b(user|person|someone|they)\s+(said|asked|told|mentioned)/gi, "when asked") // personal references
     .substring(0, 200); // limit length
@@ -256,7 +257,16 @@ function sanitizeContext(text: string): string {
 function detectDomain(text: string): string {
   const domains: Record<string, string[]> = {
     shell: ["command", "terminal", "bash", "shell", "execute", "script", "cli"],
-    coding: ["code", "function", "variable", "syntax", "programming", "debug", "typescript", "javascript"],
+    coding: [
+      "code",
+      "function",
+      "variable",
+      "syntax",
+      "programming",
+      "debug",
+      "typescript",
+      "javascript",
+    ],
     system: ["file", "directory", "process", "memory", "cpu", "system", "install", "package"],
     network: ["http", "api", "request", "response", "url", "network", "fetch", "curl"],
     data: ["json", "csv", "database", "query", "data", "sql", "table"],
@@ -273,4 +283,3 @@ function detectDomain(text: string): string {
 
   return "general";
 }
-

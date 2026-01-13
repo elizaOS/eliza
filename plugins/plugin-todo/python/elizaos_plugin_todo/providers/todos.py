@@ -87,9 +87,7 @@ async def get_todos(
             ]
         )
 
-        aspirational_todos = [
-            todo for todo in pending_todos if todo.type == TaskType.ASPIRATIONAL
-        ]
+        aspirational_todos = [todo for todo in pending_todos if todo.type == TaskType.ASPIRATIONAL]
         formatted_aspirational_tasks = "\n".join(
             [f"- {todo.name} (aspirational goal)" for todo in aspirational_todos]
         )

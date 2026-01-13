@@ -46,8 +46,8 @@ impl GrokConfig {
 
     /// Create configuration from environment variables.
     pub fn from_env() -> anyhow::Result<Self> {
-        let api_key = std::env::var("XAI_API_KEY")
-            .map_err(|_| anyhow::anyhow!("XAI_API_KEY is required"))?;
+        let api_key =
+            std::env::var("XAI_API_KEY").map_err(|_| anyhow::anyhow!("XAI_API_KEY is required"))?;
 
         let mut config = Self::new(&api_key);
 
@@ -224,7 +224,10 @@ impl GrokClient {
         let text = response.text().await?;
 
         let message = match serde_json::from_str::<serde_json::Value>(&text) {
-            Ok(v) => v["error"]["message"].as_str().map(String::from).unwrap_or(text),
+            Ok(v) => v["error"]["message"]
+                .as_str()
+                .map(String::from)
+                .unwrap_or(text),
             Err(_) => text,
         };
 
@@ -292,11 +295,16 @@ impl GrokClient {
         let usage_data = &data["usage"];
         let usage = TokenUsage {
             prompt_tokens: usage_data["prompt_tokens"].as_u64().expect("prompt_tokens"),
-            completion_tokens: usage_data["completion_tokens"].as_u64().expect("completion_tokens"),
+            completion_tokens: usage_data["completion_tokens"]
+                .as_u64()
+                .expect("completion_tokens"),
             total_tokens: usage_data["total_tokens"].as_u64().expect("total_tokens"),
         };
 
-        Ok(TextGenerationResult { text: content, usage })
+        Ok(TextGenerationResult {
+            text: content,
+            usage,
+        })
     }
 
     /// Stream text generation.
@@ -358,7 +366,8 @@ impl GrokClient {
                             return None;
                         }
                         if let Ok(chunk) = serde_json::from_str::<serde_json::Value>(data) {
-                            if let Some(content) = chunk["choices"][0]["delta"]["content"].as_str() {
+                            if let Some(content) = chunk["choices"][0]["delta"]["content"].as_str()
+                            {
                                 return Some(Ok(content.to_string()));
                             }
                         }
@@ -378,7 +387,10 @@ impl GrokClient {
 
     /// Create an embedding for text.
     pub async fn create_embedding(&self, params: &EmbeddingParams) -> Result<Vec<f32>> {
-        let model = params.model.as_deref().unwrap_or(&self.config.embedding_model);
+        let model = params
+            .model
+            .as_deref()
+            .unwrap_or(&self.config.embedding_model);
         debug!("Creating embedding with model: {}", model);
 
         let body = serde_json::json!({

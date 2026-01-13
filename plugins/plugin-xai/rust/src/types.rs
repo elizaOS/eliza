@@ -66,8 +66,8 @@ impl TwitterConfig {
 
     /// Create configuration from environment variables.
     pub fn from_env() -> anyhow::Result<Self> {
-        let api_key = std::env::var("X_API_KEY")
-            .map_err(|_| anyhow::anyhow!("X_API_KEY is required"))?;
+        let api_key =
+            std::env::var("X_API_KEY").map_err(|_| anyhow::anyhow!("X_API_KEY is required"))?;
         let api_secret = std::env::var("X_API_SECRET")
             .map_err(|_| anyhow::anyhow!("X_API_SECRET is required"))?;
         let access_token = std::env::var("X_ACCESS_TOKEN")
@@ -283,7 +283,6 @@ pub struct Post {
     /// Unix timestamp
     pub timestamp: i64,
 }
-
 
 /// Result of creating a post.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -25,7 +25,7 @@ export class ExperienceRelationshipManager {
     if (!this.relationships.has(fromId)) {
       this.relationships.set(fromId, []);
     }
-    this.relationships.get(fromId)!.push(relationship);
+    this.relationships.get(fromId)?.push(relationship);
   }
 
   findRelationships(experienceId: string, type?: string): ExperienceRelationship[] {
@@ -155,4 +155,3 @@ export class ExperienceRelationshipManager {
     return impact;
   }
 }
-

@@ -466,8 +466,8 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn create_component(&self, component: &Component) -> Result<bool> {
-        let id = uuid::Uuid::parse_str(component.id.as_str())
-            .unwrap_or_else(|_| uuid::Uuid::new_v4());
+        let id =
+            uuid::Uuid::parse_str(component.id.as_str()).unwrap_or_else(|_| uuid::Uuid::new_v4());
         let entity_id = uuid::Uuid::parse_str(component.entity_id.as_str())?;
         let agent_id = uuid::Uuid::parse_str(component.agent_id.as_str())?;
         let room_id = uuid::Uuid::parse_str(component.room_id.as_str())?;
@@ -1358,10 +1358,11 @@ impl DatabaseAdapter for PostgresAdapter {
             .filter_map(|id| uuid::Uuid::parse_str(id.as_str()).ok())
             .collect();
 
-        let rows = sqlx::query("SELECT DISTINCT room_id FROM participants WHERE entity_id = ANY($1)")
-            .bind(&uuids)
-            .fetch_all(self.manager.get_pool())
-            .await?;
+        let rows =
+            sqlx::query("SELECT DISTINCT room_id FROM participants WHERE entity_id = ANY($1)")
+                .bind(&uuids)
+                .fetch_all(self.manager.get_pool())
+                .await?;
 
         Ok(rows
             .into_iter()
@@ -1595,10 +1596,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }))
     }
 
-    async fn get_relationships(
-        &self,
-        params: GetRelationshipsParams,
-    ) -> Result<Vec<Relationship>> {
+    async fn get_relationships(&self, params: GetRelationshipsParams) -> Result<Vec<Relationship>> {
         let entity_id = uuid::Uuid::parse_str(params.entity_id.as_str())?;
 
         let rows = sqlx::query(

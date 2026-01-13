@@ -67,6 +67,13 @@ const getChannelType = (chat: Chat): ChannelType => {
   }
 };
 
+type TelegramChatContextContent = Content & {
+  chatId: number;
+  userId: number;
+  messageId: number;
+  threadId?: number;
+};
+
 export class MessageManager {
   public bot: Telegraf<Context>;
   protected runtime: IAgentRuntime;
@@ -369,26 +376,33 @@ export class MessageManager {
   ): Promise<void> {
     try {
       const isUrl = /^(http|https):\/\//.test(mediaPath);
-      const sendFunctionMap: Record<MediaType, (...args: unknown[]) => Promise<unknown>> = {
-        [MediaType.PHOTO]: ctx.telegram.sendPhoto.bind(ctx.telegram),
-        [MediaType.VIDEO]: ctx.telegram.sendVideo.bind(ctx.telegram),
-        [MediaType.DOCUMENT]: ctx.telegram.sendDocument.bind(ctx.telegram),
-        [MediaType.AUDIO]: ctx.telegram.sendAudio.bind(ctx.telegram),
-        [MediaType.ANIMATION]: ctx.telegram.sendAnimation.bind(ctx.telegram),
-      };
-
-      const sendFunction = sendFunctionMap[type];
-
-      if (!sendFunction) {
-        throw new Error(`Unsupported media type: ${type}`);
-      }
 
       if (!ctx.chat) {
         throw new Error("sendMedia: ctx.chat is undefined");
       }
 
       if (isUrl) {
-        await sendFunction(ctx.chat.id, mediaPath, { caption });
+        switch (type) {
+          case MediaType.PHOTO:
+            await ctx.telegram.sendPhoto(ctx.chat.id, mediaPath, { caption });
+            break;
+          case MediaType.VIDEO:
+            await ctx.telegram.sendVideo(ctx.chat.id, mediaPath, { caption });
+            break;
+          case MediaType.DOCUMENT:
+            await ctx.telegram.sendDocument(ctx.chat.id, mediaPath, { caption });
+            break;
+          case MediaType.AUDIO:
+            await ctx.telegram.sendAudio(ctx.chat.id, mediaPath, { caption });
+            break;
+          case MediaType.ANIMATION:
+            await ctx.telegram.sendAnimation(ctx.chat.id, mediaPath, { caption });
+            break;
+          default: {
+            const _exhaustive: never = type;
+            throw new Error(`Unsupported media type: ${_exhaustive}`);
+          }
+        }
       } else {
         if (!fs.existsSync(mediaPath)) {
           throw new Error(`File not found at path: ${mediaPath}`);
@@ -400,7 +414,27 @@ export class MessageManager {
           if (!ctx.chat) {
             throw new Error("sendMedia (file): ctx.chat is undefined");
           }
-          await sendFunction(ctx.chat.id, { source: fileStream }, { caption });
+          switch (type) {
+            case MediaType.PHOTO:
+              await ctx.telegram.sendPhoto(ctx.chat.id, { source: fileStream }, { caption });
+              break;
+            case MediaType.VIDEO:
+              await ctx.telegram.sendVideo(ctx.chat.id, { source: fileStream }, { caption });
+              break;
+            case MediaType.DOCUMENT:
+              await ctx.telegram.sendDocument(ctx.chat.id, { source: fileStream }, { caption });
+              break;
+            case MediaType.AUDIO:
+              await ctx.telegram.sendAudio(ctx.chat.id, { source: fileStream }, { caption });
+              break;
+            case MediaType.ANIMATION:
+              await ctx.telegram.sendAnimation(ctx.chat.id, { source: fileStream }, { caption });
+              break;
+            default: {
+              const _exhaustive: never = type;
+              throw new Error(`Unsupported media type: ${_exhaustive}`);
+            }
+          }
         } finally {
           fileStream.destroy();
         }
@@ -471,9 +505,12 @@ export class MessageManager {
     }
 
     const chat = message.chat as Chat;
+    const chatId = chat.id;
     const channelType = getChannelType(chat);
 
-    const sourceId = createUniqueUuid(this.runtime, `${chat.id}`);
+    const sourceId = createUniqueUuid(this.runtime, `${chatId}`);
+    const messageServerId = createUniqueUuid(this.runtime, `${chatId}`) as UUID;
+    const worldId = createUniqueUuid(this.runtime, `${chatId}`) as UUID;
 
     await this.runtime.ensureConnection({
       entityId,
@@ -482,27 +519,34 @@ export class MessageManager {
       name: ctx.from.first_name,
       source: "telegram",
       channelId: telegramRoomid,
-      messageServerId: undefined,
+      messageServerId,
       type: channelType,
-      worldId: createUniqueUuid(this.runtime, roomId) as UUID,
-      worldName: telegramRoomid,
+      worldId,
+      worldName: `telegram-chat-${chatId}`,
     });
+
+    const memoryContent: TelegramChatContextContent = {
+      text: cleanedContent || " ",
+      attachments: cleanedAttachments,
+      source: "telegram",
+      channelType: channelType,
+      inReplyTo:
+        "reply_to_message" in message && message.reply_to_message
+          ? createUniqueUuid(this.runtime, message.reply_to_message.message_id.toString())
+          : undefined,
+      chatId,
+      userId: ctx.from.id,
+      messageId: message.message_id,
+      threadId:
+        threadId && Number.isFinite(Number(threadId)) ? Number.parseInt(threadId, 10) : undefined,
+    };
 
     const memory: Memory = {
       id: messageId,
       entityId,
       agentId: this.runtime.agentId,
       roomId,
-      content: {
-        text: cleanedContent || " ",
-        attachments: cleanedAttachments,
-        source: "telegram",
-        channelType: channelType,
-        inReplyTo:
-          "reply_to_message" in message && message.reply_to_message
-            ? createUniqueUuid(this.runtime, message.reply_to_message.message_id.toString())
-            : undefined,
-      },
+      content: memoryContent,
       metadata: {
         type: MemoryType.MESSAGE,
         source: "telegram",
@@ -510,7 +554,7 @@ export class MessageManager {
         entityName: ctx.from.first_name,
         entityUserName: ctx.from.username,
         fromBot: ctx.from.is_bot,
-        fromId: chat.id,
+        fromId: chatId,
       } as MessageMetadata & {
         entityName?: string;
         entityUserName?: string;

@@ -99,10 +99,10 @@ mod tests {
     #[test]
     fn test_send_cast_action_validate() {
         let action = SendCastAction::new();
-        
+
         // Without service
         assert!(!action.validate("post this on farcaster", None));
-        
+
         // With matching keyword but no service
         assert!(!action.validate("please share this", None));
     }
@@ -114,4 +114,3 @@ mod tests {
         assert!(!action.validate("reply to this", Some("0xabc"), None));
     }
 }
-

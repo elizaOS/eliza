@@ -89,7 +89,7 @@ class CacheManager:
             self._expired += 1
 
         if to_delete:
-                logger.debug(f"Cleaned up {len(to_delete)} expired cache entries")
+            logger.debug(f"Cleaned up {len(to_delete)} expired cache entries")
 
     def _is_expired(self, entry: CacheEntry, now: float | None = None) -> bool:
         if now is None:
@@ -307,8 +307,3 @@ class CacheManager:
 
     async def get_cached_service_health(self, service_name: str) -> object | None:
         return await self.get(f"health:{service_name}")
-
-
-
-
-

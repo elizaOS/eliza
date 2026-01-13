@@ -9,10 +9,7 @@ pub const SELECT_ACTION_NAME: &str = "BROWSER_SELECT";
 pub const SELECT_SIMILES: &[&str] = &["SELECT_OPTION", "CHOOSE", "PICK"];
 pub const SELECT_DESCRIPTION: &str = "Select an option from a dropdown on the webpage";
 
-pub async fn browser_select(
-    service: Arc<BrowserService>,
-    message: &str,
-) -> ActionResult {
+pub async fn browser_select(service: Arc<BrowserService>, message: &str) -> ActionResult {
     let session = match service.get_or_create_session().await {
         Ok(s) => s,
         Err(e) => {
@@ -34,7 +31,10 @@ pub async fn browser_select(
     match result {
         Ok(response) if response.success => {
             let mut data = HashMap::new();
-            data.insert("actionName".to_string(), serde_json::json!(SELECT_ACTION_NAME));
+            data.insert(
+                "actionName".to_string(),
+                serde_json::json!(SELECT_ACTION_NAME),
+            );
             data.insert("option".to_string(), serde_json::json!(option));
             data.insert("dropdown".to_string(), serde_json::json!(dropdown));
             data.insert("sessionId".to_string(), serde_json::json!(session.id));
@@ -52,5 +52,3 @@ pub async fn browser_select(
         }
     }
 }
-
-

@@ -9,10 +9,7 @@ pub const EXTRACT_ACTION_NAME: &str = "BROWSER_EXTRACT";
 pub const EXTRACT_SIMILES: &[&str] = &["EXTRACT_DATA", "GET_TEXT", "SCRAPE"];
 pub const EXTRACT_DESCRIPTION: &str = "Extract data from the webpage";
 
-pub async fn browser_extract(
-    service: Arc<BrowserService>,
-    message: &str,
-) -> ActionResult {
+pub async fn browser_extract(service: Arc<BrowserService>, message: &str) -> ActionResult {
     let session = match service.get_or_create_session().await {
         Ok(s) => s,
         Err(e) => {
@@ -40,7 +37,10 @@ pub async fn browser_extract(
                 .to_string();
 
             let mut data = HashMap::new();
-            data.insert("actionName".to_string(), serde_json::json!(EXTRACT_ACTION_NAME));
+            data.insert(
+                "actionName".to_string(),
+                serde_json::json!(EXTRACT_ACTION_NAME),
+            );
             data.insert("instruction".to_string(), serde_json::json!(instruction));
             data.insert("found".to_string(), serde_json::json!(found));
             data.insert("data".to_string(), serde_json::json!(data_value));
@@ -59,5 +59,3 @@ pub async fn browser_extract(
         }
     }
 }
-
-

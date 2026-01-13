@@ -1,17 +1,17 @@
 #![allow(missing_docs)]
 
+pub mod create_branch;
+pub mod create_comment;
 pub mod create_issue;
 pub mod create_pull_request;
-pub mod create_comment;
-pub mod create_branch;
 pub mod merge_pull_request;
 pub mod push_code;
 pub mod review_pull_request;
 
+pub use create_branch::CreateBranchAction;
+pub use create_comment::CreateCommentAction;
 pub use create_issue::CreateIssueAction;
 pub use create_pull_request::CreatePullRequestAction;
-pub use create_comment::CreateCommentAction;
-pub use create_branch::CreateBranchAction;
 pub use merge_pull_request::MergePullRequestAction;
 pub use push_code::PushCodeAction;
 pub use review_pull_request::ReviewPullRequestAction;
@@ -69,5 +69,3 @@ pub trait GitHubAction: Send + Sync {
         service: &GitHubService,
     ) -> Result<ActionResult>;
 }
-
-

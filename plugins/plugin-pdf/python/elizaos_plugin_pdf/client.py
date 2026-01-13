@@ -90,9 +90,7 @@ class PdfClient:
     ) -> str:
         opts = options or PdfExtractionOptions()
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None, partial(self._extract_text_sync, pdf_bytes, opts)
-        )
+        result = await loop.run_in_executor(None, partial(self._extract_text_sync, pdf_bytes, opts))
 
         if not result.success:
             raise PdfError(result.error or "PDF extraction failed")
@@ -120,9 +118,7 @@ class PdfClient:
     ) -> PdfConversionResult:
         opts = options or PdfExtractionOptions()
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            None, partial(self._extract_text_sync, pdf_bytes, opts)
-        )
+        return await loop.run_in_executor(None, partial(self._extract_text_sync, pdf_bytes, opts))
 
     def _get_document_info_sync(self, pdf_bytes: bytes) -> PdfDocumentInfo:
         reader = PdfReader(io.BytesIO(pdf_bytes))

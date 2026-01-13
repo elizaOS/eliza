@@ -12,13 +12,14 @@
  *   eliza-code --stream "message"        Stream response as it's generated
  */
 
-import "dotenv/config";
 import * as fs from "node:fs/promises";
 import * as readline from "node:readline";
 import { v4 as uuidv4 } from "uuid";
 import { initializeAgent, shutdownAgent } from "./lib/agent.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import { ensureSessionIdentity, getMainRoomElizaId } from "./lib/identity.js";
+import { loadEnv } from "./lib/load-env.js";
+import { resolveModelProvider } from "./lib/model-provider.js";
 import { loadSession, type SessionState, saveSession } from "./lib/session.js";
 import { getCwd, setCwd } from "./plugin/providers/cwd.js";
 import type { ChatRoom, Message, MessageRole } from "./types.js";
@@ -78,7 +79,9 @@ Examples:
   echo "Explain this code" | eliza-code
 
 Environment Variables:
-  ANTHROPIC_API_KEY       Required. Your Anthropic API key
+  OPENAI_API_KEY          Required (if using OpenAI). Your OpenAI API key
+  ANTHROPIC_API_KEY       Required (if using Anthropic). Your Anthropic API key
+  ELIZA_CODE_PROVIDER     Optional. Force provider: openai|anthropic
   LOG_LEVEL               Log level (default: fatal for CLI)
 `;
 
@@ -376,6 +379,8 @@ function formatOutput(result: CLIResult, options: CLIOptions): void {
 export async function main(
   args: string[] = process.argv.slice(2),
 ): Promise<number> {
+  loadEnv();
+
   // Suppress logs in CLI mode
   process.env.LOG_LEVEL = "fatal";
 
@@ -399,9 +404,25 @@ export async function main(
   }
 
   // Check for API key
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("Error: ANTHROPIC_API_KEY environment variable is required");
-    console.error("Set it in your environment or in a .env file");
+  try {
+    const provider = resolveModelProvider(process.env);
+    if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY?.trim()) {
+      console.error(
+        "Error: ANTHROPIC_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=anthropic)",
+      );
+      console.error("Set it in your environment or in a .env file");
+      return 1;
+    }
+    if (provider === "openai" && !process.env.OPENAI_API_KEY?.trim()) {
+      console.error(
+        "Error: OPENAI_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=openai)",
+      );
+      console.error("Set it in your environment or in a .env file");
+      return 1;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Error: ${message}`);
     return 1;
   }
 

@@ -22,7 +22,7 @@ def _stringify_template_value(value: object) -> str:
         return ""
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, int | float):
+    if isinstance(value, (int, float)):
         return str(value)
     if isinstance(value, str):
         return value

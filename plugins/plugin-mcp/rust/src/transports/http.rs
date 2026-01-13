@@ -110,8 +110,3 @@ mod tests {
         assert!(!transport.is_connected());
     }
 }
-
-
-
-
-

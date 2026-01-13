@@ -64,14 +64,14 @@ impl KnowledgeService {
         uuid.to_string()
     }
 
-    pub async fn add_knowledge(&mut self, options: AddKnowledgeOptions) -> types::Result<ProcessingResult> {
+    pub async fn add_knowledge(
+        &mut self,
+        options: AddKnowledgeOptions,
+    ) -> types::Result<ProcessingResult> {
         let agent_id = options.agent_id.as_deref().unwrap_or("default");
 
-        let document_id = self.generate_content_id(
-            &options.content,
-            agent_id,
-            Some(&options.filename),
-        );
+        let document_id =
+            self.generate_content_id(&options.content, agent_id, Some(&options.filename));
 
         if let Some(existing) = self.documents.get(&document_id) {
             return Ok(ProcessingResult {
@@ -176,7 +176,12 @@ impl KnowledgeService {
         count: usize,
         threshold: f64,
     ) -> types::Result<Vec<SearchResult>> {
-        log::debug!("Searching for: {} (count: {}, threshold: {})", query, count, threshold);
+        log::debug!(
+            "Searching for: {} (count: {}, threshold: {})",
+            query,
+            count,
+            threshold
+        );
 
         let query_lower = query.to_lowercase();
         let mut results: Vec<SearchResult> = Vec::new();
@@ -208,13 +213,21 @@ impl KnowledgeService {
             }
         }
 
-        results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.similarity
+                .partial_cmp(&a.similarity)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(count);
 
         Ok(results)
     }
 
-    pub async fn get_knowledge(&self, query: &str, count: usize) -> types::Result<Vec<KnowledgeItem>> {
+    pub async fn get_knowledge(
+        &self,
+        query: &str,
+        count: usize,
+    ) -> types::Result<Vec<KnowledgeItem>> {
         let results: Vec<SearchResult> = self.search(query, count, 0.1).await?;
 
         Ok(results
@@ -409,7 +422,6 @@ mod tests {
         let vec2 = vec![-1.0, 0.0, 0.0];
 
         let sim = KnowledgeService::cosine_similarity(&vec1, &vec2);
-            assert!((sim + 1.0).abs() < 0.001);
+        assert!((sim + 1.0).abs() < 0.001);
     }
 }
-

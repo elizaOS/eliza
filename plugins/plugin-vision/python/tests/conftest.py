@@ -65,9 +65,7 @@ def sample_detected_object(sample_bounding_box: BoundingBox) -> DetectedObject:
 
 
 @pytest.fixture
-def sample_person_info(
-    sample_bounding_box: BoundingBox, sample_keypoint: Keypoint
-) -> PersonInfo:
+def sample_person_info(sample_bounding_box: BoundingBox, sample_keypoint: Keypoint) -> PersonInfo:
     """Create sample person info."""
     return PersonInfo(
         id="person-001",

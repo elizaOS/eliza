@@ -42,7 +42,9 @@ struct DiscordEventHandler {
 #[async_trait]
 impl EventHandler for DiscordEventHandler {
     async fn ready(&self, _ctx: Context, ready: Ready) {
-        let discriminator = ready.user.discriminator
+        let discriminator = ready
+            .user
+            .discriminator
             .map(|d| d.to_string())
             .unwrap_or_else(|| "0".to_string());
         info!(
@@ -106,7 +108,10 @@ impl EventHandler for DiscordEventHandler {
                 .unwrap_or_else(|_| panic!("Invalid author ID")),
             author_name: msg.author.name.clone(),
             content: msg.content.clone(),
-            timestamp: msg.timestamp.to_rfc3339().unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+            timestamp: msg
+                .timestamp
+                .to_rfc3339()
+                .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
             is_bot: msg.author.bot,
             attachments: msg
                 .attachments
@@ -143,12 +148,15 @@ impl EventHandler for DiscordEventHandler {
                         height: i.height,
                         width: i.width,
                     }),
-                    thumbnail: e.thumbnail.as_ref().map(|t| crate::types::DiscordEmbedMedia {
-                        url: t.url.clone(),
-                        proxy_url: t.proxy_url.clone(),
-                        height: t.height,
-                        width: t.width,
-                    }),
+                    thumbnail: e
+                        .thumbnail
+                        .as_ref()
+                        .map(|t| crate::types::DiscordEmbedMedia {
+                            url: t.url.clone(),
+                            proxy_url: t.proxy_url.clone(),
+                            height: t.height,
+                            width: t.width,
+                        }),
                     author: e.author.as_ref().map(|a| crate::types::DiscordEmbedAuthor {
                         name: a.name.clone(),
                         url: a.url.clone(),
@@ -244,7 +252,9 @@ impl EventHandler for DiscordEventHandler {
                 .unwrap_or_else(|_| panic!("Invalid user ID")),
             guild_id: Snowflake::new(guild_id.to_string())
                 .unwrap_or_else(|_| panic!("Invalid guild ID")),
-            channel_id: new.channel_id.and_then(|id| Snowflake::new(id.to_string()).ok()),
+            channel_id: new
+                .channel_id
+                .and_then(|id| Snowflake::new(id.to_string()).ok()),
             session_id: new.session_id.clone(),
             is_muted: new.mute,
             is_deafened: new.deaf,
@@ -492,9 +502,12 @@ impl DiscordService {
             let msg = if i == 0 {
                 // First message is a reply
                 channel
-                    .send_message(&http, serenity::builder::CreateMessage::new()
-                        .content(part)
-                        .reference_message((channel, msg_ref)))
+                    .send_message(
+                        &http,
+                        serenity::builder::CreateMessage::new()
+                            .content(part)
+                            .reference_message((channel, msg_ref)),
+                    )
                     .await
                     .map_err(|e| DiscordError::ConnectionFailed(e.to_string()))?
             } else {
@@ -869,7 +882,10 @@ impl DiscordService {
         );
 
         let messages = channel
-            .messages(&http, serenity::builder::GetMessages::new().limit(limit as u8))
+            .messages(
+                &http,
+                serenity::builder::GetMessages::new().limit(limit as u8),
+            )
             .await
             .map_err(|e| DiscordError::ConnectionFailed(e.to_string()))?;
 
@@ -888,11 +904,7 @@ impl DiscordService {
 
     /// Generate a summary using LLM (stub - requires model integration)
     #[allow(dead_code)]
-    pub async fn generate_summary(
-        &self,
-        _content: &str,
-        _prompt: &str,
-    ) -> Result<String> {
+    pub async fn generate_summary(&self, _content: &str, _prompt: &str) -> Result<String> {
         // TODO: Integrate with LLM service for actual summarization
         Ok("Summary generation requires LLM integration.".to_string())
     }
@@ -1043,12 +1055,8 @@ impl DiscordService {
             .get("username")
             .and_then(|u| u.as_str())
             .unwrap_or("Unknown");
-        let display_name = user_info
-            .get("display_name")
-            .and_then(|d| d.as_str());
-        let joined_at = user_info
-            .get("joined_at")
-            .and_then(|j| j.as_str());
+        let display_name = user_info.get("display_name").and_then(|d| d.as_str());
+        let joined_at = user_info.get("joined_at").and_then(|j| j.as_str());
 
         let mut info = format!("👤 **{}**", username);
         if let Some(nick) = display_name {
@@ -1149,7 +1157,8 @@ impl DiscordService {
                     | serenity::model::channel::ChannelType::Stage
             );
 
-            if channel.name.to_lowercase() == identifier.to_lowercase() && is_voice_channel == is_voice
+            if channel.name.to_lowercase() == identifier.to_lowercase()
+                && is_voice_channel == is_voice
             {
                 let channel_type = if is_voice_channel { "voice" } else { "text" };
                 return Ok(serde_json::json!({

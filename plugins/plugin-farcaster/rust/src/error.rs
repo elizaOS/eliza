@@ -23,9 +23,7 @@ pub enum FarcasterError {
     },
 
     #[error("Rate limit exceeded (retry after: {retry_after:?}s)")]
-    RateLimit {
-        retry_after: Option<u64>,
-    },
+    RateLimit { retry_after: Option<u64> },
 
     #[error("Cast error: {0}")]
     Cast(String),
@@ -52,7 +50,11 @@ impl FarcasterError {
         Self::Validation(msg.into())
     }
 
-    pub fn api(message: impl Into<String>, status_code: Option<u16>, error_code: Option<String>) -> Self {
+    pub fn api(
+        message: impl Into<String>,
+        status_code: Option<u16>,
+        error_code: Option<String>,
+    ) -> Self {
         Self::Api {
             message: message.into(),
             status_code,

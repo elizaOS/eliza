@@ -34,9 +34,7 @@ class MemoryStorage(IStorage):
         col = self._get_collection(collection)
         return list(col.values())
 
-    async def get_where(
-        self, collection: str, predicate: Callable[[Any], bool]
-    ) -> list[Any]:
+    async def get_where(self, collection: str, predicate: Callable[[Any], bool]) -> list[Any]:
         all_items = await self.get_all(collection)
         return [item for item in all_items if predicate(item)]
 
@@ -76,5 +74,3 @@ class MemoryStorage(IStorage):
 
     async def clear(self) -> None:
         self._collections.clear()
-
-

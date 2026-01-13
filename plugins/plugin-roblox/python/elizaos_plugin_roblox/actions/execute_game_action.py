@@ -7,7 +7,6 @@ from elizaos_plugin_roblox.actions.send_game_message import ActionExample
 
 @dataclass
 class ExecuteGameActionAction:
-
     AVAILABLE_GAME_ACTION_NAMES: tuple[str, ...] = (
         "give_coins",
         "teleport",
@@ -29,7 +28,9 @@ class ExecuteGameActionAction:
 
     def _is_execute_action_request(self, text: str) -> bool:
         lower = text.lower()
-        has_action = any(word in lower for word in ["execute", "trigger", "spawn", "give", "teleport", "start"])
+        has_action = any(
+            word in lower for word in ["execute", "trigger", "spawn", "give", "teleport", "start"]
+        )
         has_target = any(word in lower for word in ["game", "roblox", "player"])
         return has_action and has_target
 

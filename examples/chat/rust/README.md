@@ -99,17 +99,26 @@ async fn main() -> anyhow::Result<()> {
 
 ```rust
 use elizaos::runtime::AgentRuntime;
-use serde_json::json;
+use elizaos::types::{ChannelType, Content, Memory, UUID};
+use elizaos::IMessageService;
 
-// Use model directly for AI decisions
-let params = json!({
-    "prompt": "Choose an action...",
-    "maxTokens": 50,
-    "temperature": 0.3
-});
+// Route through the full message pipeline (planning/actions/providers/memory)
+let content = Content {
+    text: Some("Choose an action...".to_string()),
+    source: Some("game".to_string()),
+    channel_type: Some(ChannelType::Dm),
+    ..Default::default()
+};
 
-let result = runtime.use_model("TEXT_SMALL", params).await?;
-let chosen_action = result.trim();
+let mut message = Memory::new(UUID::new_v4(), UUID::new_v4(), content);
+let result = runtime
+    .message_service()
+    .handle_message(&runtime, &mut message, None, None)
+    .await?;
+let chosen_action = result
+    .response_content
+    .and_then(|c| c.text)
+    .unwrap_or_default();
 ```
 
 ## Building

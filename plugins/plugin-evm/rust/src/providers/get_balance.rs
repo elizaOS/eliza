@@ -99,7 +99,11 @@ impl TokenBalanceProvider {
     }
 
     /// Get token balance (requires LLM and wallet integration)
-    pub fn get(&self, context: &ProviderContext, wallet_provider: &WalletProvider) -> ProviderResult {
+    pub fn get(
+        &self,
+        context: &ProviderContext,
+        wallet_provider: &WalletProvider,
+    ) -> ProviderResult {
         // If token and chain are provided directly, use them
         let (token, chain) = match (&context.token, &context.chain) {
             (Some(t), Some(c)) => (t.to_uppercase(), *c),
@@ -128,7 +132,10 @@ impl TokenBalanceProvider {
         let has_balance = false;
 
         ProviderResult {
-            text: format!("{} balance on {:?} for {}: {}", token, chain, address, balance),
+            text: format!(
+                "{} balance on {:?} for {}: {}",
+                token, chain, address, balance
+            ),
             data: serde_json::json!({
                 "token": token,
                 "chain": format!("{:?}", chain),

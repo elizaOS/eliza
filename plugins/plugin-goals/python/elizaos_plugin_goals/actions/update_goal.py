@@ -260,7 +260,7 @@ NEW_DESCRIPTION: <new description or "none" if not changing>"""
 
             return ActionResult(
                 success=True,
-                text=f'Updated goal {", ".join(update_text)}.',
+                text=f"Updated goal {', '.join(update_text)}.",
                 data={
                     "goal_id": goal.id,
                     "old_name": goal.name,

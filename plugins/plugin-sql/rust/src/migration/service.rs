@@ -47,13 +47,13 @@ impl MigrationService {
     /// Get migration status for a plugin.
     pub async fn get_status(&self, plugin_name: &str) -> Result<Value> {
         let last_migration = self.tracker.get_last_migration(plugin_name).await?;
-        let latest_snapshot = self.snapshot_storage.get_latest_snapshot(plugin_name).await?;
+        let latest_snapshot = self
+            .snapshot_storage
+            .get_latest_snapshot(plugin_name)
+            .await?;
 
         let mut status = serde_json::Map::new();
-        status.insert(
-            "hasRun".to_string(),
-            Value::Bool(last_migration.is_some()),
-        );
+        status.insert("hasRun".to_string(), Value::Bool(last_migration.is_some()));
 
         if let Some((id, hash, created_at)) = last_migration {
             let mut migration = serde_json::Map::new();
@@ -69,7 +69,10 @@ impl MigrationService {
 
         // Count snapshots
         let snapshots = self.snapshot_storage.get_all_snapshots(plugin_name).await?;
-        status.insert("snapshots".to_string(), Value::Number(snapshots.len().into()));
+        status.insert(
+            "snapshots".to_string(),
+            Value::Number(snapshots.len().into()),
+        );
 
         Ok(Value::Object(status))
     }
@@ -90,7 +93,12 @@ impl MigrationService {
         let idx = self.snapshot_storage.get_next_idx(plugin_name).await?;
 
         // Start transaction
-        let mut tx = self.pool.as_ref().begin().await.context("Failed to begin transaction")?;
+        let mut tx = self
+            .pool
+            .as_ref()
+            .begin()
+            .await
+            .context("Failed to begin transaction")?;
 
         // Record migration
         sqlx::query(
@@ -127,11 +135,7 @@ impl MigrationService {
 
         // Update journal (within transaction)
         // Safely slice hash to avoid panic if hash is too short
-        let hash_prefix = if hash.len() >= 8 {
-            &hash[..8]
-        } else {
-            hash
-        };
+        let hash_prefix = if hash.len() >= 8 { &hash[..8] } else { hash };
         let tag = format!("{:04}_{}", idx, hash_prefix);
         let journal = self.journal_storage.load_journal(plugin_name).await?;
         let mut entries = if let Some(j) = &journal {
@@ -191,4 +195,3 @@ impl MigrationService {
         self.snapshot_storage.get_latest_snapshot(plugin_name).await
     }
 }
-

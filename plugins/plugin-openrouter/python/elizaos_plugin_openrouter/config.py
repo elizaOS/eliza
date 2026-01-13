@@ -167,5 +167,3 @@ class OpenRouterConfig:
             embedding_dimensions=self._embedding_dimensions,
             timeout_seconds=seconds,
         )
-
-

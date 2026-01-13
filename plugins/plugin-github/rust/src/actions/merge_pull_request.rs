@@ -5,7 +5,7 @@ use serde_json::json;
 
 use super::{ActionContext, ActionResult, GitHubAction};
 use crate::error::Result;
-use crate::types::{MergePullRequestParams, MergeMethod};
+use crate::types::{MergeMethod, MergePullRequestParams};
 use crate::GitHubService;
 
 pub struct MergePullRequestAction;
@@ -98,6 +98,3 @@ impl GitHubAction for MergePullRequestAction {
         }
     }
 }
-
-
-

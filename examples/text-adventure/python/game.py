@@ -608,23 +608,12 @@ Respond with ONLY the exact action text you want to take (e.g., "go north" or "a
 
     chosen_action = "look around"  # Default fallback
 
-    # Use the message service to handle the message through the full pipeline
-    # This gives the agent access to recent messages, providers, etc.
-    if hasattr(runtime, 'message_service') and runtime.message_service:
-        result = await runtime.message_service.handle_message(
-            runtime,
-            message,
-        )
-        
-        if result.response_content and result.response_content.text:
-            chosen_action = result.response_content.text.strip()
-    else:
-        # Fallback to direct model call if message service not available
-        result = await runtime.use_model(
-            ModelType.TEXT_SMALL.value,
-            {"prompt": game_context, "maxTokens": 1000},
-        )
-        chosen_action = str(result).strip()
+    # Use the message service to handle the message through the full pipeline.
+    # This gives the agent access to recent messages, providers, actions, etc.
+    result = await runtime.message_service.handle_message(runtime, message)
+
+    if result.response_content and result.response_content.text:
+        chosen_action = result.response_content.text.strip()
 
     # Validate the action is in available actions (case-insensitive match)
     matched_action = next(

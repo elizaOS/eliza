@@ -103,14 +103,14 @@ A simple interactive CLI chat application demonstrating:
 
 A text adventure game where an AI agent explores a dungeon, making strategic decisions. Demonstrates:
 
-- AI decision making with `runtime.useModel()`
+- Full pipeline decision making with `runtime.messageService.handleMessage()`
 - Game state management
 - Two modes: Watch AI play or Interactive mode
 
 **APIs used:**
 
 - `AgentRuntime` / `runtime.initialize()`
-- `runtime.useModel(ModelType.TEXT_SMALL, {...})`
+- `runtime.messageService.handleMessage()`
 - Custom game engine integration
 
 **Game Features:**
@@ -128,7 +128,7 @@ All examples use identical APIs across languages:
 | -------------- | ----------------------------------------------- | ---------------------------------------- | ---------------------------------------------- |
 | Create runtime | `new AgentRuntime({...})`                       | `AgentRuntime(...)`                      | `AgentRuntime::new(...)`                       |
 | Initialize     | `await runtime.initialize()`                    | `await runtime.initialize()`             | `runtime.initialize().await`                   |
-| Use model      | `runtime.useModel(ModelType.TEXT_SMALL, {...})` | `runtime.use_model("TEXT_SMALL", {...})` | `runtime.use_model("TEXT_SMALL", {...}).await` |
+| Handle message | `runtime.messageService.handleMessage()`        | `runtime.message_service.handle_message()` | `runtime.message_service().handle_message()` |
 | Stop           | `await runtime.stop()`                          | `await runtime.stop()`                   | `runtime.stop().await`                         |
 
 ## Environment Variables

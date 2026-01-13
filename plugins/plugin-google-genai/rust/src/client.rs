@@ -315,14 +315,14 @@ impl GoogleGenAIClient {
     }
 
     async fn fetch_image(&self, url: &str) -> Result<(String, String)> {
-        let response = self
-            .http_client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| GoogleGenAIError::NetworkError {
-                message: format!("Failed to fetch image: {}", e),
-            })?;
+        let response =
+            self.http_client
+                .get(url)
+                .send()
+                .await
+                .map_err(|e| GoogleGenAIError::NetworkError {
+                    message: format!("Failed to fetch image: {}", e),
+                })?;
 
         if !response.status().is_success() {
             return Err(GoogleGenAIError::NetworkError {
@@ -337,9 +337,12 @@ impl GoogleGenAIClient {
             .unwrap_or("image/jpeg")
             .to_string();
 
-        let bytes = response.bytes().await.map_err(|e| GoogleGenAIError::NetworkError {
-            message: format!("Failed to read image bytes: {}", e),
-        })?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| GoogleGenAIError::NetworkError {
+                message: format!("Failed to read image bytes: {}", e),
+            })?;
 
         let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
 

@@ -76,4 +76,3 @@ def test_experience_info() -> None:
     assert info.name == "Test Game"
     assert info.creator.creator_type == CreatorType.USER
     assert info.playing == 100
-

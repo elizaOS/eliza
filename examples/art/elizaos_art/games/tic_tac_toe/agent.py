@@ -1,24 +1,20 @@
 """
 Tic-Tac-Toe Agent for ART Training
 
-LLM-based agent that learns to play optimal Tic-Tac-Toe.
+LLM-based agent that learns to play Tic-Tac-Toe.
 """
 
 import re
 
 from elizaos_art.base import BaseAgent
-from elizaos_art.games.tic_tac_toe.types import (
-    Player,
-    TicTacToeAction,
-    TicTacToeState,
-)
+from elizaos_art.games.tic_tac_toe.types import TicTacToeAction, TicTacToeState, Player
 
 
 class TicTacToeAgent(BaseAgent[TicTacToeState, TicTacToeAction]):
     """
     LLM-based agent for playing Tic-Tac-Toe.
 
-    Uses the LLM to decide where to place markers.
+    Uses the LLM to decide where to place marks.
     """
 
     def __init__(
@@ -35,26 +31,23 @@ class TicTacToeAgent(BaseAgent[TicTacToeState, TicTacToeAction]):
 
     def get_system_prompt(self) -> str:
         """Get system prompt for the LLM."""
-        return """You are an expert Tic-Tac-Toe player. Your goal is to win or at least draw every game.
+        return """You are an expert Tic-Tac-Toe player. Your goal is to win by getting three marks in a row (horizontally, vertically, or diagonally).
 
 Key strategies:
-1. If you can win, take the winning move
-2. If opponent can win next turn, block them
-3. Take the center (position 4) if available
-4. Take corners (positions 0, 2, 6, 8) over edges
-5. Look for "fork" opportunities (two ways to win)
-6. Block opponent's fork attempts
+1. Always block your opponent if they have two in a row
+2. Take winning moves when available
+3. Prefer the center (position 4) early in the game
+4. Take corners (0, 2, 6, 8) over edges (1, 3, 5, 7)
+5. Look for "forks" - positions that create two winning threats
 
-Board positions:
-```
+The board positions are numbered 0-8:
  0 | 1 | 2
----+---+---
+-----------
  3 | 4 | 5
----+---+---
+-----------
  6 | 7 | 8
-```
 
-Respond with ONLY the position number (0-8) where you want to place your marker."""
+Respond with ONLY the position number (0-8) where you want to place your mark."""
 
     def format_action_prompt(
         self,
@@ -62,18 +55,18 @@ Respond with ONLY the position number (0-8) where you want to place your marker.
         available_actions: list[TicTacToeAction],
     ) -> str:
         """Format prompt for action selection."""
-        positions = [str(a.value) for a in available_actions]
+        action_positions = [str(a.value) for a in available_actions]
 
         prompt = f"""{state.to_prompt()}
 
-Available positions: {", ".join(positions)}
+Available positions: {", ".join(action_positions)}
 
-Analyze the board:
-1. Can you win in one move?
-2. Do you need to block the opponent?
-3. What's the best strategic position?
+Choose the best position to place your mark. Consider:
+- Can you win immediately?
+- Do you need to block the opponent?
+- Is the center (4) available?
 
-Respond with just the position number (one of: {", ".join(positions)}):"""
+Respond with just the position number (one of: {", ".join(action_positions)}):"""
 
         return prompt
 
@@ -85,7 +78,7 @@ Respond with just the position number (one of: {", ".join(positions)}):"""
         """Parse LLM response into an action."""
         response = response.strip()
 
-        # Try direct number match
+        # Try to extract a number
         match = re.search(r"\b([0-8])\b", response)
         if match:
             pos = int(match.group(1))
@@ -93,18 +86,7 @@ Respond with just the position number (one of: {", ".join(positions)}):"""
             if action in available_actions:
                 return action
 
-        # Try coordinate match
-        coord_match = re.search(r"(\d)[,\s]+(\d)", response)
-        if coord_match:
-            try:
-                row, col = int(coord_match.group(1)), int(coord_match.group(2))
-                action = TicTacToeAction.from_coords(row, col)
-                if action in available_actions:
-                    return action
-            except (ValueError, IndexError):
-                pass
-
-        # Default to first available
+        # Default to first available action
         return available_actions[0]
 
     async def decide(
@@ -115,14 +97,14 @@ Respond with just the position number (one of: {", ".join(positions)}):"""
         """
         Decide which action to take.
 
-        Falls back to heuristic when not using LLM.
+        Uses heuristic as fallback for standalone usage.
         """
         if not available_actions:
             raise ValueError("No available actions")
 
-        # Simple heuristic: center > corners > edges
-        priority = [4, 0, 2, 6, 8, 1, 3, 5, 7]
-        for pos in priority:
+        # Heuristic: center > corners > edges
+        preference = [4, 0, 2, 6, 8, 1, 3, 5, 7]
+        for pos in preference:
             action = TicTacToeAction(pos)
             if action in available_actions:
                 return action
@@ -130,16 +112,19 @@ Respond with just the position number (one of: {", ".join(positions)}):"""
         return available_actions[0]
 
 
-class TicTacToeOptimalAgent(BaseAgent[TicTacToeState, TicTacToeAction]):
+class TicTacToeHeuristicAgent(BaseAgent[TicTacToeState, TicTacToeAction]):
     """
-    Optimal Tic-Tac-Toe agent using minimax.
+    Heuristic-based agent for Tic-Tac-Toe.
 
-    Never loses - always plays perfectly.
+    Good for baseline comparisons.
     """
+
+    def __init__(self, player: Player = Player.X):
+        self.player = player
 
     @property
     def name(self) -> str:
-        return "TicTacToeOptimal"
+        return "TicTacToeHeuristic"
 
     def get_system_prompt(self) -> str:
         return ""
@@ -163,84 +148,57 @@ class TicTacToeOptimalAgent(BaseAgent[TicTacToeState, TicTacToeAction]):
         state: TicTacToeState,
         available_actions: list[TicTacToeAction],
     ) -> TicTacToeAction:
-        """Use minimax to find optimal move."""
-        return self._minimax_move(state, available_actions)
-
-    def _minimax_move(
-        self,
-        state: TicTacToeState,
-        available: list[TicTacToeAction],
-    ) -> TicTacToeAction:
-        """Find best move using minimax."""
+        """Use heuristic strategy."""
         board = list(state.board)
-        player = state.current_player
+        opponent = Player.O if self.player == Player.X else Player.X
 
-        best_score = float("-inf")
-        best_move = available[0]
+        # 1. Win if possible
+        for action in available_actions:
+            test_board = board.copy()
+            test_board[action.value] = self.player.value
+            if self._is_winner(test_board, self.player):
+                return action
 
-        for action in available:
-            board[action.value] = player
-            score = self._minimax(board, False, player)
-            board[action.value] = Player.EMPTY.value
+        # 2. Block opponent
+        for action in available_actions:
+            test_board = board.copy()
+            test_board[action.value] = opponent.value
+            if self._is_winner(test_board, opponent):
+                return action
 
-            if score > best_score:
-                best_score = score
-                best_move = action
+        # 3. Take center
+        if TicTacToeAction.POS_4 in available_actions:
+            return TicTacToeAction.POS_4
 
-        return best_move
+        # 4. Take corner
+        corners = [
+            TicTacToeAction.POS_0,
+            TicTacToeAction.POS_2,
+            TicTacToeAction.POS_6,
+            TicTacToeAction.POS_8,
+        ]
+        for corner in corners:
+            if corner in available_actions:
+                return corner
 
-    def _minimax(
-        self,
-        board: list[int],
-        is_maximizing: bool,
-        player: int,
-    ) -> float:
-        """Minimax with alpha-beta could be added for efficiency."""
-        winner = self._check_winner(board)
-        if winner is not None:
-            if winner == 0:
-                return 0.0
-            elif winner == player:
-                return 1.0
-            else:
-                return -1.0
+        # 5. Take any
+        return available_actions[0]
 
-        current = player if is_maximizing else Player(player).opponent().value
-
-        if is_maximizing:
-            best = float("-inf")
-            for i in range(9):
-                if board[i] == Player.EMPTY.value:
-                    board[i] = current
-                    best = max(best, self._minimax(board, False, player))
-                    board[i] = Player.EMPTY.value
-            return best
-        else:
-            best = float("inf")
-            for i in range(9):
-                if board[i] == Player.EMPTY.value:
-                    board[i] = current
-                    best = min(best, self._minimax(board, True, player))
-                    board[i] = Player.EMPTY.value
-            return best
-
-    def _check_winner(self, board: list[int]) -> int | None:
-        """Check for winner."""
-        patterns = [
+    def _is_winner(self, board: list[int], player: Player) -> bool:
+        """Check if player has won."""
+        win_lines = [
             (0, 1, 2), (3, 4, 5), (6, 7, 8),
             (0, 3, 6), (1, 4, 7), (2, 5, 8),
             (0, 4, 8), (2, 4, 6),
         ]
-        for p in patterns:
-            if board[p[0]] != 0 and board[p[0]] == board[p[1]] == board[p[2]]:
-                return board[p[0]]
-        if all(c != 0 for c in board):
-            return 0
-        return None
+        for line in win_lines:
+            if all(board[i] == player.value for i in line):
+                return True
+        return False
 
 
 class TicTacToeRandomAgent(BaseAgent[TicTacToeState, TicTacToeAction]):
-    """Random agent for baseline."""
+    """Random agent for baseline comparison."""
 
     def __init__(self, seed: int | None = None):
         import random
@@ -273,5 +231,5 @@ class TicTacToeRandomAgent(BaseAgent[TicTacToeState, TicTacToeAction]):
         state: TicTacToeState,
         available_actions: list[TicTacToeAction],
     ) -> TicTacToeAction:
-        """Choose random available position."""
+        """Choose a random available action."""
         return self._rng.choice(available_actions)

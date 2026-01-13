@@ -13,8 +13,8 @@ use crate::config::model_supports_temperature;
 use crate::error::{GatewayError, Result};
 use crate::types::{
     ChatCompletionResponse, ChatMessage, EmbeddingParams, EmbeddingResponse, GatewayConfig,
-    ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams,
-    ImageGenerationResponse, ImageGenerationResult, TextGenerationParams,
+    ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams, ImageGenerationResponse,
+    ImageGenerationResult, TextGenerationParams,
 };
 
 pub struct GatewayClient {
@@ -285,9 +285,10 @@ impl GatewayClient {
         params: &ImageDescriptionParams,
     ) -> Result<ImageDescriptionResult> {
         let model = params.model.as_deref().unwrap_or("gpt-5-mini");
-        let prompt = params.prompt.as_deref().unwrap_or(
-            "Please analyze this image and provide a title and detailed description.",
-        );
+        let prompt = params
+            .prompt
+            .as_deref()
+            .unwrap_or("Please analyze this image and provide a title and detailed description.");
         let max_tokens = params.max_tokens.unwrap_or(8192);
 
         debug!("Describing image with model: {}", model);
@@ -342,8 +343,7 @@ impl GatewayClient {
         prompt: &str,
         _temperature: Option<f32>,
     ) -> Result<serde_json::Value> {
-        let params =
-            TextGenerationParams::new(format!("Respond with only valid JSON. {}", prompt));
+        let params = TextGenerationParams::new(format!("Respond with only valid JSON. {}", prompt));
 
         let response = self.generate_text(&params).await?;
 
@@ -357,4 +357,3 @@ impl GatewayClient {
         serde_json::from_str(cleaned).map_err(|e| GatewayError::ParseError(e.to_string()))
     }
 }
-

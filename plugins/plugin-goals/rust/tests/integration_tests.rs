@@ -137,7 +137,7 @@ async fn test_goal_counting() {
             format!("Goal {}", i),
         );
         let goal = service.create_goal(params).await.unwrap();
-        
+
         // Complete even-numbered goals
         if i % 2 == 0 {
             service.complete_goal(&goal.id).await.unwrap();

@@ -1,15 +1,17 @@
 import type { ServiceTypeRegistry, UUID } from '@elizaos/core';
 
-// Extend the core service types with autonomous service
+// Extend the core service types with autonomy service
 declare module '@elizaos/core' {
   interface ServiceTypeRegistry {
-    AUTONOMOUS: 'AUTONOMOUS';
+    AUTONOMY: 'AUTONOMY';
   }
 }
 
-// Export service type constant
+/**
+ * Service type constant for autonomy (consistent with bootstrap)
+ */
 export const AutonomousServiceType = {
-  AUTONOMOUS: 'AUTONOMOUS' as const,
+  AUTONOMOUS: 'AUTONOMY' as const, // Use 'AUTONOMY' for consistency with bootstrap
 } satisfies Partial<ServiceTypeRegistry>;
 
 /**

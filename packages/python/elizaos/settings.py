@@ -30,7 +30,7 @@ def _looks_encrypted(value: str) -> bool:
 
 
 def encrypt_string_value(value: object, salt: str) -> object:
-    if value is None or isinstance(value, bool | int | float):
+    if value is None or isinstance(value, (bool, int, float)):
         return value
     if not isinstance(value, str):
         return value

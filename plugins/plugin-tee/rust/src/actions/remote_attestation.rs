@@ -125,15 +125,30 @@ impl RemoteAttestationAction {
 
 pub const REMOTE_ATTESTATION_EXAMPLES: &[&[(&str, &str)]] = &[
     &[
-        ("{{name1}}", "If you are running in a TEE, generate a remote attestation"),
+        (
+            "{{name1}}",
+            "If you are running in a TEE, generate a remote attestation",
+        ),
         ("{{agentName}}", "Of course, one second..."),
     ],
     &[
-        ("{{name1}}", "Can you prove you're running in a trusted execution environment?"),
-        ("{{agentName}}", "Absolutely! Let me generate a TEE attestation quote for you."),
+        (
+            "{{name1}}",
+            "Can you prove you're running in a trusted execution environment?",
+        ),
+        (
+            "{{agentName}}",
+            "Absolutely! Let me generate a TEE attestation quote for you.",
+        ),
     ],
     &[
-        ("{{name1}}", "I need verification that this conversation is happening in a secure enclave"),
-        ("{{agentName}}", "I'll generate a remote attestation to prove I'm running in a TEE."),
+        (
+            "{{name1}}",
+            "I need verification that this conversation is happening in a secure enclave",
+        ),
+        (
+            "{{agentName}}",
+            "I'll generate a remote attestation to prove I'm running in a TEE.",
+        ),
     ],
 ];

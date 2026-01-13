@@ -1,6 +1,5 @@
 """Tests for service."""
 
-
 from elizaos_plugin_discord.config import DiscordConfig
 from elizaos_plugin_discord.service import MAX_MESSAGE_LENGTH, DiscordService, split_message
 
@@ -86,5 +85,3 @@ class TestDiscordService:
             pass
 
         assert len(service._message_callbacks) == 1
-
-

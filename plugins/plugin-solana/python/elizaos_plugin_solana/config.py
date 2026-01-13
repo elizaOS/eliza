@@ -1,4 +1,3 @@
-
 import logging
 import os
 from collections.abc import Callable
@@ -19,7 +18,6 @@ SettingStorageCallback = Callable[[str, str, bool], None]
 
 @dataclass
 class WalletConfig:
-
     rpc_url: str
     public_key: Pubkey
     slippage_bps: int = 50

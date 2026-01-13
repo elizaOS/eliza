@@ -11,10 +11,10 @@ export function resolveModelProvider(
   if (explicit === "openai" || explicit === "codex") return "openai";
 
   // Auto-detect based on available keys.
-  if (env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.trim().length > 0)
-    return "anthropic";
   if (env.OPENAI_API_KEY && env.OPENAI_API_KEY.trim().length > 0)
     return "openai";
+  if (env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.trim().length > 0)
+    return "anthropic";
 
   throw new Error(
     "No model provider configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY (or ELIZA_CODE_PROVIDER=anthropic|openai).",

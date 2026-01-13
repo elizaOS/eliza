@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -41,7 +40,6 @@ class RuntimeProtocol(Protocol):
 
 
 class CameraDevice:
-
     def __init__(self, id: str, name: str, capture_fn):
         self.id = id
         self.name = name
@@ -52,7 +50,6 @@ class CameraDevice:
 
 
 class VisionService:
-
     SERVICE_TYPE = "VISION"
 
     def __init__(self, runtime: RuntimeProtocol | None = None):

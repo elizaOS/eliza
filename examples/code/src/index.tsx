@@ -2,13 +2,15 @@
 // Suppress elizaOS logs before any imports
 process.env.LOG_LEVEL = "fatal";
 
-import "dotenv/config";
 import { render } from "ink";
 import { App } from "./App.js";
 import { main as cliMain } from "./cli.js";
 import { initializeAgent, shutdownAgent } from "./lib/agent.js";
 import { resetAgentClient } from "./lib/agent-client.js";
+import { loadEnv } from "./lib/load-env.js";
 import { useStore } from "./lib/store.js";
+
+loadEnv();
 
 // ============================================================================
 // Environment Detection
@@ -44,7 +46,9 @@ function shouldRunInteractive(): boolean {
   }
 
   // Check if TTY is available
-  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  // Bun/watch can sometimes leave `isTTY` undefined even in a real terminal.
+  // Only treat it as non-interactive if it is explicitly `false`.
+  return process.stdin.isTTY !== false && process.stdout.isTTY !== false;
 }
 
 // ============================================================================
@@ -78,7 +82,7 @@ async function cleanup(
 
 async function runInteractive(): Promise<void> {
   // Validate TTY
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (process.stdin.isTTY === false || process.stdout.isTTY === false) {
     console.error("❌ Interactive mode requires a terminal.");
     console.error(
       "   Use CLI mode for non-interactive usage: eliza-code --help",

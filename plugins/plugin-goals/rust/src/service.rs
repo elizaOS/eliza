@@ -171,7 +171,9 @@ impl GoalService {
     /// Returns `ValidationError` if the goal name is empty.
     pub async fn create_goal(&self, params: CreateGoalParams) -> Result<Goal> {
         if params.name.is_empty() {
-            return Err(GoalError::ValidationError("Goal name cannot be empty".to_string()));
+            return Err(GoalError::ValidationError(
+                "Goal name cannot be empty".to_string(),
+            ));
         }
 
         let now = Utc::now();

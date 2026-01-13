@@ -14,10 +14,7 @@ pub enum PdfError {
     PageNotFound(usize),
 
     #[error("Invalid page range: start {start} > end {end}")]
-    InvalidPageRange {
-        start: usize,
-        end: usize,
-    },
+    InvalidPageRange { start: usize, end: usize },
 
     #[error("PDF document is empty")]
     EmptyDocument,
@@ -27,5 +24,3 @@ pub enum PdfError {
 }
 
 pub type Result<T> = std::result::Result<T, PdfError>;
-
-

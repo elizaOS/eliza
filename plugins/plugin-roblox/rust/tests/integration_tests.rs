@@ -34,5 +34,3 @@ async fn test_dry_run_message() {
 
     assert!(result.is_ok());
 }
-
-

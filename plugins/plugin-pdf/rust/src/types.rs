@@ -107,5 +107,3 @@ pub struct PdfDocumentInfo {
     pub text: String,
     pub pages: Vec<PdfPageInfo>,
 }
-
-

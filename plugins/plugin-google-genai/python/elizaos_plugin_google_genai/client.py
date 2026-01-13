@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import base64
@@ -332,5 +331,3 @@ class GoogleGenAIClient:
                         best = candidate
 
         return best
-
-

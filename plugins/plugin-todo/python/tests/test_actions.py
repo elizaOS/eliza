@@ -29,19 +29,23 @@ class MockRuntime:
         """Mock compose_state."""
         try:
             from elizaos.types import State
+
             return State(data={})
         except ImportError:
             # Fallback for testing without elizaos installed
             class State:
                 def __init__(self, data=None) -> None:
                     self.data = data or {}
+
             return State(data={})
 
     async def get_room(self, room_id):
         """Mock get_room."""
+
         class MockRoom:
             def __init__(self) -> None:
                 self.world_id = uuid4()
+
         return MockRoom()
 
 

@@ -126,7 +126,6 @@ pub struct ObjectGenerationParams {
     pub temperature: f32,
 }
 
-
 impl Default for ObjectGenerationParams {
     fn default() -> Self {
         Self {
@@ -187,7 +186,6 @@ fn default_quality() -> String {
 fn default_style() -> String {
     "vivid".to_string()
 }
-
 
 impl Default for ImageGenerationParams {
     fn default() -> Self {
@@ -265,7 +263,6 @@ fn default_response_format() -> String {
 fn default_mime_type() -> String {
     "audio/wav".to_string()
 }
-
 
 impl Default for TranscriptionParams {
     fn default() -> Self {

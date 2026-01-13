@@ -159,10 +159,14 @@ mod tests {
 
     #[test]
     fn test_event_type_as_str() {
-        assert_eq!(RobloxEventType::PlayerJoined.as_str(), "roblox:player_joined");
+        assert_eq!(
+            RobloxEventType::PlayerJoined.as_str(),
+            "roblox:player_joined"
+        );
         assert_eq!(RobloxEventType::PlayerLeft.as_str(), "roblox:player_left");
-        assert_eq!(RobloxEventType::PlayerMessage.as_str(), "roblox:player_message");
+        assert_eq!(
+            RobloxEventType::PlayerMessage.as_str(),
+            "roblox:player_message"
+        );
     }
 }
-
-

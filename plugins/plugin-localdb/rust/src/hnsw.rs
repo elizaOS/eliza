@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 #[derive(Debug, Clone)]
 pub struct VectorSearchResult {
@@ -19,7 +19,6 @@ pub struct HNSWConfig {
     pub ef_search: usize,
     pub ml: f32,
 }
-
 
 impl Default for HNSWConfig {
     fn default() -> Self {
@@ -72,7 +71,10 @@ impl PartialOrd for Candidate {
 impl Ord for Candidate {
     fn cmp(&self, other: &Self) -> Ordering {
         // Reverse ordering for min-heap behavior
-        other.distance.partial_cmp(&self.distance).unwrap_or(Ordering::Equal)
+        other
+            .distance
+            .partial_cmp(&self.distance)
+            .unwrap_or(Ordering::Equal)
     }
 }
 
@@ -184,16 +186,27 @@ impl SimpleHNSW {
             let selected: Vec<_> = neighbors.into_iter().take(self.config.m).collect();
 
             for neighbor in &selected {
-                new_node.neighbors.get_mut(&l).unwrap().insert(neighbor.id.clone());
+                new_node
+                    .neighbors
+                    .get_mut(&l)
+                    .unwrap()
+                    .insert(neighbor.id.clone());
 
                 if let Some(neighbor_node) = self.nodes.get_mut(&neighbor.id) {
-                    neighbor_node.neighbors.entry(l).or_default().insert(id.clone());
+                    neighbor_node
+                        .neighbors
+                        .entry(l)
+                        .or_default()
+                        .insert(id.clone());
                 }
             }
 
             for neighbor in &selected {
                 let should_prune = if let Some(neighbor_node) = self.nodes.get(&neighbor.id) {
-                    neighbor_node.neighbors.get(&l).is_some_and(|n| n.len() > self.config.m)
+                    neighbor_node
+                        .neighbors
+                        .get(&l)
+                        .is_some_and(|n| n.len() > self.config.m)
                 } else {
                     false
                 };
@@ -206,13 +219,13 @@ impl SimpleHNSW {
                             neighbor_node.neighbors.get(&l).unwrap().clone(),
                         )
                     };
-                    
+
                     let to_keep: HashSet<_> = self
                         .select_best_neighbors(&neighbor_vector, &current_neighbors, self.config.m)
                         .into_iter()
                         .map(|c| c.id)
                         .collect();
-                    
+
                     if let Some(neighbor_node) = self.nodes.get_mut(&neighbor.id) {
                         if let Some(neighbors) = neighbor_node.neighbors.get_mut(&l) {
                             *neighbors = to_keep;
@@ -236,13 +249,7 @@ impl SimpleHNSW {
         Ok(())
     }
 
-    fn search_layer(
-        &self,
-        query: &[f32],
-        entry: &str,
-        ef: usize,
-        level: usize,
-    ) -> Vec<Candidate> {
+    fn search_layer(&self, query: &[f32], entry: &str, ef: usize, level: usize) -> Vec<Candidate> {
         let entry_node = match self.nodes.get(entry) {
             Some(n) => n,
             None => return Vec::new(),
@@ -265,7 +272,9 @@ impl SimpleHNSW {
 
         while let Some(current) = candidates.pop() {
             if let Some(furthest) = results.iter().max_by(|a, b| {
-                a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal)
+                a.distance
+                    .partial_cmp(&b.distance)
+                    .unwrap_or(Ordering::Equal)
             }) {
                 if current.distance > furthest.distance {
                     break;
@@ -295,7 +304,9 @@ impl SimpleHNSW {
                         || results
                             .iter()
                             .max_by(|a, b| {
-                                a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal)
+                                a.distance
+                                    .partial_cmp(&b.distance)
+                                    .unwrap_or(Ordering::Equal)
                             })
                             .is_none_or(|f| dist < f.distance);
 
@@ -311,7 +322,9 @@ impl SimpleHNSW {
 
                         if results.len() > ef {
                             results.sort_by(|a, b| {
-                                a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal)
+                                a.distance
+                                    .partial_cmp(&b.distance)
+                                    .unwrap_or(Ordering::Equal)
                             });
                             results.pop();
                         }
@@ -320,7 +333,11 @@ impl SimpleHNSW {
             }
         }
 
-        results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal));
+        results.sort_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(Ordering::Equal)
+        });
         results
     }
 
@@ -340,7 +357,11 @@ impl SimpleHNSW {
             })
             .collect();
 
-        candidates.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(Ordering::Equal)
+        });
         candidates.truncate(m);
         candidates
     }
@@ -424,7 +445,6 @@ impl SimpleHNSW {
     }
 }
 
-
 impl Default for SimpleHNSW {
     fn default() -> Self {
         Self::new()
@@ -478,4 +498,3 @@ mod tests {
         assert_eq!(hnsw2.size(), 1);
     }
 }
-

@@ -2,13 +2,13 @@
 
 pub mod client;
 pub mod error;
-pub mod types;
 pub mod service;
+pub mod types;
 
 pub use client::PdfClient;
 pub use error::{PdfError, Result};
-pub use types::*;
 pub use service::PdfService;
+pub use types::*;
 
 #[allow(unused_imports)]
 use anyhow::Result as AnyhowResult;
@@ -77,4 +77,3 @@ impl Default for PdfPlugin {
 pub fn get_pdf_plugin() -> PdfPlugin {
     PdfPlugin::new()
 }
-

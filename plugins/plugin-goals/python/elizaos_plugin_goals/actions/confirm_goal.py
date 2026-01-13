@@ -266,9 +266,11 @@ MODIFICATIONS: <any modifications or "none">"""
             message_text = str(content.get("text", "") if isinstance(content, dict) else "")
 
             # Extract confirmation intent
-            is_confirmation, should_proceed, modifications = await self._extract_confirmation_intent(
-                runtime, message_text, pending_goal
-            )
+            (
+                is_confirmation,
+                should_proceed,
+                modifications,
+            ) = await self._extract_confirmation_intent(runtime, message_text, pending_goal)
 
             if not is_confirmation:
                 goal_name = pending_goal.get("name", "")
@@ -330,7 +332,9 @@ MODIFICATIONS: <any modifications or "none">"""
                 priority_text = f"Priority {priority or 3}"
                 urgent_text = ", Urgent" if urgent else ""
                 due_date_text = f", Due: {due_date}" if due_date else ""
-                success_message = f'✅ Created task: "{goal_name}" ({priority_text}{urgent_text}{due_date_text})'
+                success_message = (
+                    f'✅ Created task: "{goal_name}" ({priority_text}{urgent_text}{due_date_text})'
+                )
             else:
                 success_message = f'✅ Created aspirational goal: "{goal_name}"'
 

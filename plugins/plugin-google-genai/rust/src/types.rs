@@ -134,8 +134,8 @@ impl Default for ObjectGenerationParams {
             prompt: String::new(),
             system: None,
             schema: None,
-    temperature: Some(0.1),
-    max_tokens: None,
+            temperature: Some(0.1),
+            max_tokens: None,
         }
     }
 }

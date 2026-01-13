@@ -207,8 +207,3 @@ async def create_reminder_service(
     service = ReminderService(config, runtime)
     await service.start()
     return service
-
-
-
-
-

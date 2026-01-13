@@ -13,7 +13,7 @@ from elizaos_plugin_polymarket.actions import markets
 # Skip entire module if API keys not available
 pytestmark = pytest.mark.skipif(
     not os.environ.get("POLYMARKET_API_KEY"),
-    reason="Polymarket API key not available - skipping API tests"
+    reason="Polymarket API key not available - skipping API tests",
 )
 
 

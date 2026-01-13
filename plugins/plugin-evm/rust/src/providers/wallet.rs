@@ -192,15 +192,12 @@ impl WalletProvider {
         let provider = self.provider(chain)?;
         let address = self.address();
 
-        provider
-            .get_transaction_count(address)
-            .await
-            .map_err(|e| {
-                EVMError::new(
-                    EVMErrorCode::NetworkError,
-                    format!("Failed to get nonce for {chain}: {e}"),
-                )
-            })
+        provider.get_transaction_count(address).await.map_err(|e| {
+            EVMError::new(
+                EVMErrorCode::NetworkError,
+                format!("Failed to get nonce for {chain}: {e}"),
+            )
+        })
     }
 
     pub async fn get_gas_price(&self, chain: SupportedChain) -> EVMResult<u128> {
@@ -285,8 +282,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_wallet_provider_creation() {
-        let config = WalletProviderConfig::new(test_private_key())
-            .with_chain(SupportedChain::Sepolia, None);
+        let config =
+            WalletProviderConfig::new(test_private_key()).with_chain(SupportedChain::Sepolia, None);
 
         let provider = WalletProvider::new(config).await.unwrap();
 
@@ -306,14 +303,24 @@ mod tests {
     #[tokio::test]
     async fn test_auto_generate_private_key() {
         let (config, generated) = WalletProviderConfig::new_or_generate(None);
-        
-        assert!(generated.is_some(), "Should generate a key when None provided");
-        
+
+        assert!(
+            generated.is_some(),
+            "Should generate a key when None provided"
+        );
+
         let generated = generated.unwrap();
-        assert!(generated.private_key.starts_with("0x"), "Key should have 0x prefix");
-        assert_eq!(generated.private_key.len(), 66, "Key should be 66 chars (0x + 64 hex)");
+        assert!(
+            generated.private_key.starts_with("0x"),
+            "Key should have 0x prefix"
+        );
+        assert_eq!(
+            generated.private_key.len(),
+            66,
+            "Key should be 66 chars (0x + 64 hex)"
+        );
         assert!(!generated.address.is_zero(), "Address should not be zero");
-        
+
         // Should be able to create a provider with the generated key
         let provider = WalletProvider::new(config).await.unwrap();
         assert_eq!(provider.address(), generated.address);
@@ -323,9 +330,9 @@ mod tests {
     async fn test_provided_key_not_regenerated() {
         let original_key = test_private_key();
         let (config, generated) = WalletProviderConfig::new_or_generate(Some(original_key.clone()));
-        
+
         assert!(generated.is_none(), "Should not generate when key provided");
-        
+
         let provider = WalletProvider::new(config).await.unwrap();
         let expected_signer: PrivateKeySigner = original_key.parse().unwrap();
         assert_eq!(provider.address(), expected_signer.address());

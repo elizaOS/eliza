@@ -2,9 +2,8 @@
 Order placement actions for Polymarket.
 """
 
-from typing import Protocol
-
-from py_clob_client.constants import BUY, SELL
+from collections.abc import Callable
+from typing import Protocol, cast
 
 from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 from elizaos_plugin_polymarket.providers import get_authenticated_clob_client
@@ -63,8 +62,8 @@ async def place_order(
     try:
         client = get_authenticated_clob_client(runtime)
 
-        # Convert side to py_clob_client format
-        side = BUY if params.side == OrderSide.BUY else SELL
+        # Use the side value expected by the CLOB client ("BUY" / "SELL")
+        side = params.side.value
 
         # Create order arguments
         order_args = {
@@ -77,7 +76,13 @@ async def place_order(
 
         # Create the signed order
         try:
-            signed_order = client.create_order(order_args)
+            create_order = cast(object, getattr(client, "create_order", None))
+            if not callable(create_order):
+                raise PolymarketError(
+                    PolymarketErrorCode.API_ERROR,
+                    "CLOB client missing create_order method",
+                )
+            signed_order = cast(Callable[[dict[str, object]], object], create_order)(order_args)
         except Exception as e:
             error_msg = str(e)
             if "minimum_tick_size" in error_msg:
@@ -95,7 +100,17 @@ async def place_order(
         # Post the order
         try:
             order_type = params.order_type.value if params.order_type else OrderType.GTC.value
-            response = client.post_order(signed_order, order_type=order_type)
+            post_order = cast(object, getattr(client, "post_order", None))
+            if not callable(post_order):
+                raise PolymarketError(
+                    PolymarketErrorCode.API_ERROR,
+                    "CLOB client missing post_order method",
+                )
+            response_obj = cast(Callable[..., object], post_order)(
+                signed_order,
+                order_type=order_type,
+            )
+            response: dict[str, object] = response_obj if isinstance(response_obj, dict) else {}
         except Exception as e:
             raise PolymarketError(
                 PolymarketErrorCode.API_ERROR,
@@ -104,11 +119,15 @@ async def place_order(
             ) from e
 
         return OrderResponse(
-            success=response.get("success", False),
-            error_msg=response.get("errorMsg"),
-            order_id=response.get("orderId"),
-            order_hashes=response.get("orderHashes"),
-            status=response.get("status"),
+            success=bool(response.get("success", False)),
+            error_msg=str(response.get("errorMsg")) if response.get("errorMsg") else None,
+            order_id=str(response.get("orderId")) if response.get("orderId") else None,
+            order_hashes=(
+                [str(x) for x in order_hashes_obj]
+                if isinstance((order_hashes_obj := response.get("orderHashes")), list)
+                else None
+            ),
+            status=str(response.get("status")) if response.get("status") else None,
         )
 
     except PolymarketError:
@@ -146,8 +165,16 @@ async def cancel_order(
 
     try:
         client = get_authenticated_clob_client(runtime)
-        response = client.cancel(order_id)
-        return response.get("success", False)
+        cancel_fn = cast(object, getattr(client, "cancel", None))
+        if not callable(cancel_fn):
+            raise PolymarketError(
+                PolymarketErrorCode.API_ERROR,
+                "CLOB client missing cancel method",
+            )
+        response_obj = cast(Callable[[str], object], cancel_fn)(order_id)
+        if isinstance(response_obj, dict):
+            return bool(response_obj.get("success", False))
+        return True
     except PolymarketError:
         raise
     except Exception as e:
@@ -162,7 +189,7 @@ async def get_open_orders(
     market_id: str | None = None,
     asset_id: str | None = None,
     runtime: RuntimeProtocol | None = None,
-) -> list[dict]:
+) -> list[dict[str, object]]:
     """
     Get open orders for the user.
 
@@ -180,14 +207,29 @@ async def get_open_orders(
     try:
         client = get_authenticated_clob_client(runtime)
 
-        params = {}
+        params: dict[str, str] = {}
         if market_id:
             params["market"] = market_id
         if asset_id:
             params["asset_id"] = asset_id
 
-        response = client.get_orders(**params) if params else client.get_orders()
-        return response.get("data", [])
+        get_orders = cast(object, getattr(client, "get_orders", None))
+        if not callable(get_orders):
+            raise PolymarketError(
+                PolymarketErrorCode.API_ERROR,
+                "CLOB client missing get_orders method",
+            )
+
+        response_obj = cast(Callable[..., object], get_orders)(**params) if params else cast(
+            Callable[..., object], get_orders
+        )()
+
+        if not isinstance(response_obj, dict):
+            return []
+        data_obj = response_obj.get("data", [])
+        if not isinstance(data_obj, list):
+            return []
+        return [item for item in data_obj if isinstance(item, dict)]
     except PolymarketError:
         raise
     except Exception as e:
@@ -201,7 +243,7 @@ async def get_open_orders(
 async def get_order_details(
     order_id: str,
     runtime: RuntimeProtocol | None = None,
-) -> dict:
+) -> dict[str, object]:
     """
     Get details for a specific order.
 
@@ -223,8 +265,14 @@ async def get_order_details(
 
     try:
         client = get_authenticated_clob_client(runtime)
-        response = client.get_order(order_id)
-        return response
+        get_order = cast(object, getattr(client, "get_order", None))
+        if not callable(get_order):
+            raise PolymarketError(
+                PolymarketErrorCode.API_ERROR,
+                "CLOB client missing get_order method",
+            )
+        response_obj = cast(Callable[[str], object], get_order)(order_id)
+        return response_obj if isinstance(response_obj, dict) else {}
     except PolymarketError:
         raise
     except Exception as e:
@@ -233,8 +281,3 @@ async def get_order_details(
             f"Failed to fetch order details: {e}",
             cause=e,
         ) from e
-
-
-
-
-

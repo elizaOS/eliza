@@ -1,0 +1,22 @@
+[package]
+name = "elizaos-plugin-trajectory-logger"
+version = "1.2.0"
+edition = "2021"
+authors = ["elizaOS Team"]
+description = "Trajectory logging plugin for elizaOS - Rust implementation"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["ai", "agent", "trajectory", "rl", "training"]
+categories = ["data-structures"]
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.19", features = ["v4", "serde"] }
+
+[dev-dependencies]
+pretty_assertions = "1.0"

@@ -204,6 +204,16 @@ Examples:
         action="store_true",
         help="Check environment for API keys and exit",
     )
+    parser.add_argument(
+        "--export-trajectories",
+        action="store_true",
+        help="Export trajectories for training (ART/GRPO formats)",
+    )
+    parser.add_argument(
+        "--no-trajectory-logging",
+        action="store_true",
+        help="Disable trajectory logging (reduces memory usage)",
+    )
 
     return parser.parse_args()
 
@@ -295,6 +305,16 @@ def check_environment() -> dict[str, bool]:
         except ImportError:
             results[module] = False
             print(f"   {name}: ❌ Not installed")
+
+    # Check trajectory logger plugin
+    print("\n📊 Training Export:")
+    try:
+        __import__("elizaos_plugin_trajectory_logger")
+        results["trajectory_logger"] = True
+        print("   Trajectory Logger: ✅ Installed (ART/GRPO export available)")
+    except ImportError:
+        results["trajectory_logger"] = False
+        print("   Trajectory Logger: ❌ Not installed (install elizaos-plugin-trajectory-logger for training export)")
     
     # Summary
     print("\n📋 Summary:")
@@ -419,12 +439,17 @@ async def run_benchmark(
     config: REALMConfig, 
     verbose: bool = False,
     use_mock: bool = False,
+    enable_trajectory_logging: bool = True,
 ) -> REALMReport:
     """Run the benchmark."""
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    runner = REALMRunner(config, use_mock=use_mock)
+    runner = REALMRunner(
+        config,
+        use_mock=use_mock,
+        enable_trajectory_logging=enable_trajectory_logging,
+    )
     report = await runner.run_benchmark()
     
     # Clean up
@@ -469,7 +494,13 @@ def main() -> int:
         print("🚀 Starting benchmark...\n")
 
     try:
-        report = asyncio.run(run_benchmark(config, args.verbose, args.mock))
+        enable_traj_logging = not args.no_trajectory_logging
+        report = asyncio.run(run_benchmark(
+            config, 
+            args.verbose, 
+            args.mock,
+            enable_trajectory_logging=enable_traj_logging,
+        ))
 
         if args.json:
             # Output as JSON
@@ -482,6 +513,12 @@ def main() -> int:
 
             if not args.no_save:
                 print(f"\n📁 Full results saved to: {config.output_dir}/")
+                if not args.no_trajectory_logging:
+                    try:
+                        __import__("elizaos_plugin_trajectory_logger")
+                        print(f"   📊 Training trajectories exported (ART/GRPO formats)")
+                    except ImportError:
+                        pass
 
             print("\n✅ Benchmark completed successfully!")
 

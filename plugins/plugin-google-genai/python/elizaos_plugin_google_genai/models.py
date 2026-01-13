@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from enum import Enum
@@ -93,4 +92,3 @@ class Model:
 
     def __hash__(self) -> int:
         return hash(self._id)
-
