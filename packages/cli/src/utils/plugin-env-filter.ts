@@ -29,6 +29,9 @@ const CORE_ALLOWED_VARS = new Set([
   'ELIZAOS_CONFIG_DIR',
 ]);
 
+// Cached regex for parsing .env file variable names - compiled once at module load
+const ENV_VAR_NAME_REGEX = /^([^=]+)=/;
+
 interface ParsedPackageJson {
   isPlugin: boolean;
   declarations: Record<string, EnvVarConfig> | null;
@@ -206,13 +209,11 @@ export function detectShellOnlyVars(
   }
 
   const envFileVars = new Set<string>();
-  // Pre-compile regex once instead of per-line
-  const varNameRegex = /^([^=]+)=/;
 
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
     if (trimmed && !trimmed.startsWith('#')) {
-      const match = trimmed.match(varNameRegex);
+      const match = trimmed.match(ENV_VAR_NAME_REGEX);
       if (match) envFileVars.add(match[1].trim());
     }
   }
