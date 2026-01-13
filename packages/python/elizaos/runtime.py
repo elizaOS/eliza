@@ -4,7 +4,7 @@ import asyncio
 import re
 import uuid
 import xml.etree.ElementTree as ET
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from elizaos.logger import Logger, create_logger
@@ -25,7 +25,13 @@ from elizaos.types.memory import Memory
 from elizaos.types.model import GenerateTextOptions, GenerateTextResult, LLMMode, ModelType
 from elizaos.types.plugin import Plugin, Route
 from elizaos.types.primitives import UUID, Content, as_uuid, string_to_uuid
-from elizaos.types.runtime import IAgentRuntime, RuntimeSettings, SendHandlerFunction, TargetInfo
+from elizaos.types.runtime import (
+    IAgentRuntime,
+    RuntimeSettings,
+    SendHandlerFunction,
+    StreamingModelHandler,
+    TargetInfo,
+)
 from elizaos.types.service import Service
 from elizaos.types.state import State, StateData
 from elizaos.types.task import TaskWorker
@@ -48,6 +54,20 @@ class ModelHandler:
     def __init__(
         self,
         handler: Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]],
+        provider: str,
+        priority: int = 0,
+    ) -> None:
+        self.handler = handler
+        self.provider = provider
+        self.priority = priority
+
+
+class StreamingModelHandlerWrapper:
+    """Wrapper for streaming model handlers."""
+
+    def __init__(
+        self,
+        handler: StreamingModelHandler,
         provider: str,
         priority: int = 0,
     ) -> None:
@@ -111,6 +131,7 @@ class AgentRuntime(IAgentRuntime):
         self._routes: list[Route] = []
         self._events: dict[str, list[Callable[[Any], Awaitable[None]]]] = {}
         self._models: dict[str, list[ModelHandler]] = {}
+        self._streaming_models: dict[str, list[StreamingModelHandlerWrapper]] = {}
         self._task_workers: dict[str, TaskWorker] = {}
         self._send_handlers: dict[str, SendHandlerFunction] = {}
         self._state_cache: dict[str, State] = {}
@@ -941,6 +962,92 @@ class AgentRuntime(IAgentRuntime):
             return handlers[0].handler
         return None
 
+    def register_streaming_model(
+        self,
+        model_type: str | ModelType,
+        handler: StreamingModelHandler,
+        provider: str,
+        priority: int = 0,
+    ) -> None:
+        """Register a streaming model handler."""
+        key = model_type.value if isinstance(model_type, ModelType) else model_type
+        if key not in self._streaming_models:
+            self._streaming_models[key] = []
+
+        self._streaming_models[key].append(
+            StreamingModelHandlerWrapper(handler=handler, provider=provider, priority=priority)
+        )
+
+    async def _use_model_stream_impl(
+        self,
+        model_type: str | ModelType,
+        params: dict[str, Any] | None = None,
+        provider: str | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        """Internal implementation for streaming model calls."""
+        effective_model_type = model_type.value if isinstance(model_type, ModelType) else model_type
+        if params is None:
+            params = dict(kwargs)
+        elif kwargs:
+            params = {**params, **kwargs}
+
+        # Apply LLM mode override for streaming text generation models
+        llm_mode = self.get_llm_mode()
+        if llm_mode != LLMMode.DEFAULT:
+            streaming_text_models = [
+                ModelType.TEXT_SMALL_STREAM.value,
+                ModelType.TEXT_LARGE_STREAM.value,
+            ]
+            if effective_model_type in streaming_text_models:
+                override_model_type = (
+                    ModelType.TEXT_SMALL_STREAM.value
+                    if llm_mode == LLMMode.SMALL
+                    else ModelType.TEXT_LARGE_STREAM.value
+                )
+                if effective_model_type != override_model_type:
+                    self.logger.debug(
+                        f"LLM mode override applied: {effective_model_type} -> {override_model_type} (mode: {llm_mode})"
+                    )
+                    effective_model_type = override_model_type
+
+        handlers = self._streaming_models.get(effective_model_type, [])
+
+        if not handlers:
+            raise RuntimeError(f"No streaming model handler registered for: {effective_model_type}")
+
+        handlers.sort(key=lambda h: h.priority, reverse=True)
+
+        if provider:
+            handlers = [h for h in handlers if h.provider == provider]
+            if not handlers:
+                raise RuntimeError(f"No streaming model handler for provider: {provider}")
+
+        handler = handlers[0]
+        async for chunk in handler.handler(self, params):
+            yield chunk
+
+    def use_model_stream(
+        self,
+        model_type: str | ModelType,
+        params: dict[str, Any] | None = None,
+        provider: str | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        """
+        Use a streaming model handler to generate text token by token.
+
+        Args:
+            model_type: The model type (e.g., ModelType.TEXT_LARGE_STREAM)
+            params: Parameters for the model (prompt, system, temperature, etc.)
+            provider: Optional specific provider to use
+            **kwargs: Additional parameters merged into params
+
+        Returns:
+            An async iterator yielding text chunks as they are generated.
+        """
+        return self._use_model_stream_impl(model_type, params, provider, **kwargs)
+
     # Event handling
     def register_event(
         self,
@@ -1190,19 +1297,20 @@ class AgentRuntime(IAgentRuntime):
     ) -> list[Any]:
         if not self._adapter:
             return []
-        # Build params from kwargs if not provided as dict
-        if params is None:
-            params = {}
-            if room_id is not None:
-                params["roomId"] = str(room_id)
-            if limit is not None:
-                params["limit"] = limit
-            if order_by is not None:
-                params["orderBy"] = order_by
-            if order_direction is not None:
-                params["orderDirection"] = order_direction
-            params.update(kwargs)
-        return await self._adapter.get_memories(params)
+        # Start with provided params or empty dict
+        merged_params = dict(params) if params else {}
+        # Explicit keyword arguments take precedence over params dict
+        if room_id is not None:
+            merged_params["roomId"] = str(room_id)
+        if limit is not None:
+            merged_params["limit"] = limit
+        if order_by is not None:
+            merged_params["orderBy"] = order_by
+        if order_direction is not None:
+            merged_params["orderDirection"] = order_direction
+        # Additional kwargs also take precedence
+        merged_params.update(kwargs)
+        return await self._adapter.get_memories(merged_params)
 
     async def get_memory_by_id(self, id: UUID) -> Any | None:
         if not self._adapter:

@@ -133,6 +133,7 @@ from elizaos.types.primitives import (
 from elizaos.types.runtime import (
     IAgentRuntime,
     RuntimeSettings,
+    StreamingModelHandler,
 )
 from elizaos.types.service import (
     Service,
@@ -403,6 +404,7 @@ __all__ = [
     # Runtime
     "IAgentRuntime",
     "RuntimeSettings",
+    "StreamingModelHandler",
     # Service Interfaces - Token & Wallet
     "TokenBalance",
     "TokenData",
