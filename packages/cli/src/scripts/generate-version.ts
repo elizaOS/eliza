@@ -24,11 +24,12 @@ interface VersionInfo {
 
 /**
  * Extract version info from existing version.ts content
+ * Supports both single and double quoted strings for backwards compatibility
  */
 function extractExistingVersionInfo(content: string): VersionInfo | null {
-  const version = content.match(/export const CLI_VERSION = '([^']+)'/)?.[1];
-  const name = content.match(/export const CLI_NAME = '([^']+)'/)?.[1];
-  const description = content.match(/export const CLI_DESCRIPTION = '([^']+)'/)?.[1];
+  const version = content.match(/export const CLI_VERSION = ["']([^"']+)["']/)?.[1];
+  const name = content.match(/export const CLI_NAME = ["']([^"']+)["']/)?.[1];
+  const description = content.match(/export const CLI_DESCRIPTION = ["']([^"']+)["']/)?.[1];
 
   if (!version || !name || !description) {
     return null;
@@ -89,19 +90,20 @@ async function generateVersionFile(): Promise<void> {
 
     // Generate the TypeScript content
     // Note: BUILD_TIME is intentionally not used for comparison since it always changes
+    // Use JSON.stringify for safe escaping of special characters (quotes, backslashes, etc.)
     const content = `/**
  * Auto-generated file - DO NOT EDIT
  * Generated at build time by generate-version.ts
  * This file contains build-time constants to avoid runtime package.json resolution
  */
 
-export const CLI_VERSION = '${versionInfo.version}';
-export const CLI_NAME = '${versionInfo.name}';
-export const CLI_DESCRIPTION = '${versionInfo.description}';
+export const CLI_VERSION = ${JSON.stringify(versionInfo.version)};
+export const CLI_NAME = ${JSON.stringify(versionInfo.name)};
+export const CLI_DESCRIPTION = ${JSON.stringify(versionInfo.description)};
 
 // Build metadata
-export const BUILD_TIME = '${new Date().toISOString()}';
-export const BUILD_ENV = '${process.env.NODE_ENV || 'production'}';
+export const BUILD_TIME = ${JSON.stringify(new Date().toISOString())};
+export const BUILD_ENV = ${JSON.stringify(process.env.NODE_ENV || 'production')};
 
 // Export as default for convenience
 export default {
