@@ -90,9 +90,7 @@ async def handle_create_todo(
     elif "aspirational" in message_text.lower() or "goal" in message_text.lower():
         task_type = TaskType.ASPIRATIONAL
 
-    duplicate_todo = next(
-        (t for t in existing_todos if t.name.strip() == todo_name.strip()), None
-    )
+    duplicate_todo = next((t for t in existing_todos if t.name.strip() == todo_name.strip()), None)
 
     if duplicate_todo:
         logger.warning(f"Duplicate task found for name '{todo_name}'. ID: {duplicate_todo.id}")
@@ -109,7 +107,9 @@ async def handle_create_todo(
 
     room = await runtime.get_room(message.room_id) if hasattr(runtime, "get_room") else None
     world_id = (
-        room.world_id if room and hasattr(room, "world_id") else message.world_id or runtime.agent_id
+        room.world_id
+        if room and hasattr(room, "world_id")
+        else message.world_id or runtime.agent_id
     )
 
     tags = ["TODO"]
@@ -148,7 +148,9 @@ async def handle_create_todo(
 
         # Generate success message
         if task_type == TaskType.DAILY:
-            success_message = f'✅ Added new daily task: "{todo_name}". This task will reset each day.'
+            success_message = (
+                f'✅ Added new daily task: "{todo_name}". This task will reset each day.'
+            )
         elif task_type == TaskType.ONE_OFF:
             priority_text = f"Priority {priority.value if priority else 'default'}"
             success_message = f'✅ Added new one-off task: "{todo_name}" ({priority_text})'
@@ -164,9 +166,7 @@ async def handle_create_todo(
                 }
             )
 
-        return CreateTodoResult(
-            success=True, text=success_message, todo_id=created_todo_id
-        )
+        return CreateTodoResult(success=True, text=success_message, todo_id=created_todo_id)
 
     except Exception as e:
         error_msg = f"Failed to create todo: {str(e)}"

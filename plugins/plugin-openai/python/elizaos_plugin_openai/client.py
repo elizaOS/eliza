@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
@@ -144,7 +145,24 @@ class OpenAIClient:
             if params.max_tokens is not None:
                 request_body["max_completion_tokens"] = params.max_tokens
 
-        response = await self._client.post("/chat/completions", json=request_body)
+        response: httpx.Response | None = None
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = await self._client.post("/chat/completions", json=request_body)
+                last_error = None
+                break
+            except httpx.TimeoutException as e:
+                last_error = e
+                # Exponential backoff: 1s, 2s, 4s
+                await asyncio.sleep(2**attempt)
+
+        if response is None:
+            msg = "OpenAI request timed out after 3 attempts"
+            if last_error:
+                msg = f"{msg}: {last_error}"
+            raise OpenAIClientError(msg)
+
         self._raise_for_status(response)
 
         completion = ChatCompletionResponse.model_validate(response.json())
@@ -295,7 +313,7 @@ class OpenAIClient:
         file_path: Path,
         params: TranscriptionParams,
     ) -> str:
-        import aiofiles
+        import aiofiles  # type: ignore[import-untyped]
 
         async with aiofiles.open(file_path, "rb") as f:
             audio_data = await f.read()

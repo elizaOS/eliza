@@ -234,9 +234,7 @@ class EphemeralHNSW(IVectorStorage):
             if closest:
                 current_node = str(closest[0]["id"])
 
-        results = self._search_layer(
-            query, current_node, max(k, self._config.ef_search), 0
-        )
+        results = self._search_layer(query, current_node, max(k, self._config.ef_search), 0)
 
         return [
             VectorSearchResult(
@@ -255,5 +253,3 @@ class EphemeralHNSW(IVectorStorage):
 
     def size(self) -> int:
         return len(self._nodes)
-
-

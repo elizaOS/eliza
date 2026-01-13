@@ -1,4 +1,6 @@
-use elizaos_plugin_s3_storage::types::{get_content_type, JsonUploadResult, S3StorageConfig, UploadResult};
+use elizaos_plugin_s3_storage::types::{
+    get_content_type, JsonUploadResult, S3StorageConfig, UploadResult,
+};
 
 #[test]
 fn test_s3_storage_config_creation() {
@@ -16,7 +18,10 @@ fn test_config_builder_methods() {
         .force_path_style(true);
 
     assert_eq!(config.upload_path, "uploads/");
-    assert_eq!(config.endpoint, Some("https://custom.endpoint.com".to_string()));
+    assert_eq!(
+        config.endpoint,
+        Some("https://custom.endpoint.com".to_string())
+    );
     assert!(config.force_path_style);
 }
 
@@ -54,6 +59,3 @@ fn test_content_type_detection() {
     assert_eq!(get_content_type("data.json"), "application/json");
     assert_eq!(get_content_type("file.unknown"), "application/octet-stream");
 }
-
-
-

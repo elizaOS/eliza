@@ -1,11 +1,19 @@
 //! Integration tests for the GitHub plugin
 
 use elizaos_plugin_github::{
-    GitHubConfig, PLUGIN_NAME, PLUGIN_VERSION,
+    ActionContext,
+    CreateBranchAction,
+    CreateCommentAction,
     // Actions
-    CreateIssueAction, CreatePullRequestAction, CreateCommentAction,
-    CreateBranchAction, MergePullRequestAction, PushCodeAction,
-    ReviewPullRequestAction, GitHubAction, ActionContext,
+    CreateIssueAction,
+    CreatePullRequestAction,
+    GitHubAction,
+    GitHubConfig,
+    MergePullRequestAction,
+    PushCodeAction,
+    ReviewPullRequestAction,
+    PLUGIN_NAME,
+    PLUGIN_VERSION,
 };
 
 #[test]
@@ -102,7 +110,7 @@ fn test_all_actions_have_names() {
 #[tokio::test]
 async fn test_push_code_action_validate() {
     let action = PushCodeAction;
-    
+
     let context = ActionContext {
         message: serde_json::json!({
             "content": { "text": "Push these changes to the repository" }
@@ -111,14 +119,14 @@ async fn test_push_code_action_validate() {
         repo: "test".to_string(),
         state: serde_json::json!({}),
     };
-    
+
     assert!(action.validate(&context).await.unwrap());
 }
 
 #[tokio::test]
 async fn test_push_code_action_validate_commit() {
     let action = PushCodeAction;
-    
+
     let context = ActionContext {
         message: serde_json::json!({
             "content": { "text": "Commit this file" }
@@ -127,14 +135,14 @@ async fn test_push_code_action_validate_commit() {
         repo: "test".to_string(),
         state: serde_json::json!({}),
     };
-    
+
     assert!(action.validate(&context).await.unwrap());
 }
 
 #[tokio::test]
 async fn test_push_code_action_no_keywords() {
     let action = PushCodeAction;
-    
+
     let context = ActionContext {
         message: serde_json::json!({
             "content": { "text": "Hello world" }
@@ -143,14 +151,14 @@ async fn test_push_code_action_no_keywords() {
         repo: "test".to_string(),
         state: serde_json::json!({}),
     };
-    
+
     assert!(!action.validate(&context).await.unwrap());
 }
 
 #[tokio::test]
 async fn test_review_pr_action_validate() {
     let action = ReviewPullRequestAction;
-    
+
     let context = ActionContext {
         message: serde_json::json!({
             "content": { "text": "Review this pull request" }
@@ -159,14 +167,14 @@ async fn test_review_pr_action_validate() {
         repo: "test".to_string(),
         state: serde_json::json!({}),
     };
-    
+
     assert!(action.validate(&context).await.unwrap());
 }
 
 #[tokio::test]
 async fn test_review_pr_action_validate_approve() {
     let action = ReviewPullRequestAction;
-    
+
     let context = ActionContext {
         message: serde_json::json!({
             "content": { "text": "Approve this PR" }
@@ -175,14 +183,14 @@ async fn test_review_pr_action_validate_approve() {
         repo: "test".to_string(),
         state: serde_json::json!({}),
     };
-    
+
     assert!(action.validate(&context).await.unwrap());
 }
 
 #[tokio::test]
 async fn test_review_pr_action_validate_lgtm() {
     let action = ReviewPullRequestAction;
-    
+
     let context = ActionContext {
         message: serde_json::json!({
             "content": { "text": "LGTM on this change" }
@@ -191,14 +199,14 @@ async fn test_review_pr_action_validate_lgtm() {
         repo: "test".to_string(),
         state: serde_json::json!({}),
     };
-    
+
     assert!(action.validate(&context).await.unwrap());
 }
 
 #[tokio::test]
 async fn test_review_pr_action_no_keywords() {
     let action = ReviewPullRequestAction;
-    
+
     let context = ActionContext {
         message: serde_json::json!({
             "content": { "text": "Hello world" }
@@ -207,7 +215,7 @@ async fn test_review_pr_action_no_keywords() {
         repo: "test".to_string(),
         state: serde_json::json!({}),
     };
-    
+
     assert!(!action.validate(&context).await.unwrap());
 }
 
@@ -215,7 +223,7 @@ async fn test_review_pr_action_no_keywords() {
 fn test_push_code_action_similes() {
     let action = PushCodeAction;
     let similes = action.similes();
-    
+
     assert!(similes.contains(&"COMMIT_CODE"));
     assert!(similes.contains(&"PUSH_CHANGES"));
     assert!(similes.contains(&"GIT_PUSH"));
@@ -225,15 +233,8 @@ fn test_push_code_action_similes() {
 fn test_review_pr_action_similes() {
     let action = ReviewPullRequestAction;
     let similes = action.similes();
-    
+
     assert!(similes.contains(&"APPROVE_PR"));
     assert!(similes.contains(&"CODE_REVIEW"));
     assert!(similes.contains(&"REQUEST_CHANGES"));
 }
-
-
-
-
-
-
-

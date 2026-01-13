@@ -25,6 +25,14 @@ describe("resolveModelProvider", () => {
     expect(provider).toBe("openai");
   });
 
+  test("auto-detects openai when both keys are set", () => {
+    const provider = resolveModelProvider({
+      ANTHROPIC_API_KEY: "anthropic-key",
+      OPENAI_API_KEY: "openai-key",
+    });
+    expect(provider).toBe("openai");
+  });
+
   test("throws when no provider is configured", () => {
     expect(() => resolveModelProvider({})).toThrow();
   });

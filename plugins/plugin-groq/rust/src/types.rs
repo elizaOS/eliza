@@ -110,7 +110,6 @@ pub struct GroqConfig {
     pub transcription_model: String,
 }
 
-
 impl Default for GroqConfig {
     fn default() -> Self {
         Self {

@@ -10,4 +10,3 @@ all_providers = [
     RepositoryStateProvider(),
     IssueContextProvider(),
 ]
-

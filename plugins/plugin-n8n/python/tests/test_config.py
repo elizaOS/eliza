@@ -79,8 +79,3 @@ class TestClaudeModel:
         """Test display names."""
         assert ClaudeModel.SONNET_3_5.display_name == "Claude 3.5 Sonnet"
         assert ClaudeModel.OPUS_3.display_name == "Claude 3 Opus"
-
-
-
-
-

@@ -1,115 +1,86 @@
 """
-Type definitions for Codenames.
+Type definitions for Codenames game.
 """
 
 from dataclasses import dataclass, field
-from enum import IntEnum
+from enum import IntEnum, Enum
 from typing import ClassVar
 
-from elizaos_art.base import State
+from elizaos_art.base import Action, State
 
 
-class CardType(IntEnum):
-    """Types of cards in Codenames."""
-
-    RED = 0      # Red team's words
-    BLUE = 1     # Blue team's words
-    NEUTRAL = 2  # Neutral words (no effect)
-    ASSASSIN = 3 # Game-ending bad card
-
-
-class Team(IntEnum):
-    """Teams in Codenames."""
+class CardColor(IntEnum):
+    """Card colors in Codenames."""
 
     RED = 0
     BLUE = 1
-
-    def opponent(self) -> "Team":
-        return Team.BLUE if self == Team.RED else Team.RED
-
-
-class Role(IntEnum):
-    """Player roles."""
-
-    SPYMASTER = 0  # Gives clues
-    GUESSER = 1    # Guesses words
+    NEUTRAL = 2
+    ASSASSIN = 3
 
 
-@dataclass(frozen=True)
-class WordCard:
-    """A word card on the board."""
+class Role(Enum):
+    """Roles in Codenames."""
 
-    word: str
-    card_type: CardType
-    revealed: bool = False
-
-    def to_dict(self) -> dict:
-        return {
-            "word": self.word,
-            "type": self.card_type.name,
-            "revealed": self.revealed,
-        }
-
-
-@dataclass(frozen=True)
-class Clue:
-    """A clue given by the spymaster."""
-
-    word: str
-    number: int  # How many words it relates to
-
-    def __str__(self) -> str:
-        return f"{self.word} ({self.number})"
+    SPYMASTER = "spymaster"
+    GUESSER = "guesser"
 
 
 class CodenamesAction(IntEnum):
     """
-    Actions are indices into the board (0-24) for guessing,
-    or special values for passing.
+    Actions in Codenames.
+
+    For Spymaster: Give a clue (handled specially)
+    For Guesser: Select a word (positions 0-24 for 5x5 board)
     """
 
-    # Board positions 0-24
-    POS_0 = 0
-    POS_1 = 1
-    POS_2 = 2
-    POS_3 = 3
-    POS_4 = 4
-    POS_5 = 5
-    POS_6 = 6
-    POS_7 = 7
-    POS_8 = 8
-    POS_9 = 9
-    POS_10 = 10
-    POS_11 = 11
-    POS_12 = 12
-    POS_13 = 13
-    POS_14 = 14
-    POS_15 = 15
-    POS_16 = 16
-    POS_17 = 17
-    POS_18 = 18
-    POS_19 = 19
-    POS_20 = 20
-    POS_21 = 21
-    POS_22 = 22
-    POS_23 = 23
-    POS_24 = 24
-    PASS = 25  # End guessing phase
+    # Word selection actions (0-24)
+    WORD_0 = 0
+    WORD_1 = 1
+    WORD_2 = 2
+    WORD_3 = 3
+    WORD_4 = 4
+    WORD_5 = 5
+    WORD_6 = 6
+    WORD_7 = 7
+    WORD_8 = 8
+    WORD_9 = 9
+    WORD_10 = 10
+    WORD_11 = 11
+    WORD_12 = 12
+    WORD_13 = 13
+    WORD_14 = 14
+    WORD_15 = 15
+    WORD_16 = 16
+    WORD_17 = 17
+    WORD_18 = 18
+    WORD_19 = 19
+    WORD_20 = 20
+    WORD_21 = 21
+    WORD_22 = 22
+    WORD_23 = 23
+    WORD_24 = 24
+
+    # Special actions
+    PASS = 25  # Guesser passes (ends turn)
+    GIVE_CLUE = 26  # Spymaster gives clue (requires clue parameters)
 
     @classmethod
-    def from_position(cls, pos: int) -> "CodenamesAction":
-        if 0 <= pos <= 24:
-            return cls(pos)
-        raise ValueError(f"Invalid position: {pos}")
+    def from_word_index(cls, idx: int) -> "CodenamesAction":
+        """Create action from word index."""
+        if 0 <= idx <= 24:
+            return cls(idx)
+        raise ValueError(f"Invalid word index: {idx}")
 
-    @classmethod
-    def from_word(cls, word: str, board: list["WordCard"]) -> "CodenamesAction":
-        """Find action by word."""
-        word = word.strip().upper()
-        for i, card in enumerate(board):
-            if card.word.upper() == word:
-                return cls(i)
-        raise ValueError(f"Word not found: {word}")
+
+@dataclass
+class Clue:
+    """A clue given by the spymaster."""
+
+    word: str
+    number: int  # Number of words related to clue
+
+    def __str__(self) -> str:
+        return f"{self.word.upper()} {self.number}"
 
 
 @dataclass(frozen=True)
@@ -117,164 +88,193 @@ class CodenamesState(State):
     """
     State of a Codenames game.
 
-    Board is 25 words (5x5 grid).
+    The board has 25 words arranged in a 5x5 grid.
+    Each word has a color (RED, BLUE, NEUTRAL, ASSASSIN).
     """
 
-    board: tuple[WordCard, ...]  # 25 word cards
-    current_team: Team
+    words: tuple[str, ...]  # 25 words
+    colors: tuple[int, ...]  # True colors (for spymaster)
+    revealed: tuple[bool, ...]  # Which cards have been revealed
+    current_team: CardColor  # RED or BLUE
     current_role: Role
     current_clue: Clue | None
     guesses_remaining: int
     red_remaining: int
     blue_remaining: int
-    game_over: bool
-    winner: Team | None
-    move_count: int
+    game_over: bool = False
+    winner: CardColor | None = None
 
-    # Standard board size
     SIZE: ClassVar[int] = 5
-    TOTAL_CARDS: ClassVar[int] = 25
 
     def __post_init__(self) -> None:
-        if len(self.board) != self.TOTAL_CARDS:
-            raise ValueError(f"Board must have {self.TOTAL_CARDS} cards")
+        """Validate state."""
+        if len(self.words) != self.SIZE * self.SIZE:
+            raise ValueError(f"Must have {self.SIZE * self.SIZE} words")
+        if len(self.colors) != self.SIZE * self.SIZE:
+            raise ValueError(f"Must have {self.SIZE * self.SIZE} colors")
+        if len(self.revealed) != self.SIZE * self.SIZE:
+            raise ValueError(f"Must have {self.SIZE * self.SIZE} revealed states")
 
-    def get_card(self, row: int, col: int) -> WordCard:
-        """Get card at (row, col)."""
-        return self.board[row * self.SIZE + col]
+    def get_word(self, row: int, col: int) -> str:
+        """Get word at (row, col)."""
+        return self.words[row * self.SIZE + col]
 
-    def get_unrevealed_words(self) -> list[str]:
-        """Get list of unrevealed words."""
-        return [card.word for card in self.board if not card.revealed]
+    def get_color(self, idx: int) -> CardColor:
+        """Get true color of word at index."""
+        return CardColor(self.colors[idx])
+
+    def is_revealed(self, idx: int) -> bool:
+        """Check if word at index is revealed."""
+        return self.revealed[idx]
 
     def to_prompt(self) -> str:
-        """Convert to prompt string."""
+        """Convert state to prompt string."""
         lines = []
 
         if self.current_role == Role.SPYMASTER:
-            # Spymaster sees everything
-            lines.append("=== CODENAMES - SPYMASTER VIEW ===")
-            lines.append(f"Your team: {self.current_team.name}")
-            lines.append(f"Red remaining: {self.red_remaining}")
-            lines.append(f"Blue remaining: {self.blue_remaining}")
+            lines.append("# Codenames Board (Spymaster View)")
+            lines.append("You can see the true colors of all words.")
             lines.append("")
-            lines.append("Board (R=Red, B=Blue, N=Neutral, X=Assassin, ?=Unrevealed):")
             lines.append("```")
-
             for row in range(self.SIZE):
-                row_words = []
+                row_parts = []
                 for col in range(self.SIZE):
-                    card = self.get_card(row, col)
-                    if card.revealed:
-                        row_words.append(f"[{card.word}]")
+                    idx = row * self.SIZE + col
+                    word = self.words[idx]
+                    color = CardColor(self.colors[idx])
+                    if self.revealed[idx]:
+                        row_parts.append(f"[{word}]")  # Revealed
                     else:
-                        type_char = {
-                            CardType.RED: "R",
-                            CardType.BLUE: "B",
-                            CardType.NEUTRAL: "N",
-                            CardType.ASSASSIN: "X",
-                        }[card.card_type]
-                        row_words.append(f"{card.word}({type_char})")
-                lines.append("  ".join(f"{w:15}" for w in row_words))
-
+                        color_marker = {"RED": "R", "BLUE": "B", "NEUTRAL": "N", "ASSASSIN": "X"}
+                        row_parts.append(f"{word}({color_marker[color.name]})")
+                lines.append("  ".join(f"{p:15}" for p in row_parts))
             lines.append("```")
             lines.append("")
-            lines.append("Give a clue: WORD NUMBER")
-            lines.append("(Word must not be on the board)")
-
-        else:
-            # Guesser sees only revealed cards
-            lines.append("=== CODENAMES - GUESSER VIEW ===")
             lines.append(f"Your team: {self.current_team.name}")
+            lines.append(f"Red remaining: {self.red_remaining}, Blue remaining: {self.blue_remaining}")
+            lines.append("")
+            lines.append("Give a clue: a single word and a number (how many words it relates to).")
+        else:
+            lines.append("# Codenames Board (Guesser View)")
+            lines.append("")
             if self.current_clue:
-                lines.append(f"Clue: {self.current_clue.word} ({self.current_clue.number})")
+                lines.append(f"## Clue: {self.current_clue}")
                 lines.append(f"Guesses remaining: {self.guesses_remaining}")
             lines.append("")
-            lines.append("Board (revealed cards shown with [brackets]):")
             lines.append("```")
-
             for row in range(self.SIZE):
-                row_words = []
+                row_parts = []
                 for col in range(self.SIZE):
-                    card = self.get_card(row, col)
-                    if card.revealed:
-                        color = {
-                            CardType.RED: "R",
-                            CardType.BLUE: "B",
-                            CardType.NEUTRAL: "-",
-                            CardType.ASSASSIN: "X",
-                        }[card.card_type]
-                        row_words.append(f"[{card.word}/{color}]")
+                    idx = row * self.SIZE + col
+                    word = self.words[idx]
+                    if self.revealed[idx]:
+                        color = CardColor(self.colors[idx])
+                        row_parts.append(f"[{color.name[0]}:{word}]")
                     else:
-                        row_words.append(card.word)
-                lines.append("  ".join(f"{w:15}" for w in row_words))
-
+                        row_parts.append(f"{idx}:{word}")
+                lines.append("  ".join(f"{p:15}" for p in row_parts))
             lines.append("```")
             lines.append("")
-            lines.append("Choose a word or PASS")
+            lines.append(f"Your team: {self.current_team.name}")
+            lines.append("")
+            lines.append("Select a word by its number, or PASS to end your turn.")
 
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         return {
-            "board": [c.to_dict() for c in self.board],
-            "current_team": self.current_team.name,
-            "current_role": self.current_role.name,
-            "current_clue": str(self.current_clue) if self.current_clue else None,
+            "words": list(self.words),
+            "colors": list(self.colors),
+            "revealed": list(self.revealed),
+            "current_team": self.current_team.value,
+            "current_role": self.current_role.value,
+            "current_clue": {"word": self.current_clue.word, "number": self.current_clue.number}
+            if self.current_clue
+            else None,
             "guesses_remaining": self.guesses_remaining,
             "red_remaining": self.red_remaining,
             "blue_remaining": self.blue_remaining,
             "game_over": self.game_over,
-            "winner": self.winner.name if self.winner else None,
-            "move_count": self.move_count,
+            "winner": self.winner.value if self.winner else None,
         }
 
     def is_terminal(self) -> bool:
+        """Check if game is over."""
         return self.game_over
 
     def render(self) -> str:
-        """Render for display."""
-        return self.to_prompt()
+        """Render board for display."""
+        lines = []
+        lines.append("┌" + "─" * 77 + "┐")
+
+        for row in range(self.SIZE):
+            row_str = "│"
+            for col in range(self.SIZE):
+                idx = row * self.SIZE + col
+                word = self.words[idx][:12]  # Truncate long words
+
+                if self.revealed[idx]:
+                    color = CardColor(self.colors[idx])
+                    markers = {
+                        CardColor.RED: "🔴",
+                        CardColor.BLUE: "🔵",
+                        CardColor.NEUTRAL: "⚪",
+                        CardColor.ASSASSIN: "💀",
+                    }
+                    row_str += f" {markers[color]} {word:12} │"
+                else:
+                    row_str += f" {idx:2}:{word:11} │"
+            lines.append(row_str)
+            if row < self.SIZE - 1:
+                lines.append("├" + "─" * 77 + "┤")
+
+        lines.append("└" + "─" * 77 + "┘")
+        lines.append(f"Turn: {self.current_team.name} | Red: {self.red_remaining} | Blue: {self.blue_remaining}")
+
+        if self.current_clue:
+            lines.append(f"Clue: {self.current_clue} | Guesses left: {self.guesses_remaining}")
+
+        if self.game_over:
+            lines.append(f"GAME OVER - {self.winner.name if self.winner else 'Draw'} wins!")
+
+        return "\n".join(lines)
 
 
 @dataclass
 class CodenamesConfig:
-    """Configuration for Codenames."""
+    """Configuration for Codenames game."""
 
-    # Game setup
-    red_count: int = 9   # Red team words (goes first if 9)
+    # Which role the AI plays
+    ai_role: Role = Role.GUESSER
+    ai_team: CardColor = CardColor.RED
+
+    # Word list (default uses common English words)
+    word_list: list[str] | None = None
+
+    # Game settings
+    red_count: int = 9  # Red team words
     blue_count: int = 8  # Blue team words
-    neutral_count: int = 7
-    assassin_count: int = 1
-
-    # Training config
-    train_role: Role = Role.GUESSER  # Which role to train
-    train_team: Team = Team.RED
-
-    # Opponent settings
-    opponent_spymaster: str = "simple"  # "simple", "llm"
-    opponent_guesser: str = "random"    # "random", "llm"
+    assassin_count: int = 1  # Assassin words
 
 
 # Default word list for Codenames
-DEFAULT_WORDS: list[str] = [
+DEFAULT_WORD_LIST = [
     "AFRICA", "AGENT", "AIR", "ALIEN", "ALPS", "AMAZON", "AMBULANCE", "AMERICA",
     "ANGEL", "ANTARCTICA", "APPLE", "ARM", "ATLANTIS", "AUSTRALIA", "AZTEC",
     "BACK", "BALL", "BAND", "BANK", "BAR", "BARK", "BAT", "BATTERY", "BEACH",
-    "BEAR", "BEAT", "BED", "BEIJING", "BELL", "BELT", "BERLIN", "BERRY",
-    "BILL", "BLOCK", "BOARD", "BOLT", "BOMB", "BOND", "BOOM", "BOOT", "BOTTLE",
-    "BOW", "BOX", "BRIDGE", "BRUSH", "BUCK", "BUFFALO", "BUG", "BUGLE",
-    "BUTTON", "CALF", "CANADA", "CAP", "CAPITAL", "CAR", "CARD", "CARROT",
-    "CASINO", "CAST", "CAT", "CELL", "CENTAUR", "CENTER", "CHAIR", "CHANGE",
-    "CHARGE", "CHECK", "CHEST", "CHICK", "CHINA", "CHOCOLATE", "CHURCH",
-    "CIRCLE", "CLIFF", "CLOAK", "CLUB", "CODE", "COLD", "COMIC", "COMPOUND",
-    "CONCERT", "CONDUCTOR", "CONTRACT", "COOK", "COPPER", "COTTON", "COURT",
-    "COVER", "CRANE", "CRASH", "CRICKET", "CROSS", "CROWN", "CYCLE", "CZECH",
-    "DANCE", "DATE", "DAY", "DEATH", "DECK", "DEGREE", "DIAMOND", "DICE",
-    "DINOSAUR", "DISEASE", "DOCTOR", "DOG", "DRAFT", "DRAGON", "DRESS",
+    "BEAR", "BEAT", "BED", "BEIJING", "BELL", "BELT", "BERLIN", "BERMUDA",
+    "BERRY", "BILL", "BLOCK", "BOARD", "BOLT", "BOMB", "BOND", "BOOM", "BOOT",
+    "BOTTLE", "BOW", "BOX", "BRIDGE", "BRUSH", "BUCK", "BUFFALO", "BUG",
+    "BUGLE", "BUTTON", "CALF", "CANADA", "CAP", "CAPITAL", "CAR", "CARD",
+    "CARROT", "CASINO", "CAST", "CAT", "CELL", "CENTAUR", "CENTER", "CHAIR",
+    "CHANGE", "CHARGE", "CHECK", "CHEST", "CHICK", "CHINA", "CHOCOLATE",
+    "CHURCH", "CIRCLE", "CLIFF", "CLOAK", "CLUB", "CODE", "COLD", "COMIC",
+    "COMPOUND", "CONCERT", "CONDUCTOR", "CONTRACT", "COOK", "COPPER", "COTTON",
+    "COURT", "COVER", "CRANE", "CRASH", "CRICKET", "CROSS", "CROWN", "CYCLE",
+    "CZECH", "DANCE", "DATE", "DAY", "DEATH", "DECK", "DEGREE", "DIAMOND",
+    "DICE", "DINOSAUR", "DISEASE", "DOCTOR", "DOG", "DRAFT", "DRAGON", "DRESS",
     "DRILL", "DROP", "DUCK", "DWARF", "EAGLE", "EGYPT", "EMBASSY", "ENGINE",
-    "ENGLAND", "EUROPE", "EYE", "FACE", "FAIR", "FALL", "FAN", "FENCE",
-    "FIELD", "FIGHTER", "FIGURE", "FILE", "FILM", "FIRE", "FISH", "FLUTE",
-    "FLY", "FOOT", "FORCE", "FOREST", "FORK", "FRANCE", "FRANK", "FROST",
+    "ENGLAND", "EUROPE", "EYE", "FACE", "FAIR", "FALL", "FAN", "FENCE", "FIELD",
+    "FIGHTER", "FIGURE", "FILE", "FILM", "FIRE", "FISH", "FLUTE", "FLY", "FOOT",
 ]

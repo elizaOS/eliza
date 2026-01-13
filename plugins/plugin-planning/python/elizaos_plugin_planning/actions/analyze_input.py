@@ -12,7 +12,6 @@ class ActionExample:
 
 @dataclass
 class AnalyzeInputAction:
-
     @property
     def name(self) -> str:
         return "ANALYZE_INPUT"
@@ -32,11 +31,11 @@ class AnalyzeInputAction:
         text = params.get("text", "")
         if not isinstance(text, str):
             text = ""
-        
+
         words = text.split() if text.strip() else []
         has_numbers = any(c.isdigit() for c in text)
         lower_text = text.lower()
-        
+
         if "urgent" in lower_text or "emergency" in lower_text or "critical" in lower_text:
             sentiment = "urgent"
         elif "good" in lower_text:

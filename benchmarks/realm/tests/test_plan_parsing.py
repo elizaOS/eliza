@@ -1,6 +1,12 @@
+"""
+Tests for plan response parsing.
+
+The parsing logic is now in the plugin actions module.
+"""
+
 import pytest
 
-from benchmarks.realm.agent import REALMAgent
+from benchmarks.realm.plugin.actions import _parse_plan_json
 from benchmarks.realm.types import REALMCategory, REALMTask
 
 
@@ -23,22 +29,20 @@ def _make_task() -> REALMTask:
 
 
 def test_parse_plan_response_pure_json() -> None:
-    agent = REALMAgent(use_llm=False)
     task = _make_task()
 
     response = (
         '[{"action":"a","description":"step 1","parameters":{"step":1}},'
         '{"action":"b","description":"step 2","parameters":{"flag":true,"items":["x","y"]}}]'
     )
-    actions = agent._parse_plan_response(response, task)
-    assert [a.name for a in actions] == ["a", "b"]
-    assert actions[0].parameters["step"] == 1
-    assert actions[1].parameters["flag"] is True
-    assert actions[1].parameters["items"] == ["x", "y"]
+    actions = _parse_plan_json(response, task.available_tools)
+    assert [a["action"] for a in actions] == ["a", "b"]
+    assert actions[0]["parameters"]["step"] == 1
+    assert actions[1]["parameters"]["flag"] is True
+    assert actions[1]["parameters"]["items"] == ["x", "y"]
 
 
 def test_parse_plan_response_code_fence() -> None:
-    agent = REALMAgent(use_llm=False)
     task = _make_task()
 
     response = """```json
@@ -46,13 +50,12 @@ def test_parse_plan_response_code_fence() -> None:
   {"action": "a", "description": "step 1", "parameters": {}}
 ]
 ```"""
-    actions = agent._parse_plan_response(response, task)
+    actions = _parse_plan_json(response, task.available_tools)
     assert len(actions) == 1
-    assert actions[0].name == "a"
+    assert actions[0]["action"] == "a"
 
 
 def test_parse_plan_response_embedded_json() -> None:
-    agent = REALMAgent(use_llm=False)
     task = _make_task()
 
     response = (
@@ -60,15 +63,13 @@ def test_parse_plan_response_embedded_json() -> None:
         "[{\"action\":\"a\",\"description\":\"step\",\"parameters\":{\"k\":\"v\"}}]\n"
         "End."
     )
-    actions = agent._parse_plan_response(response, task)
+    actions = _parse_plan_json(response, task.available_tools)
     assert len(actions) == 1
-    assert actions[0].parameters["k"] == "v"
+    assert actions[0]["parameters"]["k"] == "v"
 
 
 def test_parse_plan_response_invalid_json_returns_empty() -> None:
-    agent = REALMAgent(use_llm=False)
     task = _make_task()
 
-    actions = agent._parse_plan_response("not json", task)
+    actions = _parse_plan_json("not json", task.available_tools)
     assert actions == []
-

@@ -79,5 +79,3 @@ impl RobloxError {
         matches!(self, Self::Auth(_))
     }
 }
-
-

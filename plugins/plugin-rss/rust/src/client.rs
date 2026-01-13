@@ -33,7 +33,10 @@ impl RssClient {
         let response = self
             .http
             .get(url)
-            .header("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml, */*")
+            .header(
+                "Accept",
+                "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+            )
             .send()
             .await?;
 
@@ -89,7 +92,9 @@ pub fn extract_urls(text: &str) -> Vec<String> {
 
     for cap in url_pattern.find_iter(text) {
         let mut candidate = cap.as_str().to_string();
-        candidate = candidate.trim_start_matches(|c: char| "([{<'\"".contains(c)).to_string();
+        candidate = candidate
+            .trim_start_matches(|c: char| "([{<'\"".contains(c))
+            .to_string();
         let mut with_scheme = if candidate.starts_with("www.") {
             format!("http://{}", candidate)
         } else {
@@ -131,11 +136,23 @@ pub fn format_relative_time(timestamp_ms: i64) -> String {
     let days_since = hours_since / 24;
 
     if days_since > 0 {
-        format!("{} day{} ago", days_since, if days_since > 1 { "s" } else { "" })
+        format!(
+            "{} day{} ago",
+            days_since,
+            if days_since > 1 { "s" } else { "" }
+        )
     } else if hours_since > 0 {
-        format!("{} hour{} ago", hours_since, if hours_since > 1 { "s" } else { "" })
+        format!(
+            "{} hour{} ago",
+            hours_since,
+            if hours_since > 1 { "s" } else { "" }
+        )
     } else if minutes_since > 0 {
-        format!("{} minute{} ago", minutes_since, if minutes_since > 1 { "s" } else { "" })
+        format!(
+            "{} minute{} ago",
+            minutes_since,
+            if minutes_since > 1 { "s" } else { "" }
+        )
     } else {
         "just now".to_string()
     }
@@ -190,4 +207,3 @@ mod tests {
         assert_eq!(result, "just now");
     }
 }
-

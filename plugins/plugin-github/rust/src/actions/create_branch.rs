@@ -76,6 +76,3 @@ impl GitHubAction for CreateBranchAction {
         ))
     }
 }
-
-
-

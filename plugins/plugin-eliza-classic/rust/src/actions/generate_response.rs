@@ -34,7 +34,10 @@ impl GenerateResponseAction {
         if user_input.trim().is_empty() {
             return ActionResult {
                 success: false,
-                text: Some("I need something to respond to. What would you like to talk about?".to_string()),
+                text: Some(
+                    "I need something to respond to. What would you like to talk about?"
+                        .to_string(),
+                ),
                 error: Some("No user input provided".to_string()),
             };
         }

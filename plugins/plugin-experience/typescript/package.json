@@ -10,7 +10,13 @@
   "platform": "node",
   "license": "MIT",
   "author": "elizaOS",
-  "keywords": ["plugin", "elizaos", "experience", "learning", "memory"],
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "experience",
+    "learning",
+    "memory"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/elizaos"
@@ -32,7 +38,10 @@
       "default": "./dist/node/index.node.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -68,4 +77,3 @@
     "description": "Records and recalls transferable agent learnings."
   }
 }
-

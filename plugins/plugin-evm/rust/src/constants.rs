@@ -18,5 +18,3 @@ pub const LIFI_API_URL: &str = "https://li.quest/v1";
 pub const BEBOP_API_URL: &str = "https://api.bebop.xyz/router";
 pub const DEFAULT_DECIMALS: u8 = 18;
 pub const DEFAULT_CHAINS: &[&str] = &["mainnet", "base"];
-
-

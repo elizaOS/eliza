@@ -20,12 +20,7 @@ impl SnapshotStorage {
     }
 
     /// Save a schema snapshot.
-    pub async fn save_snapshot(
-        &self,
-        plugin_name: &str,
-        idx: i32,
-        snapshot: &Value,
-    ) -> Result<()> {
+    pub async fn save_snapshot(&self, plugin_name: &str, idx: i32, snapshot: &Value) -> Result<()> {
         sqlx::query(
             r#"
             INSERT INTO migrations._snapshots (plugin_name, idx, snapshot, created_at)
@@ -48,10 +43,7 @@ impl SnapshotStorage {
     }
 
     /// Get the latest snapshot for a plugin.
-    pub async fn get_latest_snapshot(
-        &self,
-        plugin_name: &str,
-    ) -> Result<Option<Value>> {
+    pub async fn get_latest_snapshot(&self, plugin_name: &str) -> Result<Option<Value>> {
         let row = sqlx::query(
             r#"
             SELECT snapshot
@@ -231,4 +223,3 @@ impl JournalStorage {
         Ok(())
     }
 }
-

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from abc import abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from elizaos.types import (
@@ -49,8 +49,7 @@ class BaseSQLAdapter(IDatabaseAdapter):
         return self._engine
 
     @abstractmethod
-    async def _create_engine(self) -> AsyncEngine:
-        ...
+    async def _create_engine(self) -> AsyncEngine: ...
 
     async def initialize(self, config: dict[str, str | int | bool | None] | None = None) -> None:
         _ = config
@@ -730,7 +729,7 @@ class BaseSQLAdapter(IDatabaseAdapter):
             result = await session.execute(select(CacheTable).where(CacheTable.key == key))
             cache_entry = result.scalar_one_or_none()
             if cache_entry:
-                if cache_entry.expires_at and cache_entry.expires_at < datetime.now(timezone.utc):
+                if cache_entry.expires_at and cache_entry.expires_at < datetime.now(UTC):
                     await self.delete_cache(key)
                     return None
                 return cache_entry.value

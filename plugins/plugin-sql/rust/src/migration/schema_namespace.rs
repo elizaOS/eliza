@@ -44,12 +44,18 @@ pub fn derive_schema_name(plugin_name: &str) -> String {
     // Check for reserved names
     if schema_name.is_empty() || RESERVED_SCHEMAS.contains(&schema_name.as_str()) {
         // Fallback to using the full plugin name with safe characters
-        schema_name = format!("plugin_{}", normalize_schema_name(&plugin_name.to_lowercase()));
+        schema_name = format!(
+            "plugin_{}",
+            normalize_schema_name(&plugin_name.to_lowercase())
+        );
     }
 
     // Ensure it starts with a letter (PostgreSQL requirement)
     if schema_name.is_empty()
-        || !schema_name.chars().next().is_some_and(|c| c.is_alphabetic())
+        || !schema_name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphabetic())
     {
         schema_name = format!("p_{}", schema_name);
     }
@@ -110,10 +116,7 @@ impl SchemaNamespaceManager {
 
         // Validate schema name to prevent SQL injection
         // Only allow alphanumeric and underscore
-        if !schema_name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_')
-        {
+        if !schema_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
             anyhow::bail!("Invalid schema name: {}", schema_name);
         }
 
@@ -217,7 +220,10 @@ mod tests {
     #[test]
     fn test_reserved_names_handled() {
         // "public" alone would be reserved, so it gets prefixed
-        assert_eq!(derive_schema_name("@org/plugin-public"), "plugin_org_plugin_public");
+        assert_eq!(
+            derive_schema_name("@org/plugin-public"),
+            "plugin_org_plugin_public"
+        );
     }
 
     #[test]
@@ -226,5 +232,3 @@ mod tests {
         assert_eq!(derive_schema_name("@org/plugin-"), "plugin_org_plugin");
     }
 }
-
-

@@ -13,11 +13,10 @@ from pathlib import Path
 
 def _load_dotenv() -> None:
     """Best-effort load of repo/root .env (no external dependency)."""
-    candidates = [
-        Path.cwd() / ".env",
-        # repo_root/examples/atropos/holdem/elizaos_atropos_holdem/cli.py -> repo_root is parents[4]
-        Path(__file__).resolve().parents[4] / ".env",
-    ]
+    candidates: list[Path] = [Path.cwd() / ".env"]
+    # Also search upward from this file location (handles running from any cwd).
+    for parent in Path(__file__).resolve().parents:
+        candidates.append(parent / ".env")
 
     for path in candidates:
         if not path.is_file():
@@ -43,6 +42,9 @@ async def run_auto_mode(
     num_hands: int = 100,
     num_players: int = 2,
     use_llm: bool = False,
+    log_trajectories: bool = False,
+    trajectory_output: str | None = None,
+    trajectory_format: str = "art",
 ) -> None:
     """Run automatic play mode."""
     _load_dotenv()
@@ -70,9 +72,29 @@ async def run_auto_mode(
     if use_llm:
         try:
             from elizaos.runtime import AgentRuntime
+            from elizaos.bootstrap import bootstrap_plugin
             from elizaos_plugin_openai import get_openai_plugin
 
-            runtime = AgentRuntime(plugins=[get_openai_plugin()])
+            plugins = [bootstrap_plugin, get_openai_plugin()]
+
+            # Optional: register trajectory logger plugin for end-to-end capture
+            if log_trajectories:
+                try:
+                    from elizaos_plugin_trajectory_logger import get_trajectory_logger_plugin
+
+                    plugins.append(get_trajectory_logger_plugin())
+                except ImportError:
+                    print("⚠️ Trajectory logger plugin not installed; disabling trajectory logging")
+                    log_trajectories = False
+
+            runtime = AgentRuntime(plugins=plugins)
+            from elizaos_atropos_holdem.eliza_plugin import (
+                create_holdem_character,
+                get_holdem_eliza_plugin,
+            )
+
+            plugins.append(get_holdem_eliza_plugin())
+            runtime = AgentRuntime(character=create_holdem_character(), plugins=plugins)
             await runtime.initialize()
             print("✅ LLM initialized")
         except ImportError:
@@ -89,14 +111,95 @@ async def run_auto_mode(
 
     print("\n📊 Playing hands...\n")
 
+    traj_svc = None
+    if log_trajectories and runtime is not None:
+        traj_svc = runtime.get_service("trajectory_logger")
+        if traj_svc is None:
+            print("⚠️ Trajectory logger service not registered; disabling trajectory logging")
+            log_trajectories = False
+
     for hand_num in range(num_hands):
+        trajectory_id: str | None = None
+        if log_trajectories and traj_svc is not None:
+            try:
+                trajectory_id = traj_svc.start_trajectory(  # type: ignore[attr-defined]
+                    agent_id="holdem_table",
+                    scenario_id="atropos:holdem",
+                    episode_id=f"hand_{hand_num:04d}",
+                    metadata={
+                        "players": int(num_players),
+                        "useLLM": bool(use_llm),
+                    },
+                )
+            except Exception:
+                trajectory_id = None
+
         state = await env.reset()
+        step_num = 0
 
         # Play until hand is over
         while not state.hand_over:
             current_pos = state.current_player
-            action = await agents[current_pos].decide(state)
+            step_id: str | None = None
+            if log_trajectories and traj_svc is not None and trajectory_id is not None:
+                try:
+                    step_id = traj_svc.start_step(  # type: ignore[attr-defined]
+                        trajectory_id,
+                        agent_balance=float(state.stacks.get(current_pos, 0)),
+                        agent_points=float(state.pot),
+                        custom={
+                            "handNumber": int(hand_num),
+                            "stepNumber": int(step_num),
+                            "currentPlayer": int(current_pos),
+                            "pot": float(state.pot),
+                            "stage": str(state.stage)[:2000],
+                        },
+                    )
+                except Exception:
+                    step_id = None
+
+            token = None
+            if step_id is not None:
+                try:
+                    from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
+
+                    token = CURRENT_TRAJECTORY_STEP_ID.set(step_id)
+                except Exception:
+                    token = None
+
+            action = await agents[current_pos].decide(state, trajectory_step_id=step_id)
             state = await env.step(action)
+
+            if token is not None:
+                try:
+                    from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
+
+                    CURRENT_TRAJECTORY_STEP_ID.reset(token)
+                except Exception:
+                    pass
+
+            if (
+                log_trajectories
+                and traj_svc is not None
+                and trajectory_id is not None
+                and step_id is not None
+            ):
+                try:
+                    traj_svc.complete_step(  # type: ignore[attr-defined]
+                        trajectory_id=trajectory_id,
+                        step_id=step_id,
+                        action_type="atropos",
+                        action_name="holdem",
+                        parameters={"action": str(action)[:2000], "player": int(current_pos)},
+                        success=True,
+                        reward=0.0,
+                        done=bool(state.hand_over),
+                        result={"handOver": bool(state.hand_over), "pot": float(state.pot)},
+                    )
+                except Exception:
+                    pass
+
+            step_num += 1
 
         # Record results
         result = env.get_hand_result()
@@ -104,6 +207,20 @@ async def run_auto_mode(
             profit = result.payouts.get(i, 0)
             won = i in result.winners
             agent.record_result(profit, won, state.pot if won else 0)
+
+        if log_trajectories and traj_svc is not None and trajectory_id is not None:
+            try:
+                await traj_svc.end_trajectory(  # type: ignore[attr-defined]
+                    trajectory_id,
+                    status="completed",
+                    final_metrics={
+                        "handNumber": int(hand_num),
+                        "winners": str(result.winners)[:2000],
+                        "pot": float(state.pot),
+                    },
+                )
+            except Exception:
+                pass
 
         # Show progress
         if (hand_num + 1) % max(1, num_hands // 10) == 0:
@@ -118,6 +235,23 @@ async def run_auto_mode(
     for agent in agents:
         print(agent.get_summary())
         print()
+
+    # Export trajectories if logging was enabled
+    if log_trajectories and traj_svc is not None:
+        try:
+            from elizaos_plugin_trajectory_logger.runtime_service import TrajectoryExportConfig
+
+            export_cfg = TrajectoryExportConfig(
+                dataset_name="atropos_holdem_trajectories",
+                export_format=trajectory_format,  # type: ignore[arg-type]
+                output_dir=trajectory_output or "./trajectories",
+            )
+            export_result = traj_svc.export(export_cfg)  # type: ignore[attr-defined]
+            print("\n📦 Exported trajectories")
+            print(f"   - count: {export_result.trajectories_exported}")
+            print(f"   - file: {export_result.dataset_url}")
+        except Exception as e:
+            print(f"\n⚠️ Trajectory export failed: {e}")
 
     # Cleanup
     await env.close()
@@ -341,6 +475,23 @@ def main() -> None:
         action="store_true",
         help="Use LLM for decisions",
     )
+    parser.add_argument(
+        "--trajectories",
+        action="store_true",
+        help="Enable trajectory logging for RL training export (requires trajectory logger plugin)",
+    )
+    parser.add_argument(
+        "--trajectory-format",
+        choices=["art", "grpo"],
+        default="art",
+        help="Trajectory export format (art=OpenPipe ART, grpo=GRPO groups)",
+    )
+    parser.add_argument(
+        "--trajectory-output",
+        type=str,
+        default="./trajectories",
+        help="Output directory for trajectory files (default: ./trajectories)",
+    )
 
     args = parser.parse_args()
 
@@ -352,7 +503,16 @@ def main() -> None:
 
     try:
         if args.mode == "auto":
-            asyncio.run(run_auto_mode(args.hands, args.players, args.llm))
+            asyncio.run(
+                run_auto_mode(
+                    args.hands,
+                    args.players,
+                    args.llm,
+                    log_trajectories=args.trajectories,
+                    trajectory_output=args.trajectory_output,
+                    trajectory_format=args.trajectory_format,
+                )
+            )
         elif args.mode == "interactive":
             asyncio.run(run_interactive_mode(args.players))
         elif args.mode == "tournament":

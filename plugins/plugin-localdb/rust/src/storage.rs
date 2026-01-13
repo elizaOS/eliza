@@ -21,8 +21,7 @@ impl JsonStorage {
     }
 
     pub async fn init(&self) -> Result<()> {
-        fs::create_dir_all(&self.data_dir)
-            .context("Failed to create data directory")?;
+        fs::create_dir_all(&self.data_dir).context("Failed to create data directory")?;
         *self.ready.write().unwrap() = true;
         Ok(())
     }
@@ -43,9 +42,16 @@ impl JsonStorage {
     fn file_path(&self, collection: &str, id: &str) -> PathBuf {
         let safe_id: String = id
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
-        self.collection_dir(collection).join(format!("{}.json", safe_id))
+        self.collection_dir(collection)
+            .join(format!("{}.json", safe_id))
     }
 
     pub fn get<T: DeserializeOwned>(&self, collection: &str, id: &str) -> Result<Option<T>> {
@@ -53,7 +59,7 @@ impl JsonStorage {
         if !path.exists() {
             return Ok(None);
         }
-        
+
         let file = File::open(&path).context("Failed to open file")?;
         let reader = BufReader::new(file);
         let item: T = serde_json::from_reader(reader).context("Failed to deserialize")?;
@@ -94,7 +100,7 @@ impl JsonStorage {
     pub fn set<T: Serialize>(&self, collection: &str, id: &str, data: &T) -> Result<()> {
         let dir = self.collection_dir(collection);
         fs::create_dir_all(&dir).context("Failed to create collection directory")?;
-        
+
         let path = self.file_path(collection, id);
         let file = File::create(&path).context("Failed to create file")?;
         let writer = BufWriter::new(file);
@@ -123,7 +129,7 @@ impl JsonStorage {
         if !dir.exists() {
             return Ok(0);
         }
-        
+
         let count = fs::read_dir(&dir)?
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
@@ -190,4 +196,3 @@ mod tests {
         assert_eq!(retrieved, None);
     }
 }
-

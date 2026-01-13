@@ -8,8 +8,8 @@ mod service;
 mod types;
 
 pub use actions::{
-    get_actions, ActionContext, ActionError, ActionResult, KnowledgeAction,
-    ProcessKnowledgeAction, SearchKnowledgeAction,
+    get_actions, ActionContext, ActionError, ActionResult, KnowledgeAction, ProcessKnowledgeAction,
+    SearchKnowledgeAction,
 };
 pub use chunker::TextChunker;
 pub use plugin::KnowledgePlugin;
@@ -36,4 +36,3 @@ mod tests {
         assert_eq!(PLUGIN_NAME, "knowledge");
     }
 }
-

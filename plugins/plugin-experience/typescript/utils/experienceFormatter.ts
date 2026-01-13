@@ -154,7 +154,9 @@ export function extractKeywords(experience: Experience): string[] {
   const keywords = new Set<string>();
 
   // Add tags
-  experience.tags.forEach((tag) => keywords.add(tag.toLowerCase()));
+  experience.tags.forEach((tag) => {
+    keywords.add(tag.toLowerCase());
+  });
 
   // Extract words from learning
   const learningWords = experience.learning
@@ -162,12 +164,16 @@ export function extractKeywords(experience: Experience): string[] {
     .split(/\W+/)
     .filter((word) => word.length > 3);
 
-  learningWords.forEach((word) => keywords.add(word));
+  learningWords.forEach((word) => {
+    keywords.add(word);
+  });
 
   // Add action name parts
   const actionParts = experience.action.split(/[_\-\s]+/).filter((part) => part.length > 2);
 
-  actionParts.forEach((part) => keywords.add(part.toLowerCase()));
+  actionParts.forEach((part) => {
+    keywords.add(part.toLowerCase());
+  });
 
   // Add type, outcome, and domain
   keywords.add(experience.type);
@@ -176,4 +182,3 @@ export function extractKeywords(experience: Experience): string[] {
 
   return Array.from(keywords);
 }
-

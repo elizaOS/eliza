@@ -36,7 +36,9 @@ def _get_grok_config(runtime: IAgentRuntime) -> GrokConfig:
 
     base_url = runtime.get_setting("XAI_BASE_URL") or "https://api.x.ai/v1"
     small_model = runtime.get_setting("XAI_SMALL_MODEL") or "grok-3-mini"
-    large_model = runtime.get_setting("XAI_MODEL") or runtime.get_setting("XAI_LARGE_MODEL") or "grok-3"
+    large_model = (
+        runtime.get_setting("XAI_MODEL") or runtime.get_setting("XAI_LARGE_MODEL") or "grok-3"
+    )
 
     return GrokConfig(
         api_key=str(api_key),

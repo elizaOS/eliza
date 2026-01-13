@@ -50,4 +50,3 @@ CONTENT_TYPES: dict[str, str] = {
 def get_content_type(file_path: str) -> str:
     ext = file_path[file_path.rfind(".") :].lower() if "." in file_path else ""
     return CONTENT_TYPES.get(ext, "application/octet-stream")
-

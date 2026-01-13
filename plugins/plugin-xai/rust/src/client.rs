@@ -83,14 +83,25 @@ impl TwitterClient {
         base64::engine::general_purpose::STANDARD.encode(result.into_bytes())
     }
 
-    fn get_oauth_header(&self, method: &str, url: &str, params: &HashMap<String, String>) -> String {
+    fn get_oauth_header(
+        &self,
+        method: &str,
+        url: &str,
+        params: &HashMap<String, String>,
+    ) -> String {
         let timestamp = Utc::now().timestamp().to_string();
         let nonce = Self::generate_nonce();
 
         let mut oauth_params: HashMap<String, String> = HashMap::new();
-        oauth_params.insert("oauth_consumer_key".to_string(), self.config.api_key.clone());
+        oauth_params.insert(
+            "oauth_consumer_key".to_string(),
+            self.config.api_key.clone(),
+        );
         oauth_params.insert("oauth_nonce".to_string(), nonce);
-        oauth_params.insert("oauth_signature_method".to_string(), "HMAC-SHA1".to_string());
+        oauth_params.insert(
+            "oauth_signature_method".to_string(),
+            "HMAC-SHA1".to_string(),
+        );
         oauth_params.insert("oauth_timestamp".to_string(), timestamp);
         oauth_params.insert("oauth_token".to_string(), self.config.access_token.clone());
         oauth_params.insert("oauth_version".to_string(), "1.0".to_string());
@@ -132,7 +143,12 @@ impl TwitterClient {
 
         let message = serde_json::from_str::<serde_json::Value>(&text)
             .ok()
-            .and_then(|v| v["detail"].as_str().or(v["title"].as_str()).map(String::from))
+            .and_then(|v| {
+                v["detail"]
+                    .as_str()
+                    .or(v["title"].as_str())
+                    .map(String::from)
+            })
             .unwrap_or(text);
 
         Err(XAIError::TwitterApiError { status, message })
@@ -236,9 +252,18 @@ impl TwitterClient {
     fn parse_profile(&self, user: &serde_json::Value) -> Result<Profile> {
         let metrics = &user["public_metrics"];
         Ok(Profile {
-            id: user["id"].as_str().ok_or(XAIError::ParseError("Missing user id".to_string()))?.to_string(),
-            username: user["username"].as_str().ok_or(XAIError::ParseError("Missing username".to_string()))?.to_string(),
-            name: user["name"].as_str().ok_or(XAIError::ParseError("Missing name".to_string()))?.to_string(),
+            id: user["id"]
+                .as_str()
+                .ok_or(XAIError::ParseError("Missing user id".to_string()))?
+                .to_string(),
+            username: user["username"]
+                .as_str()
+                .ok_or(XAIError::ParseError("Missing username".to_string()))?
+                .to_string(),
+            name: user["name"]
+                .as_str()
+                .ok_or(XAIError::ParseError("Missing name".to_string()))?
+                .to_string(),
             description: user["description"].as_str().map(String::from),
             location: user["location"].as_str().map(String::from),
             url: user["url"].as_str().map(String::from),
@@ -304,14 +329,19 @@ impl TwitterClient {
                                     .as_array()
                                     .and_then(|arr| {
                                         arr.iter()
-                                            .find(|v| v["content_type"].as_str() == Some("video/mp4"))
+                                            .find(|v| {
+                                                v["content_type"].as_str() == Some("video/mp4")
+                                            })
                                             .and_then(|v| v["url"].as_str())
                                     })
                                     .map(String::from);
 
                                 videos.push(Video {
                                     id: key.to_string(),
-                                    preview: m["preview_image_url"].as_str().unwrap_or("").to_string(),
+                                    preview: m["preview_image_url"]
+                                        .as_str()
+                                        .unwrap_or("")
+                                        .to_string(),
                                     url,
                                     duration_ms: m["duration_ms"].as_u64(),
                                 });
@@ -694,20 +724,34 @@ impl TwitterClient {
 
         let mut query: Vec<(&str, String)> = vec![
             ("max_results", max_results.min(1000).to_string()),
-            ("user.fields", "id,name,username,description,profile_image_url,verified,public_metrics".to_string()),
+            (
+                "user.fields",
+                "id,name,username,description,profile_image_url,verified,public_metrics"
+                    .to_string(),
+            ),
         ];
 
         if let Some(token) = pagination_token {
             query.push(("pagination_token", token.to_string()));
         }
 
-        let response = self.client.get(&url).headers(headers).query(&query).send().await?;
+        let response = self
+            .client
+            .get(&url)
+            .headers(headers)
+            .query(&query)
+            .send()
+            .await?;
         let response = self.check_response(response).await?;
         let data: serde_json::Value = response.json().await?;
 
         let profiles: Vec<Profile> = data["data"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|u| self.parse_profile(u).ok()).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|u| self.parse_profile(u).ok())
+                    .collect()
+            })
             .unwrap_or_default();
 
         Ok(QueryProfilesResponse {
@@ -727,20 +771,34 @@ impl TwitterClient {
 
         let mut query: Vec<(&str, String)> = vec![
             ("max_results", max_results.min(1000).to_string()),
-            ("user.fields", "id,name,username,description,profile_image_url,verified,public_metrics".to_string()),
+            (
+                "user.fields",
+                "id,name,username,description,profile_image_url,verified,public_metrics"
+                    .to_string(),
+            ),
         ];
 
         if let Some(token) = pagination_token {
             query.push(("pagination_token", token.to_string()));
         }
 
-        let response = self.client.get(&url).headers(headers).query(&query).send().await?;
+        let response = self
+            .client
+            .get(&url)
+            .headers(headers)
+            .query(&query)
+            .send()
+            .await?;
         let response = self.check_response(response).await?;
         let data: serde_json::Value = response.json().await?;
 
         let profiles: Vec<Profile> = data["data"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|u| self.parse_profile(u).ok()).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|u| self.parse_profile(u).ok())
+                    .collect()
+            })
             .unwrap_or_default();
 
         Ok(QueryProfilesResponse {
@@ -868,7 +926,13 @@ impl TwitterClient {
             ("expansions", "author_id,attachments.media_keys,referenced_posts.id".to_string()),
         ];
 
-        let response = self.client.get(&url).headers(headers).query(&query_params).send().await?;
+        let response = self
+            .client
+            .get(&url)
+            .headers(headers)
+            .query(&query_params)
+            .send()
+            .await?;
         let response = self.check_response(response).await?;
         let data: serde_json::Value = response.json().await?;
 

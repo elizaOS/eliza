@@ -99,7 +99,8 @@ impl CapSolverService {
         if data.error_id != 0 {
             return Err(format!(
                 "CapSolver error: {}",
-                data.error_description.unwrap_or_else(|| "Unknown error".to_string())
+                data.error_description
+                    .unwrap_or_else(|| "Unknown error".to_string())
             ));
         }
 
@@ -135,7 +136,8 @@ impl CapSolverService {
             if data.error_id != 0 {
                 return Err(format!(
                     "CapSolver error: {}",
-                    data.error_description.unwrap_or_else(|| "Unknown error".to_string())
+                    data.error_description
+                        .unwrap_or_else(|| "Unknown error".to_string())
                 ));
             }
 
@@ -173,7 +175,10 @@ impl CapSolverService {
 
         if let Some(p) = proxy {
             let parts: Vec<&str> = p.split(':').collect();
-            task.insert("proxy".to_string(), serde_json::json!(format!("{}:{}", parts[0], parts[1])));
+            task.insert(
+                "proxy".to_string(),
+                serde_json::json!(format!("{}:{}", parts[0], parts[1])),
+            );
             if parts.len() > 2 {
                 task.insert("proxyLogin".to_string(), serde_json::json!(parts[2]));
                 task.insert("proxyPassword".to_string(), serde_json::json!(parts[3]));
@@ -218,7 +223,10 @@ impl CapSolverService {
 
         if let Some(p) = proxy {
             let parts: Vec<&str> = p.split(':').collect();
-            task.insert("proxy".to_string(), serde_json::json!(format!("{}:{}", parts[0], parts[1])));
+            task.insert(
+                "proxy".to_string(),
+                serde_json::json!(format!("{}:{}", parts[0], parts[1])),
+            );
             if parts.len() > 2 {
                 task.insert("proxyLogin".to_string(), serde_json::json!(parts[2]));
                 task.insert("proxyPassword".to_string(), serde_json::json!(parts[3]));
@@ -261,7 +269,10 @@ impl CapSolverService {
 
         if let Some(p) = proxy {
             let parts: Vec<&str> = p.split(':').collect();
-            task.insert("proxy".to_string(), serde_json::json!(format!("{}:{}", parts[0], parts[1])));
+            task.insert(
+                "proxy".to_string(),
+                serde_json::json!(format!("{}:{}", parts[0], parts[1])),
+            );
             if parts.len() > 2 {
                 task.insert("proxyLogin".to_string(), serde_json::json!(parts[2]));
                 task.insert("proxyPassword".to_string(), serde_json::json!(parts[3]));
@@ -300,7 +311,10 @@ impl CapSolverService {
 
         if let Some(p) = proxy {
             let parts: Vec<&str> = p.split(':').collect();
-            task.insert("proxy".to_string(), serde_json::json!(format!("{}:{}", parts[0], parts[1])));
+            task.insert(
+                "proxy".to_string(),
+                serde_json::json!(format!("{}:{}", parts[0], parts[1])),
+            );
             if parts.len() > 2 {
                 task.insert("proxyLogin".to_string(), serde_json::json!(parts[2]));
                 task.insert("proxyPassword".to_string(), serde_json::json!(parts[3]));
@@ -320,13 +334,18 @@ impl CapSolverService {
 
 pub fn detect_captcha_type(page_content: &str) -> (CaptchaType, Option<String>) {
     // Check for Cloudflare Turnstile
-    if page_content.contains("cf-turnstile") || page_content.contains("challenges.cloudflare.com/turnstile") {
+    if page_content.contains("cf-turnstile")
+        || page_content.contains("challenges.cloudflare.com/turnstile")
+    {
         let site_key = extract_data_sitekey(page_content);
         return (CaptchaType::Turnstile, site_key);
     }
 
     // Check for hCaptcha (check before reCAPTCHA since hCaptcha also uses g-recaptcha-response)
-    if page_content.contains("h-captcha") || page_content.contains("hcaptcha.com") || page_content.contains("data-hcaptcha-sitekey") {
+    if page_content.contains("h-captcha")
+        || page_content.contains("hcaptcha.com")
+        || page_content.contains("data-hcaptcha-sitekey")
+    {
         let site_key = extract_data_sitekey(page_content);
         return (CaptchaType::Hcaptcha, site_key);
     }
@@ -335,7 +354,9 @@ pub fn detect_captcha_type(page_content: &str) -> (CaptchaType, Option<String>) 
     if page_content.contains("g-recaptcha") || page_content.contains("google.com/recaptcha") {
         let site_key = extract_data_sitekey(page_content);
         // Check for v3 indicators
-        if page_content.contains("grecaptcha.execute") || page_content.contains("recaptcha/api.js?render=") {
+        if page_content.contains("grecaptcha.execute")
+            || page_content.contains("recaptcha/api.js?render=")
+        {
             return (CaptchaType::RecaptchaV3, site_key);
         }
         return (CaptchaType::RecaptchaV2, site_key);
@@ -367,7 +388,7 @@ fn extract_data_sitekey(html: &str) -> Option<String> {
 
 pub fn generate_captcha_injection_script(captcha_type: &CaptchaType, solution: &str) -> String {
     let escaped_solution = solution.replace('\\', "\\\\").replace('"', "\\\"");
-    
+
     match captcha_type {
         CaptchaType::Turnstile => {
             format!(

@@ -69,6 +69,8 @@ class BlackjackAgent:
         self,
         state: BlackjackState,
         available_actions: list[BlackjackAction],
+        *,
+        trajectory_step_id: str | None = None,
     ) -> BlackjackAction:
         """
         Decide the next action to take.
@@ -81,63 +83,45 @@ class BlackjackAgent:
             The chosen action
         """
         if self._use_llm and self._runtime is not None:
-            return await self._decide_with_llm(state, available_actions)
+            return await self._decide_with_eliza(state, available_actions, trajectory_step_id=trajectory_step_id)
         return self._decide_with_strategy(state)
 
     def _decide_with_strategy(self, state: BlackjackState) -> BlackjackAction:
         """Use basic strategy for decision."""
         return BasicStrategy.get_action(state)
 
-    async def _decide_with_llm(
+    async def _decide_with_eliza(
         self,
         state: BlackjackState,
         available_actions: list[BlackjackAction],
+        *,
+        trajectory_step_id: str | None = None,
     ) -> BlackjackAction:
-        """Use LLM for decision making."""
+        """Use canonical ElizaOS message pipeline for decision making."""
         if self._runtime is None:
             return self._decide_with_strategy(state)
 
-        # Build prompt for the LLM
-        ace_info = "You have a usable Ace (can count as 1 or 11)." if state.usable_ace else ""
-
-        prompt = f"""You are playing Blackjack. Make the optimal decision.
-
-CURRENT SITUATION:
-- Your hand total: {state.player_sum}
-- Dealer's visible card: {state.dealer_card} {"(Ace)" if state.dealer_card == 1 else ""}
-{ace_info}
-
-AVAILABLE ACTIONS:
-0 - STAND (stop taking cards)
-1 - HIT (take another card)
-
-STRATEGY TIPS:
-- If your total is 17 or higher, usually stand
-- If your total is 11 or lower, always hit
-- Consider the dealer's card: low cards (2-6) favor standing, high cards (7-A) favor hitting
-- With a soft hand (usable Ace), you can be more aggressive
-
-What is your decision? Reply with just the number (0 for STAND, 1 for HIT):"""
-
         try:
-            from elizaos.types.model import ModelType
-
-            result = await self._runtime.use_model(
-                ModelType.TEXT_SMALL.value,
-                {"prompt": prompt, "maxTokens": 10, "temperature": 0.1},
+            from elizaos_atropos_shared.canonical_eliza import run_with_context
+            from elizaos_atropos_blackjack.eliza_plugin import (
+                BLACKJACK_STORE,
+                BlackjackDecisionContext,
             )
 
-            response = str(result).strip()
+            _result, ctx = await run_with_context(
+                self._runtime,
+                BLACKJACK_STORE,
+                BlackjackDecisionContext(state=state),
+                source="atropos_blackjack",
+                text="Choose the next blackjack action.",
+                trajectory_step_id=trajectory_step_id,
+            )
+            chosen = ctx.chosen
 
-            # Parse the response
-            if "0" in response or "stand" in response.lower():
-                return BlackjackAction.STICK
-            elif "1" in response or "hit" in response.lower():
-                return BlackjackAction.HIT
+            if chosen is not None and chosen in available_actions:
+                return chosen
 
-            # Fallback to basic strategy if parsing fails
             return self._decide_with_strategy(state)
-
         except Exception:
             # Fallback to basic strategy on error
             return self._decide_with_strategy(state)

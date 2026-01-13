@@ -1,4 +1,3 @@
-
 import pytest
 
 from elizaos_plugin_bluesky import BlueSkyConfig

@@ -1,4 +1,3 @@
-
 from elizaos_plugin_bluesky.types import (
     BlueSkyPost,
     BlueSkyProfile,

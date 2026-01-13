@@ -1,12 +1,12 @@
-from typing import Protocol
+from collections.abc import Callable
+from typing import Protocol, cast
 
 from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 from elizaos_plugin_polymarket.providers import get_authenticated_clob_client, get_clob_client
 
 
 class RuntimeProtocol(Protocol):
-    def get_setting(self, key: str) -> str | None:
-        ...
+    def get_setting(self, key: str) -> str | None: ...
 
 
 async def check_order_scoring(
@@ -23,13 +23,18 @@ async def check_order_scoring(
         client = get_authenticated_clob_client(runtime)
 
         # Check if client has areOrdersScoring method
-        if hasattr(client, "areOrdersScoring"):
-            response = client.areOrdersScoring({"orderIds": order_ids})
-            if isinstance(response, dict):
-                return response
-            else:
-                # Convert list response to dict if needed
-                return {order_id: bool(response) for order_id in order_ids}
+        fn = getattr(client, "areOrdersScoring", None)
+        if callable(fn):
+            response_obj = cast(Callable[[dict[str, object]], object], fn)({"orderIds": order_ids})
+            if isinstance(response_obj, dict):
+                return {
+                    str(k): bool(v)
+                    for k, v in response_obj.items()
+                    if isinstance(k, str) or isinstance(k, int)
+                }
+
+            # Convert scalar response to dict if needed
+            return {order_id: bool(response_obj) for order_id in order_ids}
         else:
             # Fallback: return False for all orders if method not available
             raise PolymarketError(
@@ -52,7 +57,7 @@ async def get_active_orders(
     market_id: str | None = None,
     asset_id: str | None = None,
     runtime: RuntimeProtocol | None = None,
-) -> list[dict]:
+) -> list[dict[str, object]]:
     """
     Get active orders for the authenticated user.
 
@@ -78,22 +83,34 @@ async def get_active_orders(
             params["asset_id"] = asset_id
 
         # Use getOpenOrders if available, otherwise fallback to get_orders
-        if hasattr(client, "getOpenOrders"):
-            orders = client.getOpenOrders(params if params else None)
-        elif hasattr(client, "get_orders"):
-            orders = client.get_orders(**params) if params else client.get_orders()
+        get_open_orders = getattr(client, "getOpenOrders", None)
+        get_orders = getattr(client, "get_orders", None)
+
+        orders_obj: object
+        if callable(get_open_orders):
+            orders_obj = cast(Callable[[object | None], object], get_open_orders)(
+                params if params else None
+            )
+        elif callable(get_orders):
+            orders_obj = cast(Callable[..., object], get_orders)(**params) if params else cast(
+                Callable[..., object], get_orders
+            )()
         else:
             raise PolymarketError(
                 PolymarketErrorCode.API_ERROR,
                 "getOpenOrders or get_orders method not available in CLOB client",
             )
 
-        if isinstance(orders, dict):
-            return orders.get("data", [])
-        elif isinstance(orders, list):
-            return orders
-        else:
+        if isinstance(orders_obj, dict):
+            data_obj = orders_obj.get("data", [])
+            if isinstance(data_obj, list):
+                return [item for item in data_obj if isinstance(item, dict)]
             return []
+
+        if isinstance(orders_obj, list):
+            return [item for item in orders_obj if isinstance(item, dict)]
+
+        return []
 
     except PolymarketError:
         raise
@@ -231,13 +248,19 @@ async def get_price_history(
             # Convert response to list of dicts
             if isinstance(response, list):
                 return [
-                    {"timestamp": entry.get("t", entry.get("timestamp", 0)), "price": entry.get("p", entry.get("price", "0"))}
+                    {
+                        "timestamp": entry.get("t", entry.get("timestamp", 0)),
+                        "price": entry.get("p", entry.get("price", "0")),
+                    }
                     for entry in response
                 ]
             elif isinstance(response, dict):
                 data = response.get("data", [])
                 return [
-                    {"timestamp": entry.get("t", entry.get("timestamp", 0)), "price": entry.get("p", entry.get("price", "0"))}
+                    {
+                        "timestamp": entry.get("t", entry.get("timestamp", 0)),
+                        "price": entry.get("p", entry.get("price", "0")),
+                    }
                     for entry in data
                 ]
             else:

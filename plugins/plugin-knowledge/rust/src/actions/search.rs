@@ -1,10 +1,15 @@
-
 use async_trait::async_trait;
 use serde_json::Value;
 
 use super::{ActionContext, ActionResult, KnowledgeAction};
 
-const SEARCH_KEYWORDS: &[&str] = &["search", "find", "look up", "query", "what do you know about"];
+const SEARCH_KEYWORDS: &[&str] = &[
+    "search",
+    "find",
+    "look up",
+    "query",
+    "what do you know about",
+];
 const KNOWLEDGE_KEYWORDS: &[&str] = &["knowledge", "information", "document", "database"];
 
 pub struct SearchKnowledgeAction;
@@ -29,7 +34,9 @@ impl KnowledgeAction for SearchKnowledgeAction {
             .to_lowercase();
 
         let has_search_keyword = SEARCH_KEYWORDS.iter().any(|keyword| text.contains(keyword));
-        let has_knowledge_keyword = KNOWLEDGE_KEYWORDS.iter().any(|keyword| text.contains(keyword));
+        let has_knowledge_keyword = KNOWLEDGE_KEYWORDS
+            .iter()
+            .any(|keyword| text.contains(keyword));
 
         Ok(has_search_keyword && has_knowledge_keyword)
     }

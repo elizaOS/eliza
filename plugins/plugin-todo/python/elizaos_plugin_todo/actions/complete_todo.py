@@ -90,8 +90,9 @@ async def handle_complete_todo(
     else:
         task = next((t for t in available_todos if t.id == task_id), None)
         if not task:
-            error_msg = "I couldn't find a task matching the provided ID. Here are your current tasks:\n\n" + "\n".join(
-                f"- {t.name}" for t in available_todos
+            error_msg = (
+                "I couldn't find a task matching the provided ID. Here are your current tasks:\n\n"
+                + "\n".join(f"- {t.name}" for t in available_todos)
             )
             if callback:
                 await callback(
@@ -113,9 +114,7 @@ async def handle_complete_todo(
     if task.type.value == "daily":
         response_text = f'✅ Daily task completed: "{task.name}"'
     elif task.type.value == "one-off":
-        completed_on_time = (
-            True if not task.due_date else datetime.utcnow() <= task.due_date
-        )
+        completed_on_time = True if not task.due_date else datetime.utcnow() <= task.due_date
         time_status = "on time" if completed_on_time else "late"
         priority = task.priority.value if task.priority else 4
         response_text = f'✅ Task completed: "{task.name}" (Priority {priority}, {time_status})'

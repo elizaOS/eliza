@@ -8,7 +8,8 @@ import "./types";
 
 export const experiencePlugin: Plugin = {
   name: "experience",
-  description: "Self-learning experience system that records and recalls transferable agent learnings",
+  description:
+    "Self-learning experience system that records and recalls transferable agent learnings",
 
   actions: [recordExperienceAction],
   services: [ExperienceService],
@@ -43,4 +44,3 @@ function parseOptionalNumber(value: string | undefined, fallback: number): numbe
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
-

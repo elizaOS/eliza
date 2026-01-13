@@ -1,4 +1,3 @@
-
 import json
 import logging
 import re
@@ -120,7 +119,11 @@ async def handler(
                     for label_name in parsed["labels"]:
                         if label_name:
                             label = next(
-                                (lbl for lbl in labels if lbl["name"].lower() == label_name.lower()),
+                                (
+                                    lbl
+                                    for lbl in labels
+                                    if lbl["name"].lower() == label_name.lower()
+                                ),
                                 None,
                             )
                             if label:

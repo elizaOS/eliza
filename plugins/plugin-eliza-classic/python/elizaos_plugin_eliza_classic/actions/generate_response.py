@@ -13,11 +13,20 @@ class GenerateResponseAction:
 
     @property
     def description(self) -> str:
-        return "Generate an ELIZA response for user input using classic pattern matching."
+        return (
+            "Generate an ELIZA response for user input using classic pattern matching."
+        )
 
     @property
     def similes(self) -> list[str]:
-        return ["ELIZA_RESPOND", "ELIZA_CHAT", "CLASSIC_ELIZA", "chat", "respond", "talk"]
+        return [
+            "ELIZA_RESPOND",
+            "ELIZA_CHAT",
+            "CLASSIC_ELIZA",
+            "chat",
+            "respond",
+            "talk",
+        ]
 
     async def validate(self, context: "Any") -> bool:
         return True
@@ -25,7 +34,7 @@ class GenerateResponseAction:
     async def handler(self, context: "Any") -> dict[str, "Any"]:
         message = context.get("message", {}) if isinstance(context, dict) else {}
         content = message.get("content", {}) if isinstance(message, dict) else {}
-        
+
         if isinstance(content, dict):
             user_input = content.get("text", "")
         else:
@@ -33,7 +42,11 @@ class GenerateResponseAction:
 
         options = context.get("options", {}) if isinstance(context, dict) else {}
         if not user_input and isinstance(options, dict):
-            user_input = options.get("input", "") or options.get("prompt", "") or options.get("text", "")
+            user_input = (
+                options.get("input", "")
+                or options.get("prompt", "")
+                or options.get("text", "")
+            )
 
         if not user_input.strip():
             return {

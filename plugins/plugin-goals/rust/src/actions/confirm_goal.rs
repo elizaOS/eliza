@@ -13,7 +13,7 @@ impl ConfirmGoalAction {
     /// Check if user wants to confirm based on message text
     pub fn is_confirmation(text: &str) -> (bool, bool) {
         let lower = text.to_lowercase();
-        
+
         // Check for positive confirmation
         let confirms = lower.contains("yes")
             || lower.contains("correct")
@@ -21,14 +21,14 @@ impl ConfirmGoalAction {
             || lower.contains("approve")
             || lower.contains("looks good")
             || lower.contains("that's right");
-            
+
         // Check for cancellation
         let cancels = lower.contains("no")
             || lower.contains("cancel")
             || lower.contains("nevermind")
             || lower.contains("stop")
             || lower.contains("don't");
-            
+
         if confirms {
             (true, true) // is_confirmation, should_proceed
         } else if cancels {
@@ -58,7 +58,7 @@ impl GoalAction for ConfirmGoalAction {
     async fn execute(&self, context: &ActionContext) -> Result<Value> {
         // Get pending goal from state
         let pending_goal = context.state.get("pendingGoal");
-        
+
         if pending_goal.is_none() {
             return Ok(serde_json::json!({
                 "action": self.name(),
@@ -67,7 +67,7 @@ impl GoalAction for ConfirmGoalAction {
                 "message": "I don't have a pending task to confirm. Would you like to create a new task?"
             }));
         }
-        
+
         let pending = pending_goal.unwrap();
         let goal_name = pending
             .get("name")
@@ -81,14 +81,12 @@ impl GoalAction for ConfirmGoalAction {
             .get("priority")
             .and_then(|v| v.as_i64())
             .unwrap_or(3);
-        let due_date = pending
-            .get("dueDate")
-            .and_then(|v| v.as_str());
+        let due_date = pending.get("dueDate").and_then(|v| v.as_str());
         let urgent = pending
             .get("urgent")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        
+
         // Get message text to check confirmation intent
         let message_text = context
             .message
@@ -96,9 +94,9 @@ impl GoalAction for ConfirmGoalAction {
             .and_then(|c| c.get("text"))
             .and_then(|t| t.as_str())
             .unwrap_or("");
-        
+
         let (is_confirmation, should_proceed) = Self::is_confirmation(message_text);
-        
+
         if !is_confirmation {
             return Ok(serde_json::json!({
                 "action": self.name(),
@@ -107,7 +105,7 @@ impl GoalAction for ConfirmGoalAction {
                 "message": format!("I'm still waiting for your confirmation on the task \"{}\". Would you like me to create it?", goal_name)
             }));
         }
-        
+
         if !should_proceed {
             return Ok(serde_json::json!({
                 "action": self.name(),
@@ -116,7 +114,7 @@ impl GoalAction for ConfirmGoalAction {
                 "message": "Okay, I've cancelled the task creation. Let me know if you'd like to create a different task."
             }));
         }
-        
+
         // Build success message based on task type
         let success_message = match task_type {
             "daily" => format!("✅ Created daily task: \"{}\".", goal_name),
@@ -133,7 +131,7 @@ impl GoalAction for ConfirmGoalAction {
                 )
             }
         };
-        
+
         Ok(serde_json::json!({
             "action": self.name(),
             "success": true,

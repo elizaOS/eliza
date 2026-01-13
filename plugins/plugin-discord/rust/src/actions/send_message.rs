@@ -64,9 +64,7 @@ impl DiscordAction for SendMessageAction {
             .get("content")
             .and_then(|c| c.get("text"))
             .and_then(|t| t.as_str())
-            .ok_or_else(|| {
-                DiscordError::InvalidArgument("Missing message content".to_string())
-            })?;
+            .ok_or_else(|| DiscordError::InvalidArgument("Missing message content".to_string()))?;
 
         let message_id = service.send_message(&channel_id, content).await?;
 

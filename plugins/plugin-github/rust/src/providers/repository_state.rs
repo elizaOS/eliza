@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::{ProviderContext, ProviderResult, GitHubProvider};
+use super::{GitHubProvider, ProviderContext, ProviderResult};
 use crate::error::Result;
 use crate::GitHubService;
 
@@ -94,6 +94,3 @@ impl GitHubProvider for GitHubRepositoryStateProvider {
         RepositoryStateProvider.get(context, service)
     }
 }
-
-
-

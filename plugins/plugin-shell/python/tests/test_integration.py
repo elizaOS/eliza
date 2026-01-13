@@ -4,6 +4,7 @@ import pytest
 class TestShellPluginStructure:
     def test_import_service(self) -> None:
         from elizaos_plugin_shell import ShellService
+
         assert ShellService is not None
 
     def test_import_types(self) -> None:
@@ -14,6 +15,7 @@ class TestShellPluginStructure:
             FileOperationType,
             ShellConfig,
         )
+
         assert ShellConfig is not None
         assert CommandResult is not None
         assert CommandHistoryEntry is not None
@@ -28,6 +30,7 @@ class TestShellPluginStructure:
             is_safe_command,
             validate_path,
         )
+
         assert validate_path is not None
         assert is_safe_command is not None
         assert is_forbidden_command is not None
@@ -39,11 +42,13 @@ class TestShellPluginStructure:
             ClearHistoryAction,
             ExecuteCommandAction,
         )
+
         assert ExecuteCommandAction is not None
         assert ClearHistoryAction is not None
 
     def test_import_providers(self) -> None:
         from elizaos_plugin_shell import ShellHistoryProvider
+
         assert ShellHistoryProvider is not None
 
 

@@ -57,6 +57,3 @@ fn test_reset_history() {
     let response = plugin.generate_response("hello");
     assert!(!response.is_empty());
 }
-
-
-

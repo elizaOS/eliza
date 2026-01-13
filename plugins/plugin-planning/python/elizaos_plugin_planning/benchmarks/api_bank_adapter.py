@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 from uuid import uuid4
 
 from elizaos_plugin_planning.benchmarks.types import (
@@ -14,6 +14,15 @@ from elizaos_plugin_planning.benchmarks.types import (
 from elizaos_plugin_planning.services.planning_service import PlanningService
 
 logger = logging.getLogger(__name__)
+
+
+class _ApiBankScenarioSpec(TypedDict):
+    id: str
+    description: str
+    query: str
+    apis: list[ApiBankApi]
+    expected_calls: list[ApiBankApiCall]
+    expected_response: str
 
 
 class ApiBankAdapter:
@@ -182,7 +191,7 @@ class ApiBankAdapter:
             )
 
     async def _load_level_1_tests(self) -> None:
-        level_1_scenarios = [
+        level_1_scenarios: list[_ApiBankScenarioSpec] = [
             {
                 "id": "level1-weather",
                 "description": "Get current weather for a city",
@@ -247,7 +256,7 @@ class ApiBankAdapter:
             )
 
     async def _load_level_2_tests(self) -> None:
-        level_2_scenarios = [
+        level_2_scenarios: list[_ApiBankScenarioSpec] = [
             {
                 "id": "level2-weather-recommendation",
                 "description": "Get weather and recommend activities",
@@ -308,7 +317,7 @@ class ApiBankAdapter:
             )
 
     async def _load_level_3_tests(self) -> None:
-        level_3_scenarios = [
+        level_3_scenarios: list[_ApiBankScenarioSpec] = [
             {
                 "id": "level3-travel-planning",
                 "description": "Plan a complete trip",

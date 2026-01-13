@@ -20,9 +20,14 @@ import asyncio
 import logging
 import sys
 
-from benchmarks.bfcl.runner import BFCLRunner
-from benchmarks.bfcl.types import BFCLCategory, BFCLConfig
-from benchmarks.bfcl.reporting import print_results
+# Load environment variables from .env file at project root
+# This must happen before other imports that may use env vars
+from dotenv import load_dotenv
+load_dotenv()
+
+from benchmarks.bfcl.runner import BFCLRunner  # noqa: E402
+from benchmarks.bfcl.types import BFCLCategory, BFCLConfig  # noqa: E402
+from benchmarks.bfcl.reporting import print_results  # noqa: E402
 
 
 def setup_logging(verbose: bool = False) -> None:

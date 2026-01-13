@@ -1,4 +1,3 @@
-
 from decimal import Decimal
 
 import httpx
@@ -44,7 +43,6 @@ BIRDEYE_API_URL = "https://public-api.birdeye.so"
 
 
 class SolanaClient:
-
     def __init__(self, config: WalletConfig) -> None:
         self._config = config
         self._rpc = AsyncClient(config.rpc_url, commitment=Confirmed)

@@ -1,6 +1,6 @@
 use crate::actions::{
-    browser_click, browser_extract, browser_navigate, browser_screenshot,
-    browser_select, browser_type,
+    browser_click, browser_extract, browser_navigate, browser_screenshot, browser_select,
+    browser_type,
 };
 use crate::providers::get_browser_state;
 use crate::services::BrowserService;
@@ -62,8 +62,15 @@ impl BrowserPlugin {
         self.service = None;
     }
 
-    pub async fn handle_action(&self, action_name: &str, message: &str) -> Result<ActionResult, String> {
-        let service = self.service.as_ref().ok_or("Browser service not initialized")?;
+    pub async fn handle_action(
+        &self,
+        action_name: &str,
+        message: &str,
+    ) -> Result<ActionResult, String> {
+        let service = self
+            .service
+            .as_ref()
+            .ok_or("Browser service not initialized")?;
 
         match action_name {
             "BROWSER_NAVIGATE" => Ok(browser_navigate(Arc::clone(service), message).await),
@@ -77,7 +84,10 @@ impl BrowserPlugin {
     }
 
     pub async fn get_provider(&self, provider_name: &str) -> Result<serde_json::Value, String> {
-        let service = self.service.as_ref().ok_or("Browser service not initialized")?;
+        let service = self
+            .service
+            .as_ref()
+            .ok_or("Browser service not initialized")?;
 
         match provider_name {
             "BROWSER_STATE" => {
@@ -96,5 +106,3 @@ impl BrowserPlugin {
 pub fn create_browser_plugin(config: Option<BrowserConfig>) -> BrowserPlugin {
     BrowserPlugin::new(config.unwrap_or_default())
 }
-
-

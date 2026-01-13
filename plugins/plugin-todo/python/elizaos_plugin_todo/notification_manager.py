@@ -202,8 +202,3 @@ class NotificationManager:
             return "Don't forget to complete your daily tasks today!"
         else:
             return f"Reminder about your task: {todo_name}"
-
-
-
-
-

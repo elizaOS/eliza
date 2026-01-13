@@ -65,7 +65,7 @@ impl LocalDatabaseAdapter {
     pub async fn init(&mut self) -> Result<()> {
         self.storage.init().await?;
         self.vector_index.init(self.embedding_dimension);
-        
+
         if let Ok(Some(data)) = self.storage.load_raw("vectors/hnsw_index.json") {
             if let Ok(index) = serde_json::from_str::<HNSWIndex>(&data) {
                 if index.dimension == self.embedding_dimension {
@@ -73,7 +73,7 @@ impl LocalDatabaseAdapter {
                 }
             }
         }
-        
+
         self.ready = true;
         Ok(())
     }
@@ -86,7 +86,7 @@ impl LocalDatabaseAdapter {
         let index = self.vector_index.serialize();
         let data = serde_json::to_string(&index)?;
         self.storage.save_raw("vectors/hnsw_index.json", &data)?;
-        
+
         self.storage.close().await?;
         self.ready = false;
         Ok(())
@@ -134,14 +134,14 @@ impl LocalDatabaseAdapter {
         threshold: f32,
     ) -> Result<Vec<(StoredMemory, f32)>> {
         let results = self.vector_index.search(embedding, count * 2, threshold);
-        
+
         let mut memories = Vec::new();
         for result in results.into_iter().take(count) {
             if let Some(memory) = self.get_memory(&result.id)? {
                 memories.push((memory, result.similarity));
             }
         }
-        
+
         Ok(memories)
     }
 
@@ -197,7 +197,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let storage = JsonStorage::new(dir.path()).unwrap();
         let mut adapter = LocalDatabaseAdapter::new(storage, "test-agent".to_string());
-        
+
         adapter.init().await.unwrap();
         assert!(adapter.is_ready());
 
@@ -228,4 +228,3 @@ mod tests {
         adapter.close().await.unwrap();
     }
 }
-

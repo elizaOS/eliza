@@ -249,3 +249,78 @@ packages/elizaos/examples/
 :memory:
 :memory:*
 **:memory:**
+
+# Local benchmark run outputs (generated)
+# Note: benchmark baselines under benchmarks/** may still be tracked intentionally.
+/benchmark_results/**
+
+# Keep a small set of curated benchmark outputs
+!/benchmark_results/bfcl/bfcl_best_results.json
+!/benchmark_results/mint/MINT-BENCHMARK-REPORT.md
+!/benchmark_results/mint/mint-benchmark-results.json
+
+# Benchmarks/** local run outputs (generated)
+/benchmarks/**/benchmark_results*/
+/benchmarks/**/test_output/
+
+# Benchmarks/** trajectory exports (generated)
+/benchmarks/**/trajectories/
+/benchmarks/**/trajectories/**
+/benchmarks/**/trajectories.art.jsonl
+/benchmarks/**/trajectories.grpo.groups.json
+/benchmarks/**/*.art.jsonl
+/benchmarks/**/*.grpo.groups.json
+
+# AgentBench: generated local run folders (do not commit)
+/benchmarks/agentbench/benchmark_results/
+/benchmarks/agentbench/canonical_*/
+/benchmarks/agentbench/final_benchmark_results/
+/benchmarks/agentbench/full_eliza_*/
+/benchmarks/agentbench/eliza_run_db*/
+/benchmarks/agentbench/full_eliza_db*/
+/benchmarks/agentbench/smoke_*/
+/benchmarks/agentbench/traj_*/
+/benchmarks/agentbench/verified_*/
+/benchmarks/agentbench/ws_test*/
+/benchmarks/agentbench/lateral_test*/
+/benchmarks/agentbench/post_delete_smoke/
+
+# AgentBench: ad-hoc run outputs (generated, do not commit)
+/benchmarks/agentbench/post_b_*/
+/benchmarks/agentbench/post_b_*/**
+/benchmarks/agentbench/real_db/
+/benchmarks/agentbench/real_db/**
+
+# Context-bench: ad-hoc run outputs (generated, do not commit)
+/benchmarks/context-bench/post_b_*/
+/benchmarks/context-bench/post_b_*/**
+/benchmarks/context-bench/real_eliza_agent/
+/benchmarks/context-bench/real_eliza_agent/**
+/benchmarks/context-bench/traj_ctx_smoke/
+/benchmarks/context-bench/traj_ctx_smoke/**
+
+# Local workspaces / sandboxes
+/swe-bench-workspace/
+/3DAvatarChatbot/
+
+# Local vendored experiments (do not commit)
+/vendor/llama_cpp_rs/
+
+# Ad-hoc benchmark output folders (generated during local runs)
+/benchmarks/tau-bench/benchmark_results/
+/benchmarks/vending-bench/benchmark_results/
+
+# Context-bench: ignore additional quick-run output folders
+/benchmarks/context-bench/python/benchmark_results_eliza_agent_quick*/
+
+# Terminal-bench: ignore newly generated timestamped runs under terminal-bench/
+/benchmarks/terminal-bench/python/benchmark_results/terminal-bench/sessions-*/
+/benchmarks/terminal-bench/python/benchmark_results/terminal-bench/terminal-bench-*.json
+/benchmarks/terminal-bench/python/benchmark_results/terminal-bench/terminal-bench-*.md
+
+# AgentBench: local smoke-run artifacts
+/benchmarks/agentbench/python/traj_smoke/
+
+# Terminal-bench: local test output artifacts
+/benchmarks/terminal-bench/python/test_output/terminal-bench-*.json
+/benchmarks/terminal-bench/python/test_output/terminal-bench-*.md

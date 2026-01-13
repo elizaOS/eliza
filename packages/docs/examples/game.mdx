@@ -280,11 +280,24 @@ Respond with ONLY the action command, nothing else.""",
         room = ROOMS[state.current_room]
         prompt = build_prompt(state, room)
 
-        # Get AI decision
-        decision = await runtime.use_model("TEXT_SMALL", {
-            "prompt": prompt,
-            "max_tokens": 50,
-        })
+        # Get AI decision via full message pipeline
+        from elizaos import ChannelType, Content, Memory, string_to_uuid
+
+        msg = Memory(
+            entity_id=string_to_uuid("adventurer-user"),
+            room_id=string_to_uuid("adventure-game-room"),
+            content=Content(
+                text=prompt,
+                source="game",
+                channel_type=ChannelType.DM.value,
+            ),
+        )
+        result = await runtime.message_service.handle_message(runtime, msg)
+        decision = (
+            result.response_content.text
+            if result.response_content and result.response_content.text
+            else ""
+        )
 
         # Parse and execute
         action = parse_action(str(decision))
@@ -377,8 +390,26 @@ let \_ = dotenvy::dotenv();
         let room = rooms.get(&state.current_room).unwrap();
         let prompt = build_prompt(&state, room);
 
-        // Get AI decision
-        let decision = runtime.use_model("TEXT_SMALL", &prompt).await?;
+        // Get AI decision via full message pipeline
+        let content = elizaos::types::Content {
+            text: Some(prompt.clone()),
+            source: Some("game".to_string()),
+            channel_type: Some(elizaos::types::ChannelType::Dm),
+            ..Default::default()
+        };
+
+        let mut message =
+            elizaos::types::Memory::new(elizaos::types::UUID::new_v4(), elizaos::types::UUID::new_v4(), content);
+
+        let result = runtime
+            .message_service()
+            .handle_message(&runtime, &mut message, None, None)
+            .await?;
+
+        let decision = result
+            .response_content
+            .and_then(|c| c.text)
+            .unwrap_or_default();
 
         // Parse and execute
         let action = parse_action(&decision);

@@ -60,7 +60,9 @@ impl PostgresConnectionManager {
                 sqlx::query(trimmed)
                     .execute(&self.pool)
                     .await
-                    .with_context(|| format!("Failed to execute: {}", &trimmed[..trimmed.len().min(50)]))?;
+                    .with_context(|| {
+                        format!("Failed to execute: {}", &trimmed[..trimmed.len().min(50)])
+                    })?;
             }
         }
         Ok(())

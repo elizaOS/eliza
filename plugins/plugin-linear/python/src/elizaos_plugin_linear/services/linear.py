@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import datetime
 from typing import Protocol
@@ -24,8 +23,7 @@ from elizaos_plugin_linear.types import (
 
 
 class RuntimeProtocol(Protocol):
-    def get_setting(self, key: str) -> str | None:
-        ...
+    def get_setting(self, key: str) -> str | None: ...
 
 
 VIEWER_QUERY = """

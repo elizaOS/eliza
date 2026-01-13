@@ -74,6 +74,8 @@ class DiplomacyAgent:
         self,
         state: GameState,
         available_orders: list[Order] | None = None,
+        *,
+        trajectory_step_id: str | None = None,
     ) -> list[Order]:
         """
         Decide orders for the current phase.
@@ -86,7 +88,7 @@ class DiplomacyAgent:
             List of orders for this power's units
         """
         if self._use_llm and self._runtime is not None:
-            return await self._decide_with_llm(state)
+            return await self._decide_with_eliza(state, trajectory_step_id=trajectory_step_id)
         return self._decide_with_heuristics(state)
 
     def _decide_with_heuristics(self, state: GameState) -> list[Order]:
@@ -153,70 +155,31 @@ class DiplomacyAgent:
 
         return orders
 
-    async def _decide_with_llm(self, state: GameState) -> list[Order]:
-        """Use LLM for decision making."""
+    async def _decide_with_eliza(self, state: GameState, *, trajectory_step_id: str | None = None) -> list[Order]:
+        """Use canonical ElizaOS message pipeline for decision making."""
         if self._runtime is None:
             return self._decide_with_heuristics(state)
 
-        power_state = state.powers[self._power]
-
-        # Build prompt
-        units_str = "\n".join(f"  - {unit}" for unit in power_state.units)
-        centers_str = ", ".join(power_state.supply_centers)
-
-        # Get other powers' positions
-        others_str = []
-        for other_power, other_state in state.powers.items():
-            if other_power != self._power and not other_state.is_eliminated:
-                others_str.append(
-                    f"  {other_power.full_name}: {other_state.center_count} centers, "
-                    f"{other_state.unit_count} units"
-                )
-
-        prompt = f"""You are playing as {self._power.full_name} in Diplomacy.
-
-CURRENT SITUATION ({state.phase_name}):
-
-Your Units:
-{units_str}
-
-Your Supply Centers ({power_state.center_count}): {centers_str}
-
-Other Powers:
-{chr(10).join(others_str)}
-
-PHASE: {state.phase.value}
-
-Please decide your orders. For each unit, choose one:
-- HOLD: Unit stays in place
-- MOVE [destination]: Move to adjacent province
-- SUPPORT [unit] [destination]: Support another unit's move
-
-Consider:
-1. Protecting your supply centers
-2. Expanding to neutral centers
-3. Supporting allies against enemies
-4. Not overextending
-
-List your orders, one per line, in format:
-[UNIT_TYPE] [LOCATION] -> [ACTION]
-
-Example:
-A PAR -> BUR (Army Paris moves to Burgundy)
-F BRE HOLD (Fleet Brest holds)
-A MAR S A PAR -> BUR (Army Marseilles supports Army Paris to Burgundy)
-"""
-
         try:
-            from elizaos.types.model import ModelType
-
-            result = await self._runtime.use_model(
-                ModelType.TEXT_LARGE.value,
-                {"prompt": prompt, "maxTokens": 500, "temperature": 0.3},
+            from elizaos_atropos_shared.canonical_eliza import run_with_context
+            from elizaos_atropos_diplomacy.eliza_plugin import (
+                DIPLOMACY_STORE,
+                DiplomacyDecisionContext,
             )
 
-            response = str(result).strip()
-            return self._parse_orders_from_response(response, state)
+            _result, ctx = await run_with_context(
+                self._runtime,
+                DIPLOMACY_STORE,
+                DiplomacyDecisionContext(state=state, power=self._power),
+                source="atropos_diplomacy",
+                text="Choose orders for the current phase.",
+                trajectory_step_id=trajectory_step_id,
+            )
+            orders_text = ctx.orders_text
+
+            if orders_text:
+                return self._parse_orders_from_response(orders_text, state)
+            return self._decide_with_heuristics(state)
 
         except Exception:
             return self._decide_with_heuristics(state)
@@ -313,14 +276,30 @@ Keep messages brief and strategic.
 """
 
         try:
-            from elizaos.types.model import ModelType
+            from elizaos import ChannelType, Content, Memory, string_to_uuid
 
-            result = await self._runtime.use_model(
-                ModelType.TEXT_LARGE.value,
-                {"prompt": prompt, "maxTokens": 300, "temperature": 0.7},
+            room_id = string_to_uuid(f"atropos:diplomacy:{state.phase_name}")
+            entity_id = string_to_uuid(f"atropos:diplomacy:{self._power.value}")
+
+            message = Memory(
+                entity_id=entity_id,
+                room_id=room_id,
+                content=Content(
+                    text=prompt,
+                    source="atropos:diplomacy",
+                    channel_type=ChannelType.DM.value,
+                ),
             )
 
-            return self._parse_messages_from_response(str(result), state.phase_name)
+            result = await self._runtime.message_service.handle_message(self._runtime, message)
+
+            response_text = (
+                result.response_content.text
+                if result.response_content and result.response_content.text
+                else ""
+            )
+
+            return self._parse_messages_from_response(response_text, state.phase_name)
 
         except Exception:
             return []

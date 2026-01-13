@@ -9,10 +9,7 @@ pub const CLICK_ACTION_NAME: &str = "BROWSER_CLICK";
 pub const CLICK_SIMILES: &[&str] = &["CLICK_ELEMENT", "TAP", "PRESS_BUTTON"];
 pub const CLICK_DESCRIPTION: &str = "Click on an element on the webpage";
 
-pub async fn browser_click(
-    service: Arc<BrowserService>,
-    message: &str,
-) -> ActionResult {
+pub async fn browser_click(service: Arc<BrowserService>, message: &str) -> ActionResult {
     let session = match service.get_or_create_session().await {
         Ok(s) => s,
         Err(e) => {
@@ -29,7 +26,10 @@ pub async fn browser_click(
     match result {
         Ok(response) if response.success => {
             let mut data = HashMap::new();
-            data.insert("actionName".to_string(), serde_json::json!(CLICK_ACTION_NAME));
+            data.insert(
+                "actionName".to_string(),
+                serde_json::json!(CLICK_ACTION_NAME),
+            );
             data.insert("element".to_string(), serde_json::json!(description));
             data.insert("sessionId".to_string(), serde_json::json!(session.id));
 
@@ -46,5 +46,3 @@ pub async fn browser_click(
         }
     }
 }
-
-

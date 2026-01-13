@@ -267,4 +267,3 @@ class GatewayClient:
             cleaned = cleaned[:-3]
 
         return json.loads(cleaned.strip())  # type: ignore[no-any-return]
-

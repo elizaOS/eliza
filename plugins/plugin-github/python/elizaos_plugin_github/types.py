@@ -19,14 +19,17 @@ class FileChange(BaseModel):
     encoding: Literal["utf-8", "base64"] = "utf-8"
     operation: Literal["add", "modify", "delete"] = "modify"
 
+
 class IssueState(str, Enum):
     OPEN = "open"
     CLOSED = "closed"
+
 
 class IssueStateReason(str, Enum):
     COMPLETED = "completed"
     NOT_PLANNED = "not_planned"
     REOPENED = "reopened"
+
 
 class GitHubLabel(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -36,6 +39,7 @@ class GitHubLabel(BaseModel):
     color: str
     description: str | None = None
     default: bool = False
+
 
 class GitHubMilestone(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -51,6 +55,7 @@ class GitHubMilestone(BaseModel):
     open_issues: int = 0
     closed_issues: int = 0
 
+
 class GitHubUser(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -60,6 +65,7 @@ class GitHubUser(BaseModel):
     avatar_url: str
     html_url: str
     type: Literal["User", "Organization", "Bot"]
+
 
 class GitHubIssue(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -80,6 +86,7 @@ class GitHubIssue(BaseModel):
     comments: int = 0
     is_pull_request: bool = False
 
+
 class CreateIssueParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
@@ -88,6 +95,7 @@ class CreateIssueParams(RepositoryRef):
     assignees: list[str] = []
     labels: list[str] = []
     milestone: int | None = None
+
 
 class UpdateIssueParams(RepositoryRef):
     model_config = ConfigDict(frozen=False)
@@ -100,6 +108,7 @@ class UpdateIssueParams(RepositoryRef):
     assignees: list[str] | None = None
     labels: list[str] | None = None
     milestone: int | None = None
+
 
 class ListIssuesParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
@@ -114,14 +123,17 @@ class ListIssuesParams(RepositoryRef):
     per_page: int = 30
     page: int = 1
 
+
 class PullRequestState(str, Enum):
     OPEN = "open"
     CLOSED = "closed"
+
 
 class MergeableState(str, Enum):
     MERGEABLE = "mergeable"
     CONFLICTING = "conflicting"
     UNKNOWN = "unknown"
+
 
 class GitHubBranchRef(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -130,6 +142,7 @@ class GitHubBranchRef(BaseModel):
     label: str
     sha: str
     repo: RepositoryRef | None = None
+
 
 class GitHubPullRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -159,6 +172,7 @@ class GitHubPullRequest(BaseModel):
     deletions: int = 0
     changed_files: int = 0
 
+
 class CreatePullRequestParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
@@ -169,6 +183,7 @@ class CreatePullRequestParams(RepositoryRef):
     draft: bool = False
     maintainer_can_modify: bool = True
 
+
 class UpdatePullRequestParams(RepositoryRef):
     model_config = ConfigDict(frozen=False)
 
@@ -178,6 +193,7 @@ class UpdatePullRequestParams(RepositoryRef):
     state: PullRequestState | None = None
     base: str | None = None
     maintainer_can_modify: bool | None = None
+
 
 class ListPullRequestsParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
@@ -200,6 +216,7 @@ class MergePullRequestParams(RepositoryRef):
     merge_method: Literal["merge", "squash", "rebase"] = "merge"
     sha: str | None = None
 
+
 class ReviewState(str, Enum):
     APPROVED = "APPROVED"
     CHANGES_REQUESTED = "CHANGES_REQUESTED"
@@ -207,10 +224,12 @@ class ReviewState(str, Enum):
     DISMISSED = "DISMISSED"
     PENDING = "PENDING"
 
+
 class ReviewEvent(str, Enum):
     APPROVE = "APPROVE"
     REQUEST_CHANGES = "REQUEST_CHANGES"
     COMMENT = "COMMENT"
+
 
 class ReviewCommentInput(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -221,6 +240,7 @@ class ReviewCommentInput(BaseModel):
     side: Literal["LEFT", "RIGHT"] = "RIGHT"
     start_line: int | None = None
     start_side: Literal["LEFT", "RIGHT"] | None = None
+
 
 class GitHubReview(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -233,6 +253,7 @@ class GitHubReview(BaseModel):
     html_url: str
     submitted_at: str | None = None
 
+
 class CreateReviewParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
@@ -241,6 +262,7 @@ class CreateReviewParams(RepositoryRef):
     event: ReviewEvent
     commit_id: str | None = None
     comments: list[ReviewCommentInput] = []
+
 
 class GitHubComment(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -252,11 +274,13 @@ class GitHubComment(BaseModel):
     updated_at: str
     html_url: str
 
+
 class CreateCommentParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
     issue_number: int
     body: str
+
 
 class GitHubBranch(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -265,11 +289,13 @@ class GitHubBranch(BaseModel):
     sha: str
     protected: bool = False
 
+
 class CreateBranchParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
     branch_name: str
     from_ref: str
+
 
 class GitHubCommitAuthor(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -277,6 +303,7 @@ class GitHubCommitAuthor(BaseModel):
     name: str
     email: str
     date: str
+
 
 class GitHubCommit(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -299,6 +326,7 @@ class CreateCommitParams(RepositoryRef):
     parent_sha: str | None = None
     author_name: str | None = None
     author_email: str | None = None
+
 
 class GitHubFileContent(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -325,6 +353,7 @@ class GitHubDirectoryEntry(BaseModel):
     html_url: str
     download_url: str | None = None
 
+
 class GitHubLicense(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -332,6 +361,7 @@ class GitHubLicense(BaseModel):
     name: str
     spdx_id: str | None = None
     url: str | None = None
+
 
 class GitHubRepository(BaseModel):
     model_config = ConfigDict(frozen=True)

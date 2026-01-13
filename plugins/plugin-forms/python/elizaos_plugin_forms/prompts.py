@@ -9,6 +9,7 @@ try:
     from elizaos_plugin_forms._generated_prompts import (
         FORM_EXTRACTION_TEMPLATE as _FORM_EXTRACTION_TEMPLATE,
     )
+
     FORM_EXTRACTION_TEMPLATE = _FORM_EXTRACTION_TEMPLATE
     FORM_CREATION_TEMPLATE = _FORM_CREATION_TEMPLATE
 except ImportError:

@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from time import time
 
-from py_clob_client.client import ClobClient
-
 from elizaos_plugin_polymarket.constants import (
     CACHE_REFRESH_INTERVAL_SECS,
     POLYGON_CHAIN_ID,
@@ -38,10 +36,10 @@ class PolymarketService:
     def provider(self) -> ClobClientProvider:
         return self._provider
 
-    def client(self) -> ClobClient:
+    def client(self) -> object:
         return self._provider.get_client()
 
-    def authenticated_client(self) -> ClobClient:
+    def authenticated_client(self) -> object:
         return self._provider.get_authenticated_client()
 
     def has_credentials(self) -> bool:
@@ -69,4 +67,3 @@ class PolymarketService:
 
     def stop(self) -> None:
         self._cached_wallet = None
-

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -14,7 +13,6 @@ T = TypeVar("T")
 
 
 class VisionError(Exception):
-
     def __init__(
         self,
         message: str,
@@ -29,19 +27,16 @@ class VisionError(Exception):
 
 
 class CameraError(VisionError):
-
     def __init__(self, message: str, context: dict[str, Any] | None = None):
         super().__init__(message, "CAMERA_ERROR", True, context)
 
 
 class ScreenCaptureError(VisionError):
-
     def __init__(self, message: str, context: dict[str, Any] | None = None):
         super().__init__(message, "SCREEN_CAPTURE_ERROR", True, context)
 
 
 class ModelInitializationError(VisionError):
-
     def __init__(self, message: str, model_name: str, context: dict[str, Any] | None = None):
         ctx = context or {}
         ctx["model_name"] = model_name
@@ -49,19 +44,16 @@ class ModelInitializationError(VisionError):
 
 
 class ProcessingError(VisionError):
-
     def __init__(self, message: str, context: dict[str, Any] | None = None):
         super().__init__(message, "PROCESSING_ERROR", True, context)
 
 
 class ConfigurationError(VisionError):
-
     def __init__(self, message: str, context: dict[str, Any] | None = None):
         super().__init__(message, "CONFIG_ERROR", False, context)
 
 
 class APIError(VisionError):
-
     def __init__(
         self,
         message: str,
@@ -92,7 +84,6 @@ class RecoveryStrategy(ABC):
 
 
 class ErrorRecoveryManager:
-
     def __init__(self, max_retries: int = 3):
         self._strategies: dict[str, RecoveryStrategy] = {}
         self._error_counts: dict[str, int] = {}
@@ -100,7 +91,6 @@ class ErrorRecoveryManager:
         self._register_default_strategies()
 
     def _register_default_strategies(self) -> None:
-
         class CameraRecoveryStrategy(RecoveryStrategy):
             def __init__(self, manager: ErrorRecoveryManager):
                 self._manager = manager
@@ -190,7 +180,6 @@ class ErrorRecoveryManager:
 
 
 class CircuitBreaker:
-
     def __init__(self, threshold: int = 5, timeout: float = 60.0, name: str = "unknown"):
         self._threshold = threshold
         self._timeout = timeout
@@ -247,7 +236,6 @@ class CircuitBreaker:
 
 
 class VisionErrorHandler:
-
     _instance: VisionErrorHandler | None = None
 
     def __new__(cls) -> VisionErrorHandler:

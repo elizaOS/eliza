@@ -8,10 +8,7 @@ pub enum GatewayError {
     HttpError(#[from] reqwest::Error),
 
     #[error("API error ({status}): {message}")]
-    ApiError {
-        status: u16,
-        message: String,
-    },
+    ApiError { status: u16, message: String },
 
     #[error("Configuration error: {0}")]
     ConfigError(String),
@@ -27,6 +24,3 @@ pub enum GatewayError {
 }
 
 pub type Result<T> = std::result::Result<T, GatewayError>;
-
-
-

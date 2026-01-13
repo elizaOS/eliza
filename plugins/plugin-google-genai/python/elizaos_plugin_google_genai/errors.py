@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 
@@ -91,4 +90,3 @@ class ServerError(GoogleGenAIError):
 
     def is_retryable(self) -> bool:
         return True
-

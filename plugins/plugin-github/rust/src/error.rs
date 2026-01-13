@@ -20,10 +20,7 @@ pub enum GitHubError {
     InvalidArgument(String),
 
     #[error("Repository not found: {owner}/{repo}")]
-    RepositoryNotFound {
-        owner: String,
-        repo: String,
-    },
+    RepositoryNotFound { owner: String, repo: String },
 
     #[error("Branch not found: {branch} in {owner}/{repo}")]
     BranchNotFound {
@@ -64,9 +61,7 @@ pub enum GitHubError {
     },
 
     #[error("Secondary rate limit hit, retry after {retry_after_ms}ms")]
-    SecondaryRateLimit {
-        retry_after_ms: u64,
-    },
+    SecondaryRateLimit { retry_after_ms: u64 },
 
     #[error("Merge conflict in pull request #{pull_number} in {owner}/{repo}")]
     MergeConflict {
@@ -83,10 +78,7 @@ pub enum GitHubError {
     },
 
     #[error("Validation failed for {field}: {reason}")]
-    ValidationFailed {
-        field: String,
-        reason: String,
-    },
+    ValidationFailed { field: String, reason: String },
 
     #[error("GitHub API error ({status}): {message}")]
     ApiError {
@@ -100,16 +92,10 @@ pub enum GitHubError {
     NetworkError(String),
 
     #[error("Operation timed out after {timeout_ms}ms: {operation}")]
-    Timeout {
-        timeout_ms: u64,
-        operation: String,
-    },
+    Timeout { timeout_ms: u64, operation: String },
 
     #[error("Git operation failed ({operation}): {reason}")]
-    GitOperation {
-        operation: String,
-        reason: String,
-    },
+    GitOperation { operation: String, reason: String },
 
     #[error("Webhook verification failed: {0}")]
     WebhookVerification(String),
@@ -237,7 +223,3 @@ mod tests {
         assert_eq!(err.retry_after_ms(), None);
     }
 }
-
-
-
-

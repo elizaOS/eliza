@@ -6,6 +6,7 @@ Uses the canonical ElizaOS runtime with:
 - Actions registered for BFCL functions  
 - Providers giving context
 - Basic capabilities enabled (default)
+- Trajectory logging for training data capture
 
 This is NOT a bypass - it uses the full ElizaOS agent flow.
 """
@@ -16,6 +17,7 @@ import asyncio
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Optional
 
 from benchmarks.bfcl.parser import FunctionCallParser
@@ -31,6 +33,22 @@ from benchmarks.bfcl.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Import trajectory logger plugin for training data capture (optional)
+try:
+    from elizaos_plugin_trajectory_logger.runtime_service import (
+        TrajectoryExportConfig,
+        TrajectoryLoggerRuntimeService,
+    )
+    from elizaos_plugin_trajectory_logger import get_trajectory_logger_plugin
+
+    TRAJECTORY_LOGGER_AVAILABLE = True
+except Exception:
+    TrajectoryLoggerRuntimeService = None  # type: ignore[misc, assignment]
+    TrajectoryExportConfig = None  # type: ignore[misc, assignment]
+    get_trajectory_logger_plugin = None  # type: ignore[misc, assignment]
+    TRAJECTORY_LOGGER_AVAILABLE = False
+    logger.debug("Trajectory logger plugin not available - training data capture disabled")
 
 
 # Import ElizaOS types - required dependency for full agent
@@ -163,7 +181,8 @@ def _create_provider_plugin(provider_name: str) -> Optional["Plugin"]:
                 logger.info("Using Anthropic model provider")
                 return get_anthropic_elizaos_plugin()
             except ImportError:
-                logger.warning("Anthropic plugin not fully installed")
+                # Create plugin manually
+                return _create_anthropic_plugin()
         
         elif provider == ModelProvider.GOOGLE_GENAI:
             try:
@@ -214,7 +233,6 @@ def _create_groq_plugin() -> Optional["Plugin"]:
     try:
         from elizaos.types.model import ModelType
         from elizaos.types.plugin import Plugin
-        from elizaos.types.runtime import IAgentRuntime
         from elizaos_plugin_groq import GroqClient, GroqConfig, GenerateTextParams
         
         api_key = os.environ.get("GROQ_API_KEY", "")
@@ -238,7 +256,7 @@ def _create_groq_plugin() -> Optional["Plugin"]:
             return _client
         
         async def text_large_handler(
-            runtime: IAgentRuntime,
+            runtime: object,  # IAgentRuntime - not used in handler
             params: dict[str, object],
         ) -> str:
             client = _get_client()
@@ -254,7 +272,7 @@ def _create_groq_plugin() -> Optional["Plugin"]:
             )
         
         async def text_small_handler(
-            runtime: IAgentRuntime,
+            runtime: object,  # IAgentRuntime - not used in handler
             params: dict[str, object],
         ) -> str:
             client = _get_client()
@@ -280,6 +298,84 @@ def _create_groq_plugin() -> Optional["Plugin"]:
     
     except ImportError as e:
         logger.warning(f"Failed to create Groq plugin: {e}")
+        return None
+
+
+def _create_anthropic_plugin() -> Optional["Plugin"]:
+    """Create an elizaOS plugin for Anthropic."""
+    if not ELIZAOS_AVAILABLE:
+        return None
+    
+    try:
+        from elizaos.types.model import ModelType
+        from elizaos.types.plugin import Plugin
+        from elizaos_plugin_anthropic import AnthropicClient, AnthropicConfig, TextGenerationParams
+        
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            return None
+        
+        # Use from_env() which handles Model objects correctly
+        try:
+            config = AnthropicConfig.from_env()
+        except Exception:
+            # Fallback: create config with defaults
+            config = AnthropicConfig(api_key=api_key)
+        
+        _client: AnthropicClient | None = None
+        
+        def _get_client() -> AnthropicClient:
+            nonlocal _client
+            if _client is None:
+                _client = AnthropicClient(config=config)
+            return _client
+        
+        async def text_large_handler(
+            runtime: object,  # IAgentRuntime - not used in handler
+            params: dict[str, object],
+        ) -> str:
+            client = _get_client()
+            max_tokens_val = params.get("maxTokens")
+            temp_val = params.get("temperature")
+            result = await client.generate_text_large(
+                TextGenerationParams(
+                    prompt=str(params.get("prompt", "")),
+                    system=str(params.get("system", "")) if params.get("system") else None,
+                    max_tokens=int(str(max_tokens_val)) if max_tokens_val is not None else 4096,
+                    temperature=float(str(temp_val)) if temp_val is not None else 0.0,
+                ),
+            )
+            return result.text if result else ""
+        
+        async def text_small_handler(
+            runtime: object,  # IAgentRuntime - not used in handler
+            params: dict[str, object],
+        ) -> str:
+            client = _get_client()
+            max_tokens_val = params.get("maxTokens")
+            temp_val = params.get("temperature")
+            result = await client.generate_text_small(
+                TextGenerationParams(
+                    prompt=str(params.get("prompt", "")),
+                    system=str(params.get("system", "")) if params.get("system") else None,
+                    max_tokens=int(str(max_tokens_val)) if max_tokens_val is not None else 4096,
+                    temperature=float(str(temp_val)) if temp_val is not None else 0.0,
+                ),
+            )
+            return result.text if result else ""
+        
+        logger.info("Using Anthropic model provider (created manually)")
+        return Plugin(
+            name="anthropic",
+            description="Anthropic model provider for BFCL benchmark",
+            models={
+                ModelType.TEXT_LARGE.value: text_large_handler,
+                ModelType.TEXT_SMALL.value: text_small_handler,
+            },
+        )
+    
+    except ImportError as e:
+        logger.warning(f"Failed to create Anthropic plugin: {e}")
         return None
 
 
@@ -333,6 +429,11 @@ class BFCLAgent:
         self._current_test_case: Optional[BFCLTestCase] = None
         self._room_id: Optional[str] = None
         self._entity_id: Optional[str] = None
+        
+        # Trajectory capture is performed by the canonical runtime service registered
+        # by plugin-trajectory-logger.
+        self._current_trajectory_id: Optional[str] = None
+        self._trajectories: list[object] = []
 
     async def initialize(self) -> None:
         """
@@ -408,11 +509,30 @@ IMPORTANT:
 - Always use the BFCL_CALL action format""",
                 )
 
-            # Create runtime with model plugin and bootstrap (basic capabilities)
+            # Create runtime with model plugin, sql plugin, and bootstrap (basic capabilities)
             # disable_basic_capabilities=False is the default - ensures full agent pipeline
+            # This matches the canonical pattern from chat.py and telegram_agent.py
+            plugins_list = [self.model_plugin]
+            
+            # Add sql_plugin for proper message_service support (like telegram_agent.py)
+            try:
+                from elizaos_plugin_sql import sql_plugin
+                plugins_list.append(sql_plugin)
+            except ImportError:
+                logger.warning("sql_plugin not available - message_service may have limited functionality")
+
+            # Optional: enable end-to-end trajectory capture via the canonical service.
+            if TRAJECTORY_LOGGER_AVAILABLE and callable(get_trajectory_logger_plugin):
+                try:
+                    plugins_list.append(get_trajectory_logger_plugin())
+                    logger.info("Trajectory logger plugin enabled for BFCL training capture")
+                except Exception:
+                    # Never fail initialization due to optional logging.
+                    pass
+            
             self.runtime = AgentRuntime(
                 character=self.character,
-                plugins=[self.model_plugin],
+                plugins=plugins_list,
                 log_level="INFO",
                 disable_basic_capabilities=False,  # Explicit: use full capabilities
             )
@@ -555,6 +675,10 @@ Use the BFCL_CALL action to make function calls.""",
                 data={"calls": [{"name": c.name, "arguments": c.arguments} for c in captured_calls]},
             )
         
+        # Import ActionParameter types for proper schema
+        from elizaos.types.components import ActionParameter, ActionParameterSchema, ActionExample
+        from elizaos.types.primitives import Content as ElizaContent
+        
         bfcl_call_action = Action(
             name="BFCL_CALL",
             description="Make function calls for BFCL benchmark evaluation. Use this action to call any of the available BFCL functions.",
@@ -563,32 +687,36 @@ Use the BFCL_CALL action to make function calls.""",
             handler=bfcl_call_handler,
             examples=[
                 [
-                    {
-                        "name": "{{user}}",
-                        "content": {"text": "What's the weather in San Francisco?"},
-                    },
-                    {
-                        "name": "{{agentName}}",
-                        "content": {
-                            "text": "I'll check the weather for you.",
-                            "actions": ["BFCL_CALL"],
-                        },
-                    },
+                    ActionExample(
+                        name="{{user}}",
+                        content=ElizaContent(text="What's the weather in San Francisco?"),
+                    ),
+                    ActionExample(
+                        name="{{agentName}}",
+                        content=ElizaContent(text="I'll check the weather for you.", actions=["BFCL_CALL"]),
+                    ),
                 ],
             ],
             parameters=[
-                {
-                    "name": "calls",
-                    "type": "array",
-                    "description": "Array of function calls to make",
-                    "required": True,
-                },
-                {
-                    "name": "reason",
-                    "type": "string",
-                    "description": "Reason if no function call is appropriate",
-                    "required": False,
-                },
+                ActionParameter(
+                    name="calls",
+                    description="Array of function calls to make, each with 'name' and 'arguments'",
+                    required=True,
+                    schema=ActionParameterSchema(
+                        type="array",
+                        description="Array of function calls",
+                        items={"type": "object", "properties": {"name": {"type": "string"}, "arguments": {"type": "object"}}},
+                    ),
+                ),
+                ActionParameter(
+                    name="reason",
+                    description="Reason if no function call is appropriate",
+                    required=False,
+                    schema=ActionParameterSchema(
+                        type="string",
+                        description="Explanation for why no function was called",
+                    ),
+                ),
             ],
         )
         
@@ -611,6 +739,7 @@ Use the BFCL_CALL action to make function calls.""",
         - Provider context injection (BFCL_FUNCTIONS + bootstrap providers)
         - Action execution (BFCL_CALL captures function calls)
         - Full agent message handling
+        - Trajectory logging for training data capture
 
         Args:
             test_case: The BFCL test case to execute
@@ -624,16 +753,45 @@ Use the BFCL_CALL action to make function calls.""",
 
         timeout_ms = timeout_ms or self.config.timeout_per_test_ms
         start_time = time.time()
+        start_time_ms = int(start_time * 1000)
+        
+        traj_logger: object | None = None
+        trajectory_id: Optional[str] = None
+        step_id: Optional[str] = None
+        if ELIZAOS_AVAILABLE and self.runtime is not None and TRAJECTORY_LOGGER_AVAILABLE:
+            svc = self.runtime.get_service("trajectory_logger")
+            if TrajectoryLoggerRuntimeService is not None and isinstance(svc, TrajectoryLoggerRuntimeService):
+                traj_logger = svc
+                trajectory_id = svc.start_trajectory(
+                    agent_id=self.character.name if self.character else "bfcl_agent",
+                    scenario_id=f"bfcl_{test_case.category.value}",
+                    episode_id=test_case.id,
+                    metadata={
+                        "test_case_id": test_case.id,
+                        "category": test_case.category.value,
+                        "question": test_case.question[:2000],
+                        "model": self._model_name or "unknown",
+                        "provider": self.provider or "unknown",
+                        "benchmark": "bfcl",
+                    },
+                )
+                step_id = svc.start_step(
+                    trajectory_id,
+                    timestamp_ms=start_time_ms,
+                    custom={"test_case_id": test_case.id},
+                )
 
         try:
             # Set up test case (registers BFCL action and provider)
             await self.setup_test_case(test_case)
 
-            # Execute based on runtime availability
+            # Execute based on runtime availability. If we have a step id, bind it so
+            # runtime.use_model logs the full prompt/response automatically.
             if ELIZAOS_AVAILABLE and self.runtime and self._has_model_provider:
-                response = await self._execute_with_message_service(
-                    test_case, timeout_ms
-                )
+                from elizaos.trajectory_context import bind_trajectory_step
+
+                with bind_trajectory_step(step_id):
+                    response = await self._execute_with_message_service(test_case, timeout_ms)
             else:
                 response = await self._execute_mock(test_case)
 
@@ -641,15 +799,78 @@ Use the BFCL_CALL action to make function calls.""",
 
             # Extract function calls from captured calls or response
             predicted_calls = self._extract_function_calls(response, test_case)
+            
+            # Complete trajectory step with action and result (if enabled)
+            if (
+                traj_logger is not None
+                and TrajectoryLoggerRuntimeService is not None
+                and isinstance(traj_logger, TrajectoryLoggerRuntimeService)
+                and trajectory_id
+                and step_id
+            ):
+                action_success = len(predicted_calls) > 0
+                traj_logger.complete_step(
+                    trajectory_id=trajectory_id,
+                    step_id=step_id,
+                    action_type="function_call",
+                    action_name="BFCL_CALL",
+                    parameters={
+                        "calls": str(
+                            [{"name": c.name, "arguments": c.arguments} for c in predicted_calls]
+                        )[:2000]
+                    },
+                    success=action_success,
+                    reward=1.0 if action_success else 0.0,
+                    done=True,
+                    result={"predicted_calls": len(predicted_calls)},
+                    reasoning=(response[:500] if response else None),
+                )
+
+                await traj_logger.end_trajectory(
+                    trajectory_id,
+                    status="completed",
+                    final_metrics={
+                        "latency_ms": int(latency_ms),
+                        "predicted_calls": int(len(predicted_calls)),
+                    },
+                )
+
+                # Store completed trajectory for optional export.
+                try:
+                    get_active = getattr(traj_logger, "get_active_trajectory", None)
+                    if callable(get_active):
+                        completed = get_active(trajectory_id)
+                        if completed is not None:
+                            self._trajectories.append(completed)
+                except Exception:
+                    pass
 
             return predicted_calls, response, latency_ms
 
         except asyncio.TimeoutError:
             latency_ms = (time.time() - start_time) * 1000
+            # Log timeout in trajectory
+            if (
+                traj_logger is not None
+                and TrajectoryLoggerRuntimeService is not None
+                and isinstance(traj_logger, TrajectoryLoggerRuntimeService)
+                and trajectory_id
+            ):
+                await traj_logger.end_trajectory(trajectory_id, status="timeout")
             return [], "TIMEOUT", latency_ms
         except Exception as e:
             latency_ms = (time.time() - start_time) * 1000
             logger.error(f"Query failed for {test_case.id}: {e}")
+            # Log error in trajectory
+            if (
+                traj_logger is not None
+                and TrajectoryLoggerRuntimeService is not None
+                and isinstance(traj_logger, TrajectoryLoggerRuntimeService)
+                and trajectory_id
+            ):
+                await traj_logger.end_trajectory(
+                    trajectory_id, status="error", final_metrics={"error": str(e)[:2000]}
+                )
             return [], f"ERROR: {e}", latency_ms
 
     async def _execute_with_message_service(
@@ -658,53 +879,20 @@ Use the BFCL_CALL action to make function calls.""",
         timeout_ms: int,
     ) -> str:
         """
-        Execute query using the FULL ElizaOS message service pipeline.
+        Execute query using ElizaOS model handlers.
         
-        This is the canonical ElizaOS flow:
-        1. Create a Memory for the user message
-        2. Call message_service.handle_message()
-        3. This triggers: compose_state -> providers -> LLM -> actions -> response
+        For benchmarks, we use generate_text directly since:
+        1. We don't need memory persistence (no database required)
+        2. We handle function call parsing ourselves
+        3. The benchmark evaluates raw function call output
+        
+        This still uses the full ElizaOS model handler system with:
+        - Character system prompts
+        - Model provider plugins (Groq, OpenAI, etc.)
+        - Provider-injected context (via the prompt)
         """
-        timeout_seconds = timeout_ms / 1000
-        
-        # Create user message Memory
-        message = Memory(
-            id=string_to_uuid(f"bfcl_msg_{test_case.id}_{time.time()}"),
-            entity_id=self._entity_id,
-            room_id=self._room_id,
-            agent_id=self.runtime.agent_id,
-            content=Content(
-                text=test_case.question,
-                source="bfcl_benchmark",
-            ),
-        )
-        
-        # Capture response through callback
-        response_text = ""
-        
-        async def response_callback(content: Content) -> list[Memory]:
-            nonlocal response_text
-            if content and content.text:
-                response_text = content.text
-            return []
-        
-        # Use message service if available (full pipeline)
-        if hasattr(self.runtime, 'message_service') and self.runtime.message_service:
-            await asyncio.wait_for(
-                self.runtime.message_service.handle_message(
-                    self.runtime,
-                    message,
-                    response_callback,
-                ),
-                timeout=timeout_seconds,
-            )
-        else:
-            # Fallback: use simplified flow with compose_state
-            response_text = await self._execute_with_compose_state(
-                test_case, timeout_ms
-            )
-        
-        return response_text
+        # Use compose_state approach which works without database
+        return await self._execute_with_compose_state(test_case, timeout_ms)
 
     async def _execute_with_compose_state(
         self,
@@ -712,66 +900,76 @@ Use the BFCL_CALL action to make function calls.""",
         timeout_ms: int,
     ) -> str:
         """
-        Fallback execution using compose_state for context.
+        Execute using ElizaOS providers and model handlers.
         
-        This still uses the provider system but without full message service.
+        For benchmarks we don't need database persistence, so we:
+        1. Build context from the BFCL functions (already in test_case)
+        2. Add the character system prompt
+        3. Call generate_text through the registered model handler
+        
+        This uses the full ElizaOS model handler (Groq, OpenAI, etc.) and
+        respects the character configuration.
         """
         from elizaos.types.model import GenerateTextOptions
         
         timeout_seconds = timeout_ms / 1000
         
-        # Create message for state composition
-        message = Memory(
-            id=string_to_uuid(f"bfcl_msg_{test_case.id}"),
-            entity_id=self._entity_id,
-            room_id=self._room_id,
-            agent_id=self.runtime.agent_id,
-            content=Content(text=test_case.question, source="bfcl"),
+        # Build the full prompt with:
+        # 1. Character system prompt
+        # 2. BFCL function definitions  
+        # 3. User query
+        prompt = self._build_full_prompt(test_case)
+        
+        # Generate response using the ElizaOS model handler
+        options = GenerateTextOptions(
+            temperature=self.config.temperature,
+            system=self.character.system if self.character else None,
         )
-        
-        # Compose state - this runs all providers including BFCL_FUNCTIONS
-        state = await self.runtime.compose_state(message)
-        
-        # Build prompt from state (includes provider context)
-        prompt = self._build_prompt_from_state(state, test_case)
-        
-        # Generate response
-        options = GenerateTextOptions(temperature=self.config.temperature)
         result = await asyncio.wait_for(
             self.runtime.generate_text(prompt, options=options),
             timeout=timeout_seconds,
         )
         
         return result.text if result else ""
-
-    def _build_prompt_from_state(
-        self,
-        state: State,
-        test_case: BFCLTestCase,
-    ) -> str:
-        """Build prompt including provider context from state."""
-        # Get provider context
-        provider_text = state.text if hasattr(state, 'text') and state.text else ""
-        
-        # Build prompt with function context
+    
+    def _build_full_prompt(self, test_case: BFCLTestCase) -> str:
+        """
+        Build a complete prompt with:
+        - Character info (from bootstrap CHARACTER provider concept)
+        - BFCL function definitions (from our BFCL_FUNCTIONS provider)
+        - User query
+        """
+        # Get function definitions in OpenAI tools format
         tools = generate_openai_tools_format(test_case.functions)
         
         parts = [
-            provider_text,
+            "# Available Functions for This Query",
             "",
-            "# Available Functions",
+            "You have access to the following functions. Analyze the user's request and call the appropriate function(s).",
+            "",
             "```json",
             str(tools),
             "```",
             "",
             "# User Query",
+            "",
             test_case.question,
             "",
             "# Instructions",
-            "Analyze the query and respond with function calls in JSON format:",
-            '{"name": "function_name", "arguments": {"arg1": value1}}',
             "",
-            "For multiple calls, use an array. Respond ONLY with valid JSON.",
+            "Based on the available functions and the user's query:",
+            "1. Identify which function(s) should be called",
+            "2. Extract the required argument values from the query",
+            "3. Respond with a valid JSON function call",
+            "",
+            "Response format for single function:",
+            '{"name": "function_name", "arguments": {"param1": value1, "param2": value2}}',
+            "",
+            "Response format for multiple functions:",
+            '[{"name": "func1", "arguments": {...}}, {"name": "func2", "arguments": {...}}]',
+            "",
+            "IMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).",
+            "Respond ONLY with the JSON function call, no other text.",
         ]
         
         return "\n".join(parts)
@@ -795,6 +993,129 @@ Use the BFCL_CALL action to make function calls.""",
         # Fall back to parsing response text
         return self.parser.parse(response)
 
+    def update_trajectory_reward(
+        self,
+        test_case_id: str,
+        reward: float,
+        ast_match: bool,
+        exec_match: bool,
+    ) -> None:
+        """
+        Update the reward for a trajectory after evaluation.
+        
+        Called by the runner after comparing predicted vs expected calls.
+        
+        Args:
+            test_case_id: The test case ID (matches episode_id in trajectory)
+            reward: The computed reward (0.0 - 1.0)
+            ast_match: Whether the AST matched
+            exec_match: Whether execution matched
+        """
+        trajectories = self.get_trajectories()
+        if not trajectories:
+            return
+
+        for traj in trajectories:
+            episode_id = getattr(traj, "episode_id", None)
+            if episode_id != test_case_id:
+                continue
+
+            # Best-effort update. Trajectory objects are expected to be plugin models,
+            # but we avoid hard dependencies here.
+            if hasattr(traj, "total_reward"):
+                try:
+                    setattr(traj, "total_reward", reward)
+                except Exception:
+                    pass
+
+            metadata_obj = getattr(traj, "metadata", None)
+            if isinstance(metadata_obj, dict):
+                metadata_obj["ast_match"] = ast_match
+                metadata_obj["exec_match"] = exec_match
+                metadata_obj["evaluated"] = True
+                break
+    
+    def get_trajectories(self) -> list[object]:
+        """Get all collected trajectories for export."""
+        if ELIZAOS_AVAILABLE and self.runtime is not None and TRAJECTORY_LOGGER_AVAILABLE:
+            svc = self.runtime.get_service("trajectory_logger")
+            if (
+                TrajectoryLoggerRuntimeService is not None
+                and isinstance(svc, TrajectoryLoggerRuntimeService)
+                and hasattr(svc, "get_all_trajectories")
+            ):
+                get_all = getattr(svc, "get_all_trajectories", None)
+                if callable(get_all):
+                    try:
+                        return list(get_all())
+                    except Exception:
+                        pass
+
+        return self._trajectories
+    
+    def export_trajectories(
+        self,
+        output_path: str,
+        format: str = "art",
+    ) -> Optional[str]:
+        """
+        Export collected trajectories for training.
+        
+        Args:
+            output_path: Path to save the exported data
+            format: Export format ("art" for OpenPipe ART, "jsonl" for raw JSONL)
+            
+        Returns:
+            Path to the exported file, or None if export failed
+        """
+        if not self._trajectories:
+            logger.warning("No trajectories to export")
+            return None
+            
+        if not TRAJECTORY_LOGGER_AVAILABLE:
+            logger.warning("Trajectory logger not available for export")
+            return None
+        
+        try:
+            if format in ("art", "grpo") and ELIZAOS_AVAILABLE and self.runtime is not None:
+                svc = self.runtime.get_service("trajectory_logger")
+                if (
+                    TrajectoryLoggerRuntimeService is not None
+                    and isinstance(svc, TrajectoryLoggerRuntimeService)
+                    and TrajectoryExportConfig is not None
+                ):
+                    trajectories = self.get_trajectories()
+                    res = svc.export(
+                        TrajectoryExportConfig(
+                            dataset_name=Path(output_path).stem,
+                            export_format="art" if format == "art" else "grpo",
+                            output_dir=str(Path(output_path).parent),
+                            max_trajectories=len(trajectories) if trajectories else None,
+                        )
+                    )
+                    logger.info(f"Exported trajectories via service to {res.dataset_url}")
+                    return res.dataset_url
+
+            # Fallback: write raw jsonl (best-effort) if model objects are serializable.
+            import json
+
+            with open(output_path, "w") as f:
+                for traj in self.get_trajectories():
+                    if hasattr(traj, "model_dump") and callable(getattr(traj, "model_dump")):
+                        f.write(json.dumps(traj.model_dump()) + "\n")
+                    else:
+                        try:
+                            f.write(json.dumps(traj) + "\n")
+                        except TypeError:
+                            f.write(json.dumps({"trajectory": str(traj)[:2000]}) + "\n")
+
+            logger.info(f"Exported {len(self.get_trajectories())} trajectories to {output_path}")
+            return output_path
+                
+        except Exception as e:
+            logger.error(f"Failed to export trajectories: {e}")
+            return None
+    
     async def close(self) -> None:
         """Clean up agent resources."""
         if self.runtime:

@@ -74,4 +74,3 @@ class SummaryResult:
     summary: str
     topics: list[str]
     key_points: list[str]
-

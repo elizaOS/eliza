@@ -21,12 +21,7 @@ impl DiscordAction for AddReactionAction {
     }
 
     fn similes(&self) -> Vec<&str> {
-        vec![
-            "REACT",
-            "ADD_EMOJI",
-            "EMOJI_REACTION",
-            "REACT_TO_MESSAGE",
-        ]
+        vec!["REACT", "ADD_EMOJI", "EMOJI_REACTION", "REACT_TO_MESSAGE"]
     }
 
     async fn validate(&self, context: &ActionContext) -> Result<bool> {
@@ -76,9 +71,7 @@ impl DiscordAction for AddReactionAction {
             .get("content")
             .and_then(|c| c.get("message_id"))
             .and_then(|m| m.as_str())
-            .ok_or_else(|| {
-                DiscordError::InvalidArgument("Missing message_id".to_string())
-            })?;
+            .ok_or_else(|| DiscordError::InvalidArgument("Missing message_id".to_string()))?;
 
         let message_id = Snowflake::new(message_id_str.to_string())?;
 
@@ -87,11 +80,11 @@ impl DiscordAction for AddReactionAction {
             .get("content")
             .and_then(|c| c.get("emoji"))
             .and_then(|e| e.as_str())
-            .ok_or_else(|| {
-                DiscordError::InvalidArgument("Missing emoji".to_string())
-            })?;
+            .ok_or_else(|| DiscordError::InvalidArgument("Missing emoji".to_string()))?;
 
-        service.add_reaction(&channel_id, &message_id, emoji).await?;
+        service
+            .add_reaction(&channel_id, &message_id, emoji)
+            .await?;
 
         Ok(ActionResult::success_with_data(
             "Reaction added successfully",
@@ -148,5 +141,3 @@ mod tests {
         assert!(!action.validate(&context).await.unwrap());
     }
 }
-
-

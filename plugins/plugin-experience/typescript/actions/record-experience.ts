@@ -2,11 +2,11 @@ import {
   type Action,
   type ActionResult,
   createUniqueUuid,
+  type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
-  type HandlerCallback,
-  type HandlerOptions,
   type State,
 } from "@elizaos/core";
 
@@ -77,4 +77,3 @@ export const recordExperienceAction: Action = {
     };
   },
 };
-

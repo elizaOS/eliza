@@ -16,10 +16,7 @@ class DownloadMediaAction:
 
     @property
     def description(self) -> str:
-        return (
-            "Downloads a video or audio file from a URL and "
-            "attaches it to the response message."
-        )
+        return "Downloads a video or audio file from a URL and attaches it to the response message."
 
     @property
     def similes(self) -> list[str]:
@@ -33,8 +30,8 @@ class DownloadMediaAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord"
 
     async def handler(
         self,
@@ -50,9 +47,7 @@ class DownloadMediaAction:
         # Extract URL from message
         media_url = await service.extract_media_url(text)
         if not media_url:
-            return ActionResult.failure_result(
-                "I couldn't find a media URL in your message."
-            )
+            return ActionResult.failure_result("I couldn't find a media URL in your message.")
 
         # Download the media
         media_info = await service.download_media(media_url)
@@ -61,14 +56,16 @@ class DownloadMediaAction:
                 "Failed to download the media. The URL might be unsupported."
             )
 
-        title = media_info.get("title", "Downloaded Media")
-        file_path = media_info.get("path", "")
+        filename = media_info["filename"]
+        file_path = media_info["path"]
+        title = filename
 
         # Send as attachment
         await service.send_file(
             context.channel_id,
             file_path,
-            f'I downloaded the video "{title}" and attached it below.',
+            filename,
+            f'I downloaded "{title}" and attached it below.',
         )
 
         return ActionResult.success_result(

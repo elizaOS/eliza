@@ -34,7 +34,6 @@ impl fmt::Display for GoalStatus {
     }
 }
 
-
 /// The type of entity that owns a goal.
 ///
 /// Goals can be owned by either an agent (AI) or an entity (user/external system).
@@ -58,7 +57,6 @@ impl fmt::Display for GoalOwnerType {
         write!(f, "{}", s)
     }
 }
-
 
 /// A goal that can be tracked and managed by the system.
 ///
@@ -161,7 +159,12 @@ impl CreateGoalParams {
     /// * `owner_type` - Whether owned by agent or entity
     /// * `owner_id` - The ID of the owner
     /// * `name` - The name of the goal
-    pub fn new(agent_id: String, owner_type: GoalOwnerType, owner_id: String, name: String) -> Self {
+    pub fn new(
+        agent_id: String,
+        owner_type: GoalOwnerType,
+        owner_id: String,
+        name: String,
+    ) -> Self {
         Self {
             agent_id,
             owner_type,

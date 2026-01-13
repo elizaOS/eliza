@@ -60,7 +60,9 @@ impl Transport for StdioTransport {
             cmd.current_dir(cwd);
         }
 
-        let mut child = cmd.spawn().map_err(|e| McpError::connection(e.to_string()))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| McpError::connection(e.to_string()))?;
 
         let stdin = child
             .stdin
@@ -81,10 +83,7 @@ impl Transport for StdioTransport {
     }
 
     async fn send(&mut self, message: &Value) -> McpResult<()> {
-        let stdin = self
-            .stdin
-            .as_mut()
-            .ok_or(McpError::NotConnected)?;
+        let stdin = self.stdin.as_mut().ok_or(McpError::NotConnected)?;
 
         let json_str = serde_json::to_string(message)?;
         let content = format!("{}\n", json_str);
@@ -103,10 +102,7 @@ impl Transport for StdioTransport {
     }
 
     async fn receive(&mut self) -> McpResult<Value> {
-        let stdout = self
-            .stdout
-            .as_mut()
-            .ok_or(McpError::NotConnected)?;
+        let stdout = self.stdout.as_mut().ok_or(McpError::NotConnected)?;
 
         let timeout = tokio::time::Duration::from_millis(self.config.timeout_ms);
 
@@ -122,7 +118,7 @@ impl Transport for StdioTransport {
             }
 
             let trimmed = line.trim();
-            
+
             if trimmed.is_empty() || !trimmed.starts_with('{') {
                 continue;
             }
@@ -170,5 +166,3 @@ mod tests {
         assert!(!transport.is_connected());
     }
 }
-
-

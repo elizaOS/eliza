@@ -108,5 +108,3 @@ mod tests {
         assert!(state["guild"].is_null());
     }
 }
-
-

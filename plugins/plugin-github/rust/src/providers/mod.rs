@@ -1,12 +1,12 @@
 #![allow(missing_docs)]
 
-pub mod repository_state;
 pub mod issue_context;
+pub mod repository_state;
 
-pub use repository_state::RepositoryStateProvider;
-pub use repository_state::GitHubRepositoryStateProvider;
-pub use issue_context::IssueContextProvider;
 pub use issue_context::GitHubIssueContextProvider;
+pub use issue_context::IssueContextProvider;
+pub use repository_state::GitHubRepositoryStateProvider;
+pub use repository_state::RepositoryStateProvider;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -35,5 +35,3 @@ pub trait GitHubProvider: Send + Sync {
         service: &GitHubService,
     ) -> impl std::future::Future<Output = Result<ProviderResult>> + Send;
 }
-
-

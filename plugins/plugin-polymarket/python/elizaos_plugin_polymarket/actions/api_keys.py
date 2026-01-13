@@ -3,14 +3,15 @@ API key management actions for Polymarket.
 """
 
 import time
-from typing import Protocol
+from collections.abc import Callable
+from typing import Protocol, cast
 
 from eth_account import Account
 from eth_account.messages import encode_defunct, encode_typed_data
 
 from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 from elizaos_plugin_polymarket.providers import get_authenticated_clob_client
-from elizaos_plugin_polymarket.types import ApiKey
+from elizaos_plugin_polymarket.types import ApiKey, ApiKeyStatus, ApiKeyType
 
 
 class RuntimeProtocol(Protocol):
@@ -27,7 +28,7 @@ class RuntimeProtocol(Protocol):
 
 async def create_api_key(
     runtime: RuntimeProtocol | None = None,
-) -> dict[str, str]:
+) -> dict[str, object]:
     """
     Create API key credentials for Polymarket CLOB authentication.
 
@@ -49,15 +50,17 @@ async def create_api_key(
         ) or "https://clob.polymarket.com"
 
         private_key_setting = (
-            runtime.get_setting("POLYMARKET_PRIVATE_KEY")
-            if runtime
-            else os.environ.get("POLYMARKET_PRIVATE_KEY")
-        ) or (
-            runtime.get_setting("WALLET_PRIVATE_KEY")
-            if runtime
-            else os.environ.get("WALLET_PRIVATE_KEY")
-        ) or (
-            runtime.get_setting("PRIVATE_KEY") if runtime else os.environ.get("PRIVATE_KEY")
+            (
+                runtime.get_setting("POLYMARKET_PRIVATE_KEY")
+                if runtime
+                else os.environ.get("POLYMARKET_PRIVATE_KEY")
+            )
+            or (
+                runtime.get_setting("WALLET_PRIVATE_KEY")
+                if runtime
+                else os.environ.get("WALLET_PRIVATE_KEY")
+            )
+            or (runtime.get_setting("PRIVATE_KEY") if runtime else os.environ.get("PRIVATE_KEY"))
         )
 
         if not private_key_setting:
@@ -69,7 +72,9 @@ async def create_api_key(
 
         # Ensure 0x prefix
         private_key = (
-            private_key_setting if private_key_setting.startswith("0x") else f"0x{private_key_setting}"
+            private_key_setting
+            if private_key_setting.startswith("0x")
+            else f"0x{private_key_setting}"
         )
 
         # Get wallet address
@@ -123,116 +128,118 @@ async def create_api_key(
 
         # Try to derive existing API key first
         try:
+            import types
+
             import httpx
 
-            http_client = httpx
+            http_client: types.ModuleType = httpx
         except ImportError:
+            import types
+
             import requests
 
             http_client = requests
 
         is_new_key = False
+        api_creds: dict[str, object] = {}
         try:
-            if hasattr(http_client, "get"):
-                # httpx
-                derive_response = http_client.get(
-                    f"{clob_api_url}/auth/derive-api-key",
-                    headers={
-                        "Content-Type": "application/json",
-                        "POLY_ADDRESS": address,
-                        "POLY_SIGNATURE": signature,
-                        "POLY_TIMESTAMP": timestamp,
-                        "POLY_NONCE": str(nonce),
-                    },
-                    timeout=30.0,
+            get_fn = getattr(http_client, "get", None)
+            if not callable(get_fn):
+                raise PolymarketError(
+                    PolymarketErrorCode.API_ERROR,
+                    "HTTP client missing get()",
                 )
-                if derive_response.status_code == 200:
-                    api_creds = derive_response.json()
+
+            derive_response = cast(Callable[..., object], get_fn)(
+                f"{clob_api_url}/auth/derive-api-key",
+                headers={
+                    "Content-Type": "application/json",
+                    "POLY_ADDRESS": address,
+                    "POLY_SIGNATURE": signature,
+                    "POLY_TIMESTAMP": timestamp,
+                    "POLY_NONCE": str(nonce),
+                },
+                timeout=30.0,
+            )
+
+            status_code_obj = getattr(derive_response, "status_code", None)
+            if status_code_obj == 200:
+                json_fn = getattr(derive_response, "json", None)
+                if callable(json_fn):
+                    json_obj = cast(Callable[[], object], json_fn)()
+                    if isinstance(json_obj, dict):
+                        api_creds = json_obj
+                    else:
+                        is_new_key = True
                 else:
                     is_new_key = True
             else:
-                # requests
-                derive_response = http_client.get(
-                    f"{clob_api_url}/auth/derive-api-key",
-                    headers={
-                        "Content-Type": "application/json",
-                        "POLY_ADDRESS": address,
-                        "POLY_SIGNATURE": signature,
-                        "POLY_TIMESTAMP": timestamp,
-                        "POLY_NONCE": str(nonce),
-                    },
-                    timeout=30.0,
-                )
-                if derive_response.status_code == 200:
-                    api_creds = derive_response.json()
-                else:
-                    is_new_key = True
+                is_new_key = True
         except Exception:
             is_new_key = True
 
         if is_new_key:
             # Create new API key
-            if hasattr(http_client, "post"):
-                # httpx
-                create_response = http_client.post(
-                    f"{clob_api_url}/auth/api-key",
-                    headers={
-                        "Content-Type": "application/json",
-                        "POLY_ADDRESS": address,
-                        "POLY_SIGNATURE": signature,
-                        "POLY_TIMESTAMP": timestamp,
-                        "POLY_NONCE": str(nonce),
-                    },
-                    json={},
-                    timeout=30.0,
-                )
-            else:
-                # requests
-                create_response = http_client.post(
-                    f"{clob_api_url}/auth/api-key",
-                    headers={
-                        "Content-Type": "application/json",
-                        "POLY_ADDRESS": address,
-                        "POLY_SIGNATURE": signature,
-                        "POLY_TIMESTAMP": timestamp,
-                        "POLY_NONCE": str(nonce),
-                    },
-                    json={},
-                    timeout=30.0,
-                )
-
-            if create_response.status_code != 200:
-                error_text = getattr(create_response, "text", str(create_response.content))
+            post_fn = getattr(http_client, "post", None)
+            if not callable(post_fn):
                 raise PolymarketError(
                     PolymarketErrorCode.API_ERROR,
-                    f"API key creation failed: {create_response.status_code}. {error_text}",
+                    "HTTP client missing post()",
                 )
 
-            api_creds = create_response.json()
+            create_response = cast(Callable[..., object], post_fn)(
+                f"{clob_api_url}/auth/api-key",
+                headers={
+                    "Content-Type": "application/json",
+                    "POLY_ADDRESS": address,
+                    "POLY_SIGNATURE": signature,
+                    "POLY_TIMESTAMP": timestamp,
+                    "POLY_NONCE": str(nonce),
+                },
+                json={},
+                timeout=30.0,
+            )
+
+            status_code_obj = getattr(create_response, "status_code", None)
+            if status_code_obj != 200:
+                error_text_obj = getattr(create_response, "text", None)
+                error_text = str(error_text_obj) if error_text_obj else ""
+                raise PolymarketError(
+                    PolymarketErrorCode.API_ERROR,
+                    f"API key creation failed: {status_code_obj}. {error_text}",
+                )
+
+            json_fn = getattr(create_response, "json", None)
+            if callable(json_fn):
+                json_obj = cast(Callable[[], object], json_fn)()
+                if isinstance(json_obj, dict):
+                    api_creds = json_obj
 
         # Extract credentials from response (handle various response formats)
-        api_key_id = (
+        api_key_id_obj = (
             api_creds.get("api_key")
             or api_creds.get("key")
             or api_creds.get("id")
             or api_creds.get("apiKey")
             or api_creds.get("API_KEY")
-            or ""
         )
-        api_secret = (
+        api_key_id = str(api_key_id_obj) if api_key_id_obj else ""
+
+        api_secret_obj = (
             api_creds.get("api_secret")
             or api_creds.get("secret")
             or api_creds.get("apiSecret")
             or api_creds.get("API_SECRET")
-            or ""
         )
-        api_passphrase = (
+        api_secret = str(api_secret_obj) if api_secret_obj else ""
+
+        api_passphrase_obj = (
             api_creds.get("api_passphrase")
             or api_creds.get("passphrase")
             or api_creds.get("apiPassphrase")
             or api_creds.get("API_PASSPHRASE")
-            or ""
         )
+        api_passphrase = str(api_passphrase_obj) if api_passphrase_obj else ""
 
         if not api_key_id or not api_secret or not api_passphrase:
             raise PolymarketError(
@@ -246,11 +253,12 @@ async def create_api_key(
             runtime.set_setting("CLOB_API_SECRET", api_secret, secret=True)
             runtime.set_setting("CLOB_API_PASSPHRASE", api_passphrase, secret=True)
 
+        created_at_obj = api_creds.get("created_at", "")
         return {
             "api_key": api_key_id,
             "secret": api_secret,
             "passphrase": api_passphrase,
-            "created_at": api_creds.get("created_at", ""),
+            "created_at": str(created_at_obj) if created_at_obj else "",
             "is_new": is_new_key,
         }
 
@@ -284,9 +292,15 @@ async def get_all_api_keys(
 
         # Use the client's getApiKeys method if available
         # Note: py-clob-client may not have this method, so we'll need to check
-        if hasattr(client, "getApiKeys"):
-            response = client.getApiKeys()
-            creds = response.get("apiKeys", []) if isinstance(response, dict) else response
+        get_api_keys_fn = getattr(client, "getApiKeys", None)
+        if callable(get_api_keys_fn):
+            response_obj = cast(Callable[[], object], get_api_keys_fn)()
+            creds_obj: object = (
+                response_obj.get("apiKeys", [])
+                if isinstance(response_obj, dict)
+                else response_obj
+            )
+            creds = creds_obj if isinstance(creds_obj, list) else []
 
             keys = []
             for idx, cred in enumerate(creds):
@@ -297,10 +311,10 @@ async def get_all_api_keys(
 
                 keys.append(
                     ApiKey(
-                        key_id=key_id,
+                        key_id=str(key_id) if key_id else "",
                         label=f"API Key {idx + 1}",
-                        type="read_write",
-                        status="active",
+                        type=ApiKeyType.READ_WRITE,
+                        status=ApiKeyStatus.ACTIVE,
                         created_at="",
                         last_used_at=None,
                         is_cert_whitelisted=False,
@@ -354,9 +368,17 @@ async def revoke_api_key(
         client = get_authenticated_clob_client(runtime)
 
         # Check if the client has a deleteApiKey method
-        if hasattr(client, "deleteApiKey"):
-            result = client.deleteApiKey()
-            return result.get("success", False) if isinstance(result, dict) else True
+        delete_api_key_fn = getattr(client, "deleteApiKey", None)
+        if callable(delete_api_key_fn):
+            fn = cast(Callable[..., object], delete_api_key_fn)
+            try:
+                result_obj = fn(key_id)
+            except TypeError:
+                result_obj = fn()
+
+            if isinstance(result_obj, dict):
+                return bool(result_obj.get("success", False))
+            return True
         else:
             # Fallback: provide guidance
             raise PolymarketError(

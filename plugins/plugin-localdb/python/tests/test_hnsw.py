@@ -101,6 +101,7 @@ async def test_dimension_mismatch():
     with pytest.raises(ValueError, match="dimension mismatch"):
         await hnsw.add("v1", [1.0, 0.0])
 
+
 @pytest.mark.asyncio
 async def test_serialization():
     hnsw = SimpleHNSW()
@@ -118,12 +119,8 @@ async def test_serialization():
     results = await hnsw2.search([1.0, 0.0, 0.0], k=1, threshold=0.9)
     assert results[0].id == "v1"
 
+
 def test_cosine_distance():
     assert cosine_distance([1.0, 0.0], [1.0, 0.0]) < 0.001
     assert abs(cosine_distance([1.0, 0.0], [0.0, 1.0]) - 1.0) < 0.001
     assert cosine_distance([1.0, 0.0], [-1.0, 0.0]) > 1.9
-
-
-
-
-

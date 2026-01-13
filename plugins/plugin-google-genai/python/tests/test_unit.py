@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import pytest
@@ -223,4 +222,3 @@ class TestErrors:
         error = InvalidParameterError("model", "cannot be empty")
         assert "model" in str(error)
         assert error.parameter == "model"
-

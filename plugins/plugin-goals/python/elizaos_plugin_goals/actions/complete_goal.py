@@ -13,16 +13,13 @@ from elizaos_plugin_goals.types import (
 class RuntimeProtocol(Protocol):
     agent_id: str
 
-    async def use_model(self, model_type: str, params: dict[str, object]) -> str:
-        ...
+    async def use_model(self, model_type: str, params: dict[str, object]) -> str: ...
 
 
 class GoalServiceProtocol(Protocol):
-    async def get_goals(self, filters: GoalFilters | None = None) -> list[Goal]:
-        ...
+    async def get_goals(self, filters: GoalFilters | None = None) -> list[Goal]: ...
 
-    async def update_goal(self, goal_id: str, updates: UpdateGoalParams) -> bool:
-        ...
+    async def update_goal(self, goal_id: str, updates: UpdateGoalParams) -> bool: ...
 
 
 @dataclass

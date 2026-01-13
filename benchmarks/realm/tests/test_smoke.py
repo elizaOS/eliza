@@ -1,8 +1,12 @@
+"""
+Smoke tests for REALM benchmark components.
+"""
+
 import os
 
-from benchmarks.realm.agent import REALMAgent
 from benchmarks.realm.cli import _parse_env_line, load_env_file
 from benchmarks.realm.dataset import REALMDataset
+from benchmarks.realm.plugin.actions import _parse_plan_json
 from benchmarks.realm.types import REALMCategory, REALMTask
 
 
@@ -54,7 +58,6 @@ def test_dataset_parse_task_validation() -> None:
 
 
 def test_parse_plan_response_basic() -> None:
-    agent = REALMAgent(runtime=None, use_llm=False)
     task = REALMTask(
         id="t1",
         name="Task",
@@ -77,7 +80,6 @@ def test_parse_plan_response_basic() -> None:
 ]
 ```"""
 
-    actions = agent._parse_plan_response(response, task)
-    assert [a.name for a in actions] == ["tool1", "tool2"]
-    assert actions[0].parameters["step"] == 1
-
+    actions = _parse_plan_json(response, task.available_tools)
+    assert [a["action"] for a in actions] == ["tool1", "tool2"]
+    assert actions[0]["parameters"]["step"] == 1

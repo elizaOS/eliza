@@ -1,4 +1,3 @@
-
 from elizaos_plugin_elizacloud.types import (
     DetokenizeTextParams,
     ImageDescriptionParams,
@@ -32,9 +31,7 @@ class TestTextGenerationParams:
         assert params.max_tokens == 1000
 
     def test_stop_sequences(self) -> None:
-        params = TextGenerationParams(
-            prompt="Test", stop_sequences=["END", "STOP"]
-        )
+        params = TextGenerationParams(prompt="Test", stop_sequences=["END", "STOP"])
         assert params.stop_sequences == ["END", "STOP"]
 
     def test_streaming(self) -> None:

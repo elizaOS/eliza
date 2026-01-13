@@ -1,6 +1,6 @@
 //! Integration tests for the MCP client.
 
-use elizaos_plugin_mcp::{McpClient, StdioTransport, StdioServerConfig, ConnectionStatus};
+use elizaos_plugin_mcp::{ConnectionStatus, McpClient, StdioServerConfig, StdioTransport};
 use std::collections::HashMap;
 
 fn memory_server_config() -> StdioServerConfig {
@@ -81,12 +81,7 @@ async fn test_call_tool() {
     client.connect().await.expect("Failed to connect");
 
     // Use read_graph which doesn't require any arguments
-    let result = client
-        .call_tool(
-            "read_graph",
-            serde_json::json!({}),
-        )
-        .await;
+    let result = client.call_tool("read_graph", serde_json::json!({})).await;
 
     assert!(result.is_ok(), "Failed to call tool: {:?}", result.err());
 
@@ -128,5 +123,3 @@ async fn test_call_tool_empty_name() {
 
     client.close().await.expect("Failed to close");
 }
-
-

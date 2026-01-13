@@ -56,24 +56,24 @@ impl OpenRouterConfig {
             }
         }
 
-        if let Ok(model) = std::env::var("OPENROUTER_SMALL_MODEL")
-            .or_else(|_| std::env::var("SMALL_MODEL"))
+        if let Ok(model) =
+            std::env::var("OPENROUTER_SMALL_MODEL").or_else(|_| std::env::var("SMALL_MODEL"))
         {
             if !model.is_empty() {
                 config.small_model = model;
             }
         }
 
-        if let Ok(model) = std::env::var("OPENROUTER_LARGE_MODEL")
-            .or_else(|_| std::env::var("LARGE_MODEL"))
+        if let Ok(model) =
+            std::env::var("OPENROUTER_LARGE_MODEL").or_else(|_| std::env::var("LARGE_MODEL"))
         {
             if !model.is_empty() {
                 config.large_model = model;
             }
         }
 
-        if let Ok(model) = std::env::var("OPENROUTER_IMAGE_MODEL")
-            .or_else(|_| std::env::var("IMAGE_MODEL"))
+        if let Ok(model) =
+            std::env::var("OPENROUTER_IMAGE_MODEL").or_else(|_| std::env::var("IMAGE_MODEL"))
         {
             if !model.is_empty() {
                 config.image_model = model;
@@ -221,4 +221,3 @@ mod tests {
         );
     }
 }
-

@@ -45,8 +45,8 @@ use anyhow::Result as AnyhowResult;
 // Re-export commonly used types
 pub use crate::actions::{PostAction, PostActionResult};
 pub use crate::client::TwitterClient;
-pub use crate::grok::{GrokClient, GrokConfig, TextGenerationParams, EmbeddingParams};
-pub use crate::models::{TextSmallHandler, TextLargeHandler, TextEmbeddingHandler};
+pub use crate::grok::{EmbeddingParams, GrokClient, GrokConfig, TextGenerationParams};
+pub use crate::models::{TextEmbeddingHandler, TextLargeHandler, TextSmallHandler};
 pub use crate::types::TwitterConfig;
 
 /// Build a Twitter/X API client from environment configuration.

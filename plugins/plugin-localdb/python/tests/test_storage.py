@@ -17,6 +17,7 @@ def temp_dir():
 def storage(temp_dir):
     return JSONStorage(temp_dir)
 
+
 @pytest.mark.asyncio
 async def test_init(storage, temp_dir):
     await storage.init()
@@ -95,8 +96,3 @@ async def test_close(storage):
 
     await storage.close()
     assert not storage.is_ready()
-
-
-
-
-

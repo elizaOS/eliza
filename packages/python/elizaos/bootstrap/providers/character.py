@@ -31,8 +31,10 @@ async def get_character_context(
         )
         sections.append(f"\n## Personality Traits\n{', '.join(adjectives)}")
 
-    if character.lore:
-        lore_text = character.lore if isinstance(character.lore, str) else "\n".join(character.lore)
+    # lore is optional and may not exist on all Character instances
+    lore = getattr(character, "lore", None)
+    if lore:
+        lore_text = lore if isinstance(lore, str) else "\n".join(lore)
         sections.append(f"\n## Background\n{lore_text}")
 
     if character.topics:

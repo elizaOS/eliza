@@ -26,8 +26,3 @@ class ReminderError(TodoError):
 
 class NotificationError(TodoError):
     pass
-
-
-
-
-

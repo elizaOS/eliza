@@ -6,6 +6,7 @@ from elizaos.types.plugin import Plugin
 from .adapter import LocalDatabaseAdapter
 from .storage import JsonFileStorage
 
+
 async def init_localdb(runtime: Any) -> None:
     if hasattr(runtime, "database_adapter") and runtime.database_adapter is not None:
         return
@@ -20,6 +21,7 @@ async def init_localdb(runtime: Any) -> None:
     adapter = LocalDatabaseAdapter(storage, runtime.agent_id)
     await adapter.init()
     runtime.register_database_adapter(adapter)
+
 
 localdb_plugin: Plugin = {
     "name": "@elizaos/plugin-localdb",

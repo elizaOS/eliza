@@ -29,4 +29,3 @@ class PluginCreationService:
         close = getattr(self._client, "close", None)
         if callable(close):
             await close()
-

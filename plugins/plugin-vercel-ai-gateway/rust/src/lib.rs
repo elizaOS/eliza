@@ -87,11 +87,11 @@ pub fn get_gateway_plugin() -> AnyhowResult<GatewayPlugin> {
     let config = GatewayConfig::from_env()
         .map_err(|e| anyhow::anyhow!("Failed to load Gateway config: {}", e))?;
 
-    GatewayPlugin::new(config).map_err(|e| anyhow::anyhow!("Failed to create Gateway plugin: {}", e))
+    GatewayPlugin::new(config)
+        .map_err(|e| anyhow::anyhow!("Failed to create Gateway plugin: {}", e))
 }
 
 pub const PLUGIN_NAME: &str = "gateway";
 pub const PLUGIN_DESCRIPTION: &str =
     "Vercel AI Gateway plugin with text, embedding, and image generation support";
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
-

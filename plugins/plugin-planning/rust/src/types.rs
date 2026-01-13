@@ -51,7 +51,6 @@ pub struct RetryPolicy {
     pub on_error: String,
 }
 
-
 impl Default for RetryPolicy {
     fn default() -> Self {
         Self {
@@ -89,7 +88,6 @@ pub struct PlanState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
-
 
 impl Default for PlanState {
     fn default() -> Self {

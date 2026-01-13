@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -50,9 +49,7 @@ async def get_wallet_portfolio(
     except Exception:
         logger.debug("Could not fetch SOL price")
 
-    sol_value_usd = (
-        sol_balance * Decimal(str(sol_price)) if sol_price else Decimal(0)
-    )
+    sol_value_usd = sol_balance * Decimal(str(sol_price)) if sol_price else Decimal(0)
 
     items: list[PortfolioItem] = []
 

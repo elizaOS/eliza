@@ -127,7 +127,10 @@ async fn test_streaming_text_generation() {
     }
 
     assert!(!chunks.is_empty(), "Should receive at least one chunk");
-    assert!(!full_response.is_empty(), "Full response should not be empty");
+    assert!(
+        !full_response.is_empty(),
+        "Full response should not be empty"
+    );
     println!("Received {} chunks", chunks.len());
     println!("Full response: {}", full_response);
 }
@@ -163,4 +166,3 @@ async fn test_streaming_simple() {
 
     assert!(received_any, "Should receive at least one chunk");
 }
-

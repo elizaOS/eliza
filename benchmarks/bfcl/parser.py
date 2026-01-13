@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Optional, cast
+from typing import Optional
 from xml.etree import ElementTree
 
 from benchmarks.bfcl.types import ArgumentValue, FunctionCall

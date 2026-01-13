@@ -141,11 +141,12 @@ where
 
     if let Some(cb) = callback {
         let message = match action {
-            Some(a) => format!("I encountered an error while trying to {}. Please try again.", a),
+            Some(a) => format!(
+                "I encountered an error while trying to {}. Please try again.",
+                a
+            ),
             None => error.user_message.clone(),
         };
         cb(&message, true);
     }
 }
-
-

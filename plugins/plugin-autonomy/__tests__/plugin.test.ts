@@ -144,7 +144,7 @@ describe('Autonomy Plugin Tests', () => {
     });
 
     it('should have correct service metadata', () => {
-      expect(AutonomyService.serviceType).toBe('AUTONOMOUS');
+      expect(AutonomyService.serviceType).toBe('AUTONOMY');
     });
   });
 
@@ -162,7 +162,7 @@ describe('Autonomy Plugin Tests', () => {
           return null;
         },
         getService: (serviceName: string) => {
-          if (serviceName === 'AUTONOMOUS') {
+          if (serviceName === 'AUTONOMY' || serviceName === 'autonomy') {
             return {
               getAutonomousRoomId: () => 'autonomous-room-id' as UUID,
               isLoopRunning: () => false,
@@ -192,7 +192,7 @@ describe('Autonomy Plugin Tests', () => {
       const runtimeWithAdmin = {
         ...mockRuntime,
         getService: (serviceName: string) => {
-          if (serviceName === 'AUTONOMOUS') {
+          if (serviceName === 'AUTONOMY' || serviceName === 'autonomy') {
             return {
               getAutonomousRoomId: () => 'autonomous-room-id' as UUID,
               isLoopRunning: () => false,
@@ -271,7 +271,7 @@ describe('Autonomy Plugin Tests', () => {
 
     it('should have consistent naming', () => {
       expect(autonomyPlugin.name).toBe('autonomy');
-      expect(AutonomyService.serviceType).toBe('AUTONOMOUS');
+      expect(AutonomyService.serviceType).toBe('AUTONOMY');
       expect(adminChatProvider.name).toBe('ADMIN_CHAT_HISTORY');
       expect(autonomyStatusProvider.name).toBe('AUTONOMY_STATUS');
       expect(sendToAdminAction.name).toBe('SEND_TO_ADMIN');

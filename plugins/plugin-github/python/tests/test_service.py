@@ -88,9 +88,7 @@ class TestRepositoryOperations:
     async def test_get_repository(self, service: GitHubService):
         """Test getting a public repository."""
         # Use a well-known public repository
-        repo = await service.get_repository(
-            RepositoryRef(owner="octocat", repo="Hello-World")
-        )
+        repo = await service.get_repository(RepositoryRef(owner="octocat", repo="Hello-World"))
         assert repo.name == "Hello-World"
         assert repo.owner.login == "octocat"
         assert repo.full_name == "octocat/Hello-World"

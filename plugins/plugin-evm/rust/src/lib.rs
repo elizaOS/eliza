@@ -1,12 +1,12 @@
 #![allow(missing_docs)]
 #![deny(unsafe_code)]
 
-pub mod types;
-pub mod constants;
-pub mod providers;
 pub mod actions;
+pub mod constants;
 pub mod error;
+pub mod providers;
 pub mod service;
+pub mod types;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
@@ -19,7 +19,5 @@ pub use actions::{
     BridgeAction, BridgeParams, SwapAction, SwapParams, TransferAction, TransferParams,
 };
 pub use providers::{WalletProvider, WalletProviderConfig};
+pub use service::{EVMService, EvmWalletChainData, EvmWalletData};
 pub use types::SupportedChain;
-pub use service::{EVMService, EvmWalletData, EvmWalletChainData};
-
-

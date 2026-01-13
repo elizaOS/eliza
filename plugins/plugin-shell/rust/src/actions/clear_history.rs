@@ -5,7 +5,8 @@ use serde_json::Value;
 pub struct ClearHistoryAction;
 
 impl ClearHistoryAction {
-    const CLEAR_KEYWORDS: &'static [&'static str] = &["clear", "reset", "delete", "remove", "clean"];
+    const CLEAR_KEYWORDS: &'static [&'static str] =
+        &["clear", "reset", "delete", "remove", "clean"];
     const HISTORY_KEYWORDS: &'static [&'static str] = &["history", "terminal", "shell", "command"];
 
     fn has_clear_keyword(text: &str) -> bool {
@@ -26,7 +27,12 @@ impl Action for ClearHistoryAction {
     }
 
     fn similes(&self) -> Vec<&str> {
-        vec!["RESET_SHELL", "CLEAR_TERMINAL", "CLEAR_HISTORY", "RESET_HISTORY"]
+        vec![
+            "RESET_SHELL",
+            "CLEAR_TERMINAL",
+            "CLEAR_HISTORY",
+            "RESET_HISTORY",
+        ]
     }
 
     fn description(&self) -> &str {

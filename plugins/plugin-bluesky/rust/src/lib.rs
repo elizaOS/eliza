@@ -4,8 +4,8 @@
 pub mod client;
 pub mod config;
 pub mod error;
-pub mod types;
 pub mod service;
+pub mod types;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;

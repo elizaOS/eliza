@@ -6,7 +6,6 @@ from elizaos_plugin_planning.actions.analyze_input import ActionExample
 
 @dataclass
 class ExecuteFinalAction:
-
     @property
     def name(self) -> str:
         return "EXECUTE_FINAL"

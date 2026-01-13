@@ -317,9 +317,9 @@ class SimpleTicTacToeRuntime:
     def __init__(self) -> None:
         self.character = {"name": "Agent-1"}  # Anonymous character
 
-    async def use_model(self, model_type: str, params: dict) -> str:
-        """Simulates runtime.useModel() using our custom handler."""
-        return await tic_tac_toe_model_handler(self, params)
+    async def decide(self, prompt: str) -> str:
+        """Get a move decision via the local (non-LLM) handler."""
+        return await tic_tac_toe_model_handler(self, {"prompt": prompt})
 
 
 # ============================================================================
@@ -408,7 +408,7 @@ Your mark is {state.current_player}.
 Choose the optimal position (0-8) for your next move.
 """
 
-            response = await runtime.use_model("TEXT_SMALL", {"prompt": prompt})
+            response = await runtime.decide(prompt)
             ai_move = int(response.strip())
             print(f"AI plays position {ai_move}")
             game.make_move(ai_move)
@@ -442,7 +442,7 @@ Your mark is {state.current_player}.
 Choose the optimal position (0-8) for your next move.
 """
 
-        response = await runtime.use_model("TEXT_SMALL", {"prompt": prompt})
+        response = await runtime.decide(prompt)
         move = int(response.strip())
         print(f"{state.current_player} plays position {move}")
         game.make_move(move)
@@ -468,7 +468,7 @@ async def run_benchmark(runtime: SimpleTicTacToeRuntime, game: TicTacToeGame) ->
             state = game.get_state()
             board_str = " ".join(c if c else "_" for c in state.board)
             prompt = f"BOARD: {board_str}\nYou are {state.current_player}."
-            response = await runtime.use_model("TEXT_SMALL", {"prompt": prompt})
+            response = await runtime.decide(prompt)
             move = int(response.strip())
             game.make_move(move)
 

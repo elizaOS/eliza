@@ -114,7 +114,6 @@ pub struct ElizaClassicPlugin {
     max_history: usize,
 }
 
-
 impl Default for ElizaClassicPlugin {
     fn default() -> Self {
         Self::new()
@@ -241,10 +240,7 @@ impl ElizaClassicPlugin {
         let mut history = self.response_history.lock().unwrap();
         let mut rng = rand::thread_rng();
 
-        let available: Vec<_> = responses
-            .iter()
-            .filter(|r| !history.contains(r))
-            .collect();
+        let available: Vec<_> = responses.iter().filter(|r| !history.contains(r)).collect();
 
         let pool = if available.is_empty() {
             responses.iter().collect::<Vec<_>>()
@@ -252,9 +248,15 @@ impl ElizaClassicPlugin {
             available
         };
 
-        let response = pool.choose(&mut rng).map(|s| (*s).clone()).unwrap_or_else(|| {
-            responses.first().cloned().unwrap_or_else(|| "I see.".to_string())
-        });
+        let response = pool
+            .choose(&mut rng)
+            .map(|s| (*s).clone())
+            .unwrap_or_else(|| {
+                responses
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "I see.".to_string())
+            });
 
         history.push(response.clone());
         if history.len() > self.max_history {
@@ -340,4 +342,3 @@ mod tests {
         assert!(!response.is_empty());
     }
 }
-

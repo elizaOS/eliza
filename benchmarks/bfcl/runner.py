@@ -167,7 +167,54 @@ class BFCLRunner:
         self.exec_evaluator.setup_standard_mocks()
 
     async def _cleanup(self) -> None:
-        """Clean up resources."""
+        """Clean up resources and export trajectories."""
+        # Export trajectories for training if available
+        if hasattr(self.agent, 'export_trajectories') and hasattr(self.agent, 'get_trajectories'):
+            trajectories = self.agent.get_trajectories()
+            logger.debug(f"Trajectories available for export: {len(trajectories) if trajectories else 0}")
+            if trajectories:
+                import os
+                output_dir = self.config.output_dir or "benchmark_results/bfcl"
+                os.makedirs(output_dir, exist_ok=True)
+                
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                model_suffix = (self._model_name or "unknown").replace("/", "_").replace(".", "-")
+                traj_dir = os.path.join(output_dir, "trajectories")
+                os.makedirs(traj_dir, exist_ok=True)
+
+                # Export training-friendly formats when possible.
+                art_path = os.path.join(traj_dir, f"bfcl_art_{model_suffix}_{timestamp}.jsonl")
+                grpo_path = os.path.join(traj_dir, f"bfcl_grpo_{model_suffix}_{timestamp}.json")
+                jsonl_path = os.path.join(traj_dir, f"bfcl_raw_{model_suffix}_{timestamp}.jsonl")
+
+                exported_any = False
+                try:
+                    export_path = self.agent.export_trajectories(art_path, format="art")
+                    if export_path:
+                        exported_any = True
+                        logger.info(f"Exported BFCL ART trajectories to {export_path}")
+                except Exception:
+                    pass
+                try:
+                    export_path = self.agent.export_trajectories(grpo_path, format="grpo")
+                    if export_path:
+                        exported_any = True
+                        logger.info(f"Exported BFCL GRPO trajectories to {export_path}")
+                except Exception:
+                    pass
+
+                if not exported_any:
+                    # Fallback: raw JSONL dump
+                    export_path = self.agent.export_trajectories(jsonl_path, format="jsonl")
+                    if export_path:
+                        logger.info(f"Exported {len(trajectories)} raw trajectories to {export_path}")
+                    else:
+                        logger.warning("Trajectory export returned None")
+            else:
+                logger.debug("No trajectories to export")
+        else:
+            logger.debug("Agent does not support trajectory export")
+        
         await self.agent.close()
 
     async def _run_all_tests(self) -> list[BFCLResult]:
@@ -254,6 +301,22 @@ class BFCLRunner:
             test_case.expected_calls,
         )
 
+        # Update trajectory reward with evaluation results
+        if hasattr(self.agent, 'update_trajectory_reward'):
+            reward = 0.0
+            if ast_match:
+                reward += 0.5
+            if exec_success:
+                reward += 0.3
+            if relevance_correct:
+                reward += 0.2
+            self.agent.update_trajectory_reward(
+                test_case.id,
+                reward=reward,
+                ast_match=ast_match,
+                exec_match=exec_success,
+            )
+        
         return BFCLResult(
             test_case_id=test_case.id,
             category=test_case.category,
@@ -353,12 +416,15 @@ class BFCLRunner:
         await self._initialize()
         await self.dataset.load()
 
-        results: list[BFCLResult] = []
-        for test_case in self.dataset.get_by_category(category):
-            result = await self._run_single_test(test_case)
-            results.append(result)
+        try:
+            results: list[BFCLResult] = []
+            for test_case in self.dataset.get_by_category(category):
+                result = await self._run_single_test(test_case)
+                results.append(result)
 
-        return results
+            return results
+        finally:
+            await self._cleanup()
 
     async def run_sample(
         self,
@@ -378,46 +444,49 @@ class BFCLRunner:
         await self._initialize()
         await self.dataset.load()
 
-        # Get stratified sample
-        sample = self.dataset.get_sample(n, categories)
-        logger.info(f"Running sample of {len(sample)} tests")
+        try:
+            # Get stratified sample
+            sample = self.dataset.get_sample(n, categories)
+            logger.info(f"Running sample of {len(sample)} tests")
 
-        results: list[BFCLResult] = []
-        for test_case in sample:
-            result = await self._run_single_test(test_case)
-            results.append(result)
+            results: list[BFCLResult] = []
+            for test_case in sample:
+                result = await self._run_single_test(test_case)
+                results.append(result)
 
-        # Calculate metrics
-        metrics = self.metrics_calculator.calculate(results)
-        baseline_comparison = self.metrics_calculator.compare_to_baselines(metrics)
-        
-        # Get model name from agent
-        if hasattr(self.agent, 'model_name') and self.agent.model_name:
-            self._model_name = self.agent.model_name
+            # Calculate metrics
+            metrics = self.metrics_calculator.calculate(results)
+            baseline_comparison = self.metrics_calculator.compare_to_baselines(metrics)
+            
+            # Get model name from agent
+            if hasattr(self.agent, 'model_name') and self.agent.model_name:
+                self._model_name = self.agent.model_name
 
-        benchmark_results = BFCLBenchmarkResults(
-            metadata={
-                "benchmark": "BFCL",
-                "version": self.config.version,
-                "mode": "sample",
-                "sample_size": len(sample),
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "model": self._model_name or "unknown",
-            },
-            config=self.config,
-            metrics=metrics,
-            results=results,
-            baseline_comparison=baseline_comparison,
-            summary=self._generate_summary(metrics, baseline_comparison),
-            model_name=self._model_name,
-            provider=self._provider,
-        )
+            benchmark_results = BFCLBenchmarkResults(
+                metadata={
+                    "benchmark": "BFCL",
+                    "version": self.config.version,
+                    "mode": "sample",
+                    "sample_size": len(sample),
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "model": self._model_name or "unknown",
+                },
+                config=self.config,
+                metrics=metrics,
+                results=results,
+                baseline_comparison=baseline_comparison,
+                summary=self._generate_summary(metrics, baseline_comparison),
+                model_name=self._model_name,
+                provider=self._provider,
+            )
 
-        # Generate report if configured
-        if self.config.generate_report:
-            await self.reporter.generate_report(benchmark_results)
+            # Generate report if configured
+            if self.config.generate_report:
+                await self.reporter.generate_report(benchmark_results)
 
-        return benchmark_results
+            return benchmark_results
+        finally:
+            await self._cleanup()
 
     def get_results(self) -> list[BFCLResult]:
         """Get results from the last run."""

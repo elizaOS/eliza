@@ -20,7 +20,8 @@ async def get_action_state_context(
         "available": [],
     }
 
-    available_actions = runtime.get_available_actions()
+    # Use the actions property instead of get_available_actions()
+    available_actions = runtime.actions
     action_data["available"] = [a.name for a in available_actions]
 
     if action_data["available"]:

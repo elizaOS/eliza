@@ -22,8 +22,8 @@ pub use types::{
     ShellConfigBuilder,
 };
 
-pub use actions::{ClearHistoryAction, ExecuteCommandAction, get_shell_actions};
-pub use providers::{ShellHistoryProvider, get_shell_providers};
+pub use actions::{get_shell_actions, ClearHistoryAction, ExecuteCommandAction};
+pub use providers::{get_shell_providers, ShellHistoryProvider};
 
 pub const PLUGIN_NAME: &str = "shell";
 pub const PLUGIN_DESCRIPTION: &str =

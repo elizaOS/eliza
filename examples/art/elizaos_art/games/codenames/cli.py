@@ -11,19 +11,9 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from elizaos_art.base import TrainingConfig
-from elizaos_art.games.codenames.agent import (
-    CodenamesGuesserAgent,
-    CodenamesRandomAgent,
-    CodenamesSpymasterAgent,
-)
+from elizaos_art.games.codenames.agent import CodenamesAgent, CodenamesGuesserAgent
 from elizaos_art.games.codenames.environment import CodenamesEnvironment
-from elizaos_art.games.codenames.types import (
-    Clue,
-    CodenamesAction,
-    CodenamesConfig,
-    Role,
-    Team,
-)
+from elizaos_art.games.codenames.types import CodenamesAction, CodenamesConfig, CardColor, Role
 from elizaos_art.trainer import GRPOTrainer
 
 app = typer.Typer(
@@ -35,248 +25,186 @@ console = Console()
 
 @app.command()
 def play(
-    episodes: int = typer.Option(5, help="Number of games"),
-    role: str = typer.Option("guesser", help="Role: spymaster or guesser"),
-    team: str = typer.Option("red", help="Team: red or blue"),
+    episodes: int = typer.Option(5, help="Number of episodes"),
+    role: str = typer.Option("guesser", help="Role: guesser or spymaster"),
+    delay: float = typer.Option(1.0, help="Delay between moves"),
+    seed: int | None = typer.Option(None, help="Random seed"),
 ) -> None:
     """Watch an agent play Codenames."""
 
     async def run() -> None:
-        train_role = Role.SPYMASTER if role == "spymaster" else Role.GUESSER
-        train_team = Team.RED if team == "red" else Team.BLUE
-
-        config = CodenamesConfig(train_role=train_role, train_team=train_team)
+        ai_role = Role.SPYMASTER if role == "spymaster" else Role.GUESSER
+        config = CodenamesConfig(ai_role=ai_role, ai_team=CardColor.RED)
         env = CodenamesEnvironment(config)
         await env.initialize()
 
-        if train_role == Role.GUESSER:
-            agent = CodenamesGuesserAgent()
-        else:
-            agent = CodenamesSpymasterAgent()
+        agent = CodenamesGuesserAgent() if ai_role == Role.GUESSER else CodenamesAgent()
 
-        console.print(f"\n[bold]Codenames - {role.title()} ({team.title()} team)[/bold]\n")
+        console.print(f"\n[bold]Codenames - {episodes} episodes as {role}[/bold]\n")
 
         wins = 0
+        losses = 0
 
         for ep in range(episodes):
-            console.print(f"\n[bold cyan]Game {ep + 1}/{episodes}[/bold cyan]")
-            state = await env.reset(seed=ep)
+            state = await env.reset(seed=seed + ep if seed else None)
+            console.print(f"\n[cyan]Episode {ep + 1}/{episodes}[/cyan]")
 
-            while not state.is_terminal():
+            while not state.game_over:
                 console.print(env.render(state))
 
-                if state.current_role == Role.GUESSER:
-                    actions = env.get_available_actions(state)
-                    if not actions:
-                        break
+                actions = env.get_available_actions(state)
+                if not actions:
+                    break
 
+                if state.current_team == config.ai_team:
                     action = await agent.decide(state, actions)
-                    word = state.board[action.value].word if action != CodenamesAction.PASS else "PASS"
-                    console.print(f"[dim]Agent guesses: {word}[/dim]")
-
-                    state, reward, done = await env.step(action)
-                    console.print(f"[dim]Reward: {reward:+.1f}[/dim]")
+                    console.print(f"AI action: {action.name}")
+                    state, reward, _ = await env.step(action)
+                    console.print(f"Reward: {reward}")
                 else:
-                    # Generate clue
-                    await env._generate_opponent_clue()
-                    state = env._current_state
-                    if state and state.current_clue:
-                        console.print(f"[yellow]Clue: {state.current_clue}[/yellow]")
+                    # Opponent turn - simulate
+                    state, _, _ = await env.step(actions[0])
 
-            console.print(env.render(state))
+                await asyncio.sleep(delay)
 
-            if state.winner == train_team:
-                console.print("[green]Agent's team wins![/green]")
+            # Game over
+            console.print("\n" + env.render(state))
+            if state.winner == config.ai_team:
+                console.print("[green]WIN![/green]")
                 wins += 1
             else:
-                console.print("[red]Agent's team loses![/red]")
+                console.print("[red]LOSS[/red]")
+                losses += 1
 
-        console.print(f"\n[bold]Results: {wins}/{episodes} wins[/bold]")
+        console.print(f"\n[bold]Results: {wins} wins, {losses} losses[/bold]")
 
     asyncio.run(run())
 
 
 @app.command()
 def interactive(
-    role: str = typer.Option("guesser", help="Your role: spymaster or guesser"),
+    role: str = typer.Option("guesser", help="Your role: guesser or spymaster"),
 ) -> None:
     """Play Codenames interactively."""
 
     async def run() -> None:
-        train_role = Role.SPYMASTER if role == "spymaster" else Role.GUESSER
-        config = CodenamesConfig(train_role=train_role)
+        ai_role = Role.GUESSER if role == "guesser" else Role.SPYMASTER
+        config = CodenamesConfig(ai_role=ai_role, ai_team=CardColor.RED)
         env = CodenamesEnvironment(config)
         await env.initialize()
 
-        state = await env.reset()
-        console.print(f"\n[bold]Codenames Interactive - You are {role.title()}[/bold]\n")
+        console.print("\n[bold]Codenames Interactive Mode[/bold]")
+        console.print(f"You are the {role} for the RED team.\n")
 
-        while not state.is_terminal():
+        state = await env.reset()
+
+        while not state.game_over:
             console.print(env.render(state))
 
-            if state.current_role == Role.SPYMASTER and train_role == Role.SPYMASTER:
-                # Your turn to give clue
-                clue_input = console.input("Give clue (WORD NUMBER): ").strip()
-                if clue_input.lower() == "q":
-                    break
+            actions = env.get_available_actions(state)
+            if not actions:
+                break
 
-                try:
-                    parts = clue_input.split()
-                    word = parts[0].upper()
-                    number = int(parts[1]) if len(parts) > 1 else 1
-                    clue = Clue(word=word, number=number)
-                    state = env.give_clue(clue)
-                except (IndexError, ValueError) as e:
-                    console.print(f"[red]Invalid clue: {e}[/red]")
-                    continue
+            if state.current_role == ai_role and state.current_team == config.ai_team:
+                # Player's turn
+                console.print("\nYour turn!")
 
-            elif state.current_role == Role.GUESSER and train_role == Role.GUESSER:
-                # Your turn to guess
-                actions = env.get_available_actions(state)
-                unrevealed = [
-                    state.board[a.value].word
-                    for a in actions
-                    if a != CodenamesAction.PASS
-                ]
-                console.print(f"Words: {', '.join(unrevealed)}")
+                if ai_role == Role.GUESSER:
+                    user_input = console.input("Enter word number (or PASS): ").strip()
 
-                guess = console.input("Guess a word (or PASS): ").strip().upper()
-                if guess == "Q":
-                    break
+                    if user_input.upper() == "PASS":
+                        action = CodenamesAction.PASS
+                    else:
+                        try:
+                            idx = int(user_input)
+                            action = CodenamesAction.from_word_index(idx)
+                        except (ValueError, IndexError):
+                            console.print("[red]Invalid input[/red]")
+                            continue
 
-                if guess == "PASS":
-                    action = CodenamesAction.PASS
+                    state, reward, _ = await env.step(action)
+                    console.print(f"Reward: {reward}\n")
                 else:
-                    try:
-                        action = CodenamesAction.from_word(guess, list(state.board))
-                    except ValueError:
-                        console.print("[red]Word not found![/red]")
-                        continue
+                    # Spymaster gives clue
+                    clue_word = console.input("Clue word: ").strip()
+                    clue_num = int(console.input("Number: ").strip())
 
-                state, reward, _ = await env.step(action)
-                console.print(f"[dim]Reward: {reward:+.1f}[/dim]")
+                    from elizaos_art.games.codenames.types import Clue
 
+                    env.set_pending_clue(Clue(word=clue_word, number=clue_num))
+                    state, _, _ = await env.step(CodenamesAction.GIVE_CLUE)
             else:
-                # AI's turn
-                if state.current_role == Role.SPYMASTER:
-                    await env._generate_opponent_clue()
-                    state = env._current_state
-                    if state and state.current_clue:
-                        console.print(f"[yellow]AI Clue: {state.current_clue}[/yellow]")
+                # AI/opponent turn
+                console.print("[dim]Opponent's turn...[/dim]")
+                await asyncio.sleep(0.5)
+
+                for action in actions:
+                    if action not in (CodenamesAction.PASS, CodenamesAction.GIVE_CLUE):
+                        state, _, _ = await env.step(action)
+                        break
                 else:
-                    # AI guesses
-                    actions = env.get_available_actions(state)
-                    ai_agent = CodenamesRandomAgent()
-                    action = await ai_agent.decide(state, actions)
-                    word = state.board[action.value].word if action != CodenamesAction.PASS else "PASS"
-                    console.print(f"[dim]AI guesses: {word}[/dim]")
-                    state, _, _ = await env.step(action)
+                    state, _, _ = await env.step(CodenamesAction.PASS)
 
         console.print("\n[bold]Game Over![/bold]")
         console.print(env.render(state))
-        if state.winner:
-            console.print(f"Winner: {state.winner.name}")
+
+        if state.winner == config.ai_team:
+            console.print("[green]You win![/green]")
+        else:
+            console.print("[red]You lose![/red]")
 
     asyncio.run(run())
 
 
 @app.command()
 def benchmark(
-    episodes: int = typer.Option(100, help="Games to play"),
+    episodes: int = typer.Option(50, help="Episodes per configuration"),
 ) -> None:
-    """Benchmark guesser strategies."""
+    """Benchmark Codenames performance."""
 
     async def run() -> None:
-        config = CodenamesConfig(train_role=Role.GUESSER)
+        config = CodenamesConfig(ai_role=Role.GUESSER, ai_team=CardColor.RED)
+        env = CodenamesEnvironment(config)
+        await env.initialize()
 
-        agents = [
-            ("Random", CodenamesRandomAgent()),
-            ("Heuristic", CodenamesGuesserAgent()),
-        ]
+        agent = CodenamesGuesserAgent()
 
-        results: list[dict] = []
+        console.print(f"\n[bold]Benchmarking Codenames ({episodes} episodes)[/bold]\n")
 
-        for agent_name, agent in agents:
-            console.print(f"[cyan]Benchmarking {agent_name}...[/cyan]")
+        wins = 0
+        total_reward = 0.0
 
-            env = CodenamesEnvironment(config)
-            await env.initialize()
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Running...", total=episodes)
 
-            wins = 0
-            total_guesses = 0
-            correct_guesses = 0
+            for ep in range(episodes):
+                state = await env.reset(seed=ep)
+                episode_reward = 0.0
 
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                task = progress.add_task(agent_name, total=episodes)
+                while not state.game_over:
+                    actions = env.get_available_actions(state)
+                    if not actions:
+                        break
 
-                for ep in range(episodes):
-                    state = await env.reset(seed=ep)
-                    ep_guesses = 0
-                    ep_correct = 0
+                    if state.current_team == config.ai_team:
+                        action = await agent.decide(state, actions)
+                        state, reward, _ = await env.step(action)
+                        episode_reward += reward
+                    else:
+                        state, _, _ = await env.step(actions[0])
 
-                    while not state.is_terminal():
-                        if state.current_role == Role.GUESSER:
-                            actions = env.get_available_actions(state)
-                            if not actions:
-                                break
+                if state.winner == config.ai_team:
+                    wins += 1
+                total_reward += episode_reward
+                progress.update(task, advance=1)
 
-                            action = await agent.decide(state, actions)
-                            old_remaining = (
-                                state.red_remaining
-                                if state.current_team == Team.RED
-                                else state.blue_remaining
-                            )
-
-                            state, reward, _ = await env.step(action)
-
-                            if action != CodenamesAction.PASS:
-                                ep_guesses += 1
-                                new_remaining = (
-                                    state.red_remaining
-                                    if state.current_team == Team.RED
-                                    else state.blue_remaining
-                                )
-                                if new_remaining < old_remaining:
-                                    ep_correct += 1
-                        else:
-                            await env._generate_opponent_clue()
-                            state = env._current_state
-
-                    if state.winner == config.train_team:
-                        wins += 1
-
-                    total_guesses += ep_guesses
-                    correct_guesses += ep_correct
-                    progress.update(task, advance=1)
-
-            results.append({
-                "agent": agent_name,
-                "wins": wins,
-                "win_rate": wins / episodes,
-                "total_guesses": total_guesses,
-                "accuracy": correct_guesses / max(total_guesses, 1),
-            })
-
-        table = Table(title="Codenames Benchmark")
-        table.add_column("Agent")
-        table.add_column("Wins", justify="right")
-        table.add_column("Win Rate", justify="right")
-        table.add_column("Guess Accuracy", justify="right")
-
-        for r in results:
-            table.add_row(
-                r["agent"],
-                str(r["wins"]),
-                f"{r['win_rate']:.1%}",
-                f"{r['accuracy']:.1%}",
-            )
-
-        console.print("\n")
-        console.print(table)
+        console.print(f"\n[bold]Results[/bold]")
+        console.print(f"  Win Rate: {wins / episodes:.1%}")
+        console.print(f"  Avg Reward: {total_reward / episodes:.2f}")
 
     asyncio.run(run())
 
@@ -284,29 +212,25 @@ def benchmark(
 @app.command()
 def train(
     steps: int = typer.Option(50, help="Training steps"),
-    rollouts: int = typer.Option(8, help="Rollouts per group"),
-    role: str = typer.Option("guesser", help="Role to train"),
-    model: str = typer.Option("meta-llama/Llama-3.2-3B-Instruct"),
+    role: str = typer.Option("guesser", help="Role to train: guesser or spymaster"),
+    model: str = typer.Option("meta-llama/Llama-3.2-3B-Instruct", help="Model"),
+    resume: bool = typer.Option(False, help="Resume from checkpoint"),
 ) -> None:
-    """Run GRPO training."""
+    """Run GRPO training for Codenames."""
 
     async def run() -> None:
-        train_role = Role.SPYMASTER if role == "spymaster" else Role.GUESSER
-        config = CodenamesConfig(train_role=train_role)
+        ai_role = Role.SPYMASTER if role == "spymaster" else Role.GUESSER
+        config = CodenamesConfig(ai_role=ai_role, ai_team=CardColor.RED)
         env = CodenamesEnvironment(config)
+        agent = CodenamesAgent(model_name=model)
 
-        if train_role == Role.GUESSER:
-            agent = CodenamesGuesserAgent(model_name=model)
-        else:
-            agent = CodenamesSpymasterAgent(model_name=model)
-
-        train_config = TrainingConfig(
+        trainer_config = TrainingConfig(
             model_name=model,
             max_steps=steps,
-            rollouts_per_group=rollouts,
+            resume_from="./checkpoints/codenames" if resume else None,
         )
 
-        trainer = GRPOTrainer(env=env, agent=agent, config=train_config)
+        trainer = GRPOTrainer(env=env, agent=agent, config=trainer_config)
         await trainer.initialize()
         await trainer.train(steps)
 
@@ -317,31 +241,29 @@ def train(
 def pipeline(
     steps: int = typer.Option(50, help="Training steps"),
     eval_episodes: int = typer.Option(50, help="Evaluation episodes"),
-    role: str = typer.Option("guesser", help="Role to train"),
-    model: str = typer.Option("meta-llama/Llama-3.2-3B-Instruct"),
+    role: str = typer.Option("guesser", help="Role: guesser or spymaster"),
+    model: str = typer.Option("meta-llama/Llama-3.2-3B-Instruct", help="Model"),
+    resume: bool = typer.Option(False, help="Resume from checkpoint"),
 ) -> None:
-    """Full training pipeline."""
+    """Run full training pipeline."""
 
     async def run() -> None:
-        train_role = Role.SPYMASTER if role == "spymaster" else Role.GUESSER
-        config = CodenamesConfig(train_role=train_role)
+        ai_role = Role.SPYMASTER if role == "spymaster" else Role.GUESSER
+        config = CodenamesConfig(ai_role=ai_role, ai_team=CardColor.RED)
         env = CodenamesEnvironment(config)
+        agent = CodenamesAgent(model_name=model)
 
-        if train_role == Role.GUESSER:
-            agent = CodenamesGuesserAgent(model_name=model)
-        else:
-            agent = CodenamesSpymasterAgent(model_name=model)
-
-        train_config = TrainingConfig(
+        trainer_config = TrainingConfig(
             model_name=model,
             max_steps=steps,
             eval_episodes=eval_episodes,
+            resume_from="./checkpoints/codenames" if resume else None,
         )
 
-        trainer = GRPOTrainer(env=env, agent=agent, config=train_config)
+        trainer = GRPOTrainer(env=env, agent=agent, config=trainer_config)
         results = await trainer.pipeline(steps, eval_episodes)
 
-        console.print(f"\n[bold green]Pipeline Complete![/bold green]")
+        console.print("\n[bold green]Pipeline Complete![/bold green]")
         console.print(f"Win rate improvement: {results['improvement']['win_rate']:+.1%}")
 
     asyncio.run(run())

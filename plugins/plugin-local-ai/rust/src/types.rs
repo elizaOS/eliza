@@ -83,6 +83,3 @@ pub struct ModelSpec {
     pub quantization: String,
     pub context_size: usize,
 }
-
-
-

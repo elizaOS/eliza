@@ -73,6 +73,3 @@ mod tests {
         assert!(model_supports_temperature("claude-3-sonnet"));
     }
 }
-
-
-

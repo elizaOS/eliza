@@ -72,4 +72,3 @@ class TestConfig:
         config = OllamaConfig(base_url="http://localhost:11434")
         assert config.generate_url == "http://localhost:11434/api/generate"
         assert config.embeddings_url == "http://localhost:11434/api/embeddings"
-

@@ -179,7 +179,6 @@ class PlanningService:
         self.plan_executions[plan.id] = execution
 
         try:
-
             if plan.execution_model == "sequential":
                 await self._execute_sequential(plan, message, execution, callback)
             elif plan.execution_model == "parallel":
@@ -266,7 +265,6 @@ class PlanningService:
         results: list[dict[str, Any]],
         error: Optional[Exception] = None,
     ) -> ActionPlan:
-
         adaptation_prompt = self._build_adaptation_prompt(plan, current_step_index, results, error)
 
         if self.runtime:
@@ -413,9 +411,9 @@ Focus on:
                             ActionStep(
                                 id=actual_id,
                                 action_name=action_match.group(1).strip(),
-                        parameters=parameters,
-                        dependencies=[],
-                    )
+                                parameters=parameters,
+                                dependencies=[],
+                            )
                         )
                         setattr(steps[-1], "_dependency_strings", dependency_strings)
                 except Exception:
@@ -542,7 +540,7 @@ Focus on:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for result in results:
-            if not isinstance(result, Exception):
+            if not isinstance(result, BaseException):
                 execution.results.append(result)
 
     async def _execute_dag(
@@ -572,7 +570,7 @@ Focus on:
                 pending.discard(step.id)
                 completed.add(step.id)
 
-                if not isinstance(result, Exception):
+                if not isinstance(result, BaseException):
                     execution.results.append(result)
 
     async def _execute_step(

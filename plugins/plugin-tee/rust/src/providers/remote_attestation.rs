@@ -55,6 +55,3 @@ impl RemoteAttestationProvider for PhalaRemoteAttestationProvider {
         })
     }
 }
-
-
-

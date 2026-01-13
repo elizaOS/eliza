@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use log::error;
 
@@ -11,9 +10,7 @@ pub struct KnowledgeProvider {
 
 impl KnowledgeProvider {
     pub fn new() -> Self {
-        Self {
-            items: Vec::new(),
-        }
+        Self { items: Vec::new() }
     }
 
     pub fn update_items(&mut self, items: Vec<KnowledgeItem>) {
@@ -97,10 +94,7 @@ impl KnowledgeProviderTrait for KnowledgeProvider {
 
         let item_refs: Vec<&KnowledgeItem> = items.iter().collect();
         let knowledge_list = self.format_items(&item_refs);
-        let knowledge_text = Self::add_header(
-            "# Relevant Knowledge",
-            &knowledge_list,
-        );
+        let knowledge_text = Self::add_header("# Relevant Knowledge", &knowledge_list);
 
         let knowledge_data: Vec<serde_json::Value> = items
             .iter()

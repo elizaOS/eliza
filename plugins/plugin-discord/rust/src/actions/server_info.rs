@@ -75,21 +75,48 @@ impl DiscordAction for ServerInfoAction {
 }
 
 fn format_server_info(info: &serde_json::Value) -> String {
-    let name = info.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown");
+    let name = info
+        .get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("Unknown");
     let id = info.get("id").and_then(|i| i.as_str()).unwrap_or("Unknown");
-    let owner = info.get("owner").and_then(|o| o.as_str()).unwrap_or("Unknown");
-    let created_at = info.get("created_at").and_then(|c| c.as_str()).unwrap_or("Unknown");
-    let member_count = info.get("member_count").and_then(|m| m.as_u64()).unwrap_or(0);
-    let online_count = info.get("online_count").and_then(|o| o.as_u64()).unwrap_or(0);
-    let channel_count = info.get("channel_count").and_then(|c| c.as_u64()).unwrap_or(0);
+    let owner = info
+        .get("owner")
+        .and_then(|o| o.as_str())
+        .unwrap_or("Unknown");
+    let created_at = info
+        .get("created_at")
+        .and_then(|c| c.as_str())
+        .unwrap_or("Unknown");
+    let member_count = info
+        .get("member_count")
+        .and_then(|m| m.as_u64())
+        .unwrap_or(0);
+    let online_count = info
+        .get("online_count")
+        .and_then(|o| o.as_u64())
+        .unwrap_or(0);
+    let channel_count = info
+        .get("channel_count")
+        .and_then(|c| c.as_u64())
+        .unwrap_or(0);
     let role_count = info.get("role_count").and_then(|r| r.as_u64()).unwrap_or(0);
-    let emoji_count = info.get("emoji_count").and_then(|e| e.as_u64()).unwrap_or(0);
+    let emoji_count = info
+        .get("emoji_count")
+        .and_then(|e| e.as_u64())
+        .unwrap_or(0);
     let verification_level = info
         .get("verification_level")
         .and_then(|v| v.as_str())
         .unwrap_or("Unknown");
-    let boost_level = info.get("boost_level").and_then(|b| b.as_u64()).unwrap_or(0);
-    let boost_count = info.get("boost_count").and_then(|b| b.as_u64()).unwrap_or(0);
+    let boost_level = info
+        .get("boost_level")
+        .and_then(|b| b.as_u64())
+        .unwrap_or(0);
+    let boost_count = info
+        .get("boost_count")
+        .and_then(|b| b.as_u64())
+        .unwrap_or(0);
 
     let mut lines = vec![
         "🏛️ **Server Information**".to_string(),

@@ -1,4 +1,3 @@
-
 #![deny(unsafe_code)]
 
 pub mod client;
@@ -26,4 +25,3 @@ pub const PLUGIN_NAME: &str = "openrouter";
 pub const PLUGIN_DESCRIPTION: &str =
     "OpenRouter multi-model AI gateway with text, object generation, and embedding support";
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
-

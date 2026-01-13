@@ -14,4 +14,3 @@ describe("plugin-experience", () => {
     expect(experiencePlugin.actions?.length).toBeGreaterThan(0);
   });
 });
-

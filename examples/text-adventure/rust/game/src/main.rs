@@ -18,7 +18,8 @@ use console::{style, Term};
 use dialoguer::{theme::ColorfulTheme, Select};
 use elizaos::{
     runtime::{AgentRuntime, RuntimeOptions},
-    types::{Bio, Character},
+    types::{Bio, ChannelType, Character, Content, Memory, UUID},
+    IMessageService,
 };
 use elizaos_plugin_openai::create_openai_elizaos_plugin;
 use std::collections::HashMap;
@@ -711,7 +712,12 @@ async fn create_session() -> Result<GameSession> {
 
     println!("✅ Adventure ready!");
 
-    Ok(GameSession { runtime, game, room_id, game_master_id })
+    Ok(GameSession {
+        runtime,
+        game,
+        room_id,
+        game_master_id,
+    })
 }
 
 async fn decide_action(session: &mut GameSession) -> Result<String> {
@@ -797,19 +803,35 @@ Respond with ONLY the exact action text you want to take (e.g., "go north" or "a
         actions_str
     );
 
-    // Get AI's decision using the model
-    // Note: In a full implementation, this would use the message service
-    // with proper memory persistence for conversation history
-    let params = serde_json::json!({
-        "prompt": game_context,
-        "maxTokens": 1000
-    });
+    // Route through the full message pipeline (planning/actions/providers/memory)
+    let content = Content {
+        text: Some(game_context),
+        source: Some("dungeon-master".to_string()),
+        channel_type: Some(ChannelType::Dm),
+        ..Default::default()
+    };
 
-    let result = runtime.use_model("TEXT_SMALL", params).await?;
-    let chosen_action = result.trim().to_string();
+    let mut message = Memory::new(
+        UUID::from(session.game_master_id),
+        UUID::from(session.room_id),
+        content,
+    );
+
+    let result = runtime
+        .message_service()
+        .handle_message(runtime, &mut message, None, None)
+        .await?;
+
+    let chosen_action = result
+        .response_content
+        .and_then(|c| c.text)
+        .unwrap_or_else(|| "look around".to_string());
 
     // Validate the action is in available actions (case-insensitive match)
-    if let Some(matched) = actions.iter().find(|a| a.eq_ignore_ascii_case(&chosen_action)) {
+    if let Some(matched) = actions
+        .iter()
+        .find(|a| a.eq_ignore_ascii_case(&chosen_action))
+    {
         return Ok(matched.clone());
     }
 
@@ -866,9 +888,17 @@ fn show_result(result: &str, status: &str) {
 fn show_game_over(victory: bool, score: i32, turns: i32) {
     println!("\n{}", "═".repeat(60));
     if victory {
-        println!("{}", style("🏆 VICTORY! Eliza has conquered the dungeon!").green().bold());
+        println!(
+            "{}",
+            style("🏆 VICTORY! Eliza has conquered the dungeon!")
+                .green()
+                .bold()
+        );
     } else {
-        println!("{}", style("💀 GAME OVER! Eliza has fallen...").red().bold());
+        println!(
+            "{}",
+            style("💀 GAME OVER! Eliza has fallen...").red().bold()
+        );
     }
     println!("Final Score: {} points in {} turns", score, turns);
     println!("{}\n", "═".repeat(60));
@@ -910,7 +940,11 @@ async fn run_adventure_game() -> Result<()> {
     }
 
     let final_state = session.game.get_state();
-    show_game_over(final_state.victory, final_state.score, final_state.turns_played);
+    show_game_over(
+        final_state.victory,
+        final_state.score,
+        final_state.turns_played,
+    );
 
     session.runtime.stop().await?;
     println!("Thanks for watching! 🎮");
@@ -945,7 +979,10 @@ async fn run_interactive_mode() -> Result<()> {
         }
 
         let input = input.trim();
-        if input.is_empty() || input.eq_ignore_ascii_case("quit") || input.eq_ignore_ascii_case("exit") {
+        if input.is_empty()
+            || input.eq_ignore_ascii_case("quit")
+            || input.eq_ignore_ascii_case("exit")
+        {
             break;
         }
 
@@ -964,7 +1001,11 @@ async fn run_interactive_mode() -> Result<()> {
 
     let final_state = session.game.get_state();
     if final_state.game_over {
-        show_game_over(final_state.victory, final_state.score, final_state.turns_played);
+        show_game_over(
+            final_state.victory,
+            final_state.score,
+            final_state.turns_played,
+        );
     }
 
     session.runtime.stop().await?;
@@ -1000,4 +1041,3 @@ async fn main() -> Result<()> {
         _ => Ok(()),
     }
 }
-

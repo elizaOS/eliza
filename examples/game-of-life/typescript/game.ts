@@ -21,6 +21,7 @@ import {
   type ActionResult,
   AgentRuntime,
   type Character,
+  createMessageMemory,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -28,6 +29,7 @@ import {
   ModelType,
   type Plugin,
   type State,
+  stringToUuid,
   type UUID,
 } from "@elizaos/core";
 // Import the in-memory database adapter directly from plugin source (bun handles .ts)
@@ -922,15 +924,23 @@ async function main(): Promise<void> {
       });
 
       // Execute the chosen action
-      const action = liveAgent.runtime.actions.find((a) => a.name === decision);
+      const decisionText = typeof decision === "string" ? decision : String(decision);
+      const action = liveAgent.runtime.actions.find((a) => a.name === decisionText);
       if (action) {
+        const message = createMessageMemory({
+          id: randomUUID() as UUID,
+          entityId: id as UUID,
+          roomId: stringToUuid("game-of-life"),
+          content: { text: "decide" },
+        });
+        const composed = await liveAgent.runtime.composeState(message);
         const isValid = await action.validate(
           liveAgent.runtime,
-          {} as Memory,
-          {} as State,
+          message,
+          composed,
         );
         if (isValid) {
-          await action.handler(liveAgent.runtime, {} as Memory, {} as State);
+          await action.handler(liveAgent.runtime, message, composed);
         }
       }
 

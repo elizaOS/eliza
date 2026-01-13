@@ -33,5 +33,3 @@ pub enum RssError {
     #[error("Not subscribed to: {0}")]
     NotSubscribed(String),
 }
-
-

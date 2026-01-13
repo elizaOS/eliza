@@ -64,4 +64,3 @@ __all__ = [
     "ImageGenerationResult",
     "ImageDescriptionResult",
 ]
-

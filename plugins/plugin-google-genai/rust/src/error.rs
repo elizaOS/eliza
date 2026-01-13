@@ -7,14 +7,10 @@ pub type Result<T> = std::result::Result<T, GoogleGenAIError>;
 #[derive(Error, Debug)]
 pub enum GoogleGenAIError {
     #[error("API key error: {message}")]
-    ApiKeyError {
-        message: String,
-    },
+    ApiKeyError { message: String },
 
     #[error("Configuration error: {message}")]
-    ConfigError {
-        message: String,
-    },
+    ConfigError { message: String },
 
     #[error("HTTP request failed: {message}")]
     HttpError {
@@ -23,52 +19,31 @@ pub enum GoogleGenAIError {
     },
 
     #[error("Rate limit exceeded: retry after {retry_after_seconds} seconds")]
-    RateLimitError {
-        retry_after_seconds: u64,
-    },
+    RateLimitError { retry_after_seconds: u64 },
 
     #[error("API error ({error_type}): {message}")]
-    ApiError {
-        error_type: String,
-        message: String,
-    },
+    ApiError { error_type: String, message: String },
 
     #[error("Response parsing error: {message}")]
-    ParseError {
-        message: String,
-    },
+    ParseError { message: String },
 
     #[error("JSON generation error: {message}")]
-    JsonGenerationError {
-        message: String,
-    },
+    JsonGenerationError { message: String },
 
     #[error("Invalid parameter '{parameter}': {message}")]
-    InvalidParameter {
-        parameter: String,
-        message: String,
-    },
+    InvalidParameter { parameter: String, message: String },
 
     #[error("Model not supported: {model}")]
-    UnsupportedModel {
-        model: String,
-    },
+    UnsupportedModel { model: String },
 
     #[error("Network error: {message}")]
-    NetworkError {
-        message: String,
-    },
+    NetworkError { message: String },
 
     #[error("Request timed out after {timeout_seconds} seconds")]
-    Timeout {
-        timeout_seconds: u64,
-    },
+    Timeout { timeout_seconds: u64 },
 
     #[error("Server error ({status_code}): {message}")]
-    ServerError {
-        status_code: u16,
-        message: String,
-    },
+    ServerError { status_code: u16, message: String },
 }
 
 impl GoogleGenAIError {

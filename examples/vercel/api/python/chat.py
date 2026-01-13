@@ -108,22 +108,28 @@ async def handle_chat_async(request: ChatRequest) -> ChatResponse:
     # Generate IDs
     conversation_id = request.get("conversationId") or f"conv-{uuid.uuid4().hex[:12]}"
 
-    # Get the character's system prompt
-    system = runtime.character.system or ""
+    # Route through the full message pipeline (planning/actions/providers/memory)
+    from elizaos import ChannelType, Content, Memory, string_to_uuid
 
-    # Use the runtime's model handler directly
-    from elizaos.types.model import ModelType
+    user_id_raw = request.get("userId") or f"user-{uuid.uuid4().hex}"
+    user_id = string_to_uuid(user_id_raw)
+    room_id = string_to_uuid(conversation_id)
 
-    # Build a simple prompt
-    prompt = f"User: {request['message']}\n{runtime.character.name}:"
+    message = Memory(
+        entity_id=user_id,
+        room_id=room_id,
+        content=Content(
+            text=request["message"],
+            source="vercel",
+            channel_type=ChannelType.DM.value,
+        ),
+    )
 
-    # Call the model through elizaOS runtime
-    response_text = await runtime.use_model(
-        ModelType.TEXT_LARGE.value,
-        {
-            "prompt": prompt,
-            "system": system,
-        }
+    result = await runtime.message_service.handle_message(runtime, message)
+    response_text = (
+        result.response_content.text
+        if result.response_content and result.response_content.text
+        else ""
     )
 
     return {

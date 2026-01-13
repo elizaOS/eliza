@@ -154,7 +154,9 @@ fn parse_rss_feed(xml_content: &str) -> Result<RssFeed> {
     }
 
     if feed.channel.title.is_empty() && feed.items.is_empty() {
-        return Err(RssError::InvalidFeed("No channel element found".to_string()));
+        return Err(RssError::InvalidFeed(
+            "No channel element found".to_string(),
+        ));
     }
 
     Ok(feed)
@@ -335,4 +337,3 @@ mod tests {
         assert!(feed.items.is_empty());
     }
 }
-

@@ -137,6 +137,3 @@ pub async fn upload_attestation_quote(data: &[u8]) -> Result<UploadResponse> {
 pub struct UploadResponse {
     pub checksum: String,
 }
-
-
-

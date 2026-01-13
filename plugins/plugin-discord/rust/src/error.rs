@@ -174,14 +174,19 @@ mod tests {
 
     #[test]
     fn test_error_retryable() {
-        assert!(DiscordError::RateLimited { retry_after_ms: 1000 }.is_retryable());
+        assert!(DiscordError::RateLimited {
+            retry_after_ms: 1000
+        }
+        .is_retryable());
         assert!(DiscordError::Timeout { timeout_ms: 5000 }.is_retryable());
         assert!(!DiscordError::ClientNotInitialized.is_retryable());
     }
 
     #[test]
     fn test_retry_after() {
-        let err = DiscordError::RateLimited { retry_after_ms: 1000 };
+        let err = DiscordError::RateLimited {
+            retry_after_ms: 1000,
+        };
         assert_eq!(err.retry_after_ms(), Some(1000));
 
         let err = DiscordError::ClientNotInitialized;

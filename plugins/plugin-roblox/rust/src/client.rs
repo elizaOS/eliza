@@ -3,8 +3,8 @@
 use crate::config::RobloxConfig;
 use crate::error::{Result, RobloxError};
 use crate::types::{
-    DataStoreEntry, MessagingServiceMessage, RobloxExperienceInfo, RobloxUser,
-    ExperienceCreator, CreatorType,
+    CreatorType, DataStoreEntry, ExperienceCreator, MessagingServiceMessage, RobloxExperienceInfo,
+    RobloxUser,
 };
 use chrono::{DateTime, Utc};
 use reqwest::Client;
@@ -150,7 +150,9 @@ impl RobloxClient {
                     updated_at: response.updated_time,
                 }))
             }
-            Err(RobloxError::Api { status_code: 404, .. }) => Ok(None),
+            Err(RobloxError::Api {
+                status_code: 404, ..
+            }) => Ok(None),
             Err(e) => Err(e),
         }
     }
@@ -192,7 +194,12 @@ impl RobloxClient {
         }
 
         let response = self
-            .request::<Response>(reqwest::Method::POST, ROBLOX_API_BASE, &endpoint, Some(value))
+            .request::<Response>(
+                reqwest::Method::POST,
+                ROBLOX_API_BASE,
+                &endpoint,
+                Some(value),
+            )
             .await?;
 
         Ok(DataStoreEntry {
@@ -292,7 +299,12 @@ impl RobloxClient {
         };
 
         let response = self
-            .request::<Response>(reqwest::Method::POST, USERS_API_BASE, endpoint, Some(request))
+            .request::<Response>(
+                reqwest::Method::POST,
+                USERS_API_BASE,
+                endpoint,
+                Some(request),
+            )
             .await?;
 
         Ok(response.data.into_iter().next().map(|user| RobloxUser {
@@ -324,7 +336,12 @@ impl RobloxClient {
         }
 
         match self
-            .request::<Response>(reqwest::Method::GET, THUMBNAILS_API_BASE, &endpoint, None::<()>)
+            .request::<Response>(
+                reqwest::Method::GET,
+                THUMBNAILS_API_BASE,
+                &endpoint,
+                None::<()>,
+            )
             .await
         {
             Ok(response) => Ok(response.data.into_iter().next().map(|d| d.image_url)),
@@ -332,7 +349,10 @@ impl RobloxClient {
         }
     }
 
-    pub async fn get_experience_info(&self, universe_id: Option<&str>) -> Result<RobloxExperienceInfo> {
+    pub async fn get_experience_info(
+        &self,
+        universe_id: Option<&str>,
+    ) -> Result<RobloxExperienceInfo> {
         let target_universe_id = universe_id.unwrap_or(&self.config.universe_id);
         let endpoint = format!("/v1/games?universeIds={}", target_universe_id);
 
@@ -364,11 +384,9 @@ impl RobloxClient {
             .request::<Response>(reqwest::Method::GET, GAMES_API_BASE, &endpoint, None::<()>)
             .await?;
 
-        let game = response
-            .data
-            .into_iter()
-            .next()
-            .ok_or_else(|| RobloxError::not_found(format!("Experience not found: {}", target_universe_id)))?;
+        let game = response.data.into_iter().next().ok_or_else(|| {
+            RobloxError::not_found(format!("Experience not found: {}", target_universe_id))
+        })?;
 
         Ok(RobloxExperienceInfo {
             universe_id: target_universe_id.to_string(),

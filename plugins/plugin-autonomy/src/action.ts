@@ -10,10 +10,8 @@ import {
   type UUID,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-
-interface AutonomyService {
-  getAutonomousRoomId?: () => string | undefined;
-}
+import type { AutonomyService } from './service';
+import { AutonomousServiceType } from './types';
 
 /**
  * Send to Admin Action - allows agent to send messages to admin from autonomous context
@@ -62,14 +60,14 @@ export const sendToAdminAction: Action = {
     message: Memory
   ): Promise<boolean> => {
     // Only allow this action in autonomous context
-    const autonomyService = runtime.getService('autonomy');
+    const autonomyService = runtime.getService<AutonomyService>(
+      AutonomousServiceType.AUTONOMOUS
+    );
     if (!autonomyService) {
       return false; // Service not available
     }
 
-    const autonomousRoomId = (
-      autonomyService as AutonomyService
-    ).getAutonomousRoomId?.();
+    const autonomousRoomId = autonomyService.getAutonomousRoomId?.();
     if (!autonomousRoomId || message.roomId !== autonomousRoomId) {
       return false; // Not in autonomous context
     }
@@ -110,7 +108,9 @@ export const sendToAdminAction: Action = {
     void _options; // Options currently unused but retained for API parity
 
     // Double-check we're in autonomous context
-    const autonomyService = runtime.getService('autonomy');
+    const autonomyService = runtime.getService<AutonomyService>(
+      AutonomousServiceType.AUTONOMOUS
+    );
     if (!autonomyService) {
       return {
         success: false,
@@ -119,9 +119,7 @@ export const sendToAdminAction: Action = {
       };
     }
 
-    const autonomousRoomId = (
-      autonomyService as AutonomyService
-    ).getAutonomousRoomId?.();
+    const autonomousRoomId = autonomyService.getAutonomousRoomId?.();
     if (!autonomousRoomId || message.roomId !== autonomousRoomId) {
       return {
         success: false,

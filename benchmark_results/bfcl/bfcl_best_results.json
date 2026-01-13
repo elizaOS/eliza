@@ -11,22 +11,32 @@
   },
   "groq/llama-3.1-8b-instant": {
     "model": "groq/llama-3.1-8b-instant",
-    "provider": "groq",
-    "overall_score": 0.7006896551724137,
-    "ast_accuracy": 0.6666666666666666,
-    "exec_accuracy": 0.6666666666666666,
-    "relevance_accuracy": 0.9733333333333334,
-    "total_tests": 75,
-    "timestamp": "2026-01-12T00:30:02.370910"
+    "provider": null,
+    "overall_score": 1.0,
+    "ast_accuracy": 1.0,
+    "exec_accuracy": 1.0,
+    "relevance_accuracy": 1.0,
+    "total_tests": 2,
+    "timestamp": "2026-01-12T11:52:34.091419"
   },
   "openai/gpt-4o-mini": {
     "model": "openai/gpt-4o-mini",
     "provider": "openai",
-    "overall_score": 0.5314039408866995,
-    "ast_accuracy": 0.5217391304347826,
-    "exec_accuracy": 0.5217391304347826,
+    "overall_score": 0.6935185185185185,
+    "ast_accuracy": 0.6666666666666666,
+    "exec_accuracy": 0.6666666666666666,
     "relevance_accuracy": 1.0,
-    "total_tests": 23,
-    "timestamp": "2026-01-12T00:36:45.470738"
+    "total_tests": 27,
+    "timestamp": "2026-01-12T01:14:07.750215"
+  },
+  "anthropic/claude-3-5-haiku-latest": {
+    "model": "anthropic/claude-3-5-haiku-latest",
+    "provider": "anthropic",
+    "overall_score": 0.11111111111111113,
+    "ast_accuracy": 0.16666666666666666,
+    "exec_accuracy": 0.16666666666666666,
+    "relevance_accuracy": 0.16666666666666666,
+    "total_tests": 18,
+    "timestamp": "2026-01-12T01:15:38.880540"
   }
 }

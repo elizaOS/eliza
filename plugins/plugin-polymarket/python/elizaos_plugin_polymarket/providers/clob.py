@@ -1,9 +1,9 @@
+import importlib
 import os
-from typing import Protocol
+from collections.abc import Callable
+from typing import Protocol, cast
 
 from eth_account import Account
-from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import ApiCreds
 
 from elizaos_plugin_polymarket.constants import (
     DEFAULT_CLOB_API_URL,
@@ -13,15 +13,14 @@ from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 
 
 class RuntimeProtocol(Protocol):
-    def get_setting(self, key: str) -> str | None:
-        ...
+    def get_setting(self, key: str) -> str | None: ...
 
 
 class ClobClientProvider:
     def __init__(self, runtime: RuntimeProtocol | None = None) -> None:
         self._runtime = runtime
-        self._client: ClobClient | None = None
-        self._authenticated_client: ClobClient | None = None
+        self._client: object | None = None
+        self._authenticated_client: object | None = None
         self._wallet_address: str | None = None
 
     def _get_setting(self, key: str) -> str | None:
@@ -62,7 +61,7 @@ class ClobClientProvider:
         self._wallet_address = account.address
         return self._wallet_address
 
-    def get_client(self) -> ClobClient:
+    def get_client(self) -> object:
         if self._client:
             return self._client
 
@@ -70,7 +69,10 @@ class ClobClientProvider:
         private_key = self._get_private_key()
 
         try:
-            self._client = ClobClient(
+            client_mod = importlib.import_module("py_clob_client.client")
+            clob_client_ctor = cast(Callable[..., object], getattr(client_mod, "ClobClient"))
+
+            self._client = clob_client_ctor(
                 host=clob_api_url,
                 chain_id=POLYGON_CHAIN_ID,
                 key=private_key,
@@ -83,7 +85,7 @@ class ClobClientProvider:
                 cause=e,
             ) from e
 
-    def get_authenticated_client(self) -> ClobClient:
+    def get_authenticated_client(self) -> object:
         """
         Get or create an authenticated CLOB client for trading operations.
 
@@ -120,13 +122,18 @@ class ClobClientProvider:
             )
 
         try:
-            creds = ApiCreds(
+            client_mod = importlib.import_module("py_clob_client.client")
+            clob_client_ctor = cast(Callable[..., object], getattr(client_mod, "ClobClient"))
+
+            types_mod = importlib.import_module("py_clob_client.clob_types")
+            api_creds_ctor = cast(Callable[..., object], getattr(types_mod, "ApiCreds"))
+            creds = api_creds_ctor(
                 api_key=api_key,
                 api_secret=api_secret,
                 api_passphrase=api_passphrase,
             )
 
-            self._authenticated_client = ClobClient(
+            self._authenticated_client = clob_client_ctor(
                 host=clob_api_url,
                 chain_id=POLYGON_CHAIN_ID,
                 key=private_key,
@@ -154,7 +161,7 @@ class ClobClientProvider:
 _default_provider: ClobClientProvider | None = None
 
 
-def get_clob_client(runtime: RuntimeProtocol | None = None) -> ClobClient:
+def get_clob_client(runtime: RuntimeProtocol | None = None) -> object:
     """
     Get a CLOB client instance.
 
@@ -170,7 +177,7 @@ def get_clob_client(runtime: RuntimeProtocol | None = None) -> ClobClient:
     return _default_provider.get_client()
 
 
-def get_authenticated_clob_client(runtime: RuntimeProtocol | None = None) -> ClobClient:
+def get_authenticated_clob_client(runtime: RuntimeProtocol | None = None) -> object:
     """
     Get an authenticated CLOB client instance.
 
@@ -184,8 +191,3 @@ def get_authenticated_clob_client(runtime: RuntimeProtocol | None = None) -> Clo
     if runtime or _default_provider is None:
         _default_provider = ClobClientProvider(runtime)
     return _default_provider.get_authenticated_client()
-
-
-
-
-

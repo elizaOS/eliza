@@ -36,25 +36,29 @@ impl TextEmbeddingHandler {
     ///
     /// The embedding result.
     pub async fn handle(client: &GrokClient, text: &str) -> EmbeddingResult {
-        info!("TEXT_EMBEDDING: Creating embedding for text length {}", text.len());
+        info!(
+            "TEXT_EMBEDDING: Creating embedding for text length {}",
+            text.len()
+        );
 
         let params = EmbeddingParams::new(text);
         match client.create_embedding(&params).await {
             Ok(embedding) => {
-                debug!("TEXT_EMBEDDING: Created embedding with {} dimensions", embedding.len());
+                debug!(
+                    "TEXT_EMBEDDING: Created embedding with {} dimensions",
+                    embedding.len()
+                );
                 EmbeddingResult {
                     success: true,
                     embedding,
                     error: None,
                 }
             }
-            Err(e) => {
-                EmbeddingResult {
-                    success: false,
-                    embedding: vec![],
-                    error: Some(e.to_string()),
-                }
-            }
+            Err(e) => EmbeddingResult {
+                success: false,
+                embedding: vec![],
+                error: Some(e.to_string()),
+            },
         }
     }
 
@@ -70,11 +74,11 @@ impl TextEmbeddingHandler {
     /// Vector of embedding results.
     pub async fn handle_batch(client: &GrokClient, texts: &[String]) -> Vec<EmbeddingResult> {
         let mut results = Vec::with_capacity(texts.len());
-        
+
         for text in texts {
             results.push(Self::handle(client, text).await);
         }
-        
+
         results
     }
 }

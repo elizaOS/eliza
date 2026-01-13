@@ -1,4 +1,3 @@
-
 from elizaos_plugin_linear.plugin import linear_plugin
 from elizaos_plugin_linear.services.linear import LinearService
 from elizaos_plugin_linear.types import (

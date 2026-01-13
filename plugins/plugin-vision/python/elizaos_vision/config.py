@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -76,12 +75,10 @@ class ConfigSchema(BaseModel):
 
 
 class RuntimeProtocol(Protocol):
-    def get_setting(self, key: str) -> str | None:
-        ...
+    def get_setting(self, key: str) -> str | None: ...
 
 
 class ConfigurationManager:
-
     def __init__(self, runtime: RuntimeProtocol | None = None):
         self._runtime = runtime
         self._config = self._load_configuration()

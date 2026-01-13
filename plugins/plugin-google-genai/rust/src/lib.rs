@@ -46,5 +46,3 @@ pub const PLUGIN_DESCRIPTION: &str =
 
 /// The version of this plugin, derived from Cargo.toml.
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-

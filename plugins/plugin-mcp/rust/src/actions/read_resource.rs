@@ -42,13 +42,13 @@ impl McpAction for ReadResourceAction {
 
     async fn validate(&self, context: &ActionContext) -> McpResult<bool> {
         let servers = context.state.get("mcpServers");
-        
+
         if let Some(servers) = servers {
             if let Some(servers_arr) = servers.as_array() {
                 for server in servers_arr {
                     let status = server.get("status").and_then(|s| s.as_str());
                     let resources = server.get("resources").and_then(|r| r.as_array());
-                    
+
                     if status == Some("connected") {
                         if let Some(resources) = resources {
                             if !resources.is_empty() {
@@ -59,7 +59,7 @@ impl McpAction for ReadResourceAction {
                 }
             }
         }
-        
+
         Ok(false)
     }
 
@@ -70,7 +70,7 @@ impl McpAction for ReadResourceAction {
             .and_then(|r| r.get("uri"))
             .and_then(|u| u.as_str())
             .unwrap_or("");
-        
+
         let server_name = context
             .state
             .get("selectedResource")

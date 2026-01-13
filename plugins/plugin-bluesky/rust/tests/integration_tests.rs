@@ -1,4 +1,6 @@
-use elizaos_plugin_bluesky::{BlueSkyClient, BlueSkyConfig, CreatePostRequest, PostReference, TimelineRequest};
+use elizaos_plugin_bluesky::{
+    BlueSkyClient, BlueSkyConfig, CreatePostRequest, PostReference, TimelineRequest,
+};
 
 fn get_test_config() -> Option<BlueSkyConfig> {
     BlueSkyConfig::from_env().ok()

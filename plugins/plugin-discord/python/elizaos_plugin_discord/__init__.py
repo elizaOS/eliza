@@ -49,5 +49,3 @@ __all__ = [
 __version__ = "0.1.0"
 PLUGIN_NAME = "discord"
 PLUGIN_DESCRIPTION = "Discord integration for elizaOS agents"
-
-

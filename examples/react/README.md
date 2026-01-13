@@ -93,7 +93,7 @@ export const elizaClassicPlugin: Plugin = {
 };
 ```
 
-When the AgentRuntime calls `runtime.useModel(ModelType.TEXT_LARGE, { prompt })`, it routes to our ELIZA pattern matcher instead of an LLM API.
+When the runtime processes a user message via `runtime.messageService.handleMessage(...)`, it will ultimately route to the classic ELIZA model handlers (TEXT_LARGE/TEXT_SMALL) provided by `plugin-eliza-classic` instead of an LLM API.
 
 ### No LLM Required
 

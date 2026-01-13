@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import base64
@@ -58,7 +57,6 @@ async def _save_execution_record(
 
 
 class DescribeSceneAction:
-
     name = "DESCRIBE_SCENE"
     similes = ["ANALYZE_SCENE", "WHAT_DO_YOU_SEE", "VISION_CHECK", "LOOK_AROUND"]
     description = "Analyzes the current visual scene and provides a detailed description."
@@ -288,7 +286,6 @@ class CaptureImageAction:
 
 
 class SetVisionModeAction:
-
     name = "SET_VISION_MODE"
     description = "Set the vision mode to OFF, CAMERA, SCREEN, or BOTH"
     similes = ["change vision to", "set vision mode", "switch to vision"]
@@ -368,7 +365,6 @@ class SetVisionModeAction:
 
 
 class NameEntityAction:
-
     name = "NAME_ENTITY"
     description = "Assign a name to a person or object currently visible"
     similes = ["call the person", "name the person", "that person is"]

@@ -149,5 +149,3 @@ mod tests {
         assert!(!service.is_running().await);
     }
 }
-
-

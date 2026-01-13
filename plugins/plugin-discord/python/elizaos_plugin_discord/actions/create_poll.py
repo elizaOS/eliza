@@ -37,8 +37,8 @@ class CreatePollAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord"
 
     async def handler(
         self,
@@ -64,9 +64,7 @@ class CreatePollAction:
         use_emojis = poll_info.get("use_emojis", True)
 
         if len(options) < 2:
-            return ActionResult.failure_result(
-                "A poll needs at least 2 options."
-            )
+            return ActionResult.failure_result("A poll needs at least 2 options.")
 
         # Limit to 10 options (Discord reaction limit consideration)
         options = options[:10]

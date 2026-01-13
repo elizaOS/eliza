@@ -224,9 +224,13 @@ export class TelegramService extends Service {
     roomId: UUID,
     chatId: string
   ): Promise<void> {
-    if (ctx.from && !this.syncedEntityIds.has(ctx.from.id.toString())) {
+    if (ctx.from) {
       const telegramId = ctx.from.id.toString();
       const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
+
+      if (this.syncedEntityIds.has(entityId)) {
+        return;
+      }
 
       await this.runtime.ensureConnection({
         entityId,
@@ -256,7 +260,7 @@ export class TelegramService extends Service {
       const telegramId = newMember.id.toString();
       const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
 
-      if (this.syncedEntityIds.has(telegramId)) return;
+      if (this.syncedEntityIds.has(entityId)) return;
 
       await this.runtime.ensureConnection({
         entityId,

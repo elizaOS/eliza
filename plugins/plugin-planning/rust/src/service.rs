@@ -19,11 +19,7 @@ use crate::types::{
 #[async_trait]
 pub trait Runtime: Send + Sync {
     /// Use a model for text generation.
-    async fn use_model(
-        &self,
-        model_type: &str,
-        params: serde_json::Value,
-    ) -> Result<String>;
+    async fn use_model(&self, model_type: &str, params: serde_json::Value) -> Result<String>;
 
     /// Get available actions.
     fn get_actions(&self) -> Vec<String>;
@@ -103,7 +99,8 @@ impl PlanningService {
         }
         executions.clear();
 
-        let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> = self.active_plans.write().await;
+        let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> =
+            self.active_plans.write().await;
         plans.clear();
     }
 
@@ -114,7 +111,6 @@ impl PlanningService {
         _state: &HashMap<String, serde_json::Value>,
         response_content: Option<&serde_json::Value>,
     ) -> Result<Option<ActionPlan>> {
-
         let mut actions: Vec<String> = Vec::new();
 
         if let Some(content) = response_content {
@@ -169,11 +165,7 @@ impl PlanningService {
                 id: step_id,
                 action_name: action_name.clone(),
                 parameters,
-                dependencies: if i > 0 {
-                    vec![step_ids[i - 1]]
-                } else {
-                    vec![]
-                },
+                dependencies: if i > 0 { vec![step_ids[i - 1]] } else { vec![] },
                 retry_policy: None,
                 on_error: None,
             });
@@ -203,7 +195,8 @@ impl PlanningService {
             metadata,
         };
 
-        let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> = self.active_plans.write().await;
+        let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> =
+            self.active_plans.write().await;
         plans.insert(plan_id, plan.clone());
 
         debug!(
@@ -252,7 +245,8 @@ impl PlanningService {
         let parsed_plan = self.parse_planning_response(&planning_response, context)?;
         let enhanced_plan = self.enhance_plan(parsed_plan).await;
 
-        let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> = self.active_plans.write().await;
+        let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> =
+            self.active_plans.write().await;
         plans.insert(enhanced_plan.id, enhanced_plan.clone());
         Ok(enhanced_plan)
     }
@@ -377,7 +371,14 @@ impl PlanningService {
             issues.push("Plan has circular dependencies".to_string());
         }
 
-        (issues.is_empty(), if issues.is_empty() { None } else { Some(issues) })
+        (
+            issues.is_empty(),
+            if issues.is_empty() {
+                None
+            } else {
+                Some(issues)
+            },
+        )
     }
 
     /// Get plan status.
@@ -400,7 +401,11 @@ impl PlanningService {
 
     // Private helper methods
 
-    fn build_planning_prompt(&self, context: &PlanningContext, message: Option<&Message>) -> String {
+    fn build_planning_prompt(
+        &self,
+        context: &PlanningContext,
+        message: Option<&Message>,
+    ) -> String {
         let available_actions = context.available_actions.join(", ");
         let available_providers = context.available_providers.join(", ");
         let constraints: Vec<String> = context
@@ -488,9 +493,8 @@ Focus on:
         let mut steps: Vec<ActionStep> = Vec::new();
         let mut step_id_map: HashMap<String, Uuid> = HashMap::new();
 
-        let step_regex = Regex::new(r"<step>(.*?)</step>").map_err(|e| {
-            PlanningError::Parse(format!("Failed to compile regex: {}", e))
-        })?;
+        let step_regex = Regex::new(r"<step>(.*?)</step>")
+            .map_err(|e| PlanningError::Parse(format!("Failed to compile regex: {}", e)))?;
 
         let id_regex = Regex::new(r"<id>(.*?)</id>").unwrap();
         let action_regex = Regex::new(r"<action>(.*?)</action>").unwrap();
@@ -565,7 +569,7 @@ Focus on:
             {
                 let first_id = steps[0].id;
                 let second_id = Uuid::new_v4();
-                
+
                 steps.push(ActionStep {
                     id: second_id,
                     action_name: "PROCESS_ANALYSIS".to_string(),
@@ -683,11 +687,7 @@ Focus on:
                     error!("[PlanningService] Step {} failed: {}", step.id, e);
                     errors.push(format!("{}", e));
                     if step.on_error.as_deref() == Some("abort")
-                        || step
-                            .retry_policy
-                            .as_ref()
-                            .map(|p| p.on_error.as_str())
-                            == Some("abort")
+                        || step.retry_policy.as_ref().map(|p| p.on_error.as_str()) == Some("abort")
                     {
                         return Err(e);
                     }
@@ -715,8 +715,14 @@ Focus on:
                     text: format!("Executed {}", step_clone.action_name),
                     data: {
                         let mut d = HashMap::new();
-                        d.insert("stepId".to_string(), serde_json::json!(step_clone.id.to_string()));
-                        d.insert("actionName".to_string(), serde_json::json!(step_clone.action_name));
+                        d.insert(
+                            "stepId".to_string(),
+                            serde_json::json!(step_clone.id.to_string()),
+                        );
+                        d.insert(
+                            "actionName".to_string(),
+                            serde_json::json!(step_clone.action_name),
+                        );
                         d
                     },
                 })
@@ -799,8 +805,14 @@ Focus on:
             data: {
                 let mut d = HashMap::new();
                 d.insert("stepId".to_string(), serde_json::json!(step.id.to_string()));
-                d.insert("actionName".to_string(), serde_json::json!(step.action_name));
-                d.insert("executedAt".to_string(), serde_json::json!(chrono::Utc::now().timestamp_millis()));
+                d.insert(
+                    "actionName".to_string(),
+                    serde_json::json!(step.action_name),
+                );
+                d.insert(
+                    "executedAt".to_string(),
+                    serde_json::json!(chrono::Utc::now().timestamp_millis()),
+                );
                 d
             },
         };
@@ -868,5 +880,3 @@ Focus on:
         )
     }
 }
-
-

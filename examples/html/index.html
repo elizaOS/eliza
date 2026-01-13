@@ -452,7 +452,7 @@
       import {
         AgentRuntime,
         ChannelType,
-        ModelType,
+        createMessageMemory,
         stringToUuid,
       } from "@elizaos/core";
       import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
@@ -606,6 +606,9 @@
         const text = userInput.value.trim();
 
         if (!text || isProcessing || !runtime) return;
+        if (!runtime.messageService) {
+          throw new Error("Runtime messageService not available");
+        }
 
         isProcessing = true;
         setInputEnabled(false);
@@ -616,16 +619,54 @@
 
         showTyping();
 
-        // Use the model directly (elizaClassicPlugin provides TEXT_LARGE handler)
-        const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: text,
+        // Create an output bubble now so we can stream into it.
+        const { chat } = getElements();
+        const responseDiv = document.createElement("div");
+        responseDiv.className = "message eliza";
+        responseDiv.innerHTML = `
+        <span class="label">ELIZA:</span>
+        <span class="text"></span>
+      `;
+        chat.appendChild(responseDiv);
+        chat.scrollTop = chat.scrollHeight;
+
+        const responseTextEl = responseDiv.querySelector(".text");
+        let responseText = "";
+
+        const messageMemory = createMessageMemory({
+          id: uuidv4(),
+          entityId: userId,
+          roomId,
+          content: {
+            text,
+            source: "client_chat",
+            channelType: ChannelType.DM,
+          },
         });
 
-        hideTyping();
+        await runtime.messageService.handleMessage(
+          runtime,
+          messageMemory,
+          async (content) => {
+            // Non-stream fallback: if we didn't get chunks, use the final text.
+            if (!responseText && content && typeof content.text === "string") {
+              responseText = content.text;
+              if (responseTextEl) responseTextEl.textContent = responseText;
+            }
+            return [];
+          },
+          {
+            onStreamChunk: async (chunk) => {
+              // Hide typing as soon as we start receiving output.
+              if (responseText.length === 0) hideTyping();
+              responseText += chunk;
+              if (responseTextEl) responseTextEl.textContent = responseText;
+              chat.scrollTop = chat.scrollHeight;
+            },
+          },
+        );
 
-        if (response) {
-          addMessage(String(response));
-        }
+        hideTyping();
 
         isProcessing = false;
         setInputEnabled(true);

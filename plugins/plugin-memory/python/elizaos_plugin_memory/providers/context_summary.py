@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -44,8 +43,7 @@ class ContextSummaryProvider:
         time_range = current_summary.start_time.strftime("%Y-%m-%d")
 
         summary_only = (
-            f"**Previous Conversation** ({message_range}, {time_range})\n"
-            f"{current_summary.summary}"
+            f"**Previous Conversation** ({message_range}, {time_range})\n{current_summary.summary}"
         )
 
         summary_with_topics = summary_only

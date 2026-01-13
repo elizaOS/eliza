@@ -94,19 +94,45 @@ impl BlueSkyConfig {
         Ok(cfg)
     }
 
-    pub fn handle(&self) -> &str { &self.handle }
-    pub fn password(&self) -> &str { &self.password }
-    pub fn service(&self) -> &str { &self.service }
-    pub fn dry_run(&self) -> bool { self.dry_run }
-    pub fn poll_interval(&self) -> u64 { self.poll_interval }
-    pub fn enable_posting(&self) -> bool { self.enable_posting }
-    pub fn post_interval_min(&self) -> u64 { self.post_interval_min }
-    pub fn post_interval_max(&self) -> u64 { self.post_interval_max }
-    pub fn enable_action_processing(&self) -> bool { self.enable_action_processing }
-    pub fn action_interval(&self) -> u64 { self.action_interval }
-    pub fn max_actions(&self) -> u32 { self.max_actions }
-    pub fn enable_dms(&self) -> bool { self.enable_dms }
-    pub fn timeout(&self) -> u64 { self.timeout }
+    pub fn handle(&self) -> &str {
+        &self.handle
+    }
+    pub fn password(&self) -> &str {
+        &self.password
+    }
+    pub fn service(&self) -> &str {
+        &self.service
+    }
+    pub fn dry_run(&self) -> bool {
+        self.dry_run
+    }
+    pub fn poll_interval(&self) -> u64 {
+        self.poll_interval
+    }
+    pub fn enable_posting(&self) -> bool {
+        self.enable_posting
+    }
+    pub fn post_interval_min(&self) -> u64 {
+        self.post_interval_min
+    }
+    pub fn post_interval_max(&self) -> u64 {
+        self.post_interval_max
+    }
+    pub fn enable_action_processing(&self) -> bool {
+        self.enable_action_processing
+    }
+    pub fn action_interval(&self) -> u64 {
+        self.action_interval
+    }
+    pub fn max_actions(&self) -> u32 {
+        self.max_actions
+    }
+    pub fn enable_dms(&self) -> bool {
+        self.enable_dms
+    }
+    pub fn timeout(&self) -> u64 {
+        self.timeout
+    }
 
     pub fn with_service(mut self, service: impl Into<String>) -> Self {
         self.service = service.into().trim_end_matches('/').to_string();

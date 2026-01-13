@@ -69,7 +69,9 @@ async def handle_cancel_todo(
     available_tasks = await data_service.get_todos(filters)
 
     if len(available_tasks) == 0:
-        error_msg = "You don't have any active tasks to cancel. Would you like to create a new task?"
+        error_msg = (
+            "You don't have any active tasks to cancel. Would you like to create a new task?"
+        )
         if callback:
             await callback(
                 {
@@ -157,7 +159,9 @@ CANCEL_TODO_ACTION = {
         [
             {
                 "name": "{{name1}}",
-                "content": {"text": "I don't want to do 50 pushups anymore, please delete that task"},
+                "content": {
+                    "text": "I don't want to do 50 pushups anymore, please delete that task"
+                },
             },
             {
                 "name": "{{name2}}",

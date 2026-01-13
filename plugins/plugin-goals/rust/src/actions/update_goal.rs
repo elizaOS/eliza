@@ -13,7 +13,10 @@ impl UpdateGoalAction {
     /// Extract goal update information from state
     pub fn extract_update(state: &Value) -> Option<(String, Option<String>, Option<String>)> {
         let goal_id = state.get("goal_id")?.as_str()?.to_string();
-        let new_name = state.get("new_name").and_then(|v| v.as_str()).map(String::from);
+        let new_name = state
+            .get("new_name")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let new_description = state
             .get("new_description")
             .and_then(|v| v.as_str())

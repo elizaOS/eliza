@@ -34,9 +34,7 @@ class TestPluginCreationStatusProvider:
         assert "No active" in result.text
 
     @pytest.mark.asyncio
-    async def test_get_active_job(
-        self, provider: PluginCreationStatusProvider
-    ) -> None:
+    async def test_get_active_job(self, provider: PluginCreationStatusProvider) -> None:
         """Test get with active job."""
         context = ProviderContext(
             state={
@@ -69,9 +67,7 @@ class TestPluginCreationCapabilitiesProvider:
         assert provider.name == "plugin_creation_capabilities"
 
     @pytest.mark.asyncio
-    async def test_get_no_api_key(
-        self, provider: PluginCreationCapabilitiesProvider
-    ) -> None:
+    async def test_get_no_api_key(self, provider: PluginCreationCapabilitiesProvider) -> None:
         """Test get without API key."""
         context = ProviderContext(state={"hasApiKey": False})
         result = await provider.get(context)
@@ -79,9 +75,7 @@ class TestPluginCreationCapabilitiesProvider:
         assert result.data["aiEnabled"] is False
 
     @pytest.mark.asyncio
-    async def test_get_with_api_key(
-        self, provider: PluginCreationCapabilitiesProvider
-    ) -> None:
+    async def test_get_with_api_key(self, provider: PluginCreationCapabilitiesProvider) -> None:
         """Test get with API key."""
         context = ProviderContext(state={"hasApiKey": True})
         result = await provider.get(context)

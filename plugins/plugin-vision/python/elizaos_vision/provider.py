@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -21,7 +20,6 @@ class MemoryProtocol(Protocol):
 
 
 class VisionProvider:
-
     name = "VISION_PERCEPTION"
     description = (
         "Provides current visual perception data including scene description, "

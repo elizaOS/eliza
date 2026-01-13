@@ -36,6 +36,7 @@ class TestS3PluginStructure:
             S3StorageConfig,
             UploadResult,
         )
+
         assert S3StorageConfig is not None
         assert UploadResult is not None
         assert JsonUploadResult is not None
