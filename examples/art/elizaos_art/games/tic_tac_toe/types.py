@@ -148,7 +148,8 @@ class TicTacToeState(State):
         lines.append("-----------")
         lines.append(" 6 | 7 | 8")
         lines.append("```")
-        lines.append(f"You are playing as: {self.current_player}")
+        # Convert int to Player enum for display (shows "X" or "O" instead of "1" or "2")
+        lines.append(f"You are playing as: {Player(self.current_player)}")
 
         return "\n".join(lines)
 
@@ -186,12 +187,13 @@ class TicTacToeState(State):
 
         lines.append("└───┴───┴───┘")
 
+        # Convert int to Player enum for display (shows "X" or "O" instead of "1" or "2")
         if self.winner:
-            lines.append(f"Winner: {self.winner}!")
+            lines.append(f"Winner: {Player(self.winner)}!")
         elif self.is_draw:
             lines.append("It's a draw!")
         else:
-            lines.append(f"Current player: {self.current_player}")
+            lines.append(f"Current player: {Player(self.current_player)}")
 
         return "\n".join(lines)
 

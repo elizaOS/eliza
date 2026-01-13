@@ -244,6 +244,7 @@ Respond with exactly one command from the available options."""
         self._current.final_score = result.score / max(result.max_score, 1)
         self._current.won = result.won
         self._current.steps = result.steps
+        self._current.max_steps = result.max_steps  # For accurate efficiency calculation
         trajectory = self._current
         self._current = None
         return trajectory

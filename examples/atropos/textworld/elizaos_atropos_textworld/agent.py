@@ -452,6 +452,12 @@ Respond with ONLY the action command, nothing else.""",
             # Take first line only - models sometimes add explanations
             action = str(result).strip().lower().split("\n")[0]
 
+            # Empty response should fall back to heuristic
+            # (empty string matches any string in Python: "" in "x" is True)
+            if not action:
+                logger.debug("LLM returned empty response, using heuristic")
+                return self._heuristic_fallback(state)
+
             # Exact match against admissible commands
             admissible_lower = [c.lower() for c in state.admissible_commands]
             if action in admissible_lower:

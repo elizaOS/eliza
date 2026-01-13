@@ -137,6 +137,7 @@ class EpisodeResult:
     score: int
     max_score: int
     steps: int
+    max_steps: int
     won: bool
     actions_taken: list[str]
 
