@@ -3,10 +3,19 @@ import { displayBanner, handleError } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
 import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
-import { logger, type Character, type ProjectAgent, loadEnvFile } from '@elizaos/core';
+import {
+  scanPluginsForEnvDeclarations,
+  warnAboutMissingDeclarations,
+} from '@/src/utils/plugin-env-filter';
+import {
+  logger,
+  type Character,
+  type ProjectAgent,
+  loadEnvFilesWithPrecedence,
+  setAllowedEnvVars,
+} from '@elizaos/core';
 import { AgentServer, loadCharacterTryPath } from '@elizaos/server';
 import { Command, InvalidOptionArgumentError } from 'commander';
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { StartOptions } from './types';
 import { UserEnvironment } from '@/src/utils/user-environment';
@@ -28,50 +37,62 @@ export const start = new Command()
   })
   .action(async (options: StartOptions & { character?: string[] }) => {
     try {
-      // Load env config first before any character loading
-      // Use monorepo-aware resolver so root .env is found when running via turbo
+      const cwd = process.cwd();
+
+      // Scan plugins for env var declarations and set filter to prevent shell leakage
+      const pluginScanResult = scanPluginsForEnvDeclarations(cwd);
+      setAllowedEnvVars(pluginScanResult.allowedVars);
+
+      logger.debug(
+        {
+          src: 'cli',
+          command: 'start',
+          allowedVars: pluginScanResult.allowedVars.size,
+          pluginsWithDeclarations: pluginScanResult.pluginsWithDeclarations.length,
+        },
+        'Plugin env var scan complete'
+      );
+
+      warnAboutMissingDeclarations(pluginScanResult.pluginsWithoutDeclarations, {
+        logLevel: 'debug',
+      });
+
+      // Load .env files with precedence (closest wins)
       try {
         const userEnv = UserEnvironment.getInstance();
-        const { envFilePath } = await userEnv.getPathInfo();
-        const candidateEnv = envFilePath || path.join(process.cwd(), '.env');
-        if (fs.existsSync(candidateEnv)) {
-          loadEnvFile(candidateEnv);
+        const { monorepoRoot } = await userEnv.getPathInfo();
+
+        const loadedEnvFiles = loadEnvFilesWithPrecedence(cwd, {
+          boundaryDir: monorepoRoot || undefined,
+        });
+
+        if (loadedEnvFiles.length > 0) {
+          logger.debug(
+            { src: 'cli', command: 'start', files: loadedEnvFiles },
+            `Loaded ${loadedEnvFiles.length} .env file(s) with precedence`
+          );
         }
       } catch {
-        // Fallback to CWD-based .env if resolution fails
-        const envPath = path.join(process.cwd(), '.env');
-        if (fs.existsSync(envPath)) {
-          loadEnvFile(envPath);
-        }
+        loadEnvFilesWithPrecedence(cwd);
       }
 
-      // Auto-install @elizaos/cli as dev dependency using bun (for non-monorepo projects)
       await ensureElizaOSCli();
 
-      // Setup proper module resolution environment variables
-      // This ensures consistent plugin loading between dev and start commands
-      const localModulesPath = path.join(process.cwd(), 'node_modules');
-      if (process.env.NODE_PATH) {
-        process.env.NODE_PATH = `${localModulesPath}${path.delimiter}${process.env.NODE_PATH}`;
-      } else {
-        process.env.NODE_PATH = localModulesPath;
-      }
+      // Setup module resolution paths - reuse cwd instead of calling process.cwd() again
+      const localModulesPath = path.join(cwd, 'node_modules');
+      process.env.NODE_PATH = process.env.NODE_PATH
+        ? `${localModulesPath}${path.delimiter}${process.env.NODE_PATH}`
+        : localModulesPath;
 
-      // Add local .bin to PATH to prioritize local executables
-      const localBinPath = path.join(process.cwd(), 'node_modules', '.bin');
-      if (process.env.PATH) {
-        process.env.PATH = `${localBinPath}${path.delimiter}${process.env.PATH}`;
-      } else {
-        process.env.PATH = localBinPath;
-      }
+      const localBinPath = path.join(cwd, 'node_modules', '.bin');
+      process.env.PATH = process.env.PATH
+        ? `${localBinPath}${path.delimiter}${process.env.PATH}`
+        : localBinPath;
 
-      // Force Node runtime for PGlite when running the server via CLI
       if (!process.env.PGLITE_WASM_MODE) {
         process.env.PGLITE_WASM_MODE = 'node';
       }
 
-      // Build the project first (unless it's a monorepo)
-      const cwd = process.cwd();
       const dirInfo = detectDirectoryType(cwd);
       const isMonorepo = dirInfo.type === 'elizaos-monorepo';
 
@@ -92,37 +113,28 @@ export const start = new Command()
         }
       }
 
-      let characters: Character[] = [];
+      const characters: Character[] = [];
       let projectAgents: ProjectAgent[] = [];
 
-      if (options.character && options.character.length > 0) {
-        // Validate and load characters from provided paths
+      if (options.character?.length) {
         for (const charPath of options.character) {
           const resolvedPath = path.resolve(charPath);
 
-          if (!fs.existsSync(resolvedPath)) {
-            logger.error(
-              { src: 'cli', command: 'start', path: resolvedPath },
-              'Character file not found'
-            );
-            throw new Error(`Character file not found: ${resolvedPath}`);
-          }
-
+          // loadCharacterTryPath handles missing files - no need for separate existsSync check
           try {
             const character = await loadCharacterTryPath(resolvedPath);
-            if (character) {
-              characters.push(character);
-              logger.info(
-                { src: 'cli', command: 'start', characterName: character.name },
-                'Character loaded'
-              );
-            } else {
+            if (!character) {
               logger.error(
                 { src: 'cli', command: 'start', path: resolvedPath },
                 'Invalid or empty character file'
               );
               throw new Error(`Invalid character file: ${resolvedPath}`);
             }
+            characters.push(character);
+            logger.info(
+              { src: 'cli', command: 'start', characterName: character.name },
+              'Character loaded'
+            );
           } catch (e) {
             logger.error(
               { src: 'cli', command: 'start', error: e, path: resolvedPath },
@@ -131,33 +143,24 @@ export const start = new Command()
             throw new Error(`Invalid character file: ${resolvedPath}`);
           }
         }
-      } else {
-        // Try to load project agents if no character files specified
+      } else if (dirInfo.hasPackageJson && dirInfo.type !== 'non-elizaos-dir') {
         try {
-          const cwd = process.cwd();
-          const dirInfo = detectDirectoryType(cwd);
+          logger.info({ src: 'cli', command: 'start' }, 'Loading project agents');
+          const project = await loadProject(cwd);
 
-          // Check if we're in a directory that might contain agents - allow any directory with package.json
-          // except those explicitly detected as non-ElizaOS (covers projects, plugins, monorepos, etc.)
-          if (dirInfo.hasPackageJson && dirInfo.type !== 'non-elizaos-dir') {
-            logger.info({ src: 'cli', command: 'start' }, 'Loading project agents');
-            const project = await loadProject(cwd);
+          if (project.agents?.length) {
+            logger.info(
+              { src: 'cli', command: 'start', agentCount: project.agents.length },
+              'Found project agents'
+            );
+            projectAgents = project.agents;
 
-            if (project.agents && project.agents.length > 0) {
-              logger.info(
-                { src: 'cli', command: 'start', agentCount: project.agents.length },
-                'Found project agents'
-              );
-              projectAgents = project.agents;
-
-              // Log loaded agent names
-              for (const agent of project.agents) {
-                if (agent.character) {
-                  logger.info(
-                    { src: 'cli', command: 'start', characterName: agent.character.name },
-                    'Character loaded'
-                  );
-                }
+            for (const agent of project.agents) {
+              if (agent.character) {
+                logger.info(
+                  { src: 'cli', command: 'start', characterName: agent.character.name },
+                  'Character loaded'
+                );
               }
             }
           }
@@ -169,16 +172,14 @@ export const start = new Command()
         }
       }
 
-      // Prepare agent configurations (unified handling)
-      const agentConfigs = projectAgents?.length
+      const agentConfigs = projectAgents.length
         ? projectAgents.map((pa) => ({
             character: pa.character,
             plugins: Array.isArray(pa.plugins) ? pa.plugins : [],
             init: pa.init,
           }))
-        : characters?.map((character) => ({ character })) || [];
+        : characters.map((character) => ({ character }));
 
-      // Use AgentServer with unified startup
       const server = new AgentServer();
       await server.start({
         port: options.port,
@@ -187,7 +188,6 @@ export const start = new Command()
         agents: agentConfigs,
       });
 
-      // Server handles initialization, port resolution, and agent startup automatically
       logger.success(
         { src: 'cli', command: 'start', agentCount: agentConfigs.length },
         'Server started'
