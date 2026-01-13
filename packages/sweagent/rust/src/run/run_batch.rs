@@ -2,8 +2,8 @@
 
 use super::hooks::{CombinedRunHook, RunHook};
 use super::run_single::{RunSingle, RunSingleActionConfig, RunSingleConfig};
-use crate::agent::AgentConfig;
 use crate::agent::problem_statement::ProblemStatementConfig;
+use crate::agent::AgentConfig;
 use crate::environment::EnvironmentConfig;
 use crate::exceptions::{Result, SWEAgentError};
 use crate::types::{AgentRunResult, SimpleBatchInstance};
@@ -151,7 +151,7 @@ impl RunBatch {
             hooks: CombinedRunHook::new(),
         })
     }
-    
+
     /// Create from configuration
     pub fn from_config(config: RunBatchConfig) -> Self {
         Self {
@@ -160,26 +160,45 @@ impl RunBatch {
             hooks: CombinedRunHook::new(),
         }
     }
-    
+
     /// Add a hook
     pub fn add_hook(&mut self, hook: Box<dyn RunHook>) {
         self.hooks.add_hook(hook);
     }
-    
+
     /// Load instances from source
     pub async fn load_instances(&mut self) -> Result<()> {
         let instances_config = self.config.instances.clone();
         match instances_config {
-            BatchInstanceSourceConfig::File { path, filter, slice, shuffle } => {
+            BatchInstanceSourceConfig::File {
+                path,
+                filter,
+                slice,
+                shuffle,
+            } => {
                 self.load_from_file(&path, filter.as_deref(), slice.as_deref(), shuffle)?;
             }
-            BatchInstanceSourceConfig::SweBench { subset, split, filter, slice, shuffle, .. } => {
-                self.load_swe_bench(&subset, &split, filter.as_deref(), slice.as_deref(), shuffle).await?;
+            BatchInstanceSourceConfig::SweBench {
+                subset,
+                split,
+                filter,
+                slice,
+                shuffle,
+                ..
+            } => {
+                self.load_swe_bench(
+                    &subset,
+                    &split,
+                    filter.as_deref(),
+                    slice.as_deref(),
+                    shuffle,
+                )
+                .await?;
             }
         }
         Ok(())
     }
-    
+
     fn load_from_file(
         &mut self,
         path: &str,
@@ -188,18 +207,19 @@ impl RunBatch {
         shuffle: bool,
     ) -> Result<()> {
         let content = std::fs::read_to_string(path)?;
-        
+
         // Try YAML first, then JSON
-        let instances: Vec<SimpleBatchInstance> = if path.ends_with(".yaml") || path.ends_with(".yml") {
-            serde_yaml::from_str(&content)?
-        } else {
-            serde_json::from_str(&content)?
-        };
-        
+        let instances: Vec<SimpleBatchInstance> =
+            if path.ends_with(".yaml") || path.ends_with(".yml") {
+                serde_yaml::from_str(&content)?
+            } else {
+                serde_json::from_str(&content)?
+            };
+
         self.instances = self.filter_instances(instances, filter, slice, shuffle);
         Ok(())
     }
-    
+
     async fn load_swe_bench(
         &mut self,
         subset: &str,
@@ -212,46 +232,54 @@ impl RunBatch {
         // 1. HuggingFace datasets API (requires external download)
         // 2. Local pre-downloaded files
         // 3. A cached path
-        
-        tracing::info!(subset = subset, split = split, "Loading SWE-bench instances");
-        
+
+        tracing::info!(
+            subset = subset,
+            split = split,
+            "Loading SWE-bench instances"
+        );
+
         // Try common locations for pre-downloaded SWE-bench data
-        let possible_paths = vec![
+        let possible_paths = [
             format!("data/swe-bench-{}-{}.json", subset, split),
             format!("data/swe-bench/{}/{}.json", subset, split),
-            format!("{}/swe-bench-{}-{}.json", std::env::var("SWE_BENCH_DATA").unwrap_or_default(), subset, split),
+            format!(
+                "{}/swe-bench-{}-{}.json",
+                std::env::var("SWE_BENCH_DATA").unwrap_or_default(),
+                subset,
+                split
+            ),
             format!("~/.cache/sweagent/swe-bench-{}-{}.json", subset, split),
         ];
-        
+
         // Expand ~ in paths
         let home = std::env::var("HOME").unwrap_or_default();
         let expanded_paths: Vec<String> = possible_paths
             .iter()
             .map(|p| p.replace("~", &home))
             .collect();
-        
+
         for path in &expanded_paths {
             if std::path::Path::new(path).exists() {
                 tracing::info!(path = path, "Found SWE-bench data file");
                 return self.load_from_file(path, filter, slice, shuffle);
             }
         }
-        
+
         // If not found locally, try to download from HuggingFace
         let url = format!(
             "https://huggingface.co/datasets/princeton-nlp/SWE-bench_{}/resolve/main/{}.json",
             subset, split
         );
-        
+
         tracing::info!(url = &url, "Downloading SWE-bench data from HuggingFace");
-        
+
         let client = reqwest::Client::new();
-        let response = client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| SWEAgentError::ApiError(format!("Failed to download SWE-bench: {}", e)))?;
-        
+        let response =
+            client.get(&url).send().await.map_err(|e| {
+                SWEAgentError::ApiError(format!("Failed to download SWE-bench: {}", e))
+            })?;
+
         if !response.status().is_success() {
             return Err(SWEAgentError::ConfigurationError(format!(
                 "SWE-bench data not found. Please download {} subset manually or set SWE_BENCH_DATA env var. \
@@ -259,28 +287,31 @@ impl RunBatch {
                 subset, expanded_paths, response.status()
             )));
         }
-        
+
         let content = response.text().await?;
-        
+
         // Parse the JSON content - SWE-bench format is a list of objects
         let raw_instances: Vec<serde_json::Value> = serde_json::from_str(&content)?;
-        
+
         let instances: Vec<SimpleBatchInstance> = raw_instances
             .into_iter()
             .filter_map(|obj| {
-                let id = obj.get("instance_id")
+                let id = obj
+                    .get("instance_id")
                     .and_then(|v| v.as_str())
                     .map(String::from)?;
-                
-                let problem_statement = obj.get("problem_statement")
+
+                let problem_statement = obj
+                    .get("problem_statement")
                     .and_then(|v| v.as_str())
                     .map(String::from)
                     .unwrap_or_default();
-                
-                let repo = obj.get("repo")
+
+                let repo = obj
+                    .get("repo")
                     .and_then(|v| v.as_str())
                     .map(|r| format!("https://github.com/{}", r));
-                
+
                 Some(SimpleBatchInstance {
                     id,
                     problem_statement,
@@ -289,14 +320,14 @@ impl RunBatch {
                 })
             })
             .collect();
-        
+
         self.instances = self.filter_instances(instances, filter, slice, shuffle);
-        
+
         tracing::info!(count = self.instances.len(), "Loaded SWE-bench instances");
-        
+
         Ok(())
     }
-    
+
     fn filter_instances(
         &self,
         mut instances: Vec<SimpleBatchInstance>,
@@ -310,22 +341,22 @@ impl RunBatch {
                 instances.retain(|i| re.is_match(&i.id));
             }
         }
-        
+
         // Apply shuffle
         if shuffle {
             use rand::seq::SliceRandom;
             let mut rng = rand::thread_rng();
             instances.shuffle(&mut rng);
         }
-        
+
         // Apply slice
         if let Some(slice_str) = slice {
             instances = self.apply_slice(instances, slice_str);
         }
-        
+
         instances
     }
-    
+
     fn apply_slice(
         &self,
         instances: Vec<SimpleBatchInstance>,
@@ -333,19 +364,22 @@ impl RunBatch {
     ) -> Vec<SimpleBatchInstance> {
         // Parse slice string like ":50", "10:20", "::2"
         let parts: Vec<&str> = slice_str.split(':').collect();
-        
-        let start = parts.get(0)
+
+        let start = parts
+            .first()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(0);
-        
-        let end = parts.get(1)
+
+        let end = parts
+            .get(1)
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(instances.len());
-        
-        let step = parts.get(2)
+
+        let step = parts
+            .get(2)
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(1);
-        
+
         instances
             .into_iter()
             .skip(start)
@@ -353,33 +387,37 @@ impl RunBatch {
             .step_by(step.max(1))
             .collect()
     }
-    
+
     /// Check if an instance already has results
     fn has_existing_result(&self, instance_id: &str) -> bool {
         if self.config.redo_existing {
             return false;
         }
-        
-        let traj_path = PathBuf::from(&self.config.output_dir)
-            .join(format!("{}.traj", instance_id));
-        
+
+        let traj_path =
+            PathBuf::from(&self.config.output_dir).join(format!("{}.traj", instance_id));
+
         traj_path.exists()
     }
-    
+
     /// Run all instances
     pub async fn main(&mut self) -> Result<BatchRunResult> {
         self.load_instances().await?;
-        
+
         let total = self.instances.len();
-        tracing::info!(total = total, workers = self.config.num_workers, "Starting batch run");
-        
+        tracing::info!(
+            total = total,
+            workers = self.config.num_workers,
+            "Starting batch run"
+        );
+
         self.hooks.on_start();
-        
+
         let mut results = Vec::new();
         let mut completed = 0;
         let mut skipped = 0;
         let mut failed = 0;
-        
+
         for (idx, instance) in self.instances.clone().into_iter().enumerate() {
             tracing::info!(
                 idx = idx,
@@ -387,7 +425,7 @@ impl RunBatch {
                 instance_id = %instance.id,
                 "Processing instance"
             );
-            
+
             // Check for existing result
             if self.has_existing_result(&instance.id) {
                 tracing::info!(instance_id = %instance.id, "Skipping - already exists");
@@ -401,9 +439,9 @@ impl RunBatch {
                 });
                 continue;
             }
-            
+
             self.hooks.on_instance_start(idx, &instance.id);
-            
+
             // Create config for this instance
             let single_config = RunSingleConfig {
                 agent: self.config.agent.clone(),
@@ -415,33 +453,31 @@ impl RunBatch {
                 output_dir: self.config.output_dir.clone(),
                 actions: self.config.actions.clone(),
             };
-            
+
             // Run the instance
             match RunSingle::from_config(single_config) {
-                Ok(mut runner) => {
-                    match runner.run().await {
-                        Ok(result) => {
-                            self.hooks.on_instance_completed(&result);
-                            completed += 1;
-                            results.push(InstanceResult {
-                                instance_id: instance.id,
-                                status: InstanceStatus::Completed,
-                                result: Some(result),
-                                error: None,
-                            });
-                        }
-                        Err(e) => {
-                            tracing::error!(error = %e, instance_id = %instance.id, "Instance failed");
-                            failed += 1;
-                            results.push(InstanceResult {
-                                instance_id: instance.id,
-                                status: InstanceStatus::Failed,
-                                result: None,
-                                error: Some(e.to_string()),
-                            });
-                        }
+                Ok(mut runner) => match runner.run().await {
+                    Ok(result) => {
+                        self.hooks.on_instance_completed(&result);
+                        completed += 1;
+                        results.push(InstanceResult {
+                            instance_id: instance.id,
+                            status: InstanceStatus::Completed,
+                            result: Some(result),
+                            error: None,
+                        });
                     }
-                }
+                    Err(e) => {
+                        tracing::error!(error = %e, instance_id = %instance.id, "Instance failed");
+                        failed += 1;
+                        results.push(InstanceResult {
+                            instance_id: instance.id,
+                            status: InstanceStatus::Failed,
+                            result: None,
+                            error: Some(e.to_string()),
+                        });
+                    }
+                },
                 Err(e) => {
                     tracing::error!(error = %e, instance_id = %instance.id, "Failed to create runner");
                     failed += 1;
@@ -453,16 +489,16 @@ impl RunBatch {
                     });
                 }
             }
-            
+
             // Add random delay between instances
             if self.config.random_delay_multiplier > 0.0 {
                 let delay = rand::random::<f64>() * self.config.random_delay_multiplier;
                 tokio::time::sleep(std::time::Duration::from_secs_f64(delay)).await;
             }
         }
-        
+
         self.hooks.on_end();
-        
+
         let batch_result = BatchRunResult {
             results,
             total_instances: total,
@@ -470,20 +506,20 @@ impl RunBatch {
             skipped,
             failed,
         };
-        
+
         // Save summary
         self.save_summary(&batch_result)?;
-        
+
         tracing::info!(
             completed = completed,
             skipped = skipped,
             failed = failed,
             "Batch run complete"
         );
-        
+
         Ok(batch_result)
     }
-    
+
     fn save_summary(&self, result: &BatchRunResult) -> Result<()> {
         let summary_path = PathBuf::from(&self.config.output_dir).join("batch_summary.json");
         let json = serde_json::to_string_pretty(result)?;
@@ -520,7 +556,7 @@ mod tests {
                 github_url: None,
             })
             .collect();
-        
+
         let sliced = runner.apply_slice(instances, ":5");
         assert_eq!(sliced.len(), 5);
     }

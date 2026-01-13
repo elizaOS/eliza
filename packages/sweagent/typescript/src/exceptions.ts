@@ -9,7 +9,7 @@
 export class FormatError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'FormatError';
+    this.name = "FormatError";
   }
 }
 
@@ -18,41 +18,49 @@ export class FormatError extends Error {
  */
 export class FunctionCallingFormatError extends FormatError {
   errorCode:
-    | 'missing'
-    | 'multiple'
-    | 'incorrect_args'
-    | 'invalid_json'
-    | 'invalid_command'
-    | 'missing_arg'
-    | 'unexpected_arg';
-  extraInfo: Record<string, any>;
+    | "missing"
+    | "multiple"
+    | "incorrect_args"
+    | "invalid_json"
+    | "invalid_command"
+    | "missing_arg"
+    | "unexpected_arg";
+  extraInfo: Record<string, ExtraInfoValue>;
 
   constructor(
     message: string,
     errorCode:
-      | 'missing'
-      | 'multiple'
-      | 'incorrect_args'
-      | 'invalid_json'
-      | 'invalid_command'
-      | 'missing_arg'
-      | 'unexpected_arg',
-    extraInfo: Record<string, any> = {},
+      | "missing"
+      | "multiple"
+      | "incorrect_args"
+      | "invalid_json"
+      | "invalid_command"
+      | "missing_arg"
+      | "unexpected_arg",
+    extraInfo: Record<string, ExtraInfoValue> = {},
   ) {
     super(message);
-    this.name = 'FunctionCallingFormatError';
+    this.name = "FunctionCallingFormatError";
     this.errorCode = errorCode;
     this.extraInfo = extraInfo;
   }
 }
+
+export type ExtraInfoValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ExtraInfoValue[]
+  | { [key: string]: ExtraInfoValue };
 
 /**
  * Exception for context window exceeded
  */
 export class ContextWindowExceededError extends Error {
   constructor(message?: string) {
-    super(message || 'Context window exceeded');
-    this.name = 'ContextWindowExceededError';
+    super(message || "Context window exceeded");
+    this.name = "ContextWindowExceededError";
   }
 }
 
@@ -61,8 +69,8 @@ export class ContextWindowExceededError extends Error {
  */
 export class CostLimitExceededError extends Error {
   constructor(message?: string) {
-    super(message || 'Cost limit exceeded');
-    this.name = 'CostLimitExceededError';
+    super(message || "Cost limit exceeded");
+    this.name = "CostLimitExceededError";
   }
 }
 
@@ -71,8 +79,8 @@ export class CostLimitExceededError extends Error {
  */
 export class InstanceCostLimitExceededError extends CostLimitExceededError {
   constructor(message?: string) {
-    super(message || 'Instance cost limit exceeded');
-    this.name = 'InstanceCostLimitExceededError';
+    super(message || "Instance cost limit exceeded");
+    this.name = "InstanceCostLimitExceededError";
   }
 }
 
@@ -81,8 +89,8 @@ export class InstanceCostLimitExceededError extends CostLimitExceededError {
  */
 export class TotalCostLimitExceededError extends CostLimitExceededError {
   constructor(message?: string) {
-    super(message || 'Total cost limit exceeded');
-    this.name = 'TotalCostLimitExceededError';
+    super(message || "Total cost limit exceeded");
+    this.name = "TotalCostLimitExceededError";
   }
 }
 
@@ -91,8 +99,8 @@ export class TotalCostLimitExceededError extends CostLimitExceededError {
  */
 export class InstanceCallLimitExceededError extends CostLimitExceededError {
   constructor(message?: string) {
-    super(message || 'Instance call limit exceeded');
-    this.name = 'InstanceCallLimitExceededError';
+    super(message || "Instance call limit exceeded");
+    this.name = "InstanceCallLimitExceededError";
   }
 }
 
@@ -101,8 +109,8 @@ export class InstanceCallLimitExceededError extends CostLimitExceededError {
  */
 export class ContentPolicyViolationError extends Error {
   constructor(message?: string) {
-    super(message || 'Content policy violation');
-    this.name = 'ContentPolicyViolationError';
+    super(message || "Content policy violation");
+    this.name = "ContentPolicyViolationError";
   }
 }
 
@@ -111,8 +119,8 @@ export class ContentPolicyViolationError extends Error {
  */
 export class ModelConfigurationError extends Error {
   constructor(message?: string) {
-    super(message || 'Model configuration error');
-    this.name = 'ModelConfigurationError';
+    super(message || "Model configuration error");
+    this.name = "ModelConfigurationError";
   }
 }
 
@@ -121,8 +129,8 @@ export class ModelConfigurationError extends Error {
  */
 export class EOFError extends Error {
   constructor(message?: string) {
-    super(message || 'End of file reached');
-    this.name = 'EOFError';
+    super(message || "End of file reached");
+    this.name = "EOFError";
   }
 }
 
@@ -131,8 +139,8 @@ export class EOFError extends Error {
  */
 export class BlockedActionError extends Error {
   constructor(message?: string) {
-    super(message || 'Action is blocked');
-    this.name = 'BlockedActionError';
+    super(message || "Action is blocked");
+    this.name = "BlockedActionError";
   }
 }
 
@@ -141,8 +149,8 @@ export class BlockedActionError extends Error {
  */
 export class RetryWithOutputError extends Error {
   constructor(message?: string) {
-    super(message || 'Retry with output');
-    this.name = 'RetryWithOutputError';
+    super(message || "Retry with output");
+    this.name = "RetryWithOutputError";
   }
 }
 
@@ -151,8 +159,8 @@ export class RetryWithOutputError extends Error {
  */
 export class RetryWithoutOutputError extends Error {
   constructor(message?: string) {
-    super(message || 'Retry without output');
-    this.name = 'RetryWithoutOutputError';
+    super(message || "Retry without output");
+    this.name = "RetryWithoutOutputError";
   }
 }
 
@@ -161,8 +169,8 @@ export class RetryWithoutOutputError extends Error {
  */
 export class ExitForfeitError extends Error {
   constructor(message?: string) {
-    super(message || 'Exit forfeit');
-    this.name = 'ExitForfeitError';
+    super(message || "Exit forfeit");
+    this.name = "ExitForfeitError";
   }
 }
 
@@ -171,8 +179,8 @@ export class ExitForfeitError extends Error {
  */
 export class TotalExecutionTimeExceededError extends Error {
   constructor(message?: string) {
-    super(message || 'Total execution time exceeded');
-    this.name = 'TotalExecutionTimeExceededError';
+    super(message || "Total execution time exceeded");
+    this.name = "TotalExecutionTimeExceededError";
   }
 }
 
@@ -181,8 +189,8 @@ export class TotalExecutionTimeExceededError extends Error {
  */
 export class CommandTimeoutError extends Error {
   constructor(message?: string) {
-    super(message || 'Command timed out');
-    this.name = 'CommandTimeoutError';
+    super(message || "Command timed out");
+    this.name = "CommandTimeoutError";
   }
 }
 
@@ -190,11 +198,11 @@ export class CommandTimeoutError extends Error {
  * Exception for bash syntax errors
  */
 export class BashIncorrectSyntaxError extends Error {
-  extraInfo?: Record<string, any>;
+  extraInfo?: Record<string, ExtraInfoValue>;
 
-  constructor(message?: string, extraInfo?: Record<string, any>) {
-    super(message || 'Bash syntax error');
-    this.name = 'BashIncorrectSyntaxError';
+  constructor(message?: string, extraInfo?: Record<string, ExtraInfoValue>) {
+    super(message || "Bash syntax error");
+    this.name = "BashIncorrectSyntaxError";
     this.extraInfo = extraInfo;
   }
 }

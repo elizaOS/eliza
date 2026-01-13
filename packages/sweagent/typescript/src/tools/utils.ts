@@ -3,28 +3,31 @@
  * Converted from sweagent/tools/utils.py
  */
 
-import { Command } from './commands';
+import type { Command } from "./commands";
 
 /**
  * Guard multiline input
  */
-export function guardMultilineInput(action: string, matchFct: (action: string) => RegExpMatchArray | null): string {
+export function guardMultilineInput(
+  action: string,
+  matchFct: (action: string) => RegExpMatchArray | null,
+): string {
   const match = matchFct(action);
   if (!match) {
     return action;
   }
 
   // Handle multiline input by ensuring proper formatting
-  const lines = action.split('\n');
+  const lines = action.split("\n");
   const processedLines = lines.map((line) => line.trimEnd());
-  return processedLines.join('\n');
+  return processedLines.join("\n");
 }
 
 /**
  * Check if a value should be quoted
  */
 export function shouldQuote(value: unknown, command: Command): boolean {
-  if (typeof value !== 'string') {
+  if (typeof value !== "string") {
     return false;
   }
 
@@ -35,7 +38,7 @@ export function shouldQuote(value: unknown, command: Command): boolean {
 
   // Check command-specific quoting rules
   for (const arg of command.arguments) {
-    if (arg.type === 'string' && arg.required) {
+    if (arg.type === "string" && arg.required) {
       return true;
     }
   }
@@ -62,7 +65,7 @@ export function getSignature(cmd: Command): string {
   }
 
   if (cmd.endName) {
-    sig += '\n...\n' + cmd.endName;
+    sig += `\n...\n${cmd.endName}`;
   }
 
   return sig;
@@ -74,7 +77,7 @@ export function getSignature(cmd: Command): string {
 export function generateCommandDocs(
   commands: Command[],
   subroutineTypes: string[],
-  _kwargs: Record<string, any>,
+  _kwargs: Record<string, unknown>,
 ): string {
   const docs: string[] = [];
 
@@ -84,7 +87,7 @@ export function generateCommandDocs(
   const utilityCommands: Command[] = [];
 
   for (const cmd of commands) {
-    if (cmd.name === 'bash' || cmd.name === 'shell') {
+    if (cmd.name === "bash" || cmd.name === "shell") {
       bashCommands.push(cmd);
     } else if (subroutineTypes.includes(cmd.name)) {
       subroutineCommands.push(cmd);
@@ -95,33 +98,33 @@ export function generateCommandDocs(
 
   // Add bash commands
   if (bashCommands.length > 0) {
-    docs.push('# Bash Commands');
-    docs.push('Use bash commands to interact with the system.');
+    docs.push("# Bash Commands");
+    docs.push("Use bash commands to interact with the system.");
     for (const cmd of bashCommands) {
       docs.push(formatCommand(cmd));
     }
-    docs.push('');
+    docs.push("");
   }
 
   // Add subroutine commands
   if (subroutineCommands.length > 0) {
-    docs.push('# Subroutine Commands');
+    docs.push("# Subroutine Commands");
     for (const cmd of subroutineCommands) {
       docs.push(formatCommand(cmd));
     }
-    docs.push('');
+    docs.push("");
   }
 
   // Add utility commands
   if (utilityCommands.length > 0) {
-    docs.push('# Utility Commands');
+    docs.push("# Utility Commands");
     for (const cmd of utilityCommands) {
       docs.push(formatCommand(cmd));
     }
-    docs.push('');
+    docs.push("");
   }
 
-  return docs.join('\n');
+  return docs.join("\n");
 }
 
 /**
@@ -140,16 +143,16 @@ function formatCommand(cmd: Command): string {
 
   // Add arguments
   if (cmd.arguments.length > 0) {
-    lines.push('Arguments:');
+    lines.push("Arguments:");
     for (const arg of cmd.arguments) {
-      const required = arg.required ? ' (required)' : ' (optional)';
+      const required = arg.required ? " (required)" : " (optional)";
       lines.push(`  - ${arg.name}: ${arg.description}${required}`);
       if (arg.enum) {
-        lines.push(`    Allowed values: ${arg.enum.join(', ')}`);
+        lines.push(`    Allowed values: ${arg.enum.join(", ")}`);
       }
     }
   }
 
-  lines.push('');
-  return lines.join('\n');
+  lines.push("");
+  return lines.join("\n");
 }

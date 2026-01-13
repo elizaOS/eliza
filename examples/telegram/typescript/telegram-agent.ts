@@ -31,8 +31,8 @@ Keep responses short - suitable for mobile chat.`,
     settings: {
       // Match how the chat example configures model selection via runtime settings
       // (read by @elizaos/plugin-openai).
-      OPENAI_SMALL_MODEL: "gpt-4o-mini",
-      OPENAI_LARGE_MODEL: "gpt-4o-mini",
+      OPENAI_SMALL_MODEL: "gpt-5-mini",
+      OPENAI_LARGE_MODEL: "gpt-5-mini",
     },
     // Optional: pass through secrets so plugins can read via runtime.getSetting()
     secrets: {

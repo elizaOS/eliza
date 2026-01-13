@@ -3,17 +3,17 @@
  */
 
 import {
-  getApplicableRules,
-  PROJECT_STRUCTURE,
-  getComponentByPath,
   exportAllRulesToCursor,
+  getApplicableRules,
+  getComponentByPath,
+  PROJECT_STRUCTURE,
   PythonValidator,
   TypeScriptValidator,
-} from './index';
+} from "./index";
 
 // Example 1: Validate a Python file
 async function validatePythonExample() {
-  console.log('=== Python Validation Example ===');
+  console.log("=== Python Validation Example ===");
 
   const pythonCode = `
 def process_data(data):
@@ -24,16 +24,16 @@ def process_data(data):
 `;
 
   const validator = new PythonValidator();
-  const result = validator.validate(pythonCode, 'example.py');
+  const result = validator.validate(pythonCode, "example.py");
 
-  console.log('Valid:', result.valid);
-  console.log('Violations:', result.violations);
-  console.log('Warnings:', result.warnings);
+  console.log("Valid:", result.valid);
+  console.log("Violations:", result.violations);
+  console.log("Warnings:", result.warnings);
 }
 
 // Example 2: Validate a TypeScript file
 async function validateTypeScriptExample() {
-  console.log('\n=== TypeScript Validation Example ===');
+  console.log("\n=== TypeScript Validation Example ===");
 
   const tsCode = `
 function processData(data: unknown) {
@@ -44,28 +44,28 @@ function processData(data: unknown) {
 `;
 
   const validator = new TypeScriptValidator();
-  const result = validator.validate(tsCode, 'example.ts');
+  const result = validator.validate(tsCode, "example.ts");
 
-  console.log('Valid:', result.valid);
-  console.log('Violations:', result.violations);
-  console.log('Warnings:', result.warnings);
+  console.log("Valid:", result.valid);
+  console.log("Violations:", result.violations);
+  console.log("Warnings:", result.warnings);
 }
 
 // Example 3: Get project structure information
 function projectStructureExample() {
-  console.log('\n=== Project Structure Example ===');
+  console.log("\n=== Project Structure Example ===");
 
   // Get information about a specific component
-  const agentInfo = getComponentByPath('sweagent/agent/agents.py');
-  console.log('Agent component:', agentInfo);
+  const agentInfo = getComponentByPath("sweagent/agent/agents.py");
+  console.log("Agent component:", agentInfo);
 
   // Access project structure directly
-  console.log('\nMain entry points:');
+  console.log("\nMain entry points:");
   PROJECT_STRUCTURE.mainEntryPoints.forEach((entry) => {
     console.log(`  - ${entry.path}: ${entry.description}`);
   });
 
-  console.log('\nInspectors:');
+  console.log("\nInspectors:");
   PROJECT_STRUCTURE.inspectors.forEach((inspector) => {
     console.log(`  - ${inspector.name} (${inspector.type}): ${inspector.path}`);
   });
@@ -73,16 +73,16 @@ function projectStructureExample() {
 
 // Example 4: Get applicable rules for different file types
 function rulesExample() {
-  console.log('\n=== Rules Example ===');
+  console.log("\n=== Rules Example ===");
 
-  console.log('Python rules:');
-  const pythonRules = getApplicableRules('example.py');
+  console.log("Python rules:");
+  const pythonRules = getApplicableRules("example.py");
   pythonRules.forEach((rule) => {
     console.log(`  - ${rule.id}: ${rule.rule}`);
   });
 
-  console.log('\nTypeScript rules:');
-  const tsRules = getApplicableRules('example.ts');
+  console.log("\nTypeScript rules:");
+  const tsRules = getApplicableRules("example.ts");
   tsRules.forEach((rule) => {
     console.log(`  - ${rule.id}: ${rule.rule}`);
   });
@@ -90,11 +90,11 @@ function rulesExample() {
 
 // Example 5: Export rules to Cursor IDE format
 function exportExample() {
-  console.log('\n=== Export Example ===');
+  console.log("\n=== Export Example ===");
 
   const cursorRules = exportAllRulesToCursor();
 
-  console.log('Exported rules:');
+  console.log("Exported rules:");
   Object.keys(cursorRules).forEach((filename) => {
     console.log(`  - ${filename} (${cursorRules[filename].length} bytes)`);
   });

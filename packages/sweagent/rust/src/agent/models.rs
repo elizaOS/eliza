@@ -3,9 +3,7 @@
 //! This module contains various model implementations for interacting with LLMs.
 
 use crate::exceptions::{Result, SWEAgentError};
-use crate::types::{
-    History, ModelOutput, ModelStats, RetryConfig, Role, ToolCall,
-};
+use crate::types::{History, ModelOutput, ModelStats, RetryConfig, Role, ToolCall};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -25,11 +23,11 @@ impl GlobalStats {
         let micro_cost = (cost * 1_000_000.0) as u64;
         self.total_cost.fetch_add(micro_cost, Ordering::SeqCst);
     }
-    
+
     pub fn get_total_cost(&self) -> f64 {
         self.total_cost.load(Ordering::SeqCst) as f64 / 1_000_000.0
     }
-    
+
     pub fn update_timestamp(&self) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -57,7 +55,7 @@ impl InstanceStats {
             api_calls: self.api_calls + other.api_calls,
         }
     }
-    
+
     pub fn to_model_stats(&self) -> ModelStats {
         ModelStats {
             instance_cost: self.instance_cost,
@@ -73,7 +71,7 @@ impl InstanceStats {
 pub trait Model: Send + Sync {
     /// Query the model with conversation history
     async fn query(&self, history: &History) -> Result<ModelOutput>;
-    
+
     /// Query with specific temperature and number of completions
     async fn query_with_params(
         &self,
@@ -84,13 +82,13 @@ pub trait Model: Send + Sync {
         let output = self.query(history).await?;
         Ok(vec![output])
     }
-    
+
     /// Reset instance statistics
     fn reset_stats(&self);
-    
+
     /// Get current instance statistics
     fn get_stats(&self) -> InstanceStats;
-    
+
     /// Get per-instance cost limit
     fn instance_cost_limit(&self) -> f64;
 }
@@ -181,40 +179,37 @@ impl LiteLLMModel {
             client: reqwest::Client::new(),
         }
     }
-    
+
     fn get_api_keys(config: &GenericApiModelConfig) -> Vec<String> {
         if let Some(ref key) = config.api_key {
-            if key.starts_with('$') {
+            if let Some(stripped) = key.strip_prefix('$') {
                 // Environment variable
-                if let Ok(env_key) = std::env::var(&key[1..]) {
+                if let Ok(env_key) = std::env::var(stripped) {
                     return env_key.split(":::").map(String::from).collect();
                 }
             } else {
                 return key.split(":::").map(String::from).collect();
             }
         }
-        
+
         // Try environment variable based on model name
-        let env_name = format!(
-            "{}_API_KEY",
-            config.name.to_uppercase().replace('-', "_")
-        );
+        let env_name = format!("{}_API_KEY", config.name.to_uppercase().replace('-', "_"));
         if let Ok(key) = std::env::var(&env_name) {
             return key.split(":::").map(String::from).collect();
         }
-        
+
         Vec::new()
     }
-    
+
     fn choose_api_key(&self) -> Option<String> {
         if self.api_keys.is_empty() {
             return None;
         }
-        
+
         let idx = self.current_key_index.fetch_add(1, Ordering::SeqCst) as usize;
         Some(self.api_keys[idx % self.api_keys.len()].clone())
     }
-    
+
     fn history_to_messages(&self, history: &History) -> Vec<serde_json::Value> {
         history
             .iter()
@@ -231,27 +226,27 @@ impl LiteLLMModel {
                     Role::Assistant => "assistant",
                     Role::Tool => "tool",
                 };
-                
+
                 let mut msg = serde_json::json!({
                     "role": role,
                     "content": item.content.as_str(),
                 });
-                
+
                 if let Some(ref tool_calls) = item.tool_calls {
                     msg["tool_calls"] = serde_json::to_value(tool_calls).unwrap_or_default();
                 }
-                
+
                 if let Some(ref ids) = item.tool_call_ids {
                     if !ids.is_empty() {
                         msg["tool_call_id"] = serde_json::Value::String(ids[0].clone());
                     }
                 }
-                
+
                 msg
             })
             .collect()
     }
-    
+
     fn calculate_cost(&self, input_tokens: u64, output_tokens: u64) -> f64 {
         // Simplified pricing - in production, use actual model pricing
         let (input_price, output_price) = match self.config.name.as_str() {
@@ -262,13 +257,13 @@ impl LiteLLMModel {
             name if name.contains("claude-3-haiku") => (0.00025 / 1000.0, 0.00125 / 1000.0),
             _ => (0.001 / 1000.0, 0.002 / 1000.0),
         };
-        
+
         input_tokens as f64 * input_price + output_tokens as f64 * output_price
     }
-    
+
     async fn check_cost_limits(&self) -> Result<()> {
         let stats = self.stats.lock().await;
-        
+
         if self.config.per_instance_cost_limit > 0.0
             && stats.instance_cost >= self.config.per_instance_cost_limit
         {
@@ -277,7 +272,7 @@ impl LiteLLMModel {
                 stats.instance_cost, self.config.per_instance_cost_limit
             )));
         }
-        
+
         if self.config.total_cost_limit > 0.0
             && self.global_stats.get_total_cost() >= self.config.total_cost_limit
         {
@@ -287,7 +282,7 @@ impl LiteLLMModel {
                 self.config.total_cost_limit
             )));
         }
-        
+
         if self.config.per_instance_call_limit > 0
             && stats.api_calls >= self.config.per_instance_call_limit
         {
@@ -296,7 +291,7 @@ impl LiteLLMModel {
                 stats.api_calls, self.config.per_instance_call_limit
             )));
         }
-        
+
         Ok(())
     }
 }
@@ -305,14 +300,14 @@ impl LiteLLMModel {
 impl Model for LiteLLMModel {
     async fn query(&self, history: &History) -> Result<ModelOutput> {
         self.check_cost_limits().await?;
-        
+
         let api_key = self.choose_api_key();
         let messages = self.history_to_messages(history);
-        
+
         // Determine API endpoint based on model name
         let is_anthropic = self.config.name.contains("claude");
         let _is_openai = self.config.name.contains("gpt");
-        
+
         let (url, headers) = if is_anthropic {
             let url = self
                 .config
@@ -335,32 +330,29 @@ impl Model for LiteLLMModel {
             let mut headers = reqwest::header::HeaderMap::new();
             headers.insert("Content-Type", "application/json".parse().unwrap());
             if let Some(ref key) = api_key {
-                headers.insert(
-                    "Authorization",
-                    format!("Bearer {}", key).parse().unwrap(),
-                );
+                headers.insert("Authorization", format!("Bearer {}", key).parse().unwrap());
             }
             (url, headers)
         };
-        
+
         let mut request_body = serde_json::json!({
             "model": self.config.name,
             "messages": messages,
             "temperature": self.config.temperature,
         });
-        
+
         if let Some(top_p) = self.config.top_p {
             request_body["top_p"] = serde_json::Value::from(top_p);
         }
-        
+
         if !self.config.stop.is_empty() {
             request_body["stop"] = serde_json::to_value(&self.config.stop)?;
         }
-        
+
         if let Some(max_tokens) = self.config.max_output_tokens {
             request_body["max_tokens"] = serde_json::Value::from(max_tokens);
         }
-        
+
         // Handle Anthropic-specific format
         if is_anthropic {
             let system_msg = messages.iter().find(|m| m["role"] == "system");
@@ -374,7 +366,7 @@ impl Model for LiteLLMModel {
                 request_body["messages"] = serde_json::to_value(non_system)?;
             }
         }
-        
+
         let response = self
             .client
             .post(&url)
@@ -382,10 +374,10 @@ impl Model for LiteLLMModel {
             .json(&request_body)
             .send()
             .await?;
-        
+
         let status = response.status();
         let response_text = response.text().await.unwrap_or_default();
-        
+
         if !status.is_success() {
             // Check for specific error types
             if response_text.contains("content_policy") || response_text.contains("safety") {
@@ -396,14 +388,15 @@ impl Model for LiteLLMModel {
                 status, response_text
             )));
         }
-        
+
         // Parse response - handle both OpenAI and Anthropic formats
         let json_response: serde_json::Value = serde_json::from_str(&response_text)
             .map_err(|e| SWEAgentError::ApiError(format!("Failed to parse response: {}", e)))?;
-        
+
         let (message, tool_calls, input_tokens, output_tokens) = if is_anthropic {
             // Anthropic format: { "content": [{"type": "text", "text": "..."}], "usage": {...} }
-            let content = json_response.get("content")
+            let content = json_response
+                .get("content")
                 .and_then(|c| c.as_array())
                 .map(|arr| {
                     arr.iter()
@@ -418,23 +411,36 @@ impl Model for LiteLLMModel {
                         .join("")
                 })
                 .unwrap_or_default();
-            
+
             // Extract tool use blocks from Anthropic response
-            let tools: Option<Vec<ToolCall>> = json_response.get("content")
+            let tools: Option<Vec<ToolCall>> = json_response
+                .get("content")
                 .and_then(|c| c.as_array())
                 .map(|arr| {
                     arr.iter()
                         .filter_map(|item| {
                             if item.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
-                                let id = item.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string();
-                                let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
-                                let args = item.get("input")
+                                let id = item
+                                    .get("id")
+                                    .and_then(|i| i.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let name = item
+                                    .get("name")
+                                    .and_then(|n| n.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let args = item
+                                    .get("input")
                                     .map(|i| serde_json::to_string(i).unwrap_or_default())
                                     .unwrap_or_default();
                                 Some(ToolCall {
                                     id,
                                     call_type: "function".to_string(),
-                                    function: crate::types::ToolCallFunction { name, arguments: args },
+                                    function: crate::types::ToolCallFunction {
+                                        name,
+                                        arguments: args,
+                                    },
                                 })
                             } else {
                                 None
@@ -443,15 +449,22 @@ impl Model for LiteLLMModel {
                         .collect()
                 })
                 .filter(|v: &Vec<ToolCall>| !v.is_empty());
-            
+
             let usage = json_response.get("usage");
-            let input = usage.and_then(|u| u.get("input_tokens")).and_then(|t| t.as_u64()).unwrap_or(0);
-            let output = usage.and_then(|u| u.get("output_tokens")).and_then(|t| t.as_u64()).unwrap_or(0);
-            
+            let input = usage
+                .and_then(|u| u.get("input_tokens"))
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0);
+            let output = usage
+                .and_then(|u| u.get("output_tokens"))
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0);
+
             (content, tools, input, output)
         } else {
             // OpenAI format: { "choices": [{"message": {"content": "..."}}], "usage": {...} }
-            let message_content = json_response.get("choices")
+            let message_content = json_response
+                .get("choices")
                 .and_then(|c| c.as_array())
                 .and_then(|arr| arr.first())
                 .and_then(|choice| choice.get("message"))
@@ -459,9 +472,10 @@ impl Model for LiteLLMModel {
                 .and_then(|c| c.as_str())
                 .unwrap_or("")
                 .to_string();
-            
+
             // Extract tool calls from OpenAI response
-            let tools: Option<Vec<ToolCall>> = json_response.get("choices")
+            let tools: Option<Vec<ToolCall>> = json_response
+                .get("choices")
                 .and_then(|c| c.as_array())
                 .and_then(|arr| arr.first())
                 .and_then(|choice| choice.get("message"))
@@ -470,30 +484,51 @@ impl Model for LiteLLMModel {
                 .map(|arr| {
                     arr.iter()
                         .filter_map(|item| {
-                            let id = item.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string();
+                            let id = item
+                                .get("id")
+                                .and_then(|i| i.as_str())
+                                .unwrap_or("")
+                                .to_string();
                             let func = item.get("function")?;
-                            let name = func.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
-                            let args = func.get("arguments").and_then(|a| a.as_str()).unwrap_or("").to_string();
+                            let name = func
+                                .get("name")
+                                .and_then(|n| n.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let args = func
+                                .get("arguments")
+                                .and_then(|a| a.as_str())
+                                .unwrap_or("")
+                                .to_string();
                             Some(ToolCall {
                                 id,
                                 call_type: "function".to_string(),
-                                function: crate::types::ToolCallFunction { name, arguments: args },
+                                function: crate::types::ToolCallFunction {
+                                    name,
+                                    arguments: args,
+                                },
                             })
                         })
                         .collect()
                 })
                 .filter(|v: &Vec<ToolCall>| !v.is_empty());
-            
+
             let usage = json_response.get("usage");
-            let input = usage.and_then(|u| u.get("prompt_tokens")).and_then(|t| t.as_u64()).unwrap_or(0);
-            let output = usage.and_then(|u| u.get("completion_tokens")).and_then(|t| t.as_u64()).unwrap_or(0);
-            
+            let input = usage
+                .and_then(|u| u.get("prompt_tokens"))
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0);
+            let output = usage
+                .and_then(|u| u.get("completion_tokens"))
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0);
+
             (message_content, tools, input, output)
         };
-        
+
         // Update stats
         let cost = self.calculate_cost(input_tokens, output_tokens);
-        
+
         {
             let mut stats = self.stats.lock().await;
             stats.tokens_sent += input_tokens;
@@ -501,27 +536,27 @@ impl Model for LiteLLMModel {
             stats.instance_cost += cost;
             stats.api_calls += 1;
         }
-        
+
         self.global_stats.add_cost(cost);
         self.global_stats.update_timestamp();
-        
+
         Ok(ModelOutput {
             message,
             tool_calls,
             thinking_blocks: None,
         })
     }
-    
+
     fn reset_stats(&self) {
         if let Ok(mut stats) = self.stats.try_lock() {
             *stats = InstanceStats::default();
         }
     }
-    
+
     fn get_stats(&self) -> InstanceStats {
         self.stats.try_lock().map(|s| s.clone()).unwrap_or_default()
     }
-    
+
     fn instance_cost_limit(&self) -> f64 {
         self.config.per_instance_cost_limit
     }
@@ -546,42 +581,42 @@ impl HumanModel {
 impl Model for HumanModel {
     async fn query(&self, _history: &History) -> Result<ModelOutput> {
         use std::io::{self, BufRead, Write};
-        
+
         print!("> ");
         io::stdout().flush()?;
-        
+
         let stdin = io::stdin();
         let line = stdin.lock().lines().next();
-        
+
         let input = match line {
             Some(Ok(s)) => s,
             Some(Err(e)) => return Err(SWEAgentError::IoError(e.to_string())),
             None => return Err(SWEAgentError::EOF),
         };
-        
+
         {
             let mut stats = self.stats.lock().await;
             stats.api_calls += 1;
             stats.instance_cost += self.cost_per_call;
         }
-        
+
         Ok(ModelOutput {
             message: input,
             tool_calls: None,
             thinking_blocks: None,
         })
     }
-    
+
     fn reset_stats(&self) {
         if let Ok(mut stats) = self.stats.try_lock() {
             *stats = InstanceStats::default();
         }
     }
-    
+
     fn get_stats(&self) -> InstanceStats {
         self.stats.try_lock().map(|s| s.clone()).unwrap_or_default()
     }
-    
+
     fn instance_cost_limit(&self) -> f64 {
         0.0
     }
@@ -612,37 +647,37 @@ impl Default for InstantEmptySubmitModel {
 impl Model for InstantEmptySubmitModel {
     async fn query(&self, _history: &History) -> Result<ModelOutput> {
         let idx = self.action_idx.fetch_add(1, Ordering::SeqCst);
-        
+
         let message = if idx == 0 {
             "DISCUSSION\nLet's reproduce the bug by creating a `reproduce.py` file.\n\n```\ntouch reproduce.py\n```\n"
         } else {
             self.action_idx.store(0, Ordering::SeqCst);
             "DISCUSSION\nThe task should be resolved, so let's submit the patch.\n\n```\nsubmit\n```\n"
         };
-        
+
         {
             let mut stats = self.stats.lock().await;
             stats.api_calls += 1;
         }
-        
+
         Ok(ModelOutput {
             message: message.to_string(),
             tool_calls: None,
             thinking_blocks: None,
         })
     }
-    
+
     fn reset_stats(&self) {
         if let Ok(mut stats) = self.stats.try_lock() {
             *stats = InstanceStats::default();
         }
         self.action_idx.store(0, Ordering::SeqCst);
     }
-    
+
     fn get_stats(&self) -> InstanceStats {
         self.stats.try_lock().map(|s| s.clone()).unwrap_or_default()
     }
-    
+
     fn instance_cost_limit(&self) -> f64 {
         0.0
     }
@@ -669,7 +704,7 @@ impl ReplayModel {
                     .and_then(|m| m.into_values().next())
             })
             .collect();
-        
+
         Ok(Self {
             stats: Arc::new(Mutex::new(InstanceStats::default())),
             replays,
@@ -685,7 +720,7 @@ impl Model for ReplayModel {
     async fn query(&self, _history: &History) -> Result<ModelOutput> {
         let replay_idx = self.replay_idx.load(Ordering::SeqCst) as usize;
         let action_idx = self.action_idx.fetch_add(1, Ordering::SeqCst) as usize;
-        
+
         let action = if replay_idx >= self.replays.len() {
             format!("```\n{}\n```", self.submit_command)
         } else if action_idx >= self.replays[replay_idx].len() {
@@ -701,29 +736,29 @@ impl Model for ReplayModel {
             }
             action.clone()
         };
-        
+
         {
             let mut stats = self.stats.lock().await;
             stats.api_calls += 1;
         }
-        
+
         Ok(ModelOutput {
             message: action,
             tool_calls: None,
             thinking_blocks: None,
         })
     }
-    
+
     fn reset_stats(&self) {
         if let Ok(mut stats) = self.stats.try_lock() {
             *stats = InstanceStats::default();
         }
     }
-    
+
     fn get_stats(&self) -> InstanceStats {
         self.stats.try_lock().map(|s| s.clone()).unwrap_or_default()
     }
-    
+
     fn instance_cost_limit(&self) -> f64 {
         0.0
     }
@@ -740,12 +775,12 @@ pub enum ModelConfig {
     #[serde(rename = "replay")]
     Replay { replay_path: String },
     #[serde(untagged)]
-    Generic(GenericApiModelConfig),
+    Generic(Box<GenericApiModelConfig>),
 }
 
 impl Default for ModelConfig {
     fn default() -> Self {
-        ModelConfig::Generic(GenericApiModelConfig::default())
+        ModelConfig::Generic(Box::default())
     }
 }
 
@@ -759,7 +794,7 @@ pub fn get_model(config: ModelConfig, global_stats: Arc<GlobalStats>) -> Result<
         ModelConfig::Replay { replay_path } => {
             Ok(Box::new(ReplayModel::new(&replay_path, "submit")?))
         }
-        ModelConfig::Generic(config) => Ok(Box::new(LiteLLMModel::new(config, global_stats))),
+        ModelConfig::Generic(config) => Ok(Box::new(LiteLLMModel::new(*config, global_stats))),
     }
 }
 
@@ -771,10 +806,10 @@ mod tests {
     async fn test_instant_empty_submit_model() {
         let model = InstantEmptySubmitModel::new();
         let history = vec![];
-        
+
         let output1 = model.query(&history).await.unwrap();
         assert!(output1.message.contains("reproduce.py"));
-        
+
         let output2 = model.query(&history).await.unwrap();
         assert!(output2.message.contains("submit"));
     }
@@ -794,7 +829,7 @@ mod tests {
             api_calls: 2,
         };
         let c = a.add(&b);
-        
+
         assert_eq!(c.instance_cost, 3.0);
         assert_eq!(c.tokens_sent, 300);
         assert_eq!(c.api_calls, 3);

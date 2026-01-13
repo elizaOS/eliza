@@ -3,13 +3,13 @@
  * Converted from sweagent/inspector/server.py
  */
 
-import express from 'express';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as yaml from 'js-yaml';
-import { getLogger } from '../utils/log';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import express from "express";
+import * as yaml from "js-yaml";
+import { getLogger } from "../utils/log";
 
-const logger = getLogger('inspector-server');
+const logger = getLogger("inspector-server");
 
 interface TrajectoryStep {
   thought: string;
@@ -43,10 +43,10 @@ interface TrajectoryContent {
  * The problem statement is the first 'user' message in the history
  */
 function addProblemStatement(content: TrajectoryContent): TrajectoryContent {
-  let problemStatement = '';
+  let problemStatement = "";
 
   for (const item of content.history || []) {
-    if (item.role === 'user') {
+    if (item.role === "user") {
       problemStatement = item.content;
       break;
     }
@@ -54,11 +54,11 @@ function addProblemStatement(content: TrajectoryContent): TrajectoryContent {
 
   if (problemStatement) {
     content.trajectory.unshift({
-      thought: '',
-      action: '',
-      response: '',
+      thought: "",
+      action: "",
+      response: "",
       observation: problemStatement,
-      messages: [{ role: 'system', content: 'Problem Statement placeholder' }],
+      messages: [{ role: "system", content: "Problem Statement placeholder" }],
     });
   }
 
@@ -75,40 +75,43 @@ function appendExit(content: TrajectoryContent): TrajectoryContent {
     return content;
   }
 
-  if (exitStatus.startsWith('submitted')) {
+  if (exitStatus.startsWith("submitted")) {
     if (content.info.submission) {
       content.trajectory.push({
-        thought: 'Submitting solution',
-        action: 'Model Submission',
-        response: 'Submitting solution',
+        thought: "Submitting solution",
+        action: "Model Submission",
+        response: "Submitting solution",
         observation: content.info.submission,
         messages: [],
       });
     }
-  } else if (exitStatus === 'exit_cost' || exitStatus === 'exit_context') {
-    const observation = exitStatus === 'exit_cost' ? 'Exit due to cost limit' : 'Exit due to context limit';
+  } else if (exitStatus === "exit_cost" || exitStatus === "exit_context") {
+    const observation =
+      exitStatus === "exit_cost"
+        ? "Exit due to cost limit"
+        : "Exit due to context limit";
 
     content.trajectory.push({
-      thought: 'Exit',
-      action: 'Exit',
-      response: '',
+      thought: "Exit",
+      action: "Exit",
+      response: "",
       observation,
       messages: [],
     });
-  } else if (exitStatus === 'exit_error') {
+  } else if (exitStatus === "exit_error") {
     content.trajectory.push({
-      thought: 'Exit',
-      action: 'Exit due to error',
-      response: '',
-      observation: 'Exit due to error',
+      thought: "Exit",
+      action: "Exit due to error",
+      response: "",
+      observation: "Exit due to error",
       messages: [],
     });
-  } else if (exitStatus === 'exit_format') {
+  } else if (exitStatus === "exit_format") {
     content.trajectory.push({
-      thought: 'Exit',
-      action: 'Exit due to format error',
-      response: '',
-      observation: 'Exit due to format error',
+      thought: "Exit",
+      action: "Exit due to format error",
+      response: "",
+      observation: "Exit due to format error",
       messages: [],
     });
   }
@@ -131,9 +134,9 @@ Output Tokens: ${modelStats.instanceOutputTokens || 0}
 API Calls: ${modelStats.instanceCallCount || 0}`;
 
     content.trajectory.push({
-      thought: '',
-      action: 'Model Stats',
-      response: '',
+      thought: "",
+      action: "Model Stats",
+      response: "",
       observation: statsText,
       messages: [],
     });
@@ -147,7 +150,7 @@ API Calls: ${modelStats.instanceCallCount || 0}`;
  */
 function getTrajectory(filePath: string): TrajectoryContent | null {
   try {
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    const fileContent = fs.readFileSync(filePath, "utf-8");
     let content: TrajectoryContent;
 
     // Try parsing as JSON first, then YAML
@@ -165,9 +168,9 @@ function getTrajectory(filePath: string): TrajectoryContent | null {
     // Add environment information if available
     if (content.environment) {
       content.trajectory.push({
-        thought: '',
-        action: 'Environment',
-        response: '',
+        thought: "",
+        action: "Environment",
+        response: "",
         observation: content.environment,
         messages: [],
       });
@@ -183,11 +186,16 @@ function getTrajectory(filePath: string): TrajectoryContent | null {
 /**
  * Create and start the inspector server
  */
-export function startInspectorServer(options: { port?: number; trajectoryDir?: string; staticDir?: string }): void {
+export function startInspectorServer(options: {
+  port?: number;
+  trajectoryDir?: string;
+  staticDir?: string;
+}): void {
   const app = express();
   const port = options.port || 8000;
-  const trajectoryDir = options.trajectoryDir || './trajectories';
-  const staticDir = options.staticDir || path.join(__dirname, '../../sweagent/inspector');
+  const trajectoryDir = options.trajectoryDir || "./trajectories";
+  const staticDir =
+    options.staticDir || path.join(__dirname, "../../sweagent/inspector");
 
   // Ensure trajectory directory exists
   if (!fs.existsSync(trajectoryDir)) {
@@ -198,11 +206,16 @@ export function startInspectorServer(options: { port?: number; trajectoryDir?: s
   app.use(express.static(staticDir));
 
   // API endpoint to list trajectory files
-  app.get('/api/trajectories', (_req, res) => {
+  app.get("/api/trajectories", (_req, res) => {
     try {
       const files = fs
         .readdirSync(trajectoryDir)
-        .filter((file) => file.endsWith('.traj') || file.endsWith('.yaml') || file.endsWith('.json'))
+        .filter(
+          (file) =>
+            file.endsWith(".traj") ||
+            file.endsWith(".yaml") ||
+            file.endsWith(".json"),
+        )
         .map((file) => ({
           name: file,
           path: path.join(trajectoryDir, file),
@@ -212,35 +225,40 @@ export function startInspectorServer(options: { port?: number; trajectoryDir?: s
 
       res.json(files);
     } catch (error) {
-      logger.error('Error listing trajectories:', error);
-      res.status(500).json({ error: 'Failed to list trajectories' });
+      logger.error("Error listing trajectories:", error);
+      res.status(500).json({ error: "Failed to list trajectories" });
     }
   });
 
   // API endpoint to get a specific trajectory
-  app.get('/api/trajectory/:filename', (req, res) => {
+  app.get("/api/trajectory/:filename", (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(trajectoryDir, filename);
 
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Trajectory not found' });
+      return res.status(404).json({ error: "Trajectory not found" });
     }
 
     const trajectory = getTrajectory(filePath);
 
     if (!trajectory) {
-      return res.status(500).json({ error: 'Failed to parse trajectory' });
+      return res.status(500).json({ error: "Failed to parse trajectory" });
     }
 
     return res.json(trajectory);
   });
 
   // API endpoint to get trajectory statistics
-  app.get('/api/stats', (_req, res) => {
+  app.get("/api/stats", (_req, res) => {
     try {
       const files = fs
         .readdirSync(trajectoryDir)
-        .filter((file) => file.endsWith('.traj') || file.endsWith('.yaml') || file.endsWith('.json'));
+        .filter(
+          (file) =>
+            file.endsWith(".traj") ||
+            file.endsWith(".yaml") ||
+            file.endsWith(".json"),
+        );
 
       const stats = {
         totalTrajectories: files.length,
@@ -249,7 +267,7 @@ export function startInspectorServer(options: { port?: number; trajectoryDir?: s
           return {
             file,
             steps: trajectory?.trajectory.length || 0,
-            exitStatus: trajectory?.info.exitStatus || 'unknown',
+            exitStatus: trajectory?.info.exitStatus || "unknown",
             cost: trajectory?.info.modelStats?.instanceCost || 0,
           };
         }),
@@ -257,8 +275,8 @@ export function startInspectorServer(options: { port?: number; trajectoryDir?: s
 
       res.json(stats);
     } catch (error) {
-      logger.error('Error computing statistics:', error);
-      res.status(500).json({ error: 'Failed to compute statistics' });
+      logger.error("Error computing statistics:", error);
+      res.status(500).json({ error: "Failed to compute statistics" });
     }
   });
 
@@ -275,8 +293,13 @@ export function startInspectorServer(options: { port?: number; trajectoryDir?: s
  */
 if (require.main === module) {
   const args = process.argv.slice(2);
-  const port = parseInt(args.find((arg) => arg.startsWith('--port='))?.split('=')[1] || '8000');
-  const trajectoryDir = args.find((arg) => arg.startsWith('--dir='))?.split('=')[1] || './trajectories';
+  const port = parseInt(
+    args.find((arg) => arg.startsWith("--port="))?.split("=")[1] || "8000",
+    10,
+  );
+  const trajectoryDir =
+    args.find((arg) => arg.startsWith("--dir="))?.split("=")[1] ||
+    "./trajectories";
 
   startInspectorServer({ port, trajectoryDir });
 }

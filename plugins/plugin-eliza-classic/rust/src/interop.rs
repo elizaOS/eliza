@@ -678,7 +678,7 @@ mod tests {
     fn test_get_provider() {
         let result = get_provider("eliza-greeting", "{}", "{}");
         assert!(result.text.is_some());
-        assert!(result.text.unwrap().contains("ELIZA"));
+        assert!(result.text.unwrap().to_lowercase().contains("problem"));
     }
 
     #[test]

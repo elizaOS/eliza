@@ -91,7 +91,7 @@ Environment Variables:
     run_parser.add_argument(
         "--model",
         type=str,
-        help="Specific model (e.g., groq/llama-3.1-8b-instant, openai/gpt-4o)",
+        help="Specific model (e.g., groq/llama-3.1-8b-instant, openai/gpt-5)",
     )
 
     run_parser.add_argument(

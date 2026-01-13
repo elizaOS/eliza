@@ -33,7 +33,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.getenv("TERMINAL_BENCH_MODEL", "gpt-4o-mini")
+DEFAULT_MODEL = os.getenv("TERMINAL_BENCH_MODEL", "gpt-5-mini")
 
 
 async def test_standalone_mode() -> bool:

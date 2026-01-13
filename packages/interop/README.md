@@ -403,6 +403,31 @@ packages/interop/
 - Use **FFI** for Python↔Rust when performance is critical
 - Use **IPC** for maximum flexibility and isolation
 
+## Security & SOC2 Readiness Notes
+
+This package is often used at a trust boundary (loading plugins). For SOC 2–aligned deployments:
+
+### Sandbox boundaries (be explicit)
+
+- **Direct (same-language)**: no sandbox. Plugin code runs with full process privileges.
+- **FFI (Python↔Rust shared library)**: **no sandbox**. This is native code execution in the host process.
+- **IPC (subprocess stdin/stdout)**: isolates memory space, but **does not prevent exfiltration** (plugins can still perform network/file I/O unless the operator constrains the process).
+- **WASM**: provides isolation from host memory, but security depends on the host runtime imports and resource limits. It is not an automatic “secure enclave.”
+
+### Resource limits (recommended defaults)
+
+- **TypeScript→Python IPC** (`packages/interop/typescript/python-bridge.ts`)
+  - Supports `maxPendingRequests`, `maxMessageBytes`, and `maxBufferBytes` to prevent unbounded memory growth from malformed or hostile plugin output.
+  - Supports `inheritEnv` and `envDenylist` to reduce accidental secret exposure to subprocesses.
+
+- **WASM loading**
+  - TypeScript loader supports `maxWasmBytes` and `maxMemoryBytes` to limit module and initial memory footprint, and provides a secure `random_get` implementation for WASI.
+  - Python loader supports `max_module_bytes`, `max_memory_bytes`, and `fuel` (wasmtime fuel) for coarse CPU budgeting.
+
+### Logging
+
+Interop subprocess/WASM output is routed through the core logger (when used from the TypeScript runtime) so existing redaction rules apply. Operators should still treat plugin logs as potentially sensitive and configure log retention accordingly.
+
 ## See Also
 
 - [Examples README](./examples/README.md) - Complete working examples

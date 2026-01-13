@@ -3,9 +3,9 @@
  * Converted from tests/tools/conftest.py
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 /**
  * Create a temporary environment file for testing
@@ -16,11 +16,11 @@ export function withTmpEnvFile(): {
   tmpDir: string;
   cleanup: () => void;
 } {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-env-'));
-  const envFile = path.join(tmpDir, '.swe-agent-env');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "test-env-"));
+  const envFile = path.join(tmpDir, ".swe-agent-env");
 
   // Create empty JSON env file
-  fs.writeFileSync(envFile, '{}', 'utf-8');
+  fs.writeFileSync(envFile, "{}", "utf-8");
 
   // Set environment variable
   const originalEnvFile = process.env.SWE_AGENT_ENV_FILE;
@@ -49,22 +49,22 @@ export function withTmpEnvFile(): {
 export function createTestFileWithContent(
   envFile: string,
   content: string,
-  fileName: string = 'test.py',
-): { testPath: string; registry: Record<string, any> } {
+  fileName: string = "test.py",
+): { testPath: string; registry: Record<string, string> } {
   const tmpDir = path.dirname(envFile);
   const testPath = path.join(tmpDir, fileName);
 
   // Create test file
-  fs.writeFileSync(testPath, content, 'utf-8');
+  fs.writeFileSync(testPath, content, "utf-8");
 
   // Set up registry
   const registry = {
     CURRENT_FILE: testPath,
-    FIRST_LINE: '1',
-    WINDOW: '10',
+    FIRST_LINE: "1",
+    WINDOW: "10",
   };
 
-  fs.writeFileSync(envFile, JSON.stringify(registry), 'utf-8');
+  fs.writeFileSync(envFile, JSON.stringify(registry), "utf-8");
 
   return { testPath, registry };
 }
@@ -73,7 +73,10 @@ export function createTestFileWithContent(
  * Mock for Python tool imports
  * Since we don't have Python tools in TypeScript tests, we need to mock them
  */
-export function makePythonToolImportable(filePath: string, moduleName: string): void {
+export function makePythonToolImportable(
+  filePath: string,
+  moduleName: string,
+): void {
   // This is a no-op in TypeScript tests
   // Python tools would need to be converted to TypeScript first
   console.log(`Would import Python tool ${filePath} as ${moduleName} (mocked)`);

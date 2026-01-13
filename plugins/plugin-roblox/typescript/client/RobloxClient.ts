@@ -1,5 +1,7 @@
 import type {
   DataStoreEntry,
+  JsonValue,
+  JsonValueOrUndefined,
   MessagingServiceMessage,
   RobloxConfig,
   RobloxExperienceInfo,
@@ -14,7 +16,7 @@ export class RobloxApiError extends Error {
     message: string,
     public statusCode: number,
     public endpoint: string,
-    public details?: unknown
+    public details?: JsonValue | string
   ) {
     super(message);
     this.name = "RobloxApiError";
@@ -46,9 +48,9 @@ export class RobloxClient {
     });
 
     if (!response.ok) {
-      let details: unknown;
+      let details: JsonValue | string;
       try {
-        details = await response.json();
+        details = (await response.json()) as JsonValue;
       } catch {
         details = await response.text();
       }
@@ -70,7 +72,7 @@ export class RobloxClient {
 
   async publishMessage(
     topic: string,
-    data: Record<string, unknown>,
+    data: Record<string, JsonValueOrUndefined>,
     universeId?: string
   ): Promise<void> {
     if (this.config.dryRun) {
@@ -89,7 +91,7 @@ export class RobloxClient {
   }
 
   async sendAgentMessage(message: MessagingServiceMessage): Promise<void> {
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, JsonValueOrUndefined> = {
       ...message.data,
     };
     if (message.sender) {
@@ -98,7 +100,7 @@ export class RobloxClient {
     await this.publishMessage(message.topic, payload);
   }
 
-  async getDataStoreEntry<T = unknown>(
+  async getDataStoreEntry<T extends JsonValue = JsonValue>(
     datastoreName: string,
     key: string,
     scope: string = "global"
@@ -128,7 +130,7 @@ export class RobloxClient {
     }
   }
 
-  async setDataStoreEntry<T = unknown>(
+  async setDataStoreEntry<T extends JsonValue = JsonValue>(
     datastoreName: string,
     key: string,
     value: T,

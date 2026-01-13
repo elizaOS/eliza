@@ -10,7 +10,7 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use elizaos_sweagent::run::{RunSingle, RunSingleConfig};
 //!
 //! #[tokio::main]
@@ -34,22 +34,21 @@ pub mod utils;
 
 // Re-export main types for convenience
 pub use agent::{
-    AgentConfig, DefaultAgent, DefaultAgentConfig, RetryAgent,
-    RetryAgentConfig, AbstractAgentHook,
+    AbstractAgentHook, AgentConfig, DefaultAgent, DefaultAgentConfig, RetryAgent, RetryAgentConfig,
 };
-pub use types::AgentRunResult;
 pub use environment::{
-    Deployment, DeploymentConfig, DockerDeployment, DockerDeploymentConfig,
-    LocalDeployment, LocalDeploymentConfig, EnvironmentConfig, SWEEnv, RepoConfig,
+    Deployment, DeploymentConfig, DockerDeployment, DockerDeploymentConfig, EnvironmentConfig,
+    LocalDeployment, LocalDeploymentConfig, RepoConfig, SWEEnv,
 };
 pub use exceptions::SWEAgentError;
+pub use monitoring::{
+    health_check, AgentMetrics, Alert, AlertHandler, AlertSeverity, AlertThresholds, HealthStatus,
+    MetricsMonitor, MetricsSnapshot,
+};
 pub use run::{RunBatch, RunBatchConfig, RunSingle, RunSingleConfig};
 pub use tools::{Bundle, BundleConfig, ParseFunction, ToolConfig, ToolHandler};
+pub use types::AgentRunResult;
 pub use types::{History, HistoryItem, StepOutput, Trajectory, TrajectoryStep};
-pub use monitoring::{
-    AgentMetrics, Alert, AlertHandler, AlertSeverity, AlertThresholds,
-    HealthStatus, MetricsMonitor, MetricsSnapshot, health_check,
-};
 
 /// Version of the SWE-agent library
 pub const VERSION: &str = "1.1.0";

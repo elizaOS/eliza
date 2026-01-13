@@ -5,7 +5,7 @@
  */
 
 function exitForfeit(): void {
-  console.log('###SWE-AGENT-EXIT-FORFEIT###');
+  console.log("###SWE-AGENT-EXIT-FORFEIT###");
   process.exit(0);
 }
 

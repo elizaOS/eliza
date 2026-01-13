@@ -20,6 +20,7 @@ import type {
   ProviderValue,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 import type {
   ActionResultPayload,
@@ -39,6 +40,10 @@ export interface WasmLoaderOptions {
   manifestPath?: string;
   /** Import object for WASM instantiation */
   imports?: WebAssembly.Imports;
+  /** Maximum allowed WASM binary size in bytes. */
+  maxWasmBytes?: number;
+  /** Maximum allowed initial memory size in bytes (post-instantiation). */
+  maxMemoryBytes?: number;
 }
 
 /**
@@ -56,7 +61,7 @@ export async function loadWasmPlugin(
   const { wasmPath, manifestPath } = options;
 
   // Load the WASM module
-  const wasmInstance = await loadWasmModule(wasmPath, options.imports);
+  const wasmInstance = await loadWasmModule(wasmPath, options);
 
   // Get the manifest from the WASM module or external file
   let manifest: PluginManifest;
@@ -77,7 +82,10 @@ export async function loadWasmPlugin(
  */
 async function loadWasmModule(
   wasmPath: string,
-  customImports?: WebAssembly.Imports,
+  options: Pick<
+    WasmLoaderOptions,
+    "imports" | "maxWasmBytes" | "maxMemoryBytes"
+  >,
 ): Promise<WasmPluginInstance> {
   // Default imports for WASM
   const defaultImports: WebAssembly.Imports = {
@@ -113,7 +121,7 @@ async function loadWasmModule(
     },
   };
 
-  const imports = { ...defaultImports, ...customImports };
+  const imports = { ...defaultImports, ...options.imports };
 
   // Determine if we're in Node.js or browser
   const isNode =
@@ -125,33 +133,81 @@ async function loadWasmModule(
   if (isNode) {
     // Node.js: read file
     const fs = await import("node:fs/promises");
+    if (typeof options.maxWasmBytes === "number") {
+      const st = await fs.stat(wasmPath);
+      if (st.size > options.maxWasmBytes) {
+        throw new Error(
+          `WASM binary too large (${st.size} bytes > ${options.maxWasmBytes} bytes)`,
+        );
+      }
+    }
     const wasmBuffer = await fs.readFile(wasmPath);
+    if (
+      typeof options.maxWasmBytes === "number" &&
+      wasmBuffer.byteLength > options.maxWasmBytes
+    ) {
+      throw new Error(
+        `WASM binary too large (${wasmBuffer.byteLength} bytes > ${options.maxWasmBytes} bytes)`,
+      );
+    }
     wasmModule = await WebAssembly.compile(wasmBuffer);
   } else {
     // Browser: fetch
     const response = await fetch(wasmPath);
     const wasmBuffer = await response.arrayBuffer();
+    if (
+      typeof options.maxWasmBytes === "number" &&
+      wasmBuffer.byteLength > options.maxWasmBytes
+    ) {
+      throw new Error(
+        `WASM binary too large (${wasmBuffer.byteLength} bytes > ${options.maxWasmBytes} bytes)`,
+      );
+    }
     wasmModule = await WebAssembly.compile(wasmBuffer);
   }
 
-  let instance: WebAssembly.Instance = await WebAssembly.instantiate(
-    wasmModule,
-    defaultImports,
-  );
-
-  instance = await WebAssembly.instantiate(wasmModule, imports);
+  const instance = await WebAssembly.instantiate(wasmModule, imports);
 
   // Set up console logging now that we have memory
   const memory = instance.exports.memory as WebAssembly.Memory;
+  if (
+    typeof options.maxMemoryBytes === "number" &&
+    memory.buffer.byteLength > options.maxMemoryBytes
+  ) {
+    throw new Error(
+      `WASM memory too large (${memory.buffer.byteLength} bytes > ${options.maxMemoryBytes} bytes)`,
+    );
+  }
+
   if (imports.env) {
     const env = imports.env as Record<string, unknown>;
     env.console_log = (ptr: number, len: number) => {
       const bytes = new Uint8Array(memory.buffer, ptr, len);
-      console.log(decoder.decode(bytes));
+      logger.info(
+        { src: "interop:wasm", event: "interop.wasm.stdout", stream: "stdout" },
+        decoder.decode(bytes),
+      );
     };
     env.console_error = (ptr: number, len: number) => {
       const bytes = new Uint8Array(memory.buffer, ptr, len);
-      console.error(decoder.decode(bytes));
+      logger.error(
+        { src: "interop:wasm", event: "interop.wasm.stderr", stream: "stderr" },
+        decoder.decode(bytes),
+      );
+    };
+  }
+
+  // Provide secure randomness for WASI random_get if present
+  if (imports.wasi_snapshot_preview1) {
+    const wasi = imports.wasi_snapshot_preview1 as Record<string, unknown>;
+    wasi.random_get = (buf: number, len: number) => {
+      const view = new Uint8Array(memory.buffer, buf, len);
+      const cryptoObj = globalThis.crypto;
+      if (!cryptoObj || typeof cryptoObj.getRandomValues !== "function") {
+        throw new Error("No secure random source available for WASI random_get");
+      }
+      cryptoObj.getRandomValues(view);
+      return 0;
     };
   }
 

@@ -16,15 +16,26 @@ class RuntimeProtocol(Protocol):
     def get_setting(self, key: str) -> str | None: ...
 
 
+class ClobMarketClientProtocol(Protocol):
+    def get_markets(self, *, next_cursor: str | None = None) -> dict[str, object]: ...
+
+    def get_simplified_markets(self, *, next_cursor: str | None = None) -> dict[str, object]: ...
+
+    def get_market(self, condition_id: str) -> object: ...
+
+    def get_sampling_markets(self, *, next_cursor: str | None = None) -> dict[str, object]: ...
+
+
 async def get_markets(
     runtime: RuntimeProtocol | None = None,
     filters: MarketFilters | None = None,
+    client: ClobMarketClientProtocol | None = None,
 ) -> MarketsResponse:
     try:
-        client = get_clob_client(runtime)
+        resolved_client: object = client if client is not None else get_clob_client(runtime)
         next_cursor = filters.next_cursor if filters else None
 
-        fn = getattr(client, "get_markets", None)
+        fn = getattr(resolved_client, "get_markets", None)
         if not callable(fn):
             raise PolymarketError(
                 PolymarketErrorCode.API_ERROR,
@@ -69,10 +80,11 @@ async def get_markets(
 async def get_simplified_markets(
     runtime: RuntimeProtocol | None = None,
     next_cursor: str | None = None,
+    client: ClobMarketClientProtocol | None = None,
 ) -> SimplifiedMarketsResponse:
     try:
-        client = get_clob_client(runtime)
-        fn = getattr(client, "get_simplified_markets", None)
+        resolved_client: object = client if client is not None else get_clob_client(runtime)
+        fn = getattr(resolved_client, "get_simplified_markets", None)
         if not callable(fn):
             raise PolymarketError(
                 PolymarketErrorCode.API_ERROR,
@@ -109,6 +121,7 @@ async def get_simplified_markets(
 async def get_market_details(
     condition_id: str,
     runtime: RuntimeProtocol | None = None,
+    client: ClobMarketClientProtocol | None = None,
 ) -> Market:
     """
     Get detailed information about a specific market.
@@ -130,8 +143,8 @@ async def get_market_details(
         )
 
     try:
-        client = get_clob_client(runtime)
-        fn = getattr(client, "get_market", None)
+        resolved_client: object = client if client is not None else get_clob_client(runtime)
+        fn = getattr(resolved_client, "get_market", None)
         if not callable(fn):
             raise PolymarketError(
                 PolymarketErrorCode.API_ERROR,
@@ -159,6 +172,7 @@ async def get_market_details(
 async def get_sampling_markets(
     runtime: RuntimeProtocol | None = None,
     next_cursor: str | None = None,
+    client: ClobMarketClientProtocol | None = None,
 ) -> SimplifiedMarketsResponse:
     """
     Get markets with rewards enabled (sampling markets).
@@ -174,8 +188,8 @@ async def get_sampling_markets(
         PolymarketError: If fetching markets fails
     """
     try:
-        client = get_clob_client(runtime)
-        fn = getattr(client, "get_sampling_markets", None)
+        resolved_client: object = client if client is not None else get_clob_client(runtime)
+        fn = getattr(resolved_client, "get_sampling_markets", None)
         if not callable(fn):
             raise PolymarketError(
                 PolymarketErrorCode.API_ERROR,
@@ -213,6 +227,7 @@ async def get_open_markets(
     runtime: RuntimeProtocol | None = None,
     limit: int = 10,
     next_cursor: str | None = None,
+    client: ClobMarketClientProtocol | None = None,
 ) -> MarketsResponse:
     """
     Get currently open (active and not closed) markets.
@@ -229,8 +244,8 @@ async def get_open_markets(
         PolymarketError: If fetching markets fails
     """
     try:
-        client = get_clob_client(runtime)
-        fn = getattr(client, "get_markets", None)
+        resolved_client: object = client if client is not None else get_clob_client(runtime)
+        fn = getattr(resolved_client, "get_markets", None)
         if not callable(fn):
             raise PolymarketError(
                 PolymarketErrorCode.API_ERROR,

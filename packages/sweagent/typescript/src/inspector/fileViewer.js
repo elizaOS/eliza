@@ -1,5 +1,5 @@
 let currentFileName = null;
-let trajectoryDirectory = "";
+let _trajectoryDirectory = "";
 let timeoutIds = [];
 
 function getBaseUrl() {
@@ -67,9 +67,8 @@ function createTrajectoryItem(item, index) {
     const imageRegex = /!\[([^\]]*)\]\(data:image\/([^;]+);base64,([^)]+)\)/g;
     const images = [];
     let processedText = observation;
-    let match;
-
-    while ((match = imageRegex.exec(observation)) !== null) {
+    let match = imageRegex.exec(observation);
+    while (match !== null) {
       const [fullMatch, altText, format, base64Data] = match;
 
       // create image object
@@ -87,6 +86,8 @@ function createTrajectoryItem(item, index) {
         fullMatch,
         `[IMAGE: ${imageObj.altText}]`,
       );
+
+      match = imageRegex.exec(observation);
     }
 
     return { processedText, images };
@@ -134,7 +135,7 @@ function createTrajectoryItem(item, index) {
                     args = JSON.parse(args);
                   }
                   content += `    - arguments: ${JSON.stringify(args, null, 2).replace(/\n/g, "\n    ")}\n`;
-                } catch (e) {
+                } catch (_e) {
                   content += `    - arguments: ${escapeHtml(String(args))}\n`;
                 }
               }
@@ -215,11 +216,13 @@ ${escapeHtml(item.action)}</code></pre>
 
 function viewFile(fileName) {
   currentFileName = fileName;
-  timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
+  timeoutIds.forEach((timeoutId) => {
+    clearTimeout(timeoutId);
+  });
   timeoutIds = [];
 
   const baseUrl = getBaseUrl();
-  const showDemos = document.getElementById("showDemos").checked;
+  const _showDemos = document.getElementById("showDemos").checked;
 
   fetch(`${baseUrl}/trajectory/${fileName}`)
     .then((response) => {
@@ -252,7 +255,7 @@ function viewFile(fileName) {
     .catch((error) => {
       console.error("Error fetching file:", error);
       document.getElementById("fileContent").textContent =
-        "Error loading content. " + error;
+        `Error loading content. ${error}`;
     });
 
   // Highlight selected file
@@ -302,7 +305,7 @@ function initializeImageHandlers() {
   });
 
   // Close expanded image when clicking overlay
-  overlay.addEventListener("click", function () {
+  overlay.addEventListener("click", () => {
     document.querySelectorAll(".observation-image.expanded").forEach((img) => {
       img.classList.remove("expanded");
     });
@@ -310,7 +313,7 @@ function initializeImageHandlers() {
   });
 
   // Close expanded image when pressing Escape key
-  document.addEventListener("keydown", function (e) {
+  document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       document
         .querySelectorAll(".observation-image.expanded")
@@ -322,7 +325,7 @@ function initializeImageHandlers() {
   });
 }
 
-function refreshCurrentFile() {
+function _refreshCurrentFile() {
   if (currentFileName) {
     const currentScrollPosition =
       document.documentElement.scrollTop || document.body.scrollTop;
@@ -339,7 +342,7 @@ function fetchDirectoryInfo() {
     .then((response) => response.json())
     .then((data) => {
       if (data.directory) {
-        trajectoryDirectory = data.directory;
+        _trajectoryDirectory = data.directory;
         document.title = `Trajectory Viewer: ${data.directory}`;
         document.getElementById("directoryInfo").textContent =
           `Directory: ${data.directory}`;
@@ -348,7 +351,7 @@ function fetchDirectoryInfo() {
     .catch((error) => console.error("Error fetching directory info:", error));
 }
 
-window.onload = function () {
+window.onload = () => {
   fetchFiles();
   fetchDirectoryInfo();
 };

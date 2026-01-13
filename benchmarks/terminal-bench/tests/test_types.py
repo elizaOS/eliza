@@ -190,7 +190,7 @@ class TestTerminalBenchConfig:
         assert config.version == "2.0"
         assert config.max_iterations == 20
         assert config.docker_image == "ubuntu:22.04"
-        assert config.model_name == "gpt-4o-mini"
+        assert config.model_name == "gpt-5-mini"
         assert config.temperature == 0.0
 
     def test_custom_config(self) -> None:

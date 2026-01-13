@@ -1,21 +1,22 @@
 #!/usr/bin/env node
+
 /**
  * Web browser tool
  * Provides browser automation capabilities
  * Simplified version - full implementation would use Playwright
  */
 
-import { program } from 'commander';
-import { chromium, Browser, Page } from 'playwright';
-import express from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { program } from "commander";
+import express from "express";
+import { type Browser, chromium, type Page } from "playwright";
 
 class BrowserManager {
   private browser?: Browser;
   private page?: Page;
-  private screenshotDir = '/tmp/browser-screenshots';
-  private isHeadless = process.env.WEB_BROWSER_HEADLESS !== '0';
+  private screenshotDir = "/tmp/browser-screenshots";
+  private isHeadless = process.env.WEB_BROWSER_HEADLESS !== "0";
 
   constructor() {
     // Ensure screenshot directory exists
@@ -28,10 +29,10 @@ class BrowserManager {
     if (!this.browser) {
       this.browser = await chromium.launch({
         headless: this.isHeadless,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
       });
       const context = await this.browser.newContext({
-        viewport: { width: 1024, height: 768 }
+        viewport: { width: 1024, height: 768 },
       });
       this.page = await context.newPage();
     }
@@ -39,14 +40,14 @@ class BrowserManager {
 
   async openSite(url: string): Promise<void> {
     await this.init();
-    if (!this.page) throw new Error('Browser not initialized');
-    
+    if (!this.page) throw new Error("Browser not initialized");
+
     // Handle local files
     if (fs.existsSync(url)) {
       url = `file://${path.resolve(url)}`;
     }
-    
-    await this.page.goto(url, { waitUntil: 'load' });
+
+    await this.page.goto(url, { waitUntil: "load" });
     console.log(`Navigated to ${url}`);
     console.log(`Page title: ${await this.page.title()}`);
   }
@@ -56,32 +57,36 @@ class BrowserManager {
       await this.browser.close();
       this.browser = undefined;
       this.page = undefined;
-      console.log('Browser closed');
+      console.log("Browser closed");
     }
   }
 
   async screenshot(filename?: string): Promise<void> {
     if (!this.page) {
-      console.error('No page open');
+      console.error("No page open");
       return;
     }
 
     const screenshotPath = path.join(
       this.screenshotDir,
-      filename || `screenshot-${Date.now()}.png`
+      filename || `screenshot-${Date.now()}.png`,
     );
-    
+
     await this.page.screenshot({ path: screenshotPath, fullPage: true });
-    
+
     // Convert to base64 for markdown display
     const imageBuffer = fs.readFileSync(screenshotPath);
-    const base64 = imageBuffer.toString('base64');
+    const base64 = imageBuffer.toString("base64");
     console.log(`![Screenshot](data:image/png;base64,${base64})`);
   }
 
-  async click(x: number, y: number, button: 'left' | 'right' = 'left'): Promise<void> {
+  async click(
+    x: number,
+    y: number,
+    button: "left" | "right" = "left",
+  ): Promise<void> {
     if (!this.page) {
-      console.error('No page open');
+      console.error("No page open");
       return;
     }
 
@@ -91,7 +96,7 @@ class BrowserManager {
 
   async type(text: string): Promise<void> {
     if (!this.page) {
-      console.error('No page open');
+      console.error("No page open");
       return;
     }
 
@@ -101,7 +106,7 @@ class BrowserManager {
 
   async scroll(deltaX: number, deltaY: number): Promise<void> {
     if (!this.page) {
-      console.error('No page open');
+      console.error("No page open");
       return;
     }
 
@@ -111,26 +116,26 @@ class BrowserManager {
 
   async executeScript(script: string): Promise<void> {
     if (!this.page) {
-      console.error('No page open');
+      console.error("No page open");
       return;
     }
 
     const result = await this.page.evaluate(script);
-    console.log('Script executed. Result:', result);
+    console.log("Script executed. Result:", result);
   }
 
   async getConsoleOutput(): Promise<void> {
     if (!this.page) {
-      console.error('No page open');
+      console.error("No page open");
       return;
     }
 
     // Set up console listener
-    this.page.on('console', (msg: import("playwright").ConsoleMessage) => {
+    this.page.on("console", (msg: import("playwright").ConsoleMessage) => {
       console.log(`[Console ${msg.type()}]: ${msg.text()}`);
     });
-    
-    console.log('Console output listener activated');
+
+    console.log("Console output listener activated");
   }
 }
 
@@ -150,48 +155,52 @@ class BrowserServer {
   private setupRoutes(): void {
     this.app.use(express.json());
 
-    this.app.post('/goto', async (req, res) => {
+    this.app.post("/goto", async (req, res) => {
       try {
         await this.browserManager.openSite(req.body.url);
-        res.json({ status: 'success' });
+        res.json({ status: "success" });
       } catch (error) {
-        res.status(500).json({ status: 'error', message: String(error) });
+        res.status(500).json({ status: "error", message: String(error) });
       }
     });
 
-    this.app.post('/close', async (_req, res) => {
+    this.app.post("/close", async (_req, res) => {
       try {
         await this.browserManager.closeSite();
-        res.json({ status: 'success' });
+        res.json({ status: "success" });
       } catch (error) {
-        res.status(500).json({ status: 'error', message: String(error) });
+        res.status(500).json({ status: "error", message: String(error) });
       }
     });
 
-    this.app.get('/screenshot', async (_req, res) => {
+    this.app.get("/screenshot", async (_req, res) => {
       try {
         await this.browserManager.screenshot();
-        res.json({ status: 'success' });
+        res.json({ status: "success" });
       } catch (error) {
-        res.status(500).json({ status: 'error', message: String(error) });
+        res.status(500).json({ status: "error", message: String(error) });
       }
     });
 
-    this.app.post('/click', async (req, res) => {
+    this.app.post("/click", async (req, res) => {
       try {
-        await this.browserManager.click(req.body.x, req.body.y, req.body.button);
-        res.json({ status: 'success' });
+        await this.browserManager.click(
+          req.body.x,
+          req.body.y,
+          req.body.button,
+        );
+        res.json({ status: "success" });
       } catch (error) {
-        res.status(500).json({ status: 'error', message: String(error) });
+        res.status(500).json({ status: "error", message: String(error) });
       }
     });
 
-    this.app.post('/type', async (req, res) => {
+    this.app.post("/type", async (req, res) => {
       try {
         await this.browserManager.type(req.body.text);
-        res.json({ status: 'success' });
+        res.json({ status: "success" });
       } catch (error) {
-        res.status(500).json({ status: 'error', message: String(error) });
+        res.status(500).json({ status: "error", message: String(error) });
       }
     });
   }
@@ -206,22 +215,22 @@ class BrowserServer {
 // CLI if run directly
 if (require.main === module) {
   program
-    .name('web-browser')
-    .description('Web browser automation tool')
-    .version('1.0.0');
+    .name("web-browser")
+    .description("Web browser automation tool")
+    .version("1.0.0");
 
   program
-    .command('server')
-    .description('Start the browser server')
-    .option('-p, --port <port>', 'Server port', '8009')
+    .command("server")
+    .description("Start the browser server")
+    .option("-p, --port <port>", "Server port", "8009")
     .action((options) => {
-      const server = new BrowserServer(parseInt(options.port));
+      const server = new BrowserServer(parseInt(options.port, 10));
       server.start();
     });
 
   program
-    .command('open <url>')
-    .description('Open a URL')
+    .command("open <url>")
+    .description("Open a URL")
     .action(async (url) => {
       const manager = new BrowserManager();
       await manager.openSite(url);
@@ -229,8 +238,8 @@ if (require.main === module) {
     });
 
   program
-    .command('screenshot <url>')
-    .description('Take a screenshot of a URL')
+    .command("screenshot <url>")
+    .description("Take a screenshot of a URL")
     .action(async (url) => {
       const manager = new BrowserManager();
       await manager.openSite(url);

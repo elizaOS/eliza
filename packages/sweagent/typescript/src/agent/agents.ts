@@ -3,8 +3,9 @@
  * Converted from sweagent/agent/agents.py
  */
 
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { JsonValue } from "../json";
 import {
   type AgentInfo,
   type AgentRunResult,
@@ -37,8 +38,12 @@ import {
   ThoughtActionParser,
 } from "./tools/parsing";
 import type { ModelOutput } from "./types";
-import { renderAdvancedTemplate, renderTemplate } from "./utils/template";
-import { parseYAML } from "./utils/yaml";
+import {
+  renderAdvancedTemplate,
+  renderTemplate,
+  type TemplateContext,
+} from "./utils/template";
+import { parseYAML, type YamlData } from "./utils/yaml";
 
 const logger = getLogger("agent");
 
@@ -57,6 +62,122 @@ import {
 const RETRY_WITH_OUTPUT_TOKEN = "###SWE-AGENT-RETRY-WITH-OUTPUT###";
 const RETRY_WITHOUT_OUTPUT_TOKEN = "###SWE-AGENT-RETRY-WITHOUT-OUTPUT###";
 const EXIT_FORFEIT_TOKEN = "###SWE-AGENT-EXIT-FORFEIT###";
+
+function yamlToJsonValue(value: YamlData): JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => yamlToJsonValue(v));
+  }
+  const out: { [key: string]: JsonValue | undefined } = {};
+  for (const [k, v] of Object.entries(value)) {
+    out[k] = yamlToJsonValue(v);
+  }
+  return out;
+}
+
+function parseDemoHistoryFromYaml(
+  yamlText: string,
+  demonstrationPath: string,
+): HistoryItem[] {
+  const parsed = parseYAML(yamlText);
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(
+      `Invalid YAML demonstration file: expected object root (${demonstrationPath})`,
+    );
+  }
+
+  const root: { [key: string]: YamlData } = parsed;
+  const historyVal = root.history;
+  if (!Array.isArray(historyVal)) {
+    throw new Error(
+      `Invalid YAML demonstration file: no history found (${demonstrationPath})`,
+    );
+  }
+
+  return historyVal.map((item, idx) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new Error(
+        `Invalid YAML demonstration file: history[${idx}] must be an object (${demonstrationPath})`,
+      );
+    }
+    const obj: { [key: string]: YamlData } = item;
+
+    const role = obj.role;
+    if (typeof role !== "string") {
+      throw new Error(
+        `Invalid YAML demonstration file: history[${idx}].role must be a string (${demonstrationPath})`,
+      );
+    }
+
+    const contentVal = obj.content;
+    let content: HistoryItem["content"];
+    if (typeof contentVal === "string") {
+      content = contentVal;
+    } else if (Array.isArray(contentVal)) {
+      // Support structured content blocks.
+      content = contentVal.map((v) => {
+        if (typeof v !== "object" || v === null || Array.isArray(v)) {
+          throw new Error(
+            `Invalid YAML demonstration file: history[${idx}].content[] items must be objects (${demonstrationPath})`,
+          );
+        }
+        const block: { [key: string]: YamlData } = v;
+        const typeVal = block.type;
+        if (typeof typeVal !== "string") {
+          throw new Error(
+            `Invalid YAML demonstration file: history[${idx}].content[].type must be a string (${demonstrationPath})`,
+          );
+        }
+        const json = yamlToJsonValue(block);
+        if (typeof json !== "object" || json === null || Array.isArray(json)) {
+          throw new Error(
+            `Invalid YAML demonstration file: history[${idx}].content[] items must be objects (${demonstrationPath})`,
+          );
+        }
+
+        const jsonObj = json as { [key: string]: JsonValue | undefined };
+        const out: {
+          type: string;
+          text?: string;
+          [key: string]: JsonValue | undefined;
+        } = {
+          ...jsonObj,
+          type: typeVal,
+        };
+        return out;
+      });
+    } else {
+      // Allow any JSON-ish content; it'll be stringified later if needed.
+      content = JSON.stringify(yamlToJsonValue(contentVal ?? null));
+    }
+
+    const agentVal = obj.agent;
+    const messageTypeVal = obj.messageType;
+    const isDemoVal = obj.isDemo;
+
+    const out: HistoryItem = {
+      role,
+      content,
+    };
+    if (typeof agentVal === "string") out.agent = agentVal;
+    if (typeof messageTypeVal === "string")
+      out.messageType = messageTypeVal as
+        | "thought"
+        | "action"
+        | "observation"
+        | "demonstration"
+        | "system";
+    if (typeof isDemoVal === "boolean") out.isDemo = isDemoVal;
+    return out;
+  });
+}
 
 /**
  * Template configuration for agent messages
@@ -108,7 +229,7 @@ export interface CommandBundle {
   name: string;
   endName?: string;
   installScript?: string;
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 /**
@@ -246,10 +367,7 @@ export class ToolHandler {
     }
 
     // Check standalone blocklist
-    if (
-      this.config.filter.blocklistStandalone &&
-      this.config.filter.blocklistStandalone.includes(action)
-    ) {
+    if (this.config.filter.blocklistStandalone?.includes(action)) {
       return true;
     }
 
@@ -593,17 +711,15 @@ export class DefaultAgent extends AbstractAgent {
     this.chook.onSetupDone();
   }
 
-  private getFormatDict(
-    kwargs?: Record<string, unknown>,
-  ): Record<string, unknown> {
+  private getFormatDict(kwargs?: TemplateContext): TemplateContext {
     if (!this.problemStatement || !this.env) {
-      return kwargs || {};
+      return kwargs ?? {};
     }
 
     return {
       commandDocs: this.tools.config.commandDocs || "",
-      ...this.tools.config.envVariables,
-      ...kwargs,
+      ...(this.tools.config.envVariables ?? {}),
+      ...(kwargs ?? {}),
       problemStatement: this.problemStatement.getProblemStatement(),
       repo: this.env.repo?.repoName || "",
       ...this.problemStatement.getExtraFields(),
@@ -649,12 +765,7 @@ export class DefaultAgent extends AbstractAgent {
     let demoHistory: HistoryItem[];
 
     if (demonstrationPath.endsWith(".yaml")) {
-      const parsed = parseYAML(demoText);
-      if (parsed && typeof parsed === "object" && "history" in parsed) {
-        demoHistory = (parsed as any).history;
-      } else {
-        throw new Error(`Invalid YAML demonstration file: no history found`);
-      }
+      demoHistory = parseDemoHistoryFromYaml(demoText, demonstrationPath);
     } else {
       const parsed = JSON.parse(demoText) as { history: HistoryItem[] };
       demoHistory = parsed.history;
@@ -973,7 +1084,7 @@ export class DefaultAgent extends AbstractAgent {
 
         step.done = true;
         this.logger.info(`Found submission: ${submission}`);
-      } catch (error) {
+      } catch (_error) {
         this.logger.warning("Submission file not found");
       }
     }
@@ -1012,7 +1123,7 @@ export class DefaultAgent extends AbstractAgent {
 
     interface ErrorWithMetadata extends Error {
       step?: StepOutput;
-      extraInfo?: Record<string, unknown>;
+      extraInfo?: TemplateContext;
     }
 
     const handleErrorWithRetry = (
@@ -1029,7 +1140,7 @@ export class DefaultAgent extends AbstractAgent {
       const errorMessage = error.message || "";
       return this.getModelRequeryHistory(template, step, {
         exceptionMessage: errorMessage,
-        ...error.extraInfo,
+        ...(error.extraInfo ?? {}),
       });
     };
 
@@ -1152,7 +1263,7 @@ export class DefaultAgent extends AbstractAgent {
   getModelRequeryHistory(
     errorTemplate: string,
     step: StepOutput,
-    kwargs: Record<string, unknown>,
+    kwargs: TemplateContext,
   ): History {
     const formatDict = { ...kwargs, ...this.getFormatDict() };
     const errorMessage = renderTemplate(errorTemplate, formatDict);
@@ -1181,12 +1292,12 @@ export class DefaultAgent extends AbstractAgent {
     step = { ...step, done: true };
 
     // Try to extract patch from environment
-    if (this.env && this.env.isAlive && !this.env.isAlive()) {
+    if (this.env?.isAlive && !this.env.isAlive()) {
       this.logger.error("Runtime is no longer alive");
 
       // Try to use diff from last trajectory step
       const lastStep = this.trajectory[this.trajectory.length - 1];
-      if (lastStep && lastStep.state && lastStep.state.diff) {
+      if (lastStep?.state?.diff) {
         step.submission = lastStep.state.diff;
         if (step.submission) {
           step.observation =
@@ -1398,21 +1509,27 @@ export class RetryAgent extends AbstractAgent {
       this.agent.addHook(hook);
     }
 
+    if (!this.outputDir) {
+      throw new Error("Output directory not initialized");
+    }
     const subAgentOutputDir = path.join(
-      this.outputDir!,
+      this.outputDir,
       `attempt_${this.iAttempt}`,
     );
     if (!this.env) {
       throw new Error("Environment not initialized");
     }
-    this.agent.setup(this.env, this.problemStatement!, subAgentOutputDir);
+    if (!this.problemStatement) {
+      throw new Error("Problem statement not initialized");
+    }
+    this.agent.setup(this.env, this.problemStatement, subAgentOutputDir);
 
     return this.agent;
   }
 
   private nextAttempt(): void {
     this.iAttempt++;
-    if (this.env && this.env.hardReset) {
+    if (this.env?.hardReset) {
       this.env.hardReset();
     }
     this.setupAgent();
@@ -1570,7 +1687,7 @@ export class RetryAgent extends AbstractAgent {
         this.finalizeAgentRun();
         this.saveTrajectory(false);
 
-        if (this.rloop && this.rloop.retry()) {
+        if (this.rloop?.retry()) {
           this.nextAttempt();
           stepOutput.done = false;
         }

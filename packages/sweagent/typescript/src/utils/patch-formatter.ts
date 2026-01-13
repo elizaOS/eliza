@@ -34,31 +34,31 @@ export class PatchFormatter {
     // This is a simplified patch parser
     // In production, you'd want to use a library like 'diff' or 'unidiff'
     const files: PatchFile[] = [];
-    const lines = patch.split('\n');
+    const lines = patch.split("\n");
     let currentFile: PatchFile | null = null;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      if (line.startsWith('--- ')) {
+      if (line.startsWith("--- ")) {
         if (currentFile) {
           files.push(currentFile);
         }
         currentFile = {
           source: line.substring(4),
-          target: '',
+          target: "",
           hunks: [],
         };
-      } else if (line.startsWith('+++ ') && currentFile) {
+      } else if (line.startsWith("+++ ") && currentFile) {
         currentFile.target = line.substring(4);
-      } else if (line.startsWith('@@') && currentFile) {
+      } else if (line.startsWith("@@") && currentFile) {
         const match = line.match(/@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@/);
         if (match) {
           currentFile.hunks.push({
-            sourceStart: parseInt(match[1]),
-            sourceLines: parseInt(match[2] || '1'),
-            targetStart: parseInt(match[3]),
-            targetLines: parseInt(match[4] || '1'),
+            sourceStart: parseInt(match[1], 10),
+            sourceLines: parseInt(match[2] || "1", 10),
+            targetStart: parseInt(match[3], 10),
+            targetLines: parseInt(match[4] || "1", 10),
             lines: [],
           });
         }
@@ -78,12 +78,17 @@ export class PatchFormatter {
   /**
    * Merge overlapping intervals
    */
-  private static mergeIntervals(starts: number[], stops: number[]): [number[], number[]] {
+  private static mergeIntervals(
+    starts: number[],
+    stops: number[],
+  ): [number[], number[]] {
     if (starts.length === 0) {
       return [[], []];
     }
 
-    const intervals = starts.map((start, i) => ({ start, stop: stops[i] })).sort((a, b) => a.start - b.start);
+    const intervals = starts
+      .map((start, i) => ({ start, stop: stops[i] }))
+      .sort((a, b) => a.start - b.start);
 
     const merged: Array<{ start: number; stop: number }> = [intervals[0]];
 
@@ -98,15 +103,23 @@ export class PatchFormatter {
       }
     }
 
-    return [merged.map((interval) => interval.start), merged.map((interval) => interval.stop)];
+    return [
+      merged.map((interval) => interval.start),
+      merged.map((interval) => interval.stop),
+    ];
   }
 
   /**
    * Format a file with line numbers
    */
-  formatFile(text: string, starts: number[], stops: number[], options: { linenos?: boolean } = {}): string {
+  formatFile(
+    text: string,
+    starts: number[],
+    stops: number[],
+    options: { linenos?: boolean } = {},
+  ): string {
     const { linenos = true } = options;
-    const lines = text.split('\n');
+    const lines = text.split("\n");
     const result: string[] = [];
 
     for (let i = 0; i < starts.length; i++) {
@@ -122,22 +135,25 @@ export class PatchFormatter {
       }
 
       if (i < starts.length - 1) {
-        result.push('...');
+        result.push("...");
       }
     }
 
-    return result.join('\n');
+    return result.join("\n");
   }
 
   /**
    * Get hunk line ranges
    */
-  private getHunkLines(original: boolean, contextLength: number = 50): Map<string, [number[], number[]]> {
+  private getHunkLines(
+    original: boolean,
+    contextLength: number = 50,
+  ): Map<string, [number[], number[]]> {
     const fileRanges = new Map<string, [number[], number[]]>();
 
     for (const file of this.parsedPatch) {
       const filename = original ? file.source : file.target;
-      const cleanName = filename.replace(/^[ab]\//, '');
+      const cleanName = filename.replace(/^[ab]\//, "");
       const starts: number[] = [];
       const stops: number[] = [];
 
@@ -149,7 +165,10 @@ export class PatchFormatter {
         stops.push(start + lines + contextLength);
       }
 
-      const [mergedStarts, mergedStops] = PatchFormatter.mergeIntervals(starts, stops);
+      const [mergedStarts, mergedStops] = PatchFormatter.mergeIntervals(
+        starts,
+        stops,
+      );
       fileRanges.set(cleanName, [mergedStarts, mergedStops]);
     }
 
@@ -162,7 +181,7 @@ export class PatchFormatter {
   private readFiles(original: boolean): void {
     for (const file of this.parsedPatch) {
       const filename = original ? file.source : file.target;
-      const cleanName = filename.replace(/^[ab]\//, '');
+      const cleanName = filename.replace(/^[ab]\//, "");
 
       if (!this.fileContents.has(cleanName)) {
         try {
@@ -170,7 +189,7 @@ export class PatchFormatter {
           this.fileContents.set(cleanName, content);
         } catch (error) {
           console.error(`Failed to read file ${cleanName}:`, error);
-          this.fileContents.set(cleanName, '');
+          this.fileContents.set(cleanName, "");
         }
       }
     }
@@ -184,9 +203,9 @@ export class PatchFormatter {
     for (const [filename, content] of files) {
       result.push(`[${filename}]`);
       result.push(content);
-      result.push('');
+      result.push("");
     }
-    return result.join('\n');
+    return result.join("\n");
   }
 
   /**

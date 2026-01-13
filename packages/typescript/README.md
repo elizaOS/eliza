@@ -59,6 +59,9 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `LOG_JSON_FORMAT`: Output logs in JSON format (`true`/`false`).
 - `DEFAULT_LOG_LEVEL`: Default log level if not in debug mode.
 - `SECRET_SALT`: Secret salt for encryption purposes.
+- `ALLOW_NO_DATABASE`: Allow running without a persistent database adapter. When `true`, `AgentRuntime.initialize()` will fall back to an in-memory adapter (useful for benchmarks/tests).
+- `USE_MULTI_STEP`: Enable the iterative multi-step workflow (`true`/`false`). When enabled, the runtime may run multiple provider/action steps before producing a final response.
+- `MAX_MULTISTEP_ITERATIONS`: Maximum number of iterations for multi-step mode (default: `6`).
 - `SENTRY_DSN`: Sentry DSN for error reporting.
 - `SENTRY_ENVIRONMENT`: Sentry deployment environment (e.g., 'production', 'staging').
 - `SENTRY_TRACES_SAMPLE_RATE`: Sentry performance tracing sample rate (0.0 - 1.0).
@@ -72,6 +75,9 @@ LOG_DIAGNOSTIC=true
 LOG_JSON_FORMAT=false
 DEFAULT_LOG_LEVEL=info
 SECRET_SALT=yourSecretSaltHere
+ALLOW_NO_DATABASE=true
+USE_MULTI_STEP=false
+MAX_MULTISTEP_ITERATIONS=6
 SENTRY_DSN=yourSentryDsnHere
 SENTRY_ENVIRONMENT=development
 SENTRY_TRACES_SAMPLE_RATE=1.0
@@ -79,6 +85,19 @@ SENTRY_SEND_DEFAULT_PII=true
 ```
 
 **Note:** Add your `.env` file to `.gitignore` to protect sensitive information.
+
+### Benchmark & Trajectory Tracing
+
+Benchmarks and harnesses can attach metadata to inbound messages:
+
+- `message.metadata.trajectoryStepId`: when present, provider access + model calls are captured for that step.
+- `message.metadata.benchmarkContext`: when present, the `CONTEXT_BENCH` provider sets `state.values.benchmark_has_context=true`, and the message loop forces action-based execution (so the full Provider → Model → Action → Evaluator loop is exercised).
+
+### Model output contract (XML preferred, plain text tolerated)
+
+The canonical message loop expects model outputs in the `<response>...</response>` XML format (with `<actions>`, `<providers>`, and `<text>` fields).
+
+Some deterministic/offline backends may return **plain text** instead. In that case, the runtime will treat the raw output as a simple **`REPLY`** so the system remains usable even when strict XML formatting is unavailable.
 
 ## Core Architecture
 

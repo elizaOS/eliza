@@ -40,7 +40,8 @@ impl PostgresAdapter {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl DatabaseAdapter for PostgresAdapter {
     async fn init(&self) -> Result<()> {
         self.manager.run_migrations().await
@@ -55,8 +56,8 @@ impl DatabaseAdapter for PostgresAdapter {
         Ok(())
     }
 
-    async fn get_connection(&self) -> Result<Box<dyn std::any::Any + Send>> {
-        Ok(Box::new(self.manager.get_pool().clone()))
+    async fn get_connection(&self) -> Result<DatabaseConnection> {
+        Ok(DatabaseConnection::Postgres(self.manager.get_pool().clone()))
     }
 
     // =========================================================================
@@ -529,41 +530,37 @@ impl DatabaseAdapter for PostgresAdapter {
     // =========================================================================
 
     async fn get_memories(&self, params: GetMemoriesParams) -> Result<Vec<Memory>> {
-        let mut query = String::from(
+        let mut qb = sqlx::QueryBuilder::new(
             r#"
             SELECT m.id, m.type, m.created_at, m.content, m.entity_id, m.agent_id,
                    m.room_id, m.world_id, m."unique", m.metadata
             FROM memories m
-            WHERE m.type = $1
-            "#,
+            WHERE m.type = "#,
         );
 
-        let mut param_count = 1;
+        qb.push_bind(&params.table_name);
 
-        if params.room_id.is_some() {
-            param_count += 1;
-            query.push_str(&format!(" AND m.room_id = ${}", param_count));
+        if let Some(room_id) = params.room_id.as_ref() {
+            let room_uuid = uuid::Uuid::parse_str(room_id.as_str())?;
+            qb.push(" AND m.room_id = ").push_bind(room_uuid);
         }
 
-        if params.agent_id.is_some() {
-            param_count += 1;
-            query.push_str(&format!(" AND m.agent_id = ${}", param_count));
+        if let Some(agent_id) = params.agent_id.as_ref() {
+            let agent_uuid = uuid::Uuid::parse_str(agent_id.as_str())?;
+            qb.push(" AND m.agent_id = ").push_bind(agent_uuid);
         }
 
-        query.push_str(" ORDER BY m.created_at DESC");
+        qb.push(" ORDER BY m.created_at DESC");
 
         if let Some(count) = params.count {
-            query.push_str(&format!(" LIMIT {}", count));
+            qb.push(" LIMIT ").push_bind(count);
         }
 
         if let Some(offset) = params.offset {
-            query.push_str(&format!(" OFFSET {}", offset));
+            qb.push(" OFFSET ").push_bind(offset);
         }
 
-        let rows = sqlx::query(&query)
-            .bind(&params.table_name)
-            .fetch_all(self.manager.get_pool())
-            .await?;
+        let rows = qb.build().fetch_all(self.manager.get_pool()).await?;
 
         Ok(rows
             .into_iter()
@@ -1018,32 +1015,36 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn get_logs(&self, params: GetLogsParams) -> Result<Vec<Log>> {
-        let mut query = String::from(
+        let mut qb = sqlx::QueryBuilder::new(
             r#"
             SELECT id, entity_id, room_id, type, body, created_at
             FROM logs WHERE 1=1
             "#,
         );
 
-        if params.entity_id.is_some() {
-            query.push_str(" AND entity_id = $1");
+        if let Some(entity_id) = params.entity_id.as_ref() {
+            let entity_uuid = uuid::Uuid::parse_str(entity_id.as_str())?;
+            qb.push(" AND entity_id = ").push_bind(entity_uuid);
         }
-        if params.room_id.is_some() {
-            query.push_str(" AND room_id = $2");
+        if let Some(room_id) = params.room_id.as_ref() {
+            let room_uuid = uuid::Uuid::parse_str(room_id.as_str())?;
+            qb.push(" AND room_id = ").push_bind(room_uuid);
         }
-        if params.log_type.is_some() {
-            query.push_str(" AND type = $3");
+        if let Some(log_type) = params.log_type.as_ref() {
+            qb.push(" AND type = ").push_bind(log_type);
         }
 
-        query.push_str(" ORDER BY created_at DESC");
+        qb.push(" ORDER BY created_at DESC");
 
         if let Some(count) = params.count {
-            query.push_str(&format!(" LIMIT {}", count));
+            qb.push(" LIMIT ").push_bind(count);
         }
 
-        let rows = sqlx::query(&query)
-            .fetch_all(self.manager.get_pool())
-            .await?;
+        if let Some(offset) = params.offset {
+            qb.push(" OFFSET ").push_bind(offset);
+        }
+
+        let rows = qb.build().fetch_all(self.manager.get_pool()).await?;
 
         Ok(rows
             .into_iter()
@@ -1731,27 +1732,24 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn get_tasks(&self, params: GetTasksParams) -> Result<Vec<Task>> {
-        let mut query = String::from(
+        let mut qb = sqlx::QueryBuilder::new(
             r#"
             SELECT id, name, description, room_id, entity_id, world_id, status, tags, metadata, created_at, updated_at
             FROM tasks WHERE 1=1
             "#,
         );
 
-        if params.room_id.is_some() {
-            query.push_str(" AND room_id = $1");
-        }
-        if params.entity_id.is_some() {
-            query.push_str(if params.room_id.is_some() {
-                " AND entity_id = $2"
-            } else {
-                " AND entity_id = $1"
-            });
+        if let Some(room_id) = params.room_id.as_ref() {
+            let room_uuid = uuid::Uuid::parse_str(room_id.as_str())?;
+            qb.push(" AND room_id = ").push_bind(room_uuid);
         }
 
-        let rows = sqlx::query(&query)
-            .fetch_all(self.manager.get_pool())
-            .await?;
+        if let Some(entity_id) = params.entity_id.as_ref() {
+            let entity_uuid = uuid::Uuid::parse_str(entity_id.as_str())?;
+            qb.push(" AND entity_id = ").push_bind(entity_uuid);
+        }
+
+        let rows = qb.build().fetch_all(self.manager.get_pool()).await?;
 
         Ok(rows
             .into_iter()

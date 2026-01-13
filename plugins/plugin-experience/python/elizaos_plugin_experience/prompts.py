@@ -9,37 +9,11 @@ try:
 
     EXTRACT_EXPERIENCES_TEMPLATE = _EXTRACT_EXPERIENCES_TEMPLATE
 except ImportError:
-    EXTRACT_EXPERIENCES_TEMPLATE = """# Task: Extract Novel Learning Experiences
-
-Analyze this conversation for novel learning experiences that would be surprising or valuable to remember.
-
-## Conversation context
-{{conversation_context}}
-
-## Existing similar experiences
-{{existing_experiences}}
-
-## Instructions
-Extract ONLY experiences that are:
-1. Genuinely novel (not in existing experiences)
-2. Actionable learnings about how things work
-3. Corrections of previous mistakes or assumptions
-4. Discoveries of new capabilities or patterns
-5. Surprising outcomes that contradict expectations
-
-Focus on technical knowledge, patterns, and cause-effect relationships that transfer to other contexts.
-Avoid personal details, user-specific information, or routine interactions.
-
-Respond with JSON array of experiences (max 3):
-[{
-  "type": "DISCOVERY|CORRECTION|SUCCESS|LEARNING",
-  "learning": "What was learned (generic, transferable)",
-  "context": "What situation triggered this (anonymized)",
-  "confidence": 0.0-1.0,
-  "reasoning": "Why this is novel and valuable"
-}]
-
-Return empty array [] if no novel experiences found."""
+    # Generated prompts not available - this should not happen in production
+    # Prompts should be generated via build:prompts script
+    raise ImportError(
+        "Generated prompts not found. Run 'npm run build:prompts' to generate prompts."
+    )
 
 
 def build_extract_experiences_prompt(conversation_context: str, existing_experiences: str) -> str:

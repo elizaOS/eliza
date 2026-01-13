@@ -1,714 +1,485 @@
 from __future__ import annotations
 
-import random
 import re
-from typing import Any
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Literal
 
 from elizaos_plugin_eliza_classic.types import ElizaConfig, ElizaPattern, ElizaRule
 
-ELIZA_PATTERNS: list[ElizaPattern] = [
-    ElizaPattern(
-        keyword="sorry",
-        weight=1,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "Please don't apologize.",
-                    "Apologies are not necessary.",
-                    "What feelings do you have when you apologize?",
-                    "I've told you that apologies are not required.",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="remember",
-        weight=5,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"do you remember (.*)", re.IGNORECASE),
-                responses=[
-                    "Did you think I would forget $1?",
-                    "Why do you think I should recall $1 now?",
-                    "What about $1?",
-                    "You mentioned $1.",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"i remember (.*)", re.IGNORECASE),
-                responses=[
-                    "Do you often think of $1?",
-                    "Does thinking of $1 bring anything else to mind?",
-                    "What else do you remember?",
-                    "Why do you remember $1 just now?",
-                    "What in the present situation reminds you of $1?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="if",
-        weight=3,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"if (.*)", re.IGNORECASE),
-                responses=[
-                    "Do you think it's likely that $1?",
-                    "Do you wish that $1?",
-                    "What do you know about $1?",
-                    "Really, if $1?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="dreamed",
-        weight=4,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"i dreamed (.*)", re.IGNORECASE),
-                responses=[
-                    "Really, $1?",
-                    "Have you ever fantasized $1 while you were awake?",
-                    "Have you ever dreamed $1 before?",
-                    "What does that dream suggest to you?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="dream",
-        weight=3,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "What does that dream suggest to you?",
-                    "Do you dream often?",
-                    "What persons appear in your dreams?",
-                    "Do you believe that dreams have something to do with your problems?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="perhaps",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "You don't seem quite certain.",
-                    "Why the uncertain tone?",
-                    "Can't you be more positive?",
-                    "You aren't sure?",
-                    "Don't you know?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="name",
-        weight=15,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "I am not interested in names.",
-                    "I've told you before, I don't care about names -- please continue.",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="hello",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "How do you do. Please state your problem.",
-                    "Hi. What seems to be your problem?",
-                    "Hello. Tell me what's on your mind.",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="hi",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "How do you do. Please state your problem.",
-                    "Hi there. What brings you here today?",
-                    "Hello. Tell me what's on your mind.",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="computer",
-        weight=50,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "Do computers worry you?",
-                    "Why do you mention computers?",
-                    "What do you think machines have to do with your problem?",
-                    "Don't you think computers can help people?",
-                    "What about machines worries you?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="am",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"am i (.*)", re.IGNORECASE),
-                responses=[
-                    "Do you believe you are $1?",
-                    "Would you want to be $1?",
-                    "Do you wish I would tell you you are $1?",
-                    "What would it mean if you were $1?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"i am (.*)", re.IGNORECASE),
-                responses=[
-                    "Is it because you are $1 that you came to me?",
-                    "How long have you been $1?",
-                    "How do you feel about being $1?",
-                    "Do you enjoy being $1?",
-                    "Do you believe it is normal to be $1?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="are",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"are you (.*)", re.IGNORECASE),
-                responses=[
-                    "Why are you interested in whether I am $1 or not?",
-                    "Would you prefer if I weren't $1?",
-                    "Perhaps I am $1 in your fantasies.",
-                    "Do you sometimes think I am $1?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"(.*) are (.*)", re.IGNORECASE),
-                responses=[
-                    "Did you think they might not be $2?",
-                    "Would you like it if they were not $2?",
-                    "What if they were not $2?",
-                    "Possibly they are $2.",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="your",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"your (.*)", re.IGNORECASE),
-                responses=[
-                    "Why are you concerned over my $1?",
-                    "What about your own $1?",
-                    "Are you worried about someone else's $1?",
-                    "Really, my $1?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="was",
-        weight=2,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"was i (.*)", re.IGNORECASE),
-                responses=[
-                    "What if you were $1?",
-                    "Do you think you were $1?",
-                    "Were you $1?",
-                    "What would it mean if you were $1?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"i was (.*)", re.IGNORECASE),
-                responses=[
-                    "Were you really?",
-                    "Why do you tell me you were $1 now?",
-                    "Perhaps I already know you were $1.",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="i",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"i (?:desire|want|need) (.*)", re.IGNORECASE),
-                responses=[
-                    "What would it mean to you if you got $1?",
-                    "Why do you want $1?",
-                    "Suppose you got $1 soon?",
-                    "What if you never got $1?",
-                    "What would getting $1 mean to you?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(
-                    r"i am (?:sad|depressed|unhappy|sick)", re.IGNORECASE
-                ),
-                responses=[
-                    "I am sorry to hear that you are feeling that way.",
-                    "Do you think coming here will help you?",
-                    "I'm sure it's not pleasant to feel that way.",
-                    "Can you explain what made you feel this way?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"i am (?:happy|elated|glad|joyful)", re.IGNORECASE),
-                responses=[
-                    "How have I helped you to feel this way?",
-                    "What makes you feel this way just now?",
-                    "Can you explain why you are suddenly feeling this way?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"i (?:believe|think) (.*)", re.IGNORECASE),
-                responses=[
-                    "Do you really think so?",
-                    "But you are not sure?",
-                    "Do you really doubt that?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"i (?:feel|felt) (.*)", re.IGNORECASE),
-                responses=[
-                    "Tell me more about such feelings.",
-                    "Do you often feel $1?",
-                    "Do you enjoy feeling $1?",
-                    "Of what does feeling $1 remind you?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"i can'?t (.*)", re.IGNORECASE),
-                responses=[
-                    "How do you know that you can't $1?",
-                    "Have you tried?",
-                    "Perhaps you could $1 now.",
-                    "Do you really want to be able to $1?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"i don'?t (.*)", re.IGNORECASE),
-                responses=[
-                    "Don't you really $1?",
-                    "Why don't you $1?",
-                    "Do you wish to be able to $1?",
-                    "Does that trouble you?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="you",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"you remind me of (.*)", re.IGNORECASE),
-                responses=[
-                    "What makes you think of $1?",
-                    "What resemblance do you see?",
-                    "What does that similarity suggest to you?",
-                    "What other connections do you see?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"you are (.*)", re.IGNORECASE),
-                responses=[
-                    "What makes you think I am $1?",
-                    "Does it please you to believe I am $1?",
-                    "Do you sometimes wish you were $1?",
-                    "Perhaps you would like to be $1.",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"you (.*) me", re.IGNORECASE),
-                responses=[
-                    "Why do you think I $1 you?",
-                    "You like to think I $1 you -- don't you?",
-                    "What makes you think I $1 you?",
-                    "Really, I $1 you?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"you (.*)", re.IGNORECASE),
-                responses=[
-                    "We were discussing you -- not me.",
-                    "Oh, I $1?",
-                    "You're not really talking about me -- are you?",
-                    "What are your feelings now?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="can",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"can you (.*)", re.IGNORECASE),
-                responses=[
-                    "You believe I can $1 don't you?",
-                    "You want me to be able to $1.",
-                    "Perhaps you would like to be able to $1 yourself.",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"can i (.*)", re.IGNORECASE),
-                responses=[
-                    "Whether or not you can $1 depends on you more than on me.",
-                    "Do you want to be able to $1?",
-                    "Perhaps you don't want to $1.",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="my",
-        weight=2,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(
-                    r"my (?:mother|mom|father|dad|sister|brother|wife|husband|children|child)",
-                    re.IGNORECASE,
-                ),
-                responses=[
-                    "Tell me more about your family.",
-                    "Who else in your family concerns you?",
-                    "What else comes to mind when you think of your family?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"my (.*)", re.IGNORECASE),
-                responses=[
-                    "Your $1?",
-                    "Why do you say your $1?",
-                    "Does that suggest anything else which belongs to you?",
-                    "Is it important to you that your $1?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="yes",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "You seem quite positive.",
-                    "You are sure.",
-                    "I see.",
-                    "I understand.",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="no",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "Are you saying 'no' just to be negative?",
-                    "You are being a bit negative.",
-                    "Why not?",
-                    "Why 'no'?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="why",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r"why don'?t you (.*)", re.IGNORECASE),
-                responses=[
-                    "Do you believe I don't $1?",
-                    "Perhaps I will $1 in good time.",
-                    "Should you $1 yourself?",
-                    "You want me to $1?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r"why can'?t i (.*)", re.IGNORECASE),
-                responses=[
-                    "Do you think you should be able to $1?",
-                    "Do you want to be able to $1?",
-                    "Do you believe this will help you to $1?",
-                    "Have you any idea why you can't $1?",
-                ],
-            ),
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "Why do you ask?",
-                    "Does that question interest you?",
-                    "What is it you really want to know?",
-                    "Are such questions much on your mind?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="what",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "Why do you ask?",
-                    "Does that question interest you?",
-                    "What is it you really want to know?",
-                    "Are such questions much on your mind?",
-                    "What answer would please you most?",
-                    "What do you think?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="because",
-        weight=0,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "Is that the real reason?",
-                    "Don't any other reasons come to mind?",
-                    "Does that reason seem to explain anything else?",
-                    "What other reasons might there be?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="everyone",
-        weight=2,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "Really, everyone?",
-                    "Surely not everyone.",
-                    "Can you think of anyone in particular?",
-                    "Who, for example?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="always",
-        weight=1,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "Can you think of a specific example?",
-                    "When?",
-                    "What incident are you thinking of?",
-                    "Really, always?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="alike",
-        weight=10,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*", re.IGNORECASE),
-                responses=[
-                    "In what way?",
-                    "What resemblance do you see?",
-                    "What does that similarity suggest to you?",
-                    "What other connections do you see?",
-                    "How?",
-                ],
-            ),
-        ],
-    ),
-    ElizaPattern(
-        keyword="like",
-        weight=10,
-        rules=[
-            ElizaRule(
-                pattern=re.compile(r".*(?:am|is|are|was) like.*", re.IGNORECASE),
-                responses=[
-                    "In what way?",
-                    "What resemblance do you see?",
-                    "What does that similarity suggest to you?",
-                    "What other connections do you see?",
-                    "How?",
-                ],
-            ),
-        ],
-    ),
-]
+@dataclass(frozen=True)
+class ScriptRule:
+    decomposition: str
+    reassembly: list[str]
 
-DEFAULT_RESPONSES: list[str] = [
-    "Very interesting.",
-    "I am not sure I understand you fully.",
-    "What does that suggest to you?",
-    "Please continue.",
-    "Go on.",
-    "Do you feel strongly about discussing such things?",
-    "Tell me more.",
-    "That is quite interesting.",
-    "Can you elaborate on that?",
-    "Why do you say that?",
-    "I see.",
-    "What does that mean to you?",
-    "How does that make you feel?",
-    "Let's explore that further.",
-    "Interesting. Please go on.",
-]
 
-REFLECTIONS: dict[str, str] = {
-    "am": "are",
-    "was": "were",
-    "i": "you",
-    "i'd": "you would",
-    "i've": "you have",
-    "i'll": "you will",
-    "my": "your",
-    "are": "am",
-    "you've": "I have",
-    "you'll": "I will",
-    "your": "my",
-    "yours": "mine",
-    "you": "me",
-    "me": "you",
-    "myself": "yourself",
-    "yourself": "myself",
-    "i'm": "you are",
+@dataclass(frozen=True)
+class KeywordEntry:
+    keyword: list[str]
+    precedence: int
+    rules: list[ScriptRule]
+    memory: list[ScriptRule] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class DoctorScript:
+    greetings: list[str]
+    goodbyes: list[str]
+    default: list[str]
+    reflections: dict[str, str]
+    substitutions: dict[str, str]
+    groups: dict[str, list[str]]
+    keywords: list[KeywordEntry]
+
+
+@dataclass
+class SessionState:
+    limit: int = 1
+    memories: list[str] = field(default_factory=list)
+    reassembly_index: dict[str, int] = field(default_factory=dict)
+
+
+def _load_doctor_json() -> DoctorScript:
+    # Prefer canonical shared doctor.json in-repo; fall back to package data if installed.
+    here = Path(__file__).resolve()
+    shared = here.parents[2] / "shared" / "doctor.json"
+    if shared.exists():
+        raw = shared.read_text(encoding="utf-8")
+    else:
+        data_path = here.parent / "data" / "doctor.json"
+        if not data_path.exists():
+            raise FileNotFoundError("doctor.json not found in repo or package data")
+        raw = data_path.read_text(encoding="utf-8")
+
+    import json
+
+    parsed = json.loads(raw)
+    keywords: list[KeywordEntry] = []
+    for entry in parsed["keywords"]:
+        rules = [
+            ScriptRule(decomposition=r["decomposition"], reassembly=list(r["reassembly"]))
+            for r in entry["rules"]
+        ]
+        memory_rules = [
+            ScriptRule(decomposition=r["decomposition"], reassembly=list(r["reassembly"]))
+            for r in entry.get("memory", [])
+        ]
+        keywords.append(
+            KeywordEntry(
+                keyword=list(entry["keyword"]),
+                precedence=int(entry["precedence"]),
+                rules=rules,
+                memory=memory_rules,
+            )
+        )
+
+    return DoctorScript(
+        greetings=list(parsed["greetings"]),
+        goodbyes=list(parsed["goodbyes"]),
+        default=list(parsed["default"]),
+        reflections=dict(parsed["reflections"]),
+        substitutions=dict(parsed.get("substitutions", {})),
+        groups={k: list(v) for k, v in parsed["groups"].items()},
+        keywords=keywords,
+    )
+
+
+_SCRIPT = _load_doctor_json()
+_KEYWORD_INDEX: dict[str, KeywordEntry] = {
+    w.lower(): entry for entry in _SCRIPT.keywords for w in entry.keyword
 }
 
 
 def reflect(text: str) -> str:
     words = text.lower().split()
-    reflected = [REFLECTIONS.get(word, word) for word in words]
+    reflected = [_SCRIPT.reflections.get(word, word) for word in words]
     return " ".join(reflected)
 
 
-def generate_response(
-    input_text: str,
-    patterns: list[ElizaPattern] | None = None,
-    default_responses: list[str] | None = None,
-    response_history: list[str] | None = None,
-    max_history: int = 10,
-) -> str:
-    if patterns is None:
-        patterns = ELIZA_PATTERNS
-    if default_responses is None:
-        default_responses = DEFAULT_RESPONSES
-    if response_history is None:
-        response_history = []
+def _normalize_raw_input(input_text: str) -> str:
+    s = input_text.strip()
+    s = re.sub(r"[!?;:]+", " ", s)
+    s = s.replace("\u2018", "'").replace("\u2019", "'")
+    s = re.sub(r"\s+", " ", s)
+    return s
 
-    normalized_input = input_text.lower().strip()
 
-    if not normalized_input:
-        return "I didn't catch that. Could you please repeat?"
+def _tokenize_words(text: str) -> list[str]:
+    cleaned = _normalize_raw_input(text)
+    cleaned = re.sub(r'[.,"()]', " ", cleaned).lower()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return []
+    canon = {"dont", "cant", "wont", "dreamed", "dreams", "mom", "dad"}
+    out: list[str] = []
+    for w in cleaned.split(" "):
+        if w in canon:
+            out.append(_SCRIPT.substitutions.get(w) or _SCRIPT.reflections.get(w, w))
+        else:
+            out.append(w)
+    return out
 
-    matches: list[tuple[ElizaPattern, ElizaRule, re.Match[str]]] = []
 
-    for pattern in patterns:
-        if pattern.keyword in normalized_input:
-            for rule in pattern.rules:
-                match = rule.pattern.search(normalized_input)
-                if match:
-                    matches.append((pattern, rule, match))
+def _tokenize_for_scan(text: str) -> list[str]:
+    cleaned = _normalize_raw_input(text)
+    cleaned = re.sub(r"[.,]", " | ", cleaned)
+    cleaned = re.sub(r'["()]', " ", cleaned).lower()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return []
+    canon = {"dont", "cant", "wont", "dreamed", "dreams", "mom", "dad"}
+    out: list[str] = []
+    for w in cleaned.split(" "):
+        if w in canon:
+            out.append(_SCRIPT.substitutions.get(w) or _SCRIPT.reflections.get(w, w))
+        else:
+            out.append(w)
+    return out
 
-    if matches:
-        matches.sort(key=lambda x: x[0].weight, reverse=True)
-        best_pattern, best_rule, match = matches[0]
 
-        available = [r for r in best_rule.responses if r not in response_history]
-        pool = available if available else best_rule.responses
-        response = random.choice(pool)
+def _split_into_clauses(words: list[str]) -> list[list[str]]:
+    clauses: list[list[str]] = []
+    current: list[str] = []
+    for w in words:
+        if w == "|" or w == "but":
+            if current:
+                clauses.append(current)
+            current = []
+            continue
+        current.append(w)
+    if current:
+        clauses.append(current)
+    return clauses
 
-        response_history.append(response)
-        if len(response_history) > max_history:
-            response_history.pop(0)
 
-        for i in range(1, len(match.groups()) + 1):
-            group = match.group(i)
+def _substitute_words_for_matching(words: list[str]) -> list[str]:
+    out: list[str] = []
+    for w in words:
+        key = w.lower()
+        mapped = _SCRIPT.substitutions.get(key) or _SCRIPT.reflections.get(key)
+        if not mapped:
+            out.append(key)
+            continue
+        parts = [p for p in mapped.lower().split() if p]
+        out.extend(parts if parts else [key])
+    return out
+
+
+TokenKind = Literal["wildcard", "literal", "alt", "group"]
+
+
+@dataclass(frozen=True)
+class Token:
+    kind: TokenKind
+    value: str | None = None
+    options: list[str] | None = None
+
+
+def _parse_decomposition(pattern: str) -> list[Token]:
+    raw = " ".join(pattern.strip().split()).lower()
+    if not raw:
+        return []
+    tokens: list[Token] = []
+    i = 0
+    while i < len(raw):
+        while i < len(raw) and raw[i] == " ":
+            i += 1
+        if i >= len(raw):
+            break
+        ch = raw[i]
+        if ch == "*":
+            tokens.append(Token(kind="wildcard"))
+            i += 1
+            continue
+        if ch == "@":
+            j = i + 1
+            while j < len(raw) and raw[j] != " ":
+                j += 1
+            group = raw[i + 1 : j].strip()
             if group:
-                reflected = reflect(group)
-                response = response.replace(f"${i}", reflected)
+                tokens.append(Token(kind="group", value=group))
+            i = j
+            continue
+        if ch == "[":
+            close = raw.find("]", i + 1)
+            if close == -1:
+                rest = raw[i:].strip()
+                if rest:
+                    tokens.append(Token(kind="literal", value=rest))
+                break
+            inside = raw[i + 1 : close].strip()
+            opts = inside.split() if inside else []
+            tokens.append(Token(kind="alt", options=opts))
+            i = close + 1
+            continue
+        # literal
+        j = i
+        while j < len(raw) and raw[j] != " ":
+            j += 1
+        word = raw[i:j].strip()
+        if word:
+            tokens.append(Token(kind="literal", value=word))
+        i = j
+    return tokens
 
-        response = re.sub(r"\$\d+", "that", response)
 
-        return response
+def _token_matches_word(token: Token, word: str) -> bool:
+    if token.kind == "literal":
+        return token.value == word
+    if token.kind == "alt":
+        return word in (token.options or [])
+    if token.kind == "group":
+        group_words = _SCRIPT.groups.get(token.value or "")
+        return word in group_words if group_words else False
+    return False
 
-    available = [r for r in default_responses if r not in response_history]
-    pool = available if available else default_responses
-    response = random.choice(pool)
 
-    response_history.append(response)
-    if len(response_history) > max_history:
-        response_history.pop(0)
+def _match_decomposition(tokens: list[Token], words: list[str]) -> list[str] | None:
+    parts = [""] * len(tokens)
 
-    return response
+    def backtrack(ti: int, wi: int) -> bool:
+        if ti == len(tokens):
+            return wi == len(words)
+        token = tokens[ti]
+        if token.kind == "wildcard":
+            for end in range(wi, len(words) + 1):
+                parts[ti] = " ".join(words[wi:end]).strip()
+                if backtrack(ti + 1, end):
+                    return True
+            return False
+        if wi >= len(words):
+            return False
+        w = words[wi]
+        if not _token_matches_word(token, w):
+            return False
+        parts[ti] = w
+        return backtrack(ti + 1, wi + 1)
+
+    if not backtrack(0, 0):
+        return None
+    return parts
+
+
+def _apply_reassembly(template: str, parts: list[str]) -> str:
+    def repl(m: re.Match[str]) -> str:
+        n = int(m.group(1))
+        if n <= 0 or n > len(parts):
+            return ""
+        return reflect(parts[n - 1])
+
+    out = re.sub(r"\$(\d+)", repl, template)
+    out = re.sub(r"\$\d+", "that", out)
+    return re.sub(r"\s+", " ", out).strip()
+
+
+def _stable_key(keyword: str, rule: ScriptRule, rule_index: int) -> str:
+    return f"{keyword}::{rule_index}::{rule.decomposition}"
+
+
+def _pick_next_reassembly(state: SessionState, keyword: str, rule: ScriptRule, idx: int) -> str:
+    key = _stable_key(keyword, rule, idx)
+    current = state.reassembly_index.get(key, 0)
+    if not rule.reassembly:
+        return ""
+    pick = rule.reassembly[current % len(rule.reassembly)]
+    state.reassembly_index[key] = (current + 1) % max(1, len(rule.reassembly))
+    return pick
+
+
+def _compute_word_hash(word: str) -> int:
+    h = 0
+    for ch in word:
+        h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+    return h
+
+
+def _choose_default(state: SessionState) -> str:
+    if state.limit == 4 and state.memories:
+        return state.memories.pop(0)
+    idx = state.reassembly_index.get("__default__", 0)
+    state.reassembly_index["__default__"] = idx + 1
+    return _SCRIPT.default[idx % len(_SCRIPT.default)]
+
+
+def _is_goodbye(words: list[str]) -> bool:
+    if not words:
+        return False
+    first = words[0]
+    for g in _SCRIPT.goodbyes:
+        gw = _tokenize_words(g)
+        if gw and gw[0] == first:
+            return True
+    return False
+
+
+def _resolve_redirect(s: str) -> str | None:
+    t = s.strip()
+    if not t.startswith("="):
+        return None
+    k = t[1:].strip().lower()
+    return k if k else None
+
+
+def _is_newkey(s: str) -> bool:
+    t = s.strip().lower()
+    return t == ":newkey" or t == "newkey"
+
+
+def _parse_pre(s: str) -> tuple[str, str] | None:
+    m = re.match(r"^:pre\s+(.+?)\s+\(=\s*([^)]+)\s*\)\s*$", s.strip(), re.IGNORECASE)
+    if not m:
+        return None
+    pre_text = m.group(1).strip()
+    redirect = m.group(2).strip().lower()
+    if not pre_text or not redirect:
+        return None
+    return pre_text, redirect
+
+
+RuleEval = Literal["no_match", "newkey", "redirect", "pre", "response"]
+
+
+@dataclass(frozen=True)
+class RuleResult:
+    kind: RuleEval
+    text: str | None = None
+    redirect: str | None = None
+    pre_text: str | None = None
+    parts: list[str] | None = None
+
+
+def _try_rules(state: SessionState, keyword: str, entry: KeywordEntry, words: list[str]) -> RuleResult:
+    for idx, rule in enumerate(entry.rules):
+        tokens = _parse_decomposition(rule.decomposition)
+        parts = _match_decomposition(tokens, words)
+        if parts is None:
+            continue
+        picked = _pick_next_reassembly(state, keyword, rule, idx)
+        if _is_newkey(picked):
+            return RuleResult(kind="newkey")
+        pre = _parse_pre(picked)
+        if pre:
+            pre_text, redirect = pre
+            return RuleResult(kind="pre", pre_text=pre_text, redirect=redirect, parts=parts)
+        redirect = _resolve_redirect(picked)
+        if redirect:
+            return RuleResult(kind="redirect", redirect=redirect)
+        return RuleResult(kind="response", text=_apply_reassembly(picked, parts))
+    return RuleResult(kind="no_match")
+
+
+def _maybe_record_memory(state: SessionState, entry: KeywordEntry, words: list[str]) -> None:
+    if not entry.memory:
+        return
+    last = words[-1] if words else ""
+    chosen = entry.memory[_compute_word_hash(last) % len(entry.memory)]
+    tokens = _parse_decomposition(chosen.decomposition)
+    parts = _match_decomposition(tokens, words)
+    if parts is None:
+        return
+    ridx = _compute_word_hash(last) % max(1, len(chosen.reassembly))
+    template = chosen.reassembly[ridx] if chosen.reassembly else ""
+    response = _apply_reassembly(template, parts)
+    if response:
+        state.memories.append(response)
+
+
+def _extract_user_message(prompt: str) -> str:
+    m = re.search(r"(?:User|Human|You):\s*(.+?)(?:\n|$)", prompt, re.IGNORECASE)
+    return (m.group(1).strip() if m else prompt.strip()) if prompt else ""
+
+
+class ElizaClassicEngine:
+    def __init__(self) -> None:
+        self._state = SessionState()
+
+    def reset(self) -> None:
+        self._state = SessionState()
+
+    def get_greeting(self) -> str:
+        return (_SCRIPT.greetings[1] if len(_SCRIPT.greetings) > 1 else _SCRIPT.greetings[0])
+
+    def generate(self, input_text: str) -> str:
+        text = _extract_user_message(input_text)
+        words = _tokenize_words(text)
+        scan_words = _tokenize_for_scan(text)
+
+        self._state.limit = 1 if self._state.limit == 4 else self._state.limit + 1
+
+        if not words:
+            return _choose_default(self._state)
+        if _is_goodbye(words):
+            return _SCRIPT.goodbyes[0] if _SCRIPT.goodbyes else "Goodbye"
+
+        for clause in _split_into_clauses(scan_words):
+            found = [w for w in clause if w in _KEYWORD_INDEX]
+            if not found:
+                continue
+            stack = sorted(
+                found,
+                key=lambda w: (-_KEYWORD_INDEX[w].precedence, clause.index(w)),
+            )
+            match_words = _substitute_words_for_matching(clause)
+            for kw in stack:
+                entry = _KEYWORD_INDEX[kw]
+                _maybe_record_memory(self._state, entry, match_words)
+                result = _try_rules(self._state, kw, entry, match_words)
+                if result.kind in ("no_match", "newkey"):
+                    continue
+                if result.kind == "response":
+                    return result.text or ""
+                if result.kind == "redirect":
+                    target = result.redirect or ""
+                    target_entry = _KEYWORD_INDEX.get(target)
+                    if not target_entry:
+                        continue
+                    rr = _try_rules(self._state, target, target_entry, match_words)
+                    if rr.kind == "response":
+                        return rr.text or ""
+                    continue
+                if result.kind == "pre":
+                    pre_text = _apply_reassembly(result.pre_text or "", result.parts or [])
+                    pre_words = _tokenize_words(pre_text)
+                    target = result.redirect or ""
+                    target_entry = _KEYWORD_INDEX.get(target)
+                    if not target_entry:
+                        continue
+                    rr = _try_rules(self._state, target, target_entry, pre_words)
+                    if rr.kind == "response":
+                        return rr.text or ""
+                    continue
+            break
+
+        return _choose_default(self._state)
+
+
+_ENGINE = ElizaClassicEngine()
+
+
+def generate_response(input_text: str) -> str:
+    return _ENGINE.generate(input_text)
 
 
 def get_greeting() -> str:
-    return "Hello. I am ELIZA, a Rogerian psychotherapist simulation. How are you feeling today?"
+    return _ENGINE.get_greeting()
 
 
 class ElizaClassicPlugin:
     def __init__(self, config: ElizaConfig | None = None) -> None:
         self._config = config or ElizaConfig()
-        self._response_history: list[str] = []
-        self._patterns = ELIZA_PATTERNS + self._config.custom_patterns
-        self._default_responses = (
-            self._config.custom_default_responses
-            if self._config.custom_default_responses
-            else DEFAULT_RESPONSES
-        )
+        self._engine = ElizaClassicEngine()
 
     def generate_response(self, input_text: str) -> str:
-        return generate_response(
-            input_text,
-            patterns=self._patterns,
-            default_responses=self._default_responses,
-            response_history=self._response_history,
-            max_history=self._config.max_history_size,
-        )
+        return self._engine.generate(input_text)
 
     def get_greeting(self) -> str:
-        return get_greeting()
+        return self._engine.get_greeting()
 
     def reset_history(self) -> None:
-        self._response_history.clear()
+        self._engine.reset()
 
 
-def create_eliza_classic_elizaos_plugin() -> Any:
+def create_eliza_classic_elizaos_plugin() -> object:
     try:
         from elizaos import Plugin
         from elizaos.types.model import ModelType
@@ -718,13 +489,13 @@ def create_eliza_classic_elizaos_plugin() -> Any:
 
     plugin_instance = ElizaClassicPlugin()
 
-    async def text_large_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
+    async def text_large_handler(runtime: IAgentRuntime, params: dict[str, object]) -> str:
         prompt = params.get("prompt", "")
         match = re.search(r"(?:User|Human|You):\s*(.+?)(?:\n|$)", prompt, re.IGNORECASE)
         input_text = match.group(1) if match else prompt
         return plugin_instance.generate_response(input_text)
 
-    async def text_small_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
+    async def text_small_handler(runtime: IAgentRuntime, params: dict[str, object]) -> str:
         return await text_large_handler(runtime, params)
 
     return Plugin(
@@ -737,10 +508,10 @@ def create_eliza_classic_elizaos_plugin() -> Any:
     )
 
 
-_eliza_plugin_instance: Any | None = None
+_eliza_plugin_instance: object | None = None
 
 
-def get_eliza_classic_plugin() -> Any:
+def get_eliza_classic_plugin() -> object:
     global _eliza_plugin_instance
     if _eliza_plugin_instance is None:
         _eliza_plugin_instance = create_eliza_classic_elizaos_plugin()

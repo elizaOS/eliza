@@ -11,6 +11,27 @@ This is the Rust implementation of the elizaOS core runtime. It provides a fully
 - **Plugin System**: Load, validate, and resolve plugin dependencies
 - **Agent Runtime**: Core runtime for elizaOS agents
 
+## Runtime Settings (cross-language parity)
+
+These settings are read by the runtime/message loop to keep behavior aligned with the TypeScript and Python implementations:
+
+- `ALLOW_NO_DATABASE`: when truthy, allow running without a persistent database adapter (benchmarks/tests).
+- `USE_MULTI_STEP`: when truthy, enable the iterative multi-step workflow.
+- `MAX_MULTISTEP_ITERATIONS`: maximum iterations for multi-step mode (default: `6`).
+
+### Benchmark & Trajectory Tracing
+
+Benchmarks and harnesses can attach metadata to inbound messages (stored under `Memory.metadata` as custom JSON):
+
+- `trajectoryStepId`: enables trajectory tracing for provider access + model calls.
+- `benchmarkContext`: enables the `CONTEXT_BENCH` provider and sets `state.values["benchmark_has_context"]=true`, which forces action-based execution to exercise the full loop.
+
+## Model output contract (XML preferred, plain text tolerated)
+
+The canonical message loop expects model outputs in the `<response>...</response>` XML format (with `<actions>`, `<providers>`, and `<text>` fields).
+
+Some deterministic/offline backends may return **plain text** instead. In that case, the runtime will treat the raw output as a simple **`REPLY`** so the system remains usable even when strict XML formatting is unavailable.
+
 ## Building
 
 ### Prerequisites

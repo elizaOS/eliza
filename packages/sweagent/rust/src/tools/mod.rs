@@ -112,20 +112,20 @@ impl ToolHandler {
             .iter()
             .map(create_bundle)
             .collect::<Result<Vec<_>>>()?;
-        
+
         let parser = config
             .parse_function
             .as_ref()
             .map(create_parser)
             .unwrap_or_else(|| Box::new(ThoughtActionParser::new()));
-        
+
         let mut multiline_commands = HashMap::new();
         for bundle in &bundles {
             if let Some(ref end_name) = bundle.end_name {
                 multiline_commands.insert(bundle.name.clone(), end_name.clone());
             }
         }
-        
+
         Ok(Self {
             config,
             bundles,
@@ -133,7 +133,7 @@ impl ToolHandler {
             multiline_commands,
         })
     }
-    
+
     /// Install tools in the environment
     pub async fn install(&self, env: &mut SWEEnv) -> Result<()> {
         // Set environment variables
@@ -141,55 +141,55 @@ impl ToolHandler {
             env.set_env_variables(self.config.env_variables.clone())
                 .await?;
         }
-        
+
         // Install each bundle
         let cwd = env.communicate("pwd", Some(5)).await?;
-        
+
         for bundle in &self.bundles {
             if let Some(ref install_script) = bundle.install_script {
                 env.communicate(install_script, Some(300)).await?;
             }
         }
-        
+
         // Return to original directory
         env.communicate(&format!("cd {}", cwd.trim()), Some(5))
             .await?;
-        
+
         Ok(())
     }
-    
+
     /// Get current state from environment
     pub async fn get_state(&self, env: &SWEEnv) -> HashMap<String, String> {
         let mut state = HashMap::new();
-        
+
         if let Some(cwd) = env.get_cwd() {
             state.insert("working_dir".to_string(), cwd);
         }
-        
+
         let open_files = env.get_open_files();
         if !open_files.is_empty() {
             state.insert("open_files".to_string(), open_files.join(", "));
         }
-        
+
         if let Ok(git_status) = env.get_git_status().await {
             state.insert("git_status".to_string(), git_status);
         }
-        
+
         state
     }
-    
+
     /// Parse thought and action from model output
     pub fn parse_actions(&self, output: &ModelOutput) -> Result<(String, String)> {
         self.parser.parse(&output.message, &self.bundles, true)
     }
-    
+
     /// Check if an action should be blocked
     pub fn should_block_action(&self, action: &str) -> bool {
         let action = action.trim();
         if action.is_empty() {
             return false;
         }
-        
+
         if let Some(ref filter) = self.config.filter {
             // Check blocklist
             for blocked in &filter.blocklist {
@@ -197,12 +197,12 @@ impl ToolHandler {
                     return true;
                 }
             }
-            
+
             // Check standalone blocklist
             if filter.blocklist_standalone.contains(&action.to_string()) {
                 return true;
             }
-            
+
             // Check block unless regex
             let command_name = action.split_whitespace().next().unwrap_or("");
             if let Some(pattern) = filter.block_unless_regex.get(command_name) {
@@ -213,15 +213,15 @@ impl ToolHandler {
                 }
             }
         }
-        
+
         false
     }
-    
+
     /// Check if observation contains submission command
     pub fn check_for_submission_cmd(&self, observation: &str) -> bool {
         observation.contains(crate::exceptions::tokens::SUBMISSION_MARKER)
     }
-    
+
     /// Guard multiline input with heredoc syntax
     pub fn guard_multiline_input(&self, action: &str) -> String {
         for (cmd_name, end_name) in &self.multiline_commands {
@@ -243,7 +243,7 @@ impl ToolHandler {
                 }
             }
         }
-        
+
         action.to_string()
     }
 }
@@ -270,7 +270,7 @@ mod tests {
             ..Default::default()
         };
         let handler = ToolHandler::new(config).unwrap();
-        
+
         assert!(handler.should_block_action("rm -rf /"));
         assert!(!handler.should_block_action("rm file.txt"));
     }
@@ -286,7 +286,7 @@ mod tests {
             ..Default::default()
         };
         let handler = ToolHandler::new(config).unwrap();
-        
+
         let multiline = "edit file.txt\nline1\nline2";
         let guarded = handler.guard_multiline_input(multiline);
         assert!(guarded.contains("<<"));

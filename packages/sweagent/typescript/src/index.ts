@@ -2,247 +2,250 @@
  * Main exports TypeScript implementation
  */
 
-// Core types
-export * from './types';
-export * from './exceptions';
+import pkg from "../package.json";
 
-// Agent module - selective exports to avoid conflicts
-export {
-  AbstractAgent,
-  DefaultAgent,
-  RetryAgent,
-  AgentConfig,
-  DefaultAgentConfig,
-  RetryAgentConfig,
-  ShellAgentConfig,
-  TemplateConfig,
-  getAgentFromConfig,
-} from './agent/agents';
-
-export {
-  AbstractModel,
-  HumanModel,
-  LiteLLMModel,
-  ReplayModel,
-  InstantEmptySubmitModel,
-  HumanThoughtModel,
-  ModelConfig,
-  GenericAPIModelConfig,
-  HumanModelConfig,
-  ReplayModelConfig,
-  GlobalStats,
-  InstanceStats,
-  getModel,
-} from './agent/models';
-
-export {
-  ProblemStatement,
-  ProblemStatementConfig,
-  EmptyProblemStatement,
-  TextProblemStatement,
-  FileProblemStatement,
-  GithubIssue,
-  SWEBenchMultimodalProblemStatement,
-  problemStatementFromSimplifiedInput,
-} from './agent/problem-statement';
-
-export {
-  AbstractReviewer,
-  AbstractRetryLoop,
-  ReviewSubmission,
-  ReviewerResult,
-  PreselectorOutput,
-  ChooserOutput,
-  Reviewer,
-  Chooser,
-  ChooserRetryLoop,
-  ScoreRetryLoop,
-  ReviewerConfig,
-  ChooserConfig,
-  PreselectorConfig,
-  ChooserRetryLoopConfig,
-  ScoreRetryLoopConfig,
-  RetryLoopConfig,
-  getRetryLoopFromConfig,
-} from './agent/reviewer';
+export const __version__ = pkg.version;
 
 export {
   AbstractActionSampler,
+  ActionSamplerConfig,
   ActionSamplerOutput,
   AskColleagues,
   AskColleaguesConfig,
   BinaryTrajectoryComparison,
   BinaryTrajectoryComparisonConfig,
-  ActionSamplerConfig,
   createActionSampler,
-} from './agent/action-sampler';
-
+} from "./agent/action-sampler";
+// Agent module - selective exports to avoid conflicts
+export {
+  AbstractAgent,
+  AgentConfig,
+  DefaultAgent,
+  DefaultAgentConfig,
+  getAgentFromConfig,
+  RetryAgent,
+  RetryAgentConfig,
+  ShellAgentConfig,
+  TemplateConfig,
+} from "./agent/agents";
 export {
   AbstractHistoryProcessor,
-  DefaultHistoryProcessor,
-  LastNObservations,
-  TagToolCallObservations,
-  ClosedWindowHistoryProcessor,
   CacheControlHistoryProcessor,
-  RemoveRegex,
-  ImageParsingHistoryProcessor,
+  ClosedWindowHistoryProcessor,
   createHistoryProcessor,
-} from './agent/history-processors';
-
-// Environment module
-export { SWEEnv, EnvironmentConfig } from './environment/swe-env';
+  DefaultHistoryProcessor,
+  ImageParsingHistoryProcessor,
+  LastNObservations,
+  RemoveRegex,
+  TagToolCallObservations,
+} from "./agent/history-processors";
 
 export {
-  Repo,
-  PreExistingRepo,
-  LocalRepo,
-  GithubRepo,
-  PreExistingRepoConfig,
-  LocalRepoConfig,
-  GithubRepoConfig,
-  RepoConfig,
-  repoFromSimplifiedInput,
-} from './environment/repo';
+  AbstractModel,
+  GenericAPIModelConfig,
+  GlobalStats,
+  getModel,
+  HumanModel,
+  HumanModelConfig,
+  HumanThoughtModel,
+  InstanceStats,
+  InstantEmptySubmitModel,
+  LiteLLMModel,
+  ModelConfig,
+  ReplayModel,
+  ReplayModelConfig,
+} from "./agent/models";
 
+export {
+  EmptyProblemStatement,
+  FileProblemStatement,
+  GithubIssue,
+  ProblemStatement,
+  ProblemStatementConfig,
+  problemStatementFromSimplifiedInput,
+  SWEBenchMultimodalProblemStatement,
+  TextProblemStatement,
+} from "./agent/problem-statement";
+
+export {
+  AbstractRetryLoop,
+  AbstractReviewer,
+  Chooser,
+  ChooserConfig,
+  ChooserOutput,
+  ChooserRetryLoop,
+  ChooserRetryLoopConfig,
+  getRetryLoopFromConfig,
+  PreselectorConfig,
+  PreselectorOutput,
+  RetryLoopConfig,
+  Reviewer,
+  ReviewerConfig,
+  ReviewerResult,
+  ReviewSubmission,
+  ScoreRetryLoop,
+  ScoreRetryLoopConfig,
+} from "./agent/reviewer";
 export {
   AbstractDeployment,
+  DeploymentConfig,
   DockerDeployment,
   DockerDeploymentConfig,
-  DeploymentConfig,
   getDeployment,
-} from './environment/deployment';
-
+} from "./environment/deployment";
+export {
+  GithubRepo,
+  GithubRepoConfig,
+  LocalRepo,
+  LocalRepoConfig,
+  PreExistingRepo,
+  PreExistingRepoConfig,
+  Repo,
+  RepoConfig,
+  repoFromSimplifiedInput,
+} from "./environment/repo";
 export {
   AbstractRuntime,
   BashAction,
   BashActionResult,
   BashInterruptAction,
-  CreateBashSessionRequest,
   Command,
   CommandResult,
+  CreateBashSessionRequest,
   ReadFileRequest,
   ReadFileResponse,
-  WriteFileRequest,
   UploadRequest,
-} from './environment/runtime';
-
-// Utils module - selective exports
-export { getLogger, AgentLogger, setThreadName, getThreadName, setLogLevel, log } from './utils/log';
-
+  WriteFileRequest,
+} from "./environment/runtime";
+// Environment module
+export { EnvironmentConfig, SWEEnv } from "./environment/swe-env";
+export * from "./exceptions";
 export {
-  convertPathRelativeToRepoRoot,
-  convertPathToAbspath,
-  convertPathsToAbspath,
-  loadEnvironmentVariables,
-  stripAbspathFromDict,
-  couldBeAPath,
-} from './utils/config';
-
-export { loadFile } from './utils/files';
-
-export {
-  isGithubRepoUrl,
-  isGithubIssueUrl,
-  parseGhIssueUrl,
-  parseGhRepoUrl,
-  getGhIssueData,
-  getProblemStatementFromGithubIssue,
-  getAssociatedCommitUrls,
-  InvalidGithubURL,
-} from './utils/github';
-
-export { warnProbablyWrongJinjaSyntax } from './utils/jinja-warnings';
-
-export { PatchFormatter } from './utils/patch-formatter';
-
-export { convertToYamlLiteralString, yamlSerializationWithLinebreaks, mergeNestedDicts } from './utils/serialization';
-
-// Tools module - selective exports
-export { Bundle, BundleConfig } from './tools/bundle';
-
-export { Command as ToolCommand, Argument } from './tools/commands';
-
-export {
-  AbstractParseFunction,
-  ActionParser,
-  ActionOnlyParser,
-  ThoughtActionParser,
-  XMLThoughtActionParser,
-  FunctionCallingParser,
-  JsonParser,
-  IdentityParser,
-  ParseFunction,
-  createParser,
-} from './tools/parsing';
-
-export { ToolHandler, ToolConfig, ToolFilterConfig, defaultToolConfig, defaultToolFilterConfig } from './tools/tools';
-
-export { guardMultilineInput, shouldQuote, getSignature, generateCommandDocs } from './tools/utils';
-
-// Run module - selective exports
-export {
-  RunSingle,
-  RunSingleConfig,
-  RunSingleActionConfig,
-  runFromConfig as runSingleFromConfig,
-} from './run/run-single';
-
-export { RunBatch, RunBatchConfig, runBatchFromConfig } from './run/run-batch';
-
-export { RunReplay, RunReplayConfig, runReplayFromConfig } from './run/run-replay';
-
-export { RunShell } from './run/run-shell';
-
-export {
-  BatchInstance,
-  SimpleBatchInstance,
   AbstractInstanceSource,
-  InstancesFromFile,
-  SWEBenchInstances,
+  BatchInstance,
   BatchInstanceSourceConfig,
   createInstanceSource,
   filterBatchItems,
-} from './run/batch-instances';
-
-export { RunHook, AbstractRunHook, CombinedRunHooks } from './run/hooks/types';
-export { SaveApplyPatchHook } from './run/hooks/apply-patch';
-export { OpenPRHook } from './run/hooks/open-pr';
-export { SweBenchEvaluate } from './run/hooks/swe-bench-evaluate';
-
+  InstancesFromFile,
+  SimpleBatchInstance,
+  SWEBenchInstances,
+} from "./run/batch-instances";
 export {
+  createNestedDict,
+  isPromisingPatch,
+  parseArgsToNestedDict,
+  savePredictions,
   shortenString,
   shortenStrings,
-  savePredictions,
-  isPromisingPatch,
-  createNestedDict,
-  parseArgsToNestedDict,
-} from './run/common';
-
-export { run } from './run/run';
+} from "./run/common";
+export { SaveApplyPatchHook } from "./run/hooks/apply-patch";
+export { OpenPRHook } from "./run/hooks/open-pr";
+export { SweBenchEvaluate } from "./run/hooks/swe-bench-evaluate";
+export { AbstractRunHook, CombinedRunHooks, RunHook } from "./run/hooks/types";
+export { run } from "./run/run";
+export { RunBatch, RunBatchConfig, runBatchFromConfig } from "./run/run-batch";
+export {
+  RunReplay,
+  RunReplayConfig,
+  runReplayFromConfig,
+} from "./run/run-replay";
+export { RunShell } from "./run/run-shell";
+// Run module - selective exports
+export {
+  RunSingle,
+  RunSingleActionConfig,
+  RunSingleConfig,
+  runFromConfig as runSingleFromConfig,
+} from "./run/run-single";
+// Tools module - selective exports
+export { Bundle, BundleConfig } from "./tools/bundle";
+export { Argument, Command as ToolCommand } from "./tools/commands";
+export {
+  AbstractParseFunction,
+  ActionOnlyParser,
+  ActionParser,
+  createParser,
+  FunctionCallingParser,
+  IdentityParser,
+  JsonParser,
+  ParseFunction,
+  ThoughtActionParser,
+  XMLThoughtActionParser,
+} from "./tools/parsing";
+export {
+  defaultToolConfig,
+  defaultToolFilterConfig,
+  ToolConfig,
+  ToolFilterConfig,
+  ToolHandler,
+} from "./tools/tools";
+export {
+  generateCommandDocs,
+  getSignature,
+  guardMultilineInput,
+  shouldQuote,
+} from "./tools/utils";
+// Core types
+export * from "./types";
+export {
+  convertPathRelativeToRepoRoot,
+  convertPathsToAbspath,
+  convertPathToAbspath,
+  couldBeAPath,
+  loadEnvironmentVariables,
+  stripAbspathFromDict,
+} from "./utils/config";
+export { loadFile } from "./utils/files";
+export {
+  getAssociatedCommitUrls,
+  getGhIssueData,
+  getProblemStatementFromGithubIssue,
+  InvalidGithubURL,
+  isGithubIssueUrl,
+  isGithubRepoUrl,
+  parseGhIssueUrl,
+  parseGhRepoUrl,
+} from "./utils/github";
+export { warnProbablyWrongJinjaSyntax } from "./utils/jinja-warnings";
+// Utils module - selective exports
+export {
+  AgentLogger,
+  getLogger,
+  getThreadName,
+  log,
+  setLogLevel,
+  setThreadName,
+} from "./utils/log";
+export { PatchFormatter } from "./utils/patch-formatter";
+export {
+  convertToYamlLiteralString,
+  mergeNestedDicts,
+  yamlSerializationWithLinebreaks,
+} from "./utils/serialization";
 
 // Version info
-export const VERSION = '1.1.0';
+export const VERSION = "1.1.0";
 
 /**
  * Get agent commit hash
  */
 export function getAgentCommitHash(): string {
   // In a real implementation, this would get the actual git commit hash
-  return process.env.SWE_AGENT_COMMIT_HASH || 'unknown';
+  return process.env.SWE_AGENT_COMMIT_HASH || "unknown";
 }
 
 /**
  * Get REX commit hash
  */
 export function getRexCommitHash(): string {
-  return process.env.SWE_REX_COMMIT_HASH || 'unknown';
+  return process.env.SWE_REX_COMMIT_HASH || "unknown";
 }
 
 /**
  * Get REX version
  */
 export function getRexVersion(): string {
-  return process.env.SWE_REX_VERSION || '0.0.0';
+  return process.env.SWE_REX_VERSION || "0.0.0";
 }
 
 /**

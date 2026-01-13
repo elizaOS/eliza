@@ -1,10 +1,10 @@
 //! Single instance runner for SWE-agent
 
 use super::hooks::{CombinedRunHook, RunHook};
-use crate::agent::{get_agent_from_config, Agent, AgentConfig};
 use crate::agent::problem_statement::{
     create_problem_statement, ProblemStatement, ProblemStatementConfig,
 };
+use crate::agent::{get_agent_from_config, Agent, AgentConfig};
 use crate::environment::{EnvironmentConfig, SWEEnv};
 use crate::exceptions::Result;
 use crate::types::AgentRunResult;
@@ -78,13 +78,13 @@ impl RunSingle {
             hooks: CombinedRunHook::new(),
         }
     }
-    
+
     /// Create from configuration
     pub fn from_config(config: RunSingleConfig) -> Result<Self> {
         let agent = get_agent_from_config(config.agent)?;
         let env = SWEEnv::from_config(config.env)?;
         let problem_statement = create_problem_statement(&config.problem_statement)?;
-        
+
         Ok(Self::new(
             agent,
             env,
@@ -93,32 +93,36 @@ impl RunSingle {
             config.actions,
         ))
     }
-    
+
     /// Add a hook
     pub fn add_hook(&mut self, hook: Box<dyn RunHook>) {
         self.hooks.add_hook(hook);
     }
-    
+
     /// Run the agent on the problem instance
     pub async fn run(&mut self) -> Result<AgentRunResult> {
         // Ensure output directory exists
         std::fs::create_dir_all(&self.output_dir)?;
-        
+
         self.hooks.on_start();
         self.hooks.on_instance_start(0, self.problem_statement.id());
-        
+
         // Start the environment
         self.env.start().await?;
-        
+
         // Create a new problem statement for the agent (since we need to move it)
         let ps_config = ProblemStatementConfig::Text {
             text: self.problem_statement.get_problem_statement(),
             id: self.problem_statement.id().to_string(),
         };
         let ps_for_agent = create_problem_statement(&ps_config)?;
-        
+
         // Run the agent
-        let result = match self.agent.run(&mut self.env, ps_for_agent, &self.output_dir).await {
+        let result = match self
+            .agent
+            .run(&mut self.env, ps_for_agent, &self.output_dir)
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!(error = %e, "Agent run failed");
@@ -126,25 +130,25 @@ impl RunSingle {
                 return Err(e);
             }
         };
-        
+
         // Stop the environment
         self.env.stop().await?;
-        
+
         self.hooks.on_instance_completed(&result);
         self.hooks.on_end();
-        
+
         // Handle post-run actions
         if self.actions.apply_patch_locally {
             self.apply_patch_locally(&result).await?;
         }
-        
+
         if self.actions.open_pr {
             self.open_pr(&result).await?;
         }
-        
+
         Ok(result)
     }
-    
+
     async fn apply_patch_locally(&self, result: &AgentRunResult) -> Result<()> {
         if let Some(ref submission) = result.info.submission {
             tracing::info!("Applying patch locally");
@@ -155,7 +159,7 @@ impl RunSingle {
         }
         Ok(())
     }
-    
+
     async fn open_pr(&self, result: &AgentRunResult) -> Result<()> {
         if result.info.submission.is_some() {
             tracing::info!("Opening PR");
@@ -185,7 +189,7 @@ mod tests {
             },
             ..Default::default()
         };
-        
+
         let runner = RunSingle::from_config(config);
         assert!(runner.is_ok());
     }

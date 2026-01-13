@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from elizaos_plugin_eliza_classic.plugin import get_greeting
 
 if TYPE_CHECKING:
-    from typing import Any
+    from collections.abc import Mapping
 
 
 class ElizaGreetingProvider:
@@ -15,7 +15,7 @@ class ElizaGreetingProvider:
     def description(self) -> str:
         return "Provides the ELIZA greeting message."
 
-    async def get(self, context: "Any") -> dict[str, "Any"]:
+    async def get(self, context: "Mapping[str, object] | object") -> dict[str, object]:
         greeting = get_greeting()
 
         return {

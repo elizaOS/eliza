@@ -2,17 +2,17 @@
  * Compare multiple run results
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 /**
  * Get resolved instance IDs from results file
  */
 function getResolved(filePath: string): Set<string> {
-  const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
 
   // Handle different formats
-  if ('resolved' in data) {
+  if ("resolved" in data) {
     data.resolved_ids = data.resolved;
   }
 
@@ -23,7 +23,7 @@ function getResolved(filePath: string): Set<string> {
  * Get submitted instance IDs from results file
  */
 function getSubmitted(filePath: string): Set<string> {
-  const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
   return new Set(data.submitted_ids || []);
 }
 
@@ -51,7 +51,7 @@ function compareMany(paths: string[]): void {
   }
 
   // Build comparison table
-  const header = ['ID', ...paths.map((_, i) => String(i)), 'Success rate'];
+  const header = ["ID", ...paths.map((_, i) => String(i)), "Success rate"];
   const table: Array<Array<string | number>> = [];
 
   function getEmoji(id: string, filePath: string): string {
@@ -59,12 +59,12 @@ function compareMany(paths: string[]): void {
     const resolved = resolvedIds.get(filePath) || [];
 
     if (!evaluated.includes(id)) {
-      return '❓';
+      return "❓";
     }
     if (resolved.includes(id)) {
-      return '✅';
+      return "✅";
     }
-    return '❌';
+    return "❌";
   }
 
   const idsToCompare = new Set(evaluatedIds.get(paths[0]) || []);
@@ -76,23 +76,33 @@ function compareMany(paths: string[]): void {
       row.push(getEmoji(id, filePath));
     }
 
-    const nSuccess = paths.filter((p) => (resolvedIds.get(p) || []).includes(id)).length;
-    const nEvaluated = paths.filter((p) => (evaluatedIds.get(p) || []).includes(id)).length;
+    const nSuccess = paths.filter((p) =>
+      (resolvedIds.get(p) || []).includes(id),
+    ).length;
+    const nEvaluated = paths.filter((p) =>
+      (evaluatedIds.get(p) || []).includes(id),
+    ).length;
 
-    row.push(nEvaluated > 0 ? (nSuccess / nEvaluated).toFixed(2) : '0.00');
+    row.push(nEvaluated > 0 ? (nSuccess / nEvaluated).toFixed(2) : "0.00");
     table.push(row);
   }
 
   // Add summary rows
-  const successes: Array<string | number> = ['Successes'];
-  const successRates: Array<string | number> = ['Success rates'];
+  const successes: Array<string | number> = ["Successes"];
+  const successRates: Array<string | number> = ["Success rates"];
 
   for (const filePath of paths) {
-    const nSuccess = Array.from(idsToCompare).filter((id) => (resolvedIds.get(filePath) || []).includes(id)).length;
-    const nEvaluated = Array.from(idsToCompare).filter((id) => (evaluatedIds.get(filePath) || []).includes(id)).length;
+    const nSuccess = Array.from(idsToCompare).filter((id) =>
+      (resolvedIds.get(filePath) || []).includes(id),
+    ).length;
+    const nEvaluated = Array.from(idsToCompare).filter((id) =>
+      (evaluatedIds.get(filePath) || []).includes(id),
+    ).length;
 
     successes.push(nSuccess);
-    successRates.push(nEvaluated > 0 ? (nSuccess / nEvaluated).toFixed(2) : '0.00');
+    successRates.push(
+      nEvaluated > 0 ? (nSuccess / nEvaluated).toFixed(2) : "0.00",
+    );
   }
 
   table.push(successes);
@@ -101,7 +111,7 @@ function compareMany(paths: string[]): void {
   // Print table
   console.table(
     table.map((row) => {
-      const obj: Record<string, any> = {};
+      const obj: Record<string, string | number> = {};
       header.forEach((h, i) => {
         obj[h] = row[i];
       });
@@ -110,12 +120,12 @@ function compareMany(paths: string[]): void {
   );
 
   // Print summary
-  console.log('\nSummary:');
+  console.log("\nSummary:");
   const summaryTable = paths.map((p, i) => ({
-    '#': i,
+    "#": i,
     ID: path.basename(path.dirname(p)),
     Successes: successes[i + 1],
-    'Success rate': successRates[i + 1],
+    "Success rate": successRates[i + 1],
   }));
   console.table(summaryTable);
 }
@@ -123,22 +133,32 @@ function compareMany(paths: string[]): void {
 /**
  * Compare a pair of runs
  */
-function comparePair(newPath: string, oldPath: string, showSame: boolean = false): void {
+function comparePair(
+  newPath: string,
+  oldPath: string,
+  showSame: boolean = false,
+): void {
   const evaluatedIds = Array.from(getSubmitted(newPath)).sort();
   const resolvedIds = Array.from(getResolved(newPath)).sort();
   const oldEvaluatedIds = Array.from(getSubmitted(oldPath)).sort();
   const oldResolvedIds = Array.from(getResolved(oldPath)).sort();
 
-  console.log(`Total evaluated: new ${evaluatedIds.length}, old ${oldEvaluatedIds.length}`);
-  console.log(`Total resolved: new ${resolvedIds.length}, old ${oldResolvedIds.length}`);
-  console.log('-'.repeat(80));
-  console.log('Emoji legend:');
-  console.log("❓: Not evaluated in old version, so guessing it's either 😀 or 👾");
-  console.log('😀: Newly resolved in new version');
-  console.log('✅: Resolved in both');
-  console.log('❌: Resolved in old, not in new');
-  console.log('👾: Unresolved in both');
-  console.log('-'.repeat(80));
+  console.log(
+    `Total evaluated: new ${evaluatedIds.length}, old ${oldEvaluatedIds.length}`,
+  );
+  console.log(
+    `Total resolved: new ${resolvedIds.length}, old ${oldResolvedIds.length}`,
+  );
+  console.log("-".repeat(80));
+  console.log("Emoji legend:");
+  console.log(
+    "❓: Not evaluated in old version, so guessing it's either 😀 or 👾",
+  );
+  console.log("😀: Newly resolved in new version");
+  console.log("✅: Resolved in both");
+  console.log("❌: Resolved in old, not in new");
+  console.log("👾: Unresolved in both");
+  console.log("-".repeat(80));
 
   for (const id of evaluatedIds) {
     const resolvedNow = resolvedIds.includes(id);
@@ -148,20 +168,20 @@ function comparePair(newPath: string, oldPath: string, showSame: boolean = false
     let emoji: string;
 
     if (!inOldEvaluated && resolvedNow) {
-      emoji = '😀❓';
+      emoji = "😀❓";
     } else if (!inOldEvaluated && !resolvedNow) {
-      emoji = '👾❓';
+      emoji = "👾❓";
     } else if (resolvedNow && !resolvedBefore) {
-      emoji = '😀';
+      emoji = "😀";
     } else if (resolvedNow && resolvedBefore) {
-      emoji = '✅';
+      emoji = "✅";
       if (!showSame) {
         continue;
       }
     } else if (!resolvedNow && resolvedBefore) {
-      emoji = '❌';
+      emoji = "❌";
     } else {
-      emoji = '👾';
+      emoji = "👾";
       if (!showSame) {
         continue;
       }
@@ -174,11 +194,14 @@ function comparePair(newPath: string, oldPath: string, showSame: boolean = false
 /**
  * Main function to compare runs
  */
-export async function compareRuns(paths: string[], showSame: boolean = false): Promise<void> {
+export async function compareRuns(
+  paths: string[],
+  showSame: boolean = false,
+): Promise<void> {
   // Convert paths to results.json paths if they're directories
   const resultPaths = paths.map((p) => {
     if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
-      return path.join(p, 'results.json');
+      return path.join(p, "results.json");
     }
     return p;
   });

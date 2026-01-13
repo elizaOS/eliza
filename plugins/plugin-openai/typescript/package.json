@@ -34,9 +34,9 @@
     "rust"
   ],
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.7",
+    "@ai-sdk/openai": "^3.0.9",
     "@elizaos/core": "workspace:*",
-    "ai": "^6.0.23",
+    "ai": "^6.0.30",
     "js-tiktoken": "^1.0.21",
     "undici": "^7.16.0"
   },

@@ -82,7 +82,7 @@ async def openai_llm_query(context: str, question: str) -> str:
         client = openai.AsyncOpenAI()
         
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",  # Use cheaper model for benchmark
+            model="gpt-5-mini",  # Use cheaper model for benchmark
             messages=[
                 {
                     "role": "system",
@@ -180,8 +180,8 @@ def get_llm_query_fn(provider: str):
             )
         # Avoid accidentally benchmarking with extremely expensive defaults.
         # Users can override with OPENAI_LARGE_MODEL / OPENAI_SMALL_MODEL in .env.
-        os.environ.setdefault("OPENAI_LARGE_MODEL", "gpt-4o-mini")
-        os.environ.setdefault("OPENAI_SMALL_MODEL", "gpt-4o-mini")
+        os.environ.setdefault("OPENAI_LARGE_MODEL", "gpt-5-mini")
+        os.environ.setdefault("OPENAI_SMALL_MODEL", "gpt-5-mini")
         # Uses Eliza's runtime + the OpenAI model plugin (requires OPENAI_API_KEY).
         from elizaos.runtime import AgentRuntime
         from elizaos.types.model import ModelType
@@ -372,8 +372,8 @@ async def run_eliza_agent_benchmark_mode(
         )
     
     # Use cheaper models by default for benchmarking
-    os.environ.setdefault("OPENAI_LARGE_MODEL", "gpt-4o-mini")
-    os.environ.setdefault("OPENAI_SMALL_MODEL", "gpt-4o-mini")
+    os.environ.setdefault("OPENAI_LARGE_MODEL", "gpt-5-mini")
+    os.environ.setdefault("OPENAI_SMALL_MODEL", "gpt-5-mini")
     
     print("Running FULL Eliza Agent Loop benchmark...")
     print("This tests the complete canonical flow:")

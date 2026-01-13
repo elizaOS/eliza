@@ -8,7 +8,9 @@ import {
   multiStepSummaryTemplate,
   shouldRespondTemplate,
 } from "../prompts";
+import { parseActionParams } from "../actions";
 import { runWithStreamingContext } from "../streaming-context";
+import { runWithTrajectoryContext } from "../trajectory-context";
 import type { ActionResult, HandlerCallback } from "../types/components";
 import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
@@ -113,6 +115,18 @@ export class DefaultMessageService implements IMessageService {
     callback?: HandlerCallback,
     options?: MessageProcessingOptions,
   ): Promise<MessageProcessingResult> {
+    const trajectoryStepId =
+      typeof message.metadata === "object" &&
+      message.metadata !== null &&
+      "trajectoryStepId" in message.metadata
+        ? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
+        : undefined;
+
+    return await runWithTrajectoryContext(
+      typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
+        ? { trajectoryStepId: trajectoryStepId.trim() }
+        : undefined,
+      async () => {
     // Determine shouldRespondModel from options or runtime settings
     const shouldRespondModelSetting = runtime.getSetting(
       "SHOULD_RESPOND_MODEL",
@@ -265,6 +279,8 @@ export class DefaultMessageService implements IMessageService {
     } finally {
       clearTimeout(timeoutId);
     }
+      },
+    );
   }
 
   /**
@@ -1121,7 +1137,13 @@ export class DefaultMessageService implements IMessageService {
         "Raw LLM response received",
       );
 
-      const parsedXml = parseKeyValueXml(response);
+      // Some model backends (e.g. deterministic/offline ones) may return plain text.
+      // In that case, treat the raw response as the user-visible reply rather than failing XML parsing.
+      const looksLikeXml =
+        response.includes("<response") &&
+        response.includes("</response>") &&
+        response.includes("<actions");
+      const parsedXml = looksLikeXml ? parseKeyValueXml(response) : null;
       runtime.logger.info(
         {
           src: "service:message",
@@ -1185,14 +1207,34 @@ export class DefaultMessageService implements IMessageService {
           simple,
         };
       } else {
-        responseContent = null;
-        runtime.logger.warn(
-          {
-            src: "service:message",
-            responsePreview: response.substring(0, 300),
-          },
-          "parseKeyValueXml returned null - XML parsing failed",
-        );
+        const text = truncateToCompleteSentence(response, 4000).trim();
+        if (text) {
+          runtime.logger.info(
+            {
+              src: "service:message",
+              responsePreview: response.substring(0, 300),
+            },
+            "Model returned plain text; using fallback REPLY response",
+          );
+          responseContent = {
+            thought: "Responding with plain text model output.",
+            actions: ["REPLY"],
+            providers: [],
+            text,
+            simple: true,
+          };
+        } else {
+          responseContent = null;
+          runtime.logger.warn(
+            {
+              src: "service:message",
+              responsePreview: response.substring(0, 300),
+            },
+            looksLikeXml
+              ? "parseKeyValueXml returned null - XML parsing failed"
+              : "Model returned empty text and no XML; cannot form a reply",
+          );
+        }
       }
 
       retries++;
@@ -1222,6 +1264,92 @@ export class DefaultMessageService implements IMessageService {
         state,
         mode: "none",
       };
+    }
+
+    // Action parameter repair (Python parity):
+    // If the model selected actions with required parameters but omitted <params>,
+    // do a second pass asking for ONLY a <params> block.
+    const requiredByAction = new Map<string, string[]>();
+    for (const a of responseContent.actions ?? []) {
+      const actionName = typeof a === "string" ? a.trim().toUpperCase() : "";
+      if (!actionName) continue;
+      const actionDef = runtime.actions.find(
+        (x) => x.name.trim().toUpperCase() === actionName,
+      );
+      const required =
+        actionDef?.parameters
+          ?.filter((p) => p.required)
+          .map((p) => p.name) ?? [];
+      if (required.length > 0) {
+        requiredByAction.set(actionName, required);
+      }
+    }
+
+    const existingParamsXml =
+      typeof responseContent.params === "string" ? responseContent.params : "";
+    const existingParams = parseActionParams(existingParamsXml);
+
+    const missingRequiredParams = (): boolean => {
+      for (const [actionName, required] of requiredByAction) {
+        const params = existingParams.get(actionName);
+        if (!params) return true;
+        for (const key of required) {
+          if (!(key in params)) return true;
+        }
+      }
+      return false;
+    };
+
+    if (requiredByAction.size > 0 && missingRequiredParams()) {
+      const requirementLines = Array.from(requiredByAction.entries())
+        .map(([a, req]) => `- ${a}: ${req.join(", ")}`)
+        .join("\n");
+      const repairPrompt = [
+        prompt,
+        "",
+        "# Parameter Repair",
+        "You selected actions that require parameters but did not include a complete <params> block.",
+        "Return ONLY a <params>...</params> XML block that satisfies ALL required parameters.",
+        "",
+        "Required parameters by action:",
+        requirementLines,
+        "",
+        "Do not include <response>, <thought>, <actions>, <providers>, <text>, or any other content.",
+      ].join("\n");
+
+      const repairResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: repairPrompt,
+      });
+      const start = repairResponse.indexOf("<params>");
+      if (start !== -1) {
+        const end = repairResponse.indexOf(
+          "</params>",
+          start + "<params>".length,
+        );
+        if (end !== -1) {
+          const inner = repairResponse
+            .slice(start + "<params>".length, end)
+            .trim();
+          if (inner) {
+            responseContent.params = inner;
+          }
+        }
+      }
+    }
+
+    // Benchmark mode (Python parity): force action-based loop when benchmark context is present.
+    const benchmarkMode = state.values.benchmark_has_context === true;
+    if (benchmarkMode) {
+      if (!responseContent.actions || responseContent.actions.length === 0) {
+        responseContent.actions = ["REPLY"];
+      }
+      if (!responseContent.providers || responseContent.providers.length === 0) {
+        responseContent.providers = ["CONTEXT_BENCH"];
+      }
+      // Suppress any direct planner answer; the REPLY action should generate final output.
+      if (responseContent.actions.some((a) => a.toUpperCase() === "REPLY")) {
+        responseContent.text = "";
+      }
     }
 
     // LLM IGNORE/REPLY ambiguity handling

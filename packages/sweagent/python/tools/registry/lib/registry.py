@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any
 
 
 class EnvRegistry:
@@ -13,7 +13,7 @@ class EnvRegistry:
     by the `env_file` argument or the `SWE_AGENT_ENV_FILE` environment variable.
     """
 
-    def __init__(self, env_file: Optional[Path] = None):
+    def __init__(self, env_file: Path | None = None):
         self._env_file = env_file
 
     @property

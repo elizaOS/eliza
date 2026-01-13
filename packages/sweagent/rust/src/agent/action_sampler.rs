@@ -58,20 +58,22 @@ impl ActionSampler for DefaultActionSampler {
         // This sampler doesn't do anything special - the agent's forward() handles the model query
         // This is meant to be overridden when you want custom sampling behavior
         Err(SWEAgentError::ConfigurationError(
-            "DefaultActionSampler should not be called directly - agent handles model query".to_string()
+            "DefaultActionSampler should not be called directly - agent handles model query"
+                .to_string(),
         ))
     }
 }
 
 /// Configuration for action samplers
-/// 
+///
 /// NOTE: Advanced samplers like AskColleagues and BinaryTrajectoryComparison
 /// require custom model integration and are not implemented in this version.
 /// They are defined here for API compatibility with the Python/TypeScript versions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ActionSamplerConfig {
     /// Default single-query sampler (recommended)
+    #[default]
     Default,
     /// Placeholder for ask-colleagues ensemble (not implemented)
     AskColleagues {
@@ -79,15 +81,7 @@ pub enum ActionSamplerConfig {
         chooser_prompt: String,
     },
     /// Placeholder for trajectory comparison (not implemented)
-    BinaryTrajectoryComparison {
-        comparison_prompt: String,
-    },
-}
-
-impl Default for ActionSamplerConfig {
-    fn default() -> Self {
-        Self::Default
-    }
+    BinaryTrajectoryComparison { comparison_prompt: String },
 }
 
 /// Create an action sampler from configuration

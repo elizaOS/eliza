@@ -6,38 +6,28 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Role in a conversation
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
+    #[default]
     User,
     Assistant,
     Tool,
 }
 
-impl Default for Role {
-    fn default() -> Self {
-        Self::User
-    }
-}
-
 /// Type of message in history
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageType {
     System,
+    #[default]
     Observation,
     Action,
     Thought,
     Demonstration,
     User,
     Assistant,
-}
-
-impl Default for MessageType {
-    fn default() -> Self {
-        Self::Observation
-    }
 }
 
 /// A thinking block from model output (for Claude-style extended thinking)

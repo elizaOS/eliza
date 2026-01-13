@@ -3,14 +3,14 @@
  * Converted from Python windowed_file.py
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { registry } from './registry';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { registry } from "./registry";
 
 export class TextNotFound extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'TextNotFound';
+    this.name = "TextNotFound";
   }
 }
 
@@ -33,11 +33,14 @@ export class WindowedFile {
     this.offsetMultiplier = 0.25;
 
     // Load file path from config or registry
-    this._path = config.path || (registry.get('CURRENT_FILE') as string) || '';
+    this._path = config.path || (registry.get("CURRENT_FILE") as string) || "";
 
     // Load window settings from registry
-    this._firstLine = parseInt((registry.get('FIRST_LINE') as string) || '0', 10);
-    this._window = parseInt((registry.get('WINDOW') as string) || '10', 10);
+    this._firstLine = parseInt(
+      (registry.get("FIRST_LINE") as string) || "0",
+      10,
+    );
+    this._window = parseInt((registry.get("WINDOW") as string) || "10", 10);
 
     // Load file content if path is set
     if (this._path) {
@@ -64,25 +67,25 @@ export class WindowedFile {
       throw new Error(`File not found: ${this._path}`);
     }
 
-    const content = fs.readFileSync(this._path, 'utf-8');
-    this._content = content.split('\n');
+    const content = fs.readFileSync(this._path, "utf-8");
+    this._content = content.split("\n");
 
     // Handle empty file or file with only newlines
     // If the file is empty or contains only newlines, ensure we have exactly one empty line
-    if (this._content.length === 0 || content.trim() === '') {
-      this._content = [''];
+    if (this._content.length === 0 || content.trim() === "") {
+      this._content = [""];
     }
   }
 
   private saveFile(): void {
-    const content = this._content.join('\n');
-    fs.writeFileSync(this._path, content, 'utf-8');
+    const content = this._content.join("\n");
+    fs.writeFileSync(this._path, content, "utf-8");
   }
 
   private saveRegistry(): void {
-    registry.set('CURRENT_FILE', this._path);
-    registry.set('FIRST_LINE', this._firstLine.toString());
-    registry.set('WINDOW', this._window.toString());
+    registry.set("CURRENT_FILE", this._path);
+    registry.set("FIRST_LINE", this._firstLine.toString());
+    registry.set("WINDOW", this._window.toString());
   }
 
   get path(): path.ParsedPath & { resolve: () => string } {
@@ -124,7 +127,9 @@ export class WindowedFile {
   printWindow(): void {
     const [start, end] = this.lineRange;
 
-    console.log(`[File: ${path.resolve(this._path)} (${this.nLines} lines total)]`);
+    console.log(
+      `[File: ${path.resolve(this._path)} (${this.nLines} lines total)]`,
+    );
 
     // Print lines above if any
     if (start > 0) {
@@ -133,7 +138,7 @@ export class WindowedFile {
 
     // Print window content
     for (let i = start; i <= end; i++) {
-      const lineNum = (i + 1).toString().padStart(0, ' ');
+      const lineNum = (i + 1).toString().padStart(0, " ");
       console.log(`${lineNum}:${this._content[i]}`);
     }
 
@@ -146,7 +151,7 @@ export class WindowedFile {
 
   replaceInWindow(oldText: string, newText: string): void {
     const [start, end] = this.lineRange;
-    const windowContent = this._content.slice(start, end + 1).join('\n');
+    const windowContent = this._content.slice(start, end + 1).join("\n");
 
     if (!windowContent.includes(oldText)) {
       if (this.exitOnException) {
@@ -158,10 +163,14 @@ export class WindowedFile {
 
     // Replace text
     const newWindowContent = windowContent.replace(oldText, newText);
-    const newLines = newWindowContent.split('\n');
+    const newLines = newWindowContent.split("\n");
 
     // Update content
-    this._content = [...this._content.slice(0, start), ...newLines, ...this._content.slice(end + 1)];
+    this._content = [
+      ...this._content.slice(0, start),
+      ...newLines,
+      ...this._content.slice(end + 1),
+    ];
 
     // Save file
     this.saveFile();
@@ -173,8 +182,8 @@ export class WindowedFile {
     this.firstLine = Math.max(0, this._firstLine - offset);
   }
 
-  goto(lineNumber: number, mode: 'top' | 'center' = 'center'): void {
-    if (mode === 'top') {
+  goto(lineNumber: number, mode: "top" | "center" = "center"): void {
+    if (mode === "top") {
       // Position window so the target line is offset from top
       const offset = Math.floor(this._window * this.offsetMultiplier);
       this.firstLine = Math.max(0, lineNumber - offset);
@@ -188,13 +197,19 @@ export class WindowedFile {
     this.firstLine = this._firstLine + lines;
   }
 
-  getWindowText(header: boolean = false, lineNumbers: boolean = false, footer: boolean = false): string {
+  getWindowText(
+    header: boolean = false,
+    lineNumbers: boolean = false,
+    footer: boolean = false,
+  ): string {
     const [start, end] = this.lineRange;
     const lines: string[] = [];
 
     // Add header
     if (header) {
-      lines.push(`[File: ${path.resolve(this._path)} (${this.nLines} lines total)]`);
+      lines.push(
+        `[File: ${path.resolve(this._path)} (${this.nLines} lines total)]`,
+      );
       if (start > 0) {
         lines.push(`(${start} more lines above)`);
       }
@@ -218,7 +233,7 @@ export class WindowedFile {
       }
     }
 
-    return lines.join('\n');
+    return lines.join("\n");
   }
 
   findAllOccurrences(searchText: string, zeroBased: boolean = false): number[] {
@@ -233,7 +248,10 @@ export class WindowedFile {
     return occurrences;
   }
 
-  replace(oldText: string, newText: string): { nReplacements: number; firstReplacedLine: number } {
+  replace(
+    oldText: string,
+    newText: string,
+  ): { nReplacements: number; firstReplacedLine: number } {
     // Save current state for undo
     this.editHistory.push([...this._content]);
 
@@ -242,7 +260,10 @@ export class WindowedFile {
 
     for (let i = 0; i < this._content.length; i++) {
       if (this._content[i].includes(oldText)) {
-        this._content[i] = this._content[i].replace(new RegExp(oldText, 'g'), newText);
+        this._content[i] = this._content[i].replace(
+          new RegExp(oldText, "g"),
+          newText,
+        );
         nReplacements++;
         if (firstReplacedLine === -1) {
           firstReplacedLine = i + 1; // 1-based line number
@@ -257,7 +278,10 @@ export class WindowedFile {
     return { nReplacements, firstReplacedLine };
   }
 
-  insert(text: string, lineNumber: number): { firstInsertedLine: number; nLinesAdded: number } {
+  insert(
+    text: string,
+    lineNumber: number,
+  ): { firstInsertedLine: number; nLinesAdded: number } {
     // Save current state for undo
     this.editHistory.push([...this._content]);
 
@@ -265,7 +289,7 @@ export class WindowedFile {
     const index = lineNumber;
 
     // Insert the text at the specified line
-    const linesToInsert = text.split('\n');
+    const linesToInsert = text.split("\n");
     this._content.splice(index, 0, ...linesToInsert);
 
     this.saveFile();
@@ -278,8 +302,11 @@ export class WindowedFile {
 
   undoEdit(): void {
     if (this.editHistory.length > 0) {
-      this._content = this.editHistory.pop()!;
-      this.saveFile();
+      const previousContent = this.editHistory.pop();
+      if (previousContent !== undefined) {
+        this._content = previousContent;
+        this.saveFile();
+      }
     }
   }
 }

@@ -14,8 +14,7 @@ pub fn convert_to_yaml_literal_string(s: &str) -> String {
     if s.contains('\n') {
         format!("|\n{}", indent_string(s, 2))
     } else {
-        serde_yaml::to_string(&s)
-            .unwrap_or_else(|_| format!("\"{}\"", s.replace('"', "\\\"")))
+        serde_yaml::to_string(&s).unwrap_or_else(|_| format!("\"{}\"", s.replace('"', "\\\"")))
     }
 }
 
@@ -34,7 +33,7 @@ pub fn merge_nested_dicts(
     overlay: &HashMap<String, serde_json::Value>,
 ) -> HashMap<String, serde_json::Value> {
     let mut result = base.clone();
-    
+
     for (key, value) in overlay {
         let should_merge = result.get(key).map(|base_value| {
             matches!(
@@ -42,11 +41,13 @@ pub fn merge_nested_dicts(
                 (serde_json::Value::Object(_), serde_json::Value::Object(_))
             )
         });
-        
+
         match should_merge {
             Some(true) => {
-                if let (Some(serde_json::Value::Object(base_obj)), serde_json::Value::Object(overlay_obj)) =
-                    (result.get(key), value)
+                if let (
+                    Some(serde_json::Value::Object(base_obj)),
+                    serde_json::Value::Object(overlay_obj),
+                ) = (result.get(key), value)
                 {
                     let base_map: HashMap<String, serde_json::Value> = base_obj
                         .iter()
@@ -57,7 +58,10 @@ pub fn merge_nested_dicts(
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
                     let merged = merge_nested_dicts(&base_map, &overlay_map);
-                    result.insert(key.clone(), serde_json::Value::Object(merged.into_iter().collect()));
+                    result.insert(
+                        key.clone(),
+                        serde_json::Value::Object(merged.into_iter().collect()),
+                    );
                 }
             }
             Some(false) => {
@@ -68,38 +72,34 @@ pub fn merge_nested_dicts(
             }
         }
     }
-    
+
     result
 }
 
 /// Parse arguments into a nested dictionary
 pub fn parse_args_to_nested_dict(args: &[String]) -> HashMap<String, serde_json::Value> {
     let mut result = HashMap::new();
-    
+
     for arg in args {
         if let Some(eq_pos) = arg.find('=') {
             let key = &arg[..eq_pos];
             let value = &arg[eq_pos + 1..];
-            
+
             // Parse the key path (e.g., "agent.model.name")
             let parts: Vec<&str> = key.split('.').collect();
             set_nested_value(&mut result, &parts, value);
         }
     }
-    
+
     result
 }
 
 /// Set a value in a nested dictionary
-fn set_nested_value(
-    dict: &mut HashMap<String, serde_json::Value>,
-    path: &[&str],
-    value: &str,
-) {
+fn set_nested_value(dict: &mut HashMap<String, serde_json::Value>, path: &[&str], value: &str) {
     if path.is_empty() {
         return;
     }
-    
+
     if path.len() == 1 {
         // Try to parse as JSON, otherwise use as string
         let json_value = serde_json::from_str(value)
@@ -109,7 +109,7 @@ fn set_nested_value(
         let entry = dict
             .entry(path[0].to_string())
             .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        
+
         if let serde_json::Value::Object(obj) = entry {
             let mut inner: HashMap<String, serde_json::Value> =
                 obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -129,10 +129,7 @@ pub fn shorten_string(s: &str, max_len: usize) -> String {
 }
 
 /// Shorten all strings in a dictionary
-pub fn shorten_strings(
-    dict: &HashMap<String, String>,
-    max_len: usize,
-) -> HashMap<String, String> {
+pub fn shorten_strings(dict: &HashMap<String, String>, max_len: usize) -> HashMap<String, String> {
     dict.iter()
         .map(|(k, v)| (k.clone(), shorten_string(v, max_len)))
         .collect()
@@ -165,7 +162,7 @@ mod tests {
     fn test_convert_to_yaml_literal_string() {
         let single = convert_to_yaml_literal_string("hello");
         assert!(!single.starts_with('|'));
-        
+
         let multi = convert_to_yaml_literal_string("hello\nworld");
         assert!(multi.starts_with('|'));
     }
@@ -177,7 +174,7 @@ mod tests {
             "env.timeout=30".to_string(),
         ];
         let dict = parse_args_to_nested_dict(&args);
-        
+
         assert!(dict.contains_key("agent"));
         assert!(dict.contains_key("env"));
     }

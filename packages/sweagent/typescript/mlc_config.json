@@ -33,7 +33,6 @@
     {
       "pattern": "^(?!https).*(?<!\\.md)$"
     }
-
   ],
   "replacements": [
     {

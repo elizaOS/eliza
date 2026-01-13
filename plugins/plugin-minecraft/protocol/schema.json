@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ElizaOS Minecraft Bridge Protocol",
+  "type": "object",
+  "description": "JSON-over-WebSocket protocol between Eliza plugins and the Mineflayer bridge server.",
+  "definitions": {
+    "JsonValue": {
+      "description": "JSON value",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        { "type": "array", "items": { "$ref": "#/definitions/JsonValue" } },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/JsonValue" }
+        }
+      ]
+    },
+    "Request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "requestId"],
+      "properties": {
+        "type": { "type": "string" },
+        "requestId": { "type": "string" },
+        "botId": { "type": "string" },
+        "data": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/JsonValue" }
+        }
+      }
+    },
+    "Response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "requestId", "success"],
+      "properties": {
+        "type": { "type": "string" },
+        "requestId": { "type": "string" },
+        "success": { "type": "boolean" },
+        "data": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/JsonValue" }
+        },
+        "error": { "type": "string" }
+      }
+    }
+  },
+  "oneOf": [{ "$ref": "#/definitions/Request" }, { "$ref": "#/definitions/Response" }]
+}
+

@@ -40,14 +40,14 @@ impl ParseFunction for ThoughtActionParser {
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_string())
             .unwrap_or_default();
-        
+
         // Extract action (content of the code block)
         let action = self
             .action_pattern
             .captures(output)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_string());
-        
+
         match action {
             Some(a) => Ok((thought, a)),
             None => {
@@ -89,7 +89,7 @@ impl ParseFunction for ActionOnlyParser {
             .captures(output)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_string());
-        
+
         match action {
             Some(a) => Ok((String::new(), a)),
             None => {
@@ -135,13 +135,13 @@ impl ParseFunction for XmlThoughtActionParser {
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_string())
             .unwrap_or_default();
-        
+
         let action = self
             .action_pattern
             .captures(output)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_string());
-        
+
         match action {
             Some(a) => Ok((thought, a)),
             None => {
@@ -176,7 +176,7 @@ impl ParseFunction for FunctionCallingParser {
     fn parse(&self, output: &str, bundles: &[Bundle], strict: bool) -> Result<(String, String)> {
         // For function calling, we expect the output to be JSON or contain tool calls
         // This is a simplified implementation
-        
+
         // Try to parse as JSON tool call
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(output) {
             if let Some(name) = json.get("name").and_then(|n| n.as_str()) {
@@ -187,7 +187,7 @@ impl ParseFunction for FunctionCallingParser {
                 return Ok((String::new(), format!("{} {}", name, args)));
             }
         }
-        
+
         // Fall back to thought action parsing
         ThoughtActionParser::new().parse(output, bundles, strict)
     }
@@ -212,7 +212,7 @@ impl ParseFunction for JsonParser {
     fn parse(&self, output: &str, _bundles: &[Bundle], strict: bool) -> Result<(String, String)> {
         // Try to find JSON in the output
         let json_pattern = Regex::new(r"(?s)\{.*\}").unwrap();
-        
+
         if let Some(json_match) = json_pattern.find(output) {
             let json_str = json_match.as_str();
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
@@ -229,7 +229,7 @@ impl ParseFunction for JsonParser {
                 return Ok((thought, action));
             }
         }
-        
+
         if strict {
             Err(SWEAgentError::FormatError(
                 "Could not parse JSON output".to_string(),
@@ -262,21 +262,16 @@ impl ParseFunction for IdentityParser {
 }
 
 /// Configuration for parse functions
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ParseFunctionConfig {
+    #[default]
     ThoughtAction,
     ActionOnly,
     XmlThoughtAction,
     FunctionCalling,
     Json,
     Identity,
-}
-
-impl Default for ParseFunctionConfig {
-    fn default() -> Self {
-        Self::ThoughtAction
-    }
 }
 
 /// Create a parser from configuration
@@ -313,7 +308,7 @@ mod tests {
         let parser = ThoughtActionParser::new();
         let output = "Let me check the file.\n\n```\ncat file.txt\n```";
         let (thought, action) = parser.parse(output, &[], true).unwrap();
-        
+
         assert_eq!(thought, "Let me check the file.");
         assert_eq!(action, "cat file.txt");
     }
@@ -323,7 +318,7 @@ mod tests {
         let parser = ActionOnlyParser::new();
         let output = "```bash\nls -la\n```";
         let (thought, action) = parser.parse(output, &[], true).unwrap();
-        
+
         assert_eq!(thought, "");
         assert_eq!(action, "ls -la");
     }
@@ -333,7 +328,7 @@ mod tests {
         let parser = XmlThoughtActionParser::new();
         let output = "<thought>Checking files</thought><action>ls</action>";
         let (thought, action) = parser.parse(output, &[], true).unwrap();
-        
+
         assert_eq!(thought, "Checking files");
         assert_eq!(action, "ls");
     }
@@ -343,7 +338,7 @@ mod tests {
         let parser = ThoughtActionParser::new();
         let output = "No code block here";
         let result = parser.parse(output, &[], true);
-        
+
         assert!(result.is_err());
     }
 
@@ -352,7 +347,7 @@ mod tests {
         let parser = ThoughtActionParser::new();
         let output = "No code block here";
         let (thought, action) = parser.parse(output, &[], false).unwrap();
-        
+
         assert_eq!(thought, "No code block here");
         assert_eq!(action, "");
     }

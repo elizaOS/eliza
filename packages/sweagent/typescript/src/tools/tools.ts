@@ -3,13 +3,17 @@
  * Converted from sweagent/tools/tools.py
  */
 
-import { Bundle } from './bundle';
-import { Command } from './commands';
-import { AbstractParseFunction, FunctionCallingParser, createParser } from './parsing';
-import { generateCommandDocs } from './utils';
-import { SWEEnv } from '../environment/swe-env';
-import { getLogger, AgentLogger } from '../utils/log';
-import { ModelResponse } from '../types';
+import type { SWEEnv } from "../environment/swe-env";
+import type { ModelResponse } from "../types";
+import { type AgentLogger, getLogger } from "../utils/log";
+import type { Bundle } from "./bundle";
+import { Command } from "./commands";
+import {
+  type AbstractParseFunction,
+  createParser,
+  FunctionCallingParser,
+} from "./parsing";
+import { generateCommandDocs } from "./utils";
 
 /**
  * Tool filter configuration
@@ -25,25 +29,37 @@ export interface ToolFilterConfig {
  * Default tool filter config
  */
 export const defaultToolFilterConfig: ToolFilterConfig = {
-  blocklistErrorTemplate: "Operation '{{action}}' is not supported by this environment.",
-  blocklist: ['vim', 'vi', 'emacs', 'nano', 'nohup', 'gdb', 'less', 'tail -f', 'python -m venv', 'make'],
+  blocklistErrorTemplate:
+    "Operation '{{action}}' is not supported by this environment.",
+  blocklist: [
+    "vim",
+    "vi",
+    "emacs",
+    "nano",
+    "nohup",
+    "gdb",
+    "less",
+    "tail -f",
+    "python -m venv",
+    "make",
+  ],
   blocklistStandalone: [
-    'python',
-    'python3',
-    'ipython',
-    'bash',
-    'sh',
-    '/bin/bash',
-    '/bin/sh',
-    'nohup',
-    'vi',
-    'vim',
-    'emacs',
-    'nano',
-    'su',
+    "python",
+    "python3",
+    "ipython",
+    "bash",
+    "sh",
+    "/bin/bash",
+    "/bin/sh",
+    "nohup",
+    "vi",
+    "vim",
+    "emacs",
+    "nano",
+    "su",
   ],
   blockUnlessRegex: {
-    git: '^git\\s+(status|diff|log|show)',
+    git: "^git\\s+(status|diff|log|show)",
   },
 };
 
@@ -54,8 +70,8 @@ export interface ToolConfig {
   filter?: ToolFilterConfig;
   bundles?: Bundle[];
   propagateEnvVariables?: string[];
-  envVariables?: Record<string, any>;
-  registryVariables?: Record<string, any>;
+  envVariables?: Record<string, string | number | boolean | null>;
+  registryVariables?: Record<string, string | number | boolean | null>;
   submitCommand?: string;
   parseFunction?: AbstractParseFunction | string;
   enableBashTool?: boolean;
@@ -71,7 +87,7 @@ export interface ToolConfig {
   useFunctionCalling?: boolean;
   stateCommands?: string[];
   commands?: Command[];
-  tools?: Array<Record<string, any>>;
+  tools?: Array<Record<string, unknown>>;
 }
 
 /**
@@ -82,19 +98,19 @@ export const defaultToolConfig: ToolConfig = {
   bundles: [],
   propagateEnvVariables: [],
   envVariables: {
-    PAGER: 'cat',
-    MANPAGER: 'cat',
-    LESS: '-R',
-    PIP_PROGRESS_BAR: 'off',
-    TQDM_DISABLE: '1',
-    GIT_PAGER: 'cat',
+    PAGER: "cat",
+    MANPAGER: "cat",
+    LESS: "-R",
+    PIP_PROGRESS_BAR: "off",
+    TQDM_DISABLE: "1",
+    GIT_PAGER: "cat",
   },
   registryVariables: {},
-  submitCommand: 'submit',
+  submitCommand: "submit",
   parseFunction: new FunctionCallingParser(),
   enableBashTool: true,
-  formatErrorTemplate: '',
-  commandDocs: '',
+  formatErrorTemplate: "",
+  commandDocs: "",
   multiLineCommandEndings: {},
   submitCommandEndName: null,
   resetCommands: [],
@@ -115,10 +131,10 @@ export class ToolHandler {
 
   constructor(config: ToolConfig = {}) {
     this.config = { ...defaultToolConfig, ...config };
-    this.logger = getLogger('tools');
+    this.logger = getLogger("tools");
 
     // Set up parser
-    if (typeof this.config.parseFunction === 'string') {
+    if (typeof this.config.parseFunction === "string") {
       this.parser = createParser(this.config.parseFunction);
     } else if (this.config.parseFunction) {
       this.parser = this.config.parseFunction;
@@ -133,7 +149,11 @@ export class ToolHandler {
 
     // Generate command docs if not provided
     if (!this.config.commandDocs) {
-      this.config.commandDocs = generateCommandDocs(this.config.commands, [], {});
+      this.config.commandDocs = generateCommandDocs(
+        this.config.commands,
+        [],
+        {},
+      );
     }
 
     // Set format error template if not provided
@@ -162,15 +182,15 @@ export class ToolHandler {
     if (this.config.enableBashTool) {
       commands.push(
         new Command({
-          name: 'bash',
-          docstring: 'Execute bash commands',
+          name: "bash",
+          docstring: "Execute bash commands",
           arguments: [
             {
-              name: 'command',
-              type: 'string',
-              description: 'The bash command to execute',
+              name: "command",
+              type: "string",
+              description: "The bash command to execute",
               required: true,
-              argumentFormat: '{{value}}',
+              argumentFormat: "{{value}}",
             },
           ],
         }),
@@ -185,7 +205,7 @@ export class ToolHandler {
   }
 
   async install(env: SWEEnv): Promise<void> {
-    this.logger.info('Installing tools...');
+    this.logger.info("Installing tools...");
 
     // Upload bundles
     if (this.config.bundles) {
@@ -196,18 +216,23 @@ export class ToolHandler {
 
     // Set environment variables
     if (this.config.envVariables) {
-      await env.setEnvVariables(this.config.envVariables);
+      const envVars: Record<string, string> = {};
+      for (const [k, v] of Object.entries(this.config.envVariables)) {
+        if (v === null) continue;
+        envVars[k] = String(v);
+      }
+      await env.setEnvVariables(envVars);
     }
 
     // Execute reset commands
     if (this.config.resetCommands) {
       for (const cmd of this.config.resetCommands) {
-        const command = Array.isArray(cmd) ? cmd.join(' ') : cmd;
+        const command = Array.isArray(cmd) ? cmd.join(" ") : cmd;
         await env.communicate(command, this.config.installTimeout);
       }
     }
 
-    this.logger.info('Tools installed successfully');
+    this.logger.info("Tools installed successfully");
   }
 
   private async uploadBundle(_env: SWEEnv, bundle: Bundle): Promise<void> {
@@ -219,7 +244,7 @@ export class ToolHandler {
   async reset(env: SWEEnv): Promise<void> {
     if (this.config.resetCommands) {
       for (const cmd of this.config.resetCommands) {
-        const command = Array.isArray(cmd) ? cmd.join(' ') : cmd;
+        const command = Array.isArray(cmd) ? cmd.join(" ") : cmd;
         await env.communicate(command, this.config.executionTimeout);
       }
     }
@@ -233,9 +258,9 @@ export class ToolHandler {
       for (const cmd of this.config.stateCommands) {
         try {
           const result = await env.communicate(cmd, 5);
-          const key = cmd.split(' ')[0]; // Simple key extraction
+          const key = cmd.split(" ")[0]; // Simple key extraction
           state[key] = result;
-        } catch (error) {
+        } catch (_error) {
           this.logger.warning(`Failed to execute state command: ${cmd}`);
         }
       }
@@ -247,9 +272,9 @@ export class ToolHandler {
         if (bundle.stateCommand) {
           try {
             const result = await env.communicate(bundle.stateCommand, 5);
-            state['bundle_state'] = result;
-          } catch (error) {
-            this.logger.warning('Failed to execute bundle state command');
+            state.bundle_state = result;
+          } catch (_error) {
+            this.logger.warning("Failed to execute bundle state command");
           }
         }
       }
@@ -280,7 +305,9 @@ export class ToolHandler {
 
     // Check regex exceptions
     if (this.config.filter.blockUnlessRegex) {
-      for (const [cmd, pattern] of Object.entries(this.config.filter.blockUnlessRegex)) {
+      for (const [cmd, pattern] of Object.entries(
+        this.config.filter.blockUnlessRegex,
+      )) {
         if (actionLower.startsWith(cmd)) {
           const regex = new RegExp(pattern);
           if (!regex.test(action)) {
@@ -294,12 +321,16 @@ export class ToolHandler {
   }
 
   checkForSubmissionCmd(observation: string): boolean {
-    const submitCommand = this.config.submitCommand || 'submit';
-    return observation.includes(`<${submitCommand}>`) || observation.includes(`</${submitCommand}>`);
+    const submitCommand = this.config.submitCommand || "submit";
+    return (
+      observation.includes(`<${submitCommand}>`) ||
+      observation.includes(`</${submitCommand}>`)
+    );
   }
 
   parseActions(output: string | ModelResponse): [string, string] {
-    const modelResponse: ModelResponse = typeof output === 'string' ? { message: output } : output;
+    const modelResponse: ModelResponse =
+      typeof output === "string" ? { message: output } : output;
     return this.parser.parse(modelResponse, this.config.commands || [], false);
   }
 
@@ -308,7 +339,9 @@ export class ToolHandler {
     for (const [cmdName, endName] of this.multilineCommands) {
       if (action.startsWith(cmdName)) {
         if (!action.includes(endName)) {
-          this.logger.warning(`Multiline command ${cmdName} missing end marker ${endName}`);
+          this.logger.warning(
+            `Multiline command ${cmdName} missing end marker ${endName}`,
+          );
         }
       }
     }

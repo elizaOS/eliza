@@ -2,10 +2,11 @@
  * Type definitions for the run module
  */
 
-import { AgentConfig } from '../agent/agents';
-import { EnvironmentConfig } from '../environment/swe-env';
-import { ProblemStatementConfig } from '../agent/problem-statement';
-import { DeploymentConfig } from '../environment/deployment';
+import type { AgentConfig } from "../agent/agents";
+import type { ProblemStatementConfig } from "../agent/problem-statement";
+import type { DeploymentConfig } from "../environment/deployment";
+import type { EnvironmentConfig } from "../environment/swe-env";
+import type { JsonObject, JsonValue } from "../json";
 
 /**
  * Configuration for single run actions
@@ -14,7 +15,7 @@ export interface RunSingleActionConfig {
   openPr: boolean;
   prConfig?: {
     skipIfCommitsReferenceIssue?: boolean;
-    [key: string]: unknown;
+    [key: string]: JsonValue | undefined;
   };
   applyPatchLocally: boolean;
 }
@@ -35,14 +36,14 @@ export interface RunSingleConfig {
  * Configuration for batch instances source
  */
 export interface BatchInstanceSourceConfig {
-  type?: 'file' | 'swe_bench' | 'huggingface';
+  type?: "file" | "swe_bench" | "huggingface";
   path?: string;
   filter?: string;
   slice?: string;
   shuffle?: boolean;
   deployment?: DeploymentConfig;
-  subset?: 'lite' | 'verified' | 'full' | 'multimodal' | 'multilingual';
-  split?: 'dev' | 'test';
+  subset?: "lite" | "verified" | "full" | "multimodal" | "multilingual";
+  split?: "dev" | "test";
   pathOverride?: string;
   evaluate?: boolean;
   dataset_name?: string;
@@ -84,18 +85,26 @@ export interface CLIConfig {
  * Trajectory data structure
  */
 export interface TrajectoryData {
-  history?: Array<{ role: string; content: string; tool_calls?: unknown }>;
+  history?: Array<{
+    role: string;
+    content: string;
+    tool_calls?: JsonValue;
+  }>;
   replay_config?: string | RunSingleConfig;
   info?: { instance_id?: string; submission?: string; exitStatus?: string };
-  environment?: Record<string, unknown>;
+  environment?: JsonObject;
   problemStatement?: ProblemStatementConfig;
   trajectory?: Array<{
     action?: string;
     observation?: string;
     response?: string;
-    [key: string]: unknown;
+    [key: string]: JsonValue | undefined;
   }>;
-  [key: string]: unknown;
+  [key: string]:
+    | JsonValue
+    | RunSingleConfig
+    | ProblemStatementConfig
+    | undefined;
 }
 
 /**
@@ -110,7 +119,7 @@ export interface SWEBenchInstanceData {
   hints_text?: string;
   created_at?: string;
   test_patch?: string;
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 /**

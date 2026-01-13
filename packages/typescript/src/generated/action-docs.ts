@@ -1030,6 +1030,2288 @@ export const allActionsSpec = {
           ]
         }
       ]
+    },
+    {
+      "name": "ANALYZE_INPUT",
+      "description": "Analyzes user input and extracts key information",
+      "parameters": []
+    },
+    {
+      "name": "BROWSER_CLICK",
+      "description": "Click on an element on the webpage",
+      "parameters": [],
+      "similes": [
+        "CLICK_ELEMENT",
+        "TAP",
+        "PRESS_BUTTON"
+      ]
+    },
+    {
+      "name": "BROWSER_EXTRACT",
+      "description": "Extract data from the webpage",
+      "parameters": [],
+      "similes": [
+        "EXTRACT_DATA",
+        "GET_TEXT",
+        "SCRAPE"
+      ]
+    },
+    {
+      "name": "BROWSER_NAVIGATE",
+      "description": "Navigate the browser to a specified URL",
+      "parameters": [],
+      "similes": [
+        "GO_TO_URL",
+        "OPEN_WEBSITE",
+        "VISIT_PAGE",
+        "NAVIGATE_TO"
+      ]
+    },
+    {
+      "name": "BROWSER_SCREENSHOT",
+      "description": "Take a screenshot of the current page",
+      "parameters": [],
+      "similes": [
+        "TAKE_SCREENSHOT",
+        "CAPTURE_PAGE",
+        "SCREENSHOT"
+      ]
+    },
+    {
+      "name": "BROWSER_SELECT",
+      "description": "Select an option from a dropdown on the webpage",
+      "parameters": [],
+      "similes": [
+        "SELECT_OPTION",
+        "CHOOSE",
+        "PICK"
+      ]
+    },
+    {
+      "name": "BROWSER_TYPE",
+      "description": "Type text into an input field on the webpage",
+      "parameters": [],
+      "similes": [
+        "TYPE_TEXT",
+        "INPUT",
+        "ENTER_TEXT"
+      ]
+    },
+    {
+      "name": "CALL_MCP_TOOL",
+      "description": "Calls a tool from an MCP server to perform a specific task",
+      "parameters": [],
+      "similes": [
+        "CALL_TOOL",
+        "CALL_MCP_TOOL",
+        "USE_TOOL",
+        "USE_MCP_TOOL",
+        "EXECUTE_TOOL",
+        "EXECUTE_MCP_TOOL",
+        "RUN_TOOL",
+        "RUN_MCP_TOOL",
+        "INVOKE_TOOL",
+        "INVOKE_MCP_TOOL"
+      ]
+    },
+    {
+      "name": "CANCEL_FORM",
+      "description": "Cancels an active form",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "ABORT_FORM",
+        "STOP_FORM",
+        "QUIT_FORM",
+        "EXIT_FORM"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CANCEL_FORM with the provided parameters.",
+          "actions": [
+            "CANCEL_FORM"
+          ],
+          "params": {
+            "CANCEL_FORM": {
+              "data": "example",
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CANCEL_GOAL",
+      "description": "Cancels and deletes a goal item from the user's task list immediately.",
+      "parameters": [],
+      "similes": [
+        "DELETE_GOAL",
+        "REMOVE_TASK",
+        "DELETE_TASK",
+        "REMOVE_GOAL"
+      ]
+    },
+    {
+      "name": "CANCEL_TODO",
+      "description": "Cancels and deletes a todo item from the user's task list immediately.",
+      "parameters": [],
+      "similes": [
+        "DELETE_TODO",
+        "REMOVE_TASK",
+        "DELETE_TASK",
+        "REMOVE_TODO"
+      ]
+    },
+    {
+      "name": "cancelPluginCreation",
+      "description": "Cancel the current plugin creation job",
+      "parameters": [],
+      "similes": [
+        "stop plugin creation",
+        "abort plugin creation",
+        "cancel plugin"
+      ]
+    },
+    {
+      "name": "CHAT_WITH_ATTACHMENTS",
+      "description": "Answer a user request informed by specific attachments based on their IDs. If a user asks to chat with a PDF, or wants more specific information about a link or video or anything else they've attached, this is the action to use.",
+      "parameters": [],
+      "similes": [
+        "CHAT_WITH_ATTACHMENT",
+        "SUMMARIZE_FILES",
+        "SUMMARIZE_FILE",
+        "SUMMARIZE_ATACHMENT",
+        "CHAT_WITH_PDF",
+        "ATTACHMENT_SUMMARY",
+        "RECAP_ATTACHMENTS",
+        "SUMMARIZE_FILE",
+        "SUMMARIZE_VIDEO",
+        "SUMMARIZE_AUDIO",
+        "SUMMARIZE_IMAGE",
+        "SUMMARIZE_DOCUMENT",
+        "SUMMARIZE_LINK",
+        "ATTACHMENT_SUMMARY",
+        "FILE_SUMMARY"
+      ]
+    },
+    {
+      "name": "checkPluginCreationStatus",
+      "description": "Check the status of a plugin creation job",
+      "parameters": [],
+      "similes": [
+        "plugin status",
+        "check plugin progress",
+        "plugin creation status",
+        "get plugin status"
+      ]
+    },
+    {
+      "name": "CLEAR_LINEAR_ACTIVITY",
+      "description": "Clear the Linear activity log",
+      "parameters": [],
+      "similes": [
+        "clear-linear-activity",
+        "reset-linear-activity",
+        "delete-linear-activity"
+      ]
+    },
+    {
+      "name": "CLEAR_SHELL_HISTORY",
+      "description": "Clears the recorded history of shell commands for the current conversation",
+      "parameters": [],
+      "similes": [
+        "RESET_SHELL",
+        "CLEAR_TERMINAL",
+        "CLEAR_HISTORY",
+        "RESET_HISTORY"
+      ]
+    },
+    {
+      "name": "COMPLETE_GOAL",
+      "description": "Marks a goal as completed/achieved.",
+      "parameters": [],
+      "similes": [
+        "ACHIEVE_GOAL",
+        "FINISH_GOAL",
+        "CHECK_OFF_GOAL",
+        "ACCOMPLISH_GOAL"
+      ]
+    },
+    {
+      "name": "COMPLETE_TODO",
+      "description": "Marks a todo item as completed.",
+      "parameters": [],
+      "similes": [
+        "MARK_COMPLETE",
+        "FINISH_TASK",
+        "DONE",
+        "TASK_DONE",
+        "TASK_COMPLETED"
+      ]
+    },
+    {
+      "name": "CONFIRM_GOAL",
+      "description": "Confirms or cancels a pending goal creation after user review.",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "CONFIRM_TASK",
+        "APPROVE_GOAL",
+        "APPROVE_TASK",
+        "GOAL_CONFIRM"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CONFIRM_GOAL with the provided parameters.",
+          "actions": [
+            "CONFIRM_GOAL"
+          ],
+          "params": {
+            "CONFIRM_GOAL": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CONFIRM_TODO",
+      "description": "Confirms or cancels a pending todo creation after user review.",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "CONFIRM_TASK",
+        "APPROVE_TODO",
+        "APPROVE_TASK",
+        "TODO_CONFIRM"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CONFIRM_TODO with the provided parameters.",
+          "actions": [
+            "CONFIRM_TODO"
+          ],
+          "params": {
+            "CONFIRM_TODO": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREATE_FORM",
+      "description": "Creates a new form from a template or custom definition",
+      "parameters": [],
+      "similes": [
+        "START_FORM",
+        "NEW_FORM",
+        "INIT_FORM",
+        "BEGIN_FORM"
+      ]
+    },
+    {
+      "name": "CREATE_GITHUB_BRANCH",
+      "description": "Creates a new branch in a GitHub repository from an existing branch or commit.",
+      "parameters": [
+        {
+          "name": "branchName",
+          "description": "The branch name to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "fromRef",
+          "description": "The from ref to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "owner",
+          "description": "Repository owner or organization.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "octocat"
+          ]
+        },
+        {
+          "name": "repo",
+          "description": "Repository name.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "my-repo"
+          ]
+        }
+      ],
+      "similes": [
+        "NEW_BRANCH",
+        "BRANCH_FROM",
+        "FORK_BRANCH",
+        "CREATE_FEATURE_BRANCH"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CREATE_GITHUB_BRANCH with the provided parameters.",
+          "actions": [
+            "CREATE_GITHUB_BRANCH"
+          ],
+          "params": {
+            "CREATE_GITHUB_BRANCH": {
+              "branchName": "example",
+              "fromRef": "example",
+              "owner": "octocat",
+              "repo": "my-repo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREATE_GITHUB_COMMENT",
+      "description": "Creates a comment on a GitHub issue or pull request.",
+      "parameters": [
+        {
+          "name": "body",
+          "description": "Body text for the operation.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Implements dark mode and updates docs."
+          ]
+        },
+        {
+          "name": "issueNumber",
+          "description": "The issue number to use.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "examples": [
+            1
+          ]
+        },
+        {
+          "name": "owner",
+          "description": "Repository owner or organization.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "octocat"
+          ]
+        },
+        {
+          "name": "repo",
+          "description": "Repository name.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "my-repo"
+          ]
+        }
+      ],
+      "similes": [
+        "COMMENT_ON_ISSUE",
+        "COMMENT_ON_PR",
+        "ADD_COMMENT",
+        "REPLY_TO_ISSUE",
+        "POST_COMMENT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CREATE_GITHUB_COMMENT with the provided parameters.",
+          "actions": [
+            "CREATE_GITHUB_COMMENT"
+          ],
+          "params": {
+            "CREATE_GITHUB_COMMENT": {
+              "body": "Implements dark mode and updates docs.",
+              "issueNumber": 1,
+              "owner": "octocat",
+              "repo": "my-repo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREATE_GITHUB_ISSUE",
+      "description": "Creates a new issue in a GitHub repository. Use this to report bugs, request features, or track tasks.",
+      "parameters": [
+        {
+          "name": "assignees",
+          "description": "The assignees to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "body",
+          "description": "Body text for the operation.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Implements dark mode and updates docs."
+          ]
+        },
+        {
+          "name": "labels",
+          "description": "The labels to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "owner",
+          "description": "Repository owner or organization.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "octocat"
+          ]
+        },
+        {
+          "name": "repo",
+          "description": "Repository name.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "my-repo"
+          ]
+        },
+        {
+          "name": "title",
+          "description": "Title for the operation.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Add dark mode support"
+          ]
+        }
+      ],
+      "similes": [
+        "OPEN_ISSUE",
+        "NEW_ISSUE",
+        "FILE_ISSUE",
+        "REPORT_BUG",
+        "CREATE_BUG_REPORT",
+        "SUBMIT_ISSUE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CREATE_GITHUB_ISSUE with the provided parameters.",
+          "actions": [
+            "CREATE_GITHUB_ISSUE"
+          ],
+          "params": {
+            "CREATE_GITHUB_ISSUE": {
+              "assignees": "example",
+              "body": "Implements dark mode and updates docs.",
+              "labels": "example",
+              "owner": "octocat",
+              "repo": "my-repo",
+              "title": "Add dark mode support"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREATE_GITHUB_PULL_REQUEST",
+      "description": "Creates a new pull request in a GitHub repository to merge changes from one branch to another.",
+      "parameters": [
+        {
+          "name": "base",
+          "description": "Base branch to merge into.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "main"
+          ]
+        },
+        {
+          "name": "body",
+          "description": "Body text for the operation.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Implements dark mode and updates docs."
+          ]
+        },
+        {
+          "name": "draft",
+          "description": "Whether to create as draft.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          },
+          "examples": [
+            false
+          ]
+        },
+        {
+          "name": "head",
+          "description": "Head branch to merge from.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "feature/dark-mode"
+          ]
+        },
+        {
+          "name": "owner",
+          "description": "Repository owner or organization.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "octocat"
+          ]
+        },
+        {
+          "name": "repo",
+          "description": "Repository name.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "my-repo"
+          ]
+        },
+        {
+          "name": "title",
+          "description": "Title for the operation.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Add dark mode support"
+          ]
+        }
+      ],
+      "similes": [
+        "OPEN_PR",
+        "CREATE_PR",
+        "NEW_PULL_REQUEST",
+        "SUBMIT_PR",
+        "OPEN_PULL_REQUEST",
+        "MERGE_REQUEST"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CREATE_GITHUB_PULL_REQUEST with the provided parameters.",
+          "actions": [
+            "CREATE_GITHUB_PULL_REQUEST"
+          ],
+          "params": {
+            "CREATE_GITHUB_PULL_REQUEST": {
+              "base": "main",
+              "body": "Implements dark mode and updates docs.",
+              "draft": false,
+              "head": "feature/dark-mode",
+              "owner": "octocat",
+              "repo": "my-repo",
+              "title": "Add dark mode support"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREATE_GOAL",
+      "description": "Creates a new long-term achievable goal for the agent or a user.",
+      "parameters": [],
+      "similes": [
+        "ADD_GOAL",
+        "NEW_GOAL",
+        "SET_GOAL",
+        "TRACK_GOAL"
+      ]
+    },
+    {
+      "name": "CREATE_LINEAR_COMMENT",
+      "description": "Add a comment to a Linear issue",
+      "parameters": [
+        {
+          "name": "name",
+          "description": "The name to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "create-linear-comment",
+        "add-linear-comment",
+        "comment-on-linear-issue",
+        "reply-to-linear-issue"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CREATE_LINEAR_COMMENT with the provided parameters.",
+          "actions": [
+            "CREATE_LINEAR_COMMENT"
+          ],
+          "params": {
+            "CREATE_LINEAR_COMMENT": {
+              "name": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREATE_LINEAR_ISSUE",
+      "description": "Create a new issue in Linear",
+      "parameters": [],
+      "similes": [
+        "create-linear-issue",
+        "new-linear-issue",
+        "add-linear-issue"
+      ]
+    },
+    {
+      "name": "CREATE_PLAN",
+      "description": "Creates a comprehensive project plan with multiple phases and tasks",
+      "parameters": [],
+      "similes": [
+        "PLAN_PROJECT",
+        "GENERATE_PLAN",
+        "MAKE_PLAN",
+        "PROJECT_PLAN"
+      ]
+    },
+    {
+      "name": "CREATE_POLL",
+      "description": "Create a poll in Discord with emoji reactions for voting.",
+      "parameters": [],
+      "similes": [
+        "CREATE_POLL",
+        "MAKE_POLL",
+        "START_POLL",
+        "CREATE_VOTE",
+        "MAKE_VOTE",
+        "START_VOTE",
+        "CREATE_SURVEY"
+      ]
+    },
+    {
+      "name": "CREATE_TODO",
+      "description": "Creates a new todo item from a user description (daily, one-off, or aspirational) immediately.",
+      "parameters": [],
+      "similes": [
+        "ADD_TODO",
+        "NEW_TASK",
+        "ADD_TASK",
+        "CREATE_TASK"
+      ]
+    },
+    {
+      "name": "createPlugin",
+      "description": "Create a new plugin from a specification using AI assistance",
+      "parameters": [],
+      "similes": [
+        "generate plugin",
+        "build plugin",
+        "make plugin",
+        "develop plugin",
+        "create extension",
+        "build extension"
+      ]
+    },
+    {
+      "name": "createPluginFromDescription",
+      "description": "Create a plugin from a natural language description",
+      "parameters": [],
+      "similes": [
+        "describe plugin",
+        "plugin from description",
+        "explain plugin",
+        "I need a plugin that"
+      ]
+    },
+    {
+      "name": "DELETE_LINEAR_ISSUE",
+      "description": "Delete (archive) an issue in Linear",
+      "parameters": [],
+      "similes": [
+        "delete-linear-issue",
+        "archive-linear-issue",
+        "remove-linear-issue",
+        "close-linear-issue"
+      ]
+    },
+    {
+      "name": "DOWNLOAD_MEDIA",
+      "description": "Downloads a video or audio file from a URL and attaches it to the response message.",
+      "parameters": [],
+      "similes": [
+        "DOWNLOAD_VIDEO",
+        "DOWNLOAD_AUDIO",
+        "GET_MEDIA",
+        "DOWNLOAD_PODCAST",
+        "DOWNLOAD_YOUTUBE"
+      ]
+    },
+    {
+      "name": "EVM_TRANSFER_TOKENS",
+      "description": "Transfer tokens between addresses on the same chain",
+      "parameters": [],
+      "similes": [
+        "EVM_TRANSFER",
+        "EVM_SEND_TOKENS",
+        "EVM_TOKEN_TRANSFER",
+        "EVM_MOVE_TOKENS"
+      ]
+    },
+    {
+      "name": "EXECUTE_COMMAND",
+      "description": "Execute shell commands including brew install, npm install, apt-get, system commands, file operations, directory navigation, and scripts.",
+      "parameters": [],
+      "similes": [
+        "RUN_COMMAND",
+        "SHELL_COMMAND",
+        "TERMINAL_COMMAND",
+        "EXEC",
+        "RUN",
+        "EXECUTE",
+        "CREATE_FILE",
+        "WRITE_FILE",
+        "MAKE_FILE",
+        "INSTALL",
+        "BREW_INSTALL",
+        "NPM_INSTALL",
+        "APT_INSTALL"
+      ]
+    },
+    {
+      "name": "EXECUTE_FINAL",
+      "description": "Executes the final action based on processing results",
+      "parameters": []
+    },
+    {
+      "name": "EXECUTE_ROBLOX_ACTION",
+      "description": "Execute a custom action in a Roblox game, such as spawning entities, giving rewards, or triggering events.",
+      "parameters": [
+        {
+          "name": "message",
+          "description": "Message text to send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Hello! How can I help?"
+          ]
+        }
+      ],
+      "similes": [
+        "ROBLOX_ACTION",
+        "GAME_ACTION",
+        "DO_IN_GAME",
+        "TRIGGER_EVENT",
+        "RUN_GAME_COMMAND"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use EXECUTE_ROBLOX_ACTION with the provided parameters.",
+          "actions": [
+            "EXECUTE_ROBLOX_ACTION"
+          ],
+          "params": {
+            "EXECUTE_ROBLOX_ACTION": {
+              "message": "Hello! How can I help?"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "generate-response",
+      "description": "Generate an ELIZA response for user input using classic pattern matching.",
+      "parameters": [],
+      "similes": [
+        "ELIZA_RESPOND",
+        "ELIZA_CHAT",
+        "CLASSIC_ELIZA"
+      ]
+    },
+    {
+      "name": "GET_LINEAR_ACTIVITY",
+      "description": "Get recent Linear activity log with optional filters",
+      "parameters": [],
+      "similes": [
+        "get-linear-activity",
+        "show-linear-activity",
+        "view-linear-activity",
+        "check-linear-activity"
+      ]
+    },
+    {
+      "name": "GET_LINEAR_ISSUE",
+      "description": "Get details of a specific Linear issue",
+      "parameters": [
+        {
+          "name": "name",
+          "description": "The name to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "get-linear-issue",
+        "show-linear-issue",
+        "view-linear-issue",
+        "check-linear-issue",
+        "find-linear-issue"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use GET_LINEAR_ISSUE with the provided parameters.",
+          "actions": [
+            "GET_LINEAR_ISSUE"
+          ],
+          "params": {
+            "GET_LINEAR_ISSUE": {
+              "name": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET_NEWSFEED",
+      "description": "Download and parse an RSS/Atom feed from a URL",
+      "parameters": [],
+      "similes": [
+        "FETCH_RSS",
+        "READ_FEED",
+        "DOWNLOAD_FEED"
+      ]
+    },
+    {
+      "name": "GET_ROBLOX_PLAYER",
+      "description": "Look up information about a Roblox player by their user ID or username.",
+      "parameters": [
+        {
+          "name": "message",
+          "description": "Message text to send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Hello! How can I help?"
+          ]
+        }
+      ],
+      "similes": [
+        "LOOKUP_PLAYER",
+        "FIND_PLAYER",
+        "PLAYER_INFO",
+        "WHO_IS_PLAYER",
+        "ROBLOX_USER_INFO"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use GET_ROBLOX_PLAYER with the provided parameters.",
+          "actions": [
+            "GET_ROBLOX_PLAYER"
+          ],
+          "params": {
+            "GET_ROBLOX_PLAYER": {
+              "message": "Hello! How can I help?"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET_USER_INFO",
+      "description": "Get detailed information about a Discord user including their roles, join date, and permissions.",
+      "parameters": [],
+      "similes": [
+        "GET_USER_INFO",
+        "USER_INFO",
+        "WHO_IS",
+        "ABOUT_USER",
+        "USER_DETAILS",
+        "MEMBER_INFO",
+        "CHECK_USER"
+      ]
+    },
+    {
+      "name": "JOIN_CHANNEL",
+      "description": "Join a Discord channel - either text (to monitor messages) or voice (to participate in voice chat). You have full voice capabilities!",
+      "parameters": [],
+      "similes": [
+        "START_LISTENING_CHANNEL",
+        "LISTEN_TO_CHANNEL",
+        "ADD_CHANNEL",
+        "WATCH_CHANNEL",
+        "MONITOR_CHANNEL",
+        "JOIN_TEXT_CHANNEL",
+        "JOIN_VOICE",
+        "JOIN_VC",
+        "JOIN_VOICE_CHAT",
+        "JOIN_VOICE_CHANNEL",
+        "HOP_IN_VOICE",
+        "ENTER_VOICE_CHANNEL"
+      ]
+    },
+    {
+      "name": "LEAVE_CHANNEL",
+      "description": "Leave a Discord channel - either text (stop monitoring messages) or voice (disconnect from voice chat). Use this when asked to leave, exit, or disconnect from any Discord channel.",
+      "parameters": [],
+      "similes": [
+        "LEAVE_CHANNEL",
+        "STOP_LISTENING_CHANNEL",
+        "STOP_MONITORING_CHANNEL",
+        "REMOVE_CHANNEL",
+        "UNWATCH_CHANNEL",
+        "LEAVE_TEXT_CHANNEL",
+        "IGNORE_CHANNEL",
+        "LEAVE_VOICE",
+        "LEAVE_VC",
+        "LEAVE_VOICE_CHAT",
+        "LEAVE_VOICE_CHANNEL",
+        "LEAVE_CALL",
+        "EXIT_VOICE",
+        "DISCONNECT_VOICE",
+        "LEAVE_DISCORD_CHANNEL",
+        "EXIT_CHANNEL"
+      ]
+    },
+    {
+      "name": "LIST_CHANNELS",
+      "description": "Lists all Discord channels the bot is currently listening to and responding in.",
+      "parameters": [],
+      "similes": [
+        "SHOW_CHANNELS",
+        "LIST_LISTENING_CHANNELS",
+        "SHOW_MONITORED_CHANNELS",
+        "GET_CHANNELS",
+        "WHICH_CHANNELS",
+        "CHANNELS_LIST"
+      ]
+    },
+    {
+      "name": "LIST_LINEAR_PROJECTS",
+      "description": "List projects in Linear with optional filters",
+      "parameters": [
+        {
+          "name": "toLowerCase",
+          "description": "The to lower case to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "list-linear-projects",
+        "show-linear-projects",
+        "get-linear-projects",
+        "view-linear-projects"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use LIST_LINEAR_PROJECTS with the provided parameters.",
+          "actions": [
+            "LIST_LINEAR_PROJECTS"
+          ],
+          "params": {
+            "LIST_LINEAR_PROJECTS": {
+              "toLowerCase": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "LIST_LINEAR_TEAMS",
+      "description": "List teams in Linear with optional filters",
+      "parameters": [],
+      "similes": [
+        "list-linear-teams",
+        "show-linear-teams",
+        "get-linear-teams",
+        "view-linear-teams"
+      ]
+    },
+    {
+      "name": "LIST_RSS_FEEDS",
+      "description": "List all subscribed RSS/Atom feeds",
+      "parameters": [],
+      "similes": [
+        "SHOW_RSS_FEEDS",
+        "GET_RSS_FEEDS",
+        "RSS_SUBSCRIPTIONS"
+      ]
+    },
+    {
+      "name": "MERGE_GITHUB_PULL_REQUEST",
+      "description": "Merges a GitHub pull request using merge, squash, or rebase strategy.",
+      "parameters": [
+        {
+          "name": "commitMessage",
+          "description": "The commit message to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "commitTitle",
+          "description": "The commit title to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "mergeMethod",
+          "description": "The merge method to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "owner",
+          "description": "Repository owner or organization.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "octocat"
+          ]
+        },
+        {
+          "name": "pullNumber",
+          "description": "The pull number to use.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "examples": [
+            1
+          ]
+        },
+        {
+          "name": "repo",
+          "description": "Repository name.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "my-repo"
+          ]
+        }
+      ],
+      "similes": [
+        "MERGE_PR",
+        "SQUASH_MERGE",
+        "REBASE_MERGE",
+        "COMPLETE_PR",
+        "ACCEPT_PR"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use MERGE_GITHUB_PULL_REQUEST with the provided parameters.",
+          "actions": [
+            "MERGE_GITHUB_PULL_REQUEST"
+          ],
+          "params": {
+            "MERGE_GITHUB_PULL_REQUEST": {
+              "commitMessage": "example",
+              "commitTitle": "example",
+              "mergeMethod": "example",
+              "owner": "octocat",
+              "pullNumber": 1,
+              "repo": "my-repo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PIN_MESSAGE",
+      "description": "Pin an important message in a Discord channel.",
+      "parameters": [],
+      "similes": [
+        "PIN_MESSAGE",
+        "PIN_MSG",
+        "PIN_THIS",
+        "PIN_THAT",
+        "MAKE_PINNED",
+        "ADD_PIN"
+      ]
+    },
+    {
+      "name": "POLYMARKET_CHECK_ORDER_SCORING",
+      "description": "Checks if any of the authenticated user orders are eligible for rewards (scoring).",
+      "parameters": [],
+      "similes": [
+        "ORDERS_ELIGIBLE_FOR_REWARDS",
+        "SCORING_STATUS",
+        "ARE_MY_ORDERS_SCORING"
+      ]
+    },
+    {
+      "name": "POLYMARKET_CREATE_API_KEY",
+      "description": "Create API key credentials for Polymarket CLOB authentication",
+      "parameters": [],
+      "similes": [
+        "CREATE_POLYMARKET_API_KEY",
+        "GENERATE_API_CREDENTIALS",
+        "CREATE_CLOB_CREDENTIALS",
+        "SETUP_API_ACCESS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_ACCOUNT_ACCESS_STATUS",
+      "description": "Retrieves account access status from Polymarket, including U.S. certification requirements and API key details.",
+      "parameters": [],
+      "similes": [
+        "ACCOUNT_CERTIFICATION_STATUS",
+        "CHECK_MY_POLYMARKET_ACCESS",
+        "POLYMARKET_CERT_REQUIRED",
+        "MY_API_KEYS_STATUS",
+        "USER_ACCESS_INFO"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_ACTIVE_ORDERS",
+      "description": "Fetches open/active orders for the authenticated user from Polymarket, optionally filtered by market or asset.",
+      "parameters": [],
+      "similes": [
+        "GET_OPEN_ORDERS",
+        "VIEW_MY_ORDERS",
+        "LIST_PENDING_ORDERS",
+        "SHOW_UNFILLED_ORDERS",
+        "ORDERS_IN_BOOK"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_ALL_API_KEYS",
+      "description": "Retrieves all API keys associated with the authenticated user Polymarket account.",
+      "parameters": [],
+      "similes": [
+        "LIST_MY_API_KEYS",
+        "VIEW_API_CREDENTIALS",
+        "SHOW_ALL_KEYS",
+        "MY_CLOB_KEYS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_BEST_PRICE",
+      "description": "Gets the current best price (top of book) for a specified token ID and side (BUY/SELL) on Polymarket.",
+      "parameters": [],
+      "similes": [
+        "GET_TOP_OF_BOOK",
+        "BEST_BID",
+        "BEST_ASK",
+        "SHOW_BEST_PRICE"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_CLOB_MARKETS",
+      "description": "Retrieves a paginated list of markets directly from the Polymarket CLOB API, including pagination support.",
+      "parameters": [],
+      "similes": [
+        "FETCH_CLOB_MARKETS",
+        "LIST_CLOB_MARKETS",
+        "CLOB_MARKET_DATA"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_MARKET_DETAILS",
+      "description": "Retrieves detailed information about a specific Polymarket market by its condition ID.",
+      "parameters": [],
+      "similes": [
+        "MARKET_INFO",
+        "MARKET_DATA",
+        "SHOW_MARKET",
+        "VIEW_MARKET"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_MARKETS",
+      "description": "Retrieve available prediction markets from Polymarket with optional filters",
+      "parameters": [],
+      "similes": [
+        "GET_MARKETS",
+        "LIST_MARKETS",
+        "SHOW_MARKETS",
+        "FETCH_MARKETS",
+        "POLYMARKET_MARKETS",
+        "ALL_MARKETS",
+        "BROWSE_MARKETS",
+        "VIEW_MARKETS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_MIDPOINT",
+      "description": "Get the midpoint price between best bid and ask",
+      "parameters": [],
+      "similes": [
+        "MIDPOINT",
+        "MID_PRICE",
+        "MIDDLE_PRICE"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_MIDPOINT_PRICE",
+      "description": "Gets the midpoint price (average of best bid and best ask) for a specified token ID on Polymarket.",
+      "parameters": [],
+      "similes": [
+        "GET_MID_PRICE",
+        "MIDPOINT",
+        "MID_MARKET",
+        "FAIR_VALUE_PRICE"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_OPEN_MARKETS",
+      "description": "Retrieves a list of currently open (active and not closed) markets from Polymarket.",
+      "parameters": [],
+      "similes": [
+        "LIST_ACTIVE_MARKETS",
+        "SHOW_OPEN_MARKETS",
+        "TRADABLE_MARKETS",
+        "CURRENT_MARKETS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_ORDER_BOOK",
+      "description": "Retrieve order book summary for a specific token",
+      "parameters": [],
+      "similes": [
+        "ORDER_BOOK",
+        "GET_ORDER_BOOK",
+        "SHOW_ORDER_BOOK",
+        "BOOK",
+        "ORDERS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_ORDER_BOOK_DEPTH",
+      "description": "Retrieves the full order book depth (all bids and asks) for a specific token ID on Polymarket.",
+      "parameters": [],
+      "similes": [
+        "FULL_ORDER_BOOK",
+        "ORDER_DEPTH",
+        "ALL_ORDERS",
+        "DEPTH_OF_MARKET"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_ORDER_BOOK_SUMMARY",
+      "description": "Retrieves a summary of the order book for a specific token ID on Polymarket, including best bid/ask and spread.",
+      "parameters": [],
+      "similes": [
+        "ORDER_BOOK_OVERVIEW",
+        "BOOK_SUMMARY",
+        "MARKET_DEPTH_SUMMARY"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_ORDER_DETAILS",
+      "description": "Retrieves detailed information about a specific order by its ID on Polymarket.",
+      "parameters": [],
+      "similes": [
+        "ORDER_INFO",
+        "VIEW_ORDER",
+        "SHOW_ORDER",
+        "ORDER_STATUS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_PRICE_HISTORY",
+      "description": "Retrieves historical prices for a specific token ID on Polymarket over a specified time range.",
+      "parameters": [],
+      "similes": [
+        "HISTORICAL_PRICES",
+        "PRICE_CHART",
+        "TOKEN_PRICE_HISTORY",
+        "PRICE_DATA"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_SAMPLING_MARKETS",
+      "description": "Retrieve markets with rewards/incentives enabled for sampling",
+      "parameters": [],
+      "similes": [
+        "SAMPLING_MARKETS",
+        "REWARDS_MARKETS",
+        "INCENTIVE_MARKETS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_SIMPLIFIED_MARKETS",
+      "description": "Retrieve simplified market data with minimal fields for quick overview",
+      "parameters": [],
+      "similes": [
+        "SIMPLE_MARKETS",
+        "QUICK_MARKETS",
+        "MARKETS_SUMMARY",
+        "BASIC_MARKETS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_SPREAD",
+      "description": "Gets the bid-ask spread for a specified token ID on Polymarket.",
+      "parameters": [],
+      "similes": [
+        "BID_ASK_SPREAD",
+        "MARKET_SPREAD",
+        "SPREAD_INFO",
+        "TOKEN_SPREAD"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_TRADE_HISTORY",
+      "description": "Retrieves the authenticated user trade history from Polymarket, optionally filtered by market or asset.",
+      "parameters": [],
+      "similes": [
+        "MY_TRADES",
+        "TRADE_LOG",
+        "FILLED_ORDERS",
+        "PAST_TRADES",
+        "TRADING_HISTORY"
+      ]
+    },
+    {
+      "name": "POLYMARKET_HANDLE_AUTHENTICATION",
+      "description": "Checks and displays the current authentication status for Polymarket CLOB operations.",
+      "parameters": [],
+      "similes": [
+        "CHECK_AUTH",
+        "AUTH_STATUS",
+        "VERIFY_CREDENTIALS",
+        "WALLET_STATUS",
+        "LOGIN_STATUS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_HANDLE_REALTIME_UPDATES",
+      "description": "Manages WebSocket subscriptions for real-time Polymarket data updates including order books and trades.",
+      "parameters": [],
+      "similes": [
+        "SUBSCRIBE_UPDATES",
+        "LIVE_UPDATES",
+        "REALTIME_DATA",
+        "MARKET_STREAM",
+        "WEBSOCKET_STATUS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_PLACE_ORDER",
+      "description": "Create and place limit or market orders on Polymarket",
+      "parameters": [],
+      "similes": [
+        "PLACE_ORDER",
+        "CREATE_ORDER",
+        "BUY_TOKEN",
+        "SELL_TOKEN",
+        "LIMIT_ORDER",
+        "MARKET_ORDER",
+        "TRADE",
+        "ORDER",
+        "BUY",
+        "SELL",
+        "PURCHASE",
+        "SUBMIT_ORDER",
+        "EXECUTE_ORDER"
+      ]
+    },
+    {
+      "name": "POLYMARKET_RETRIEVE_ALL_MARKETS",
+      "description": "Retrieves all available markets from Polymarket by paginating through the entire catalog.",
+      "parameters": [],
+      "similes": [
+        "FETCH_ALL_MARKETS",
+        "DOWNLOAD_MARKETS",
+        "FULL_MARKET_LIST",
+        "COMPLETE_MARKETS"
+      ]
+    },
+    {
+      "name": "POLYMARKET_REVOKE_API_KEY",
+      "description": "Revokes an existing API key from your Polymarket account.",
+      "parameters": [],
+      "similes": [
+        "DELETE_API_KEY",
+        "REMOVE_API_KEY",
+        "DISABLE_API_KEY",
+        "CANCEL_API_KEY"
+      ]
+    },
+    {
+      "name": "POLYMARKET_SETUP_WEBSOCKET",
+      "description": "Sets up and configures WebSocket connections for real-time Polymarket data streaming.",
+      "parameters": [],
+      "similes": [
+        "CONNECT_WEBSOCKET",
+        "INIT_WS",
+        "START_STREAM",
+        "ENABLE_REALTIME"
+      ]
+    },
+    {
+      "name": "POST",
+      "description": "Post content on X (formerly Twitter)",
+      "parameters": [],
+      "similes": [
+        "POST_TO_X",
+        "POST",
+        "SEND_POST",
+        "SHARE_ON_X"
+      ]
+    },
+    {
+      "name": "POST_INSTAGRAM_COMMENT",
+      "description": "Post a comment on an Instagram post",
+      "parameters": [
+        {
+          "name": "commentText",
+          "description": "The comment text to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "mediaId",
+          "description": "The media id to use.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "examples": [
+            1
+          ]
+        }
+      ],
+      "similes": [
+        "INSTAGRAM_COMMENT",
+        "COMMENT_POST",
+        "REPLY_POST",
+        "ADD_COMMENT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use POST_INSTAGRAM_COMMENT with the provided parameters.",
+          "actions": [
+            "POST_INSTAGRAM_COMMENT"
+          ],
+          "params": {
+            "POST_INSTAGRAM_COMMENT": {
+              "commentText": "example",
+              "mediaId": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PROCESS_ANALYSIS",
+      "description": "Processes the analysis results and makes decisions",
+      "parameters": []
+    },
+    {
+      "name": "PROCESS_KNOWLEDGE",
+      "description": "Process and store knowledge from a file path or text content into the knowledge base",
+      "parameters": []
+    },
+    {
+      "name": "PUSH_GITHUB_CODE",
+      "description": "Creates a commit with file changes and pushes to a GitHub branch.",
+      "parameters": [
+        {
+          "name": "authorEmail",
+          "description": "The author email to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "authorName",
+          "description": "The author name to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "branch",
+          "description": "Branch name.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "main"
+          ]
+        },
+        {
+          "name": "files",
+          "description": "The files to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "message",
+          "description": "Message text to send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Hello! How can I help?"
+          ]
+        },
+        {
+          "name": "owner",
+          "description": "Repository owner or organization.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "octocat"
+          ]
+        },
+        {
+          "name": "repo",
+          "description": "Repository name.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "my-repo"
+          ]
+        }
+      ],
+      "similes": [
+        "COMMIT_CODE",
+        "PUSH_CHANGES",
+        "COMMIT_FILES",
+        "PUSH_FILES",
+        "GIT_PUSH",
+        "SAVE_CODE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use PUSH_GITHUB_CODE with the provided parameters.",
+          "actions": [
+            "PUSH_GITHUB_CODE"
+          ],
+          "params": {
+            "PUSH_GITHUB_CODE": {
+              "authorEmail": "example",
+              "authorName": "example",
+              "branch": "main",
+              "files": "example",
+              "message": "Hello! How can I help?",
+              "owner": "octocat",
+              "repo": "my-repo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "REACT_TO_MESSAGE",
+      "description": "Add an emoji reaction to a Discord message.",
+      "parameters": [],
+      "similes": [
+        "REACT_TO_MESSAGE",
+        "ADD_REACTION",
+        "REACT_MESSAGE",
+        "ADD_EMOJI",
+        "EMOJI_REACT",
+        "MESSAGE_REACTION"
+      ]
+    },
+    {
+      "name": "READ_CHANNEL",
+      "description": "Reads recent messages from a Discord channel and either returns them or provides a summary. Can focus on messages from a specific user.",
+      "parameters": [],
+      "similes": [
+        "READ_MESSAGES",
+        "GET_CHANNEL_MESSAGES",
+        "FETCH_MESSAGES",
+        "SHOW_CHANNEL_HISTORY",
+        "GET_CHAT_HISTORY",
+        "READ_CHAT"
+      ]
+    },
+    {
+      "name": "READ_MCP_RESOURCE",
+      "description": "Reads a resource from an MCP server",
+      "parameters": [],
+      "similes": [
+        "READ_RESOURCE",
+        "READ_MCP_RESOURCE",
+        "GET_RESOURCE",
+        "GET_MCP_RESOURCE",
+        "FETCH_RESOURCE",
+        "FETCH_MCP_RESOURCE",
+        "ACCESS_RESOURCE",
+        "ACCESS_MCP_RESOURCE"
+      ]
+    },
+    {
+      "name": "RECORD_EXPERIENCE",
+      "description": "Manually record a learning experience",
+      "parameters": [
+        {
+          "name": "text",
+          "description": "The text to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use RECORD_EXPERIENCE with the provided parameters.",
+          "actions": [
+            "RECORD_EXPERIENCE"
+          ],
+          "params": {
+            "RECORD_EXPERIENCE": {
+              "text": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "REMOTE_ATTESTATION",
+      "description": "Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)",
+      "parameters": [],
+      "similes": [
+        "REMOTE_ATTESTATION",
+        "TEE_REMOTE_ATTESTATION",
+        "TEE_ATTESTATION",
+        "TEE_QUOTE",
+        "ATTESTATION",
+        "TEE_ATTESTATION_QUOTE",
+        "PROVE_TEE",
+        "VERIFY_TEE"
+      ]
+    },
+    {
+      "name": "REPLY_TO_CAST",
+      "description": "Replies to a cast on Farcaster",
+      "parameters": [
+        {
+          "name": "parentCastHash",
+          "description": "The parent cast hash to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "replyContent",
+          "description": "The reply content to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use REPLY_TO_CAST with the provided parameters.",
+          "actions": [
+            "REPLY_TO_CAST"
+          ],
+          "params": {
+            "REPLY_TO_CAST": {
+              "parentCastHash": "example",
+              "replyContent": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "REVIEW_GITHUB_PULL_REQUEST",
+      "description": "Creates a review on a GitHub pull request. Can approve, request changes, or add comments.",
+      "parameters": [
+        {
+          "name": "body",
+          "description": "Body text for the operation.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Implements dark mode and updates docs."
+          ]
+        },
+        {
+          "name": "event",
+          "description": "The event to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "owner",
+          "description": "Repository owner or organization.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "octocat"
+          ]
+        },
+        {
+          "name": "pullNumber",
+          "description": "The pull number to use.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "examples": [
+            1
+          ]
+        },
+        {
+          "name": "repo",
+          "description": "Repository name.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "my-repo"
+          ]
+        }
+      ],
+      "similes": [
+        "APPROVE_PR",
+        "REQUEST_CHANGES",
+        "COMMENT_ON_PR",
+        "REVIEW_PR",
+        "PR_REVIEW",
+        "CODE_REVIEW"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use REVIEW_GITHUB_PULL_REQUEST with the provided parameters.",
+          "actions": [
+            "REVIEW_GITHUB_PULL_REQUEST"
+          ],
+          "params": {
+            "REVIEW_GITHUB_PULL_REQUEST": {
+              "body": "Implements dark mode and updates docs.",
+              "event": "example",
+              "owner": "octocat",
+              "pullNumber": 1,
+              "repo": "my-repo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SEARCH_KNOWLEDGE",
+      "description": "Search the knowledge base for specific information",
+      "parameters": [],
+      "similes": [
+        "search knowledge",
+        "find information",
+        "look up",
+        "query knowledge base",
+        "search documents",
+        "find in knowledge"
+      ]
+    },
+    {
+      "name": "SEARCH_LINEAR_ISSUES",
+      "description": "Search for issues in Linear with various filters",
+      "parameters": [
+        {
+          "name": "name",
+          "description": "The name to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "search-linear-issues",
+        "find-linear-issues",
+        "query-linear-issues",
+        "list-linear-issues"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SEARCH_LINEAR_ISSUES with the provided parameters.",
+          "actions": [
+            "SEARCH_LINEAR_ISSUES"
+          ],
+          "params": {
+            "SEARCH_LINEAR_ISSUES": {
+              "name": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SEARCH_MESSAGES",
+      "description": "Search for messages in Discord channels based on keywords, author, or time range.",
+      "parameters": [],
+      "similes": [
+        "SEARCH_MESSAGES",
+        "FIND_MESSAGES",
+        "SEARCH_CHAT",
+        "LOOK_FOR_MESSAGES",
+        "FIND_IN_CHAT",
+        "SEARCH_CHANNEL",
+        "SEARCH_DISCORD"
+      ]
+    },
+    {
+      "name": "SEND_CAST",
+      "description": "Posts a cast (message) on Farcaster",
+      "parameters": [
+        {
+          "name": "castContent",
+          "description": "The cast content to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SEND_CAST with the provided parameters.",
+          "actions": [
+            "SEND_CAST"
+          ],
+          "params": {
+            "SEND_CAST": {
+              "castContent": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SEND_DM",
+      "description": "Sends a direct message to a specific Discord user.",
+      "parameters": [],
+      "similes": [
+        "SEND_DIRECT_MESSAGE",
+        "DM_USER",
+        "MESSAGE_USER",
+        "PRIVATE_MESSAGE",
+        "SEND_PRIVATE_MESSAGE",
+        "DM",
+        "SEND_MESSAGE_TO_USER"
+      ]
+    },
+    {
+      "name": "SEND_INSTAGRAM_DM",
+      "description": "Send a direct message to an Instagram user",
+      "parameters": [
+        {
+          "name": "responseText",
+          "description": "The response text to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "threadId",
+          "description": "The thread id to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "INSTAGRAM_DM",
+        "INSTAGRAM_MESSAGE",
+        "DM_USER",
+        "SEND_DM",
+        "DIRECT_MESSAGE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SEND_INSTAGRAM_DM with the provided parameters.",
+          "actions": [
+            "SEND_INSTAGRAM_DM"
+          ],
+          "params": {
+            "SEND_INSTAGRAM_DM": {
+              "responseText": "example",
+              "threadId": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SEND_ROBLOX_MESSAGE",
+      "description": "Send a message to players in a Roblox game. Can target all players or specific player IDs.",
+      "parameters": [
+        {
+          "name": "message",
+          "description": "Message text to send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "Hello! How can I help?"
+          ]
+        }
+      ],
+      "similes": [
+        "ROBLOX_MESSAGE",
+        "GAME_MESSAGE",
+        "SEND_TO_GAME",
+        "BROADCAST_MESSAGE",
+        "TELL_PLAYERS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SEND_ROBLOX_MESSAGE with the provided parameters.",
+          "actions": [
+            "SEND_ROBLOX_MESSAGE"
+          ],
+          "params": {
+            "SEND_ROBLOX_MESSAGE": {
+              "message": "Hello! How can I help?"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SERVER_INFO",
+      "description": "Get information about the current Discord server including member count, creation date, and other statistics.",
+      "parameters": [],
+      "similes": [
+        "SERVER_INFO",
+        "GUILD_INFO",
+        "SERVER_STATS",
+        "SERVER_DETAILS",
+        "ABOUT_SERVER",
+        "SERVER_INFORMATION",
+        "CHECK_SERVER"
+      ]
+    },
+    {
+      "name": "SUBSCRIBE_RSS_FEED",
+      "description": "Subscribe to an RSS/Atom feed for automatic monitoring",
+      "parameters": [],
+      "similes": [
+        "ADD_RSS_FEED",
+        "FOLLOW_RSS_FEED",
+        "SUBSCRIBE_TO_RSS"
+      ]
+    },
+    {
+      "name": "SUMMARIZE_CONVERSATION",
+      "description": "Summarizes the conversation and attachments.",
+      "parameters": [],
+      "similes": [
+        "RECAP",
+        "RECAP_CONVERSATION",
+        "SUMMARIZE_CHAT",
+        "SUMMARIZATION",
+        "CHAT_SUMMARY",
+        "CONVERSATION_SUMMARY"
+      ]
+    },
+    {
+      "name": "SWAP_SOLANA",
+      "description": "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
+      "parameters": [],
+      "similes": [
+        "SWAP_SOL",
+        "SWAP_TOKENS_SOLANA",
+        "TOKEN_SWAP_SOLANA",
+        "TRADE_TOKENS_SOLANA",
+        "EXCHANGE_TOKENS_SOLANA"
+      ]
+    },
+    {
+      "name": "TRANSCRIBE_MEDIA",
+      "description": "Transcribe the full text of an audio or video file that the user has attached.",
+      "parameters": [],
+      "similes": [
+        "TRANSCRIBE_AUDIO",
+        "TRANSCRIBE_VIDEO",
+        "MEDIA_TRANSCRIPT",
+        "VIDEO_TRANSCRIPT",
+        "AUDIO_TRANSCRIPT"
+      ]
+    },
+    {
+      "name": "UNPIN_MESSAGE",
+      "description": "Unpin a message in a Discord channel.",
+      "parameters": [],
+      "similes": [
+        "UNPIN_MESSAGE",
+        "UNPIN_MSG",
+        "UNPIN_THIS",
+        "UNPIN_THAT",
+        "REMOVE_PIN",
+        "DELETE_PIN"
+      ]
+    },
+    {
+      "name": "UNSUBSCRIBE_RSS_FEED",
+      "description": "Unsubscribe from an RSS/Atom feed",
+      "parameters": [],
+      "similes": [
+        "REMOVE_RSS_FEED",
+        "UNFOLLOW_RSS_FEED",
+        "DELETE_RSS_FEED"
+      ]
+    },
+    {
+      "name": "UPDATE_FORM",
+      "description": "Updates an active form with values extracted from the user message",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "FILL_FORM",
+        "SUBMIT_FORM",
+        "COMPLETE_FORM",
+        "FORM_INPUT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use UPDATE_FORM with the provided parameters.",
+          "actions": [
+            "UPDATE_FORM"
+          ],
+          "params": {
+            "UPDATE_FORM": {
+              "data": "example",
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "UPDATE_GOAL",
+      "description": "Updates an existing goal's name or description.",
+      "parameters": [],
+      "similes": [
+        "EDIT_GOAL",
+        "MODIFY_GOAL",
+        "CHANGE_GOAL",
+        "REVISE_GOAL"
+      ]
+    },
+    {
+      "name": "UPDATE_TODO",
+      "description": "Updates an existing todo item immediately based on user description.",
+      "parameters": [],
+      "similes": [
+        "EDIT_TODO",
+        "MODIFY_TASK",
+        "CHANGE_TASK",
+        "MODIFY_TODO",
+        "EDIT_TASK"
+      ]
     }
   ]
 } as const satisfies { version: string; actions: readonly ActionDoc[] };

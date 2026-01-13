@@ -1,520 +1,396 @@
 #!/usr/bin/env python3
 """
-elizaOS Tic-Tac-Toe Demo - Python Version
+elizaOS Agentic Game of Life (Python)
 
-A tic-tac-toe game where an AI agent plays perfectly WITHOUT using an LLM.
-Demonstrates:
-- elizaOS runtime with NO character (uses anonymous character)
-- Custom model handlers that implement perfect play via minimax
-- No LLM calls - pure algorithmic decision making
+This example is intentionally "no LLM": decisions are produced by a custom
+ModelType.TEXT_LARGE/TEXT_SMALL handler that returns deterministic XML.
 
-Usage:
-    python examples/tic-tac-toe/python/game.py
+IMPORTANT: each tick is processed through the full Eliza pipeline:
+    result = await runtime.message_service.handle_message(runtime, message)
+
+so there’s no bypassing (actions run via runtime.process_actions()).
 """
 
 from __future__ import annotations
 
 import asyncio
-import math
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Callable, TypeAlias
+import random
+import time
+import uuid
+from dataclasses import dataclass
 
-# Type definitions
-Player: TypeAlias = str  # "X" or "O"
-Cell: TypeAlias = Player | None
-Board: TypeAlias = list[Cell]
+from elizaos import ChannelType, Character, Content, Memory
+from elizaos.runtime import AgentRuntime
+from elizaos.types.components import Action, ActionResult, HandlerOptions
+from elizaos.types.model import ModelType
+from elizaos.types.plugin import Plugin
+from elizaos.types.primitives import UUID, as_uuid, string_to_uuid
+from elizaos.types.state import State
 
-WINNING_LINES = [
-    [0, 1, 2],  # rows
-    [3, 4, 5],
-    [6, 7, 8],
-    [0, 3, 6],  # columns
-    [1, 4, 7],
-    [2, 5, 8],
-    [0, 4, 8],  # diagonals
-    [2, 4, 6],
-]
+# ============================================================================
+# SIM CONFIG + WORLD STATE
+# ============================================================================
+
+
+CONFIG = {
+    "WORLD_WIDTH": 24,
+    "WORLD_HEIGHT": 14,
+    "STARTING_ENERGY": 60.0,
+    "MOVE_COST": 1.5,
+    "FOOD_ENERGY": 18.0,
+    "FOOD_SPAWN_RATE": 0.06,
+    "MAX_FOOD": 50,
+    "MAX_TICKS": 120,
+}
+
+SIM_ROOM_ID: UUID = string_to_uuid("game-of-life")
+ENV_ENTITY_ID: UUID = string_to_uuid("game-of-life-environment")
 
 
 @dataclass
-class GameState:
-    """Current state of the tic-tac-toe game."""
-
-    board: Board = field(default_factory=lambda: [None] * 9)
-    current_player: Player = "X"
-    winner: Player | str | None = None  # "X", "O", "draw", or None
-    game_over: bool = False
-    move_history: list[int] = field(default_factory=list)
-
-
-def create_empty_board() -> Board:
-    """Create an empty 3x3 board."""
-    return [None] * 9
-
-
-def check_winner(board: Board) -> Player | str | None:
-    """Check if there's a winner or draw."""
-    for a, b, c in WINNING_LINES:
-        if board[a] and board[a] == board[b] == board[c]:
-            return board[a]
-    if all(cell is not None for cell in board):
-        return "draw"
-    return None
-
-
-def get_available_moves(board: Board) -> list[int]:
-    """Get list of available positions (0-8)."""
-    return [i for i, cell in enumerate(board) if cell is None]
-
-
-# ============================================================================
-# MINIMAX ALGORITHM - PERFECT PLAY
-# ============================================================================
+class Position:
+    x: int
+    y: int
 
 
 @dataclass
-class MinimaxResult:
-    """Result of minimax evaluation."""
-
-    score: int
-    move: int
-
-
-def minimax(board: Board, is_maximizing: bool, ai_player: Player, depth: int = 0) -> MinimaxResult:
-    """
-    Minimax algorithm for perfect tic-tac-toe play.
-    
-    Args:
-        board: Current board state
-        is_maximizing: True if AI's turn (maximizing), False if opponent's turn
-        ai_player: The player the AI is playing as ("X" or "O")
-        depth: Current recursion depth
-    
-    Returns:
-        MinimaxResult with score and best move
-    """
-    human_player = "O" if ai_player == "X" else "X"
-    winner = check_winner(board)
-
-    # Terminal states
-    if winner == ai_player:
-        return MinimaxResult(score=10 - depth, move=-1)
-    if winner == human_player:
-        return MinimaxResult(score=depth - 10, move=-1)
-    if winner == "draw":
-        return MinimaxResult(score=0, move=-1)
-
-    available_moves = get_available_moves(board)
-    best_move = available_moves[0]
-    best_score = -math.inf if is_maximizing else math.inf
-
-    for move in available_moves:
-        new_board = board.copy()
-        new_board[move] = ai_player if is_maximizing else human_player
-
-        result = minimax(new_board, not is_maximizing, ai_player, depth + 1)
-
-        if is_maximizing:
-            if result.score > best_score:
-                best_score = result.score
-                best_move = move
-        else:
-            if result.score < best_score:
-                best_score = result.score
-                best_move = move
-
-    return MinimaxResult(score=int(best_score), move=best_move)
+class AgentState:
+    position: Position
+    energy: float
+    vision: int
 
 
-def get_optimal_move(board: Board, ai_player: Player) -> int:
-    """
-    Get the optimal move for the AI player.
-    Uses minimax with a position preference for opening moves.
-    """
-    available_moves = get_available_moves(board)
+# Global simulation state shared by the example (environment)
+food: dict[str, Position] = {}
+agents: dict[UUID, AgentState] = {}
 
-    # If board is empty, pick center (position 4)
-    if len(available_moves) == 9:
-        return 4
 
-    # If only one move, take it
-    if len(available_moves) == 1:
-        return available_moves[0]
+def pos_key(x: int, y: int) -> str:
+    return f"{x},{y}"
 
-    # Use minimax to find the best move
-    result = minimax(board, True, ai_player)
-    return result.move
+
+def wrap(v: int, max_v: int) -> int:
+    return ((v % max_v) + max_v) % max_v
+
+
+def dist(a: Position, b: Position) -> float:
+    dx = min(abs(a.x - b.x), CONFIG["WORLD_WIDTH"] - abs(a.x - b.x))
+    dy = min(abs(a.y - b.y), CONFIG["WORLD_HEIGHT"] - abs(a.y - b.y))
+    return (dx * dx + dy * dy) ** 0.5
+
+
+def spawn_food() -> None:
+    if len(food) >= int(CONFIG["MAX_FOOD"]):
+        return
+    cells = int(CONFIG["WORLD_WIDTH"] * CONFIG["WORLD_HEIGHT"])
+    spawns = max(1, int(cells * float(CONFIG["FOOD_SPAWN_RATE"])))
+    for _ in range(spawns):
+        x = random.randint(0, int(CONFIG["WORLD_WIDTH"]) - 1)
+        y = random.randint(0, int(CONFIG["WORLD_HEIGHT"]) - 1)
+        key = pos_key(x, y)
+        if key not in food:
+            food[key] = Position(x, y)
+
+
+def render_tick(tick: int) -> str:
+    grid: list[list[str]] = [
+        ["·" for _ in range(int(CONFIG["WORLD_WIDTH"]))] for _ in range(int(CONFIG["WORLD_HEIGHT"]))
+    ]
+    for p in food.values():
+        grid[p.y][p.x] = "🌱"
+    for a in agents.values():
+        grid[a.position.y][a.position.x] = "●"
+
+    lines = ["".join(row) for row in grid]
+    return (
+        "\n".join(lines)
+        + f"\n\nTick={tick}  Agents={len(agents)}  Food={len(food)}\n"
+    )
 
 
 # ============================================================================
-# BOARD PARSING FROM TEXT
+# ACTIONS (mutate environment)
 # ============================================================================
 
 
-def parse_board_from_text(text: str) -> Board | None:
-    """
-    Parse a tic-tac-toe board from a text prompt.
-    Looks for patterns like:
-    - "X O _" sequences
-    - Grid representation
-    """
-    lines = text.split("\n")
-    board_chars: list[Cell] = []
+async def _always_validate(
+    _runtime: AgentRuntime,
+    _message: Memory,
+    _state: State | None,
+) -> bool:
+    return True
 
-    for line in lines:
-        # Skip instruction lines
-        if "AVAILABLE" in line.upper() or "INSTRUCTION" in line.upper():
+
+async def eat_handler(
+    runtime: AgentRuntime,
+    _message: Memory,
+    _state: State | None,
+    _options: HandlerOptions | None,
+    _callback: object | None,
+    _responses: list[Memory] | None,
+) -> ActionResult | None:
+    st = agents.get(runtime.agent_id)
+    if st is None:
+        return ActionResult(success=False, text="No agent state")
+    key = pos_key(st.position.x, st.position.y)
+    if key in food:
+        del food[key]
+        st.energy += float(CONFIG["FOOD_ENERGY"])
+        return ActionResult(success=True, text="EAT")
+    return ActionResult(success=False, text="No food here")
+
+
+async def move_toward_food_handler(
+    runtime: AgentRuntime,
+    _message: Memory,
+    _state: State | None,
+    _options: HandlerOptions | None,
+    _callback: object | None,
+    _responses: list[Memory] | None,
+) -> ActionResult | None:
+    st = agents.get(runtime.agent_id)
+    if st is None:
+        return ActionResult(success=False, text="No agent state")
+
+    nearest: Position | None = None
+    nearest_d = 1e9
+    for p in food.values():
+        d = dist(st.position, p)
+        if d <= float(st.vision) and d < nearest_d:
+            nearest = p
+            nearest_d = d
+
+    if nearest is None:
+        return ActionResult(success=False, text="No visible food")
+
+    dx = nearest.x - st.position.x
+    dy = nearest.y - st.position.y
+    if abs(dx) > int(CONFIG["WORLD_WIDTH"]) // 2:
+        dx = -1 if dx > 0 else 1
+    if abs(dy) > int(CONFIG["WORLD_HEIGHT"]) // 2:
+        dy = -1 if dy > 0 else 1
+
+    st.position.x = wrap(st.position.x + (1 if dx > 0 else -1 if dx < 0 else 0), int(CONFIG["WORLD_WIDTH"]))
+    st.position.y = wrap(st.position.y + (1 if dy > 0 else -1 if dy < 0 else 0), int(CONFIG["WORLD_HEIGHT"]))
+    st.energy -= float(CONFIG["MOVE_COST"])
+    return ActionResult(success=True, text="MOVE_TOWARD_FOOD")
+
+
+async def wander_handler(
+    runtime: AgentRuntime,
+    _message: Memory,
+    _state: State | None,
+    _options: HandlerOptions | None,
+    _callback: object | None,
+    _responses: list[Memory] | None,
+) -> ActionResult | None:
+    st = agents.get(runtime.agent_id)
+    if st is None:
+        return ActionResult(success=False, text="No agent state")
+    st.position.x = wrap(st.position.x + random.choice([-1, 0, 1]), int(CONFIG["WORLD_WIDTH"]))
+    st.position.y = wrap(st.position.y + random.choice([-1, 0, 1]), int(CONFIG["WORLD_HEIGHT"]))
+    st.energy -= float(CONFIG["MOVE_COST"]) * 0.5
+    return ActionResult(success=True, text="WANDER")
+
+
+eat_action = Action(
+    name="EAT",
+    description="Eat food at current position",
+    similes=["CONSUME", "FEED"],
+    validate=_always_validate,
+    handler=eat_handler,
+)
+
+move_toward_food_action = Action(
+    name="MOVE_TOWARD_FOOD",
+    description="Move one step toward nearest visible food",
+    similes=["SEEK_FOOD", "FORAGE"],
+    validate=_always_validate,
+    handler=move_toward_food_handler,
+)
+
+wander_action = Action(
+    name="WANDER",
+    description="Move randomly when nothing else is attractive",
+    similes=["ROAM", "EXPLORE"],
+    validate=_always_validate,
+    handler=wander_handler,
+)
+
+
+# ============================================================================
+# RULE-BASED MODEL HANDLER (returns XML for DefaultMessageService)
+# ============================================================================
+
+
+def _escape_xml(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+
+
+def _decision_xml(action_name: str, thought: str) -> str:
+    return (
+        f"<thought>{_escape_xml(thought)}</thought>"
+        f"<actions>{_escape_xml(action_name)}</actions>"
+        f"<text>{_escape_xml(action_name)}</text>"
+    )
+
+
+def _extract_env(prompt: str) -> dict[str, str]:
+    # Environment message is included verbatim somewhere in the prompt via recent messages.
+    # We recover simple KEY=VALUE lines for determinism (no JSON parsing).
+    out: dict[str, str] = {}
+    for line in prompt.splitlines():
+        if "=" not in line:
             continue
-
-        # Clean the line and look for board patterns
-        cleaned = line.replace("|", " ").strip()
-        if len(cleaned) >= 3 and all(c.upper() in "XO_. " for c in cleaned):
-            for char in cleaned:
-                if char.upper() == "X":
-                    board_chars.append("X")
-                elif char.upper() == "O":
-                    board_chars.append("O")
-                elif char in "_." :
-                    board_chars.append(None)
-
-    if len(board_chars) == 9:
-        return board_chars
-
-    return None
+        k, v = line.split("=", 1)
+        k = k.strip().upper()
+        v = v.strip()
+        if not k:
+            continue
+        if k in {"TICK", "POS", "ENERGY", "VISION", "FOOD_COUNT"}:
+            out[k] = v
+    return out
 
 
-def detect_ai_player(text: str) -> Player:
-    """Detect which player the AI should play as from the prompt."""
-    text_lower = text.lower()
-    if "you are o" in text_lower or "play as o" in text_lower or "your mark is o" in text_lower:
-        return "O"
-    return "X"
+async def decision_model_handler(runtime: AgentRuntime, params: dict[str, object]) -> str:
+    prompt = params.get("prompt")
+    prompt_str = str(prompt) if prompt is not None else ""
+
+    st = agents.get(runtime.agent_id)
+    if st is None:
+        return _decision_xml("WANDER", "No agent state; defaulting to wander.")
+
+    env = _extract_env(prompt_str)
+
+    # Rule priority:
+    # 1) If standing on food -> EAT
+    if pos_key(st.position.x, st.position.y) in food:
+        return _decision_xml("EAT", "Food is underfoot; eat now.")
+
+    # 2) If any visible food -> MOVE_TOWARD_FOOD
+    for p in food.values():
+        if dist(st.position, p) <= float(st.vision):
+            thought = f"Visible food detected (food_count={env.get('FOOD_COUNT','?')}); moving toward it."
+            return _decision_xml("MOVE_TOWARD_FOOD", thought)
+
+    # 3) Default -> WANDER
+    thought = f"No food visible; wandering. env_tick={env.get('TICK','?')}"
+    return _decision_xml("WANDER", thought)
 
 
-# ============================================================================
-# TIC-TAC-TOE MODEL HANDLER
-# ============================================================================
-
-
-async def tic_tac_toe_model_handler(
-    _runtime: object,
-    params: dict,
-) -> str:
-    """
-    A model handler that implements perfect tic-tac-toe play.
-    Parses the board state from the prompt and returns the optimal move.
-    """
-    # Extract the prompt text
-    prompt_text = ""
-    if "prompt" in params:
-        prompt_text = params["prompt"]
-    elif "messages" in params and params["messages"]:
-        prompt_text = "\n".join(m.get("content", "") for m in params["messages"])
-
-    if not prompt_text:
-        return "Please provide a tic-tac-toe board state."
-
-    # Try to parse the board
-    board = parse_board_from_text(prompt_text)
-    if board is None:
-        return "Could not parse board state. Please provide a 3x3 grid with X, O, and _ for empty."
-
-    # Check if game is already over
-    winner = check_winner(board)
-    if winner:
-        if winner == "draw":
-            return "Game is a draw. No moves available."
-        return f"Game over. {winner} has won."
-
-    # Determine which player the AI is
-    ai_player = detect_ai_player(prompt_text)
-
-    # Get the optimal move
-    move = get_optimal_move(board, ai_player)
-
-    # Return just the move number
-    return str(move)
+game_of_life_plugin = Plugin(
+    name="game-of-life",
+    description="Rule-based actions + model handler for a tiny Game-of-Life world",
+    actions=[eat_action, move_toward_food_action, wander_action],
+    models={
+        ModelType.TEXT_LARGE.value: decision_model_handler,
+        ModelType.TEXT_SMALL.value: decision_model_handler,
+    },
+)
 
 
 # ============================================================================
-# GAME CLASS
-# ============================================================================
-
-
-class TicTacToeGame:
-    """Tic-tac-toe game engine."""
-
-    def __init__(self) -> None:
-        self.state = GameState()
-
-    def get_state(self) -> GameState:
-        """Get a copy of current game state."""
-        return GameState(
-            board=self.state.board.copy(),
-            current_player=self.state.current_player,
-            winner=self.state.winner,
-            game_over=self.state.game_over,
-            move_history=self.state.move_history.copy(),
-        )
-
-    def make_move(self, position: int) -> bool:
-        """Make a move at the given position. Returns True if successful."""
-        if (
-            position < 0
-            or position > 8
-            or self.state.board[position] is not None
-            or self.state.game_over
-        ):
-            return False
-
-        self.state.board[position] = self.state.current_player
-        self.state.move_history.append(position)
-
-        winner = check_winner(self.state.board)
-        if winner:
-            self.state.winner = winner
-            self.state.game_over = True
-        else:
-            self.state.current_player = "O" if self.state.current_player == "X" else "X"
-
-        return True
-
-    def format_board(self) -> str:
-        """Format the board for display."""
-        b = [c if c else "_" for c in self.state.board]
-        return f"""
- {b[0]} | {b[1]} | {b[2]}
----+---+---
- {b[3]} | {b[4]} | {b[5]}
----+---+---
- {b[6]} | {b[7]} | {b[8]}
-
-Position reference:
- 0 | 1 | 2
----+---+---
- 3 | 4 | 5
----+---+---
- 6 | 7 | 8
-"""
-
-    def reset(self) -> None:
-        """Reset the game to initial state."""
-        self.state = GameState()
-
-
-# ============================================================================
-# SIMPLE RUNTIME SIMULATION (No elizaOS Python runtime yet)
-# ============================================================================
-
-
-class SimpleTicTacToeRuntime:
-    """
-    A simple simulation of the elizaOS runtime for demonstration.
-    In a full implementation, this would use the Python AgentRuntime.
-    """
-
-    def __init__(self) -> None:
-        self.character = {"name": "Agent-1"}  # Anonymous character
-
-    async def decide(self, prompt: str) -> str:
-        """Get a move decision via the local (non-LLM) handler."""
-        return await tic_tac_toe_model_handler(self, {"prompt": prompt})
-
-
-# ============================================================================
-# DISPLAY FUNCTIONS
-# ============================================================================
-
-
-def show_intro() -> None:
-    """Show game introduction."""
-    print("\n🎮 elizaOS Tic-Tac-Toe Demo (Python)")
-    print("""
-╔════════════════════════════════════════════════════════════════════╗
-║                   PERFECT TIC-TAC-TOE AI                            ║
-╠════════════════════════════════════════════════════════════════════╣
-║  This AI plays PERFECTLY using minimax - it NEVER loses!           ║
-║                                                                    ║
-║  Key features:                                                     ║
-║  • NO CHARACTER - uses anonymous agent                             ║
-║  • NO LLM - pure algorithmic minimax                               ║
-║  • Custom model handlers intercept TEXT_LARGE/TEXT_SMALL           ║
-║                                                                    ║
-║  The AI will either WIN or DRAW - never lose!                      ║
-╚════════════════════════════════════════════════════════════════════╝
-""")
-
-
-def show_board(game: TicTacToeGame) -> None:
-    """Display the current board."""
-    print(game.format_board())
-
-
-def show_result(winner: str) -> None:
-    """Show the game result."""
-    print("\n" + "═" * 40)
-    if winner == "draw":
-        print("🤝 It's a DRAW!")
-    else:
-        print(f"🏆 {winner} WINS!")
-    print("═" * 40 + "\n")
-
-
-# ============================================================================
-# GAME MODES
-# ============================================================================
-
-
-async def play_human_vs_ai(runtime: SimpleTicTacToeRuntime, game: TicTacToeGame) -> None:
-    """Human vs AI game mode."""
-    print("\n📋 You are X, AI is O. You go first!\n")
-    show_board(game)
-
-    while not game.state.game_over:
-        state = game.get_state()
-
-        if state.current_player == "X":
-            # Human's turn
-            while True:
-                try:
-                    move_str = input("Your move (0-8): ")
-                    move = int(move_str)
-                    if 0 <= move <= 8 and state.board[move] is None:
-                        break
-                    print("Invalid move! Position taken or out of range.")
-                except ValueError:
-                    print("Please enter a number 0-8.")
-                except EOFError:
-                    print("\nGame cancelled.")
-                    return
-
-            game.make_move(move)
-        else:
-            # AI's turn
-            print("AI is thinking...")
-
-            # Build prompt for our custom handler
-            board_str = " ".join(c if c else "_" for c in state.board)
-            prompt = f"""
-CURRENT BOARD STATE:
-{board_str[:5]}
-{board_str[6:11]}
-{board_str[12:]}
-
-You are playing as {state.current_player}.
-Your mark is {state.current_player}.
-
-Choose the optimal position (0-8) for your next move.
-"""
-
-            response = await runtime.decide(prompt)
-            ai_move = int(response.strip())
-            print(f"AI plays position {ai_move}")
-            game.make_move(ai_move)
-
-        show_board(game)
-
-    show_result(game.state.winner)
-
-
-async def play_ai_vs_ai(runtime: SimpleTicTacToeRuntime, game: TicTacToeGame) -> None:
-    """Watch two AIs play each other."""
-    print("\n🤖 Watching two perfect AIs play each other...")
-    print("(Both use minimax - this will always be a draw!)\n")
-    show_board(game)
-
-    while not game.state.game_over:
-        state = game.get_state()
-        print(f"{state.current_player} is thinking...")
-
-        # Build prompt
-        board_str = " ".join(c if c else "_" for c in state.board)
-        prompt = f"""
-CURRENT BOARD STATE:
-{board_str[:5]}
-{board_str[6:11]}
-{board_str[12:]}
-
-You are playing as {state.current_player}.
-Your mark is {state.current_player}.
-
-Choose the optimal position (0-8) for your next move.
-"""
-
-        response = await runtime.decide(prompt)
-        move = int(response.strip())
-        print(f"{state.current_player} plays position {move}")
-        game.make_move(move)
-        show_board(game)
-
-        await asyncio.sleep(0.5)
-
-    show_result(game.state.winner)
-
-
-async def run_benchmark(runtime: SimpleTicTacToeRuntime, game: TicTacToeGame) -> None:
-    """Run performance benchmark."""
-    import time
-
-    print("\n⚡ Running performance benchmark...\n")
-
-    iterations = 100
-    start = time.perf_counter()
-
-    for _ in range(iterations):
-        game.reset()
-        while not game.state.game_over:
-            state = game.get_state()
-            board_str = " ".join(c if c else "_" for c in state.board)
-            prompt = f"BOARD: {board_str}\nYou are {state.current_player}."
-            response = await runtime.decide(prompt)
-            move = int(response.strip())
-            game.make_move(move)
-
-    elapsed = (time.perf_counter() - start) * 1000
-
-    print(f"✅ Played {iterations} games in {elapsed:.2f}ms")
-    print(f"   Average: {elapsed / iterations:.2f}ms per game")
-    print("   No LLM calls - pure minimax!")
-
-
-# ============================================================================
-# ENTRY POINT
+# MAIN SIM
 # ============================================================================
 
 
 async def main() -> None:
-    """Main entry point."""
-    show_intro()
+    character = Character(
+        name="LifeAgent",
+        bio="A tiny agent living in a grid world.",
+        system="You are a survival agent in a grid world. Choose one action.",
+        settings={"CHECK_SHOULD_RESPOND": True},
+    )
 
-    runtime = SimpleTicTacToeRuntime()
-    print(f"✅ Agent \"{runtime.character['name']}\" ready! (No LLM - pure minimax)\n")
+    runtime = AgentRuntime(character=character, plugins=[game_of_life_plugin])
 
-    print("Choose game mode:")
-    print("1. Play vs AI - You are X, AI is O")
-    print("2. Watch AI vs AI - Two perfect AIs")
-    print("3. Benchmark - Performance test")
+    await runtime.initialize()
+
+    # Create a single agent state bound to this runtime.
+    agents[runtime.agent_id] = AgentState(
+        position=Position(
+            x=random.randint(0, int(CONFIG["WORLD_WIDTH"]) - 1),
+            y=random.randint(0, int(CONFIG["WORLD_HEIGHT"]) - 1),
+        ),
+        energy=float(CONFIG["STARTING_ENERGY"]),
+        vision=4,
+    )
+
+    # Seed some food
+    for _ in range(10):
+        spawn_food()
+
+    print(
+        "\n╔══════════════════════════════════════════════════════════════╗\n"
+        "║              ELIZAOS AGENTIC GAME OF LIFE (PY)              ║\n"
+        "╠══════════════════════════════════════════════════════════════╣\n"
+        "║  Each tick: runtime.message_service.handle_message(...)      ║\n"
+        "║  Decision: custom TEXT_LARGE handler (no LLM)                ║\n"
+        "║  Action execution: runtime.process_actions()                 ║\n"
+        "╚══════════════════════════════════════════════════════════════╝\n"
+    )
+
+    verbose = "--verbose" in __import__("sys").argv
 
     try:
-        choice = input("Enter choice (1-3): ").strip()
-    except EOFError:
-        print("Goodbye! 👋")
-        return
+        for tick in range(1, int(CONFIG["MAX_TICKS"]) + 1):
+            spawn_food()
 
-    game = TicTacToeGame()
+            st = agents[runtime.agent_id]
+            env_text = "\n".join(
+                [
+                    f"TICK={tick}",
+                    f"POS={st.position.x},{st.position.y}",
+                    f"ENERGY={int(st.energy)}",
+                    f"VISION={st.vision}",
+                    f"FOOD_COUNT={len(food)}",
+                ]
+            )
 
-    if choice == "1":
-        await play_human_vs_ai(runtime, game)
-    elif choice == "2":
-        await play_ai_vs_ai(runtime, game)
-    elif choice == "3":
-        await run_benchmark(runtime, game)
-    else:
-        print("Invalid choice. Goodbye! 👋")
-        return
+            message = Memory(
+                id=as_uuid(str(uuid.uuid4())),
+                entity_id=ENV_ENTITY_ID,
+                room_id=SIM_ROOM_ID,
+                content=Content(
+                    text=env_text,
+                    source="simulation",
+                    channel_type=ChannelType.DM.value,
+                ),
+            )
 
-    print("Thanks for playing! 🎮")
+            # Canonical pipeline: message_service.handle_message -> use_model -> process_actions
+            result = await runtime.message_service.handle_message(runtime, message)
+
+            if verbose and message.id is not None:
+                actions = result.response_content.actions if result.response_content else None
+                thought = result.response_content.thought if result.response_content else None
+                executed = runtime.get_action_results(message.id)
+                executed_names = []
+                for r in executed:
+                    name = r.data.get("actionName") if r.data else None
+                    if isinstance(name, str):
+                        executed_names.append(name)
+                print(
+                    f"[tick={tick}] decision={actions} executed={executed_names} thought={(thought or '')[:80]}"
+                )
+
+            # Decay + death (simple)
+            st.energy -= 0.25
+            if st.energy <= 0:
+                print("\n💀 Agent died (energy depleted).")
+                break
+
+            print("\x1b[2J\x1b[H" + render_tick(tick))
+            await asyncio.sleep(0.08)
+
+    finally:
+        await runtime.stop()
 
 
 if __name__ == "__main__":

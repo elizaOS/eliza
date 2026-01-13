@@ -3,34 +3,53 @@
  * Converted from sweagent/run/run_single.py
  */
 
-import fs from 'fs';
-import path from 'path';
-import { z } from 'zod';
-import { AbstractAgent, AgentConfig, AgentEnvironment, getAgentFromConfig } from '../agent/agents';
-import { EmptyProblemStatement, ProblemStatement, ProblemStatementConfig } from '../agent/problem-statement';
-import { SWEEnv } from '../environment/swe-env';
-import { AgentRunResult } from '../types';
-import { loadEnvironmentVariables } from '../utils/config';
-import { AgentLogger, getLogger } from '../utils/log';
-import { isPromisingPatch, savePredictions } from './common';
-import { RunHook } from './hooks/types';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { z } from "zod";
+import {
+  type AbstractAgent,
+  type AgentConfig,
+  getAgentFromConfig,
+} from "../agent/agents";
+import {
+  EmptyProblemStatement,
+  type ProblemStatement,
+  type ProblemStatementConfig,
+} from "../agent/problem-statement";
+import { EnvironmentConfigSchema, SWEEnv } from "../environment/swe-env";
+import type { AgentRunResult } from "../types";
+import { loadEnvironmentVariables } from "../utils/config";
+import { type AgentLogger, getLogger } from "../utils/log";
+import { isPromisingPatch, savePredictions } from "./common";
+import type { RunHook } from "./hooks/types";
 
 // Import the proper types from our new types module
-import { RunSingleActionConfig, RunSingleConfig } from './types';
-export { RunSingleActionConfig, RunSingleConfig } from './types';
+import type { RunSingleActionConfig, RunSingleConfig } from "./types";
+
+export { RunSingleActionConfig, RunSingleConfig } from "./types";
 
 /**
  * Configuration schema using Zod
  */
 export const RunSingleConfigSchema = z.object({
-  env: z.any().default(() => ({})),
-  agent: z.any(),
-  problemStatement: z.any().default(() => new EmptyProblemStatement()),
-  outputDir: z.string().default('DEFAULT'),
+  env: EnvironmentConfigSchema.default(() => EnvironmentConfigSchema.parse({})),
+  // We don't have a full AgentConfig zod schema yet; at runtime we only need it
+  // to be a plain object that matches the AgentConfig TypeScript type.
+  agent: z.custom<AgentConfig>(),
+  // Same here: ProblemStatementConfig is a structural TS type.
+  problemStatement: z
+    .custom<ProblemStatementConfig>()
+    .default(() => new EmptyProblemStatement()),
+  outputDir: z.string().default("DEFAULT"),
   actions: z
     .object({
       openPr: z.boolean().default(false),
-      prConfig: z.any().optional(),
+      prConfig: z
+        .object({
+          skipIfCommitsReferenceIssue: z.boolean().optional(),
+        })
+        .passthrough()
+        .optional(),
       applyPatchLocally: z.boolean().default(false),
     })
     .default(() => ({
@@ -43,17 +62,21 @@ export const RunSingleConfigSchema = z.object({
 /**
  * Get default output directory
  */
-function getDefaultOutputDir(outputDir: string, problemStatement: ProblemStatement, agent: AgentConfig): string {
-  if (outputDir !== 'DEFAULT') {
+function getDefaultOutputDir(
+  outputDir: string,
+  problemStatement: ProblemStatement,
+  agent: AgentConfig,
+): string {
+  if (outputDir !== "DEFAULT") {
     return outputDir;
   }
 
   // Generate default based on problem statement and agent
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const psId = problemStatement.id || 'unknown';
-  const agentName = agent.type || 'agent';
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const psId = problemStatement.id || "unknown";
+  const agentName = agent.type || "agent";
 
-  return path.join('trajectories', `${psId}_${agentName}_${timestamp}`);
+  return path.join("trajectories", `${psId}_${agentName}_${timestamp}`);
 }
 
 /**
@@ -79,13 +102,13 @@ export class RunSingle {
     this.env = config.env;
     this.agent = config.agent;
     this.problemStatement = config.problemStatement;
-    this.outputDir = config.outputDir || '.';
+    this.outputDir = config.outputDir || ".";
     this.hooks = config.hooks || [];
     this.actions = config.actions || {
       openPr: false,
       applyPatchLocally: false,
     };
-    this.logger = getLogger('run-single', '🏃');
+    this.logger = getLogger("run-single", "🏃");
 
     // RunHook and AbstractAgentHook are different interfaces
     // We don't add RunHooks to the agent, they're managed separately
@@ -104,7 +127,11 @@ export class RunSingle {
     const agent = await getAgentFromConfig(config.agent);
 
     // Set default output directory
-    const outputDir = getDefaultOutputDir(config.outputDir, config.problemStatement as ProblemStatement, config.agent);
+    const outputDir = getDefaultOutputDir(
+      config.outputDir,
+      config.problemStatement as ProblemStatement,
+      config.agent,
+    );
 
     return new RunSingle({
       env,
@@ -122,7 +149,7 @@ export class RunSingle {
   }
 
   async run(): Promise<AgentRunResult> {
-    this.logger.info('Starting run');
+    this.logger.info("Starting run");
 
     // Create output directory
     fs.mkdirSync(this.outputDir, { recursive: true });
@@ -138,9 +165,20 @@ export class RunSingle {
         }
       }
 
+      // Notify hooks that the instance is starting (single-instance runner => index 0)
+      for (const hook of this.hooks) {
+        if (hook.onInstanceStart) {
+          await hook.onInstanceStart({
+            index: 0,
+            env: this.env,
+            problemStatement: this.problemStatement,
+          });
+        }
+      }
+
       // Run agent
       const result = await this.agent.run(
-        this.env as unknown as AgentEnvironment,
+        this.env,
         this.problemStatement,
         this.outputDir,
       );
@@ -148,9 +186,10 @@ export class RunSingle {
       // Save predictions if we have a promising patch
       if (isPromisingPatch(result.info)) {
         const instanceId =
-          typeof this.problemStatement === 'object' && 'id' in this.problemStatement
+          typeof this.problemStatement === "object" &&
+          "id" in this.problemStatement
             ? this.problemStatement.id
-            : 'unknown';
+            : "unknown";
         savePredictions(this.outputDir, instanceId, result);
       }
 
@@ -170,7 +209,7 @@ export class RunSingle {
         await this.openPullRequest(result.info.submission);
       }
 
-      this.logger.info('Run completed successfully');
+      this.logger.info("Run completed successfully");
       return result;
     } finally {
       // Clean up environment
@@ -179,10 +218,10 @@ export class RunSingle {
   }
 
   private async applyPatchLocally(patch: string): Promise<void> {
-    this.logger.info('Applying patch locally');
+    this.logger.info("Applying patch locally");
 
     // Save patch to file
-    const patchPath = path.join(this.outputDir, 'model.patch');
+    const patchPath = path.join(this.outputDir, "model.patch");
     fs.writeFileSync(patchPath, patch);
 
     // Apply using git apply (would need actual implementation)
@@ -190,16 +229,18 @@ export class RunSingle {
   }
 
   private async openPullRequest(_patch: string): Promise<void> {
-    this.logger.info('Opening pull request');
+    this.logger.info("Opening pull request");
     // This would need actual GitHub API implementation
-    this.logger.warning('Pull request opening not yet implemented');
+    this.logger.warning("Pull request opening not yet implemented");
   }
 }
 
 /**
  * Run from configuration
  */
-export async function runFromConfig(config: RunSingleConfig): Promise<AgentRunResult> {
+export async function runFromConfig(
+  config: RunSingleConfig,
+): Promise<AgentRunResult> {
   const runner = await RunSingle.fromConfig(config);
   return runner.run();
 }

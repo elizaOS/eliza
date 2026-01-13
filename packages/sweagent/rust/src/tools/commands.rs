@@ -21,27 +21,27 @@ impl Command {
             raw: String::new(),
         }
     }
-    
+
     pub fn with_arg(mut self, arg: impl Into<String>) -> Self {
         self.args.push(arg.into());
         self
     }
-    
+
     pub fn with_kwarg(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.kwargs.insert(key.into(), value.into());
         self
     }
-    
+
     pub fn with_raw(mut self, raw: impl Into<String>) -> Self {
         self.raw = raw.into();
         self
     }
-    
+
     /// Get the first argument or None
     pub fn first_arg(&self) -> Option<&str> {
         self.args.first().map(|s| s.as_str())
     }
-    
+
     /// Check if a flag is present
     pub fn has_flag(&self, flag: &str) -> bool {
         self.kwargs.contains_key(flag) || self.args.contains(&flag.to_string())
@@ -54,20 +54,20 @@ pub fn parse_command(input: &str) -> Option<Command> {
     if input.is_empty() {
         return None;
     }
-    
+
     let parts: Vec<&str> = input.split_whitespace().collect();
     if parts.is_empty() {
         return None;
     }
-    
+
     let name = parts[0].to_string();
     let mut args = Vec::new();
     let mut kwargs = HashMap::new();
-    
+
     let mut i = 1;
     while i < parts.len() {
         let part = parts[i];
-        
+
         if part.starts_with("--") {
             // Long flag
             let key = part.trim_start_matches("--");
@@ -92,10 +92,10 @@ pub fn parse_command(input: &str) -> Option<Command> {
         } else {
             args.push(part.to_string());
         }
-        
+
         i += 1;
     }
-    
+
     Some(Command {
         name,
         args,
@@ -103,8 +103,6 @@ pub fn parse_command(input: &str) -> Option<Command> {
         raw: input.to_string(),
     })
 }
-
-/// Utility functions for command manipulation
 
 /// Quote a string for shell usage
 pub fn shell_quote(s: &str) -> String {

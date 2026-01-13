@@ -4,10 +4,10 @@
  * Converted from tests/test_commands/_interactive_dummy.py
  */
 
-import * as readline from 'readline';
+import * as readline from "node:readline";
 
 export class InteractiveDummyCommand {
-  private static readonly PROMPT = '(dummy) ';
+  private static readonly PROMPT = "(dummy) ";
   private rl: readline.Interface;
 
   constructor() {
@@ -19,7 +19,7 @@ export class InteractiveDummyCommand {
   }
 
   start(): void {
-    console.log('Started interactive dummy command');
+    console.log("Started interactive dummy command");
   }
 
   send(input: string): void {
@@ -29,7 +29,7 @@ export class InteractiveDummyCommand {
   }
 
   stop(): void {
-    console.log('Stopped interactive dummy command');
+    console.log("Stopped interactive dummy command");
     this.rl.close();
   }
 
@@ -38,17 +38,17 @@ export class InteractiveDummyCommand {
 
     this.rl.prompt();
 
-    this.rl.on('line', (line: string) => {
-      const [cmd, ...args] = line.trim().split(' ');
+    this.rl.on("line", (line: string) => {
+      const [cmd, ...args] = line.trim().split(" ");
 
       switch (cmd) {
-        case 'stop':
+        case "stop":
           this.stop();
           process.exit(0);
           break;
 
-        case 'send':
-          this.send(args.join(' '));
+        case "send":
+          this.send(args.join(" "));
           break;
 
         default:
@@ -61,7 +61,7 @@ export class InteractiveDummyCommand {
       this.rl.prompt();
     });
 
-    this.rl.on('close', () => {
+    this.rl.on("close", () => {
       process.exit(0);
     });
   }

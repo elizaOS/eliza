@@ -3,15 +3,16 @@
  * Converted from sweagent/agent/action_sampler.py
  */
 
-import { AbstractModel } from './models';
-import { ToolHandler } from './agents';
-import { ProblemStatement } from './problem-statement';
-import { Trajectory, History } from '../types';
-import { getLogger, AgentLogger } from '../utils/log';
-import { renderTemplate, renderAdvancedTemplate } from './utils/template';
-import { ModelOutput } from './types';
+import type { JsonObject } from "../json";
+import type { History, Trajectory } from "../types";
+import { type AgentLogger, getLogger } from "../utils/log";
+import type { ToolHandler } from "./agents";
+import type { AbstractModel } from "./models";
+import type { ProblemStatement } from "./problem-statement";
+import type { ModelOutput } from "./types";
+import { renderAdvancedTemplate, renderTemplate } from "./utils/template";
 
-const logger = getLogger('action-sampler');
+const logger = getLogger("action-sampler");
 
 /**
  * Output from action sampler
@@ -20,7 +21,7 @@ export interface ActionSamplerOutput {
   completion: ModelOutput;
   messages: History;
   trajectoryItems: Trajectory;
-  extraInfo: Record<string, unknown>;
+  extraInfo: JsonObject;
 }
 
 /**
@@ -51,7 +52,7 @@ export abstract class AbstractActionSampler {
  * Configuration for AskColleagues sampler
  */
 export interface AskColleaguesConfig {
-  type: 'ask_colleagues';
+  type: "ask_colleagues";
   nSamples: number;
 }
 
@@ -62,17 +63,25 @@ export interface AskColleaguesConfig {
 export class AskColleagues extends AbstractActionSampler {
   private config: AskColleaguesConfig;
 
-  constructor(config: AskColleaguesConfig, model: AbstractModel, tools: ToolHandler) {
+  constructor(
+    config: AskColleaguesConfig,
+    model: AbstractModel,
+    tools: ToolHandler,
+  ) {
     super(model, tools);
     this.config = config;
   }
 
-  static fromConfig(config: AskColleaguesConfig, model: AbstractModel, tools: ToolHandler): AskColleagues {
+  static fromConfig(
+    config: AskColleaguesConfig,
+    model: AbstractModel,
+    tools: ToolHandler,
+  ): AskColleagues {
     return new AskColleagues(config, model, tools);
   }
 
   private getColleagueDiscussion(completions: ModelOutput[]): string {
-    let out = 'Your colleagues had the following ideas: \n\n';
+    let out = "Your colleagues had the following ideas: \n\n";
     let nParsedOk = 0;
 
     for (let i = 0; i < completions.length; i++) {
@@ -80,21 +89,22 @@ export class AskColleagues extends AbstractActionSampler {
         const [thought, action] = this.tools.parseActions(completions[i]);
         nParsedOk++;
         out += `Thought (colleague ${i}): ${thought}\nProposed Action (colleague ${i}): ${action}\n\n`;
-      } catch (error) {
-        this.logger.warning(`Could not parse completion ${completions[i]}, skipping.`);
-        continue;
+      } catch (_error) {
+        this.logger.warning(
+          `Could not parse completion ${completions[i]}, skipping.`,
+        );
       }
     }
 
     if (nParsedOk === 0) {
-      throw new Error('No completions could be parsed.');
+      throw new Error("No completions could be parsed.");
     }
 
     out +=
-      'Please summarize and compare the ideas and propose and action to take. ' +
-      'Finally choose one action to perform and explain it in detail and include it as a tool call. ' +
-      '<important>You must include a thought and action (as a tool/function call). ' +
-      'Do not try to invoke commands with triple backticks, use function calls instead.</important>';
+      "Please summarize and compare the ideas and propose and action to take. " +
+      "Finally choose one action to perform and explain it in detail and include it as a tool call. " +
+      "<important>You must include a thought and action (as a tool/function call). " +
+      "Do not try to invoke commands with triple backticks, use function calls instead.</important>";
 
     return out;
   }
@@ -105,17 +115,26 @@ export class AskColleagues extends AbstractActionSampler {
     history: History,
   ): Promise<ActionSamplerOutput> {
     // Query model multiple times
-    const completions = (await this.model.query(history, undefined, this.config.nSamples)) as ModelOutput[];
+    const completions = (await this.model.query(
+      history,
+      undefined,
+      this.config.nSamples,
+    )) as ModelOutput[];
 
     // Get colleague discussion
     const discussion = this.getColleagueDiscussion(completions);
     this.logger.info(`COLLEAGUE DISCUSSION:\n${discussion}`);
 
     // Create new messages with discussion
-    const newMessages = [{ role: 'user', content: discussion, messageType: 'user' as const }];
+    const newMessages = [
+      { role: "user", content: discussion, messageType: "user" as const },
+    ];
 
     // Get final completion
-    const finalCompletion = (await this.model.query([...history, ...newMessages])) as ModelOutput;
+    const finalCompletion = (await this.model.query([
+      ...history,
+      ...newMessages,
+    ])) as ModelOutput;
 
     return {
       completion: finalCompletion,
@@ -130,7 +149,7 @@ export class AskColleagues extends AbstractActionSampler {
  * Configuration for BinaryTrajectoryComparison sampler
  */
 export interface BinaryTrajectoryComparisonConfig {
-  type: 'binary_trajectory_comparison';
+  type: "binary_trajectory_comparison";
   minNSamples: number;
   maxNSamples: number;
   comparisonTemperature?: number;
@@ -146,7 +165,11 @@ export interface BinaryTrajectoryComparisonConfig {
 export class BinaryTrajectoryComparison extends AbstractActionSampler {
   private config: BinaryTrajectoryComparisonConfig;
 
-  constructor(config: BinaryTrajectoryComparisonConfig, model: AbstractModel, tools: ToolHandler) {
+  constructor(
+    config: BinaryTrajectoryComparisonConfig,
+    model: AbstractModel,
+    tools: ToolHandler,
+  ) {
     super(model, tools);
     this.config = config;
   }
@@ -163,9 +186,11 @@ export class BinaryTrajectoryComparison extends AbstractActionSampler {
     const steps: string[] = [];
     for (let i = 0; i < trajectory.length; i++) {
       const step = trajectory[i];
-      steps.push(`Action ${i}: ${step.action}\n Observation ${i}: ${step.observation}`);
+      steps.push(
+        `Action ${i}: ${step.action}\n Observation ${i}: ${step.observation}`,
+      );
     }
-    return steps.join('\n');
+    return steps.join("\n");
   }
 
   private formatMessages(params: {
@@ -194,17 +219,17 @@ export class BinaryTrajectoryComparison extends AbstractActionSampler {
     });
 
     const messages: History = [
-      { role: 'system', content: systemMessage, messageType: 'system' },
-      { role: 'user', content: userMessage, messageType: 'user' },
-      { role: 'user', content: comparisonMessage, messageType: 'user' },
+      { role: "system", content: systemMessage, messageType: "system" },
+      { role: "user", content: userMessage, messageType: "user" },
+      { role: "user", content: comparisonMessage, messageType: "user" },
     ];
 
     if (params.useCacheControl) {
       // Add cache control to messages
       const userMessageContent = {
-        type: 'text' as const,
+        type: "text" as const,
         text: userMessage,
-        cacheControl: { type: 'ephemeral' as const },
+        cacheControl: { type: "ephemeral" as const },
       };
       messages[1].content = [userMessageContent];
     }
@@ -227,34 +252,43 @@ export class BinaryTrajectoryComparison extends AbstractActionSampler {
     }
 
     if (filteredCompletions.length < completions.length) {
-      this.logger.debug(`Filtering duplicates: ${completions.length} -> ${filteredCompletions.length}`);
+      this.logger.debug(
+        `Filtering duplicates: ${completions.length} -> ${filteredCompletions.length}`,
+      );
     }
 
     return filteredCompletions;
   }
 
-  private filterParseableCompletions(completions: ModelOutput[]): ModelOutput[] {
+  private filterParseableCompletions(
+    completions: ModelOutput[],
+  ): ModelOutput[] {
     const filteredCompletions: ModelOutput[] = [];
 
     for (const completion of completions) {
       try {
         this.tools.parseActions(completion);
         filteredCompletions.push(completion);
-      } catch (error) {
-        this.logger.warning(`Could not parse completion ${completion}, skipping.`);
-        continue;
+      } catch (_error) {
+        this.logger.warning(
+          `Could not parse completion ${completion}, skipping.`,
+        );
       }
     }
 
     if (filteredCompletions.length === 0) {
-      throw new Error('No completions could be parsed.');
+      throw new Error("No completions could be parsed.");
     }
 
     return filteredCompletions;
   }
 
   private containsEdits(completions: ModelOutput[]): boolean {
-    const keywords = ['edit', 'str_replace_editor insert', 'str_replace_editor str_replace'];
+    const keywords = [
+      "edit",
+      "str_replace_editor insert",
+      "str_replace_editor str_replace",
+    ];
 
     for (const completion of completions) {
       const [, action] = this.tools.parseActions(completion);
@@ -267,42 +301,55 @@ export class BinaryTrajectoryComparison extends AbstractActionSampler {
   }
 
   private async getCompletions(history: History): Promise<ModelOutput[]> {
-    let completions = (await this.model.query(history, undefined, this.config.minNSamples)) as ModelOutput[];
+    let completions = (await this.model.query(
+      history,
+      undefined,
+      this.config.minNSamples,
+    )) as ModelOutput[];
     completions = this.filterParseableCompletions(completions);
     completions = this.filterDuplicates(completions);
 
     if (!completions.length) {
-      throw new Error('No completions could be parsed.');
+      throw new Error("No completions could be parsed.");
     }
 
-    if (this.containsEdits(completions) && this.config.minNSamples < this.config.maxNSamples) {
-      this.logger.debug('Edits were proposed, will sample more');
+    if (
+      this.containsEdits(completions) &&
+      this.config.minNSamples < this.config.maxNSamples
+    ) {
+      this.logger.debug("Edits were proposed, will sample more");
       const newCompletions = (await this.model.query(
         history,
         undefined,
         this.config.maxNSamples - this.config.minNSamples,
       )) as ModelOutput[];
-      completions = this.filterDuplicates(this.filterParseableCompletions([...completions, ...newCompletions]));
+      completions = this.filterDuplicates(
+        this.filterParseableCompletions([...completions, ...newCompletions]),
+      );
     }
 
     if (completions.length === 1) {
       const [, action] = this.tools.parseActions(completions[0]);
-      this.logger.warning(`Only identical actions were proposed (action=${action})`);
+      this.logger.warning(
+        `Only identical actions were proposed (action=${action})`,
+      );
     }
 
     return completions;
   }
 
   private interpret(response: string): 0 | 1 {
-    const lastLine = response.trim().split('\n').pop()?.trim() || '';
+    const lastLine = response.trim().split("\n").pop()?.trim() || "";
 
-    if (lastLine.toLowerCase().includes('first')) {
+    if (lastLine.toLowerCase().includes("first")) {
       return 0;
-    } else if (lastLine.toLowerCase().includes('second')) {
+    } else if (lastLine.toLowerCase().includes("second")) {
       return 1;
     }
 
-    this.logger.warning(`Could not interpret response: ${response}, will choose first submission.`);
+    this.logger.warning(
+      `Could not interpret response: ${response}, will choose first submission.`,
+    );
     return 0;
   }
 
@@ -337,7 +384,11 @@ export class BinaryTrajectoryComparison extends AbstractActionSampler {
         useCacheControl: completions.length >= 3,
       });
 
-      const response = (await this.model.query(messages, this.config.comparisonTemperature, 1)) as ModelOutput;
+      const response = (await this.model.query(
+        messages,
+        this.config.comparisonTemperature,
+        1,
+      )) as ModelOutput;
 
       this.logger.info(`RESPONSE: ${response.message}`);
       const idx = this.interpret(response.message);
@@ -352,11 +403,20 @@ export class BinaryTrajectoryComparison extends AbstractActionSampler {
       bestIdx = idx === 1 ? i : bestIdx;
     }
 
+    const comparisonLogJson = comparisonLog.map((e): JsonObject => {
+      return {
+        comparisonBetween: e.comparisonBetween,
+        response: e.response,
+        idx: e.idx,
+        messages: JSON.stringify(e.messages),
+      };
+    });
+
     return {
       completion: completions[bestIdx],
       messages: [],
       trajectoryItems: [],
-      extraInfo: { comparisonLog },
+      extraInfo: { comparisonLog: comparisonLogJson },
     };
   }
 }
@@ -385,24 +445,30 @@ export function createActionSampler(
   tools: ToolHandler,
 ): AbstractActionSampler {
   switch (config.type) {
-    case 'ask_colleagues':
+    case "ask_colleagues":
       return AskColleagues.fromConfig(config, model, tools);
-    case 'binary_trajectory_comparison':
+    case "binary_trajectory_comparison":
       return BinaryTrajectoryComparison.fromConfig(config, model, tools);
     default:
-      throw new Error(`Unknown action sampler type: ${(config as ActionSamplerConfig).type}`);
+      throw new Error(
+        `Unknown action sampler type: ${(config as ActionSamplerConfig).type}`,
+      );
   }
 }
 
 /**
  * Add get method to configs for compatibility
  */
-export function makeActionSamplerConfig<T extends { type: string; [key: string]: unknown }>(
-  config: T,
-): T & BaseActionSamplerConfig {
+export function makeActionSamplerConfig<
+  T extends { type: string; [key: string]: unknown },
+>(config: T): T & BaseActionSamplerConfig {
   return {
     ...config,
     get: (model: AbstractModel, tools: ToolHandler) =>
-      createActionSampler(config as unknown as ActionSamplerConfig, model, tools),
+      createActionSampler(
+        config as unknown as ActionSamplerConfig,
+        model,
+        tools,
+      ),
   };
 }

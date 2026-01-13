@@ -3,17 +3,19 @@
  * Converted from sweagent/run/batch_instances.py
  */
 
-import path from 'path';
-import fs from 'fs';
-import { EnvironmentConfig } from '../environment/swe-env';
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
-  ProblemStatementConfig,
-  TextProblemStatement,
+  type ProblemStatementConfig,
   SWEBenchMultimodalProblemStatement,
-} from '../agent/problem-statement';
-import { DeploymentConfig } from '../environment/deployment';
-import { BatchInstanceSourceConfig } from './types';
-export { BatchInstanceSourceConfig } from './types';
+  TextProblemStatement,
+} from "../agent/problem-statement";
+import type { DeploymentConfig } from "../environment/deployment";
+import type { EnvironmentConfig } from "../environment/swe-env";
+import type { JsonObject, JsonValue } from "../json";
+import type { BatchInstanceSourceConfig } from "./types";
+
+export { BatchInstanceSourceConfig } from "./types";
 
 /**
  * Abstract instance source
@@ -40,20 +42,33 @@ export interface SimpleBatchInstance {
   instanceId: string;
   repoName?: string;
   baseCommit?: string;
-  extraFields?: Record<string, unknown>;
+  extraFields?: JsonObject;
 }
 
 /**
  * Convert simple instance to full batch instance
  */
-export function simpleToFullBatchInstance(simple: SimpleBatchInstance, deployment: DeploymentConfig): BatchInstance {
+export function simpleToFullBatchInstance(
+  simple: SimpleBatchInstance,
+  deployment: DeploymentConfig,
+): BatchInstance {
   // Create problem statement
   let problemStatement: ProblemStatementConfig;
 
-  if (simple.extraFields?.issueImages && Array.isArray(simple.extraFields.issueImages)) {
+  if (
+    simple.extraFields?.issueImages &&
+    Array.isArray(simple.extraFields.issueImages)
+  ) {
+    const issueImages = simple.extraFields.issueImages;
+    const allStrings =
+      Array.isArray(issueImages) &&
+      issueImages.every((v: JsonValue) => typeof v === "string");
+    if (!allStrings) {
+      throw new Error("issueImages must be an array of strings");
+    }
     problemStatement = new SWEBenchMultimodalProblemStatement({
       text: simple.problemStatement,
-      issueImages: simple.extraFields.issueImages as string[],
+      issueImages: issueImages as string[],
       id: simple.instanceId,
       extraFields: simple.extraFields,
     });
@@ -61,7 +76,7 @@ export function simpleToFullBatchInstance(simple: SimpleBatchInstance, deploymen
     problemStatement = new TextProblemStatement({
       text: simple.problemStatement,
       id: simple.instanceId,
-      extraFields: (simple.extraFields as any) || {},
+      extraFields: simple.extraFields ?? {},
     });
   }
 
@@ -73,15 +88,15 @@ export function simpleToFullBatchInstance(simple: SimpleBatchInstance, deploymen
     },
     repo: simple.repoName
       ? {
-          type: 'preexisting' as const,
+          type: "preexisting" as const,
           repoName: simple.repoName,
-          baseCommit: simple.baseCommit || 'HEAD',
+          baseCommit: simple.baseCommit || "HEAD",
           reset: false,
         }
       : null,
     postStartupCommands: [],
     postStartupCommandTimeout: 500,
-    name: 'main',
+    name: "main",
   };
 
   return { env, problemStatement };
@@ -90,12 +105,18 @@ export function simpleToFullBatchInstance(simple: SimpleBatchInstance, deploymen
 /**
  * Slice specification to slice object
  */
-function sliceSpecToSlice(sliceSpec: string): { start?: number; stop?: number; step?: number } {
+function sliceSpecToSlice(sliceSpec: string): {
+  start?: number;
+  stop?: number;
+  step?: number;
+} {
   if (!sliceSpec) {
     return {};
   }
 
-  const parts = sliceSpec.split(':').map((p) => (p ? parseInt(p) : undefined));
+  const parts = sliceSpec
+    .split(":")
+    .map((p) => (p ? parseInt(p, 10) : undefined));
 
   return {
     start: parts[0],
@@ -141,7 +162,7 @@ export function filterBatchItems(
   if (options.filter) {
     const regex = new RegExp(options.filter);
     filtered = filtered.filter((instance) => {
-      const id = (instance.problemStatement as { id?: string }).id || '';
+      const id = (instance.problemStatement as { id?: string }).id || "";
       return regex.test(id);
     });
   }
@@ -182,34 +203,34 @@ export class InstancesFromFile extends AbstractInstanceSource {
   }) {
     super();
     this.path = config.path;
-    this._filter = config.filter || '.*';
-    this._slice = config.slice || '';
+    this._filter = config.filter || ".*";
+    this._slice = config.slice || "";
     this._shuffle = config.shuffle || false;
     this._deployment = config.deployment || {
-      type: 'docker' as const,
-      image: 'python:3.11',
-      pythonStandaloneDir: '/root',
+      type: "docker" as const,
+      image: "python:3.11",
+      pythonStandaloneDir: "/root",
       volumes: {},
       environment: {},
       removeOnStop: true,
-      workDir: '/workspace',
+      workDir: "/workspace",
     };
   }
 
   getInstanceConfigs(): BatchInstance[] {
     // Load instances from file
-    const content = fs.readFileSync(this.path, 'utf-8');
-    const data = this.path.endsWith('.json')
+    const content = fs.readFileSync(this.path, "utf-8");
+    const data = this.path.endsWith(".json")
       ? JSON.parse(content)
       : content
-          .split('\n')
+          .split("\n")
           .filter((line) => line.trim())
           .map((line) => JSON.parse(line));
 
     // Convert to batch instances
     const instances: BatchInstance[] = [];
     for (const item of data) {
-      if ('env' in item && 'problemStatement' in item) {
+      if ("env" in item && "problemStatement" in item) {
         // Already a full batch instance
         instances.push(item as BatchInstance);
       } else {
@@ -235,23 +256,41 @@ export class InstancesFromFile extends AbstractInstanceSource {
 /**
  * Convert SWE-bench instance to SimpleBatchInstance
  */
-export function fromSWEBench(sweBenchInstance: Record<string, unknown>): SimpleBatchInstance {
-  const instanceId = sweBenchInstance.instance_id as string;
-  const problemStatement = sweBenchInstance.problem_statement as string;
-  const baseCommit = sweBenchInstance.base_commit as string;
-  let imageName = sweBenchInstance.image_name as string | undefined;
+export function fromSWEBench(
+  sweBenchInstance: JsonObject,
+): SimpleBatchInstance {
+  const instanceIdVal = sweBenchInstance.instance_id;
+  if (typeof instanceIdVal !== "string") {
+    throw new Error("SWE-bench instance missing instance_id");
+  }
+  const instanceId = instanceIdVal;
+
+  const problemStatementVal = sweBenchInstance.problem_statement;
+  if (typeof problemStatementVal !== "string") {
+    throw new Error(
+      `SWE-bench instance ${instanceId} missing problem_statement`,
+    );
+  }
+  const problemStatement = problemStatementVal;
+
+  const baseCommitVal = sweBenchInstance.base_commit;
+  const baseCommit =
+    typeof baseCommitVal === "string" ? baseCommitVal : undefined;
+
+  const imageNameVal = sweBenchInstance.image_name;
+  let imageName = typeof imageNameVal === "string" ? imageNameVal : undefined;
 
   // Generate image name if not provided
   if (!imageName) {
-    const parts = instanceId.split('__');
+    const parts = instanceId.split("__");
     if (parts.length === 2) {
       const [org, proj] = parts;
       // Only replace hyphens in the org part, keep proj as is for the tag
-      const imageTag = `${org.replace(/-/g, '_')}_1776_${proj}`;
+      const imageTag = `${org.replace(/-/g, "_")}_1776_${proj}`;
       imageName = `swebench/sweb.eval.x86_64.${imageTag}:latest`;
     } else {
       // Fallback for instances without proper org__proj format
-      const safeId = instanceId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeId = instanceId.replace(/[^a-zA-Z0-9_-]/g, "_");
       imageName = `swebench/sweb.eval.x86_64.${safeId}:latest`;
     }
   }
@@ -261,18 +300,44 @@ export function fromSWEBench(sweBenchInstance: Record<string, unknown>): SimpleB
     problemStatement,
     baseCommit,
     imageName,
-    repoName: 'testbed',
+    repoName: "testbed",
     extraFields: {},
   };
 
   // Handle multimodal instances
-  if (sweBenchInstance.image_assets) {
-    let imageAssets = sweBenchInstance.image_assets;
-    if (typeof imageAssets === 'string') {
-      imageAssets = JSON.parse(imageAssets);
+  const imageAssetsVal = sweBenchInstance.image_assets;
+  if (
+    typeof imageAssetsVal === "string" ||
+    typeof imageAssetsVal === "object"
+  ) {
+    let imageAssets: JsonObject | undefined;
+
+    if (typeof imageAssetsVal === "string") {
+      const parsed = JSON.parse(imageAssetsVal) as JsonValue;
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
+        imageAssets = parsed as JsonObject;
+      }
+    } else if (imageAssetsVal && !Array.isArray(imageAssetsVal)) {
+      imageAssets = imageAssetsVal as JsonObject;
     }
-    if ((imageAssets as any).problem_statement) {
-      result.extraFields = { ...result.extraFields, issue_images: (imageAssets as any).problem_statement };
+
+    const psImagesVal = imageAssets?.problem_statement;
+    if (Array.isArray(psImagesVal)) {
+      const issueImages: string[] = [];
+      for (const v of psImagesVal) {
+        if (typeof v !== "string") {
+          throw new Error("image_assets.problem_statement must be string[]");
+        }
+        issueImages.push(v);
+      }
+      result.extraFields = {
+        ...result.extraFields,
+        issueImages,
+      };
     }
   }
 
@@ -283,8 +348,13 @@ export function fromSWEBench(sweBenchInstance: Record<string, unknown>): SimpleB
  * SWE-bench instances
  */
 export class SWEBenchInstances extends AbstractInstanceSource {
-  public readonly subset: 'lite' | 'verified' | 'full' | 'multimodal' | 'multilingual';
-  public readonly split: 'dev' | 'test';
+  public readonly subset:
+    | "lite"
+    | "verified"
+    | "full"
+    | "multimodal"
+    | "multilingual";
+  public readonly split: "dev" | "test";
   private pathOverride?: string;
   private _filter: string;
   private _slice: string;
@@ -293,8 +363,8 @@ export class SWEBenchInstances extends AbstractInstanceSource {
   private _deployment: DeploymentConfig;
 
   constructor(config: {
-    subset?: 'lite' | 'verified' | 'full' | 'multimodal' | 'multilingual';
-    split?: 'dev' | 'test';
+    subset?: "lite" | "verified" | "full" | "multimodal" | "multilingual";
+    split?: "dev" | "test";
     pathOverride?: string;
     filter?: string;
     slice?: string;
@@ -303,21 +373,21 @@ export class SWEBenchInstances extends AbstractInstanceSource {
     deployment?: DeploymentConfig;
   }) {
     super();
-    this.subset = config.subset || 'lite';
-    this.split = config.split || 'dev';
+    this.subset = config.subset || "lite";
+    this.split = config.split || "dev";
     this.pathOverride = config.pathOverride;
-    this._filter = config.filter || '.*';
-    this._slice = config.slice || '';
+    this._filter = config.filter || ".*";
+    this._slice = config.slice || "";
     this._shuffle = config.shuffle || false;
     this.evaluate = config.evaluate || false;
     this._deployment = config.deployment || {
-      type: 'docker' as const,
-      image: 'python:3.11',
-      pythonStandaloneDir: '/root',
+      type: "docker" as const,
+      image: "python:3.11",
+      pythonStandaloneDir: "/root",
       volumes: {},
       environment: {},
       removeOnStop: true,
-      workDir: '/workspace',
+      workDir: "/workspace",
     };
   }
 
@@ -328,11 +398,11 @@ export class SWEBenchInstances extends AbstractInstanceSource {
 
     // Map subset to HuggingFace dataset path
     const datasetMap: Record<string, string> = {
-      lite: 'princeton-nlp/SWE-bench_Lite',
-      verified: 'princeton-nlp/SWE-bench_Verified',
-      full: 'princeton-nlp/SWE-bench',
-      multimodal: 'princeton-nlp/SWE-bench_Multimodal',
-      multilingual: 'princeton-nlp/SWE-bench_Multilingual',
+      lite: "princeton-nlp/SWE-bench_Lite",
+      verified: "princeton-nlp/SWE-bench_Verified",
+      full: "princeton-nlp/SWE-bench",
+      multimodal: "princeton-nlp/SWE-bench_Multimodal",
+      multilingual: "princeton-nlp/SWE-bench_Multilingual",
     };
 
     return datasetMap[this.subset] || datasetMap.lite;
@@ -341,7 +411,7 @@ export class SWEBenchInstances extends AbstractInstanceSource {
   getInstanceConfigs(): BatchInstance[] {
     // In a real implementation, this would load from HuggingFace
     // For now, return empty array
-    console.warn('SWE-bench loading not yet implemented');
+    console.warn("SWE-bench loading not yet implemented");
     console.warn(
       `Loading from ${this.getDatasetPath()} with filter=${this._filter}, slice=${this._slice}, shuffle=${this._shuffle}`,
     );
@@ -363,10 +433,12 @@ export class SWEBenchInstances extends AbstractInstanceSource {
 /**
  * Create instance source from config
  */
-export function createInstanceSource(config: BatchInstanceSourceConfig): AbstractInstanceSource {
-  if (config.type === 'file' || config.path) {
+export function createInstanceSource(
+  config: BatchInstanceSourceConfig,
+): AbstractInstanceSource {
+  if (config.type === "file" || config.path) {
     if (!config.path) {
-      throw new Error('path is required for file instance source');
+      throw new Error("path is required for file instance source");
     }
     return new InstancesFromFile({
       path: config.path,
@@ -375,7 +447,7 @@ export function createInstanceSource(config: BatchInstanceSourceConfig): Abstrac
       shuffle: config.shuffle,
       deployment: config.deployment,
     });
-  } else if (config.type === 'swe_bench') {
+  } else if (config.type === "swe_bench") {
     return new SWEBenchInstances(config);
   } else {
     throw new Error(`Unknown instance source type: ${config.type}`);

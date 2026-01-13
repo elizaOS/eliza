@@ -65,8 +65,8 @@ pip install -e ../../../plugins/plugin-trajectory-logger/python
 export OPENAI_API_KEY="..."
 
 # Optional: choose models (defaults are gpt-5 / gpt-5-mini)
-export OPENAI_SMALL_MODEL="gpt-4o-mini"
-export OPENAI_LARGE_MODEL="gpt-4o-mini"
+export OPENAI_SMALL_MODEL="gpt-5-mini"
+export OPENAI_LARGE_MODEL="gpt-5-mini"
 
 # Run full dataset with real LLM
 python -m elizaos_tau_bench --all --real-llm --trials 1
@@ -199,7 +199,7 @@ Results are saved to the output directory:
    Response Quality: 71.3%
 
 🏆 Leaderboard Comparison:
-   Closest Model: gpt-4o
+   Closest Model: gpt-5
    Difference: +8.5% better
 
 ✅ Tau-bench evaluation completed successfully!

@@ -80,8 +80,8 @@ PROVIDER_CONFIGS: dict[ModelProvider, ProviderConfig] = {
         api_key_env="OPENAI_API_KEY",
         base_url_env="OPENAI_BASE_URL",
         default_base_url="https://api.openai.com/v1",
-        small_model="gpt-4o-mini",
-        large_model="gpt-4o",
+        small_model="gpt-5-mini",
+        large_model="gpt-5",
         priority=90,
     ),
     ModelProvider.ANTHROPIC: ProviderConfig(
@@ -177,16 +177,16 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
     ),
     
     # OpenAI models
-    "openai/gpt-4o": ModelConfig(
+    "openai/gpt-5": ModelConfig(
         provider=ModelProvider.OPENAI,
-        model_id="gpt-4o",
+        model_id="gpt-5",
         display_name="GPT-4o (OpenAI)",
         max_tokens=16384,
         cost_per_1k_tokens=0.005,
     ),
-    "openai/gpt-4o-mini": ModelConfig(
+    "openai/gpt-5-mini": ModelConfig(
         provider=ModelProvider.OPENAI,
-        model_id="gpt-4o-mini",
+        model_id="gpt-5-mini",
         display_name="GPT-4o Mini (OpenAI)",
         max_tokens=16384,
         cost_per_1k_tokens=0.00015,

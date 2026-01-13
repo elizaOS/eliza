@@ -3,9 +3,25 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use elizaos::{
-    Agent, Component, Entity, GetMemoriesParams, Log, Memory, MemoryMetadata, Metadata,
-    Relationship, Room, SearchMemoriesParams, Task,     World, UUID,
+    Agent, Component, Entity, GetMemoriesParams, Log, Memory, Metadata, Relationship, Room,
+    SearchMemoriesParams, Task, World, UUID,
 };
+
+#[cfg(not(feature = "wasm"))]
+use sqlx::PgPool;
+
+/// Strongly-typed handle to an adapter's underlying connection.
+///
+/// This replaces `Box<dyn Any>` to avoid runtime downcasting and to keep adapter
+/// connection access type-safe across targets.
+#[derive(Clone, Debug)]
+pub enum DatabaseConnection {
+    /// A PostgreSQL connection pool (native targets).
+    #[cfg(not(feature = "wasm"))]
+    Postgres(PgPool),
+    /// No underlying connection is exposed (e.g. WASM adapters).
+    None,
+}
 
 #[derive(Clone, Debug)]
 pub struct EmbeddingSearchResult {
@@ -92,7 +108,7 @@ pub trait DatabaseAdapter: Send + Sync {
 
     async fn close(&self) -> Result<()>;
 
-    async fn get_connection(&self) -> Result<Box<dyn std::any::Any + Send>>;
+    async fn get_connection(&self) -> Result<DatabaseConnection>;
 
     async fn get_agent(&self, agent_id: &UUID) -> Result<Option<Agent>>;
 

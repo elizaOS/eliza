@@ -44,6 +44,7 @@ dev = [
     "ruff>=0.14.11",
     "black>=24.1.0",
     "isort>=5.13.0",
+    "pip-tools>=7.4.1",
 ]
 
 [project.urls]

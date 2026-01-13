@@ -3,7 +3,7 @@
  * Converted from sweagent/agent/hooks/abstract.py
  */
 
-import { AgentInfo, StepOutput, Trajectory } from '../../types';
+import type { AgentInfo, StepOutput, Trajectory } from "../../types";
 
 // Forward declaration to avoid circular dependency
 export interface DefaultAgent {
@@ -83,7 +83,10 @@ export abstract class AbstractAgentHook {
   /**
    * Called before querying the model
    */
-  onModelQuery(_messages: Array<{ [key: string]: string }>, _agent: string): void {
+  onModelQuery(
+    _messages: Array<{ [key: string]: string }>,
+    _agent: string,
+  ): void {
     // Default implementation - do nothing
   }
 
@@ -193,7 +196,10 @@ export class CombinedAgentHook extends AbstractAgentHook {
     }
   }
 
-  onModelQuery(_messages: Array<{ [key: string]: string }>, _agent: string): void {
+  onModelQuery(
+    _messages: Array<{ [key: string]: string }>,
+    _agent: string,
+  ): void {
     for (const hook of this.hooks) {
       hook.onModelQuery(_messages, _agent);
     }

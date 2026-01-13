@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::error::{PluginError, PluginResult};
 use crate::prompts::IMAGE_GENERATION_TEMPLATE;
-use crate::runtime::{IAgentRuntime, ModelParams};
+use crate::bootstrap::runtime::{IAgentRuntime, ModelOutput, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
@@ -86,8 +86,8 @@ impl Action for GenerateImageAction {
             .map_err(|e| PluginError::ModelError(e.to_string()))?;
 
         let image_url = match image_response {
-            crate::runtime::ModelOutput::ImageUrl(url) => url,
-            crate::runtime::ModelOutput::Structured(v) => v
+            ModelOutput::ImageUrl(url) => url,
+            ModelOutput::Structured(v) => v
                 .get("url")
                 .or_else(|| v.get("data"))
                 .and_then(|u| u.as_str())

@@ -7,6 +7,22 @@ use elizaos::{
     SearchMemoriesParams, Task, World, UUID,
 };
 
+#[cfg(feature = "native")]
+use sqlx::PgPool;
+
+/// Strongly-typed handle to an adapter's underlying connection.
+///
+/// This replaces `Box<dyn Any>` to avoid runtime downcasting and to keep adapter
+/// connection access type-safe across targets.
+#[derive(Clone, Debug)]
+pub enum DatabaseConnection {
+    /// A PostgreSQL connection pool (native targets).
+    #[cfg(feature = "native")]
+    Postgres(PgPool),
+    /// No underlying connection is exposed (e.g. WASM adapters).
+    None,
+}
+
 #[derive(Clone, Debug)]
 pub struct EmbeddingSearchResult {
     pub id: elizaos::UUID,
@@ -92,7 +108,8 @@ pub struct ParticipantInfo {
 ///
 /// This trait defines all the methods that a database adapter must implement
 /// to work with elizaOS. It mirrors the TypeScript IDatabaseAdapter interface.
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait DatabaseAdapter: Send + Sync {
     // =========================================================================
     // Core Methods
@@ -113,7 +130,7 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn close(&self) -> Result<()>;
 
     /// Get the underlying database connection
-    async fn get_connection(&self) -> Result<Box<dyn std::any::Any + Send>>;
+    async fn get_connection(&self) -> Result<DatabaseConnection>;
 
     // =========================================================================
     // Agent Methods

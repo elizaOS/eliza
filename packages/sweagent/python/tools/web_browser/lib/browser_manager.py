@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import base64
 import contextlib
-from pathlib import Path
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from playwright.sync_api import Browser, Page, Playwright, sync_playwright
-
 from web_browser_config import ServerConfig
 
 config = ServerConfig()

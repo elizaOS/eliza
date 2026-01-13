@@ -22,12 +22,12 @@ impl BashAction {
             cwd: None,
         }
     }
-    
+
     pub fn with_timeout(mut self, timeout: u64) -> Self {
         self.timeout = Some(timeout);
         self
     }
-    
+
     pub fn with_cwd(mut self, cwd: impl Into<String>) -> Self {
         self.cwd = Some(cwd.into());
         self
@@ -50,7 +50,7 @@ impl BashActionResult {
             timed_out: false,
         }
     }
-    
+
     pub fn failure(output: impl Into<String>, exit_code: i32) -> Self {
         Self {
             output: output.into(),
@@ -58,7 +58,7 @@ impl BashActionResult {
             timed_out: false,
         }
     }
-    
+
     pub fn timeout(output: impl Into<String>) -> Self {
         Self {
             output: output.into(),
@@ -93,7 +93,7 @@ impl Command {
             args: None,
         }
     }
-    
+
     pub fn with_args(mut self, args: Vec<String>) -> Self {
         self.args = Some(args);
         self
@@ -144,22 +144,22 @@ pub struct UploadRequest {
 pub trait Runtime: Send + Sync {
     /// Execute a bash command
     async fn execute_bash(&self, action: BashAction) -> Result<BashActionResult>;
-    
+
     /// Interrupt the current bash command
     async fn interrupt_bash(&self) -> Result<()>;
-    
+
     /// Read a file
     async fn read_file(&self, path: &str) -> Result<String>;
-    
+
     /// Write a file
     async fn write_file(&self, path: &str, content: &str) -> Result<()>;
-    
+
     /// Upload a file to the runtime
     async fn upload_file(&self, local_path: &str, remote_path: &str) -> Result<()>;
-    
+
     /// Get current working directory
     fn get_cwd(&self) -> Option<String>;
-    
+
     /// Check if runtime is alive
     fn is_alive(&self) -> bool;
 }
@@ -183,17 +183,17 @@ impl LocalRuntime {
 impl Runtime for LocalRuntime {
     async fn execute_bash(&self, action: BashAction) -> Result<BashActionResult> {
         use std::process::Command;
-        
+
         let output = Command::new("sh")
             .arg("-c")
             .arg(&action.command)
             .current_dir(action.cwd.as_ref().unwrap_or(&self.cwd))
             .output()
             .map_err(|e| SWEAgentError::RuntimeError(e.to_string()))?;
-        
+
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        
+
         Ok(BashActionResult {
             output: if stderr.is_empty() {
                 stdout
@@ -204,30 +204,30 @@ impl Runtime for LocalRuntime {
             timed_out: false,
         })
     }
-    
+
     async fn interrupt_bash(&self) -> Result<()> {
         // Not applicable for local runtime
         Ok(())
     }
-    
+
     async fn read_file(&self, path: &str) -> Result<String> {
         std::fs::read_to_string(path).map_err(|e| SWEAgentError::IoError(e.to_string()))
     }
-    
+
     async fn write_file(&self, path: &str, content: &str) -> Result<()> {
         std::fs::write(path, content).map_err(|e| SWEAgentError::IoError(e.to_string()))
     }
-    
+
     async fn upload_file(&self, local_path: &str, remote_path: &str) -> Result<()> {
         std::fs::copy(local_path, remote_path)
             .map(|_| ())
             .map_err(|e| SWEAgentError::IoError(e.to_string()))
     }
-    
+
     fn get_cwd(&self) -> Option<String> {
         Some(self.cwd.clone())
     }
-    
+
     fn is_alive(&self) -> bool {
         self.alive
     }

@@ -9,12 +9,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Clouds, Ground, Poop, Stars } from "./components/GameElements";
 import { PetSprite } from "./components/PetSprite";
 import {
-  executeAction,
-  getGameState,
-  resetGame,
-  setGameState,
-  updateGame,
-} from "./game/plugin";
+  type ElizagotchiAgentLogEntry,
+  sendElizagotchiCommand,
+  subscribeElizagotchiAgentLog,
+  subscribeElizagotchiState,
+} from "./game/agent";
 import type { Action, AnimationType, PetState } from "./game/types";
 import "./App.css";
 
@@ -70,34 +69,78 @@ const ActionBtn: React.FC<ActionBtnProps> = ({
 // ============================================================================
 
 function App() {
-  const [petState, setPetState] = useState<PetState>(getGameState);
+  const [petState, setPetState] = useState<PetState | null>(null);
   const [animation, setAnimation] = useState<AnimationType>("idle");
   const [showSettings, setShowSettings] = useState(false);
   const [message, setMessage] = useState("");
   const [importError, setImportError] = useState("");
-  const previousStage = useRef(petState.stage);
+  const [agentLogEnabled, setAgentLogEnabled] = useState(false);
+  const [agentLog, setAgentLog] = useState<ElizagotchiAgentLogEntry[]>([]);
+  const previousStage = useRef<PetState["stage"] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const agentLogEnabledRef = useRef(agentLogEnabled);
 
-  // Game tick
   useEffect(() => {
-    const interval = setInterval(() => {
-      const newState = updateGame();
+    agentLogEnabledRef.current = agentLogEnabled;
+  }, [agentLogEnabled]);
 
-      if (newState.stage !== previousStage.current) {
-        previousStage.current = newState.stage;
-        if (newState.stage !== "dead") {
-          setAnimation("evolving");
-          setMessage(`✨ Evolved to ${newState.stage}!`);
-          setTimeout(() => setAnimation("happy"), 2000);
-        } else {
-          setMessage(newState.causeOfDeath || "Passed away...");
+  // Agent-driven state subscription (pet state lives inside runtime)
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
+
+    (async () => {
+      unsubscribe = await subscribeElizagotchiState((payload) => {
+        if (cancelled) return;
+        const newState = payload.petState;
+
+        if (
+          previousStage.current !== null &&
+          newState.stage !== previousStage.current
+        ) {
+          previousStage.current = newState.stage;
+          if (newState.stage !== "dead") {
+            setAnimation("evolving");
+            setMessage(`✨ Evolved to ${newState.stage}!`);
+            setTimeout(() => setAnimation("happy"), 2000);
+          } else {
+            setMessage(newState.causeOfDeath || "Passed away...");
+          }
         }
-      }
 
-      setPetState(newState);
-    }, 1000);
+        if (previousStage.current === null) {
+          previousStage.current = newState.stage;
+        }
+        setPetState(newState);
+      });
 
-    return () => clearInterval(interval);
+      // Ensure we have an immediate snapshot even if the first tick emitted before subscribing.
+      await sendElizagotchiCommand("__tick__");
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  // Optional: show internal eliza action execution as a dev overlay
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
+
+    (async () => {
+      unsubscribe = await subscribeElizagotchiAgentLog((entry) => {
+        if (cancelled) return;
+        if (!agentLogEnabledRef.current) return;
+        setAgentLog((prev) => [entry, ...prev].slice(0, 60));
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
 
   // Clear message after delay
@@ -108,69 +151,70 @@ function App() {
     }
   }, [message]);
 
-  const handleAction = useCallback((action: Action) => {
-    const result = executeAction(action);
-    setPetState(result.state);
+  const handleAction = useCallback(async (action: Action) => {
+    const event = await sendElizagotchiCommand(action);
 
-    if (result.success) {
-      setMessage(`${result.message.split("!")[0]}!`);
+    // Prefer agent-specified animation, fallback to local mapping
+    const nextAnimation =
+      event && typeof event.animation === "string"
+        ? (event.animation as AnimationType)
+        : action === "feed"
+          ? "eating"
+          : action === "play"
+            ? "playing"
+            : action === "clean"
+              ? "cleaning"
+              : action === "sleep"
+                ? "sleeping"
+                : action === "medicine"
+                  ? "happy"
+                  : "idle";
 
-      switch (action) {
-        case "feed":
-          setAnimation("eating");
-          break;
-        case "play":
-          setAnimation("playing");
-          break;
-        case "clean":
-          setAnimation("cleaning");
-          break;
-        case "sleep":
-          setAnimation("sleeping");
-          break;
-        case "medicine":
-          setAnimation("happy");
-          break;
-        default:
-          setAnimation("idle");
-      }
+    setAnimation(nextAnimation);
 
-      if (action !== "sleep" && action !== "light_toggle") {
-        setTimeout(() => setAnimation("idle"), 2000);
-      }
-    } else {
-      setMessage(result.message);
-      setAnimation("refusing");
-      setTimeout(() => setAnimation("idle"), 1000);
+    const text = event?.text;
+    if (typeof text === "string" && text.trim() !== "") {
+      // Keep the toast short for UI; game engine messages often end with emoji.
+      setMessage(text.split("\n")[0]);
+    }
+
+    if (action !== "sleep" && action !== "light_toggle") {
+      setTimeout(() => setAnimation("idle"), 2000);
     }
   }, []);
 
   const handleReset = useCallback(() => {
-    const name = prompt("Name your pet:", "Elizagotchi") || "Elizagotchi";
-    const newState = resetGame(name);
-    setPetState(newState);
-    previousStage.current = "egg";
-    setAnimation("idle");
-    setMessage(`🥚 ${name} appeared!`);
-    setShowSettings(false);
+    (async () => {
+      const name = prompt("Name your pet:", "Elizagotchi") || "Elizagotchi";
+      await sendElizagotchiCommand(`__reset__:${encodeURIComponent(name)}`);
+      previousStage.current = "egg";
+      setAnimation("idle");
+      setMessage(`🥚 ${name} appeared!`);
+      setShowSettings(false);
+    })();
   }, []);
 
   // Export pet data
   const handleExport = useCallback(() => {
-    const data = {
-      version: 1,
-      pet: petState,
-      exportedAt: Date.now(),
-    };
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${petState.name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setMessage("📦 Exported!");
+    (async () => {
+      if (!petState) return;
+      const event = await sendElizagotchiCommand("__export__");
+      const saveData = event?.saveData;
+      if (!saveData) {
+        setMessage("Export failed");
+        return;
+      }
+
+      const json = JSON.stringify(saveData, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${petState.name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage("📦 Exported!");
+    })();
   }, [petState]);
 
   // Import pet data
@@ -185,29 +229,25 @@ function App() {
 
       const reader = new FileReader();
       reader.onload = (event) => {
-        try {
-          const json = event.target?.result as string;
-          const data = JSON.parse(json);
-
-          if (!data.pet || !data.pet.name || !data.pet.stage) {
+        void (async () => {
+          const raw = event.target?.result;
+          if (typeof raw !== "string") {
             throw new Error("Invalid save file");
           }
 
-          // Restore timestamps relative to now
-          const pet: PetState = {
-            ...data.pet,
-            lastUpdate: Date.now(),
-          };
-
-          setGameState(pet);
-          setPetState(pet);
-          previousStage.current = pet.stage;
-          setMessage(`📥 Loaded ${pet.name}!`);
-          setImportError("");
-          setShowSettings(false);
-        } catch (_err) {
-          setImportError("Invalid save file");
-        }
+          // Route through agent (state is stored inside runtime)
+          const encoded = encodeURIComponent(raw);
+          const result = await sendElizagotchiCommand(`__import__:${encoded}`);
+          const loaded = result?.petState;
+          if (loaded) {
+            previousStage.current = loaded.stage;
+            setMessage(`📥 Loaded ${loaded.name}!`);
+            setImportError("");
+            setShowSettings(false);
+          } else {
+            setImportError("Invalid save file");
+          }
+        })().catch(() => setImportError("Invalid save file"));
       };
       reader.readAsText(file);
 
@@ -217,12 +257,63 @@ function App() {
     [],
   );
 
+  if (!petState) {
+    return (
+      <div className="game day">
+        <div className="toast">Initializing Elizagotchi agent…</div>
+      </div>
+    );
+  }
+
   const isNight = !petState.lightsOn;
   const isDead = petState.stage === "dead";
   const isEgg = petState.stage === "egg";
 
   return (
     <div className={`game ${isNight ? "night" : "day"}`}>
+      {/* Agent log overlay (enable/disable in Settings) */}
+      {agentLogEnabled && (
+        <div className="agent-log">
+          <div className="agent-log-header">
+            <div className="agent-log-title">Agent log</div>
+            <div className="agent-log-actions">
+              <button
+                className="agent-log-btn"
+                onClick={() => setAgentLog([])}
+                type="button"
+              >
+                Clear
+              </button>
+              <button
+                className="agent-log-btn"
+                onClick={() => setAgentLogEnabled(false)}
+                type="button"
+              >
+                Hide
+              </button>
+            </div>
+          </div>
+          <div className="agent-log-list" role="log" aria-live="polite">
+            {agentLog.length === 0 ? (
+              <div className="agent-log-empty">No actions yet.</div>
+            ) : (
+              agentLog.map((e) => (
+                <div key={e.id} className="agent-log-entry">
+                  <div className="agent-log-meta">
+                    <span className="agent-log-kind">{e.kind}</span>
+                    <span className="agent-log-action">{e.action}</span>
+                    {e.status && (
+                      <span className="agent-log-status">{e.status}</span>
+                    )}
+                  </div>
+                  {e.text && <div className="agent-log-text">{e.text}</div>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Hidden file input for import */}
       <input
         ref={fileInputRef}
@@ -359,6 +450,26 @@ function App() {
               </button>
               {importError && (
                 <div className="settings-error">{importError}</div>
+              )}
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title">Developer</div>
+              <button
+                className="settings-action"
+                onClick={() => setAgentLogEnabled((v) => !v)}
+                type="button"
+              >
+                {agentLogEnabled ? "🧠 Agent log: On" : "🧠 Agent log: Off"}
+              </button>
+              {agentLogEnabled && (
+                <button
+                  className="settings-action"
+                  onClick={() => setAgentLog([])}
+                  type="button"
+                >
+                  🧹 Clear Agent Log
+                </button>
               )}
             </div>
 

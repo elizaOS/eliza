@@ -9,7 +9,7 @@
 export interface BashAction {
   command: string;
   timeout?: number;
-  check?: 'silent' | 'ignore';
+  check?: "silent" | "ignore";
 }
 
 /**
@@ -24,7 +24,7 @@ export interface BashActionResult {
  * Interrupt action for stopping running commands
  */
 export interface BashInterruptAction {
-  type: 'interrupt';
+  type: "interrupt";
 }
 
 /**
@@ -93,7 +93,9 @@ export interface UploadRequest {
  */
 export abstract class AbstractRuntime {
   abstract createSession(request: CreateBashSessionRequest): Promise<void>;
-  abstract runInSession(action: BashAction | BashInterruptAction): Promise<BashActionResult>;
+  abstract runInSession(
+    action: BashAction | BashInterruptAction,
+  ): Promise<BashActionResult>;
   abstract execute(command: Command): Promise<CommandResult>;
   abstract readFile(request: ReadFileRequest): Promise<ReadFileResponse>;
   abstract writeFile(request: WriteFileRequest): Promise<void>;

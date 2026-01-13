@@ -5,7 +5,7 @@ An HTTP server that exposes an elizaOS agent for agent-to-agent communication us
 ## Requirements
 
 - Python 3.10+
-- OpenAI API key
+- Optional: OpenAI API key (enables OpenAI-backed responses)
 
 ## Setup
 
@@ -17,7 +17,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Set up environment
+# Optional: enable OpenAI-backed responses
 export OPENAI_API_KEY=your-api-key
 ```
 
@@ -33,7 +33,7 @@ The server runs on `http://localhost:3000` by default.
 ## Testing
 
 ```bash
-python test_client.py
+python test_runner.py
 ```
 
 ## API Endpoints
@@ -77,5 +77,5 @@ Stream a response from the agent (Server-Sent Events).
 ## Configuration
 
 - `PORT` - Server port (default: 3000)
-- `OPENAI_API_KEY` - OpenAI API key (required)
+- `OPENAI_API_KEY` - OpenAI API key (optional)
 - `OPENAI_BASE_URL` - Custom OpenAI endpoint

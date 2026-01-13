@@ -3,13 +3,13 @@
  * Converted from sweagent/environment/hooks/abstract.py
  */
 
-import { Repo, RepoConfig } from '../repo';
+import type { Repo, RepoConfig } from "../repo";
 
 // Environment interface for hooks
-interface EnvironmentInstance {
-  deployment?: unknown;
+export interface EnvironmentInstance {
+  deployment?: object;
   repo?: Repo | null;
-  [key: string]: unknown;
+  [key: string]: string | number | boolean | null | object | undefined;
 }
 
 /**
@@ -74,7 +74,7 @@ export class CombinedEnvHooks extends EnvHook {
       try {
         hook.onInit(env);
       } catch (error) {
-        console.error('Hook error in onInit:', error);
+        console.error("Hook error in onInit:", error);
         // Continue with other hooks
       }
     }
@@ -85,7 +85,7 @@ export class CombinedEnvHooks extends EnvHook {
       try {
         hook.onCopyRepoStarted(repo);
       } catch (error) {
-        console.error('Hook error in onCopyRepoStarted:', error);
+        console.error("Hook error in onCopyRepoStarted:", error);
         // Continue with other hooks
       }
     }
@@ -96,7 +96,7 @@ export class CombinedEnvHooks extends EnvHook {
       try {
         hook.onStartDeployment();
       } catch (error) {
-        console.error('Hook error in onStartDeployment:', error);
+        console.error("Hook error in onStartDeployment:", error);
         // Continue with other hooks
       }
     }
@@ -107,7 +107,7 @@ export class CombinedEnvHooks extends EnvHook {
       try {
         hook.onInstallEnvStarted();
       } catch (error) {
-        console.error('Hook error in onInstallEnvStarted:', error);
+        console.error("Hook error in onInstallEnvStarted:", error);
         // Continue with other hooks
       }
     }
@@ -118,7 +118,7 @@ export class CombinedEnvHooks extends EnvHook {
       try {
         hook.onClose();
       } catch (error) {
-        console.error('Hook error in onClose:', error);
+        console.error("Hook error in onClose:", error);
         // Continue with other hooks
       }
     }
@@ -129,7 +129,7 @@ export class CombinedEnvHooks extends EnvHook {
       try {
         hook.onEnvironmentStartup();
       } catch (error) {
-        console.error('Hook error in onEnvironmentStartup:', error);
+        console.error("Hook error in onEnvironmentStartup:", error);
         // Continue with other hooks
       }
     }

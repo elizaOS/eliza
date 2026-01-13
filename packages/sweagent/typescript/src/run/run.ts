@@ -3,16 +3,16 @@
  * Converted from sweagent/run/run.py
  */
 
-import { Command } from 'commander';
-import { runFromConfig as runSingleFromConfig } from './run-single';
-import { runBatchFromConfig } from './run-batch';
-import { runReplayFromConfig, RunReplayConfig } from './run-replay';
-import { getLogger } from '../utils/log';
-import { loadFile } from '../utils/files';
-import { RunSingleConfig, RunBatchConfig } from './types';
-import { TextProblemStatement } from '../agent/problem-statement';
+import { Command } from "commander";
+import { TextProblemStatement } from "../agent/problem-statement";
+import { loadFile } from "../utils/files";
+import { getLogger } from "../utils/log";
+import { runBatchFromConfig } from "./run-batch";
+import { type RunReplayConfig, runReplayFromConfig } from "./run-replay";
+import { runFromConfig as runSingleFromConfig } from "./run-single";
+import type { RunBatchConfig, RunSingleConfig } from "./types";
 
-const logger = getLogger('run', '🏃');
+const logger = getLogger("run", "🏃");
 
 /**
  * Main run function - determines which run mode to use
@@ -20,19 +20,22 @@ const logger = getLogger('run', '🏃');
 export async function run(args: string[]): Promise<void> {
   const program = new Command();
 
-  program.name('swe-agent').description('SWE-agent - AI Software Engineering Agent').version('1.0.0');
+  program
+    .name("swe-agent")
+    .description("SWE-agent - AI Software Engineering Agent")
+    .version("1.0.0");
 
   // Single run command
   program
-    .command('single')
-    .description('Run agent on a single instance')
-    .option('-c, --config <path>', 'Configuration file path')
-    .option('-e, --env <json>', 'Environment configuration (JSON)')
-    .option('-a, --agent <json>', 'Agent configuration (JSON)')
-    .option('-p, --problem <text>', 'Problem statement text')
-    .option('-o, --output <dir>', 'Output directory', 'DEFAULT')
+    .command("single")
+    .description("Run agent on a single instance")
+    .option("-c, --config <path>", "Configuration file path")
+    .option("-e, --env <json>", "Environment configuration (JSON)")
+    .option("-a, --agent <json>", "Agent configuration (JSON)")
+    .option("-p, --problem <text>", "Problem statement text")
+    .option("-o, --output <dir>", "Output directory", "DEFAULT")
     .action(async (options) => {
-      logger.info('Running single instance');
+      logger.info("Running single instance");
 
       // Load config
       let config: Partial<RunSingleConfig> = {};
@@ -61,16 +64,16 @@ export async function run(args: string[]): Promise<void> {
 
   // Batch run command
   program
-    .command('batch')
-    .description('Run agent on multiple instances')
-    .option('-c, --config <path>', 'Configuration file path')
-    .option('-i, --instances <path>', 'Instances file path')
-    .option('-a, --agent <json>', 'Agent configuration (JSON)')
-    .option('-o, --output <dir>', 'Output directory', 'DEFAULT')
-    .option('-w, --workers <n>', 'Number of parallel workers', '1')
-    .option('--redo', 'Redo existing instances')
+    .command("batch")
+    .description("Run agent on multiple instances")
+    .option("-c, --config <path>", "Configuration file path")
+    .option("-i, --instances <path>", "Instances file path")
+    .option("-a, --agent <json>", "Agent configuration (JSON)")
+    .option("-o, --output <dir>", "Output directory", "DEFAULT")
+    .option("-w, --workers <n>", "Number of parallel workers", "1")
+    .option("--redo", "Redo existing instances")
     .action(async (options) => {
-      logger.info('Running batch');
+      logger.info("Running batch");
 
       // Load config
       let config: Partial<RunBatchConfig> = {};
@@ -81,7 +84,7 @@ export async function run(args: string[]): Promise<void> {
       // Override with command line options
       if (options.instances) {
         config.instances = {
-          type: 'file',
+          type: "file",
           path: options.instances,
         };
       }
@@ -92,7 +95,7 @@ export async function run(args: string[]): Promise<void> {
         config.outputDir = options.output;
       }
       if (options.workers) {
-        config.numWorkers = parseInt(options.workers);
+        config.numWorkers = parseInt(options.workers, 10);
       }
       if (options.redo) {
         config.redoExisting = true;
@@ -103,13 +106,13 @@ export async function run(args: string[]): Promise<void> {
 
   // Replay command
   program
-    .command('replay')
-    .description('Replay an agent trajectory')
-    .argument('<traj-path>', 'Path to trajectory file')
-    .option('-o, --output <dir>', 'Output directory', 'DEFAULT')
-    .option('-d, --deployment <json>', 'Deployment configuration (JSON)')
+    .command("replay")
+    .description("Replay an agent trajectory")
+    .argument("<traj-path>", "Path to trajectory file")
+    .option("-o, --output <dir>", "Output directory", "DEFAULT")
+    .option("-d, --deployment <json>", "Deployment configuration (JSON)")
     .action(async (trajPath, options) => {
-      logger.info('Replaying trajectory');
+      logger.info("Replaying trajectory");
 
       const config: Partial<RunReplayConfig> = {
         trajPath,
@@ -132,7 +135,7 @@ export async function run(args: string[]): Promise<void> {
 // If running as main module
 if (require.main === module) {
   run(process.argv).catch((error) => {
-    logger.error('Fatal error:', error);
+    logger.error("Fatal error:", error);
     process.exit(1);
   });
 }

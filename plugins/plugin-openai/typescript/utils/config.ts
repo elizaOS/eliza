@@ -1,5 +1,14 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+
+function getEnvValue(key: string): string | undefined {
+  if (typeof process === "undefined" || !process.env) {
+    return undefined;
+  }
+  const value = process.env[key];
+  return value === undefined ? undefined : String(value);
+}
+
 export function getSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -9,7 +18,7 @@ export function getSetting(
   if (value !== undefined && value !== null) {
     return String(value);
   }
-  return process.env[key] ?? defaultValue;
+  return getEnvValue(key) ?? defaultValue;
 }
 export function getRequiredSetting(
   runtime: IAgentRuntime,
@@ -81,7 +90,10 @@ export function getAuthHeader(
   runtime: IAgentRuntime,
   forEmbedding = false
 ): Record<string, string> {
-  if (isBrowser()) {
+  // By default this plugin does NOT send auth headers in the browser. This is safer because
+  // frontend builds would otherwise expose secrets. For local demos, you can explicitly
+  // opt-in to sending the Authorization header by setting OPENAI_ALLOW_BROWSER_API_KEY=true.
+  if (isBrowser() && !getBooleanSetting(runtime, "OPENAI_ALLOW_BROWSER_API_KEY", false)) {
     return {};
   }
   const key = forEmbedding ? getEmbeddingApiKey(runtime) : getApiKey(runtime);

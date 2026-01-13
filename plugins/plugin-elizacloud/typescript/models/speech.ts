@@ -17,7 +17,7 @@ async function fetchTextToSpeech(
   const defaultModel = getSetting(
     runtime,
     "ELIZAOS_CLOUD_TTS_MODEL",
-    "gpt-4o-mini-tts",
+    "gpt-5-mini-tts",
   );
   const defaultVoice = getSetting(runtime, "ELIZAOS_CLOUD_TTS_VOICE", "nova");
   const defaultInstructions = getSetting(
@@ -85,7 +85,7 @@ export async function handleTextToSpeech(
     (getSetting(
       runtime,
       "ELIZAOS_CLOUD_TTS_MODEL",
-      "gpt-4o-mini-tts",
+      "gpt-5-mini-tts",
     ) as string);
   logger.log(`[ELIZAOS_CLOUD] Using TEXT_TO_SPEECH model: ${resolvedModel}`);
   try {

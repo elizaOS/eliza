@@ -1,0 +1,14 @@
+# elizaOS Python SDK
+elizaos>=0.1.0
+
+# Plugins
+elizaos-plugin-openai>=1.0.0
+elizaos-plugin-sql>=0.1.0
+elizaos-plugin-farcaster>=1.0.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Testing (optional)
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

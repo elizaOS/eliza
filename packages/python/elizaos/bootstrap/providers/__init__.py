@@ -4,6 +4,7 @@ from .agent_settings import agent_settings_provider
 from .attachments import attachments_provider
 from .capabilities import capabilities_provider
 from .character import character_provider
+from .context_bench import context_bench_provider
 from .choice import choice_provider
 from .contacts import contacts_provider
 from .current_time import current_time_provider
@@ -27,6 +28,7 @@ __all__ = [
     "attachments_provider",
     "capabilities_provider",
     "character_provider",
+    "context_bench_provider",
     "choice_provider",
     "contacts_provider",
     "current_time_provider",
@@ -53,6 +55,7 @@ BASIC_PROVIDERS = [
     attachments_provider,
     capabilities_provider,
     character_provider,
+    context_bench_provider,
     entities_provider,
     evaluators_provider,
     providers_list_provider,

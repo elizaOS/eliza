@@ -7,12 +7,16 @@ import sys
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from swerex.deployment.config import DockerDeploymentConfig, DummyDeploymentConfig
+from swerex.runtime.abstract import ReadFileRequest, WriteFileRequest
 
+from sweagent.agent import problem_statement as ps
 from sweagent.environment.repo import LocalRepoConfig
 from sweagent.environment.swe_env import EnvironmentConfig, SWEEnv
+from sweagent.utils import github as gh
 
 # this is a hack and should be removed when we have a better solution
 _this_dir = Path(__file__).resolve().parent
@@ -20,6 +24,38 @@ root_dir = _this_dir.parent
 package_dir = root_dir / "sweagent"
 sys.path.insert(0, str(root_dir))
 sys.path.insert(1, str(package_dir))
+
+
+@pytest.fixture(autouse=True)
+def _disable_github_api_calls(monkeypatch: pytest.MonkeyPatch):
+    """Prevent tests from making live GitHub API requests.
+
+    Several code paths can fetch issue text via GitHub's REST API when a problem
+    statement is provided as a GitHub URL. That makes the suite flaky due to
+    rate limits and missing credentials. For unit/integration tests we use a
+    deterministic placeholder instead.
+    """
+
+    def fake_get_problem_statement_from_github_issue(
+        owner: str, repo: str, issue_number: str, *, token: str | None = ""
+    ) -> str:
+        if (owner.lower(), repo.lower(), issue_number) == ("swe-agent", "test-repo", "1"):
+            return "Test issue (offline fixture)\n"
+        msg = f"Unexpected GitHub issue fetch in tests: {owner}/{repo}#{issue_number}"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(
+        gh,
+        "_get_problem_statement_from_github_issue",
+        fake_get_problem_statement_from_github_issue,
+    )
+    # Also patch the symbol imported into problem_statement.py (it imports the
+    # function directly, so patching the module attribute alone isn't enough).
+    monkeypatch.setattr(
+        ps,
+        "_get_problem_statement_from_github_issue",
+        fake_get_problem_statement_from_github_issue,
+    )
 
 
 @pytest.fixture
@@ -98,9 +134,26 @@ def dummy_env_args() -> EnvironmentConfig:
 
 
 @pytest.fixture
-def dummy_env(dummy_env_args) -> Generator[SWEEnv, None, None]:
+def dummy_env(dummy_env_args, monkeypatch: pytest.MonkeyPatch) -> Generator[SWEEnv, None, None]:
     env = SWEEnv.from_config(dummy_env_args)
     env.start()
+
+    # Provide an in-memory filesystem for DummyDeployment so tests that rely on
+    # `read_file` / `write_file` can run deterministically without Docker.
+    files: dict[str, str] = {}
+
+    async def _read_file(request: ReadFileRequest):
+        content = files.get(request.path)
+        if content is None:
+            raise FileNotFoundError(request.path)
+        return SimpleNamespace(content=content)
+
+    async def _write_file(request: WriteFileRequest):
+        files[request.path] = request.content
+
+    monkeypatch.setattr(env.deployment.runtime, "read_file", _read_file)
+    monkeypatch.setattr(env.deployment.runtime, "write_file", _write_file)
+
     yield env
     env.close()
 

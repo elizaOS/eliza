@@ -9,8 +9,22 @@ const DEFAULT_BASE_URL = "https://api.anthropic.com/v1";
 export function isBrowser(): boolean {
   return (
     typeof globalThis !== "undefined" &&
-    typeof (globalThis as { document?: unknown }).document !== "undefined"
+    typeof (globalThis as { document?: Document }).document !== "undefined"
   );
+}
+
+function getEnvValue(key: string): string | undefined {
+  // In real browsers, `process` is not defined. `typeof process` is safe.
+  if (typeof process === "undefined") {
+    return undefined;
+  }
+
+  const envValue = process.env[key];
+  if (typeof envValue === "string" && envValue.length > 0) {
+    return envValue;
+  }
+
+  return undefined;
 }
 
 function getRawSetting(runtime: IAgentRuntime, key: string): string | undefined {
@@ -18,11 +32,8 @@ function getRawSetting(runtime: IAgentRuntime, key: string): string | undefined 
   if (typeof runtimeValue === "string" && runtimeValue.length > 0) {
     return runtimeValue;
   }
-  const envValue = process.env[key];
-  if (typeof envValue === "string" && envValue.length > 0) {
-    return envValue;
-  }
-  return undefined;
+
+  return getEnvValue(key);
 }
 
 export function getApiKey(runtime: IAgentRuntime): ValidatedApiKey {

@@ -2,16 +2,16 @@
  * Calculate statistics from .traj files
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
-import { getLogger } from '../utils/log';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { getLogger } from "../utils/log";
 
-const logger = getLogger('quick-stats', '📊');
+const logger = getLogger("quick-stats", "📊");
 
 /**
  * Calculate statistics from .traj files
  */
-export async function quickStats(directory: string = '.'): Promise<string> {
+export async function quickStats(directory: string = "."): Promise<string> {
   const dir = path.resolve(directory);
 
   // Find all .traj files
@@ -19,7 +19,7 @@ export async function quickStats(directory: string = '.'): Promise<string> {
 
   if (trajFiles.length === 0) {
     logger.warn(`No .traj files found in ${dir}`);
-    return 'No .traj files found.';
+    return "No .traj files found.";
   }
 
   // Extract api_calls from each file
@@ -28,7 +28,7 @@ export async function quickStats(directory: string = '.'): Promise<string> {
 
   for (const filePath of trajFiles) {
     try {
-      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
 
       // Extract the api_calls value
       if (data.info?.model_stats?.api_calls !== undefined) {
@@ -40,7 +40,7 @@ export async function quickStats(directory: string = '.'): Promise<string> {
         if (!filesByExitStatus.has(status)) {
           filesByExitStatus.set(status, []);
         }
-        filesByExitStatus.get(status)!.push(filePath);
+        filesByExitStatus.get(status)?.push(filePath);
       }
     } catch (error) {
       logger.error(`Error processing ${filePath}: ${error}`);
@@ -48,22 +48,25 @@ export async function quickStats(directory: string = '.'): Promise<string> {
   }
 
   // Sort exit statuses by count (highest to lowest)
-  const sortedStatuses = Array.from(filesByExitStatus.entries()).sort((a, b) => b[1].length - a[1].length);
+  const sortedStatuses = Array.from(filesByExitStatus.entries()).sort(
+    (a, b) => b[1].length - a[1].length,
+  );
 
   // If we have no exit statuses and no api_calls, return error
   if (sortedStatuses.length === 0 && apiCalls.length === 0) {
-    logger.warn('No valid api_calls data found in the .traj files');
-    return 'No valid api_calls data found in the .traj files.';
+    logger.warn("No valid api_calls data found in the .traj files");
+    return "No valid api_calls data found in the .traj files.";
   }
 
   // Log statistics
-  logger.info('Exit statuses:');
+  logger.info("Exit statuses:");
   for (const [status, files] of sortedStatuses) {
     logger.info(`${status}: ${files.length}`);
   }
 
   if (apiCalls.length > 0) {
-    const averageApiCalls = apiCalls.reduce((a, b) => a + b, 0) / apiCalls.length;
+    const averageApiCalls =
+      apiCalls.reduce((a, b) => a + b, 0) / apiCalls.length;
     logger.info(`Avg api calls: ${averageApiCalls}`);
   }
 
@@ -73,10 +76,10 @@ export async function quickStats(directory: string = '.'): Promise<string> {
     result.push(`\n## \`${status}\` - ${files.length} trajectories`);
     // Extract unique subdirectories instead of full paths
     const subdirs = new Set(files.map((file) => path.dirname(file)));
-    result.push(Array.from(subdirs).join(' '));
+    result.push(Array.from(subdirs).join(" "));
   }
 
-  return result.join('\n');
+  return result.join("\n");
 }
 
 /**
@@ -94,7 +97,7 @@ function findTrajFiles(directory: string): string[] {
 
       if (stat.isDirectory()) {
         walk(filePath);
-      } else if (file.endsWith('.traj')) {
+      } else if (file.endsWith(".traj")) {
         results.push(filePath);
       }
     }

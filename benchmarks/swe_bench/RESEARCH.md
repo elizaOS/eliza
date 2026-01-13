@@ -764,7 +764,7 @@ python -m benchmarks.swe_bench.cli \
   --max-instances 10 \
   --swebench-namespace ghcr.io/epoch-research \
   --timeout 1800 \
-  --model gpt-4o-mini
+  --model gpt-5-mini
 ```
 
 ### Verified Harness Validation (Gold Patches)
@@ -800,7 +800,7 @@ python -m benchmarks.swe_bench.cli \
   --max-instances 10 \
   --swebench-namespace ghcr.io/epoch-research \
   --timeout 1800 \
-  --model gpt-4o-mini
+  --model gpt-5-mini
 ```
 
 This produces `mode=agent` reports in `benchmark_results/swe-bench/`:

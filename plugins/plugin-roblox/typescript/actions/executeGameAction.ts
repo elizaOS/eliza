@@ -3,6 +3,7 @@ import {
   type ActionExample,
   type ActionResult,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -66,6 +67,23 @@ interface GameActionConfig {
 }
 
 const KNOWN_ACTIONS: GameActionConfig[] = [
+  {
+    name: "move_npc",
+    patterns: [
+      /(?:move|walk)\s+(?:the\s+)?(?:npc|bot|agent)?\s*(?:to|towards)\s+(?:the\s+)?(\w+)/i,
+      /(?:move|walk)\s+to\s+\(?(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\)?/i,
+    ],
+    extractParams: (match): Record<string, string | number> => {
+      if (match.length >= 4 && match[1] && match[2] && match[3]) {
+        return {
+          x: Number.parseFloat(match[1]),
+          y: Number.parseFloat(match[2]),
+          z: Number.parseFloat(match[3]),
+        };
+      }
+      return { waypoint: match[1] || "" };
+    },
+  },
   {
     name: "give_coins",
     patterns: [/give\s+(?:player\s*)?(\d+)\s+(\d+)\s+coins?/i],
@@ -141,7 +159,7 @@ const executeGameAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
-    _options: Record<string, never>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
     try {

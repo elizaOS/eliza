@@ -3,7 +3,7 @@
  * Converted from sweagent/utils/log.py
  */
 
-import pino from 'pino';
+import pino from "pino";
 
 // Thread name registry
 const threadNames = new Map<string, string>();
@@ -29,27 +29,27 @@ class SweAgentLogger implements AgentLogger {
   private emoji: string;
   private name: string;
 
-  constructor(name: string, emoji: string = '') {
+  constructor(name: string, emoji: string = "") {
     this.emoji = emoji;
     this.name = name;
 
     // Create pino logger with custom formatting
     const transportOptions =
-      process.env.NODE_ENV === 'test'
-        ? { target: 'pino/file', options: { destination: '/dev/null' } }
+      process.env.NODE_ENV === "test"
+        ? { target: "pino/file", options: { destination: "/dev/null" } }
         : {
-            target: 'pino-pretty',
+            target: "pino-pretty",
             options: {
               colorize: true,
-              translateTime: 'HH:MM:ss',
-              ignore: 'pid,hostname',
+              translateTime: "HH:MM:ss",
+              ignore: "pid,hostname",
               messageFormat: false,
             },
           };
 
     this.logger = pino({
       name: name,
-      level: process.env.LOG_LEVEL || 'debug',
+      level: process.env.LOG_LEVEL || "debug",
       transport: transportOptions,
       formatters: {
         level: (label: string) => {
@@ -60,9 +60,9 @@ class SweAgentLogger implements AgentLogger {
   }
 
   private formatMessage(message: string): string {
-    const prefix = this.emoji ? `${this.emoji} ` : '';
-    const threadName = threadNames.get(process.pid.toString()) || '';
-    const threadPrefix = threadName ? `[${threadName}] ` : '';
+    const prefix = this.emoji ? `${this.emoji} ` : "";
+    const threadName = threadNames.get(process.pid.toString()) || "";
+    const threadPrefix = threadName ? `[${threadName}] ` : "";
     return `${threadPrefix}(${this.name}): ${prefix}${message}`;
   }
 
@@ -90,7 +90,11 @@ class SweAgentLogger implements AgentLogger {
     this.warn(message, ...args);
   }
 
-  exception(message: string, error?: Error, includeStack: boolean = true): void {
+  exception(
+    message: string,
+    error?: Error,
+    includeStack: boolean = true,
+  ): void {
     const errorInfo = error
       ? {
           error: error.message,
@@ -110,24 +114,28 @@ const loggers = new Map<string, AgentLogger>();
  * @param emoji Optional emoji prefix for the logger
  * @returns AgentLogger instance
  */
-export function getLogger(name: string, emoji: string = ''): AgentLogger {
+export function getLogger(name: string, emoji: string = ""): AgentLogger {
   const key = `${name}-${emoji}`;
   if (!loggers.has(key)) {
     // Map specific logger names to emojis if not provided
     if (!emoji) {
       const emojiMap: Record<string, string> = {
-        agent: '🤖',
-        model: '🧠',
-        config: '🔧',
-        run: '🏃',
-        env: '🌍',
-        tools: '🔨',
-        hook: '🪝',
+        agent: "🤖",
+        model: "🧠",
+        config: "🔧",
+        run: "🏃",
+        env: "🌍",
+        tools: "🔨",
+        hook: "🪝",
       };
 
       // Check for exact match or partial match
       for (const [prefix, defaultEmoji] of Object.entries(emojiMap)) {
-        if (name === prefix || name.startsWith(`${prefix}-`) || name.includes(prefix)) {
+        if (
+          name === prefix ||
+          name.startsWith(`${prefix}-`) ||
+          name.includes(prefix)
+        ) {
           emoji = defaultEmoji;
           break;
         }
@@ -136,7 +144,11 @@ export function getLogger(name: string, emoji: string = ''): AgentLogger {
 
     loggers.set(key, new SweAgentLogger(name, emoji));
   }
-  return loggers.get(key)!;
+  const logger = loggers.get(key);
+  if (!logger) {
+    throw new Error(`Logger not found for ${key}`);
+  }
+  return logger;
 }
 
 /**
@@ -151,7 +163,7 @@ export function setThreadName(name: string): void {
  * Get current thread name
  */
 export function getThreadName(): string {
-  return threadNames.get(process.pid.toString()) || '';
+  return threadNames.get(process.pid.toString()) || "";
 }
 
 /**
@@ -206,24 +218,24 @@ export function setStreamHandlerLevels(level: string): void {
 /**
  * Convenience function to get the default logger
  */
-export function log(message: string, level: string = 'info'): void {
-  const logger = getLogger('default');
+export function log(message: string, level: string = "info"): void {
+  const logger = getLogger("default");
   switch (level.toLowerCase()) {
-    case 'debug':
+    case "debug":
       logger.debug(message);
       break;
-    case 'info':
+    case "info":
       logger.info(message);
       break;
-    case 'warn':
-    case 'warning':
+    case "warn":
+    case "warning":
       logger.warn(message);
       break;
-    case 'error':
+    case "error":
       logger.error(message);
       break;
-    case 'critical':
-    case 'fatal':
+    case "critical":
+    case "fatal":
       logger.critical(message);
       break;
     default:

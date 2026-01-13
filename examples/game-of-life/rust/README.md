@@ -1,43 +1,19 @@
-# Tic-Tac-Toe Demo - Rust Version
+# Agentic Game of Life - Rust Version
 
-A tic-tac-toe game demonstrating perfect play using minimax algorithm without any LLM.
+A minimal Rust demo that routes an **environment tick** through the **full elizaOS pipeline**:
 
-## Status
+- `runtime.message_service().handle_message(&runtime, &mut message, ...)`
 
-Coming soon! The Rust implementation will mirror the TypeScript version with:
+No LLM is used: a custom `TEXT_LARGE`/`TEXT_SMALL` model handler returns deterministic XML.
 
-- No character (anonymous agent)
-- Custom model handlers for TEXT_LARGE/TEXT_SMALL
-- Minimax algorithm for perfect play
-- Zero LLM calls
+## Running
 
-## Planned Structure
-
-```rust
-// Custom model handler - no LLM
-async fn tic_tac_toe_model_handler(
-    _runtime: &AgentRuntime,
-    params: serde_json::Value,
-) -> Result<String> {
-    let prompt = params["prompt"].as_str().unwrap_or("");
-    let board = parse_board_from_text(prompt)?;
-    let ai_player = detect_ai_player(prompt);
-    let optimal_move = minimax(&board, true, ai_player);
-    Ok(optimal_move.to_string())
-}
-
-// Plugin registration
-let plugin = Plugin {
-    name: "tic-tac-toe",
-    models: [(ModelType::TEXT_SMALL, tic_tac_toe_model_handler)].into(),
-    priority: 100,
-    ..Default::default()
-};
-
-// Anonymous agent
-let runtime = AgentRuntime::new(RuntimeOptions {
-    character: None,  // Uses Agent-N
-    plugins: vec![local_db_plugin, bootstrap_plugin, plugin],
-    ..Default::default()
-}).await?;
+```bash
+cargo run --manifest-path examples/game-of-life/rust/game-of-life/Cargo.toml
 ```
+
+## What to Look For
+
+- **Canonical entrypoint**: the demo calls `message_service().handle_message(...)` (no bypass).
+- **Rule-based output**: the model handler returns deterministic XML like `<actions>EAT</actions>` / `<actions>MOVE_TOWARD_FOOD</actions>` / `<actions>WANDER</actions>`.
+- **Full pipeline**: message is stored (if an adapter is present), state is composed, a model handler is invoked, XML is parsed, and selected actions execute via `process_selected_actions(...)`.

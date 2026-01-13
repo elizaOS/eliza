@@ -1,0 +1,20 @@
+[package]
+name = "elizaos-plugin-minecraft"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Minecraft automation plugin for ElizaOS (Mineflayer bridge client)"
+
+[dependencies]
+tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tokio-tungstenite = "0.26.1"
+futures-util = "0.3.31"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.135"
+url = "2.5.4"
+uuid = { version = "1.12.1", features = ["v4"] }
+tracing = "0.1.41"
+
+[dev-dependencies]
+tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "sync"] }
+

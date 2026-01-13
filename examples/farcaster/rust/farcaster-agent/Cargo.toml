@@ -1,0 +1,29 @@
+[package]
+name = "farcaster-agent"
+version = "0.1.0"
+edition = "2021"
+description = "Farcaster agent example using elizaOS with OpenAI"
+license = "MIT"
+
+[dependencies]
+# elizaOS SDK
+elizaos = { path = "../../../../packages/rust" }
+elizaos-plugin-sql = { path = "../../../../plugins/plugin-sql/rust" }
+elizaos-plugin-openai = { path = "../../../../plugins/plugin-openai/rust" }
+elizaos-plugin-farcaster = { path = "../../../../plugins/plugin-farcaster/rust", features = ["native"] }
+
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+
+# Utilities
+anyhow = "1.0"
+dotenvy = "0.15"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.10", features = ["v4"] }
+
+[dev-dependencies]
+tokio-test = "0.4"

@@ -69,6 +69,7 @@ class OrderType(str, Enum):
 
 
 class OrderStatus(str, Enum):
+    MATCHED = "MATCHED"
     PENDING = "PENDING"
     OPEN = "OPEN"
     FILLED = "FILLED"

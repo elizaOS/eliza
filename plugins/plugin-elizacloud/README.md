@@ -72,8 +72,8 @@ Get your API key from [https://www.elizacloud.ai/dashboard/api-keys](https://www
 | --------------------------------------------------- | ------------------------------------ | ---------------------------------- |
 | `api_key` / `ELIZAOS_CLOUD_API_KEY`                 | Your API key (format: `eliza_xxxxx`) | Required                           |
 | `base_url` / `ELIZAOS_CLOUD_BASE_URL`               | Base URL for API requests            | `https://www.elizacloud.ai/api/v1` |
-| `small_model` / `ELIZAOS_CLOUD_SMALL_MODEL`         | Small/fast model                     | `gpt-4o-mini`                      |
-| `large_model` / `ELIZAOS_CLOUD_LARGE_MODEL`         | Large/powerful model                 | `gpt-4o`                           |
+| `small_model` / `ELIZAOS_CLOUD_SMALL_MODEL`         | Small/fast model                     | `gpt-5-mini`                      |
+| `large_model` / `ELIZAOS_CLOUD_LARGE_MODEL`         | Large/powerful model                 | `gpt-5`                           |
 | `embedding_model` / `ELIZAOS_CLOUD_EMBEDDING_MODEL` | Embedding model                      | `text-embedding-3-small`           |
 | `embedding_dimensions`                              | Embedding vector size                | `1536`                             |
 

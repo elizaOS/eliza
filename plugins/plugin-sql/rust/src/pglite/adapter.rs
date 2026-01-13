@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 //! PGLite adapter implementation for elizaOS WASM environments
 
-#![cfg(feature = "wasm")]
+#![cfg(all(feature = "wasm", target_arch = "wasm32"))]
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -10,8 +10,8 @@ use wasm_bindgen::JsValue;
 
 use crate::base::*;
 use elizaos::{
-    Agent, Component, Entity, GetMemoriesParams, Log, Memory, Metadata, Relationship, Room,
-    SearchMemoriesParams, Task, TaskStatus, World, UUID,
+    Agent, Bio, ChannelType, Component, Entity, GetMemoriesParams, Log, Memory, Metadata,
+    Relationship, Room, SearchMemoriesParams, Task, TaskStatus, World, UUID,
 };
 
 use super::PgLiteManager;
@@ -21,6 +21,13 @@ pub struct PgLiteAdapter {
     manager: PgLiteManager,
     agent_id: String,
 }
+
+// In wasm32 we are single-threaded; JS values are safe to access within the same thread.
+// We mark the wrapper as Send/Sync so it can satisfy the `DatabaseAdapter: Send + Sync` bound.
+#[cfg(target_arch = "wasm32")]
+unsafe impl Send for PgLiteAdapter {}
+#[cfg(target_arch = "wasm32")]
+unsafe impl Sync for PgLiteAdapter {}
 
 impl PgLiteAdapter {
     /// Create a new PGLite adapter
@@ -79,6 +86,36 @@ impl PgLiteAdapter {
             .and_then(|s| serde_json::from_str(&s).ok())
     }
 
+    fn parse_channel_type(value: &str) -> ChannelType {
+        match value.trim().to_uppercase().as_str() {
+            "SELF" => ChannelType::SelfChannel,
+            "DM" => ChannelType::Dm,
+            "GROUP" => ChannelType::Group,
+            "VOICE_DM" => ChannelType::VoiceDm,
+            "VOICE_GROUP" => ChannelType::VoiceGroup,
+            "FEED" => ChannelType::Feed,
+            "THREAD" => ChannelType::Thread,
+            "WORLD" => ChannelType::World,
+            "FORUM" => ChannelType::Forum,
+            "API" => ChannelType::Api,
+            _ => ChannelType::Dm,
+        }
+    }
+
+    fn parse_bio(value: serde_json::Value) -> Bio {
+        if let Some(arr) = value.as_array() {
+            Bio::Multiple(
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect(),
+            )
+        } else if let Some(s) = value.as_str() {
+            Bio::Single(s.to_string())
+        } else {
+            Bio::Single(String::new())
+        }
+    }
+
     /// Parse an Entity from a JS row
     fn parse_entity(&self, row: &JsValue) -> Option<Entity> {
         let id = self.get_uuid(row, "id");
@@ -98,13 +135,15 @@ impl PgLiteAdapter {
     /// Parse a Room from a JS row
     fn parse_room(&self, row: &JsValue) -> Option<Room> {
         let id = self.get_uuid(row, "id")?;
+        let room_type_raw = self.get_string(row, "type").unwrap_or_else(|| "DM".to_string());
+        let room_type = Self::parse_channel_type(&room_type_raw);
 
         Some(Room {
             id,
             name: self.get_string(row, "name"),
             agent_id: self.get_uuid(row, "agent_id"),
             source: self.get_string(row, "source").unwrap_or_default(),
-            room_type: self.get_string(row, "type").unwrap_or_default(),
+            room_type,
             channel_id: self.get_string(row, "channel_id"),
             message_server_id: self.get_uuid(row, "message_server_id"),
             world_id: self.get_uuid(row, "world_id"),
@@ -128,7 +167,7 @@ impl PgLiteAdapter {
 
     /// Parse a Component from a JS row
     fn parse_component(&self, row: &JsValue) -> Option<Component> {
-        let id = self.get_uuid(row, "id");
+        let id = self.get_uuid(row, "id").unwrap_or_else(UUID::new_v4);
         let entity_id = self.get_uuid(row, "entity_id")?;
         let agent_id = self.get_uuid(row, "agent_id")?;
         let room_id = self.get_uuid(row, "room_id")?;
@@ -144,7 +183,7 @@ impl PgLiteAdapter {
             source_entity_id,
             component_type: self.get_string(row, "type").unwrap_or_default(),
             data: self.get_json(row, "data").unwrap_or_default(),
-            created_at: None,
+            created_at: self.get_f64(row, "created_at").unwrap_or(0.0) as i64,
         })
     }
 
@@ -242,8 +281,8 @@ impl DatabaseAdapter for PgLiteAdapter {
         self.manager.close().await
     }
 
-    async fn get_connection(&self) -> Result<Box<dyn std::any::Any + Send>> {
-        Ok(Box::new(()))
+    async fn get_connection(&self) -> Result<DatabaseConnection> {
+        Ok(DatabaseConnection::None)
     }
 
     // =========================================================================
@@ -267,12 +306,15 @@ impl DatabaseAdapter for PgLiteAdapter {
         }
 
         let row = &rows[0];
+        let bio_value: serde_json::Value = self
+            .get_json(row, "bio")
+            .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
         let character = elizaos::Character {
             id: Some(agent_id.clone()),
             name: self.get_string(row, "name").unwrap_or_default(),
             username: self.get_string(row, "username"),
             system: self.get_string(row, "system"),
-            bio: self.get_json(row, "bio").unwrap_or_default(),
+            bio: Self::parse_bio(bio_value),
             ..Default::default()
         };
 
@@ -294,12 +336,15 @@ impl DatabaseAdapter for PgLiteAdapter {
             .into_iter()
             .filter_map(|row| {
                 let id = self.get_uuid(&row, "id")?;
+                let bio_value: serde_json::Value = self
+                    .get_json(&row, "bio")
+                    .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
                 let character = elizaos::Character {
                     id: Some(id),
                     name: self.get_string(&row, "name").unwrap_or_default(),
                     username: self.get_string(&row, "username"),
                     system: self.get_string(&row, "system"),
-                    bio: self.get_json(&row, "bio").unwrap_or_default(),
+                    bio: Self::parse_bio(bio_value),
                     ..Default::default()
                 };
 
@@ -550,11 +595,7 @@ impl DatabaseAdapter for PgLiteAdapter {
     }
 
     async fn create_component(&self, component: &Component) -> Result<bool> {
-        let id = component
-            .id
-            .as_ref()
-            .map(|u| u.to_string())
-            .unwrap_or_else(|| UUID::new_v4().to_string());
+        let id = component.id.to_string();
         let data = serde_json::to_string(&component.data)?;
 
         let sql = r#"
@@ -579,14 +620,10 @@ impl DatabaseAdapter for PgLiteAdapter {
     }
 
     async fn update_component(&self, component: &Component) -> Result<()> {
-        let id = component
-            .id
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Component ID is required"))?;
         let data = serde_json::to_string(&component.data)?;
 
         let sql = "UPDATE components SET data = $2 WHERE id = $1";
-        let params = vec![JsValue::from_str(id.as_str()), JsValue::from_str(&data)];
+        let params = vec![JsValue::from_str(component.id.as_str()), JsValue::from_str(&data)];
 
         self.manager.query(sql, &params).await?;
         Ok(())
@@ -1204,7 +1241,7 @@ impl DatabaseAdapter for PgLiteAdapter {
                     .map(|a| JsValue::from_str(a.as_str()))
                     .unwrap_or(JsValue::NULL),
                 JsValue::from_str(&room.source),
-                JsValue::from_str(&room.room_type),
+                JsValue::from_str(room.room_type.as_str()),
                 room.channel_id
                     .as_ref()
                     .map(|c| JsValue::from_str(c))

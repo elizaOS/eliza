@@ -52,7 +52,7 @@ class RulerScorer:
 
     def __init__(
         self,
-        judge_model: str = "openai/gpt-4o-mini",
+        judge_model: str = "openai/gpt-5-mini",
         temperature: float = 0.0,
         extra_params: dict | None = None,
     ):

@@ -28,7 +28,7 @@
     "package.json"
   ],
   "scripts": {
-    "build": "bun install && tsc && cd tools && bun install && bun run build",
+    "build": "bun run build.ts && cd tools && bun run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

@@ -6,6 +6,7 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 
+import { withCanonicalActionDocs, withCanonicalEvaluatorDocs } from "./action-docs";
 import { parseActionParams, validateActionParams } from "./actions";
 import {
   type CapabilityConfig,
@@ -1034,22 +1035,23 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerAction(action: Action) {
-    if (this.actions.find((a) => a.name === action.name)) {
+    const canonical = withCanonicalActionDocs(action);
+    if (this.actions.find((a) => a.name === canonical.name)) {
       this.logger.warn(
-        { src: "agent", agentId: this.agentId, action: action.name },
+        { src: "agent", agentId: this.agentId, action: canonical.name },
         "Action already registered, skipping",
       );
     } else {
-      this.actions.push(action);
+      this.actions.push(canonical);
       this.logger.debug(
-        { src: "agent", agentId: this.agentId, action: action.name },
+        { src: "agent", agentId: this.agentId, action: canonical.name },
         "Action registered",
       );
     }
   }
 
   registerEvaluator(evaluator: Evaluator) {
-    this.evaluators.push(evaluator);
+    this.evaluators.push(withCanonicalEvaluatorDocs(evaluator));
   }
 
   // Helper functions for immutable action plan updates

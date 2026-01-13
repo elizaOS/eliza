@@ -3,13 +3,21 @@ import type { IAgentRuntime, ObjectGenerationParams, Plugin } from "@elizaos/cor
 import { type GenerateTextParams, logger, ModelType } from "@elizaos/core";
 import { generateObject, generateText } from "ai";
 
-(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
+const _globalThis = globalThis as typeof globalThis & { AI_SDK_LOG_WARNINGS?: boolean };
+_globalThis.AI_SDK_LOG_WARNINGS ??= false;
 const DEFAULT_SMALL_MODEL = "llama-3.1-8b-instant";
 const DEFAULT_LARGE_MODEL = "llama-3.3-70b-versatile";
 const DEFAULT_TTS_MODEL = "playai-tts";
 const DEFAULT_TTS_VOICE = "Chip-PlayAI";
 const DEFAULT_TRANSCRIPTION_MODEL = "distil-whisper-large-v3-en";
 const DEFAULT_BASE_URL = "https://api.groq.com/openai/v1";
+
+function isBrowser(): boolean {
+  return (
+    typeof globalThis !== "undefined" &&
+    typeof (globalThis as { document?: Document }).document !== "undefined"
+  );
+}
 
 function getBaseURL(runtime: IAgentRuntime): string {
   const url = runtime.getSetting("GROQ_BASE_URL");
@@ -27,7 +35,11 @@ function getLargeModel(runtime: IAgentRuntime): string {
 }
 
 function createGroqClient(runtime: IAgentRuntime) {
-  const apiKey = runtime.getSetting("GROQ_API_KEY");
+  // In browsers, default to *not* sending secrets.
+  // Use a server-side proxy and configure GROQ_BASE_URL (or explicitly opt-in).
+  const allowBrowserKey =
+    !isBrowser() || String(runtime.getSetting("GROQ_ALLOW_BROWSER_API_KEY") ?? "").toLowerCase() === "true";
+  const apiKey = allowBrowserKey ? runtime.getSetting("GROQ_API_KEY") : undefined;
   return createGroq({
     apiKey: typeof apiKey === "string" ? apiKey : undefined,
     fetch: runtime.fetch ?? undefined,
@@ -89,7 +101,7 @@ export const groqPlugin: Plugin = {
 
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     const apiKey = runtime.getSetting("GROQ_API_KEY");
-    if (!apiKey) {
+    if (!apiKey && !isBrowser()) {
       throw new Error("GROQ_API_KEY is required");
     }
   },
@@ -158,22 +170,32 @@ export const groqPlugin: Plugin = {
     },
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {
-      function hasAudioData(obj: unknown): obj is { audioData: Buffer } {
+      type AudioDataShape = { audioData: Uint8Array };
+
+      function hasAudioData(obj: object): obj is AudioDataShape {
         return (
-          typeof obj === "object" &&
-          obj !== null &&
           "audioData" in obj &&
-          Buffer.isBuffer((obj as Record<string, unknown>).audioData)
+          (obj as AudioDataShape).audioData instanceof Uint8Array
         );
       }
 
-      const audioBuffer =
+      if (isBrowser()) {
+        throw new Error(
+          "Groq TRANSCRIPTION is not supported directly in browsers. Use a server proxy or submit a Blob/ArrayBuffer to a server."
+        );
+      }
+
+      const hasBuffer =
+        typeof Buffer !== "undefined" &&
+        typeof (Buffer as unknown as { isBuffer: (v: unknown) => boolean }).isBuffer === "function";
+
+      const audioBuffer: Buffer =
         typeof params === "string"
           ? Buffer.from(params, "base64")
-          : Buffer.isBuffer(params)
-            ? params
-            : hasAudioData(params)
-              ? params.audioData
+          : hasBuffer && (Buffer as unknown as { isBuffer: (v: unknown) => boolean }).isBuffer(params)
+            ? (params as Buffer)
+            : typeof params === "object" && params !== null && hasAudioData(params)
+              ? Buffer.from((params as AudioDataShape).audioData)
               : Buffer.alloc(0);
       const baseURL = getBaseURL(runtime);
       const formData = new FormData();
@@ -201,6 +223,11 @@ export const groqPlugin: Plugin = {
     },
 
     [ModelType.TEXT_TO_SPEECH]: async (runtime: IAgentRuntime, params) => {
+      if (isBrowser()) {
+        throw new Error(
+          "Groq TEXT_TO_SPEECH is not supported directly in browsers. Use a server proxy."
+        );
+      }
       const text = typeof params === "string" ? params : (params as { text: string }).text;
       const baseURL = getBaseURL(runtime);
       const modelSetting = runtime.getSetting("GROQ_TTS_MODEL");

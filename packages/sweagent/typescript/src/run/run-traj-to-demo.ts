@@ -4,12 +4,13 @@
  * to get environment output.
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
-import * as yaml from 'js-yaml';
-import { getLogger } from '../utils/log';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as yaml from "js-yaml";
+import type { JsonObject, JsonValue } from "../json";
+import { getLogger } from "../utils/log";
 
-const logger = getLogger('traj2demo');
+const logger = getLogger("traj2demo");
 
 const DEMO_COMMENT = `# This is a demo file generated from trajectory file:
 # {traj_path}
@@ -23,7 +24,7 @@ const DEMO_COMMENT = `# This is a demo file generated from trajectory file:
 /**
  * Save demo data as a yaml file with proper header
  */
-function saveDemo(data: unknown, file: string, trajPath: string): void {
+function saveDemo(data: JsonValue, file: string, trajPath: string): void {
   const content = yaml.dump(data, {
     lineWidth: -1,
     noRefs: true,
@@ -31,45 +32,76 @@ function saveDemo(data: unknown, file: string, trajPath: string): void {
     forceQuotes: false,
   });
 
-  const header = DEMO_COMMENT.replace('{traj_path}', trajPath);
+  const header = DEMO_COMMENT.replace("{traj_path}", trajPath);
   fs.writeFileSync(file, `${header}\n${content}`);
 }
 
 /**
  * Convert trajectory to action demo
  */
-export function convertTrajToActionDemo(trajPath: string, outputFile: string, includeUser: boolean = false): void {
-  const traj = JSON.parse(fs.readFileSync(trajPath, 'utf-8'));
+export function convertTrajToActionDemo(
+  trajPath: string,
+  outputFile: string,
+  includeUser: boolean = false,
+): void {
+  const traj = JSON.parse(fs.readFileSync(trajPath, "utf-8")) as JsonObject;
 
-  let replayConfig = traj.replay_config;
-  if (typeof traj.replay_config === 'string') {
-    replayConfig = JSON.parse(traj.replay_config);
+  let replayConfig: JsonValue | undefined = traj.replay_config;
+  if (typeof replayConfig === "string") {
+    replayConfig = JSON.parse(replayConfig) as JsonValue;
   }
 
-  const history = traj.history || [];
+  const historyVal = traj.history;
+  const history = Array.isArray(historyVal) ? historyVal : [];
 
-  const copyFields = new Set(['content', 'role', 'tool_calls', 'agent', 'message_type', 'tool_call_ids']);
+  const copyFields = new Set([
+    "content",
+    "role",
+    "tool_calls",
+    "agent",
+    "message_type",
+    "tool_call_ids",
+  ]);
 
-  const admissibleRoles = includeUser ? new Set(['assistant', 'user', 'tool']) : new Set(['assistant']);
+  const admissibleRoles = includeUser
+    ? new Set(["assistant", "user", "tool"])
+    : new Set(["assistant"]);
 
   const filteredHistory = history
-    .filter(
-      (step: Record<string, unknown>) =>
-        admissibleRoles.has(step.role as string) &&
-        (!step.agent || step.agent === 'main' || step.agent === 'primary') &&
-        !step.is_demo,
-    )
-    .map((step: Record<string, unknown>) => {
-      const filtered: Record<string, unknown> = {};
+    .filter((step: JsonValue) => {
+      if (typeof step !== "object" || step === null || Array.isArray(step)) {
+        return false;
+      }
+      const obj = step as JsonObject;
+      const role = obj.role;
+      if (typeof role !== "string" || !admissibleRoles.has(role)) {
+        return false;
+      }
+      const agent = obj.agent;
+      if (
+        agent !== undefined &&
+        agent !== null &&
+        typeof agent === "string" &&
+        agent !== "main" &&
+        agent !== "primary"
+      ) {
+        return false;
+      }
+      return obj.is_demo !== true;
+    })
+    .map((step: JsonValue): JsonObject => {
+      const obj = step as JsonObject;
+      const filtered: JsonObject = {};
       for (const key of copyFields) {
-        if (key in step) {
-          filtered[key] = step[key];
+        const v = obj[key];
+        if (v !== undefined) {
+          filtered[key] = v;
         }
       }
       return filtered;
     });
 
-  const outputData = {
+  const outputData: JsonObject = {
     history: filteredHistory,
     replay_config: replayConfig,
   };
@@ -83,18 +115,24 @@ export function convertTrajToActionDemo(trajPath: string, outputFile: string, in
  */
 export function trajToDemo(
   trajPath: string,
-  outputDir: string = './demos',
-  suffix: string = '',
+  outputDir: string = "./demos",
+  suffix: string = "",
   overwrite: boolean = false,
   includeUser: boolean = false,
 ): void {
   const trajDir = path.dirname(trajPath);
-  const trajName = path.basename(trajPath, '.traj');
+  const trajName = path.basename(trajPath, ".traj");
   const outputSubdir = path.basename(trajDir) + suffix;
-  const outputFile = path.join(outputDir, outputSubdir, `${trajName}.demo.yaml`);
+  const outputFile = path.join(
+    outputDir,
+    outputSubdir,
+    `${trajName}.demo.yaml`,
+  );
 
   if (fs.existsSync(outputFile) && !overwrite) {
-    throw new Error(`Output file already exists: ${outputFile}. Use --overwrite to overwrite.`);
+    throw new Error(
+      `Output file already exists: ${outputFile}. Use --overwrite to overwrite.`,
+    );
   }
 
   const outputFileDir = path.dirname(outputFile);

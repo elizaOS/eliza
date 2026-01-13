@@ -46,12 +46,17 @@ mod tests {
 
         let result = provider.get(&context);
 
-        assert!(result.text.contains("ELIZA"));
-        assert!(result.data["greeting"].as_str().unwrap().contains("ELIZA"));
+        assert!(result.text.to_lowercase().contains("problem"));
+        assert!(result.data["greeting"]
+            .as_str()
+            .unwrap()
+            .to_lowercase()
+            .contains("problem"));
         assert!(result.values["greeting"]
             .as_str()
             .unwrap()
-            .contains("ELIZA"));
+            .to_lowercase()
+            .contains("problem"));
     }
 
     #[test]

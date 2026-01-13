@@ -6,7 +6,6 @@
 //! This crate provides:
 //! - Market data retrieval and browsing
 //! - Order book access and pricing
-//! - Order placement and management
 //! - WebSocket support for real-time updates
 //! - Integration with alloy-rs for Polygon chain operations
 //!
@@ -17,13 +16,13 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
-//! use elizaos_plugin_polymarket::{ClobClient, OrderParams, OrderSide};
+//! ```rust,no_run
+//! use elizaos_plugin_polymarket::client::ClobClient;
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
 //!     let client = ClobClient::new(
-//!         "https://clob.polymarket.com",
+//!         Some("https://clob.polymarket.com"),
 //!         "0x...",  // private key
 //!     ).await?;
 //!
