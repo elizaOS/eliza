@@ -216,6 +216,19 @@ IMPORTANT ACTION PARAMETERS:
 - Required parameters MUST be provided; optional parameters can be omitted if not mentioned
 - If you cannot determine a required parameter value, ask the user for clarification in your <text>
 
+EXAMPLE (action parameters):
+User message: "Send a message to @dev_guru on telegram saying Hello!"
+Actions: REPLY,SEND_MESSAGE
+Params:
+<params>
+    <SEND_MESSAGE>
+        <targetType>user</targetType>
+        <source>telegram</source>
+        <target>dev_guru</target>
+        <text>Hello!</text>
+    </SEND_MESSAGE>
+</params>
+
 IMPORTANT PROVIDER SELECTION RULES:
 - Only include providers if they are needed to respond accurately.
 - If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
