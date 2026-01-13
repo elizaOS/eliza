@@ -11,6 +11,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { CodeTaskService } from "../services/code-task.js";
+import type { SubAgentType } from "../../types.js";
 
 interface TaskRequest {
   name: string;
@@ -403,15 +404,22 @@ INPUTS:
 
     // Check for options-provided title and steps (useful for programmatic calls and tests)
     const opts = options as
-      | { title?: string; steps?: string[]; description?: string }
+      | {
+          title?: string;
+          steps?: string[];
+          description?: string;
+          subAgentType?: string;
+        }
       | undefined;
     const optTitle = opts?.title;
     const optSteps = opts?.steps;
     const optDescription = opts?.description;
+    const optSubAgentType = normalizeSubAgentType(opts?.subAgentType);
 
     const rawText = message.content.text ?? "";
     const stripped = stripTaskContext(rawText);
     const parsed = parseTaskRequest(rawText);
+    const parsedSubAgentType = extractRequestedSubAgentType(stripped);
 
     const hasStructuredFields =
       /(?:^|\n)\s*(?:create\s+(?:a\s+)?task|start\s+(?:a\s+)?task|new\s+task|task)\s*[:-]/i.test(
@@ -449,7 +457,14 @@ INPUTS:
     try {
       // Create task using service (persisted via core runtime)
       const roomId = message.roomId as UUID | undefined;
-      const task = await service.createCodeTask(name, description, roomId);
+      const subAgentType: SubAgentType =
+        optSubAgentType ?? parsedSubAgentType ?? "eliza";
+      const task = await service.createCodeTask(
+        name,
+        description,
+        roomId,
+        subAgentType,
+      );
 
       // If user didn't provide steps via options or parsing, generate a plan using a model.
       // When steps are explicitly provided (optSteps), skip model generation.
@@ -518,6 +533,7 @@ INPUTS:
           : description;
       const lines: string[] = [];
       lines.push(`Created task: ${task.name}`);
+      lines.push(`Sub-agent: ${subAgentType}`);
       lines.push(`Description: ${descPreview}`);
       if (finalSteps.length > 0) lines.push(`Steps: ${finalSteps.length}`);
       if (planPreview) {
@@ -585,6 +601,65 @@ INPUTS:
     ],
   ],
 };
+
+function extractRequestedSubAgentType(text: string): SubAgentType | undefined {
+  const lower = text.toLowerCase();
+
+  // Explicit directive patterns
+  const patterns = [
+    /(?:^|\n)\s*(?:agent|sub-agent|subagent|worker)\s*[:=]\s*([a-z0-9_-]+)/i,
+    /\buse\s+([a-z0-9_-]+)\s+(?:agent|sub-agent|subagent|worker)\b/i,
+    /\bwith\s+([a-z0-9_-]+)\s+(?:agent|sub-agent|subagent|worker)\b/i,
+  ];
+
+  for (const p of patterns) {
+    const m = lower.match(p);
+    if (m?.[1]) {
+      const normalized = normalizeSubAgentType(m[1]);
+      if (normalized) return normalized;
+    }
+  }
+
+  // Shorthand mentions
+  if (lower.includes("claude-code") || lower.includes("claude code")) {
+    return "claude-code";
+  }
+  if (lower.includes("codex")) return "codex";
+  if (lower.includes("opencode") || lower.includes("open code")) return "opencode";
+  if (lower.includes("sweagent") || lower.includes("swe-agent")) return "sweagent";
+  if (
+    lower.includes("elizaos-native") ||
+    lower.includes("eliza native") ||
+    lower.includes("native sub-agent")
+  ) {
+    return "elizaos-native";
+  }
+
+  return undefined;
+}
+
+function normalizeSubAgentType(input: string | undefined): SubAgentType | null {
+  const raw = (input ?? "").trim().toLowerCase();
+  if (!raw) return null;
+
+  if (raw === "eliza") return "eliza";
+  if (raw === "claude" || raw === "claude-code" || raw === "claudecode")
+    return "claude-code";
+  if (raw === "codex") return "codex";
+  if (raw === "opencode" || raw === "open-code" || raw === "open_code")
+    return "opencode";
+  if (raw === "sweagent" || raw === "swe-agent" || raw === "swe_agent")
+    return "sweagent";
+  if (
+    raw === "elizaos-native" ||
+    raw === "eliza-native" ||
+    raw === "native" ||
+    raw === "elizaosnative"
+  )
+    return "elizaos-native";
+
+  return null;
+}
 
 function parseNumberedSteps(text: string): string[] {
   const lines = text

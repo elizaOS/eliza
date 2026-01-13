@@ -1,5 +1,5 @@
 import type { CodeTaskService } from "../plugin/services/code-task.js";
-import type { Message, TaskPaneVisibility } from "../types.js";
+import type { Message, SubAgentType, TaskPaneVisibility } from "../types.js";
 
 export interface TaskSlashCommandDeps {
   service: CodeTaskService | null;
@@ -33,6 +33,7 @@ export async function handleTaskSlashCommand(
 /task list
 /task switch <name|id>
 /task current
+/task agent <type> [name|id]
 /task pause [name|id]
 /task resume [name|id]
 /task restart [name|id]
@@ -143,6 +144,54 @@ Aliases:
         details += `\nRecent output:\n${recentOutput}`;
       }
       addMessage(currentRoomId, "system", details);
+      return true;
+    }
+
+    case "agent":
+    case "subagent":
+    case "worker": {
+      if (!service) {
+        addMessage(currentRoomId, "system", "Task service not available");
+        return true;
+      }
+
+      if (!subArg) {
+        addMessage(
+          currentRoomId,
+          "system",
+          `Usage: /task agent <type> [name|id]\n\nTypes:\n- eliza\n- claude-code\n- codex\n- opencode\n- sweagent\n- elizaos-native`,
+        );
+        return true;
+      }
+
+      const [typeRaw, ...rest] = subArg.split(" ");
+      const target = rest.join(" ").trim();
+
+      const normalizedType = normalizeSubAgentType(typeRaw);
+      if (!normalizedType) {
+        addMessage(
+          currentRoomId,
+          "system",
+          `Unknown agent type: "${typeRaw}". Try: eliza, claude-code, codex, opencode, sweagent, elizaos-native`,
+        );
+        return true;
+      }
+
+      const taskId = target
+        ? (await service.searchTasks(target))[0]?.id
+        : service.getCurrentTaskId();
+      if (!taskId) {
+        addMessage(currentRoomId, "system", "No task selected");
+        return true;
+      }
+
+      await service.setTaskSubAgentType(taskId, normalizedType);
+      const task = await service.getTask(taskId);
+      addMessage(
+        currentRoomId,
+        "system",
+        `Set sub-agent for "${task?.name ?? taskId}" to ${normalizedType}`,
+      );
       return true;
     }
 
@@ -335,4 +384,29 @@ Aliases:
       );
       return true;
   }
+}
+
+function normalizeSubAgentType(
+  input: string | undefined,
+): SubAgentType | null {
+  const raw = (input ?? "").trim().toLowerCase();
+  if (!raw) return null;
+
+  if (raw === "eliza") return "eliza";
+  if (raw === "claude" || raw === "claude-code" || raw === "claudecode")
+    return "claude-code";
+  if (raw === "codex") return "codex";
+  if (raw === "opencode" || raw === "open-code" || raw === "open_code")
+    return "opencode";
+  if (raw === "sweagent" || raw === "swe-agent" || raw === "swe_agent")
+    return "sweagent";
+  if (
+    raw === "elizaos-native" ||
+    raw === "eliza-native" ||
+    raw === "native" ||
+    raw === "elizaosnative"
+  )
+    return "elizaos-native";
+
+  return null;
 }
