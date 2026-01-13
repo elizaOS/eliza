@@ -6,7 +6,6 @@
  * - Platform-specific implementations (Node.js AsyncLocalStorage, Browser Stack)
  * - Global singleton configured at startup
  *
- * @see https://opentelemetry.io/docs/languages/js/context/
  */
 import type { UUID } from './types';
 
@@ -21,6 +20,24 @@ export interface StreamingContext {
   messageId?: UUID;
   /** Optional abort signal to cancel streaming */
   abortSignal?: AbortSignal;
+  /**
+   * Reset streaming state for retry attempts.
+   * Clears extractor buffer and any accumulated state.
+   * Call before retrying a failed streaming operation.
+   */
+  reset?: () => void;
+  /**
+   * Get text that has been streamed to the user so far.
+   * Useful for retry continuation prompts.
+   */
+  getStreamedText?: () => string;
+  /**
+   * Check if text extraction is complete (closing tag found).
+   * Used for intelligent retry decisions:
+   * - true: Use streamedText as final response, skip retry
+   * - false: Text was cut mid-stream, retry with continuation prompt
+   */
+  isComplete?: () => boolean;
 }
 
 /**

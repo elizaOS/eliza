@@ -10,7 +10,7 @@ ElizaOS uses a sophisticated plugin loading system that automatically detects av
 
 1. **Embedding Plugins Last**: Plugins that support embeddings (OpenAI, Ollama, Google GenAI) are always loaded with the lowest priority
 2. **Ollama as Universal Fallback**: Ollama is always included as a fallback for local AI capabilities
-3. **Text-Only Plugins First**: Providers without embedding support (Anthropic, OpenRouter) load before embedding-capable plugins
+3. **Text-Only Plugins First**: Providers without embedding support (Anthropic) load before embedding-capable plugins
 4. **Environment-Driven**: Plugin selection is automatic based on available environment variables
 
 ## Plugin Categories
@@ -22,7 +22,6 @@ ElizaOS uses a sophisticated plugin loading system that automatically detects av
 ### 📝 Text-Only AI Plugins (No Embedding Support)
 
 - `@elizaos/plugin-anthropic` - Claude models (text generation only)
-- `@elizaos/plugin-openrouter` - Multiple AI models (no embeddings endpoint)
 
 ### 🌐 Platform Plugins
 
@@ -46,8 +45,8 @@ The system loads plugins in this strict order:
 
 ```
 1. Core Plugins (SQL)
-2. Text-Only AI Plugins (Anthropic, OpenRouter)
-3. Embedding-Capable AI Plugins (OpenAI, Ollama, Google)
+2. Text-Only AI Plugins (Anthropic)
+3. Embedding-Capable AI Plugins (OpenRouter, OpenAI, Ollama, Google)
 4. Platform Plugins (Discord, Twitter, Telegram)
 5. Bootstrap Plugin
 ```
@@ -59,9 +58,9 @@ The system loads plugins in this strict order:
 ```typescript
 // Text-only providers (loaded first)
 ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
-...(process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
 
 // Embedding providers (loaded after text-only)
+...(process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
 ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
 ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
 ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
@@ -154,7 +153,7 @@ bun run src/__tests__/plugin-ordering-demo.ts
 ### 5. All Providers
 
 - **Environment**: All AI provider keys
-- **Result**: SQL → Anthropic → OpenRouter → Bootstrap → OpenAI → Ollama → Google
+- **Result**: SQL → Anthropic → Bootstrap → OpenRouter → OpenAI → Ollama → Google
 - **Validation**: Ollama included for local AI fallback
 
 ### 6. Platform Integration
@@ -174,7 +173,7 @@ bun run src/__tests__/plugin-ordering-demo.ts
 The test suite validates these critical rules:
 
 1. ✅ **SQL Always First**: `@elizaos/plugin-sql` must be the first plugin
-2. ✅ **AI Plugin Order**: Text-only plugins (Anthropic, OpenRouter) load before embedding-capable plugins
+2. ✅ **AI Plugin Order**: Text-only plugins (Anthropic) load before embedding-capable plugins (OpenRouter, OpenAI, Ollama, Google)
 3. ✅ **Ollama Fallback**: Always present as universal fallback
 4. ✅ **Platform After AI**: Platform plugins load after all AI plugins
 5. ✅ **Bootstrap Last**: Bootstrap loads after all other plugins (unless disabled)
