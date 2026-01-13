@@ -5,6 +5,8 @@ DO NOT EDIT - Generated from packages/prompts/specs/**.
 
 from __future__ import annotations
 
+import json
+
 from typing import Literal, TypedDict
 
 
@@ -72,7 +74,7 @@ class EvaluatorDoc(TypedDict, total=False):
 core_actions_spec_version: str = "1.0.0"
 core_evaluators_spec_version: str = "1.0.0"
 
-core_action_docs: dict[str, object] = {
+_CORE_ACTION_DOCS_JSON = """{
   "version": "1.0.0",
   "actions": [
     {
@@ -166,7 +168,7 @@ core_action_docs: dict[str, object] = {
       ],
       "exampleCalls": [
         {
-          "user": "Send a message to @dev_guru on telegram saying \"Hello!\"",
+          "user": "Send a message to @dev_guru on telegram saying \\"Hello!\\"",
           "actions": [
             "REPLY",
             "SEND_MESSAGE"
@@ -242,7 +244,7 @@ core_action_docs: dict[str, object] = {
             "type": "string"
           },
           "examples": [
-            "{\"notes\":\"prefers email\",\"tags\":[\"friend\"]}"
+            "{\\"notes\\":\\"prefers email\\",\\"tags\\":[\\"friend\\"]}"
           ]
         }
       ]
@@ -455,13 +457,13 @@ core_action_docs: dict[str, object] = {
       "parameters": [
         {
           "name": "updates",
-          "description": "A JSON array of {\"key\": string, \"value\": string} updates (stringified JSON).",
+          "description": "A JSON array of {\\"key\\": string, \\"value\\": string} updates (stringified JSON).",
           "required": true,
           "schema": {
             "type": "string"
           },
           "examples": [
-            "[{\"key\":\"model\",\"value\":\"gpt-5\"}]"
+            "[{\\"key\\":\\"model\\",\\"value\\":\\"gpt-5\\"}]"
           ]
         }
       ]
@@ -520,13 +522,13 @@ core_action_docs: dict[str, object] = {
         },
         {
           "name": "updates",
-          "description": "A JSON array of {\"name\": string, \"value\": string} field updates (stringified JSON).",
+          "description": "A JSON array of {\\"name\\": string, \\"value\\": string} field updates (stringified JSON).",
           "required": true,
           "schema": {
             "type": "string"
           },
           "examples": [
-            "[{\"name\":\"bio\",\"value\":\"Loves Rust\"}]"
+            "[{\\"name\\":\\"bio\\",\\"value\\":\\"Loves Rust\\"}]"
           ]
         }
       ]
@@ -554,9 +556,8 @@ core_action_docs: dict[str, object] = {
       ]
     }
   ]
-}
-
-core_evaluator_docs: dict[str, object] = {
+}"""
+_CORE_EVALUATOR_DOCS_JSON = """{
   "version": "1.0.0",
   "evaluators": [
     {
@@ -570,7 +571,7 @@ core_evaluator_docs: dict[str, object] = {
       ],
       "examples": [
         {
-          "prompt": "Agent Name: Sarah\nAgent Role: Community Manager\nRoom Type: group\nCurrent Room: general-chat\nMessage Sender: John (user-123)",
+          "prompt": "Agent Name: Sarah\\nAgent Role: Community Manager\\nRoom Type: group\\nCurrent Room: general-chat\\nMessage Sender: John (user-123)",
           "messages": [
             {
               "name": "John",
@@ -585,7 +586,7 @@ core_evaluator_docs: dict[str, object] = {
               }
             }
           ],
-          "outcome": "<response>\n  <thought>I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone.</thought>\n  <quality_score>85</quality_score>\n  <strengths>Welcoming tone and helpful follow-up question.</strengths>\n  <improvements>Ask a slightly more specific question to learn John's goals.</improvements>\n  <learnings>Balance warmth with clarity and next steps.</learnings>\n</response>"
+          "outcome": "<response>\\n  <thought>I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone.</thought>\\n  <quality_score>85</quality_score>\\n  <strengths>Welcoming tone and helpful follow-up question.</strengths>\\n  <improvements>Ask a slightly more specific question to learn John's goals.</improvements>\\n  <learnings>Balance warmth with clarity and next steps.</learnings>\\n</response>"
         }
       ]
     },
@@ -614,7 +615,10 @@ core_evaluator_docs: dict[str, object] = {
       ]
     }
   ]
-}
+}"""
+
+core_action_docs: dict[str, object] = json.loads(_CORE_ACTION_DOCS_JSON)
+core_evaluator_docs: dict[str, object] = json.loads(_CORE_EVALUATOR_DOCS_JSON)
 
 __all__ = [
     "ActionDoc",
