@@ -689,6 +689,10 @@ class AgentRuntime(IAgentRuntime):
     def get_action_results(self, message_id: UUID) -> list[ActionResult]:
         return self._action_results.get(str(message_id), [])
 
+    def get_available_actions(self) -> list[Action]:
+        """Get all registered actions."""
+        return self._actions
+
     async def evaluate(
         self,
         message: Memory,
@@ -1032,6 +1036,10 @@ class AgentRuntime(IAgentRuntime):
         entities = await self._adapter.get_entities_by_ids([entity_id])
         return entities[0] if entities else None
 
+    async def get_entity(self, entity_id: UUID) -> Entity | None:
+        """Alias for get_entity_by_id."""
+        return await self.get_entity_by_id(entity_id)
+
     async def get_room(self, room_id: UUID) -> Room | None:
         if not self._adapter:
             return None
@@ -1170,9 +1178,30 @@ class AgentRuntime(IAgentRuntime):
         if self._adapter:
             await self._adapter.delete_component(component_id)
 
-    async def get_memories(self, params: dict[str, Any]) -> list[Any]:
+    async def get_memories(
+        self,
+        params: dict[str, Any] | None = None,
+        *,
+        room_id: UUID | None = None,
+        limit: int | None = None,
+        order_by: str | None = None,
+        order_direction: str | None = None,
+        **kwargs: Any,
+    ) -> list[Any]:
         if not self._adapter:
             return []
+        # Build params from kwargs if not provided as dict
+        if params is None:
+            params = {}
+            if room_id is not None:
+                params["roomId"] = str(room_id)
+            if limit is not None:
+                params["limit"] = limit
+            if order_by is not None:
+                params["orderBy"] = order_by
+            if order_direction is not None:
+                params["orderDirection"] = order_direction
+            params.update(kwargs)
         return await self._adapter.get_memories(params)
 
     async def get_memory_by_id(self, id: UUID) -> Any | None:

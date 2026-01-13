@@ -156,18 +156,32 @@ class InMemoryDatabaseAdapter:
 
     async def get_memories(
         self,
+        params: dict[str, Any] | None = None,
         *,
         entity_id: str | None = None,
         agent_id: str | None = None,
         count: int | None = None,
         offset: int | None = None,
         unique: bool | None = None,
-        table_name: str,
+        table_name: str | None = None,
         start: int | None = None,
         end: int | None = None,
         room_id: str | None = None,
         world_id: str | None = None,
     ) -> list[dict[str, Any]]:
+        # Support both params dict and kwargs
+        if params:
+            entity_id = entity_id or params.get("entityId") or params.get("entity_id")
+            agent_id = agent_id or params.get("agentId") or params.get("agent_id")
+            room_id = room_id or params.get("roomId") or params.get("room_id")
+            world_id = world_id or params.get("worldId") or params.get("world_id")
+            table_name = table_name or params.get("tableName") or params.get("table_name")
+            count = count or params.get("limit") or params.get("count")
+            offset = offset or params.get("offset")
+            unique = unique if unique is not None else params.get("unique")
+            start = start or params.get("start")
+            end = end or params.get("end")
+
         memories = await self._storage.get_where(
             COLLECTIONS.MEMORIES,
             lambda m: (
@@ -250,33 +264,53 @@ class InMemoryDatabaseAdapter:
         return memories[:k]
 
     async def create_memory(
-        self, memory: dict[str, Any], table_name: str, unique: bool = False
+        self, memory: dict[str, Any] | Any, table_name: str, unique: bool = False
     ) -> str:
-        id_ = memory.get("id") or str(uuid.uuid4())
+        # Convert Pydantic model to dict if needed
+        if hasattr(memory, "model_dump"):
+            memory_dict = memory.model_dump(exclude_none=True)
+        elif hasattr(memory, "dict"):
+            memory_dict = memory.dict(exclude_none=True)
+        elif isinstance(memory, dict):
+            memory_dict = memory
+        else:
+            memory_dict = dict(memory)
+
+        id_ = memory_dict.get("id") or str(uuid.uuid4())
         now = int(datetime.now().timestamp() * 1000)
 
         stored_memory = {
-            **memory,
+            **memory_dict,
             "id": id_,
-            "agentId": memory.get("agentId") or self._agent_id,
-            "unique": unique or memory.get("unique"),
-            "createdAt": memory.get("createdAt") or now,
+            "agentId": memory_dict.get("agentId") or memory_dict.get("agent_id") or self._agent_id,
+            "unique": unique or memory_dict.get("unique"),
+            "createdAt": memory_dict.get("createdAt") or memory_dict.get("created_at") or now,
             "metadata": {
-                **(memory.get("metadata") or {}),
+                **(memory_dict.get("metadata") or {}),
                 "type": table_name,
             },
         }
 
         await self._storage.set(COLLECTIONS.MEMORIES, id_, stored_memory)
 
-        embedding = memory.get("embedding")
+        embedding = memory_dict.get("embedding")
         if embedding and len(embedding) > 0:
             await self._vector_index.add(id_, embedding)
 
         return id_
 
-    async def update_memory(self, memory: dict[str, Any]) -> bool:
-        id_ = memory.get("id")
+    async def update_memory(self, memory: dict[str, Any] | Any) -> bool:
+        # Convert Pydantic model to dict if needed
+        if hasattr(memory, "model_dump"):
+            memory_dict = memory.model_dump(exclude_none=True)
+        elif hasattr(memory, "dict"):
+            memory_dict = memory.dict(exclude_none=True)
+        elif isinstance(memory, dict):
+            memory_dict = memory
+        else:
+            memory_dict = dict(memory)
+
+        id_ = memory_dict.get("id")
         if not id_:
             return False
 
@@ -286,8 +320,8 @@ class InMemoryDatabaseAdapter:
 
         updated = {
             **existing,
-            **memory,
-            "metadata": {**(existing.get("metadata") or {}), **(memory.get("metadata") or {})},
+            **memory_dict,
+            "metadata": {**(existing.get("metadata") or {}), **(memory_dict.get("metadata") or {})},
         }
 
         await self._storage.set(COLLECTIONS.MEMORIES, id_, updated)
