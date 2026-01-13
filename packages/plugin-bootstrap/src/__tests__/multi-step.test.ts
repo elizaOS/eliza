@@ -869,14 +869,14 @@ async function runMultiStepCoreTest({
 
   const responseMessages: Memory[] = responseContent
     ? [
-      {
-        id: 'test-response-id' as UUID,
-        entityId: runtime.agentId,
-        roomId: message.roomId,
-        createdAt: Date.now(),
-        content: responseContent,
-      },
-    ]
+        {
+          id: 'test-response-id' as UUID,
+          entityId: runtime.agentId,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+          content: responseContent,
+        },
+      ]
     : [];
 
   return {
@@ -1073,7 +1073,11 @@ async function runMultiStepCoreTestWithParams({
         } catch (e) {
           runtime.logger.warn(`[MultiStep] Failed to parse parameters JSON`);
         }
-      } else if (typeof parameters === 'object' && parameters !== null && !Array.isArray(parameters)) {
+      } else if (
+        typeof parameters === 'object' &&
+        parameters !== null &&
+        !Array.isArray(parameters)
+      ) {
         actionParams = parameters as Record<string, unknown>;
         runtime.logger.debug(`[MultiStep] Using parameters object directly`);
       } else if (Array.isArray(parameters)) {
@@ -1089,8 +1093,9 @@ async function runMultiStepCoreTestWithParams({
       const actionKey = action.toLowerCase().replace(/_/g, '');
       accumulatedState.data[actionKey] = {
         ...actionParams,
-        source: 'multiStepDecisionTemplate',
-        timestamp: Date.now(),
+        // Metadata properties prefixed with underscore to match production code
+        _source: 'multiStepDecisionTemplate',
+        _timestamp: Date.now(),
       };
 
       runtime.logger.info(`[MultiStep] Stored parameters for ${action}`);
