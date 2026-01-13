@@ -169,18 +169,27 @@ class InMemoryDatabaseAdapter:
         room_id: str | None = None,
         world_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        # Support both params dict and kwargs
+        """Retrieve memories matching the given filters.
+
+        Supports two calling patterns:
+        1. Via params dict (used by AgentRuntime):
+           get_memories(params={"roomId": "...", "limit": 10})
+        2. Via keyword arguments (direct usage):
+           get_memories(room_id="...", count=10)
+
+        When both are provided, explicit kwargs take precedence over params dict values.
+        """
         if params:
             entity_id = entity_id or params.get("entityId") or params.get("entity_id")
             agent_id = agent_id or params.get("agentId") or params.get("agent_id")
             room_id = room_id or params.get("roomId") or params.get("room_id")
             world_id = world_id or params.get("worldId") or params.get("world_id")
             table_name = table_name or params.get("tableName") or params.get("table_name")
-            count = count or params.get("limit") or params.get("count")
-            offset = offset or params.get("offset")
+            count = count if count is not None else (params.get("limit") or params.get("count"))
+            offset = offset if offset is not None else params.get("offset")
             unique = unique if unique is not None else params.get("unique")
-            start = start or params.get("start")
-            end = end or params.get("end")
+            start = start if start is not None else params.get("start")
+            end = end if end is not None else params.get("end")
 
         memories = await self._storage.get_where(
             COLLECTIONS.MEMORIES,
@@ -326,7 +335,7 @@ class InMemoryDatabaseAdapter:
 
         await self._storage.set(COLLECTIONS.MEMORIES, id_, updated)
 
-        embedding = memory.get("embedding")
+        embedding = memory_dict.get("embedding")
         if embedding and len(embedding) > 0:
             await self._vector_index.add(id_, embedding)
 

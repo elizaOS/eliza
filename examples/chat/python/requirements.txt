@@ -6,3 +6,6 @@
 -e ../../packages/python
 -e ../../plugins/plugin-openai/python
 -e ../../plugins/plugin-inmemorydb/python
+
+# Additional dependencies
+python-dotenv
