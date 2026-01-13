@@ -154,10 +154,12 @@ class TicTacToeState(State):
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
+        # current_player and winner are already int values (not Player enums)
+        # so no need to access .value
         return {
             "board": list(self.board),
-            "current_player": self.current_player.value,
-            "winner": self.winner.value if self.winner else None,
+            "current_player": self.current_player,
+            "winner": self.winner,
             "is_draw": self.is_draw,
         }
 
