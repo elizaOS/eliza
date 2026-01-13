@@ -197,8 +197,8 @@ These are the actions or data provider calls that have already been used in this
 
 <keys>
 "thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
-"action" Name of the action to execute after providers return (empty string "" if setting isFinish: true or no action needed).
-"parameters" JSON object with exact parameter names and values for the action. Use empty object {} if the action has no parameters or no action is selected.
+"action" Name of the action to execute after providers return. Omit or use empty string "" if isFinish: true or no action needed.
+"parameters" JSON object with exact parameter names and values for the action. Use empty object {} if no parameters are needed.
 "providers" List of provider names to call in this step (can be empty if none are needed).
 "isFinish" Set to true only if the task is fully complete.
 </keys>
