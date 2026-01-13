@@ -644,6 +644,182 @@ mod advanced_shim_tests {
 // Advanced Runtime Tests  
 // ========================================
 
+// ========================================
+// Platform Macros Tests (WASM)
+// ========================================
+
+mod platform_tests {
+    use super::*;
+    use elizaos::{define_platform_trait, platform_async_trait};
+
+    // Test that define_platform_trait! works in WASM without Send + Sync
+    define_platform_trait! {
+        /// A WASM-compatible trait without bounds.
+        pub trait WasmTestTrait {
+            fn get_value(&self) -> i32;
+        }
+    }
+
+    define_platform_trait! {
+        /// A WASM-compatible trait with custom bounds.
+        pub trait WasmTestTraitWithBounds [Clone] {
+            fn get_name(&self) -> String;
+        }
+    }
+
+    define_platform_trait! {
+        /// A WASM-compatible trait with empty brackets.
+        pub trait WasmTestTraitEmptyBrackets [] {
+            fn get_id(&self) -> u32;
+        }
+    }
+
+    #[derive(Clone)]
+    struct WasmTestImpl {
+        value: i32,
+        name: String,
+        id: u32,
+    }
+
+    impl WasmTestTrait for WasmTestImpl {
+        fn get_value(&self) -> i32 {
+            self.value
+        }
+    }
+
+    impl WasmTestTraitWithBounds for WasmTestImpl {
+        fn get_name(&self) -> String {
+            self.name.clone()
+        }
+    }
+
+    impl WasmTestTraitEmptyBrackets for WasmTestImpl {
+        fn get_id(&self) -> u32 {
+            self.id
+        }
+    }
+
+    #[wasm_bindgen_test]
+    fn test_wasm_define_platform_trait_no_bounds() {
+        let t = WasmTestImpl {
+            value: 42,
+            name: "test".to_string(),
+            id: 1,
+        };
+        assert_eq!(t.get_value(), 42);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_wasm_define_platform_trait_with_bounds() {
+        let t = WasmTestImpl {
+            value: 0,
+            name: "hello".to_string(),
+            id: 0,
+        };
+        assert_eq!(t.get_name(), "hello");
+        
+        // Test that Clone bound works
+        let cloned = t.clone();
+        assert_eq!(cloned.get_name(), "hello");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_wasm_define_platform_trait_empty_brackets() {
+        let t = WasmTestImpl {
+            value: 0,
+            name: "".to_string(),
+            id: 99,
+        };
+        assert_eq!(t.get_id(), 99);
+    }
+
+    // Test platform_async_trait! with async methods in WASM
+    #[async_trait::async_trait(?Send)]
+    pub trait WasmAsyncTrait {
+        async fn process(&self, input: &str) -> String;
+    }
+
+    struct WasmAsyncImpl;
+
+    platform_async_trait! {
+        impl WasmAsyncTrait for WasmAsyncImpl {
+            async fn process(&self, input: &str) -> String {
+                format!("WASM processed: {}", input)
+            }
+        }
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_wasm_platform_async_trait() {
+        let svc = WasmAsyncImpl;
+        let result = svc.process("hello").await;
+        assert_eq!(result, "WASM processed: hello");
+    }
+
+    // Test that non-Send types can be used in WASM traits
+    // (This would fail on native due to Send + Sync bounds)
+    use std::rc::Rc;
+    use std::cell::RefCell;
+
+    define_platform_trait! {
+        /// A trait that uses non-Send types (only valid in WASM).
+        pub trait NonSendTrait {
+            fn get_rc_value(&self) -> i32;
+        }
+    }
+
+    struct NonSendImpl {
+        // Rc and RefCell are NOT Send + Sync, but that's fine in WASM
+        value: Rc<RefCell<i32>>,
+    }
+
+    impl NonSendTrait for NonSendImpl {
+        fn get_rc_value(&self) -> i32 {
+            *self.value.borrow()
+        }
+    }
+
+    #[wasm_bindgen_test]
+    fn test_wasm_non_send_types_allowed() {
+        let t = NonSendImpl {
+            value: Rc::new(RefCell::new(100)),
+        };
+        assert_eq!(t.get_rc_value(), 100);
+        
+        // Modify through RefCell
+        *t.value.borrow_mut() = 200;
+        assert_eq!(t.get_rc_value(), 200);
+    }
+
+    // Test AnyArc type alias in WASM
+    #[wasm_bindgen_test]
+    fn test_wasm_any_arc() {
+        use elizaos::platform::AnyArc;
+        use std::sync::Arc;
+        
+        let value: AnyArc = Arc::new(42i32);
+        // In WASM, AnyArc is Arc<dyn Any> - use downcast_ref
+        let downcast_ref = value.downcast_ref::<i32>().unwrap();
+        assert_eq!(*downcast_ref, 42);
+    }
+
+    // Test PlatformService trait bound in WASM
+    #[wasm_bindgen_test]
+    fn test_wasm_platform_service_bound() {
+        use elizaos::platform::PlatformService;
+        
+        fn accepts_platform_service<T: PlatformService>(_: &T) {}
+        
+        // In WASM, any type should satisfy PlatformService (no bounds)
+        let value = 42i32;
+        accepts_platform_service(&value);
+        
+        // Even non-Send types should work
+        let rc_value = Rc::new(42);
+        accepts_platform_service(&rc_value);
+    }
+}
+
 mod advanced_runtime_tests {
     use super::*;
     use elizaos::wasm::{WasmAgentRuntime, WasmCharacter};
