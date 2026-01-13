@@ -14,6 +14,7 @@ import {
 import { createUniqueUuid } from "./entities";
 import { createLogger } from "./logger";
 import { BM25 } from "./search";
+import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { DefaultMessageService } from "./services/message";
 import { decryptSecret, getSalt } from "./settings";
 import {
@@ -560,12 +561,24 @@ export class AgentRuntime implements IAgentRuntime {
         "Stopping service",
       );
       for (const service of services) {
-        await service.stop();
+        const maybe = service as { stop?: () => Promise<void> };
+        if (typeof maybe.stop === "function") {
+          await maybe.stop();
+        } else {
+          this.logger.warn(
+            { src: "agent", agentId: this.agentId, serviceType },
+            "Service instance is missing stop(); skipping",
+          );
+        }
       }
     }
   }
 
-  async initialize(options?: { skipMigrations?: boolean }): Promise<void> {
+  async initialize(options?: {
+    skipMigrations?: boolean;
+    /** Allow running without a persistent database adapter (benchmarks/tests). */
+    allowNoDatabase?: boolean;
+  }): Promise<void> {
     const pluginRegistrationPromises: Promise<void>[] = [];
 
     // Bootstrap plugin is now built into core - auto-register it first
@@ -579,7 +592,18 @@ export class AgentRuntime implements IAgentRuntime {
     }
     await Promise.all(pluginRegistrationPromises);
 
+    const allowNoDatabase =
+      options?.allowNoDatabase === true ||
+      String(this.getSetting("ALLOW_NO_DATABASE") ?? "").toLowerCase() === "true";
+
     if (!this.adapter) {
+      if (allowNoDatabase) {
+        this.logger.warn(
+          { src: "agent", agentId: this.agentId },
+          "Database adapter not initialized; using in-memory adapter (ALLOW_NO_DATABASE)",
+        );
+        this.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
+      } else {
       this.logger.error(
         { src: "agent", agentId: this.agentId },
         "Database adapter not initialized",
@@ -587,6 +611,7 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error(
         "Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.",
       );
+      }
     }
 
     // Make adapter init idempotent - check if already initialized
@@ -2179,7 +2204,7 @@ export class AgentRuntime implements IAgentRuntime {
     ).sort((a, b) => (a.position || 0) - (b.position || 0));
 
     // Optional trajectory logging service (no-op by default).
-    type TrajectoryLogger = {
+    type TrajectoryLogger = Service & {
       logProviderAccess: (params: {
         stepId: string;
         providerName: string;
@@ -3009,7 +3034,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Optional trajectory logging: associate model calls with current trajectory step
       try {
-        type TrajectoryLogger = {
+        type TrajectoryLogger = Service & {
           logLlmCall: (params: {
             stepId: string;
             model: string;
@@ -3083,7 +3108,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Optional trajectory logging: associate model calls with current trajectory step
     try {
-      type TrajectoryLogger = {
+      type TrajectoryLogger = Service & {
         logLlmCall: (params: {
           stepId: string;
           model: string;
