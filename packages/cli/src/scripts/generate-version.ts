@@ -24,12 +24,18 @@ interface VersionInfo {
 
 /**
  * Extract version info from existing version.ts content
- * Supports both single and double quoted strings for backwards compatibility
+ * Uses regex that properly handles JSON-stringified values (double quotes, escaped chars)
  */
 function extractExistingVersionInfo(content: string): VersionInfo | null {
-  const version = content.match(/export const CLI_VERSION = ["']([^"']+)["']/)?.[1];
-  const name = content.match(/export const CLI_NAME = ["']([^"']+)["']/)?.[1];
-  const description = content.match(/export const CLI_DESCRIPTION = ["']([^"']+)["']/)?.[1];
+  // Regex pattern for JSON-stringified strings: "(...)"
+  // (?:[^"\\]|\\.)* matches: non-quote/non-backslash chars OR any escaped char (like \", \\, \n)
+  // This handles apostrophes, escaped quotes, and other special characters
+  const jsonStringPattern = (name: string) =>
+    new RegExp(`export const ${name} = "((?:[^"\\\\]|\\\\.)*)"`);
+
+  const version = content.match(jsonStringPattern('CLI_VERSION'))?.[1];
+  const name = content.match(jsonStringPattern('CLI_NAME'))?.[1];
+  const description = content.match(jsonStringPattern('CLI_DESCRIPTION'))?.[1];
 
   if (!version || !name || !description) {
     return null;
