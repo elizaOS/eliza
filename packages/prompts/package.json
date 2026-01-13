@@ -14,10 +14,12 @@
     "./rust": "./dist/rust/prompts.rs"
   },
   "scripts": {
-    "build": "node scripts/generate.js",
+    "build": "node scripts/generate.js && node scripts/generate-action-docs.js",
     "build:typescript": "node scripts/generate.js --target typescript",
     "build:python": "node scripts/generate.js --target python",
     "build:rust": "node scripts/generate.js --target rust",
+    "build:action-docs": "node scripts/generate-action-docs.js",
+    "check:secrets": "node scripts/check-secrets.js",
     "clean": "rm -rf dist",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

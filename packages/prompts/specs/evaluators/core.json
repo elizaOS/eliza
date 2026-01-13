@@ -1,0 +1,57 @@
+{
+  "version": "1.0.0",
+  "evaluators": [
+    {
+      "name": "REFLECTION",
+      "description": "Reflects on agent behavior and provides feedback for improvement.",
+      "similes": [
+        "REFLECT",
+        "SELF_REFLECT",
+        "EVALUATE_INTERACTION",
+        "ASSESS_SITUATION"
+      ],
+      "examples": [
+        {
+          "prompt": "Agent Name: Sarah\nAgent Role: Community Manager\nRoom Type: group\nCurrent Room: general-chat\nMessage Sender: John (user-123)",
+          "messages": [
+            {
+              "name": "John",
+              "content": { "text": "Hey everyone, I'm new here!" }
+            },
+            {
+              "name": "Sarah",
+              "content": {
+                "text": "Welcome John! How did you find our community?"
+              }
+            }
+          ],
+          "outcome": "<response>\n  <thought>I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone.</thought>\n  <quality_score>85</quality_score>\n  <strengths>Welcoming tone and helpful follow-up question.</strengths>\n  <improvements>Ask a slightly more specific question to learn John's goals.</improvements>\n  <learnings>Balance warmth with clarity and next steps.</learnings>\n</response>"
+        }
+      ]
+    },
+    {
+      "name": "RELATIONSHIP_EXTRACTION",
+      "description": "Passively extracts and updates relationship information from conversations.",
+      "similes": [
+        "RELATIONSHIP_ANALYZER",
+        "SOCIAL_GRAPH_BUILDER",
+        "CONTACT_EXTRACTOR"
+      ],
+      "examples": [
+        {
+          "prompt": "User introduces themselves with social media",
+          "messages": [
+            {
+              "name": "{{name1}}",
+              "content": {
+                "type": "text",
+                "text": "Hi, I'm Sarah Chen. You can find me on X @sarahchen_dev"
+              }
+            }
+          ],
+          "outcome": "Extracts X handle and creates/updates the entity with a platform identity."
+        }
+      ]
+    }
+  ]
+}
