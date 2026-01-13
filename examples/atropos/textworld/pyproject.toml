@@ -42,7 +42,8 @@ openai = [
 ]
 atropos = [
     "atroposlib>=0.3.0",
-    "transformers>=4.36.0",
+    # 4.37.0 fixes trust_remote_code handling for Llama/Mistral tokenizers
+    "transformers>=4.37.0",
 ]
 
 [project.scripts]
