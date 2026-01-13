@@ -197,21 +197,38 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
             return -1.0  # Loss
 
     def _get_opponent_move(self, state: TicTacToeState) -> TicTacToeAction | None:
-        """Get opponent's move based on config."""
+        """Get opponent's move based on config.
+
+        Supported opponent types:
+        - "random": Selects a random available position
+        - "optimal" / "minimax": Uses minimax algorithm for perfect play
+        - "none": No automatic opponent - used for interactive/human play where
+          the caller (e.g., CLI) handles opponent input separately. Returns None.
+
+        Returns:
+            The opponent's move, or None if no available moves or opponent="none".
+
+        Raises:
+            ValueError: If opponent type is not recognized.
+        """
         available = self.get_available_actions(state)
         if not available:
             return None
 
-        if self.config.opponent == "random":
+        if self.config.opponent == "none":
+            # Interactive mode: no automatic opponent, caller handles input
+            return None
+        elif self.config.opponent == "random":
             if self._rng is None:
                 self._rng = random.Random()
             return self._rng.choice(available)
-        elif self.config.opponent == "optimal":
-            return self._minimax_move(state)
-        elif self.config.opponent == "minimax":
+        elif self.config.opponent in ("optimal", "minimax"):
             return self._minimax_move(state)
         else:
-            return available[0]
+            raise ValueError(
+                f"Unknown opponent type: {self.config.opponent!r}. "
+                f"Expected one of: 'none', 'random', 'optimal', 'minimax'"
+            )
 
     def _minimax_move(self, state: TicTacToeState) -> TicTacToeAction:
         """Get optimal move using minimax."""
