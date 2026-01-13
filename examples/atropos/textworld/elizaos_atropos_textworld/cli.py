@@ -299,8 +299,8 @@ Examples:
   elizaos-textworld --difficulty hard        # Play hard difficulty
 
 Atropos data generation:
-  elizaos-textworld --mode atropos-gen --episodes 500 --use-elizaos -o train.jsonl
-  elizaos-textworld --mode atropos-gen --episodes 500 --no-use-elizaos -o baseline.jsonl
+  elizaos-textworld --mode atropos-gen --episodes 500 -o train.jsonl  # Uses elizaOS (default)
+  elizaos-textworld --mode atropos-gen --episodes 500 --no-use-elizaos -o baseline.jsonl  # Uses heuristic
         """,
     )
 
@@ -328,17 +328,17 @@ Atropos data generation:
         help="Use LLM for decisions (requires OPENAI_API_KEY)",
     )
     # Atropos-specific arguments
-    parser.add_argument(
-        "--use-elizaos",
-        action="store_true",
-        default=True,
-        help="Use elizaOS agent for atropos-gen (default: True)",
-    )
+    # WHY --no-use-elizaos instead of --use-elizaos:
+    # With action="store_true" and default=True, --use-elizaos would be a no-op
+    # (always True). Using --no-use-elizaos with action="store_false" means:
+    #   - Default (no flag): use_elizaos=True (elizaOS agent)
+    #   - With --no-use-elizaos: use_elizaos=False (heuristic agent)
     parser.add_argument(
         "--no-use-elizaos",
         action="store_false",
         dest="use_elizaos",
-        help="Use heuristic agent instead of elizaOS for atropos-gen",
+        default=True,
+        help="Use heuristic agent instead of elizaOS (default: use elizaOS)",
     )
     parser.add_argument(
         "-o", "--output",
