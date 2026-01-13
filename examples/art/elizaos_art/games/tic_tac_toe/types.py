@@ -114,9 +114,16 @@ class TicTacToeState(State):
     SIZE: ClassVar[int] = 3
 
     def __post_init__(self) -> None:
-        """Validate board size."""
+        """Validate board and normalize winner/is_draw fields."""
         if len(self.board) != self.SIZE * self.SIZE:
             raise ValueError(f"Board must have {self.SIZE * self.SIZE} cells")
+        
+        # Defense-in-depth: convert winner=0 to proper is_draw representation
+        # This handles any code path that accidentally passes winner=0 for draws
+        # (e.g., from _check_winner which uses 0 internally for draws)
+        if self.winner == 0:
+            object.__setattr__(self, "winner", None)
+            object.__setattr__(self, "is_draw", True)
 
     def get_cell(self, row: int, col: int) -> Player:
         """Get player at (row, col)."""
@@ -207,5 +214,9 @@ class TicTacToeConfig:
     # Which player the AI plays as
     ai_player: Player = Player.X
 
-    # Opponent type
-    opponent: str = "random"  # "random", "heuristic", "minimax"
+    # Opponent type: "none", "random", "heuristic", "optimal", "minimax"
+    # - "none": No automatic opponent (for interactive/human play)
+    # - "random": Random valid moves
+    # - "heuristic": Simple priority-based strategy (center > corners > edges)
+    # - "optimal" / "minimax": Perfect play using minimax algorithm
+    opponent: str = "random"

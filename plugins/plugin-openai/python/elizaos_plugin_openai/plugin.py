@@ -37,8 +37,8 @@ class OpenAIPlugin:
         self,
         api_key: str | None = None,
         base_url: str = "https://api.openai.com/v1",
-        small_model: str = "gpt-4o-mini",
-        large_model: str = "gpt-4o",
+        small_model: str = "gpt-5-mini",
+        large_model: str = "gpt-5",
         embedding_model: str = "text-embedding-3-small",
         embedding_dimensions: int = 1536,
     ) -> None:
@@ -353,7 +353,7 @@ def create_openai_elizaos_plugin() -> Plugin:
         temperature = (
             float(temperature_raw) if isinstance(temperature_raw, (int, float)) else None
         )
-        # Note: gpt-5-mini doesn't support temperature - use defaults
+        # Note: gpt-5-mini has limited temperature support - use defaults
         return await client.generate_text_small(
             params.get("prompt", ""),
             system=params.get("system"),

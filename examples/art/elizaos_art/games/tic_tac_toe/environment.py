@@ -70,16 +70,19 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
         )
 
         # If agent is O, opponent (X) moves first
+        # Note: When opponent="none" (interactive mode), _get_opponent_move returns None
+        # and we skip the automatic opponent move - the caller handles human input
         if self._agent_player == Player.O:
             opponent_move = self._get_opponent_move(self._current_state)
-            board = list(self._current_state.board)
-            board[opponent_move.value] = Player.X.value
-            self._current_state = TicTacToeState(
-                board=tuple(board),
-                current_player=Player.O.value,
-                winner=None,
-                move_count=1,
-            )
+            if opponent_move is not None:
+                board = list(self._current_state.board)
+                board[opponent_move.value] = Player.X.value
+                self._current_state = TicTacToeState(
+                    board=tuple(board),
+                    current_player=Player.O.value,
+                    winner=None,
+                    move_count=1,
+                )
 
         return self._current_state
 
@@ -111,18 +114,22 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
 
         # Make agent's move
         board[action.value] = current.value
-        winner = self._check_winner(board)
+        check_result = self._check_winner(board)
         move_count = self._current_state.move_count + 1
 
-        if winner is not None:
-            # Game over
+        if check_result is not None:
+            # Game over - convert _check_winner result to proper state
+            # _check_winner returns 0 for draw, 1/2 for winner
+            is_draw = check_result == 0
+            winner = None if is_draw else check_result
             self._current_state = TicTacToeState(
                 board=tuple(board),
                 current_player=current.opponent().value,
                 winner=winner,
+                is_draw=is_draw,
                 move_count=move_count,
             )
-            reward = self._calculate_reward(winner)
+            reward = self._calculate_reward(check_result)
             return self._current_state, reward, True
 
         # Opponent's turn
@@ -138,18 +145,24 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
         opponent_move = self._get_opponent_move(temp_state)
         if opponent_move is not None:
             board[opponent_move.value] = opponent.value
-            winner = self._check_winner(board)
+            check_result = self._check_winner(board)
             move_count += 1
+        else:
+            check_result = None
 
+        # Convert _check_winner result to proper state
+        is_draw = check_result == 0
+        winner = None if (check_result is None or is_draw) else check_result
         self._current_state = TicTacToeState(
             board=tuple(board),
             current_player=current.value,  # Back to agent's turn
             winner=winner,
+            is_draw=is_draw,
             move_count=move_count,
         )
 
-        done = winner is not None
-        reward = self._calculate_reward(winner) if done else 0.0
+        done = check_result is not None
+        reward = self._calculate_reward(check_result) if done else 0.0
         return self._current_state, reward, done
 
     def get_available_actions(self, state: TicTacToeState) -> list[TicTacToeAction]:
@@ -169,10 +182,13 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
 
     def _check_winner(self, board: list[int]) -> int | None:
         """
-        Check for a winner.
+        Check for a winner (internal helper).
+
+        Note: This is an internal method. Callers should convert the result
+        to proper TicTacToeState fields: winner=None and is_draw=True for draws.
 
         Returns:
-            Player value if winner, 0 if draw, None if ongoing
+            1 if X wins, 2 if O wins, 0 if draw, None if game ongoing.
         """
         for pattern in self.WIN_PATTERNS:
             values = [board[i] for i in pattern]
@@ -200,10 +216,10 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
         """Get opponent's move based on config.
 
         Supported opponent types:
-        - "random": Selects a random available position
-        - "optimal" / "minimax": Uses minimax algorithm for perfect play
-        - "none": No automatic opponent - used for interactive/human play where
-          the caller (e.g., CLI) handles opponent input separately. Returns None.
+        - "none": No automatic opponent (interactive/human play). Returns None.
+        - "random": Selects a random available position.
+        - "heuristic": Simple priority-based strategy (center > corners > edges).
+        - "optimal" / "minimax": Uses minimax algorithm for perfect play.
 
         Returns:
             The opponent's move, or None if no available moves or opponent="none".
@@ -222,13 +238,29 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
             if self._rng is None:
                 self._rng = random.Random()
             return self._rng.choice(available)
+        elif self.config.opponent == "heuristic":
+            return self._heuristic_move(available)
         elif self.config.opponent in ("optimal", "minimax"):
             return self._minimax_move(state)
         else:
             raise ValueError(
                 f"Unknown opponent type: {self.config.opponent!r}. "
-                f"Expected one of: 'none', 'random', 'optimal', 'minimax'"
+                f"Expected one of: 'none', 'random', 'heuristic', 'optimal', 'minimax'"
             )
+
+    def _heuristic_move(self, available: list[TicTacToeAction]) -> TicTacToeAction:
+        """Get a move using simple heuristics.
+        
+        Priority: center (4) > corners (0,2,6,8) > edges (1,3,5,7)
+        """
+        # Priority order: center, then corners, then edges
+        priority = [4, 0, 2, 6, 8, 1, 3, 5, 7]
+        for pos in priority:
+            action = TicTacToeAction(pos)
+            if action in available:
+                return action
+        # Fallback (shouldn't reach here if available is non-empty)
+        return available[0]
 
     def _minimax_move(self, state: TicTacToeState) -> TicTacToeAction:
         """Get optimal move using minimax."""
