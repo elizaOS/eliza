@@ -3,8 +3,8 @@
   "version": "2.0.0",
   "description": "",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
   "types": "dist/index.d.ts",
   "sideEffects": false,
   "repository": {
@@ -15,8 +15,23 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "require": "./dist/cjs/index.node.cjs",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "require": "./dist/cjs/index.node.cjs",
+      "default": "./dist/node/index.node.js"
     }
   },
   "files": [
