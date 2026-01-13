@@ -5,7 +5,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_RUST="$SCRIPT_DIR"
-PLUGIN_SQL_RUST="$SCRIPT_DIR/../../plugin-sql/rust"
+PLUGIN_SQL_RUST="$SCRIPT_DIR/../../plugins/plugin-sql/rust"
 
 echo "=========================================="
 echo "  elizaOS Rust Implementation Test Suite"

@@ -217,6 +217,8 @@ describeWasm("WASM Bindings", () => {
       bio: "A test agent",
       status: "active",
       enabled: true,
+      createdAt: 1704067200000,
+      updatedAt: 1704067200000,
     });
 
     it("should parse agent from JSON", () => {

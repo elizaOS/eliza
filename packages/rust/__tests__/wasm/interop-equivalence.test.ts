@@ -221,16 +221,18 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
       if (!wasm) return;
 
       const memory: Memory = {
-        entityId: "entity-123",
-        roomId: "room-456",
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        entityId: "550e8400-e29b-41d4-a716-446655440001",
+        roomId: "550e8400-e29b-41d4-a716-446655440002",
         content: {
           text: "Hello",
           source: "test",
           url: "https://example.com",
           actions: ["action1", "action2"],
           metadata: { key: "value" },
-          attachments: [{ type: "image", url: "https://..." }],
+          attachments: [{ id: "attach-1", url: "https://example.com/image.png" }],
         },
+        createdAt: 1704067200000,
       };
 
       const rustMemory = wasm.parseMemory(JSON.stringify(memory));
@@ -250,6 +252,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
 
       const character: Character = {
         name: "DeepAgent",
+        bio: ["A deeply nested test agent"],
         messageExamples: [
           [
             {
