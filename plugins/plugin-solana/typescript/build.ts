@@ -30,13 +30,13 @@ async function build(): Promise<void> {
     ...Object.keys(pkg.devDependencies ?? {}),
   ];
 
-  await $`rm -rf ../dist`;
-  await $`mkdir -p ../dist`;
+  await $`rm -rf dist`;
+  await $`mkdir -p dist`;
   const esmStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-solana (ESM)...");
   const esmResult = await Bun.build({
     entrypoints: ["index.ts"],
-    outdir: "../dist",
+    outdir: "dist",
     target: "node",
     format: "esm",
     sourcemap: "external",
