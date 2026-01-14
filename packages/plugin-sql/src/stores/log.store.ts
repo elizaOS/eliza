@@ -10,51 +10,11 @@ import type {
 } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import { logTable, roomTable } from '../schema';
-import type { StoreContext } from './types';
+import type { Store, StoreContext } from './types';
+import { sanitizeJsonObject } from '../utils';
 
-export class LogStore {
-  constructor(private ctx: StoreContext) {}
-
-  /**
-   * Sanitizes a JSON object by replacing problematic Unicode escape sequences
-   * that could cause errors during JSON serialization/storage
-   */
-  private sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-    if (value === null || value === undefined) {
-      return value;
-    }
-
-    if (typeof value === 'string') {
-      return value
-        .replace(/\u0000/g, '') // Remove null bytes
-        .replace(/\\(?!["\\/bfnrtu])/g, '\\\\') // Escape single backslashes not part of valid escape sequences
-        .replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u'); // Fix malformed Unicode escape sequences
-    }
-
-    if (typeof value === 'object') {
-      if (seen.has(value as object)) {
-        return null;
-      } else {
-        seen.add(value as object);
-      }
-
-      if (Array.isArray(value)) {
-        return value.map((item) => this.sanitizeJsonObject(item, seen));
-      } else {
-        const result: Record<string, unknown> = {};
-        for (const [key, val] of Object.entries(value)) {
-          const sanitizedKey =
-            typeof key === 'string'
-              ? key.replace(/\u0000/g, '').replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u')
-              : key;
-          result[sanitizedKey] = this.sanitizeJsonObject(val, seen);
-        }
-        return result;
-      }
-    }
-
-    return value;
-  }
+export class LogStore implements Store {
+  constructor(public readonly ctx: StoreContext) {}
 
   async create(params: {
     body: { [key: string]: unknown };
@@ -63,7 +23,7 @@ export class LogStore {
     type: string;
   }): Promise<void> {
     try {
-      const sanitizedBody = this.sanitizeJsonObject(params.body);
+      const sanitizedBody = sanitizeJsonObject(params.body);
       const jsonString = JSON.stringify(sanitizedBody);
 
       await this.ctx.withIsolationContext(params.entityId, async (tx) => {
@@ -359,6 +319,8 @@ export class LogStore {
   }
 
   async delete(logId: UUID): Promise<void> {
-    await this.ctx.getDb().delete(logTable).where(eq(logTable.id, logId));
+    return this.ctx.withRetry(async () => {
+      await this.ctx.getDb().delete(logTable).where(eq(logTable.id, logId));
+    }, 'LogStore.delete');
   }
 }

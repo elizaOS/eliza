@@ -197,4 +197,23 @@ export class ParticipantStore implements Store {
       }
     }, 'ParticipantStore.setUserState');
   }
+
+  async getByEntity(entityId: UUID): Promise<Array<{ id: UUID; entityId: UUID; roomId: UUID }>> {
+    return this.ctx.withRetry(async () => {
+      const result = await this.db
+        .select({
+          id: participantTable.id,
+          entityId: participantTable.entityId,
+          roomId: participantTable.roomId,
+        })
+        .from(participantTable)
+        .where(eq(participantTable.entityId, entityId));
+
+      return result.map((row) => ({
+        id: row.id as UUID,
+        entityId: row.entityId as UUID,
+        roomId: row.roomId as UUID,
+      }));
+    }, 'ParticipantStore.getByEntity');
+  }
 }

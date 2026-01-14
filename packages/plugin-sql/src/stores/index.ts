@@ -10,3 +10,4 @@ export * from './cache.store';
 export * from './world.store';
 export * from './task.store';
 export * from './log.store';
+export * from './messaging.store';
