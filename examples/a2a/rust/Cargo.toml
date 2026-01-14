@@ -7,7 +7,8 @@ license = "MIT"
 
 [dependencies]
 elizaos = { path = "../../../packages/rust" }
-elizaos_plugin_openai = { path = "../../../plugins/plugin-openai/rust" }
+elizaos_plugin_openai = { package = "elizaos-plugin-openai", path = "../../../plugins/plugin-openai/rust" }
+elizaos_plugin_eliza_classic = { package = "elizaos-plugin-eliza-classic", path = "../../../plugins/plugin-eliza-classic/rust" }
 tokio = { version = "1.0", features = ["full"] }
 axum = { version = "0.7", features = ["macros"] }
 tower-http = { version = "0.5", features = ["cors"] }
@@ -20,3 +21,8 @@ dotenvy = "0.15"
 uuid = { version = "1.0", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
+async-trait = "0.1"
+
+[dev-dependencies]
+tower = "0.5"
+http-body-util = "0.1"

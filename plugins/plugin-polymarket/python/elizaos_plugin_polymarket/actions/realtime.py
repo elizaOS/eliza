@@ -21,7 +21,7 @@ async def setup_websocket(
     asset_ids: list[str] | None = None,
     authenticated: bool = False,
     runtime: RuntimeProtocol | None = None,
-) -> dict[str, any]:
+) -> dict[str, object]:
     """
     Setup and configure WebSocket connections for real-time data.
 
@@ -40,9 +40,7 @@ async def setup_websocket(
     try:
         clob_ws_url = (
             runtime.get_setting("CLOB_WS_URL") if runtime else os.environ.get("CLOB_WS_URL")
-        ) or (
-            runtime.get_setting("CLOB_API_URL") if runtime else os.environ.get("CLOB_API_URL")
-        )
+        ) or (runtime.get_setting("CLOB_API_URL") if runtime else os.environ.get("CLOB_API_URL"))
 
         if not clob_ws_url:
             raise PolymarketError(
@@ -67,19 +65,13 @@ async def setup_websocket(
         has_credentials = False
         if authenticated:
             clob_api_key = (
-                runtime.get_setting("CLOB_API_KEY")
-                if runtime
-                else os.environ.get("CLOB_API_KEY")
+                runtime.get_setting("CLOB_API_KEY") if runtime else os.environ.get("CLOB_API_KEY")
             )
             clob_api_secret = (
                 runtime.get_setting("CLOB_API_SECRET")
                 if runtime
                 else os.environ.get("CLOB_API_SECRET")
-            ) or (
-                runtime.get_setting("CLOB_SECRET")
-                if runtime
-                else os.environ.get("CLOB_SECRET")
-            )
+            ) or (runtime.get_setting("CLOB_SECRET") if runtime else os.environ.get("CLOB_SECRET"))
             clob_api_passphrase = (
                 runtime.get_setting("CLOB_API_PASSPHRASE")
                 if runtime
@@ -115,7 +107,7 @@ async def handle_realtime_updates(
     channel: str | None = None,
     asset_ids: list[str] | None = None,
     runtime: RuntimeProtocol | None = None,
-) -> dict[str, any]:
+) -> dict[str, object]:
     """
     Handle real-time WebSocket updates (subscribe/unsubscribe/status).
 
@@ -134,9 +126,7 @@ async def handle_realtime_updates(
     try:
         clob_ws_url = (
             runtime.get_setting("CLOB_WS_URL") if runtime else os.environ.get("CLOB_WS_URL")
-        ) or (
-            runtime.get_setting("CLOB_API_URL") if runtime else os.environ.get("CLOB_API_URL")
-        )
+        ) or (runtime.get_setting("CLOB_API_URL") if runtime else os.environ.get("CLOB_API_URL"))
 
         if not clob_ws_url:
             raise PolymarketError(

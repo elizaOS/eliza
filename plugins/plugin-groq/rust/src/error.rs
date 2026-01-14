@@ -72,7 +72,10 @@ impl GroqError {
 
     pub fn retry_delay_ms(&self) -> Option<u64> {
         match self {
-            Self::RateLimit { retry_after: Some(secs), .. } => Some((*secs * 1000.0) as u64 + 1000),
+            Self::RateLimit {
+                retry_after: Some(secs),
+                ..
+            } => Some((*secs * 1000.0) as u64 + 1000),
             Self::RateLimit { .. } => Some(10000),
             Self::Network(_) => Some(1000),
             _ => None,

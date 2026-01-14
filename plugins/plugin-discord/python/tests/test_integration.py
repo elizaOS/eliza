@@ -26,10 +26,7 @@ pytestmark = pytest.mark.integration
 
 def integration_configured() -> bool:
     """Check if integration test environment is configured."""
-    return bool(
-        os.environ.get("DISCORD_API_TOKEN")
-        and os.environ.get("DISCORD_APPLICATION_ID")
-    )
+    return bool(os.environ.get("DISCORD_API_TOKEN") and os.environ.get("DISCORD_APPLICATION_ID"))
 
 
 @pytest.fixture
@@ -84,7 +81,8 @@ class TestMessageOperations:
     @pytest.mark.asyncio
     @pytest.mark.skipif(not integration_configured(), reason="Requires Discord credentials")
     async def test_send_message_validation(
-        self, discord_service: DiscordService  # noqa: ARG002
+        self,
+        discord_service: DiscordService,  # noqa: ARG002
     ) -> None:
         """Test message sending validation (without actually sending)."""
         # This test validates the request would be valid
@@ -103,9 +101,7 @@ class TestEventHandling:
     """Integration tests for event handling."""
 
     @pytest.mark.asyncio
-    async def test_event_callback_registration(
-        self, discord_service: DiscordService
-    ) -> None:
+    async def test_event_callback_registration(self, discord_service: DiscordService) -> None:
         """Test registering event callbacks."""
         events_received: list[tuple] = []
 
@@ -116,9 +112,7 @@ class TestEventHandling:
         assert len(discord_service._event_callbacks) == 1
 
     @pytest.mark.asyncio
-    async def test_message_callback_registration(
-        self, discord_service: DiscordService
-    ) -> None:
+    async def test_message_callback_registration(self, discord_service: DiscordService) -> None:
         """Test registering message callbacks."""
         messages_received: list = []
 
@@ -127,5 +121,3 @@ class TestEventHandling:
             messages_received.append(message)
 
         assert len(discord_service._message_callbacks) == 1
-
-

@@ -1,6 +1,5 @@
 """Tests for forms plugin actions."""
 
-
 from elizaos_plugin_forms import (
     CancelFormAction,
     CreateFormAction,

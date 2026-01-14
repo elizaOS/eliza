@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -107,8 +106,7 @@ SWAP_ACTION = {
         "EXCHANGE_TOKENS_SOLANA",
     ],
     "description": (
-        "Perform a token swap from one token to another on Solana. "
-        "Works with SOL and SPL tokens."
+        "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens."
     ),
     "examples": [
         [

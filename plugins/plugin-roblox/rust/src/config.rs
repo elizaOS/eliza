@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
-use crate::error::{Result, RobloxError};
 use crate::defaults;
+use crate::error::{Result, RobloxError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,8 +53,8 @@ impl RobloxConfig {
         let place_id = std::env::var("ROBLOX_PLACE_ID").ok();
         let webhook_secret = std::env::var("ROBLOX_WEBHOOK_SECRET").ok();
 
-        let messaging_topic = std::env::var("ROBLOX_MESSAGING_TOPIC")
-            .unwrap_or_else(|_| default_messaging_topic());
+        let messaging_topic =
+            std::env::var("ROBLOX_MESSAGING_TOPIC").unwrap_or_else(|_| default_messaging_topic());
 
         let poll_interval = std::env::var("ROBLOX_POLL_INTERVAL")
             .ok()
@@ -158,5 +158,3 @@ mod tests {
         assert!(invalid_config2.validate().is_err());
     }
 }
-
-

@@ -80,18 +80,28 @@ impl DiscordAction for JoinChannelAction {
 
         // Check if this is a voice request based on message content
         let text_lower = text.to_lowercase();
-        let is_voice_request =
-            is_voice || text_lower.contains("voice") || text_lower.contains("vc") || text_lower.contains("hop in");
+        let is_voice_request = is_voice
+            || text_lower.contains("voice")
+            || text_lower.contains("vc")
+            || text_lower.contains("hop in");
 
         // Find the channel
         let channel = service
-            .find_channel(channel_identifier, context.guild_id.as_deref(), is_voice_request)
+            .find_channel(
+                channel_identifier,
+                context.guild_id.as_deref(),
+                is_voice_request,
+            )
             .await?;
 
         // Try opposite type if not found
         let channel = if channel.is_null() {
             service
-                .find_channel(channel_identifier, context.guild_id.as_deref(), !is_voice_request)
+                .find_channel(
+                    channel_identifier,
+                    context.guild_id.as_deref(),
+                    !is_voice_request,
+                )
                 .await?
         } else {
             channel
@@ -105,9 +115,15 @@ impl DiscordAction for JoinChannelAction {
             )));
         }
 
-        let channel_name = channel.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown");
+        let channel_name = channel
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("Unknown");
         let channel_id = channel.get("id").and_then(|i| i.as_str()).unwrap_or("");
-        let channel_type = channel.get("type").and_then(|t| t.as_str()).unwrap_or("text");
+        let channel_type = channel
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("text");
 
         // Handle voice channels
         if channel_type == "voice" {

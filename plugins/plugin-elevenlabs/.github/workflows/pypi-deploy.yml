@@ -1,0 +1,138 @@
+name: Publish PyPI Package
+
+on:
+  push:
+    branches:
+      - 1.x
+    paths:
+      - 'python/**'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: python
+
+jobs:
+  verify_version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install toml parser
+        run: pip install toml
+
+      - name: Check if version changed
+        id: check
+        working-directory: python
+        run: |
+          echo "Current branch: ${{ github.ref }}"
+
+          # Get current version from pyproject.toml
+          CURRENT_VERSION=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
+          echo "Current version: $CURRENT_VERSION"
+
+          # Get previous commit hash
+          git rev-parse HEAD~1 || git rev-parse HEAD
+          PREV_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+
+          # Check if python/pyproject.toml changed
+          if git diff --name-only HEAD~1 HEAD | grep "python/pyproject.toml"; then
+            echo "python/pyproject.toml was changed in this commit"
+            
+            # Get previous version if possible
+            if git show "$PREV_COMMIT:python/pyproject.toml" 2>/dev/null; then
+              PREV_VERSION=$(git show "$PREV_COMMIT:python/pyproject.toml" | python -c "import sys, toml; print(toml.loads(sys.stdin.read())['project']['version'])")
+              echo "Previous version: $PREV_VERSION"
+              
+              if [ "$CURRENT_VERSION" != "$PREV_VERSION" ]; then
+                echo "Version changed from $PREV_VERSION to $CURRENT_VERSION"
+                echo "should_publish=true" >> $GITHUB_OUTPUT
+              else
+                echo "Version unchanged"
+                echo "should_publish=false" >> $GITHUB_OUTPUT
+              fi
+            else
+              echo "First commit with python/pyproject.toml, will publish"
+              echo "should_publish=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "python/pyproject.toml not changed in this commit"
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+  publish:
+    needs: verify_version
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "pypi-v${{ needs.verify_version.outputs.version }}" -m "PyPI Release v${{ needs.verify_version.outputs.version }}"
+          git push origin "pypi-v${{ needs.verify_version.outputs.version }}"
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: twine upload dist/*
+
+  create_release:
+    needs: [verify_version, publish]
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "pypi-v${{ needs.verify_version.outputs.version }}"
+          release_name: "PyPI v${{ needs.verify_version.outputs.version }}"
+          body: |
+            ## PyPI Package Release v${{ needs.verify_version.outputs.version }}
+
+            Install with:
+            ```bash
+            pip install eliza-plugin-elevenlabs==${{ needs.verify_version.outputs.version }}
+            ```
+          draft: false
+          prerelease: false

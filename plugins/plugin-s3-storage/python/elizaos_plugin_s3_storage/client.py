@@ -275,4 +275,3 @@ def create_client_from_env() -> S3StorageClient:
     )
 
     return S3StorageClient(config)
-

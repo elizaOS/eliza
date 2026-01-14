@@ -55,24 +55,29 @@ class RepositoryManager:
             logger.info(f"Cleaning up existing directory: {repo_dir}")
             shutil.rmtree(repo_dir)
 
-        # Clone the repository
+        # Clone the repository (use longer timeout for git operations)
         clone_url = f"https://github.com/{instance.repo}.git"
         logger.info(f"Cloning {clone_url} to {repo_dir}...")
 
         try:
             await self._run_command(
-                ["git", "clone", "--depth", "1000", clone_url, str(repo_dir)]
+                ["git", "clone", "--depth", "1000", clone_url, str(repo_dir)],
+                timeout=300.0,  # 5 minute timeout for clone
             )
         except subprocess.CalledProcessError:
             # Try without depth limit if shallow clone fails
             logger.warning("Shallow clone failed, trying full clone...")
-            await self._run_command(["git", "clone", clone_url, str(repo_dir)])
+            await self._run_command(
+                ["git", "clone", clone_url, str(repo_dir)],
+                timeout=600.0,  # 10 minute timeout for full clone
+            )
 
         # Fetch the specific commit if needed
         try:
             await self._run_command(
                 ["git", "fetch", "origin", instance.base_commit],
                 cwd=repo_dir,
+                timeout=120.0,  # 2 minute timeout for fetch
             )
         except subprocess.CalledProcessError:
             # Commit might already be available
@@ -82,6 +87,7 @@ class RepositoryManager:
         await self._run_command(
             ["git", "checkout", instance.base_commit],
             cwd=repo_dir,
+            timeout=60.0,  # 1 minute timeout for checkout
         )
 
         self.current_repo = repo_dir
@@ -187,38 +193,28 @@ class RepositoryManager:
         file_pattern: str = "*.py",
         max_results: int = 50,
     ) -> list[CodeLocation]:
-        """Search for code patterns in the repository."""
+        """Search for code patterns in the repository.
+
+        Uses grep for reliable cross-platform search.
+        """
         if not self.current_repo:
             return []
 
         results: list[CodeLocation] = []
 
         try:
-            # Use ripgrep if available, otherwise fall back to grep
-            try:
-                result = await self._run_command(
-                    [
-                        "rg",
-                        "-n",
-                        "--glob",
-                        file_pattern,
-                        "--max-count",
-                        str(max_results * 2),
-                        query,
-                    ],
-                    cwd=self.current_repo,
-                    check=False,
-                )
-            except FileNotFoundError:
-                result = await self._run_command(
-                    ["grep", "-rn", query, "--include", file_pattern],
-                    cwd=self.current_repo,
-                    check=False,
-                )
+            # Use grep directly for reliable search (ripgrep can hang on some repos)
+            result = await self._run_command(
+                ["grep", "-rn", f"--include={file_pattern}", query, "."],
+                cwd=self.current_repo,
+                check=False,
+                timeout=30.0,
+            )
 
             if result.returncode == 0:
                 for line in result.stdout.split("\n"):
                     if ":" in line:
+                        # Format: ./path/file.py:line:content
                         parts = line.split(":", 2)
                         if len(parts) >= 3:
                             # Safely parse line number
@@ -226,10 +222,15 @@ class RepositoryManager:
                                 line_num = int(parts[1])
                             except ValueError:
                                 continue  # Skip lines with invalid line numbers
-                            
+
+                            # Remove leading ./ from path
+                            file_path = parts[0]
+                            if file_path.startswith("./"):
+                                file_path = file_path[2:]
+
                             results.append(
                                 CodeLocation(
-                                    file_path=parts[0],
+                                    file_path=file_path,
                                     start_line=line_num,
                                     end_line=line_num,
                                     content=parts[2],
@@ -238,6 +239,8 @@ class RepositoryManager:
                             if len(results) >= max_results:
                                 break
 
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Search timed out for query: {query}")
         except Exception as e:
             logger.error(f"Error searching code: {e}")
 
@@ -304,8 +307,9 @@ class RepositoryManager:
         cwd: Path | None = None,
         input_data: str | None = None,
         check: bool = True,
+        timeout: float = 30.0,
     ) -> subprocess.CompletedProcess[str]:
-        """Run a shell command asynchronously."""
+        """Run a shell command asynchronously with timeout."""
         process = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=cwd,
@@ -314,9 +318,15 @@ class RepositoryManager:
             stderr=asyncio.subprocess.PIPE,
         )
 
-        stdout_bytes, stderr_bytes = await process.communicate(
-            input=input_data.encode() if input_data else None
-        )
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                process.communicate(input=input_data.encode() if input_data else None),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            raise subprocess.TimeoutExpired(cmd, timeout)
 
         result = subprocess.CompletedProcess(
             args=cmd,

@@ -1,55 +1,51 @@
 /**
  * Integration tests for the Polymarket plugin.
- * Skip tests that require API keys.
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
-const HAS_PRIVATE_KEY = !!(process.env.POLYMARKET_PRIVATE_KEY || process.env.EVM_PRIVATE_KEY);
-const _skipIfNoKey = HAS_PRIVATE_KEY ? it : it.skip;
+let polymarketPlugin: { name: string; description: string; services?: unknown; providers?: unknown; actions?: unknown; config?: unknown; init?: unknown };
 
 describe("Polymarket Plugin Integration Tests", () => {
+  beforeAll(async () => {
+    const mod = await import("../index");
+    polymarketPlugin = mod.polymarketPlugin;
+  }, 20_000);
+
   describe("Plugin Structure", () => {
     it("should export polymarketPlugin", async () => {
-      const { polymarketPlugin } = await import("../index");
       expect(polymarketPlugin).toBeDefined();
       expect(polymarketPlugin.name).toBe("polymarket");
     });
 
     it("should have correct description", async () => {
-      const { polymarketPlugin } = await import("../index");
       expect(polymarketPlugin.description).toContain("Polymarket");
     });
 
     it("should have services defined", async () => {
-      const { polymarketPlugin } = await import("../index");
       expect(polymarketPlugin.services).toBeDefined();
       expect(Array.isArray(polymarketPlugin.services)).toBe(true);
     });
 
     it("should have providers defined", async () => {
-      const { polymarketPlugin } = await import("../index");
       expect(polymarketPlugin.providers).toBeDefined();
       expect(Array.isArray(polymarketPlugin.providers)).toBe(true);
     });
 
     it("should have actions defined", async () => {
-      const { polymarketPlugin } = await import("../index");
       expect(polymarketPlugin.actions).toBeDefined();
       expect(Array.isArray(polymarketPlugin.actions)).toBe(true);
       expect(polymarketPlugin.actions?.length).toBeGreaterThan(0);
     });
 
     it("should have init function", async () => {
-      const { polymarketPlugin } = await import("../index");
       expect(typeof polymarketPlugin.init).toBe("function");
     });
   });
 
   describe("Configuration", () => {
     it("should have all config keys", async () => {
-      const { polymarketPlugin } = await import("../index");
-      const config = polymarketPlugin.config;
+      const config = polymarketPlugin.config as { [k: string]: unknown };
       expect(config).toHaveProperty("CLOB_API_URL");
       expect(config).toHaveProperty("POLYMARKET_PRIVATE_KEY");
     });
@@ -93,7 +89,7 @@ describe("Polymarket Plugin Integration Tests", () => {
 
   describe("Public API Tests (no auth required)", () => {
     it("should be able to fetch public markets", async () => {
-      // Polymarket has a public API endpoint for markets
+      if (process.env.POLYMARKET_LIVE_TESTS !== "1") return;
       const response = await fetch("https://clob.polymarket.com/markets?limit=1");
       expect(response.ok).toBe(true);
     });

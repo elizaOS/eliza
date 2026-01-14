@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+// Write environment variable to registry
+const { registry } = require('../dist/registry/index.js');
+
+const args = process.argv.slice(2);
+const varName = args[0];
+const varValue = args[1] || '';
+
+if (!varName) {
+  console.error('Usage: _write_env <var_name> [value]');
+  process.exit(1);
+}
+
+registry.set(varName, varValue);

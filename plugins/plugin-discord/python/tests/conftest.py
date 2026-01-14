@@ -375,7 +375,7 @@ sys.modules["discord"] = mock_discord
 # Now safe to import pytest and define fixtures
 # =============================================================================
 
-import pytest
+import pytest  # noqa: E402
 
 if TYPE_CHECKING:
     from elizaos_plugin_discord import DiscordService

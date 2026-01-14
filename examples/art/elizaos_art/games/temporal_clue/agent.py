@@ -1,7 +1,5 @@
 """
-Temporal Clue Agent for ART Training
-
-LLM-based agent that solves temporal reasoning puzzles.
+Temporal Clue Agents for ART Training
 """
 
 import re
@@ -15,15 +13,13 @@ from elizaos_art.games.temporal_clue.types import (
 
 class TemporalClueAgent(BaseAgent[TemporalClueState, TemporalClueAction]):
     """
-    LLM-based agent for solving temporal clue puzzles.
-
-    Uses reasoning to order events based on temporal relationships.
+    LLM-based agent for solving Temporal Clue puzzles.
     """
 
     def __init__(
         self,
         model_name: str = "meta-llama/Llama-3.2-3B-Instruct",
-        temperature: float = 0.3,  # Lower temp for reasoning
+        temperature: float = 0.7,
     ):
         self.model_name = model_name
         self.temperature = temperature
@@ -33,46 +29,45 @@ class TemporalClueAgent(BaseAgent[TemporalClueState, TemporalClueAction]):
         return f"TemporalClueAgent({self.model_name})"
 
     def get_system_prompt(self) -> str:
-        return """You are an expert at solving temporal logic puzzles. Given a set of events and clues about their temporal relationships, you must determine the correct chronological order.
+        """Get system prompt for the LLM."""
+        return """You are an expert at solving temporal reasoning puzzles. Your task is to arrange events in chronological order based on given clues.
 
-Reasoning strategies:
-1. Build a directed graph of "before" relationships
-2. Look for anchor points (events that must be first/last)
-3. Use transitive reasoning: if A before B and B before C, then A before C
-4. "Immediately before/after" means no events in between
-5. "Same time" means events happen simultaneously (treat as single position)
+Strategy:
+1. Read all clues carefully
+2. Identify definite relationships (A before B)
+3. Build a chain of events using transitive reasoning
+4. If A is before B, and B is before C, then A is before C
+5. Place events one at a time, starting with those you're most certain about
+6. Use "immediately before/after" clues to lock adjacent positions
 
 When placing events:
-1. Start with events that have the most constraints
-2. Check each placement against ALL clues
-3. If stuck, try working backwards from later events
+- Position 0 is EARLIEST (first to happen)
+- Higher positions are LATER (happened after)
+- SUBMIT when all events are placed to check your answer
 
-Respond with the event name to place next, or SUBMIT when all events are placed."""
+Respond with just a position number (0-7) to place the next event, or SUBMIT."""
 
     def format_action_prompt(
         self,
         state: TemporalClueState,
         available_actions: list[TemporalClueAction],
     ) -> str:
-        """Format prompt for deciding next event."""
+        """Format prompt for action selection."""
+        action_strs = []
+        for a in available_actions:
+            if a == TemporalClueAction.SUBMIT:
+                action_strs.append("SUBMIT")
+            else:
+                action_strs.append(str(a.value))
+
         prompt = f"""{state.to_prompt()}
 
-Based on the clues, which event should come next in the chronological order?
+Available positions: {", ".join(action_strs)}
 
-Remaining events: {', '.join(state.remaining_events)}
+Next event to place: {state.unplaced_events[0] if state.unplaced_events else "None"}
 
-Think step by step:
-1. Which clues mention the remaining events?
-2. Which event has the most "before" relationships with already-placed events?
-3. Which event must logically come next?
-
-"""
-
-        if TemporalClueAction.SUBMIT in available_actions:
-            prompt += "All events placed. Type SUBMIT to check your answer.\n"
-            prompt += f"Your ordering: {' → '.join(state.current_ordering)}\n"
-        else:
-            prompt += "Respond with the name of the event to place next:\n"
+Based on the clues, where should this event be placed? (position 0 = earliest)
+Respond with a number or SUBMIT:"""
 
         return prompt
 
@@ -81,25 +76,23 @@ Think step by step:
         response: str,
         available_actions: list[TemporalClueAction],
     ) -> TemporalClueAction:
-        """Parse response into an action."""
+        """Parse LLM response into an action."""
         response = response.strip().upper()
 
-        if "SUBMIT" in response and TemporalClueAction.SUBMIT in available_actions:
-            return TemporalClueAction.SUBMIT
+        # Check for SUBMIT
+        if "SUBMIT" in response:
+            if TemporalClueAction.SUBMIT in available_actions:
+                return TemporalClueAction.SUBMIT
 
-        # Try to match event names
-        # Get the state from context (need to pass through somehow)
-        # For now, try matching by event index mentioned
-        for action in available_actions:
-            if action == TemporalClueAction.SUBMIT:
-                continue
-
-            # Try to find the event name in response
-            event_idx = action.value
-            if str(event_idx) in response:
+        # Try to extract a number
+        match = re.search(r"\b([0-7])\b", response)
+        if match:
+            pos = int(match.group(1))
+            action = TemporalClueAction.from_position(pos)
+            if action in available_actions:
                 return action
 
-        # Default to first available non-submit action
+        # Default to first available position action
         for action in available_actions:
             if action != TemporalClueAction.SUBMIT:
                 return action
@@ -111,96 +104,27 @@ Think step by step:
         state: TemporalClueState,
         available_actions: list[TemporalClueAction],
     ) -> TemporalClueAction:
-        """
-        Heuristic decision based on clue analysis.
-
-        This is a fallback when not using the full LLM pipeline.
-        """
-        if TemporalClueAction.SUBMIT in available_actions:
+        """Heuristic decision for standalone use."""
+        if not state.unplaced_events:
+            # All placed, submit
             return TemporalClueAction.SUBMIT
 
-        if not state.remaining_events:
-            return TemporalClueAction.SUBMIT
+        # Simple heuristic: place in first available slot
+        for action in available_actions:
+            if action != TemporalClueAction.SUBMIT:
+                return action
 
-        # Simple heuristic: find event with most "before" constraints
-        # relative to remaining events
-        scores: dict[str, int] = {e: 0 for e in state.remaining_events}
-
-        for clue in state.puzzle.clues:
-            event_a = clue.event_a
-            event_b = clue.event_b
-
-            # If A is remaining and has "before" relationship, increase its score
-            if event_a in scores and clue.relation.name in ("BEFORE", "JUST_BEFORE"):
-                if event_b in state.remaining_events:
-                    scores[event_a] += 1
-            # If B is remaining and has "after" relationship, increase its score
-            if event_b in scores and clue.relation.name in ("AFTER", "JUST_AFTER"):
-                if event_a in state.remaining_events:
-                    scores[event_b] += 1
-
-        # Find event with highest score (most "comes before" constraints)
-        if scores:
-            best_event = max(scores.keys(), key=lambda e: scores[e])
-            event_idx = state.puzzle.events.index(best_event)
-            return TemporalClueAction(event_idx)
-
-        # Fallback: first remaining event
-        first_remaining = state.remaining_events[0]
-        return TemporalClueAction(state.puzzle.events.index(first_remaining))
-
-
-class TemporalClueRandomAgent(BaseAgent[TemporalClueState, TemporalClueAction]):
-    """Random agent for baseline."""
-
-    def __init__(self, seed: int | None = None):
-        import random
-
-        self._rng = random.Random(seed)
-
-    @property
-    def name(self) -> str:
-        return "TemporalClueRandom"
-
-    def get_system_prompt(self) -> str:
-        return ""
-
-    def format_action_prompt(
-        self,
-        state: TemporalClueState,
-        available_actions: list[TemporalClueAction],
-    ) -> str:
-        return ""
-
-    def parse_action(
-        self,
-        response: str,
-        available_actions: list[TemporalClueAction],
-    ) -> TemporalClueAction:
-        return available_actions[0]
-
-    async def decide(
-        self,
-        state: TemporalClueState,
-        available_actions: list[TemporalClueAction],
-    ) -> TemporalClueAction:
-        """Random choice among available actions."""
-        non_submit = [a for a in available_actions if a != TemporalClueAction.SUBMIT]
-        if non_submit:
-            return self._rng.choice(non_submit)
         return TemporalClueAction.SUBMIT
 
 
-class TemporalClueGreedyAgent(BaseAgent[TemporalClueState, TemporalClueAction]):
+class TemporalClueHeuristicAgent(BaseAgent[TemporalClueState, TemporalClueAction]):
     """
-    Greedy agent that uses simple constraint propagation.
-
-    Better than random but not optimal.
+    Heuristic-based agent that uses clue analysis.
     """
 
     @property
     def name(self) -> str:
-        return "TemporalClueGreedy"
+        return "TemporalClueHeuristic"
 
     def get_system_prompt(self) -> str:
         return ""
@@ -224,36 +148,62 @@ class TemporalClueGreedyAgent(BaseAgent[TemporalClueState, TemporalClueAction]):
         state: TemporalClueState,
         available_actions: list[TemporalClueAction],
     ) -> TemporalClueAction:
-        """Use constraint propagation to find best next event."""
-        if TemporalClueAction.SUBMIT in available_actions:
-            if not state.remaining_events:
-                return TemporalClueAction.SUBMIT
+        """Use clue analysis to make decisions."""
+        if not state.unplaced_events:
+            return TemporalClueAction.SUBMIT
 
-        remaining = set(state.remaining_events)
-        placed = set(state.current_ordering)
+        event_to_place = state.unplaced_events[0]
 
-        # Find events that must come before all other remaining events
-        must_be_first: set[str] = remaining.copy()
+        # Analyze clues to find constraints
+        must_be_before: set[str] = set()
+        must_be_after: set[str] = set()
 
-        for clue in state.puzzle.clues:
-            a, b = clue.event_a, clue.event_b
+        for clue in state.clues:
+            if event_to_place == clue.event_a:
+                if "before" in clue.relation:
+                    must_be_before.add(clue.event_b)
+                else:  # after
+                    must_be_after.add(clue.event_b)
+            elif event_to_place == clue.event_b:
+                if "before" in clue.relation:
+                    must_be_after.add(clue.event_a)
+                else:
+                    must_be_before.add(clue.event_a)
 
-            if clue.relation.name in ("BEFORE", "JUST_BEFORE"):
-                # A comes before B
-                if a in remaining and b in remaining:
-                    must_be_first.discard(b)
-            elif clue.relation.name in ("AFTER", "JUST_AFTER"):
-                # A comes after B
-                if a in remaining and b in remaining:
-                    must_be_first.discard(a)
+        # Find valid positions based on already placed events
+        ordering = list(state.current_ordering)
+        best_pos = None
 
-        if must_be_first:
-            chosen = next(iter(must_be_first))
-            return TemporalClueAction(state.puzzle.events.index(chosen))
+        for i, existing in enumerate(ordering):
+            if existing is not None:
+                continue  # Slot taken
 
-        # Fallback
-        if remaining:
-            chosen = next(iter(remaining))
-            return TemporalClueAction(state.puzzle.events.index(chosen))
+            # Check if this position violates any constraints
+            valid = True
+
+            for j, other in enumerate(ordering):
+                if other is None:
+                    continue
+
+                if other in must_be_before and j <= i:
+                    valid = False  # Event must be after this
+                    break
+                if other in must_be_after and j >= i:
+                    valid = False  # Event must be before this
+                    break
+
+            if valid:
+                best_pos = i
+                break
+
+        if best_pos is not None:
+            action = TemporalClueAction.from_position(best_pos)
+            if action in available_actions:
+                return action
+
+        # Fallback: first available position
+        for action in available_actions:
+            if action != TemporalClueAction.SUBMIT:
+                return action
 
         return TemporalClueAction.SUBMIT

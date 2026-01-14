@@ -18,10 +18,14 @@ class RuntimeProtocol(Protocol):
         """Get a setting value."""
         ...
 
+    def set_setting(self, key: str, value: str, secret: bool = False) -> None:
+        """Set a setting value."""
+        ...
+
 
 async def get_account_access_status(
     runtime: RuntimeProtocol | None = None,
-) -> dict[str, any]:
+) -> dict[str, object]:
     """
     Get account access status, including U.S. certification requirements and API key details.
 
@@ -44,12 +48,8 @@ async def get_account_access_status(
             runtime.get_setting("CLOB_API_KEY") if runtime else os.environ.get("CLOB_API_KEY")
         )
         clob_api_secret = (
-            runtime.get_setting("CLOB_API_SECRET")
-            if runtime
-            else os.environ.get("CLOB_API_SECRET")
-        ) or (
-            runtime.get_setting("CLOB_SECRET") if runtime else os.environ.get("CLOB_SECRET")
-        )
+            runtime.get_setting("CLOB_API_SECRET") if runtime else os.environ.get("CLOB_API_SECRET")
+        ) or (runtime.get_setting("CLOB_SECRET") if runtime else os.environ.get("CLOB_SECRET"))
         clob_api_passphrase = (
             runtime.get_setting("CLOB_API_PASSPHRASE")
             if runtime
@@ -105,7 +105,7 @@ async def get_account_access_status(
 
 async def handle_authentication(
     runtime: RuntimeProtocol | None = None,
-) -> dict[str, any]:
+) -> dict[str, object]:
     """
     Check and display the current authentication status for Polymarket CLOB operations.
 
@@ -122,27 +122,25 @@ async def handle_authentication(
         import os
 
         private_key_setting = (
-            runtime.get_setting("POLYMARKET_PRIVATE_KEY")
-            if runtime
-            else os.environ.get("POLYMARKET_PRIVATE_KEY")
-        ) or (
-            runtime.get_setting("WALLET_PRIVATE_KEY")
-            if runtime
-            else os.environ.get("WALLET_PRIVATE_KEY")
-        ) or (
-            runtime.get_setting("PRIVATE_KEY") if runtime else os.environ.get("PRIVATE_KEY")
+            (
+                runtime.get_setting("POLYMARKET_PRIVATE_KEY")
+                if runtime
+                else os.environ.get("POLYMARKET_PRIVATE_KEY")
+            )
+            or (
+                runtime.get_setting("WALLET_PRIVATE_KEY")
+                if runtime
+                else os.environ.get("WALLET_PRIVATE_KEY")
+            )
+            or (runtime.get_setting("PRIVATE_KEY") if runtime else os.environ.get("PRIVATE_KEY"))
         )
 
         clob_api_key = (
             runtime.get_setting("CLOB_API_KEY") if runtime else os.environ.get("CLOB_API_KEY")
         )
         clob_api_secret = (
-            runtime.get_setting("CLOB_API_SECRET")
-            if runtime
-            else os.environ.get("CLOB_API_SECRET")
-        ) or (
-            runtime.get_setting("CLOB_SECRET") if runtime else os.environ.get("CLOB_SECRET")
-        )
+            runtime.get_setting("CLOB_API_SECRET") if runtime else os.environ.get("CLOB_API_SECRET")
+        ) or (runtime.get_setting("CLOB_SECRET") if runtime else os.environ.get("CLOB_SECRET"))
         clob_api_passphrase = (
             runtime.get_setting("CLOB_API_PASSPHRASE")
             if runtime

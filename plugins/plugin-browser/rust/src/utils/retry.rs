@@ -49,7 +49,10 @@ where
     let mut last_error: Option<E> = None;
 
     for attempt in 1..=config.max_attempts {
-        info!("Attempting {} (attempt {}/{})", operation, attempt, config.max_attempts);
+        info!(
+            "Attempting {} (attempt {}/{})",
+            operation, attempt, config.max_attempts
+        );
 
         match f().await {
             Ok(result) => return Ok(result),
@@ -72,7 +75,11 @@ where
         }
     }
 
-    tracing::error!("{} failed after {} attempts", operation, config.max_attempts);
+    tracing::error!(
+        "{} failed after {} attempts",
+        operation,
+        config.max_attempts
+    );
     Err(last_error.unwrap())
 }
 

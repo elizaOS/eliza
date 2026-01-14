@@ -127,9 +127,7 @@ class DiscordConfig(BaseModel):
             should_respond_only_to_mentions=parse_bool(
                 os.environ.get("DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS"), False
             ),
-            listen_only_channel_ids=parse_list(
-                os.environ.get("DISCORD_LISTEN_CHANNEL_IDS")
-            ),
+            listen_only_channel_ids=parse_list(os.environ.get("DISCORD_LISTEN_CHANNEL_IDS")),
         )
 
     def validate_all(self) -> None:
@@ -143,5 +141,3 @@ class DiscordConfig(BaseModel):
         # Channel IDs are validated by field_validator
         # This method exists for explicit validation after construction
         pass
-
-

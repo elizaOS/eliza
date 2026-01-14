@@ -193,9 +193,7 @@ class TestKillAutonomousAction:
         async def callback(data: dict[str, Any]) -> None:
             callback_results.append(data)
 
-        await KillAutonomousAction.handler(
-            mock_runtime, mock_message, callback=callback
-        )
+        await KillAutonomousAction.handler(mock_runtime, mock_message, callback=callback)
         assert len(callback_results) == 1
         assert "No autonomous loop" in callback_results[0]["text"]
 
@@ -217,9 +215,7 @@ class TestActionCallbacks:
         async def callback(data: dict[str, Any]) -> None:
             callback_results.append(data)
 
-        await DescribeSceneAction.handler(
-            mock_runtime, mock_message, callback=callback
-        )
+        await DescribeSceneAction.handler(mock_runtime, mock_message, callback=callback)
         assert len(callback_results) == 1
         assert "thought" in callback_results[0]
         assert "text" in callback_results[0]
@@ -235,8 +231,6 @@ class TestActionCallbacks:
         async def callback(data: dict[str, Any]) -> None:
             callback_results.append(data)
 
-        await CaptureImageAction.handler(
-            mock_runtime, mock_message, callback=callback
-        )
+        await CaptureImageAction.handler(mock_runtime, mock_message, callback=callback)
         assert len(callback_results) == 1
         assert "thought" in callback_results[0]

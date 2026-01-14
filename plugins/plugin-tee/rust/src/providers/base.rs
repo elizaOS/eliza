@@ -18,6 +18,3 @@ pub trait RemoteAttestationProvider: Send + Sync {
         hash_algorithm: Option<TdxQuoteHashAlgorithm>,
     ) -> Result<RemoteAttestationQuote>;
 }
-
-
-

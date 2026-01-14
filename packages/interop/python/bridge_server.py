@@ -12,24 +12,34 @@ import argparse
 import asyncio
 import importlib
 import json
+import os
 import sys
 import traceback
 from typing import Any
 
-# Import elizaos types
+# Import elizaos types (required). Fail closed if unavailable.
 try:
     from elizaos.types.plugin import Plugin
     from elizaos.types.memory import Memory
     from elizaos.types.state import State
     from elizaos.types.components import ActionResult, ProviderResult, HandlerOptions
-except ImportError:
-    # Fallback for standalone testing
-    Plugin = dict  # type: ignore
-    Memory = dict  # type: ignore
-    State = dict  # type: ignore
-    ActionResult = dict  # type: ignore
-    ProviderResult = dict  # type: ignore
-    HandlerOptions = dict  # type: ignore
+except ImportError as e:
+    sys.stderr.write(
+        "elizaOS interop bridge_server requires the 'elizaos' python package in the environment.\n"
+    )
+    sys.stderr.write(f"ImportError: {e}\n")
+    sys.exit(1)
+
+
+def _include_error_details() -> bool:
+    """
+    Whether to include stack traces in error responses.
+
+    Default is off to avoid leaking secrets/PII via tracebacks over IPC.
+    """
+    value = os.environ.get("ELIZA_INTEROP_DEBUG") or os.environ.get("LOG_DIAGNOSTIC") or ""
+    normalized = value.strip().lower()
+    return normalized in {"1", "true", "yes", "on"}
 
 
 class PluginBridgeServer:
@@ -388,12 +398,14 @@ class PluginBridgeServer:
                 }
 
         except Exception as e:
-            return {
+            error_response: dict[str, Any] = {
                 "type": "error",
                 "id": req_id,
                 "error": str(e),
-                "details": traceback.format_exc(),
             }
+            if _include_error_details():
+                error_response["details"] = traceback.format_exc()
+            return error_response
 
     def _parse_memory(self, data: dict[str, Any] | None) -> Memory:
         """Parse memory from JSON."""
@@ -474,12 +486,13 @@ async def main(module_name: str) -> None:
             error_response = {"type": "error", "id": "", "error": f"JSON parse error: {e}"}
             print(json.dumps(error_response), flush=True)
         except Exception as e:
-            error_response = {
+            error_response: dict[str, Any] = {
                 "type": "error",
                 "id": "",
                 "error": str(e),
-                "details": traceback.format_exc(),
             }
+            if _include_error_details():
+                error_response["details"] = traceback.format_exc()
             print(json.dumps(error_response), flush=True)
 
 

@@ -11,23 +11,14 @@ python game.py
 
 ## How It Works
 
-This Python version demonstrates the core concept:
+This Python version uses the **real elizaOS Python runtime**:
 
-- Custom model handlers that parse board state from text prompts
-- Minimax algorithm for perfect play
-- No LLM calls needed
+- All environment updates are sent as Eliza `Memory` objects
+- Each turn is processed via `runtime.message_service.handle_message(...)` (full pipeline)
+- A custom model handler intercepts `TEXT_LARGE` / `TEXT_SMALL` and returns the optimal move using minimax (no LLM)
 
-In a full implementation with the Python elizaOS runtime, you would:
-
-1. Create an `AgentRuntime` with no character (anonymous)
-2. Register custom model handlers for `TEXT_LARGE` and `TEXT_SMALL`
-3. The handlers would intercept model calls and return optimal moves
-
-## Current Status
-
-This implementation uses a simplified runtime simulation since the full Python
-elizaOS runtime integration is still in development. The core logic (minimax,
-board parsing, model handler) is fully functional and demonstrates the concept.
+The AI move selection is **rule-based** (pure minimax), but the message flow is **not bypassed**:
+it goes through Eliza’s canonical message service.
 
 
 

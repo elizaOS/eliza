@@ -33,8 +33,8 @@ class LeaveChannelAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord"
 
     async def handler(
         self,
@@ -62,16 +62,12 @@ class LeaveChannelAction:
 
         # Check if listening
         if not service.is_channel_allowed(channel_id):
-            return ActionResult.failure_result(
-                "I'm not currently listening to this channel."
-            )
+            return ActionResult.failure_result("I'm not currently listening to this channel.")
 
         # Remove channel from allowed list
         success = await service.remove_allowed_channel(channel_id)
         if not success:
-            return ActionResult.failure_result(
-                "Failed to remove channel from the listening list."
-            )
+            return ActionResult.failure_result("Failed to remove channel from the listening list.")
 
         channel_name = await service.get_channel_name(channel_id)
         return ActionResult.success_result(

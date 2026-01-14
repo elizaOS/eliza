@@ -1,1 +1,1 @@
-"""Tests for the Bluesky agent."""
+# Tests for the Bluesky agent example

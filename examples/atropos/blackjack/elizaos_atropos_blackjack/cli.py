@@ -13,11 +13,10 @@ from pathlib import Path
 
 def _load_dotenv() -> None:
     """Best-effort load of repo/root .env (no external dependency)."""
-    candidates = [
-        Path.cwd() / ".env",
-        # repo_root/examples/atropos/blackjack/elizaos_atropos_blackjack/cli.py -> repo_root is parents[4]
-        Path(__file__).resolve().parents[4] / ".env",
-    ]
+    candidates: list[Path] = [Path.cwd() / ".env"]
+    # Also search upward from this file location (handles running from any cwd).
+    for parent in Path(__file__).resolve().parents:
+        candidates.append(parent / ".env")
 
     for path in candidates:
         if not path.is_file():
@@ -39,16 +38,24 @@ def _load_dotenv() -> None:
             pass
 
 
-async def run_auto_mode(num_episodes: int = 100, use_llm: bool = False) -> None:
-    """Run automatic play mode."""
+async def run_auto_mode(
+    num_episodes: int = 100,
+    use_llm: bool = False,
+    log_trajectories: bool = False,
+    trajectory_output: str | None = None,
+) -> None:
+    """Run automatic play mode with optional trajectory logging."""
     _load_dotenv()
 
-    from elizaos_atropos_blackjack import BlackjackEnvironment, BlackjackAgent
+    from elizaos_atropos_blackjack import BlackjackAgent, BlackjackEnvironment
+    from elizaos_atropos_blackjack.types import EpisodeResult
 
     print("\n🃏 ElizaOS Atropos - Blackjack")
     print("=" * 40)
     print(f"Mode: {'LLM-based' if use_llm else 'Optimal Strategy'}")
     print(f"Episodes: {num_episodes}")
+    if log_trajectories:
+        print(f"Trajectories: Enabled")
     print("=" * 40)
 
     # Create environment
@@ -60,9 +67,28 @@ async def run_auto_mode(num_episodes: int = 100, use_llm: bool = False) -> None:
     if use_llm:
         try:
             from elizaos.runtime import AgentRuntime
+            from elizaos.bootstrap import bootstrap_plugin
             from elizaos_plugin_openai import get_openai_plugin
 
-            runtime = AgentRuntime(plugins=[get_openai_plugin()])
+            plugins = [bootstrap_plugin, get_openai_plugin()]
+
+            # Optional: register trajectory logger plugin for end-to-end capture
+            if log_trajectories:
+                try:
+                    from elizaos_plugin_trajectory_logger import get_trajectory_logger_plugin
+
+                    plugins.append(get_trajectory_logger_plugin())
+                except ImportError:
+                    print("⚠️ Trajectory logger plugin not installed; disabling trajectory logging")
+                    log_trajectories = False
+
+            from elizaos_atropos_blackjack.eliza_plugin import (
+                create_blackjack_character,
+                get_blackjack_eliza_plugin,
+            )
+
+            plugins.append(get_blackjack_eliza_plugin())
+            runtime = AgentRuntime(character=create_blackjack_character(), plugins=plugins)
             await runtime.initialize()
             print("✅ LLM initialized")
         except ImportError:
@@ -73,13 +99,150 @@ async def run_auto_mode(num_episodes: int = 100, use_llm: bool = False) -> None:
             use_llm = False
 
     agent = BlackjackAgent(runtime=runtime, use_llm=use_llm)
+    agent_id = "blackjack_agent_001"
 
     print("\n📊 Running episodes...\n")
 
+    # Optional: get trajectory logger runtime service
+    traj_svc = None
+    if log_trajectories and runtime is not None:
+        traj_svc = runtime.get_service("trajectory_logger")
+        if traj_svc is None:
+            print("⚠️ Trajectory logger service not registered; disabling trajectory logging")
+            log_trajectories = False
+
     # Play episodes
     for i in range(num_episodes):
-        result = await env.play_episode(agent.decide)
-        agent.record_episode(result)
+        trajectory_id: str | None = None
+        if log_trajectories and traj_svc is not None:
+            try:
+                trajectory_id = traj_svc.start_trajectory(  # type: ignore[attr-defined]
+                    agent_id=agent_id,
+                    scenario_id="atropos:blackjack",
+                    episode_id=f"ep_{i:04d}",
+                    metadata={
+                        "episodeNum": i,
+                        "useLLM": bool(use_llm),
+                    },
+                )
+            except Exception:
+                trajectory_id = None
+
+        state = await env.reset()
+        done = False
+        total_reward = 0.0
+        action_history: list = []
+        step_num = 0
+
+        while not done:
+            step_id: str | None = None
+            if log_trajectories and traj_svc is not None and trajectory_id is not None:
+                try:
+                    step_id = traj_svc.start_step(  # type: ignore[attr-defined]
+                        trajectory_id,
+                        agent_balance=total_reward,
+                        agent_points=float(state.player_sum),
+                        agent_pnl=0.0,
+                        open_positions=0,
+                        custom={
+                            "stepNumber": step_num,
+                            "playerSum": int(state.player_sum),
+                            "dealerCard": int(state.dealer_card),
+                            "usableAce": bool(state.usable_ace),
+                        },
+                    )
+                except Exception:
+                    step_id = None
+
+            # Set trajectory step context so runtime logs LLM calls
+            token = None
+            if step_id is not None:
+                try:
+                    from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
+
+                    token = CURRENT_TRAJECTORY_STEP_ID.set(step_id)
+                except Exception:
+                    token = None
+
+            # Decide action (canonical ElizaOS pipeline)
+            action = await agent.decide(
+                state,
+                env.get_available_actions(),
+                trajectory_step_id=step_id,
+            )
+
+            if token is not None:
+                try:
+                    from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
+
+                    CURRENT_TRAJECTORY_STEP_ID.reset(token)
+                except Exception:
+                    pass
+
+            # Execute action
+            step_result = await env.step(action)
+            done = step_result.done
+            reward = step_result.reward
+            total_reward += reward
+            action_history.append(action)
+
+            # Complete trajectory step with environment outcome
+            if (
+                log_trajectories
+                and traj_svc is not None
+                and trajectory_id is not None
+                and step_id is not None
+            ):
+                try:
+                    traj_svc.complete_step(  # type: ignore[attr-defined]
+                        trajectory_id=trajectory_id,
+                        step_id=step_id,
+                        action_type="atropos",
+                        action_name="blackjack",
+                        parameters={"action": str(action.value)},
+                        success=True,
+                        reward=float(reward),
+                        done=bool(done),
+                        result={
+                            "playerSum": int(step_result.state.player_sum),
+                            "dealerCard": int(step_result.state.dealer_card),
+                            "reward": float(reward),
+                        },
+                    )
+                except Exception:
+                    pass
+
+            state = step_result.state
+            step_num += 1
+
+        # End trajectory
+        if log_trajectories and traj_svc is not None and trajectory_id is not None:
+            try:
+                status = "completed" if total_reward > 0 else "terminated"
+                await traj_svc.end_trajectory(  # type: ignore[attr-defined]
+                    trajectory_id,
+                    status=status,
+                    final_metrics={
+                        "totalReward": float(total_reward),
+                        "stepsTaken": int(step_num),
+                        "won": bool(total_reward > 0),
+                    },
+                )
+            except Exception:
+                pass
+
+        # Record episode in agent stats (use canonical EpisodeResult type)
+        agent.record_episode(
+            EpisodeResult(
+                reward=float(step_result.reward),
+                num_steps=len(action_history),
+                final_state=state,
+                action_history=list(action_history),
+                won=float(step_result.reward) > 0,
+                is_blackjack=float(step_result.reward) == 1.5,
+                is_bust=state.player_sum > 21,
+            )
+        )
 
         # Show progress every 10%
         if (i + 1) % max(1, num_episodes // 10) == 0:
@@ -90,6 +253,23 @@ async def run_auto_mode(num_episodes: int = 100, use_llm: bool = False) -> None:
     print("FINAL RESULTS")
     print("=" * 40)
     print(agent.get_summary())
+
+    # Export trajectories if logging was enabled
+    if log_trajectories and traj_svc is not None:
+        try:
+            from elizaos_plugin_trajectory_logger.runtime_service import TrajectoryExportConfig
+
+            export_cfg = TrajectoryExportConfig(
+                dataset_name="atropos_blackjack_trajectories",
+                export_format="art",
+                output_dir=trajectory_output or "./trajectories",
+            )
+            export_result = traj_svc.export(export_cfg)  # type: ignore[attr-defined]
+            print("\n📦 Exported trajectories")
+            print(f"   - count: {export_result.trajectories_exported}")
+            print(f"   - file: {export_result.dataset_url}")
+        except Exception as e:
+            print(f"\n⚠️ Trajectory export failed: {e}")
 
     # Cleanup
     await env.close()
@@ -235,10 +415,11 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  elizaos-blackjack --mode auto          # Watch AI play 100 hands
-  elizaos-blackjack --mode interactive   # Play interactively
-  elizaos-blackjack --mode benchmark     # Compare strategies
-  elizaos-blackjack --mode auto --llm    # Use LLM for decisions
+  elizaos-blackjack --mode auto             # Watch AI play 100 hands
+  elizaos-blackjack --mode interactive      # Play interactively
+  elizaos-blackjack --mode benchmark        # Compare strategies
+  elizaos-blackjack --mode auto --llm       # Use LLM for decisions
+  elizaos-blackjack --trajectories          # Export trajectories for RL training
         """,
     )
 
@@ -259,8 +440,20 @@ Examples:
         action="store_true",
         help="Use LLM for decisions (requires OPENAI_API_KEY)",
     )
+    parser.add_argument(
+        "--trajectories",
+        action="store_true",
+        help="Enable trajectory logging for RL training export",
+    )
+    parser.add_argument(
+        "--trajectory-output",
+        type=str,
+        default="./trajectories",
+        help="Output directory for trajectory files (default: ./trajectories)",
+    )
 
     args = parser.parse_args()
+    _load_dotenv()
 
     if args.llm and not os.environ.get("OPENAI_API_KEY"):
         print("⚠️ OPENAI_API_KEY not set. LLM mode requires this environment variable.")
@@ -269,7 +462,12 @@ Examples:
 
     try:
         if args.mode == "auto":
-            asyncio.run(run_auto_mode(args.episodes, args.llm))
+            asyncio.run(run_auto_mode(
+                args.episodes,
+                args.llm,
+                log_trajectories=args.trajectories,
+                trajectory_output=args.trajectory_output,
+            ))
         elif args.mode == "interactive":
             asyncio.run(run_interactive_mode(args.llm))
         elif args.mode == "benchmark":

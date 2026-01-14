@@ -10,9 +10,7 @@ if TYPE_CHECKING:
 class RuntimeProtocol(Protocol):
     """Protocol for runtime interface."""
 
-    async def use_model(
-        self, model_type: str, params: dict[str, object]
-    ) -> str:
+    async def use_model(self, model_type: str, params: dict[str, object]) -> str:
         """Use an LLM model."""
         ...
 

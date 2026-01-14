@@ -150,10 +150,8 @@ mod tests {
             conversation_id: "test".to_string(),
             agent_id: "test".to_string(),
         };
-        
+
         let result = provider.get(params).await;
         assert!(result.text.contains("Roblox"));
     }
 }
-
-

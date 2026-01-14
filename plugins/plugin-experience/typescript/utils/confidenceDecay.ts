@@ -36,7 +36,7 @@ export class ConfidenceDecayManager {
     // Calculate decay based on half-life
     const decayTime = age - specificConfig.decayStartDelay;
     const halfLives = decayTime / specificConfig.halfLife;
-    const decayFactor = Math.pow(0.5, halfLives);
+    const decayFactor = 0.5 ** halfLives;
 
     // Apply decay but respect minimum
     const decayedConfidence = experience.confidence * decayFactor;
@@ -69,12 +69,18 @@ export class ConfidenceDecayManager {
     const config = { ...this.config };
 
     // Facts and discoveries decay slower
-    if (experience.type === ExperienceType.DISCOVERY || experience.type === ExperienceType.LEARNING) {
+    if (
+      experience.type === ExperienceType.DISCOVERY ||
+      experience.type === ExperienceType.LEARNING
+    ) {
       config.halfLife *= 2; // Double the half-life
     }
 
     // Warnings and corrections decay slower (important to remember)
-    if (experience.type === ExperienceType.WARNING || experience.type === ExperienceType.CORRECTION) {
+    if (
+      experience.type === ExperienceType.WARNING ||
+      experience.type === ExperienceType.CORRECTION
+    ) {
       config.halfLife *= 1.5;
       config.minConfidence = 0.2; // Higher minimum
     }
@@ -120,7 +126,7 @@ export class ConfidenceDecayManager {
       } else {
         const decayTime = age - specificConfig.decayStartDelay;
         const halfLives = decayTime / specificConfig.halfLife;
-        const decayFactor = Math.pow(0.5, halfLives);
+        const decayFactor = 0.5 ** halfLives;
         confidence = Math.max(specificConfig.minConfidence, experience.confidence * decayFactor);
       }
 
@@ -130,4 +136,3 @@ export class ConfidenceDecayManager {
     return trend;
   }
 }
-

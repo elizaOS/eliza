@@ -11,6 +11,7 @@ Uses the CANONICAL ElizaOS pipeline:
 import logging
 import re
 import time
+import uuid
 from typing import Optional, Protocol, runtime_checkable
 
 from benchmarks.mint.types import (
@@ -111,6 +112,8 @@ class MINTAgent:
         tool_executor: Optional[PythonExecutor] = None,
         feedback_generator: Optional[FeedbackGenerator] = None,
         temperature: float = 0.0,
+        trajectory_logger_service: object | None = None,
+        trajectory_ids_sink: list[str] | None = None,
     ) -> None:
         """
         Initialize the MINT agent.
@@ -132,6 +135,12 @@ class MINTAgent:
         # Session tracking for canonical Eliza flow
         self._room_id: object | None = None
         self._user_id: object | None = None
+
+        # Optional elizaOS trajectory logger plugin service + sink for IDs
+        self._trajectory_logger_service: object | None = trajectory_logger_service
+        self._trajectory_ids_sink: list[str] | None = trajectory_ids_sink
+        self._active_trajectory_id: str | None = None
+        self._active_step_id: str | None = None
 
     @property
     def runtime(self) -> Optional[ElizaRuntime]:
@@ -162,6 +171,32 @@ class MINTAgent:
             start_time_ms=time.time() * 1000,
         )
 
+        # Start elizaOS trajectory logging for this task (training/benchmark capture)
+        step_id_for_turn: str | None = None
+        if self._runtime is not None and self._trajectory_logger_service is not None:
+            try:
+                agent_id = str(getattr(self._runtime, "agent_id", "mint-agent"))
+                # Service API (preferred): start_trajectory(agent_id, *, scenario_id, ...)
+                start_traj = getattr(self._trajectory_logger_service, "start_trajectory", None)
+                if callable(start_traj):
+                    self._active_trajectory_id = start_traj(
+                        agent_id,
+                        scenario_id=task.id,
+                        episode_id=f"{task.id}-{int(time.time() * 1000)}",
+                        metadata={
+                            "taskId": task.id,
+                            "category": task.category.value,
+                            "evaluationMetric": task.evaluation_metric,
+                            "toolsAllowed": list(task.tools_allowed),
+                            "maxTurns": int(task.max_turns),
+                        },
+                    )
+                if self._trajectory_ids_sink is not None:
+                    self._trajectory_ids_sink.append(self._active_trajectory_id)
+            except Exception:
+                self._active_trajectory_id = None
+                step_id_for_turn = None
+
         # Build the initial prompt with task-specific instructions
         system_prompt = self._build_system_prompt(task)
         current_prompt = task.initial_prompt
@@ -169,6 +204,30 @@ class MINTAgent:
 
         for turn_num in range(task.max_turns):
             turn_start = time.time() * 1000
+
+            # Start a fresh step per turn for trajectory logging
+            if self._active_trajectory_id and self._trajectory_logger_service is not None:
+                try:
+                    start_step = getattr(self._trajectory_logger_service, "start_step", None)
+                    if callable(start_step):
+                        step_id_for_turn = start_step(
+                            self._active_trajectory_id,
+                            agent_balance=0.0,
+                            agent_points=0.0,
+                            agent_pnl=0.0,
+                            open_positions=0,
+                            custom={
+                                "turn": int(turn_num + 1),
+                                "taskId": task.id,
+                                "category": task.category.value,
+                                "enableTools": bool(enable_tools),
+                                "enableFeedback": bool(enable_feedback),
+                            },
+                        )
+                        self._active_step_id = step_id_for_turn
+                except Exception:
+                    step_id_for_turn = None
+                    self._active_step_id = None
 
             # Get response using CANONICAL Eliza pipeline
             response = await self._get_response_canonical(
@@ -229,6 +288,28 @@ class MINTAgent:
                         f"Code error:\n```\n{error_preview}\n```\n\n"
                         f"Please fix the code and try again."
                     )
+                # Complete step as a tool/action attempt
+                if self._active_trajectory_id and step_id_for_turn and self._trajectory_logger_service is not None:
+                    try:
+                        complete_step = getattr(self._trajectory_logger_service, "complete_step", None)
+                        if callable(complete_step):
+                            complete_step(
+                                trajectory_id=self._active_trajectory_id,
+                                step_id=step_id_for_turn,
+                                action_type="tool",
+                                action_name="python_executor",
+                                parameters={"code": code_to_execute[:2000]},
+                                success=bool(exec_result.success),
+                                reward=0.0,
+                                done=False,
+                                error=(exec_result.error or "")[:2000] if not exec_result.success else None,
+                                result={"output": (exec_result.output or "")[:2000]}
+                                if exec_result.success
+                                else None,
+                            )
+                    except Exception:
+                        pass
+
                 continue
 
             # Extract and evaluate answer
@@ -243,6 +324,24 @@ class MINTAgent:
                     logger.info(
                         f"[MINTAgent] Task {task.id}: Correct answer on turn {turn_num + 1}"
                     )
+
+                    # Complete step with success reward
+                    if self._active_trajectory_id and step_id_for_turn and self._trajectory_logger_service is not None:
+                        try:
+                            complete_step = getattr(self._trajectory_logger_service, "complete_step", None)
+                            if callable(complete_step):
+                                complete_step(
+                                    trajectory_id=self._active_trajectory_id,
+                                    step_id=step_id_for_turn,
+                                    action_type="respond",
+                                    action_name="final_answer",
+                                    parameters={"predicted": str(predicted_answer)},
+                                    success=True,
+                                    reward=1.0,
+                                    done=True,
+                                )
+                        except Exception:
+                            pass
                     break
 
                 # Generate feedback if enabled and turns remaining
@@ -262,11 +361,57 @@ class MINTAgent:
                         )
                     )
                     trajectory.num_feedback_turns += 1
+
+                    # Complete step for this turn (incorrect, but continuing with feedback)
+                    if (
+                        self._active_trajectory_id
+                        and step_id_for_turn
+                        and self._trajectory_logger_service is not None
+                    ):
+                        try:
+                            complete_step = getattr(self._trajectory_logger_service, "complete_step", None)
+                            if callable(complete_step):
+                                complete_step(
+                                    trajectory_id=self._active_trajectory_id,
+                                    step_id=step_id_for_turn,
+                                    action_type="respond",
+                                    action_name="attempt_answer",
+                                    parameters={
+                                        "predicted": str(predicted_answer),
+                                        "feedback": str(feedback)[:500],
+                                    },
+                                    success=False,
+                                    reward=0.0,
+                                    done=False,
+                                    error="incorrect_answer",
+                                )
+                        except Exception:
+                            pass
+
                     current_prompt = f"Feedback: {feedback}\n\nPlease try again with a different approach."
                 else:
                     logger.info(
                         f"[MINTAgent] Task {task.id}: Incorrect answer '{predicted_answer}'"
                     )
+
+                    # Complete step with failure reward
+                    if self._active_trajectory_id and step_id_for_turn and self._trajectory_logger_service is not None:
+                        try:
+                            complete_step = getattr(self._trajectory_logger_service, "complete_step", None)
+                            if callable(complete_step):
+                                complete_step(
+                                    trajectory_id=self._active_trajectory_id,
+                                    step_id=step_id_for_turn,
+                                    action_type="respond",
+                                    action_name="final_answer",
+                                    parameters={"predicted": str(predicted_answer)},
+                                    success=False,
+                                    reward=0.0,
+                                    done=True,
+                                    error="incorrect_answer",
+                                )
+                        except Exception:
+                            pass
                     break
             else:
                 # No answer found, request clarification
@@ -285,9 +430,56 @@ class MINTAgent:
                         )
                     )
                     trajectory.num_feedback_turns += 1
+
+                    # Complete step for this turn (no extractable answer, but continuing)
+                    if (
+                        self._active_trajectory_id
+                        and step_id_for_turn
+                        and self._trajectory_logger_service is not None
+                    ):
+                        try:
+                            complete_step = getattr(self._trajectory_logger_service, "complete_step", None)
+                            if callable(complete_step):
+                                complete_step(
+                                    trajectory_id=self._active_trajectory_id,
+                                    step_id=step_id_for_turn,
+                                    action_type="respond",
+                                    action_name="attempt_answer",
+                                    parameters={"predicted": "", "feedback": str(feedback)[:500]},
+                                    success=False,
+                                    reward=0.0,
+                                    done=False,
+                                    error="no_answer_extracted",
+                                )
+                        except Exception:
+                            pass
+
                     current_prompt = f"Feedback: {feedback}\n\nPlease try again."
 
         trajectory.end_time_ms = time.time() * 1000
+
+        # End elizaOS trajectory logging for this task
+        if self._active_trajectory_id and self._trajectory_logger_service is not None:
+            try:
+                status = "completed" if trajectory.success else "terminated"
+                end_trajectory = getattr(self._trajectory_logger_service, "end_trajectory", None)
+                if callable(end_trajectory):
+                    await end_trajectory(
+                        self._active_trajectory_id,
+                        status,
+                        final_metrics={
+                            "success": bool(trajectory.success),
+                            "turns": int(len(trajectory.turns)),
+                            "toolUses": int(trajectory.num_tool_uses),
+                            "feedbackTurns": int(trajectory.num_feedback_turns),
+                        },
+                    )
+            except Exception:
+                pass
+
+        self._active_trajectory_id = None
+        self._active_step_id = None
+
         return trajectory
 
     async def _get_response_canonical(
@@ -327,36 +519,28 @@ class MINTAgent:
                 ),
             )
 
-            # Try to use the canonical message_service.handle_message()
-            message_service = getattr(self._runtime, "message_service", None)
-            if message_service is not None and hasattr(message_service, "handle_message"):
-                logger.debug("[MINTAgent] Using canonical message_service.handle_message()")
-
-                # Update character system prompt for this task
-                character = getattr(self._runtime, "character", None)
-                if character is not None:
-                    # Temporarily set task-specific system prompt
-                    original_system = getattr(character, "system", "")
-                    character.system = system_prompt
-
-                    try:
-                        result = await message_service.handle_message(self._runtime, message)
-                        if result and result.response_content and result.response_content.text:
-                            return str(result.response_content.text).strip()
-                    finally:
-                        # Restore original system prompt
-                        character.system = original_system
-
-            # Fallback: Use compose_state for provider context + use_model
-            logger.debug("[MINTAgent] Using compose_state + use_model fallback")
-            return await self._get_response_with_state(prompt, system_prompt, history, message)
+            # Canonical benchmark path: compose_state + use_model.
+            # This exercises the real provider pipeline and model plugin, while keeping
+            # benchmark prompt control deterministic.
+            try:
+                logger.debug("[MINTAgent] Falling back to compose_state + use_model")
+                return await self._get_response_with_state(prompt, system_prompt, history, message)
+            except Exception as state_error:
+                logger.debug(
+                    f"[MINTAgent] compose_state unavailable ({state_error}), using direct model"
+                )
+                return await self._get_response_direct(prompt, system_prompt, history)
 
         except ImportError as e:
             logger.warning(f"[MINTAgent] Eliza imports unavailable: {e}, using direct model call")
             return await self._get_response_direct(prompt, system_prompt, history)
         except Exception as e:
-            logger.error(f"[MINTAgent] Canonical pipeline error: {e}")
-            raise
+            logger.error(f"[MINTAgent] Pipeline error: {e}")
+            # Fall back to direct model call as last resort
+            try:
+                return await self._get_response_direct(prompt, system_prompt, history)
+            except Exception:
+                raise e
 
     async def _get_response_with_state(
         self,
@@ -373,8 +557,19 @@ class MINTAgent:
         """
         from elizaos.types.model import ModelType
 
+        from elizaos.trajectory_context import bind_trajectory_step
+        from elizaos import MemoryType, MessageMetadata
+
+        # Attach trajectory step metadata so compose_state logs provider accesses.
+        if self._active_trajectory_id and self._active_step_id:
+            meta = MessageMetadata(type=MemoryType.MESSAGE, source="mint-benchmark")
+            setattr(meta, "trajectoryId", self._active_trajectory_id)
+            setattr(meta, "trajectoryStepId", self._active_step_id)
+            setattr(message, "metadata", meta)
+
         # Compose state from all registered providers
-        state = await self._runtime.compose_state(message, skip_cache=True)  # type: ignore
+        with bind_trajectory_step(self._active_step_id):
+            state = await self._runtime.compose_state(message, skip_cache=True)  # type: ignore
 
         # Build prompt with provider context
         context_text = ""
@@ -389,15 +584,16 @@ class MINTAgent:
 
         full_prompt = f"{context_text}{history_text}User: {prompt}\n\nAssistant:"
 
-        response = await self._runtime.use_model(  # type: ignore
-            ModelType.TEXT_LARGE,
-            {
-                "prompt": full_prompt,
-                "system": system_prompt,
-                "temperature": self.temperature,
-                "maxTokens": 1024,
-            },
-        )
+        with bind_trajectory_step(self._active_step_id):
+            response = await self._runtime.use_model(  # type: ignore
+                ModelType.TEXT_LARGE,
+                {
+                    "prompt": full_prompt,
+                    "system": system_prompt,
+                    "temperature": self.temperature,
+                    "maxTokens": 1024,
+                },
+            )
         return str(response).strip()
 
     async def _get_response_direct(
@@ -415,15 +611,18 @@ class MINTAgent:
             full_prompt += f"{role}: {msg['content']}\n\n"
         full_prompt += f"User: {prompt}\n\nAssistant:"
 
-        response = await self._runtime.use_model(  # type: ignore
-            ModelType.TEXT_LARGE,
-            {
-                "prompt": full_prompt,
-                "system": system_prompt,
-                "temperature": self.temperature,
-                "maxTokens": 1024,
-            },
-        )
+        from elizaos.trajectory_context import bind_trajectory_step
+
+        with bind_trajectory_step(self._active_step_id):
+            response = await self._runtime.use_model(  # type: ignore
+                ModelType.TEXT_LARGE,
+                {
+                    "prompt": full_prompt,
+                    "system": system_prompt,
+                    "temperature": self.temperature,
+                    "maxTokens": 1024,
+                },
+            )
         return str(response).strip()
 
     def _build_system_prompt(self, task: MINTTask) -> str:

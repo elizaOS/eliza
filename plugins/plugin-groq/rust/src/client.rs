@@ -3,11 +3,11 @@
 use crate::error::{GroqError, GroqErrorCode};
 use crate::types::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, GenerateObjectParams,
-    GenerateTextParams, GroqConfig, MessageRole, ModelInfo, ModelsResponse,
-    TextToSpeechParams, TranscriptionParams, TranscriptionResponse,
+    GenerateTextParams, GroqConfig, MessageRole, ModelInfo, ModelsResponse, TextToSpeechParams,
+    TranscriptionParams, TranscriptionResponse,
 };
 use crate::DEFAULT_BASE_URL;
-use reqwest::{header, Client, multipart};
+use reqwest::{header, multipart, Client};
 use tracing::warn;
 
 #[derive(Debug, Clone)]
@@ -72,16 +72,25 @@ impl GroqClient {
         Ok(Self { client, config })
     }
 
-    pub async fn generate_text_small(&self, params: GenerateTextParams) -> Result<String, GroqError> {
+    pub async fn generate_text_small(
+        &self,
+        params: GenerateTextParams,
+    ) -> Result<String, GroqError> {
         self.generate_text(&self.config.small_model, params).await
     }
 
-    pub async fn generate_text_large(&self, params: GenerateTextParams) -> Result<String, GroqError> {
+    pub async fn generate_text_large(
+        &self,
+        params: GenerateTextParams,
+    ) -> Result<String, GroqError> {
         self.generate_text(&self.config.large_model, params).await
     }
 
-    async fn generate_text(&self, model: &str, params: GenerateTextParams) -> Result<String, GroqError> {
-
+    async fn generate_text(
+        &self,
+        model: &str,
+        params: GenerateTextParams,
+    ) -> Result<String, GroqError> {
         let mut messages: Vec<ChatMessage> = Vec::new();
         if let Some(ref system_str) = params.system {
             messages.push(ChatMessage {
@@ -101,10 +110,15 @@ impl GroqClient {
             max_tokens: params.max_tokens,
             frequency_penalty: params.frequency_penalty,
             presence_penalty: params.presence_penalty,
-            stop: if params.stop.is_empty() { None } else { Some(params.stop) },
+            stop: if params.stop.is_empty() {
+                None
+            } else {
+                Some(params.stop)
+            },
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/chat/completions", self.config.base_url))
             .json(&request)
             .send()
@@ -112,7 +126,9 @@ impl GroqClient {
 
         let status = response.status();
         if !status.is_success() {
-            return Err(self.handle_error(status.as_u16(), &response.text().await.unwrap_or_default()));
+            return Err(
+                self.handle_error(status.as_u16(), &response.text().await.unwrap_or_default())
+            );
         }
 
         let completion: ChatCompletionResponse = response.json().await?;
@@ -128,24 +144,44 @@ impl GroqClient {
             })
     }
 
-    pub async fn generate_object_small(&self, params: GenerateObjectParams) -> Result<serde_json::Value, GroqError> {
-        self.generate_object_with_model(&self.config.small_model, params).await
+    pub async fn generate_object_small(
+        &self,
+        params: GenerateObjectParams,
+    ) -> Result<serde_json::Value, GroqError> {
+        self.generate_object_with_model(&self.config.small_model, params)
+            .await
     }
 
-    pub async fn generate_object_large(&self, params: GenerateObjectParams) -> Result<serde_json::Value, GroqError> {
-        self.generate_object_with_model(&self.config.large_model, params).await
+    pub async fn generate_object_large(
+        &self,
+        params: GenerateObjectParams,
+    ) -> Result<serde_json::Value, GroqError> {
+        self.generate_object_with_model(&self.config.large_model, params)
+            .await
     }
 
-    pub async fn generate_object(&self, params: GenerateObjectParams) -> Result<serde_json::Value, GroqError> {
+    pub async fn generate_object(
+        &self,
+        params: GenerateObjectParams,
+    ) -> Result<serde_json::Value, GroqError> {
         self.generate_object_large(params).await
     }
 
-    async fn generate_object_with_model(&self, model: &str, params: GenerateObjectParams) -> Result<serde_json::Value, GroqError> {
-        let text = self.generate_text(model, GenerateTextParams {
-            prompt: params.prompt,
-            temperature: params.temperature,
-            ..Default::default()
-        }).await?;
+    async fn generate_object_with_model(
+        &self,
+        model: &str,
+        params: GenerateObjectParams,
+    ) -> Result<serde_json::Value, GroqError> {
+        let text = self
+            .generate_text(
+                model,
+                GenerateTextParams {
+                    prompt: params.prompt,
+                    temperature: params.temperature,
+                    ..Default::default()
+                },
+            )
+            .await?;
 
         let json_str = extract_json(&text);
         serde_json::from_str(&json_str).map_err(GroqError::from)
@@ -161,7 +197,8 @@ impl GroqClient {
             .part("file", file_part)
             .text("model", self.config.transcription_model.clone());
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/audio/transcriptions", self.config.base_url))
             .multipart(form)
             .send()
@@ -169,7 +206,9 @@ impl GroqClient {
 
         let status = response.status();
         if !status.is_success() {
-            return Err(self.handle_error(status.as_u16(), &response.text().await.unwrap_or_default()));
+            return Err(
+                self.handle_error(status.as_u16(), &response.text().await.unwrap_or_default())
+            );
         }
 
         let result: TranscriptionResponse = response.json().await?;
@@ -177,7 +216,9 @@ impl GroqClient {
     }
 
     pub async fn text_to_speech(&self, params: TextToSpeechParams) -> Result<Vec<u8>, GroqError> {
-        let voice = params.voice.unwrap_or_else(|| self.config.tts_voice.clone());
+        let voice = params
+            .voice
+            .unwrap_or_else(|| self.config.tts_voice.clone());
 
         let body = serde_json::json!({
             "model": self.config.tts_model,
@@ -185,7 +226,8 @@ impl GroqClient {
             "input": params.text,
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/audio/speech", self.config.base_url))
             .json(&body)
             .send()
@@ -193,21 +235,26 @@ impl GroqClient {
 
         let status = response.status();
         if !status.is_success() {
-            return Err(self.handle_error(status.as_u16(), &response.text().await.unwrap_or_default()));
+            return Err(
+                self.handle_error(status.as_u16(), &response.text().await.unwrap_or_default())
+            );
         }
 
         Ok(response.bytes().await?.to_vec())
     }
 
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, GroqError> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/models", self.config.base_url))
             .send()
             .await?;
 
         let status = response.status();
         if !status.is_success() {
-            return Err(self.handle_error(status.as_u16(), &response.text().await.unwrap_or_default()));
+            return Err(
+                self.handle_error(status.as_u16(), &response.text().await.unwrap_or_default())
+            );
         }
 
         let models: ModelsResponse = response.json().await?;
@@ -231,7 +278,11 @@ impl GroqClient {
             _ => GroqError::Request {
                 message: body.to_string(),
                 status_code: status,
-                code: if status >= 500 { GroqErrorCode::ServerError } else { GroqErrorCode::InvalidRequest },
+                code: if status >= 500 {
+                    GroqErrorCode::ServerError
+                } else {
+                    GroqErrorCode::InvalidRequest
+                },
             },
         }
     }
@@ -280,14 +331,8 @@ mod tests {
 
     #[test]
     fn test_extract_json() {
-        assert_eq!(
-            extract_json("```json\n{\"a\":1}\n```"),
-            "{\"a\":1}"
-        );
-        assert_eq!(
-            extract_json("Here is {\"a\":1} the json"),
-            "{\"a\":1}"
-        );
+        assert_eq!(extract_json("```json\n{\"a\":1}\n```"), "{\"a\":1}");
+        assert_eq!(extract_json("Here is {\"a\":1} the json"), "{\"a\":1}");
     }
 
     #[test]

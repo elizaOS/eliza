@@ -42,8 +42,8 @@ class ChatWithAttachmentsAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        if source != "discord":
+        source = context.message.get("source")
+        if not isinstance(source, str) or source != "discord":
             return False
 
         # Check for keywords in message

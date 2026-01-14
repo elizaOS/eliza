@@ -15,11 +15,16 @@
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
 
 import * as clack from "@clack/prompts";
+import { randomUUID } from "node:crypto";
 import {
   AgentRuntime,
+  ChannelType,
   type IAgentRuntime,
   ModelType,
   type Plugin,
+  createMessageMemory,
+  stringToUuid,
+  type UUID,
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
 
@@ -155,68 +160,45 @@ function getOptimalMove(board: Board, aiPlayer: Player): number {
  * - Array notation: ["X", "O", null, ...]
  */
 function parseBoardFromText(text: string): Board | null {
-  // Try to find board representation in the text
+  // Preferred format (used by this demo):
+  //   BOARD_CELLS: X,O,_,_,O,_,_,_,X
   const lines = text.split("\n");
-
-  // Look for a 3x3 grid pattern
-  const _gridPattern = /[XO_.\s|]+/gi;
-  const boardChars: Cell[] = [];
-
   for (const line of lines) {
-    // Skip lines that are clearly not board lines
-    if (line.includes("AVAILABLE") || line.includes("INSTRUCTION")) continue;
+    const idx = line.toUpperCase().indexOf("BOARD_CELLS:");
+    if (idx === -1) continue;
+    const raw = line.slice(idx + "BOARD_CELLS:".length).trim();
+    const parts = raw
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    if (parts.length !== 9) continue;
+    const out: Cell[] = parts.map((p): Cell => {
+      const v = p.toUpperCase();
+      if (v === "X") return "X";
+      if (v === "O") return "O";
+      return null;
+    });
+    return out as Board;
+  }
 
-    // Extract X, O, and empty markers
+  // Fallback: attempt to recover 9 cells from grid-like lines.
+  const boardChars: Cell[] = [];
+  for (const line of lines) {
+    if (line.toUpperCase().includes("AVAILABLE")) continue;
+    if (line.toUpperCase().includes("INSTRUCTION")) continue;
+
     const cleaned = line.replace(/[|]/g, " ").trim();
-    if (/^[XO_.\s]+$/i.test(cleaned) && cleaned.length >= 3) {
-      for (const char of cleaned) {
-        if (char === "X" || char === "x") boardChars.push("X");
-        else if (char === "O" || char === "o") boardChars.push("O");
-        else if (char === "_" || char === ".") boardChars.push(null);
-      }
+    if (!/^[XO_.\s]+$/i.test(cleaned)) continue;
+
+    for (const ch of cleaned) {
+      const up = ch.toUpperCase();
+      if (up === "X") boardChars.push("X");
+      else if (up === "O") boardChars.push("O");
+      else if (ch === "_" || ch === ".") boardChars.push(null);
     }
   }
 
-  if (boardChars.length === 9) {
-    return boardChars as Board;
-  }
-
-  // Try JSON array format
-  const jsonMatch = text.match(/\[[\s\S]*?\]/);
-  if (jsonMatch) {
-    try {
-      const arr = JSON.parse(jsonMatch[0].replace(/'/g, '"'));
-      if (arr.length === 9) {
-        return arr.map((v: string | null) =>
-          v === "X" || v === "O" ? v : null,
-        ) as Board;
-      }
-    } catch {
-      // Not valid JSON, continue
-    }
-  }
-
-  // Try to find individual cell references like "position 0: X"
-  const positionPattern = /position\s*(\d)\s*[:=]\s*([XO_])/gi;
-  const positions = new Map<number, Cell>();
-  let match;
-  while ((match = positionPattern.exec(text)) !== null) {
-    const pos = parseInt(match[1], 10);
-    const val = match[2].toUpperCase();
-    positions.set(pos, val === "X" || val === "O" ? (val as Player) : null);
-  }
-
-  if (positions.size >= 1) {
-    const board: Board = createEmptyBoard();
-    for (const [pos, val] of positions) {
-      if (pos >= 0 && pos < 9) {
-        board[pos] = val;
-      }
-    }
-    return board;
-  }
-
-  return null;
+  return boardChars.length === 9 ? (boardChars as Board) : null;
 }
 
 /**
@@ -281,8 +263,14 @@ async function ticTacToeModelHandler(
   // Get the optimal move
   const move = getOptimalMove(board, aiPlayer);
 
-  // Return just the move number
-  return String(move);
+  // Return canonical Eliza XML so the message service can parse it
+  return [
+    "<response>",
+    "  <thought>Compute perfect move via minimax (no LLM).</thought>",
+    "  <actions>REPLY</actions>",
+    `  <text>${move}</text>`,
+    "</response>",
+  ].join("\n");
 }
 
 // ============================================================================
@@ -385,6 +373,9 @@ Position reference:
 interface GameSession {
   runtime: AgentRuntime;
   game: TicTacToeGame;
+  roomId: UUID;
+  worldId: UUID;
+  gameMasterId: UUID;
 }
 
 async function createSession(): Promise<GameSession> {
@@ -404,43 +395,94 @@ async function createSession(): Promise<GameSession> {
   await runtime.initialize();
 
   const game = new TicTacToeGame();
+  const roomId = stringToUuid("tic-tac-toe-room");
+  const worldId = stringToUuid("tic-tac-toe-world");
+  const gameMasterId = stringToUuid("tic-tac-toe-game-master");
+
+  // Critical for canonical message processing:
+  // messageService.shouldRespond() needs a real room context (type=DM => always respond).
+  await runtime.ensureConnection({
+    entityId: gameMasterId,
+    roomId,
+    worldId,
+    userName: "Game Master",
+    source: "tic-tac-toe",
+    channelId: "tic-tac-toe",
+    messageServerId: stringToUuid("tic-tac-toe-server"),
+    type: ChannelType.DM,
+  });
 
   task.stop(
     `✅ Agent "${runtime.character.name}" ready! (No LLM - pure minimax)`,
   );
 
-  return { runtime, game };
+  return { runtime, game, roomId, worldId, gameMasterId };
+}
+
+function parseMoveFromAgentText(text: string): number | null {
+  const trimmed = text.trim();
+  const direct = parseInt(trimmed, 10);
+  if (!Number.isNaN(direct) && direct >= 0 && direct <= 8) return direct;
+
+  const xmlTextMatch = trimmed.match(/<text>\s*([0-8])\s*<\/text>/i);
+  if (xmlTextMatch) return parseInt(xmlTextMatch[1], 10);
+
+  const digitMatch = trimmed.match(/\b([0-8])\b/);
+  return digitMatch ? parseInt(digitMatch[1], 10) : null;
 }
 
 async function getAIMove(session: GameSession): Promise<number> {
-  const { runtime, game } = session;
+  const { runtime, game, roomId, gameMasterId } = session;
   const state = game.getState();
 
-  // Build prompt for our custom handler
-  const boardStr = state.board.map((c) => c || "_").join(" ");
-  const prompt = `
-CURRENT BOARD STATE:
-${boardStr.slice(0, 5)}
-${boardStr.slice(6, 11)}
-${boardStr.slice(12)}
+  // Environment input -> Eliza message (full pipeline via messageService.handleMessage)
+  const boardCells = state.board.map((c) => c || "_").join(",");
+  const available = getAvailableMoves(state.board).join(",");
+  const prompt = [
+    "TIC_TAC_TOE_ENV_UPDATE:",
+    `BOARD_CELLS: ${boardCells}`,
+    `YOU_ARE: ${state.currentPlayer}`,
+    `AVAILABLE_MOVES: ${available}`,
+    "",
+    "Return ONLY the best move as a number 0-8.",
+  ].join("\n");
 
-You are playing as ${state.currentPlayer}.
-Your mark is ${state.currentPlayer}.
-
-Choose the optimal position (0-8) for your next move.
-`;
-
-  // Call our custom model handler (NOT an LLM!)
-  const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-    prompt,
+  const message = createMessageMemory({
+    id: randomUUID() as UUID,
+    entityId: gameMasterId,
+    roomId,
+    content: {
+      text: prompt,
+      source: "tic-tac-toe",
+      channelType: ChannelType.DM,
+    },
   });
 
-  // Parse the move from response
-  const move = parseInt(response.trim(), 10);
-  if (Number.isNaN(move) || move < 0 || move > 8) {
-    // Fallback: pick first available
-    const available = getAvailableMoves(state.board);
-    return available[0];
+  let agentText = "";
+  if (!runtime.messageService) {
+    // Should never happen after runtime.initialize(), but keep safe fallback.
+    const fallback = getAvailableMoves(state.board);
+    return fallback[0];
+  }
+
+  const result = await runtime.messageService.handleMessage(
+    runtime,
+    message,
+    async (content) => {
+      if (typeof content.text === "string") agentText += content.text;
+      return [];
+    },
+  );
+
+  const textToParse =
+    typeof result.responseContent?.text === "string" && result.responseContent.text
+      ? result.responseContent.text
+      : agentText;
+
+  const move = textToParse ? parseMoveFromAgentText(textToParse) : null;
+  if (move === null) {
+    const fallback = getAvailableMoves(state.board);
+    return fallback[0];
   }
 
   return move;

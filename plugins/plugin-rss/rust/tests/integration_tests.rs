@@ -1,6 +1,6 @@
 use elizaos_plugin_rss::{
-    create_empty_feed, create_plugin, extract_urls, format_relative_time,
-    parse_rss_to_json, RssConfig,
+    create_empty_feed, create_plugin, extract_urls, format_relative_time, parse_rss_to_json,
+    RssConfig,
 };
 
 #[test]
@@ -167,5 +167,3 @@ async fn test_plugin_creation() {
     let plugin = create_plugin(RssConfig::default());
     assert!(plugin.config().feeds.is_empty());
 }
-
-

@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use crate::{ElizaClassicPlugin, generate_response, reflect};
+use crate::{generate_response, reflect, ElizaClassicPlugin};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -40,7 +40,6 @@ pub struct EvaluatorManifest {
     pub description: String,
 }
 
-
 impl Default for PluginManifest {
     fn default() -> Self {
         Self {
@@ -48,11 +47,7 @@ impl Default for PluginManifest {
             description: "Classic ELIZA pattern matching - no LLM required".to_string(),
             version: "1.0.0".to_string(),
             language: "rust".to_string(),
-            interop_protocols: vec![
-                "wasm".to_string(),
-                "ffi".to_string(),
-                "ipc".to_string(),
-            ],
+            interop_protocols: vec!["wasm".to_string(), "ffi".to_string(), "ipc".to_string()],
             actions: vec![ActionManifest {
                 name: "generate-response".to_string(),
                 description: "Generate an ELIZA response for user input".to_string(),
@@ -120,9 +115,8 @@ lazy_static::lazy_static! {
 }
 
 pub fn get_manifest_json() -> String {
-    serde_json::to_string(&PluginManifest::default()).unwrap_or_else(|e| {
-        format!(r#"{{"error": "{}"}}"#, e)
-    })
+    serde_json::to_string(&PluginManifest::default())
+        .unwrap_or_else(|e| format!(r#"{{"error": "{}"}}"#, e))
 }
 
 pub fn init_plugin(config_json: &str) -> Result<(), String> {
@@ -151,7 +145,7 @@ pub fn invoke_action(
 
     // Try to extract user input from memory or options
     let input = extract_user_input(memory_json, options_json);
-    
+
     if input.is_empty() {
         return ActionResult::failure("No user input provided");
     }
@@ -185,7 +179,11 @@ pub fn validate_evaluator(_name: &str, _memory_json: &str, _state_json: &str) ->
     false
 }
 
-pub fn invoke_evaluator(_name: &str, _memory_json: &str, _state_json: &str) -> Option<ActionResult> {
+pub fn invoke_evaluator(
+    _name: &str,
+    _memory_json: &str,
+    _state_json: &str,
+) -> Option<ActionResult> {
     None
 }
 
@@ -246,9 +244,8 @@ pub mod wasm {
         options_json: &str,
     ) -> String {
         let result = invoke_action(name, memory_json, state_json, options_json);
-        serde_json::to_string(&result).unwrap_or_else(|e| {
-            format!(r#"{{"success": false, "error": "{}"}}"#, e)
-        })
+        serde_json::to_string(&result)
+            .unwrap_or_else(|e| format!(r#"{{"success": false, "error": "{}"}}"#, e))
     }
 
     #[wasm_bindgen]
@@ -352,8 +349,12 @@ pub mod ffi {
         };
         let memory = cstr_to_string(memory_json).unwrap_or_default();
         let state = cstr_to_string(state_json).unwrap_or_default();
-        
-        if validate_action(&name, &memory, &state) { 1 } else { 0 }
+
+        if validate_action(&name, &memory, &state) {
+            1
+        } else {
+            0
+        }
     }
 
     #[no_mangle]
@@ -365,16 +366,19 @@ pub mod ffi {
     ) -> *mut c_char {
         let name = match cstr_to_string(name) {
             Some(s) => s,
-            None => return string_to_cstr(r#"{"success": false, "error": "Invalid name"}"#.to_string()),
+            None => {
+                return string_to_cstr(r#"{"success": false, "error": "Invalid name"}"#.to_string())
+            }
         };
         let memory = cstr_to_string(memory_json).unwrap_or_default();
         let state = cstr_to_string(state_json).unwrap_or_default();
         let options = cstr_to_string(options_json).unwrap_or_else(|| "{}".to_string());
 
         let result = invoke_action(&name, &memory, &state, &options);
-        string_to_cstr(serde_json::to_string(&result).unwrap_or_else(|e| {
-            format!(r#"{{"success": false, "error": "{}"}}"#, e)
-        }))
+        string_to_cstr(
+            serde_json::to_string(&result)
+                .unwrap_or_else(|e| format!(r#"{{"success": false, "error": "{}"}}"#, e)),
+        )
     }
 
     #[no_mangle]
@@ -406,8 +410,12 @@ pub mod ffi {
         };
         let memory = cstr_to_string(memory_json).unwrap_or_default();
         let state = cstr_to_string(state_json).unwrap_or_default();
-        
-        if validate_evaluator(&name, &memory, &state) { 1 } else { 0 }
+
+        if validate_evaluator(&name, &memory, &state) {
+            1
+        } else {
+            0
+        }
     }
 
     #[no_mangle]
@@ -424,7 +432,9 @@ pub mod ffi {
         let state = cstr_to_string(state_json).unwrap_or_default();
 
         match invoke_evaluator(&name, &memory, &state) {
-            Some(result) => string_to_cstr(serde_json::to_string(&result).unwrap_or_else(|_| "null".to_string())),
+            Some(result) => string_to_cstr(
+                serde_json::to_string(&result).unwrap_or_else(|_| "null".to_string()),
+            ),
             None => string_to_cstr("null".to_string()),
         }
     }
@@ -478,11 +488,19 @@ pub struct IpcResponse {
 
 impl IpcResponse {
     pub fn success(id: u64, result: serde_json::Value) -> Self {
-        Self { id, result: Some(result), error: None }
+        Self {
+            id,
+            result: Some(result),
+            error: None,
+        }
     }
 
     pub fn error(id: u64, error: &str) -> Self {
-        Self { id, result: None, error: Some(error.to_string()) }
+        Self {
+            id,
+            result: None,
+            error: Some(error.to_string()),
+        }
     }
 }
 
@@ -493,59 +511,137 @@ pub fn handle_ipc_request(request: &IpcRequest) -> IpcResponse {
             IpcResponse::success(request.id, serde_json::to_value(&manifest).unwrap())
         }
         "init" => {
-            let config = request.params.get("config")
+            let config = request
+                .params
+                .get("config")
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "{}".to_string());
             match init_plugin(&config) {
-                Ok(()) => IpcResponse::success(request.id, serde_json::json!({"initialized": true})),
+                Ok(()) => {
+                    IpcResponse::success(request.id, serde_json::json!({"initialized": true}))
+                }
                 Err(e) => IpcResponse::error(request.id, &e),
             }
         }
         "validateAction" => {
-            let name = request.params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let memory = request.params.get("memory").map(|v| v.to_string()).unwrap_or_default();
-            let state = request.params.get("state").map(|v| v.to_string()).unwrap_or_default();
+            let name = request
+                .params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let memory = request
+                .params
+                .get("memory")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let state = request
+                .params
+                .get("state")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
             let valid = validate_action(name, &memory, &state);
             IpcResponse::success(request.id, serde_json::json!({"valid": valid}))
         }
         "invokeAction" => {
-            let name = request.params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let memory = request.params.get("memory").map(|v| v.to_string()).unwrap_or_default();
-            let state = request.params.get("state").map(|v| v.to_string()).unwrap_or_default();
-            let options = request.params.get("options").map(|v| v.to_string()).unwrap_or_else(|| "{}".to_string());
+            let name = request
+                .params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let memory = request
+                .params
+                .get("memory")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let state = request
+                .params
+                .get("state")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let options = request
+                .params
+                .get("options")
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "{}".to_string());
             let result = invoke_action(name, &memory, &state, &options);
             IpcResponse::success(request.id, serde_json::to_value(&result).unwrap())
         }
         "getProvider" => {
-            let name = request.params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let memory = request.params.get("memory").map(|v| v.to_string()).unwrap_or_default();
-            let state = request.params.get("state").map(|v| v.to_string()).unwrap_or_default();
+            let name = request
+                .params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let memory = request
+                .params
+                .get("memory")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let state = request
+                .params
+                .get("state")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
             let result = get_provider(name, &memory, &state);
             IpcResponse::success(request.id, serde_json::to_value(&result).unwrap())
         }
         "validateEvaluator" => {
-            let name = request.params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let memory = request.params.get("memory").map(|v| v.to_string()).unwrap_or_default();
-            let state = request.params.get("state").map(|v| v.to_string()).unwrap_or_default();
+            let name = request
+                .params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let memory = request
+                .params
+                .get("memory")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let state = request
+                .params
+                .get("state")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
             let valid = validate_evaluator(name, &memory, &state);
             IpcResponse::success(request.id, serde_json::json!({"valid": valid}))
         }
         "invokeEvaluator" => {
-            let name = request.params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let memory = request.params.get("memory").map(|v| v.to_string()).unwrap_or_default();
-            let state = request.params.get("state").map(|v| v.to_string()).unwrap_or_default();
+            let name = request
+                .params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let memory = request
+                .params
+                .get("memory")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let state = request
+                .params
+                .get("state")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
             match invoke_evaluator(name, &memory, &state) {
-                Some(result) => IpcResponse::success(request.id, serde_json::to_value(&result).unwrap()),
+                Some(result) => {
+                    IpcResponse::success(request.id, serde_json::to_value(&result).unwrap())
+                }
                 None => IpcResponse::success(request.id, serde_json::Value::Null),
             }
         }
         "generateResponse" => {
-            let input = request.params.get("input").and_then(|v| v.as_str()).unwrap_or("");
+            let input = request
+                .params
+                .get("input")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let response = generate_response(input);
             IpcResponse::success(request.id, serde_json::json!({"response": response}))
         }
         "reflect" => {
-            let text = request.params.get("text").and_then(|v| v.as_str()).unwrap_or("");
+            let text = request
+                .params
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let reflected = reflect(text);
             IpcResponse::success(request.id, serde_json::json!({"reflected": reflected}))
         }
@@ -573,12 +669,7 @@ mod tests {
 
     #[test]
     fn test_invoke_action() {
-        let result = invoke_action(
-            "generate-response",
-            "{}",
-            "{}",
-            r#"{"input": "hello"}"#,
-        );
+        let result = invoke_action("generate-response", "{}", "{}", r#"{"input": "hello"}"#);
         assert!(result.success);
         assert!(result.text.is_some());
     }
@@ -587,7 +678,7 @@ mod tests {
     fn test_get_provider() {
         let result = get_provider("eliza-greeting", "{}", "{}");
         assert!(result.text.is_some());
-        assert!(result.text.unwrap().contains("ELIZA"));
+        assert!(result.text.unwrap().to_lowercase().contains("problem"));
     }
 
     #[test]
@@ -602,4 +693,3 @@ mod tests {
         assert!(response.result.is_some());
     }
 }
-

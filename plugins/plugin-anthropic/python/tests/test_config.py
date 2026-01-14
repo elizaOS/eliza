@@ -31,9 +31,7 @@ class TestAnthropicConfig:
 
     def test_config_builder_pattern(self) -> None:
         config = (
-            AnthropicConfig("test-key")
-            .with_base_url("https://custom.api.com")
-            .with_timeout(120)
+            AnthropicConfig("test-key").with_base_url("https://custom.api.com").with_timeout(120)
         )
         assert config.base_url == "https://custom.api.com"
         assert config.timeout_seconds == 120

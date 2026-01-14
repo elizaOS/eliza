@@ -44,13 +44,13 @@ impl McpAction for CallToolAction {
 
     async fn validate(&self, context: &ActionContext) -> McpResult<bool> {
         let servers = context.state.get("mcpServers");
-        
+
         if let Some(servers) = servers {
             if let Some(servers_arr) = servers.as_array() {
                 for server in servers_arr {
                     let status = server.get("status").and_then(|s| s.as_str());
                     let tools = server.get("tools").and_then(|t| t.as_array());
-                    
+
                     if status == Some("connected") {
                         if let Some(tools) = tools {
                             if !tools.is_empty() {
@@ -61,7 +61,7 @@ impl McpAction for CallToolAction {
                 }
             }
         }
-        
+
         Ok(false)
     }
 
@@ -72,7 +72,7 @@ impl McpAction for CallToolAction {
             .and_then(|t| t.get("name"))
             .and_then(|n| n.as_str())
             .unwrap_or("");
-        
+
         let server_name = context
             .state
             .get("selectedTool")

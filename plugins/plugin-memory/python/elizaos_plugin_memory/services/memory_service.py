@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -17,8 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseAdapter(Protocol):
-    async def insert(self, table: str, data: dict[str, object]) -> None:
-        ...
+    async def insert(self, table: str, data: dict[str, object]) -> None: ...
 
     async def select(
         self,
@@ -26,24 +24,19 @@ class DatabaseAdapter(Protocol):
         conditions: dict[str, object],
         order_by: list[tuple[str, str]] | None = None,
         limit: int | None = None,
-    ) -> list[dict[str, object]]:
-        ...
+    ) -> list[dict[str, object]]: ...
 
     async def update(
         self, table: str, data: dict[str, object], conditions: dict[str, object]
-    ) -> None:
-        ...
+    ) -> None: ...
 
-    async def delete(self, table: str, conditions: dict[str, object]) -> None:
-        ...
+    async def delete(self, table: str, conditions: dict[str, object]) -> None: ...
 
 
 class CacheAdapter(Protocol):
-    async def get(self, key: str) -> object | None:
-        ...
+    async def get(self, key: str) -> object | None: ...
 
-    async def set(self, key: str, value: object) -> None:
-        ...
+    async def set(self, key: str, value: object) -> None: ...
 
 
 class MemoryService:

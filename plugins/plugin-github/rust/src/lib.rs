@@ -25,8 +25,9 @@ pub use service::GitHubService;
 
 #[cfg(feature = "native")]
 pub use actions::{
-    ActionContext, GitHubAction, CreateIssueAction, CreatePullRequestAction, CreateCommentAction,
-    CreateBranchAction, MergePullRequestAction, PushCodeAction, ReviewPullRequestAction,
+    ActionContext, CreateBranchAction, CreateCommentAction, CreateIssueAction,
+    CreatePullRequestAction, GitHubAction, MergePullRequestAction, PushCodeAction,
+    ReviewPullRequestAction,
 };
 
 pub const PLUGIN_NAME: &str = "github";
@@ -59,5 +60,3 @@ mod tests {
         assert!(!p.description.is_empty());
     }
 }
-
-

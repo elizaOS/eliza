@@ -18,17 +18,49 @@ class ActionResult:
 
 
 class ExecuteCommandAction:
-
     COMMAND_KEYWORDS = [
-        "run", "execute", "command", "shell", "install", "brew", "npm",
-        "create", "file", "directory", "folder", "list", "show", "system",
-        "info", "check", "status", "cd", "ls", "mkdir", "echo", "cat",
-        "touch", "git", "build", "test",
+        "run",
+        "execute",
+        "command",
+        "shell",
+        "install",
+        "brew",
+        "npm",
+        "create",
+        "file",
+        "directory",
+        "folder",
+        "list",
+        "show",
+        "system",
+        "info",
+        "check",
+        "status",
+        "cd",
+        "ls",
+        "mkdir",
+        "echo",
+        "cat",
+        "touch",
+        "git",
+        "build",
+        "test",
     ]
 
     DIRECT_COMMANDS = [
-        "brew", "npm", "apt", "git", "ls", "cd", "echo", "cat", "touch",
-        "mkdir", "rm", "mv", "cp",
+        "brew",
+        "npm",
+        "apt",
+        "git",
+        "ls",
+        "cd",
+        "echo",
+        "cat",
+        "touch",
+        "mkdir",
+        "rm",
+        "mv",
+        "cp",
     ]
 
     @property
@@ -67,9 +99,7 @@ class ExecuteCommandAction:
     def _has_direct_command(self, text: str) -> bool:
         lower = text.lower()
         for cmd in self.DIRECT_COMMANDS:
-            if lower.startswith(cmd) and (
-                len(lower) == len(cmd) or lower[len(cmd)] == " "
-            ):
+            if lower.startswith(cmd) and (len(lower) == len(cmd) or lower[len(cmd)] == " "):
                 return True
         return False
 
@@ -111,7 +141,9 @@ class ExecuteCommandAction:
             )
             response_text = f"Command executed successfully in {result.executed_in}\n\n{output}"
         else:
-            response_text = f"Command failed with exit code {result.exit_code} in {result.executed_in}\n\n"
+            response_text = (
+                f"Command failed with exit code {result.exit_code} in {result.executed_in}\n\n"
+            )
             if result.stderr:
                 response_text += f"Error output:\n```\n{result.stderr}\n```"
 
@@ -131,8 +163,19 @@ class ExecuteCommandAction:
         lower = text.lower()
 
         direct_commands = [
-            "ls", "cd", "pwd", "echo", "cat", "mkdir", "rm", "mv", "cp",
-            "git", "npm", "brew", "apt",
+            "ls",
+            "cd",
+            "pwd",
+            "echo",
+            "cat",
+            "mkdir",
+            "rm",
+            "mv",
+            "cp",
+            "git",
+            "npm",
+            "brew",
+            "apt",
         ]
 
         for cmd in direct_commands:
@@ -140,17 +183,17 @@ class ExecuteCommandAction:
                 return text
             if f"run {cmd}" in lower:
                 pos = lower.find(f"run {cmd}")
-                return text[pos + 4:].strip()
+                return text[pos + 4 :].strip()
             if f"execute {cmd}" in lower:
                 pos = lower.find(f"execute {cmd}")
-                return text[pos + 8:].strip()
+                return text[pos + 8 :].strip()
 
         if "run " in lower:
             pos = lower.find("run ")
-            return text[pos + 4:].strip()
+            return text[pos + 4 :].strip()
         if "execute " in lower:
             pos = lower.find("execute ")
-            return text[pos + 8:].strip()
+            return text[pos + 8 :].strip()
 
         if "list" in lower and ("file" in lower or "director" in lower):
             return "ls -la"

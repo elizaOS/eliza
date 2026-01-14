@@ -17,7 +17,7 @@ class ChannelStateProvider:
     def description(self) -> str:
         return "Provides information about the current Discord channel, including type, permissions, and activity."
 
-    async def get(self, context: "ProviderContext") -> dict:
+    async def get(self, context: "ProviderContext") -> dict[str, object]:
         """Get the provider's data for the current context."""
         is_dm = context.guild_id is None
 
@@ -43,5 +43,3 @@ class ChannelStateProviderCamel(ChannelStateProvider):
     @property
     def name(self) -> str:
         return "channelState"
-
-

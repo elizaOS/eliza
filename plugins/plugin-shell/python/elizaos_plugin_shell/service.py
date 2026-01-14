@@ -324,4 +324,3 @@ class ShellService:
 
     def get_allowed_directory(self) -> str:
         return self._config.allowed_directory
-

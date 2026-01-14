@@ -5,12 +5,12 @@ An HTTP server that exposes an elizaOS agent for agent-to-agent communication us
 ## Requirements
 
 - Rust 1.70+
-- OpenAI API key
+- Optional: OpenAI API key (enables OpenAI-backed responses)
 
 ## Setup
 
 ```bash
-# Set up environment
+# Optional: enable OpenAI-backed responses
 export OPENAI_API_KEY=your-api-key
 ```
 
@@ -70,5 +70,5 @@ Stream a response from the agent (Server-Sent Events).
 ## Configuration
 
 - `PORT` - Server port (default: 3000)
-- `OPENAI_API_KEY` - OpenAI API key (required)
+- `OPENAI_API_KEY` - OpenAI API key (optional)
 - `OPENAI_BASE_URL` - Custom OpenAI endpoint

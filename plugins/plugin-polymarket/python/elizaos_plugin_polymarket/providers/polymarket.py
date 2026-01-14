@@ -30,7 +30,8 @@ async def get_polymarket_context(
     )
 
     has_api_creds = bool(
-        _get_setting(runtime, "CLOB_API_KEY") and (_get_setting(runtime, "CLOB_API_SECRET") or _get_setting(runtime, "CLOB_SECRET"))
+        _get_setting(runtime, "CLOB_API_KEY")
+        and (_get_setting(runtime, "CLOB_API_SECRET") or _get_setting(runtime, "CLOB_SECRET"))
     )
 
     features_available: list[str] = ["market_data", "price_feeds", "order_book"]
@@ -64,4 +65,3 @@ polymarket_provider = {
     "description": "Provides current Polymarket market information and context",
     "get": get_polymarket_context,
 }
-

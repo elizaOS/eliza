@@ -7,7 +7,6 @@ from elizaos_plugin_roblox.actions.send_game_message import ActionExample
 
 @dataclass
 class GetPlayerInfoAction:
-
     @property
     def name(self) -> str:
         return "GET_ROBLOX_PLAYER_INFO"

@@ -2,8 +2,7 @@
 target/
 **/*.rs.bk
 
-# Cargo lock file (for libraries)
-Cargo.lock
+# Cargo lock file is committed for reproducible builds/tests
 
 # Python cache (for Python tests)
 __pycache__/

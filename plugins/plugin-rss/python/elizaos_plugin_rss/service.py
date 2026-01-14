@@ -21,4 +21,3 @@ class RssService:
 
     async def fetch_url(self, url: str) -> RssFeed:
         return await self._client.fetch_feed(url)
-

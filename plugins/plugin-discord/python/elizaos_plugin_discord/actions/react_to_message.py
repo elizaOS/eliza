@@ -28,8 +28,8 @@ class ReactToMessageAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord"
 
     async def handler(
         self,
@@ -55,14 +55,10 @@ class ReactToMessageAction:
         # Find the target message
         target_message = await service.find_message(context.channel_id, message_ref)
         if not target_message:
-            return ActionResult.failure_result(
-                "I couldn't find the message to react to."
-            )
+            return ActionResult.failure_result("I couldn't find the message to react to.")
 
         # Add reaction
-        success = await service.add_reaction(
-            context.channel_id, target_message["id"], emoji
-        )
+        success = await service.add_reaction(context.channel_id, target_message["id"], emoji)
         if not success:
             return ActionResult.failure_result(
                 "I couldn't add the reaction. The emoji might be invalid "

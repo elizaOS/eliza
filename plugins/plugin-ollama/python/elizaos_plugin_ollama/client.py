@@ -292,4 +292,3 @@ class OllamaClient:
                         best = candidate
 
         return best
-

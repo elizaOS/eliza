@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -12,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class OCRService:
-
     def __init__(self):
         self._initialized = False
         self._tesseract_available = False

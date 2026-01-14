@@ -33,4 +33,3 @@ class McpService:
                 # Best-effort cleanup
                 pass
         self._clients.clear()
-

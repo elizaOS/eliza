@@ -11,9 +11,7 @@ class SolanaService:
     """
 
     service_type: str = "chain_solana"
-    capability_description: str = (
-        "The agent is able to interact with the Solana blockchain, and has access to the wallet data"
-    )
+    capability_description: str = "The agent is able to interact with the Solana blockchain, and has access to the wallet data"
 
     def __init__(self, client: SolanaClient) -> None:
         self._client = client
@@ -47,4 +45,3 @@ class SolanaWalletService:
     @property
     def solana_service(self) -> SolanaService:
         return self._solana
-

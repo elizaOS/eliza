@@ -71,7 +71,7 @@ class HoldemAgent:
         """Get session statistics."""
         return self._stats
 
-    async def decide(self, state: GameState) -> Action:
+    async def decide(self, state: GameState, *, trajectory_step_id: str | None = None) -> Action:
         """
         Decide the next action.
         
@@ -82,7 +82,7 @@ class HoldemAgent:
             The action to take
         """
         if self._use_llm and self._runtime is not None:
-            return await self._decide_with_llm(state)
+            return await self._decide_with_eliza(state, trajectory_step_id=trajectory_step_id)
         return self._decide_with_heuristics(state)
 
     def _decide_with_heuristics(self, state: GameState) -> Action:
@@ -131,88 +131,48 @@ class HoldemAgent:
         # Fold if we have to pay too much
         return Action(ActionType.FOLD)
 
-    async def _decide_with_llm(self, state: GameState) -> Action:
-        """Use LLM for decision making."""
+    async def _decide_with_eliza(self, state: GameState, *, trajectory_step_id: str | None = None) -> Action:
+        """Use canonical ElizaOS message pipeline for decision making."""
         if self._runtime is None:
             return self._decide_with_heuristics(state)
 
-        player = state.get_player(self._position)
-
-        if player.hole_cards is None:
-            return Action(ActionType.FOLD)
-
-        # Build prompt
-        hole_cards = f"{player.hole_cards[0]} {player.hole_cards[1]}"
-        community = " ".join(str(c) for c in state.community_cards) if state.community_cards else "None"
-
-        # Hand description
-        all_cards = list(player.hole_cards) + state.community_cards
-        hand_desc = get_hand_description(all_cards) if len(all_cards) >= 5 else "Pre-flop"
-
-        valid_actions = state.get_valid_actions()
-        actions_str = "\n".join(f"  - {action}" for action in valid_actions)
-
-        to_call = state.current_bet - player.bet_this_round
-
-        prompt = f"""You are playing Texas Hold'em poker. Make the optimal decision.
-
-YOUR HAND: {hole_cards}
-BOARD: {community}
-CURRENT HAND: {hand_desc}
-
-SITUATION:
-- Phase: {state.phase.value}
-- Pot: ${state.pot}
-- Your stack: ${player.stack}
-- To call: ${to_call}
-- Position: {'Button' if self._position == state.button else 'Off-button'}
-
-VALID ACTIONS:
-{actions_str}
-
-STRATEGY TIPS:
-- With strong hands (two pair+): raise for value
-- With draws: consider pot odds
-- Position matters: play more hands in position
-- Don't overcommit with marginal hands
-
-Choose the best action. Respond with one of: FOLD, CHECK, CALL, RAISE, or ALL_IN
-If raising, include the amount (e.g., "RAISE 50").
-"""
-
         try:
-            from elizaos.types.model import ModelType
-
-            result = await self._runtime.use_model(
-                ModelType.TEXT_SMALL.value,
-                {"prompt": prompt, "maxTokens": 50, "temperature": 0.3},
+            from elizaos_atropos_shared.canonical_eliza import run_with_context
+            from elizaos_atropos_holdem.eliza_plugin import (
+                HOLDEM_STORE,
+                HoldemDecisionContext,
             )
 
-            response = str(result).strip().upper()
+            _result, ctx = await run_with_context(
+                self._runtime,
+                HOLDEM_STORE,
+                HoldemDecisionContext(state=state, position=self._position),
+                source="atropos_holdem",
+                text="Choose the next holdem action.",
+                trajectory_step_id=trajectory_step_id,
+            )
+            chosen = ctx.chosen
 
-            # Parse response
-            if "FOLD" in response:
+            valid_actions = state.get_valid_actions()
+            if chosen == "FOLD":
                 return Action(ActionType.FOLD)
-            elif "CHECK" in response:
-                for action in valid_actions:
-                    if action.action_type == ActionType.CHECK:
-                        return action
-                return Action(ActionType.FOLD)
-            elif "CALL" in response:
-                for action in valid_actions:
-                    if action.action_type == ActionType.CALL:
-                        return action
-            elif "ALL" in response or "ALLIN" in response:
-                for action in valid_actions:
-                    if action.action_type == ActionType.ALL_IN:
-                        return action
-            elif "RAISE" in response:
-                # Try to extract amount
-                for action in valid_actions:
-                    if action.action_type == ActionType.RAISE:
-                        return action
+            if chosen == "CHECK":
+                for a in valid_actions:
+                    if a.action_type == ActionType.CHECK:
+                        return a
+            if chosen == "CALL":
+                for a in valid_actions:
+                    if a.action_type == ActionType.CALL:
+                        return a
+            if chosen == "ALL_IN":
+                for a in valid_actions:
+                    if a.action_type == ActionType.ALL_IN:
+                        return a
+            if chosen == "RAISE":
+                for a in valid_actions:
+                    if a.action_type == ActionType.RAISE:
+                        return a
 
-            # Fallback to heuristics
             return self._decide_with_heuristics(state)
 
         except Exception:

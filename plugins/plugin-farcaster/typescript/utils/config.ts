@@ -9,6 +9,17 @@ import {
   FarcasterConfigSchema,
 } from "../types";
 
+type ProcessEnvLike = Record<string, string | undefined>;
+
+function getProcessEnv(): ProcessEnvLike {
+  if (typeof process === "undefined") {
+    return {};
+  }
+  return process.env as ProcessEnvLike;
+}
+
+const env = getProcessEnv();
+
 function safeParseInt(value: string | undefined | null, defaultValue: number): number {
   if (!value) return defaultValue;
   const parsed = Number.parseInt(value, 10);
@@ -41,7 +52,7 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
     const farcasterConfig = {
       FARCASTER_DRY_RUN:
         runtime.getSetting("FARCASTER_DRY_RUN") ||
-        parseBooleanFromText(process.env.FARCASTER_DRY_RUN || "false"),
+        parseBooleanFromText(env.FARCASTER_DRY_RUN || "false"),
 
       FARCASTER_FID: fid ?? undefined,
 
@@ -57,7 +68,7 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
 
       ENABLE_CAST:
         runtime.getSetting("ENABLE_CAST") ||
-        parseBooleanFromText(process.env.ENABLE_CAST || "true"),
+        parseBooleanFromText(env.ENABLE_CAST || "true"),
 
       CAST_INTERVAL_MIN: safeParseInt(
         runtime.getSetting("CAST_INTERVAL_MIN") as string,
@@ -71,13 +82,13 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
 
       ENABLE_ACTION_PROCESSING:
         runtime.getSetting("ENABLE_ACTION_PROCESSING") ||
-        parseBooleanFromText(process.env.ENABLE_ACTION_PROCESSING || "false"),
+        parseBooleanFromText(env.ENABLE_ACTION_PROCESSING || "false"),
 
       ACTION_INTERVAL: safeParseInt(runtime.getSetting("ACTION_INTERVAL") as string, 5),
 
       CAST_IMMEDIATELY:
         runtime.getSetting("CAST_IMMEDIATELY") ||
-        parseBooleanFromText(process.env.CAST_IMMEDIATELY || "false"),
+        parseBooleanFromText(env.CAST_IMMEDIATELY || "false"),
 
       MAX_ACTIONS_PROCESSING: safeParseInt(
         runtime.getSetting("MAX_ACTIONS_PROCESSING") as string,

@@ -764,7 +764,7 @@ python -m benchmarks.swe_bench.cli \
   --max-instances 10 \
   --swebench-namespace ghcr.io/epoch-research \
   --timeout 1800 \
-  --model gpt-4o-mini
+  --model gpt-5-mini
 ```
 
 ### Verified Harness Validation (Gold Patches)
@@ -800,12 +800,130 @@ python -m benchmarks.swe_bench.cli \
   --max-instances 10 \
   --swebench-namespace ghcr.io/epoch-research \
   --timeout 1800 \
-  --model gpt-4o-mini
+  --model gpt-5-mini
 ```
 
 This produces `mode=agent` reports in `benchmark_results/swe-bench/`:
 - `swe-bench-lite-agent-YYYYMMDD_HHMMSS.json`
 - `swe-bench-lite-agent-YYYYMMDD_HHMMSS.md`
+
+### Canonical ElizaOS Integration
+
+The SWE-bench implementation uses the **full canonical ElizaOS agent flow** with no bypasses:
+
+#### Architecture
+
+```
+User Message (Memory)
+       │
+       ▼
+┌─────────────────────────────────────┐
+│ message_service.handle_message()   │
+│ ├─ compose_state() - run providers │
+│ │  ├─ SWE_BENCH_ISSUE_PROVIDER     │  ← Issue context
+│ │  ├─ SWE_BENCH_TOOLS_PROVIDER     │  ← Tool descriptions
+│ │  ├─ SWE_BENCH_STRATEGY_PROVIDER  │  ← Problem-solving strategy
+│ │  ├─ SWE_BENCH_ACTION_RESULTS     │  ← Recent action results
+│ │  ├─ CHARACTER_PROVIDER           │  ← Agent identity
+│ │  └─ ... (12+ bootstrap providers)│
+│ │                                   │
+│ ├─ use_model() - generate response │
+│ ├─ parse XML (actions, params)     │
+│ ├─ process_actions() - execute     │
+│ │  ├─ SEARCH_CODE                  │
+│ │  ├─ READ_FILE                    │
+│ │  ├─ EDIT_FILE                    │
+│ │  ├─ LIST_FILES                   │
+│ │  └─ SUBMIT                       │
+│ └─ evaluate() - run evaluators     │
+└─────────────────────────────────────┘
+       │
+       ▼
+Response (with actions, params, thought)
+```
+
+#### Key Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **Providers** | `providers.py` | 5 SWE-bench specific providers for context injection |
+| **Character** | `character.py` | SWE-bench optimized character with XML templates |
+| **Agent** | `agent.py` | Uses `message_service.handle_message()` canonically |
+| **Plugin** | `plugin.py` | Registers actions, providers, and RepoManagerService |
+
+#### Provider Details
+
+1. **SWE_BENCH_ISSUE_PROVIDER** (position: 10)
+   - Injects current issue context: instance_id, repo, problem_statement, hints
+
+2. **SWE_BENCH_TOOLS_PROVIDER** (position: 20)
+   - Describes available tools with parameters and examples
+
+3. **SWE_BENCH_REPO_STRUCTURE_PROVIDER** (position: 30)
+   - Shows repository file tree (Python files)
+
+4. **SWE_BENCH_STRATEGY_PROVIDER** (position: 40)
+   - Problem-solving strategy: Understand → Locate → Analyze → Fix → Submit
+
+5. **SWE_BENCH_ACTION_RESULTS_PROVIDER** (position: 50)
+   - Last 5 action results for context continuity
+
+#### XML Response Format
+
+The agent uses XML-formatted responses for structured tool use:
+
+```xml
+<response>
+<thought>Reasoning about next step...</thought>
+<text>Brief explanation</text>
+<actions>SEARCH_CODE</actions>
+<params>
+<SEARCH_CODE>
+<query>ValidationError</query>
+<file_pattern>*.py</file_pattern>
+</SEARCH_CODE>
+</params>
+</response>
+```
+
+#### Message Service Integration
+
+The implementation uses the canonical `DefaultMessageService` which:
+1. Saves incoming messages to memory (if adapter available)
+2. Composes state from all registered providers
+3. Uses `MESSAGE_HANDLER_TEMPLATE` for response generation
+4. Parses XML for actions, params, thought
+5. Executes actions via `runtime.process_actions()`
+6. Runs evaluators via `runtime.evaluate()`
+
+#### BasicCapabilities
+
+The agent runs with `basicCapabilities` enabled (default), which provides:
+- 12 bootstrap providers (CHARACTER, ACTIONS, TIME, etc.)
+- 3 bootstrap actions (REPLY, IGNORE, NONE)
+- 2 services (TaskService, EmbeddingService)
+
+The SWE-bench plugin adds:
+- 5 additional providers
+- 5 code navigation actions
+- 1 service (RepoManagerService)
+
+#### Testing the Canonical Flow
+
+```bash
+# Smoke test with mock model (verifies message_service → actions flow)
+python -m benchmarks.swe_bench.cli \
+  --mock-model \
+  --max-instances 1 \
+  --no-docker \
+  -v
+```
+
+Expected output shows:
+- Bootstrap plugin initializing with providers, actions, services
+- SWE-bench plugin registering
+- Agent steps using canonical message handling
+- Actions executing via `process_actions()`
 
 ### Improvement Roadmap
 

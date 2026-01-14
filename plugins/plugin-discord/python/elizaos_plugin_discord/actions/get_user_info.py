@@ -34,8 +34,8 @@ class GetUserInfoAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord" and context.guild_id is not None
 
     async def handler(
         self,
@@ -44,6 +44,11 @@ class GetUserInfoAction:
     ) -> "ActionResult":
         """Execute the action."""
         from elizaos_plugin_discord.actions import ActionResult
+
+        if context.guild_id is None:
+            return ActionResult.failure_result(
+                "I can only look up user info inside a server (not in DMs)."
+            )
 
         content = context.message.get("content", {})
         text = content.get("text", "") if isinstance(content, dict) else ""
@@ -60,8 +65,7 @@ class GetUserInfoAction:
         user_info = await service.get_member_info(context.guild_id, user_identifier)
         if not user_info:
             return ActionResult.failure_result(
-                f'I couldn\'t find a user with the identifier "{user_identifier}" '
-                "in this server."
+                f'I couldn\'t find a user with the identifier "{user_identifier}" in this server.'
             )
 
         # Format the response

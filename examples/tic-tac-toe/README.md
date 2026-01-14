@@ -12,8 +12,8 @@ A tic-tac-toe game demonstrating elizaOS's ability to run agents **without an LL
 ## Available Implementations
 
 - [TypeScript](./typescript/) - Full implementation with interactive play
-- [Python](./python/) - Python implementation (coming soon)
-- [Rust](./rust/) - Rust implementation (coming soon)
+- [Python](./python/) - Full Eliza runtime integration (message_service.handle_message)
+- [Rust](./rust/) - Full Eliza runtime integration (message_service.handle_message)
 
 ## How It Works
 

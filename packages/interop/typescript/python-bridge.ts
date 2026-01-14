@@ -21,6 +21,7 @@ import type {
   ProviderValue,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
   ActionResultResponse,
   ErrorResponse,
@@ -43,10 +44,25 @@ export interface PythonBridgeOptions {
   cwd?: string;
   /** Additional environment variables */
   env?: Record<string, string>;
+  /**
+   * Whether to inherit the parent process environment variables.
+   *
+   * Defaults to true for compatibility. For tighter isolation, set to false and pass only
+   * explicit `env` entries.
+   */
+  inheritEnv?: boolean;
+  /** Environment variable names to remove when inheriting. */
+  envDenylist?: string[];
   /** Path to the bridge script */
   bridgeScriptPath?: string;
   /** Connection timeout in milliseconds */
   timeout?: number;
+  /** Maximum number of in-flight IPC requests (prevents unbounded memory growth). */
+  maxPendingRequests?: number;
+  /** Maximum size (bytes) of a single newline-delimited IPC message. */
+  maxMessageBytes?: number;
+  /** Maximum size (bytes) of the internal stdout buffer. */
+  maxBufferBytes?: number;
 }
 
 /**
@@ -74,6 +90,32 @@ export class PythonPluginBridge extends EventEmitter {
     super();
   }
 
+  private buildChildEnv(): Record<string, string> {
+    const inherit = this.options.inheritEnv !== false;
+    const base: Record<string, string> = {};
+
+    if (inherit) {
+      for (const [k, v] of Object.entries(process.env)) {
+        if (typeof v === "string") {
+          base[k] = v;
+        }
+      }
+    }
+
+    const deny = new Set(this.options.envDenylist ?? []);
+    for (const key of deny) {
+      delete base[key];
+    }
+
+    if (this.options.env) {
+      for (const [k, v] of Object.entries(this.options.env)) {
+        base[k] = v;
+      }
+    }
+
+    return base;
+  }
+
   /**
    * Start the Python subprocess
    */
@@ -90,7 +132,7 @@ export class PythonPluginBridge extends EventEmitter {
       ["-u", bridgeScript, "--module", this.options.moduleName],
       {
         cwd: this.options.cwd,
-        env: { ...process.env, ...this.options.env },
+        env: this.buildChildEnv(),
         stdio: ["pipe", "pipe", "pipe"],
       },
     );
@@ -105,8 +147,13 @@ export class PythonPluginBridge extends EventEmitter {
     // Handle stderr (logging)
     if (this.process.stderr) {
       this.process.stderr.on("data", (data: Buffer) => {
-        console.error(
-          `[Python Plugin ${this.options.moduleName}]`,
+        logger.error(
+          {
+            src: "interop:python-bridge",
+            event: "interop.ipc.stderr",
+            moduleName: this.options.moduleName,
+            stream: "stderr",
+          },
           data.toString(),
         );
       });
@@ -156,7 +203,23 @@ export class PythonPluginBridge extends EventEmitter {
    * Handle incoming data from subprocess
    */
   private handleData(data: string): void {
+    const maxBufferBytes = this.options.maxBufferBytes ?? 2_000_000;
+    const maxMessageBytes = this.options.maxMessageBytes ?? 1_000_000;
+
     this.messageBuffer += data;
+    if (Buffer.byteLength(this.messageBuffer, "utf8") > maxBufferBytes) {
+      logger.error(
+        {
+          src: "interop:python-bridge",
+          event: "interop.ipc.stdout_buffer_exceeded",
+          moduleName: this.options.moduleName,
+        },
+        `IPC stdout buffer exceeded limit (${maxBufferBytes} bytes); terminating bridge`,
+      );
+      this.process?.kill("SIGKILL");
+      this.cleanup();
+      return;
+    }
 
     // Process complete JSON messages (newline-delimited)
     const lines = this.messageBuffer.split("\n");
@@ -164,11 +227,31 @@ export class PythonPluginBridge extends EventEmitter {
 
     for (const line of lines) {
       if (line.trim()) {
+        if (Buffer.byteLength(line, "utf8") > maxMessageBytes) {
+          logger.error(
+            {
+              src: "interop:python-bridge",
+              event: "interop.ipc.message_exceeded",
+              moduleName: this.options.moduleName,
+            },
+            `IPC message exceeded limit (${maxMessageBytes} bytes); terminating bridge`,
+          );
+          this.process?.kill("SIGKILL");
+          this.cleanup();
+          return;
+        }
         try {
           const message: IPCResponse = JSON.parse(line);
           this.handleMessage(message);
         } catch (error) {
-          console.error("Failed to parse IPC message:", line, error);
+          logger.error(
+            {
+              src: "interop:python-bridge",
+              event: "interop.ipc.parse_failed",
+              moduleName: this.options.moduleName,
+            },
+            `Failed to parse IPC message: ${line}`,
+          );
         }
       }
     }
@@ -201,6 +284,13 @@ export class PythonPluginBridge extends EventEmitter {
   async sendRequest<T extends IPCResponse>(request: IPCRequest): Promise<T> {
     if (!this.process || !this.initialized) {
       throw new Error("Python bridge not started");
+    }
+
+    const maxPendingRequests = this.options.maxPendingRequests ?? 1000;
+    if (this.pendingRequests.size >= maxPendingRequests) {
+      throw new Error(
+        `Too many pending IPC requests (max=${maxPendingRequests})`,
+      );
     }
 
     const id = `req_${++this.requestCounter}`;

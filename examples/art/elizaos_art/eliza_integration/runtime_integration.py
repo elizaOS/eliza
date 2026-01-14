@@ -7,8 +7,9 @@ This is the CANONICAL integration that uses the full ElizaOS agent runtime:
 - Actions registered and invoked properly
 - Providers supplying context  
 - basicCapabilities enabled by default
+- Full trajectory logging for RL training
 
-NO SHORTCUTS, NO BYPASSES - this is the real thing.
+NO SHORTCUTS, NO BYPASSES - this is the real thing with end-to-end trajectory capture.
 """
 
 from __future__ import annotations
@@ -45,6 +46,10 @@ from elizaos_art.base import (
     Trajectory,
     TrainingConfig,
 )
+from elizaos_art.eliza_integration.trajectory_plugin_integration import (
+    TrajectoryBackend,
+    create_trajectory_backend,
+)
 
 if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
@@ -67,13 +72,14 @@ class ARTRuntimeConfig:
 
     # Model configuration - for LLM provider
     model_provider: str = "openai"  # or "anthropic", "local"
-    model_name: str = "gpt-4o-mini"
+    model_name: str = "gpt-5-mini"
 
     # Training
     training_config: TrainingConfig = field(default_factory=TrainingConfig)
 
     # Storage
     data_dir: str = "./data"
+    trajectory_dir: str = "./data/trajectories"
 
     # Capabilities - basicCapabilities is TRUE by default (not disabled)
     disable_basic_capabilities: bool = False
@@ -82,15 +88,21 @@ class ARTRuntimeConfig:
     # Logging
     log_level: str = "INFO"
 
+    # Trajectory logging
+    enable_trajectory_logging: bool = True
+    auto_persist_trajectories: bool = True
+
 
 def create_game_state_provider(
     env: BaseEnvironment,
     current_state_holder: dict,
+    trajectory_backend: TrajectoryBackend | None = None,
 ) -> Provider:
     """
     Create a Provider that supplies game state context to the agent.
 
     This is registered with the ElizaOS runtime and called during compose_state().
+    Automatically logs provider access to the trajectory logger.
     """
 
     async def get_game_state(
@@ -100,6 +112,7 @@ def create_game_state_provider(
     ) -> ProviderResult:
         """Get current game state for context."""
         game_state = current_state_holder.get("state")
+        trajectory_id = current_state_holder.get("_trajectory_id")
 
         if game_state is None:
             return ProviderResult(
@@ -115,24 +128,43 @@ def create_game_state_provider(
         # Format state for LLM
         state_text = game_state.to_prompt() if hasattr(game_state, "to_prompt") else str(game_state)
 
-        return ProviderResult(
-            text=f"""# Current Game State
+        result_text = f"""# Current Game State
 
 {state_text}
 
 ## Available Actions
 {', '.join(action_names)}
 
-Analyze the current state and decide on the best action to take.""",
-            values={
-                "game_state": game_state.to_dict() if hasattr(game_state, "to_dict") else {},
-                "available_actions": action_names,
-                "env_name": env.name,
-            },
-            data={
-                "game_state": game_state.to_dict() if hasattr(game_state, "to_dict") else {},
-                "available_actions": action_names,
-            },
+Analyze the current state and decide on the best action to take."""
+
+        result_data = {
+            "game_state": game_state.to_dict() if hasattr(game_state, "to_dict") else {},
+            "available_actions": action_names,
+            "env_name": env.name,
+        }
+
+        # Log provider access to trajectory
+        if trajectory_backend and trajectory_id:
+            trajectory_backend.log_provider_access_by_trajectory_id(
+                trajectory_id,
+                {
+                    "providerName": "GAME_STATE",
+                    "data": {
+                        "text": result_text[:500],  # Truncate for storage
+                        "game_state": result_data["game_state"],
+                        "available_actions": action_names,
+                    },
+                    "purpose": "game_state_context",
+                    "query": {
+                        "message": message.content.text if message.content else "",
+                    },
+                },
+            )
+
+        return ProviderResult(
+            text=result_text,
+            values=result_data,
+            data=result_data,
         )
 
     return Provider(
@@ -148,11 +180,13 @@ def create_game_action(
     agent: BaseAgent,
     current_state_holder: dict,
     action_result_holder: dict,
+    trajectory_backend: TrajectoryBackend | None = None,
 ) -> Action:
     """
     Create an Action that executes game moves.
 
     This is the canonical way to handle actions in ElizaOS.
+    Automatically logs action execution to the trajectory logger.
     """
 
     async def validate_action(runtime: IAgentRuntime) -> bool:
@@ -173,6 +207,9 @@ def create_game_action(
         This is called when the agent decides to take an action in the game.
         """
         game_state = current_state_holder.get("state")
+        trajectory_id = current_state_holder.get("_trajectory_id")
+        step_id = current_state_holder.get("_step_id")
+
         if game_state is None:
             return ActionResult(
                 success=False,
@@ -222,6 +259,29 @@ def create_game_action(
         if done:
             result_text += "\nGame Over!"
 
+        # Log action execution to trajectory
+        if trajectory_backend and trajectory_id and step_id:
+            trajectory_backend.complete_step(
+                trajectory_id=trajectory_id,
+                step_id=step_id,
+                action_type="PLAY_MOVE",
+                action_name=str(chosen_action),
+                parameters={
+                    "response_text": response_text[:500],  # Truncate
+                    "chosen_action": str(chosen_action),
+                    "available_actions": [str(a) for a in available_actions],
+                },
+                success=True,
+                reward=reward,
+                done=done,
+                result={
+                    "reward": reward,
+                    "done": done,
+                    "new_state": new_state.to_dict() if hasattr(new_state, "to_dict") else {},
+                },
+                reasoning=f"Chose {chosen_action} from available actions",
+            )
+
         if callback:
             await callback(Content(text=result_text))
 
@@ -265,11 +325,13 @@ def create_art_plugin(
     agent: BaseAgent,
     current_state_holder: dict,
     action_result_holder: dict,
+    trajectory_backend: TrajectoryBackend | None = None,
 ) -> Plugin:
     """
     Create a Plugin that provides game-specific actions and providers.
 
     This plugin is registered with the ElizaOS runtime alongside the bootstrap plugin.
+    Includes trajectory logging for all interactions.
     """
 
     async def init_plugin(
@@ -278,20 +340,20 @@ def create_art_plugin(
     ) -> None:
         """Initialize the ART game plugin."""
         runtime.logger.info(
-            f"Initializing ART plugin for {env.name}",
+            f"Initializing ART plugin for {env.name} with trajectory logging enabled={trajectory_backend is not None}",
             src="plugin:art-game",
         )
 
     return Plugin(
         name=f"art-{env.name}",
-        description=f"ART training plugin for {env.name}",
+        description=f"ART training plugin for {env.name} with trajectory logging",
         init=init_plugin,
         config={},
         providers=[
-            create_game_state_provider(env, current_state_holder),
+            create_game_state_provider(env, current_state_holder, trajectory_backend),
         ],
         actions=[
-            create_game_action(env, agent, current_state_holder, action_result_holder),
+            create_game_action(env, agent, current_state_holder, action_result_holder, trajectory_backend),
         ],
     )
 
@@ -305,8 +367,9 @@ class ARTRuntime(Generic[S, A]):
     - Actions registered and invoked properly
     - Providers supplying context
     - basicCapabilities enabled by default
+    - End-to-end trajectory logging for RL training
 
-    NO SHORTCUTS - this is canonical ElizaOS agent usage.
+    NO SHORTCUTS - this is canonical ElizaOS agent usage with full telemetry.
     """
 
     def __init__(
@@ -331,6 +394,19 @@ class ARTRuntime(Generic[S, A]):
         self._room_id = string_to_uuid(f"art-game-{env.name}")
         self._user_id = string_to_uuid("art-user")
         self._world_id = string_to_uuid("art-world")
+
+        # Trajectory logger
+        self._trajectory_backend: TrajectoryBackend | None = None
+        if self.config.enable_trajectory_logging:
+            self._trajectory_backend = create_trajectory_backend(output_dir=self.config.trajectory_dir)
+
+        # Collected trajectories for batch export
+        self._collected_trajectories: list[dict] = []
+
+    @property
+    def trajectory_backend(self) -> TrajectoryBackend | None:
+        """Get the trajectory backend instance."""
+        return self._trajectory_backend
 
     def _create_character(self) -> Character:
         """Create the agent character with game-specific personality."""
@@ -364,12 +440,13 @@ class ARTRuntime(Generic[S, A]):
         # Create character
         character = self._create_character()
 
-        # Create game-specific plugin
+        # Create game-specific plugin with trajectory logging
         game_plugin = create_art_plugin(
             env=self.env,
             agent=self.agent,
             current_state_holder=self._current_state_holder,
             action_result_holder=self._action_result_holder,
+            trajectory_backend=self._trajectory_backend,
         )
 
         # Get model provider plugin
@@ -415,7 +492,7 @@ class ARTRuntime(Generic[S, A]):
         4. Providers supply context
         5. Response is generated
 
-        NO BYPASSES.
+        NO BYPASSES. All interactions are logged to trajectory.
         """
         if self._runtime is None:
             raise RuntimeError("Runtime not initialized")
@@ -432,6 +509,7 @@ class ARTRuntime(Generic[S, A]):
 
         response_text = ""
         responses: list[str] = []
+        start_time = time.time()
 
         # Callback to collect response
         async def response_callback(content: Content) -> list[Memory]:
@@ -448,6 +526,27 @@ class ARTRuntime(Generic[S, A]):
             callback=response_callback if collect_response else None,
         )
 
+        # Calculate latency
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        # Log LLM call to trajectory
+        trajectory_id = self._current_state_holder.get("_trajectory_id")
+        if self._trajectory_backend and trajectory_id:
+            self._trajectory_backend.log_llm_call_by_trajectory_id(
+                trajectory_id,
+                {
+                    "model": self.config.model_name,
+                    "systemPrompt": self.agent.get_system_prompt(),
+                    "userPrompt": text,
+                    "response": response_text,
+                    "temperature": 0.7,
+                    "maxTokens": 2048,
+                    "purpose": "action",
+                    "actionType": "PLAY_MOVE",
+                    "latencyMs": latency_ms,
+                },
+            )
+
         # Get action results
         action_results = self._runtime.get_action_results(message_id)
 
@@ -463,6 +562,7 @@ class ARTRuntime(Generic[S, A]):
         Execute a single rollout using the FULL ElizaOS agent.
 
         This is NOT a shortcut - it goes through proper message handling.
+        All interactions are logged to trajectory for RL training.
         """
         if not self._initialized:
             await self.initialize()
@@ -480,12 +580,44 @@ class ARTRuntime(Generic[S, A]):
         system_prompt = self.agent.get_system_prompt()
         messages.append({"role": "system", "content": system_prompt})
 
+        # Start trajectory logging
+        trajectory_id = None
+        if self._trajectory_backend:
+            trajectory_id = self._trajectory_backend.start_trajectory(
+                agent_id=self.config.agent_id,
+                scenario_id=scenario_id,
+                episode_id=f"{scenario_id}-{int(time.time() * 1000)}",
+                metadata={
+                    "env": self.env.name,
+                    "agent": self.agent.name,
+                    "model": self.config.model_name,
+                    "seed": seed,
+                    "max_steps": max_steps,
+                },
+            )
+            self._current_state_holder["_trajectory_id"] = trajectory_id
+
         done = False
         while not done and step_count < max_steps:
             # Check available actions
             available_actions = self.env.get_available_actions(state)
             if not available_actions:
                 break
+
+            # Start step in trajectory
+            step_id = None
+            if self._trajectory_backend and trajectory_id:
+                env_state = {
+                    "timestamp": int(time.time() * 1000),
+                    "agentPoints": total_reward,
+                    "custom": {
+                        "step": step_count,
+                        "game_state": state.to_dict() if hasattr(state, "to_dict") else {},
+                        "available_actions": [str(a) for a in available_actions],
+                    },
+                }
+                step_id = self._trajectory_backend.start_step(trajectory_id, env_state)
+                self._current_state_holder["_step_id"] = step_id
 
             # Format user message (the "environment" speaking to the agent)
             user_prompt = self.agent.format_action_prompt(state, available_actions)
@@ -511,15 +643,52 @@ class ARTRuntime(Generic[S, A]):
                 # Clear for next step
                 self._action_result_holder.clear()
             else:
-                # Agent didn't take action - force one
+                # Agent didn't take action - force one and log it
                 action = available_actions[0]
                 state, reward, done = await self.env.step(action)
                 self._current_state_holder["state"] = state
                 total_reward += reward
                 step_count += 1
 
+                # Log forced action
+                if self._trajectory_backend and trajectory_id and step_id:
+                    self._trajectory_backend.complete_step(
+                        trajectory_id=trajectory_id,
+                        step_id=step_id,
+                        action_type="PLAY_MOVE",
+                        action_name=str(action),
+                        parameters={"forced": True},
+                        success=True,
+                        reward=reward,
+                        done=done,
+                        result={"reward": reward, "done": done},
+                        reasoning="Forced action due to no agent response",
+                    )
+
+        # End trajectory logging
+        trajectory_data = {}
+        if self._trajectory_backend and trajectory_id:
+            status = "completed" if done else "terminated"
+            if step_count >= max_steps:
+                status = "timeout"
+
+            await self._trajectory_backend.end_trajectory(
+                trajectory_id=trajectory_id,
+                status=status,
+                final_metrics={"total_reward": total_reward, "steps": step_count, "done": done},
+            )
+            trajectory_data = self._trajectory_backend.get_trajectory_json(trajectory_id) or {}
+
+            # Collect for batch export
+            if trajectory_data:
+                self._collected_trajectories.append(trajectory_data)
+
+        # Clear trajectory context
+        self._current_state_holder.pop("_trajectory_id", None)
+        self._current_state_holder.pop("_step_id", None)
+
         return Trajectory(
-            trajectory_id=f"{scenario_id}-{int(time.time() * 1000)}",
+            trajectory_id=trajectory_id or f"{scenario_id}-{int(time.time() * 1000)}",
             scenario_id=scenario_id,
             messages=messages,
             reward=total_reward,
@@ -528,6 +697,7 @@ class ARTRuntime(Generic[S, A]):
                 "agent": self.agent.name,
                 "model": self.config.model_name,
                 "seed": seed,
+                "trajectory_data": trajectory_data,
             },
             metrics={
                 "total_reward": total_reward,
@@ -540,15 +710,18 @@ class ARTRuntime(Generic[S, A]):
         scenario_id: str,
         num_rollouts: int,
         seeds: list[int] | None = None,
+        batch_id: str | None = None,
     ) -> list[Trajectory]:
-        """Execute multiple rollouts for GRPO training."""
+        """Execute multiple rollouts for GRPO training with trajectory logging."""
         if seeds is None:
             seeds = list(range(num_rollouts))
 
+        batch_id = batch_id or f"batch-{int(time.time() * 1000)}"
         trajectories = []
+
         for i, seed in enumerate(seeds[:num_rollouts]):
             traj = await self.rollout(
-                scenario_id=f"{scenario_id}-{i}",
+                scenario_id=f"{scenario_id}-{batch_id}-{i}",
                 seed=seed,
             )
             trajectories.append(traj)
@@ -560,7 +733,7 @@ class ARTRuntime(Generic[S, A]):
         num_episodes: int = 100,
         seed_offset: int = 0,
     ) -> dict:
-        """Evaluate current model performance."""
+        """Evaluate current model performance with trajectory logging."""
         rewards: list[float] = []
         wins = 0
 
@@ -581,6 +754,38 @@ class ARTRuntime(Generic[S, A]):
             "win_rate": wins / num_episodes if num_episodes > 0 else 0,
         }
 
+    def get_collected_trajectories(self) -> list[dict]:
+        """Get all collected trajectory data for export."""
+        return self._collected_trajectories
+
+    def clear_collected_trajectories(self) -> None:
+        """Clear collected trajectories after export."""
+        self._collected_trajectories.clear()
+
+    def export_training_dataset(
+        self,
+        *,
+        dataset_name: str,
+        export_format: str = "art",
+        output_path: str | None = None,
+    ) -> str:
+        """
+        Export trajectories for training using the trajectory logger plugin.
+
+        - export_format=\"art\"  -> OpenPipe ART JSONL
+        - export_format=\"grpo\" -> GRPO grouped JSON
+        """
+        if not self._trajectory_backend:
+            raise RuntimeError("Trajectory logging backend not enabled")
+
+        if export_format == "grpo":
+            return self._trajectory_backend.export_grpo_groups(
+                dataset_name=dataset_name, output_path=output_path
+            )
+        return self._trajectory_backend.export_openpipe_art(
+            dataset_name=dataset_name, output_path=output_path
+        )
+
     async def close(self) -> None:
         """Clean up resources."""
         if self._runtime:
@@ -594,7 +799,7 @@ def create_art_runtime(
     config: ARTRuntimeConfig | None = None,
 ) -> ARTRuntime:
     """
-    Create an ART runtime with FULL ElizaOS integration.
+    Create an ART runtime with FULL ElizaOS integration and trajectory logging.
 
     This uses the canonical ElizaOS agent pattern:
     - Full AgentRuntime with character
@@ -602,6 +807,7 @@ def create_art_runtime(
     - Actions registered and invoked
     - Providers for context
     - basicCapabilities enabled by default
+    - End-to-end trajectory logging for RL training
 
     Example:
         ```python
@@ -612,21 +818,27 @@ def create_art_runtime(
         agent = Game2048Agent()
         config = ARTRuntimeConfig(
             agent_id="2048-trainer",
-            model_name="gpt-4o-mini",
+            model_name="gpt-5-mini",
+            enable_trajectory_logging=True,  # Enable trajectory logging
         )
 
         runtime = create_art_runtime(env, agent, config)
         await runtime.initialize()
 
-        # Run evaluation
+        # Run evaluation with trajectory logging
         results = await runtime.evaluate(num_episodes=100)
         print(f"Win rate: {results['win_rate']:.1%}")
 
-        # Run training rollouts
+        # Run training rollouts with trajectory logging
         trajectories = await runtime.rollout_batch(
             scenario_id="training-batch-1",
             num_rollouts=8,
         )
+
+        # Export collected trajectories for training
+        collected = runtime.get_collected_trajectories()
+        from elizaos_art.eliza_integration.export import export_trajectories_art_format
+        await export_trajectories_art_format(collected, "training_data.jsonl")
         ```
     """
     return ARTRuntime(env=env, agent=agent, config=config)

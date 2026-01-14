@@ -28,4 +28,3 @@ class TeeVendorInterface(ABC):
     @abstractmethod
     def get_description(self) -> str:
         pass
-

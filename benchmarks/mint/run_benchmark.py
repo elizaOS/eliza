@@ -37,6 +37,8 @@ sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-openai" / "python"))
 sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-vercel-ai-gateway" / "python"))
 sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-xai" / "python"))
 sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-eliza-classic" / "python"))
+sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-sql" / "python"))
+sys.path.insert(0, str(benchmark_root / "plugins" / "plugin-trajectory-logger" / "python"))
 
 # Now we can import
 from benchmarks.mint.types import MINTCategory, MINTConfig
@@ -148,6 +150,18 @@ def parse_args() -> argparse.Namespace:
         help="Generate feedback using the selected model provider (costly; default: rule-based)",
     )
 
+    parser.add_argument(
+        "--no-trajectory-logging",
+        action="store_true",
+        help="Disable elizaOS trajectory logging export (enabled by default for runtime providers)",
+    )
+    parser.add_argument(
+        "--trajectory-dataset",
+        type=str,
+        default="mint-benchmark",
+        help="Dataset name used when exporting ART / GRPO trajectories",
+    )
+
     # Misc
     parser.add_argument(
         "-v", "--verbose",
@@ -209,13 +223,18 @@ def _load_dotenv_file(path: Path) -> None:
             os.environ[k] = v
 
 
-async def _create_eliza_runtime(provider: str, verbose: bool) -> object:
+async def _create_eliza_runtime(provider: str, verbose: bool, *, enable_trajectory_logging: bool) -> object:
     """Create and initialize an AgentRuntime with the selected model provider plugin."""
     from elizaos.runtime import AgentRuntime
     from elizaos.types.agent import Character
     from elizaos.types.model import ModelType
 
     plugins: list[object] = []
+    # Ensure a database adapter exists so the canonical message pipeline works end-to-end.
+    # This matches examples/chat (TypeScript) + examples/telegram (Python) behavior.
+    from elizaos_plugin_sql import sql_plugin
+
+    plugins.append(sql_plugin)
 
     if provider == "openai":
         if not os.environ.get("OPENAI_API_KEY"):
@@ -253,12 +272,38 @@ async def _create_eliza_runtime(provider: str, verbose: bool) -> object:
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
-    runtime = AgentRuntime(
-        character=Character(
-            name="MINT-Benchmark",
-            bio="Benchmark runtime for MINT evaluation",
-            system="You are an AI assistant being evaluated on the MINT benchmark.",
+    # Optional: enable end-to-end trajectory capture for training/benchmarks.
+    if enable_trajectory_logging:
+        try:
+            from elizaos_plugin_trajectory_logger import get_trajectory_logger_plugin
+
+            plugins.append(get_trajectory_logger_plugin())
+        except Exception:
+            # Never fail benchmark startup due to optional logging.
+            pass
+
+    # Create a complete Character with all fields for full provider support
+    from elizaos.types.agent import StyleConfig
+
+    character = Character(
+        name="MINT-Benchmark",
+        username="mint_benchmark",
+        bio=[
+            "An AI assistant specialized in solving benchmark tasks.",
+            "Expert in reasoning, coding, decision making, and information retrieval.",
+        ],
+        system="You are an AI assistant being evaluated on the MINT benchmark. "
+        "Solve tasks precisely and provide clear, formatted answers.",
+        adjectives=["precise", "analytical", "thorough", "methodical"],
+        topics=["mathematics", "coding", "logic", "problem-solving", "data analysis"],
+        style=StyleConfig(
+            all=["Be concise", "Show reasoning", "Provide clear answers"],
+            chat=["Answer format: 'Final answer: X'"],
         ),
+    )
+
+    runtime = AgentRuntime(
+        character=character,
         plugins=plugins,  # bootstrap plugin will be auto-added during initialize()
         log_level="DEBUG" if verbose else "ERROR",
         check_should_respond=False,  # benchmark mode: always respond
@@ -272,7 +317,15 @@ async def _create_eliza_runtime(provider: str, verbose: bool) -> object:
     return runtime
 
 
-async def run_benchmark(config: MINTConfig, provider: str, dotenv_path: str | None, verbose: bool) -> int:
+async def run_benchmark(
+    config: MINTConfig,
+    provider: str,
+    dotenv_path: str | None,
+    verbose: bool,
+    *,
+    enable_trajectory_logging: bool,
+    trajectory_dataset: str,
+) -> int:
     """Run the benchmark and return exit code."""
     runtime: object | None = None
     try:
@@ -283,10 +336,27 @@ async def run_benchmark(config: MINTConfig, provider: str, dotenv_path: str | No
             candidate = benchmark_root / ".env"
             _load_dotenv_file(candidate)
 
+        trajectory_logger_service: object | None = None
         if provider != "mock":
-            runtime = await _create_eliza_runtime(provider, verbose=verbose)
+            runtime = await _create_eliza_runtime(
+                provider, verbose=verbose, enable_trajectory_logging=enable_trajectory_logging
+            )
 
-        runner = MINTRunner(config=config, runtime=runtime)
+            if enable_trajectory_logging:
+                try:
+                    # Prefer the canonical runtime service registered by the plugin.
+                    get_service = getattr(runtime, "get_service", None)
+                    if callable(get_service):
+                        trajectory_logger_service = get_service("trajectory_logger")
+                except Exception:
+                    trajectory_logger_service = None
+
+        runner = MINTRunner(
+            config=config,
+            runtime=runtime,
+            trajectory_logger_service=trajectory_logger_service,
+            trajectory_dataset=trajectory_dataset,
+        )
         results = await runner.run_benchmark()
 
         # Print summary
@@ -353,7 +423,16 @@ def main() -> int:
     print(f"  Docker: {config.use_docker}")
     print()
 
-    return asyncio.run(run_benchmark(config, args.provider, args.dotenv, args.verbose))
+    return asyncio.run(
+        run_benchmark(
+            config,
+            args.provider,
+            args.dotenv,
+            args.verbose,
+            enable_trajectory_logging=not bool(args.no_trajectory_logging),
+            trajectory_dataset=str(args.trajectory_dataset),
+        )
+    )
 
 
 if __name__ == "__main__":

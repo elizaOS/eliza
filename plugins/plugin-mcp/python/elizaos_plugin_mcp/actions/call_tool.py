@@ -9,23 +9,25 @@ logger = logging.getLogger(__name__)
 
 class McpClientProtocol(Protocol):
     async def call_tool(
-        self, server_name: str, tool_name: str, arguments: dict
-    ) -> dict:
-        ...
+        self,
+        server_name: str,
+        tool_name: str,
+        arguments: dict[str, object],
+    ) -> dict[str, object]: ...
 
 
 @dataclass
 class ActionContext:
     message_text: str
-    state: dict
+    state: dict[str, object]
 
 
 @dataclass
 class ActionResult:
     success: bool
     text: str
-    values: dict
-    data: dict
+    values: dict[str, object]
+    data: dict[str, object]
 
 
 class CallToolAction:
@@ -44,12 +46,16 @@ class CallToolAction:
     ]
 
     async def validate(self, context: ActionContext) -> bool:
-        servers = context.state.get("mcpServers", [])
+        servers_obj = context.state.get("mcpServers", [])
+        servers: list[object] = servers_obj if isinstance(servers_obj, list) else []
 
-        for server in servers:
-            if server.get("status") == "connected":
-                tools = server.get("tools", [])
-                if tools:
+        for server_obj in servers:
+            if not isinstance(server_obj, dict):
+                continue
+
+            if server_obj.get("status") == "connected":
+                tools_obj = server_obj.get("tools", [])
+                if isinstance(tools_obj, list) and tools_obj:
                     return True
 
         return False
@@ -59,10 +65,16 @@ class CallToolAction:
         context: ActionContext,
         client: McpClientProtocol | None = None,
     ) -> ActionResult:
-        selected_tool = context.state.get("selectedTool", {})
-        tool_name = selected_tool.get("name", "")
-        server_name = selected_tool.get("server", "")
-        arguments = selected_tool.get("arguments", {})
+        selected_tool_obj = context.state.get("selectedTool", {})
+        selected_tool: dict[str, object] = selected_tool_obj if isinstance(selected_tool_obj, dict) else {}
+
+        tool_name_obj = selected_tool.get("name", "")
+        server_name_obj = selected_tool.get("server", "")
+        arguments_obj = selected_tool.get("arguments", {})
+
+        tool_name = tool_name_obj if isinstance(tool_name_obj, str) else str(tool_name_obj)
+        server_name = server_name_obj if isinstance(server_name_obj, str) else str(server_name_obj)
+        arguments: dict[str, object] = arguments_obj if isinstance(arguments_obj, dict) else {}
 
         logger.info(f"Calling tool {tool_name} on server {server_name}")
 

@@ -14,12 +14,7 @@ pub struct S3StorageConfig {
 }
 
 impl S3StorageConfig {
-    pub fn new(
-        access_key_id: &str,
-        secret_access_key: &str,
-        region: &str,
-        bucket: &str,
-    ) -> Self {
+    pub fn new(access_key_id: &str, secret_access_key: &str, region: &str, bucket: &str) -> Self {
         Self {
             access_key_id: access_key_id.to_string(),
             secret_access_key: secret_access_key.to_string(),
@@ -120,6 +115,3 @@ pub fn get_content_type(file_path: &str) -> &'static str {
         _ => "application/octet-stream",
     }
 }
-
-
-

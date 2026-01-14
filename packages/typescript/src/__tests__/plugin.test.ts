@@ -618,10 +618,21 @@ describe("Plugin Functions", () => {
 
   describe("tryInstallPlugin (auto-install)", () => {
     const originalSpawn = BunGlobal.spawn;
-    const originalBun = globalThis.Bun;
+    const originalBun: object | undefined =
+      typeof globalThis.Bun === "undefined" ? undefined : (globalThis.Bun as object);
     const originalEnv = { ...process.env } as Record<string, string>;
 
-    function restoreBun(value: typeof globalThis.Bun) {
+    const bunDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Bun");
+    const canRedefineBun =
+      bunDescriptor === undefined ? true : bunDescriptor.configurable;
+
+    function setBunForTest(value: object | undefined): void {
+      // In the Bun runtime, globalThis.Bun is typically non-configurable.
+      // In that case, we cannot replace it; tests should only mutate BunGlobal.spawn.
+      if (!canRedefineBun) {
+        return;
+      }
+
       if (typeof value === "undefined") {
         Reflect.deleteProperty(globalThis, "Bun");
         return;
@@ -636,11 +647,7 @@ describe("Plugin Functions", () => {
 
     beforeEach(() => {
       // Ensure `Bun` exists as a global for the code under test.
-      Object.defineProperty(globalThis, "Bun", {
-        value: BunGlobal,
-        configurable: true,
-        writable: true,
-      });
+      setBunForTest(BunGlobal);
 
       // Reset environment to allow auto-install
       process.env = { ...originalEnv } as Record<string, string | undefined>;
@@ -653,7 +660,7 @@ describe("Plugin Functions", () => {
 
     afterEach(() => {
       BunGlobal.spawn = originalSpawn;
-      restoreBun(originalBun);
+      setBunForTest(originalBun);
       process.env = { ...originalEnv } as Record<string, string | undefined>;
     });
 

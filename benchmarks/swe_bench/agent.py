@@ -1,18 +1,26 @@
-"""SWE-bench agent implementation using ElizaOS Python runtime."""
+"""SWE-bench agent implementation using canonical ElizaOS message handling."""
 
 from __future__ import annotations
 
-import json
 import logging
+import re
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from elizaos.types.environment import ChannelType
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import Content, as_uuid, string_to_uuid
+from elizaos.types.memory import MemoryType, MessageMetadata
 
+from .providers import (
+    SWEBenchActionResultsProvider,
+    set_current_instance,
+)
 from .repo_manager import RepositoryManager
+from .tools import REPO_MANAGER_KEY
 from .types import (
     AgentStep,
     AgentTrajectory,
@@ -21,6 +29,22 @@ from .types import (
     SWEBenchResult,
 )
 
+# Trajectory logger integration (optional)
+try:
+    from elizaos_plugin_trajectory_logger import (
+        TrajectoryLoggerService,
+        ActionAttempt,
+        EnvironmentState,
+        Trajectory,
+    )
+    TRAJECTORY_LOGGER_AVAILABLE = True
+except ImportError:
+    TRAJECTORY_LOGGER_AVAILABLE = False
+    TrajectoryLoggerService = None  # type: ignore[misc, assignment]
+    ActionAttempt = None  # type: ignore[misc, assignment]
+    EnvironmentState = None  # type: ignore[misc, assignment]
+    Trajectory = None  # type: ignore[misc, assignment]
+
 if TYPE_CHECKING:
     from elizaos.runtime import AgentRuntime
 
@@ -28,87 +52,164 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class AgentResponse:
-    """Parsed response from the LLM."""
+class ParsedResponse:
+    """Parsed response from the model."""
 
     thought: str
+    text: str
     action: str | None
     params: dict[str, str | int | float | bool | None]
-    tokens: int
 
 
-SYSTEM_PROMPT_TEMPLATE = """You are a software engineering agent tasked with resolving a GitHub issue.
+def parse_xml_response(response_text: str) -> ParsedResponse:
+    """Parse XML-formatted response from the model.
+    
+    Expected format:
+    <response>
+    <thought>...</thought>
+    <text>...</text>
+    <actions>ACTION_NAME</actions>
+    <params>
+    <ACTION_NAME>
+    <param_name>value</param_name>
+    </ACTION_NAME>
+    </params>
+    </response>
+    """
+    thought = ""
+    text = ""
+    action: str | None = None
+    params: dict[str, str | int | float | bool | None] = {}
 
-Repository: {repo}
+    # Try to extract content from XML tags
+    try:
+        # Handle incomplete XML by wrapping if needed
+        if "<response>" not in response_text:
+            response_text = f"<response>{response_text}</response>"
+        if "</response>" not in response_text:
+            response_text = response_text + "</response>"
 
-## Issue Description
-{problem_statement}
+        # Extract the response element
+        match = re.search(r"<response>(.*?)</response>", response_text, re.DOTALL)
+        if match:
+            xml_content = f"<response>{match.group(1)}</response>"
+            root = ET.fromstring(xml_content)
 
-{hints_section}
+            thought_elem = root.find("thought")
+            if thought_elem is not None and thought_elem.text:
+                thought = thought_elem.text.strip()
 
-## Available Tools
-You have access to these tools to investigate and fix the issue:
+            text_elem = root.find("text")
+            if text_elem is not None and text_elem.text:
+                text = text_elem.text.strip()
 
-1. **SEARCH_CODE**: Search for patterns in the codebase
-   - Use to find relevant code, function definitions, class usages
-   - Parameters: query (required), file_pattern (optional, default: *.py)
+            actions_elem = root.find("actions")
+            if actions_elem is not None and actions_elem.text:
+                action = actions_elem.text.strip().upper()
 
-2. **READ_FILE**: Read file contents
-   - Use to examine specific files
-   - Parameters: file_path (required), start_line (optional), end_line (optional)
+            params_elem = root.find("params")
+            if params_elem is not None and action:
+                # Look for action-specific params
+                action_params = params_elem.find(action)
+                if action_params is not None:
+                    for param_elem in list(action_params):
+                        param_value = param_elem.text
+                        if param_value is not None:
+                            # Try to parse as number or bool
+                            parsed_value = _parse_param_value(param_value)
+                            params[param_elem.tag] = parsed_value
+    except ET.ParseError:
+        logger.debug("XML parse failed, trying regex fallback")
 
-3. **EDIT_FILE**: Make changes to files
-   - Use to fix the issue by modifying code
-   - Parameters: file_path (required), old_content (required), new_content (required)
-   - The old_content must match exactly what's in the file
+    # Fallback: try regex extraction if XML parsing failed
+    if not thought and not action:
+        # Try to extract thought
+        thought_match = re.search(r"<thought>(.*?)</thought>", response_text, re.DOTALL)
+        if thought_match:
+            thought = thought_match.group(1).strip()
 
-4. **LIST_FILES**: Browse repository structure
-   - Use to understand the codebase organization
-   - Parameters: directory (optional), pattern (optional)
+        # Try to extract text
+        text_match = re.search(r"<text>(.*?)</text>", response_text, re.DOTALL)
+        if text_match:
+            text = text_match.group(1).strip()
 
-5. **SUBMIT**: Submit your solution
-   - Use when you've made all necessary changes
-   - This generates a patch from your changes
+        # Try to extract action
+        action_match = re.search(r"<actions>\s*(\w+)\s*</actions>", response_text)
+        if action_match:
+            action = action_match.group(1).upper()
 
-## Strategy
-1. **Understand**: Read the issue carefully. What is the bug or feature request?
-2. **Locate**: Search for relevant code. Find where the issue occurs.
-3. **Analyze**: Read the relevant files. Understand the code structure.
-4. **Fix**: Make minimal, targeted changes to resolve the issue.
-5. **Verify**: Ensure your changes are correct and complete.
-6. **Submit**: When confident, submit your solution.
+    # Final fallback: check for legacy format
+    if not action:
+        if "ACTION:" in response_text:
+            parts = response_text.split("ACTION:")
+            if len(parts) > 1:
+                action_line = parts[1].split("\n")[0].strip()
+                action = action_line.split()[0].upper() if action_line.split() else None
 
-## Important Guidelines
-- Make minimal changes - only modify what's necessary
-- Preserve existing code style and conventions
-- Don't add unnecessary features or refactoring
-- Ensure backward compatibility
-- Consider edge cases
+    return ParsedResponse(thought=thought, text=text, action=action, params=params)
 
-When you're ready to make your final submission, use the SUBMIT action.
 
-Now, let's solve this issue step by step.
-"""
+def _parse_param_value(value: str) -> str | int | float | bool | None:
+    """Parse a parameter value string to appropriate type."""
+    raw = value.strip()
+    if raw == "":
+        return None
+    lower = raw.lower()
+    if lower == "true":
+        return True
+    if lower == "false":
+        return False
+    if lower == "null":
+        return None
+    # Try int first, then float
+    try:
+        if re.fullmatch(r"-?\d+", raw):
+            return int(raw)
+        if re.fullmatch(r"-?\d+\.\d+", raw):
+            return float(raw)
+    except ValueError:
+        pass
+    return raw
 
 
 class SWEAgent:
-    """Agent for solving SWE-bench issues."""
+    """Agent for solving SWE-bench issues using canonical ElizaOS message handling."""
 
     def __init__(
         self,
         runtime: AgentRuntime,
         repo_manager: RepositoryManager,
         max_steps: int = 30,
+        trajectory_logger: TrajectoryLoggerService | None = None,
     ):
         self.runtime = runtime
         self.repo_manager = repo_manager
         self.max_steps = max_steps
         self.trajectory: AgentTrajectory | None = None
+        
+        # Trajectory logger for training data export
+        self.trajectory_logger = trajectory_logger
+        self._trajectory_id: str | None = None
+
+        # Room/entity IDs for this session
+        self._room_id = string_to_uuid("swebench:session")
+        self._user_id = string_to_uuid("swebench:user")
 
     async def solve_issue(self, instance: SWEBenchInstance) -> SWEBenchResult:
-        """Attempt to solve a SWE-bench issue and return the result."""
+        """Attempt to solve a SWE-bench issue using canonical ElizaOS flow.
+        
+        This method:
+        1. Sets up the repository
+        2. Sets the current instance for providers
+        3. Uses message_service.handle_message() for each step
+        4. Processes actions through the canonical runtime.process_actions()
+        5. Logs trajectory data for training (if trajectory_logger is set)
+        6. Returns the result
+        """
         start_time = time.time()
         tokens_used = 0
+        final_status = "completed"
+        max_steps_reached = False
 
         # Initialize trajectory tracking
         self.trajectory = AgentTrajectory(
@@ -120,120 +221,201 @@ class SWEAgent:
             total_tokens=0,
         )
 
+        # Start trajectory logging if available
+        if self.trajectory_logger and TRAJECTORY_LOGGER_AVAILABLE:
+            self._trajectory_id = self.trajectory_logger.start_trajectory(
+                agent_id=str(self.runtime.agent_id),
+                scenario_id=instance.instance_id,
+                episode_id=instance.instance_id,
+                metadata={
+                    "repo": instance.repo,
+                    "base_commit": instance.base_commit,
+                    "problem_statement": instance.problem_statement[:500],
+                    "benchmark": "swe-bench",
+                },
+            )
+
+        # Clear action results from previous runs
+        SWEBenchActionResultsProvider.clear_results()
+
         try:
             # Setup repository
             await self.repo_manager.setup_repo(instance)
 
-            # Build system prompt
-            hints_section = ""
-            if instance.hints_text:
-                hints_section = f"## Hints\n{instance.hints_text}"
+            # Set current instance for providers
+            set_current_instance(instance)
 
-            system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-                repo=instance.repo,
-                problem_statement=instance.problem_statement,
-                hints_section=hints_section,
-            )
+            # Create room-specific IDs for this instance
+            self._room_id = string_to_uuid(f"swebench:{instance.instance_id}")
 
-            # Initialize conversation with system context
-            conversation_history: list[dict[str, str]] = []
-
-            # Initial message to start the agent
-            conversation_history.append(
-                {
-                    "role": "system",
-                    "content": system_prompt,
-                }
-            )
-
-            conversation_history.append(
-                {
-                    "role": "user",
-                    "content": "Please analyze this issue and fix it. Start by understanding the problem and locating relevant code.",
-                }
-            )
-
-            # Agent loop
+            # Agent loop using canonical message handling
             submitted = False
             generated_patch = ""
 
+            # Initial message to start the agent
+            initial_message = Memory(
+                id=as_uuid(str(uuid.uuid4())),
+                entityId=self._user_id,
+                agentId=self.runtime.agent_id,
+                roomId=self._room_id,
+                createdAt=int(time.time() * 1000),
+                content=Content(
+                    text="Please analyze this issue and fix it. Start by understanding the problem and locating relevant code.",
+                    source="swebench",
+                    channelType=ChannelType.API.value,
+                ),
+            )
+
             for step_num in range(self.max_steps):
                 logger.info(f"Step {step_num + 1}/{self.max_steps}")
+                step_start_time = time.time()
 
-                # Get agent response
-                response = await self._get_agent_response(conversation_history)
-                tokens_used += response.tokens
+                # Start trajectory step logging
+                step_id: str | None = None
+                if self.trajectory_logger and self._trajectory_id and TRAJECTORY_LOGGER_AVAILABLE:
+                    env_state = EnvironmentState(
+                        timestamp=int(time.time() * 1000),
+                        agent_balance=0.0,
+                        agent_points=float(step_num),
+                        agent_pnl=0.0,
+                        open_positions=0,
+                        custom={
+                            "step_number": step_num + 1,
+                            "max_steps": self.max_steps,
+                            "files_edited_count": len(self.trajectory.files_edited) if self.trajectory else 0,
+                            "files_viewed_count": len(self.trajectory.files_viewed) if self.trajectory else 0,
+                        },
+                    )
+                    step_id = self.trajectory_logger.start_step(self._trajectory_id, env_state)
 
-                response_text = response.thought
-                action_name = response.action
-                action_params = response.params
+                # Use canonical message service
+                message_to_send = initial_message if step_num == 0 else self._create_continuation_message()
+                llm_start_time = time.time()
+
+                # Attach trajectoryStepId to message metadata so runtime can log provider/model calls
+                if step_id:
+                    try:
+                        message_to_send.metadata = MessageMetadata(
+                            type=MemoryType.MESSAGE,
+                            source="swebench",
+                            timestamp=int(time.time() * 1000),
+                            trajectoryStepId=step_id,  # type: ignore[call-arg]
+                            instanceId=instance.instance_id,  # type: ignore[call-arg]
+                        )
+                    except Exception:
+                        pass
+
+                # Call the canonical message handling flow
+                result = await self.runtime.message_service.handle_message(
+                    self.runtime,
+                    message_to_send,
+                )
+                llm_latency_ms = int((time.time() - llm_start_time) * 1000)
+
+                # Estimate tokens from response
+                response_text = result.response_content.text if result.response_content else ""
+                estimated_tokens = len(response_text.split()) * 2  # Rough estimate
+                tokens_used += estimated_tokens
+
+                # LLM calls + provider accesses are logged centrally by runtime hooks
+                _ = llm_latency_ms
+
+                # Get actions from message service (already parsed from XML)
+                # The message service parses <actions>, <thought>, <text>, and <params>
+                response_actions = result.response_content.actions if result.response_content else None
+                response_thought = result.response_content.thought if result.response_content else None
+                response_params = getattr(result.response_content, "params", None) if result.response_content else None
+
+                # Initialize variables for action, params, thought
+                action: str | None = None
+                params: dict[str, str | int | float | bool | None] = {}
+                thought: str = ""
+
+                # If message service didn't parse actions, try parsing the text as fallback
+                if not response_actions:
+                    parsed = parse_xml_response(response_text)
+                    action = parsed.action
+                    params = parsed.params
+                    thought = parsed.thought
+                else:
+                    # Use parsed results from message service
+                    action = response_actions[0] if response_actions else None
+                    thought = response_thought or ""
+                    
+                    # Parse params from the response content
+                    if response_params and action:
+                        action_params = response_params.get(action.upper(), {})
+                        if isinstance(action_params, dict):
+                            params = action_params
 
                 # Record step
                 step = AgentStep(
                     step_number=step_num + 1,
-                    action=action_name or "THINK",
-                    action_input=action_params,
+                    action=action or "THINK",
+                    action_input=params,
                     observation="",
-                    thought=response_text,
+                    thought=thought,
                 )
 
                 # Execute action if specified
-                if action_name:
-                    observation = await self._execute_action(action_name, action_params)
+                action_success = True
+                action_error: str | None = None
+                if action:
+                    observation = await self._execute_action(action, params)
                     step.observation = observation
+                    
+                    # Check if action failed
+                    if observation.startswith("Error:") or observation.startswith("Action failed:"):
+                        action_success = False
+                        action_error = observation
 
                     # Track files and queries
-                    if action_name == "SEARCH_CODE" and "query" in action_params:
-                        query_val = action_params.get("query")
-                        if query_val is not None:
-                            self.trajectory.search_queries.append(str(query_val))
-                    elif action_name == "READ_FILE" and "file_path" in action_params:
-                        file_path_val = action_params.get("file_path")
-                        if file_path_val is not None:
-                            file_path_str = str(file_path_val)
-                            if file_path_str not in self.trajectory.files_viewed:
-                                self.trajectory.files_viewed.append(file_path_str)
-                    elif action_name == "EDIT_FILE" and "file_path" in action_params:
-                        file_path_val = action_params.get("file_path")
-                        if file_path_val is not None:
-                            file_path_str = str(file_path_val)
-                            if file_path_str not in self.trajectory.files_edited:
-                                self.trajectory.files_edited.append(file_path_str)
-                    elif action_name == "SUBMIT":
+                    self._track_action(action, params)
+
+                    # Add to action results provider for context
+                    SWEBenchActionResultsProvider.add_result(action, observation)
+
+                    if action == "SUBMIT":
                         submitted = True
                         generated_patch = await self.repo_manager.get_diff()
 
-                    # Add observation to conversation
-                    conversation_history.append(
-                        {
-                            "role": "assistant",
-                            "content": response_text,
-                        }
+                # Complete trajectory step logging
+                if self.trajectory_logger and self._trajectory_id and step_id and TRAJECTORY_LOGGER_AVAILABLE:
+                    action_attempt = ActionAttempt(
+                        attempt_id=str(uuid.uuid4()),
+                        timestamp=int(time.time() * 1000),
+                        action_type="swe_bench_tool",
+                        action_name=action or "THINK",
+                        parameters={k: v for k, v in params.items() if v is not None},
+                        reasoning=thought,
+                        success=action_success,
+                        result={"observation": step.observation[:500]} if step.observation else None,
+                        error=action_error,
                     )
-                    conversation_history.append(
-                        {
-                            "role": "user",
-                            "content": f"Tool result:\n{observation}\n\nContinue with your analysis.",
-                        }
+                    # Reward based on action type and success
+                    step_reward = self._compute_step_reward(action, action_success, submitted)
+                    done = bool(submitted) or (step_num == self.max_steps - 1)
+                    self.trajectory_logger.complete_step(
+                        self._trajectory_id,
+                        step_id,
+                        action=action_attempt,
+                        reward=step_reward,
                     )
-                else:
-                    conversation_history.append(
-                        {
-                            "role": "assistant",
-                            "content": response_text,
-                        }
-                    )
-                    conversation_history.append(
-                        {
-                            "role": "user",
-                            "content": "Please take an action using one of the available tools.",
-                        }
-                    )
+                    # Mark done if terminal (the adapter service will also ensure final step done)
+                    try:
+                        traj = self.trajectory_logger.get_active_trajectory(self._trajectory_id)
+                        if traj and traj.steps:
+                            traj.steps[-1].done = done
+                    except Exception:
+                        pass
 
                 self.trajectory.steps.append(step)
 
                 if submitted:
                     break
+
+                if step_num == self.max_steps - 1:
+                    max_steps_reached = True
 
             # If we didn't get an explicit submit, get the diff anyway
             if not generated_patch:
@@ -247,6 +429,24 @@ class SWEAgent:
                 patch_status = PatchStatus.NOT_GENERATED
             else:
                 patch_status = PatchStatus.GENERATED
+
+            # End trajectory logging
+            if self.trajectory_logger and self._trajectory_id and TRAJECTORY_LOGGER_AVAILABLE:
+                if max_steps_reached and not submitted:
+                    final_status = "terminated"
+                await self.trajectory_logger.end_trajectory(
+                    self._trajectory_id,
+                    status=final_status,  # type: ignore[arg-type]
+                    final_metrics={
+                        "patch_generated": patch_status == PatchStatus.GENERATED,
+                        "submitted": submitted,
+                        "steps_taken": len(self.trajectory.steps) if self.trajectory else 0,
+                        "tokens_used": tokens_used,
+                        "duration_seconds": duration,
+                        "files_edited": len(self.trajectory.files_edited) if self.trajectory else 0,
+                        "files_viewed": len(self.trajectory.files_viewed) if self.trajectory else 0,
+                    },
+                )
 
             return SWEBenchResult(
                 instance_id=instance.instance_id,
@@ -263,6 +463,20 @@ class SWEAgent:
         except Exception as e:
             logger.error(f"Error solving issue {instance.instance_id}: {e}")
             duration = time.time() - start_time
+            final_status = "error"
+
+            # End trajectory logging with error status
+            if self.trajectory_logger and self._trajectory_id and TRAJECTORY_LOGGER_AVAILABLE:
+                await self.trajectory_logger.end_trajectory(
+                    self._trajectory_id,
+                    status="error",
+                    final_metrics={
+                        "error": str(e),
+                        "steps_taken": len(self.trajectory.steps) if self.trajectory else 0,
+                        "tokens_used": tokens_used,
+                        "duration_seconds": duration,
+                    },
+                )
 
             return SWEBenchResult(
                 instance_id=instance.instance_id,
@@ -276,151 +490,129 @@ class SWEAgent:
                 error=str(e),
                 trajectory=self.trajectory,
             )
+        finally:
+            # Clear instance context
+            set_current_instance(None)
+    
+    def _compute_step_reward(
+        self, action: str | None, success: bool, submitted: bool
+    ) -> float:
+        """Compute reward for a step based on action and outcome."""
+        if not action:
+            return 0.0
+        
+        # Positive reward for productive actions
+        rewards: dict[str, float] = {
+            "SEARCH_CODE": 0.1,   # Exploring the codebase
+            "READ_FILE": 0.2,    # Understanding code
+            "EDIT_FILE": 0.3,    # Making changes
+            "LIST_FILES": 0.05,  # Basic exploration
+            "SUBMIT": 0.5 if submitted else 0.0,  # Submitting solution
+        }
+        
+        base_reward = rewards.get(action.upper(), 0.0)
+        
+        # Penalty for failed actions
+        if not success:
+            return base_reward * 0.5 - 0.1
+        
+        return base_reward
+    
+    def get_logged_trajectory(self) -> Trajectory | None:
+        """Get the trajectory from the trajectory logger for export.
+        
+        Returns the trajectory data in the format used by the trajectory logger
+        plugin, suitable for export to ART/GRPO training formats.
+        """
+        if not self.trajectory_logger or not self._trajectory_id:
+            return None
+        return self.trajectory_logger.get_active_trajectory(self._trajectory_id)
 
-    async def _get_agent_response(
-        self, conversation_history: list[dict[str, str]]
-    ) -> AgentResponse:
-        """Get response from the LLM through ElizaOS runtime."""
-        # Combine conversation into a prompt
-        prompt_parts: list[str] = []
-        for msg in conversation_history:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            if role == "system":
-                prompt_parts.append(f"SYSTEM:\n{content}")
-            elif role == "user":
-                prompt_parts.append(f"USER:\n{content}")
-            elif role == "assistant":
-                prompt_parts.append(f"ASSISTANT:\n{content}")
-
-        prompt_parts.append(
-            """
-ASSISTANT: I will analyze the situation and take appropriate action.
-
-Please respond with:
-1. Your thinking about what to do next
-2. The action to take (one of: SEARCH_CODE, READ_FILE, EDIT_FILE, LIST_FILES, SUBMIT)
-3. The parameters for the action as JSON
-
-Format your response like this:
-THOUGHT: [your reasoning]
-ACTION: [action name]
-PARAMS: [JSON parameters]
-
-If you want to submit your solution, use ACTION: SUBMIT with no parameters.
-"""
+    def _create_continuation_message(self) -> Memory:
+        """Create a continuation message for the next step."""
+        return Memory(
+            id=as_uuid(str(uuid.uuid4())),
+            entityId=self._user_id,
+            agentId=self.runtime.agent_id,
+            roomId=self._room_id,
+            createdAt=int(time.time() * 1000),
+            content=Content(
+                text="Continue with your analysis. Take the next action.",
+                source="swebench",
+                channelType=ChannelType.API.value,
+            ),
         )
 
-        full_prompt = "\n\n".join(prompt_parts)
+    def _track_action(self, action: str, params: dict[str, str | int | float | bool | None]) -> None:
+        """Track action for trajectory."""
+        if not self.trajectory:
+            return
 
-        try:
-            # Use the runtime's generate_text method
-            from elizaos.types.model import GenerateTextOptions
-            
-            # NOTE: Do not override modelType here unless you are certain the
-            # runtime has a handler registered for that string. By default the
-            # runtime uses ModelType.TEXT_LARGE ("TEXT_LARGE"), which is what
-            # we register for benchmark runs.
-            options = GenerateTextOptions(
-                temperature=0.1,
-                maxTokens=2000,
-            )
-            result = await self.runtime.generate_text(
-                input_text=full_prompt,
-                options=options,
-            )
-
-            response_text = result.text if hasattr(result, "text") else str(result)
-
-            # Parse the response to extract action and params
-            action_name: str | None = None
-            action_params: dict[str, str | int | float | bool | None] = {}
-            thought = response_text
-
-            if "ACTION:" in response_text:
-                parts = response_text.split("ACTION:")
-                thought = parts[0].replace("THOUGHT:", "").strip()
-
-                action_part = parts[1]
-                if "PARAMS:" in action_part:
-                    action_name = action_part.split("PARAMS:")[0].strip()
-                    params_str = action_part.split("PARAMS:")[1].strip()
-
-                    # Try to parse JSON params
-                    try:
-                        # Find JSON object in the string
-                        start_idx = params_str.find("{")
-                        end_idx = params_str.rfind("}") + 1
-                        if start_idx >= 0 and end_idx > start_idx:
-                            parsed = json.loads(params_str[start_idx:end_idx])
-                            if isinstance(parsed, dict):
-                                action_params = parsed
-                    except json.JSONDecodeError:
-                        logger.warning(f"Failed to parse action params: {params_str}")
-                else:
-                    action_words = action_part.strip().split()
-                    action_name = action_words[0] if action_words else None
-
-            # Estimate token usage
-            token_estimate = len(full_prompt.split()) + len(response_text.split())
-
-            return AgentResponse(
-                thought=thought,
-                action=action_name,
-                params=action_params,
-                tokens=token_estimate,
-            )
-
-        except Exception as e:
-            logger.error(f"Error getting agent response: {e}")
-            return AgentResponse(thought=str(e), action=None, params={}, tokens=0)
+        if action == "SEARCH_CODE" and "query" in params:
+            query_val = params.get("query")
+            if query_val is not None:
+                self.trajectory.search_queries.append(str(query_val))
+        elif action == "READ_FILE" and "file_path" in params:
+            file_path_val = params.get("file_path")
+            if file_path_val is not None:
+                file_path_str = str(file_path_val)
+                if file_path_str not in self.trajectory.files_viewed:
+                    self.trajectory.files_viewed.append(file_path_str)
+        elif action == "EDIT_FILE" and "file_path" in params:
+            file_path_val = params.get("file_path")
+            if file_path_val is not None:
+                file_path_str = str(file_path_val)
+                if file_path_str not in self.trajectory.files_edited:
+                    self.trajectory.files_edited.append(file_path_str)
 
     async def _execute_action(
         self, action_name: str, params: dict[str, str | int | float | bool | None]
     ) -> str:
         """Execute an action via the ElizaOS runtime action system.
 
-        This exercises:
-        - action lookup/registration
-        - action parameter validation
-        - services (RepoManagerService) resolution
+        This uses the canonical runtime.process_actions() method which:
+        - Looks up the action by name
+        - Validates parameters
+        - Resolves services (RepoManagerService)
+        - Executes the action handler
+        - Returns the result
         """
         action_name_upper = action_name.upper()
 
         try:
-            # Create a synthetic message/response pair so the runtime can execute actions
-            instance_id = (
-                self.repo_manager.current_instance.instance_id
-                if self.repo_manager.current_instance
-                else "unknown"
-            )
-            room_id = string_to_uuid(f"swebench:{instance_id}")
+            # Create a message for action execution
             message_id = as_uuid(str(uuid.uuid4()))
 
             message = Memory(
                 id=message_id,
                 entityId=self.runtime.agent_id,
                 agentId=self.runtime.agent_id,
-                roomId=room_id,
+                roomId=self._room_id,
                 createdAt=int(time.time() * 1000),
                 content=Content(text="SWE-bench action execution"),
             )
 
-            response_content = Content(text="", actions=[action_name_upper])
-            # Content supports extra fields; the runtime looks for `content.params`.
+            # Create response with action in the canonical format
+            response_content = Content(
+                text="",
+                actions=[action_name_upper],
+            )
+            # Set params in the format expected by runtime._parse_action_params
             setattr(response_content, "params", {action_name_upper: params})
 
             response = Memory(
                 id=as_uuid(str(uuid.uuid4())),
                 entityId=self.runtime.agent_id,
                 agentId=self.runtime.agent_id,
-                roomId=room_id,
+                roomId=self._room_id,
                 createdAt=int(time.time() * 1000),
                 content=response_content,
             )
 
+            # Use canonical action processing
             await self.runtime.process_actions(message, [response], state=None, callback=None)
 
+            # Get results from the runtime
             results = self.runtime.get_action_results(message_id)
             if not results:
                 return f"No action results produced for {action_name_upper}"
@@ -429,47 +621,54 @@ If you want to submit your solution, use ACTION: SUBMIT with no parameters.
             if not result.success:
                 return f"Action failed: {result.error or 'unknown error'}"
 
-            data = result.data or {}
-
-            if action_name_upper == "SEARCH_CODE":
-                matches = data.get("matches", [])
-                total = data.get("total_matches", 0)
-                if not isinstance(matches, list):
-                    return "SEARCH_CODE: malformed result"
-                lines = [f"Found {total} matches:"]
-                for m in matches[:20]:
-                    if isinstance(m, dict):
-                        fp = m.get("file_path", "")
-                        ln = m.get("start_line", "")
-                        content = m.get("content", "")
-                        lines.append(f"  {fp}:{ln}: {str(content)[:120]}")
-                return "\n".join(lines)
-
-            if action_name_upper == "READ_FILE":
-                content = data.get("content", "")
-                return str(content)
-
-            if action_name_upper == "EDIT_FILE":
-                return str(data.get("message", "Edit completed"))
-
-            if action_name_upper == "LIST_FILES":
-                files = data.get("files", [])
-                total = data.get("total_count", 0)
-                if not isinstance(files, list):
-                    return "LIST_FILES: malformed result"
-                return f"Files ({total} total):\n" + "\n".join([str(f) for f in files[:50]])
-
-            if action_name_upper == "SUBMIT":
-                # Avoid echoing the full patch into the conversation history.
-                has_changes = bool(data.get("has_changes", False))
-                patch_bytes = 0
-                patch_val = data.get("patch")
-                if isinstance(patch_val, str):
-                    patch_bytes = len(patch_val.encode("utf-8", errors="replace"))
-                return f"Submitted. has_changes={has_changes}. patch_bytes={patch_bytes}"
-
-            return f"{action_name_upper}: success"
+            # Format result based on action type
+            return self._format_action_result(action_name_upper, result.data)
 
         except Exception as e:
             logger.error(f"Error executing action {action_name}: {e}")
             return f"Error: {str(e)}"
+
+    def _format_action_result(
+        self, action_name: str, data: dict[str, object] | None
+    ) -> str:
+        """Format action result for display."""
+        if not data:
+            return f"{action_name}: success (no data)"
+
+        if action_name == "SEARCH_CODE":
+            matches = data.get("matches", [])
+            total = data.get("total_matches", 0)
+            if not isinstance(matches, list):
+                return "SEARCH_CODE: malformed result"
+            lines = [f"Found {total} matches:"]
+            for m in matches[:20]:
+                if isinstance(m, dict):
+                    fp = m.get("file_path", "")
+                    ln = m.get("start_line", "")
+                    content = m.get("content", "")
+                    lines.append(f"  {fp}:{ln}: {str(content)[:120]}")
+            return "\n".join(lines)
+
+        if action_name == "READ_FILE":
+            content = data.get("content", "")
+            return str(content)
+
+        if action_name == "EDIT_FILE":
+            return str(data.get("message", "Edit completed"))
+
+        if action_name == "LIST_FILES":
+            files = data.get("files", [])
+            total = data.get("total_count", 0)
+            if not isinstance(files, list):
+                return "LIST_FILES: malformed result"
+            return f"Files ({total} total):\n" + "\n".join([str(f) for f in files[:50]])
+
+        if action_name == "SUBMIT":
+            has_changes = bool(data.get("has_changes", False))
+            patch_val = data.get("patch")
+            patch_bytes = 0
+            if isinstance(patch_val, str):
+                patch_bytes = len(patch_val.encode("utf-8", errors="replace"))
+            return f"Submitted. has_changes={has_changes}. patch_bytes={patch_bytes}"
+
+        return f"{action_name}: success"

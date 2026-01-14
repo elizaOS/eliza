@@ -56,4 +56,3 @@ class RobloxConfig:
 
         if not self.universe_id:
             raise ConfigError("Universe ID cannot be empty")
-

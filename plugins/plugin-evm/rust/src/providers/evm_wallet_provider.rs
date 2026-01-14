@@ -47,10 +47,12 @@ impl EVMWalletProvider {
             .join("\n");
 
         Ok(ProviderResult {
-            text: format!("EVM Wallet Address: {}\n\nBalances:\n{}", address, balance_text),
+            text: format!(
+                "EVM Wallet Address: {}\n\nBalances:\n{}",
+                address, balance_text
+            ),
             data: json!({ "address": address, "chains": chains }),
             values: Value::Object(serde_json::Map::new()),
         })
     }
 }
-

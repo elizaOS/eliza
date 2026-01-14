@@ -51,8 +51,8 @@ async def execute_transfer(
         chain=params.from_chain,
         token_address=params.token,
         to=params.to_address,
-            amount=value,
-        )
+        amount=value,
+    )
 
     await provider.wait_for_transaction(params.from_chain, tx_hash)
 

@@ -50,7 +50,9 @@ export const experienceProvider: Provider = {
 
     const contextText = `[RELEVANT EXPERIENCES]\n${experienceText}\n[/RELEVANT EXPERIENCES]`;
 
-    logger.debug(`[experienceProvider] Injecting ${relevantExperiences.length} relevant experiences`);
+    logger.debug(
+      `[experienceProvider] Injecting ${relevantExperiences.length} relevant experiences`
+    );
 
     return {
       text: contextText,
@@ -64,4 +66,3 @@ export const experienceProvider: Provider = {
     };
   },
 };
-

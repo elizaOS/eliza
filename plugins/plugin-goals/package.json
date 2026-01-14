@@ -38,7 +38,7 @@
     "url": "https://github.com/elizaos/elizaos"
   },
   "scripts": {
-    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./typescript/prompts ./typescript/generated/prompts --target all",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
     "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
     "build:ts": "cd typescript && bun run build.ts",
     "build:rust": "test -d rust && test -f rust/Cargo.toml && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory or Cargo.toml'",

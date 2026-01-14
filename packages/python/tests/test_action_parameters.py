@@ -80,6 +80,7 @@ async def test_process_actions_skips_action_when_required_param_missing() -> Non
     runtime = AgentRuntime(character=character, action_planning=False)
 
     executed = False
+    received_errors: list[str] = []
 
     async def validate(_rt: AgentRuntime, _msg: Memory, _state: object) -> bool:
         return True
@@ -88,12 +89,14 @@ async def test_process_actions_skips_action_when_required_param_missing() -> Non
         _rt: AgentRuntime,
         _msg: Memory,
         _state: object,
-        _options: object,
+        options: object,
         _callback: object,
         _responses: list[Memory] | None,
     ) -> ActionResult:
         nonlocal executed
         executed = True
+        errs = getattr(options, "parameter_errors", None)
+        received_errors.extend(errs if isinstance(errs, list) else [])
         return ActionResult(success=True)
 
     action = Action(
@@ -131,4 +134,5 @@ async def test_process_actions_skips_action_when_required_param_missing() -> Non
 
     await runtime.process_actions(message, [response], state=None, callback=None)
 
-    assert executed is False
+    assert executed is True
+    assert any("Required parameter 'direction'" in e for e in received_errors)

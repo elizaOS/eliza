@@ -1,16 +1,13 @@
 #![allow(missing_docs)]
 
-pub mod storage;
-pub mod hnsw;
 pub mod adapter;
+pub mod hnsw;
+pub mod storage;
 
-pub use storage::JsonStorage;
-pub use hnsw::SimpleHNSW;
 pub use adapter::LocalDatabaseAdapter;
+pub use hnsw::SimpleHNSW;
+pub use storage::JsonStorage;
 
 pub fn plugin() -> elizaos::Plugin {
-    elizaos::Plugin::new(
-        "localdb",
-        "Simple JSON-based local database storage",
-    )
+    elizaos::Plugin::new("localdb", "Simple JSON-based local database storage")
 }

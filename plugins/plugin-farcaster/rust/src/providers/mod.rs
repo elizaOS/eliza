@@ -119,7 +119,11 @@ impl<'a> ThreadProvider<'a> {
 
         let mut lines = vec!["Thread context:".to_string()];
         for (i, cast) in thread.iter().enumerate() {
-            let prefix = if i == thread.len() - 1 { "└─" } else { "├─" };
+            let prefix = if i == thread.len() - 1 {
+                "└─"
+            } else {
+                "├─"
+            };
             let text = if cast.text.len() > 80 {
                 format!("{}...", &cast.text[..80])
             } else {
@@ -130,7 +134,3 @@ impl<'a> ThreadProvider<'a> {
         lines.join("\n")
     }
 }
-
-
-
-

@@ -90,7 +90,7 @@ export class SessionManager {
       config.modelName = process.env.OLLAMA_MODEL || "llama3.2-vision";
       config.modelBaseUrl = process.env.OLLAMA_BASE_URL;
     } else if (process.env.OPENAI_API_KEY) {
-      config.modelName = "gpt-4o";
+      config.modelName = "gpt-5";
       config.openaiApiKey = process.env.OPENAI_API_KEY;
     } else if (process.env.ANTHROPIC_API_KEY) {
       config.modelName = "claude-3-5-sonnet-latest";

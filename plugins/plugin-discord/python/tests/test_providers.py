@@ -113,5 +113,3 @@ class TestGetAllProviders:
         assert "channel_state" in names
         assert "voice_state" in names
         assert "guild_info" in names
-
-

@@ -92,10 +92,7 @@ impl S3StorageClient {
             )));
         }
 
-        let file_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file");
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
 
         let content = fs::read(path).await?;
         let content_type = get_content_type(file_path);
@@ -173,7 +170,7 @@ impl S3StorageClient {
 
         let default_filename = format!("{}.json", timestamp);
         let actual_filename = file_name.unwrap_or(&default_filename);
-        
+
         let mut full_path = self.config.upload_path.clone();
         if let Some(sub_dir) = sub_directory {
             full_path = format!("{}/{}", full_path, sub_dir).replace("//", "/");

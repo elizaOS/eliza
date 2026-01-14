@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 from uuid import uuid4
 
 from elizaos_plugin_planning.benchmarks.types import (
@@ -13,6 +13,15 @@ from elizaos_plugin_planning.benchmarks.types import (
 from elizaos_plugin_planning.services.planning_service import PlanningService
 
 logger = logging.getLogger(__name__)
+
+
+class _ScenarioSpec(TypedDict):
+    name: str
+    goal: str
+    requirements: list[str]
+    tools: list[str]
+    input: str
+    expected_actions: list[str]
 
 
 class RealmBenchAdapter:
@@ -191,7 +200,7 @@ class RealmBenchAdapter:
             )
 
     async def _load_planning_pattern_tests(self) -> None:
-        planning_patterns = [
+        planning_patterns: list[_ScenarioSpec] = [
             {
                 "name": "Sequential Planning",
                 "goal": "Calculate sum of numbers, multiply result, then take logarithm",
@@ -258,7 +267,7 @@ class RealmBenchAdapter:
             self.test_cases.append(test_case)
 
     async def _load_multi_agent_tests(self) -> None:
-        multi_agent_scenarios = [
+        multi_agent_scenarios: list[_ScenarioSpec] = [
             {
                 "name": "Information Gathering and Analysis",
                 "goal": "Gather information from multiple sources and provide comprehensive analysis",

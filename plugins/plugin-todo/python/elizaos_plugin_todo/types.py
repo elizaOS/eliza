@@ -147,8 +147,3 @@ class ConfirmationResponse(BaseModel):
     is_confirmation: bool
     should_proceed: bool
     modifications: str | None = None
-
-
-
-
-

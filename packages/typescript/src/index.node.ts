@@ -13,6 +13,7 @@ export * from "./bootstrap/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 export * from "./database";
+export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./logger";
 export * from "./memory";
@@ -26,8 +27,10 @@ export * from "./search";
 export * from "./secrets";
 export * from "./services";
 export * from "./services/message";
+export * from "./services/trajectoryLogger";
 export * from "./settings";
 export * from "./streaming-context";
+export * from "./trajectory-context";
 // Export everything from types
 export * from "./types";
 export * from "./types/message-service";

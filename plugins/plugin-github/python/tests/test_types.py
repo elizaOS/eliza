@@ -224,8 +224,3 @@ class TestParamModels:
         )
         assert params.branch_name == "feature/new"
         assert params.from_ref == "main"
-
-
-
-
-

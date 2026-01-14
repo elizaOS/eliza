@@ -1,4 +1,3 @@
-
 from elizaos_plugin_linear.providers.base import Provider, ProviderResult, RuntimeProtocol
 from elizaos_plugin_linear.services.linear import LinearService
 from elizaos_plugin_linear.types import LinearSearchFilters

@@ -2,7 +2,10 @@
 
 This directory contains A2A (Agent-to-Agent) server implementations that expose an elizaOS agent as an HTTP server. This enables agent-to-agent communication, webhooks, and integration with other AI systems.
 
-**Uses real elizaOS runtime with OpenAI and SQL plugins!**
+**Uses real elizaOS runtime.**
+
+- If `OPENAI_API_KEY` is set, the server will use an OpenAI-backed model (and SQL where supported).
+- If `OPENAI_API_KEY` is not set, the server runs in a deterministic “ELIZA classic” mode (no API keys required), so examples and tests can run anywhere (including CI).
 
 ## Available Examples
 
@@ -92,7 +95,7 @@ curl -X POST http://localhost:3000/chat/stream \
 ```bash
 cd typescript
 bun install
-OPENAI_API_KEY=your-key bun run start
+bun run start
 ```
 
 ### Python
@@ -102,19 +105,19 @@ cd python
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-OPENAI_API_KEY=your-key python server.py
+python server.py
 ```
 
 ### Rust
 
 ```bash
 cd rust
-OPENAI_API_KEY=your-key cargo run --release
+cargo run --release
 ```
 
 ## Configuration
 
-All examples require an OpenAI API key:
+Optional: OpenAI API key (enables OpenAI-backed responses):
 
 ```bash
 export OPENAI_API_KEY=your-key
@@ -144,7 +147,7 @@ Each implementation includes a test client:
 cd typescript && bun run test
 
 # Python
-cd python && python test_client.py
+cd python && python test_runner.py
 
 # Rust
 cd rust && cargo test

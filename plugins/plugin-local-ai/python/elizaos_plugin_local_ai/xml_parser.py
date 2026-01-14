@@ -1,7 +1,4 @@
 import re
-from typing import TypeVar
-
-T = TypeVar("T", bound=dict)
 
 
 def extract_xml_tag(text: str, tag_name: str) -> str | None:
@@ -97,7 +94,7 @@ def wrap_in_cdata(text: str) -> str:
     return text
 
 
-def parse_simple_xml(text: str) -> dict | None:
+def parse_simple_xml(text: str) -> dict[str, object] | None:
     if not text:
         return None
 
@@ -114,7 +111,7 @@ def parse_simple_xml(text: str) -> dict | None:
             return None
         xml_content = text
 
-    result: dict = {}
+    result: dict[str, object] = {}
 
     tag_pattern = re.compile(r"<([a-zA-Z][a-zA-Z0-9_-]*)[^>]*>")
     found_tags: set[str] = set()
@@ -149,7 +146,7 @@ def sanitize_for_xml(content: str) -> str:
     return escape_xml(content)
 
 
-def build_xml_response(data: dict) -> str:
+def build_xml_response(data: dict[str, object]) -> str:
     parts: list[str] = ["<response>"]
 
     for key, value in data.items():
@@ -164,7 +161,9 @@ def build_xml_response(data: dict) -> str:
             content = sanitize_for_xml(value)
             parts.append(f"  <{key}>{content}</{key}>")
         elif isinstance(value, dict):
-            nested = build_xml_response(value)
+            from typing import cast
+
+            nested = build_xml_response(cast(dict[str, object], value))
             inner_content = nested.replace("<response>\n", "").replace("\n</response>", "")
             inner_lines = ["  " + line for line in inner_content.split("\n")]
             parts.append(f"  <{key}>\n" + "\n".join(inner_lines) + f"\n  </{key}>")

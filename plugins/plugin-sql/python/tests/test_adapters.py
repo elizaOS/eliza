@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 
 class TestPostgresAdapter:
-
     @pytest.mark.asyncio
     async def test_initialization(self, postgres_adapter: PostgresAdapter) -> None:
         assert await postgres_adapter.is_ready()

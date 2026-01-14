@@ -472,9 +472,7 @@ class TestGatewayClient:
         with patch.object(
             client._client, "post", new_callable=AsyncMock, return_value=mock_http_response
         ):
-            result = await client.generate_object(
-                "Return a JSON object with name and age"
-            )
+            result = await client.generate_object("Return a JSON object with name and age")
             assert result == {"name": "John", "age": 30}
 
     @pytest.mark.asyncio
@@ -505,9 +503,7 @@ class TestGatewayClient:
         with patch.object(
             client._client, "post", new_callable=AsyncMock, return_value=mock_http_response
         ):
-            result = await client.generate_object(
-                "Return a JSON object with name and age"
-            )
+            result = await client.generate_object("Return a JSON object with name and age")
             assert result == {"name": "Jane", "age": 25}
 
     @pytest.mark.asyncio
@@ -517,9 +513,7 @@ class TestGatewayClient:
         mock_http_response.is_success = False
         mock_http_response.status_code = 401
         mock_http_response.text = "Unauthorized"
-        mock_http_response.json.return_value = {
-            "error": {"message": "Invalid API key"}
-        }
+        mock_http_response.json.return_value = {"error": {"message": "Invalid API key"}}
 
         with patch.object(
             client._client, "post", new_callable=AsyncMock, return_value=mock_http_response
@@ -744,6 +738,7 @@ class TestStreaming:
     @pytest.mark.asyncio
     async def test_stream_text(self, client: GatewayClient) -> None:
         """Test streaming text generation."""
+
         # Create mock async iterator for streaming
         async def mock_aiter_lines() -> list[str]:
             lines = [

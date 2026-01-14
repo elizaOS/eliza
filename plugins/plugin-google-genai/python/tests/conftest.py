@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -34,4 +33,3 @@ def config(api_key: str) -> GoogleGenAIConfig:
 async def client(config: GoogleGenAIConfig) -> AsyncGenerator[GoogleGenAIClient, None]:
     async with GoogleGenAIClient(config) as client:
         yield client
-

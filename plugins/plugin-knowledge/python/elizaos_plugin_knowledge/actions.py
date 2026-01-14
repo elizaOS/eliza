@@ -57,12 +57,13 @@ class ProcessKnowledgeAction(KnowledgeAction):
 
     @property
     def description(self) -> str:
-        return "Process and store knowledge from a file path or text content into the knowledge base"
+        return (
+            "Process and store knowledge from a file path or text content into the knowledge base"
+        )
 
     def validate(self, context: ActionContext) -> bool:
         text = (
-            context.message.get("content", {}).get("text", "")
-            or context.message.get("text", "")
+            context.message.get("content", {}).get("text", "") or context.message.get("text", "")
         ).lower()
 
         has_keyword = any(keyword in text for keyword in KNOWLEDGE_KEYWORDS)
@@ -71,9 +72,7 @@ class ProcessKnowledgeAction(KnowledgeAction):
         return has_keyword or has_path
 
     async def execute(self, context: ActionContext) -> dict:
-        text = context.message.get("content", {}).get("text", "") or context.message.get(
-            "text", ""
-        )
+        text = context.message.get("content", {}).get("text", "") or context.message.get("text", "")
 
         path_pattern = r"(?:/[\w.\-]+)+|(?:[a-zA-Z]:[/\\][\w\s.\-]+(?:[/\\][\w\s.\-]+)*)"
         path_match = re.search(path_pattern, text)
@@ -123,21 +122,16 @@ class SearchKnowledgeAction(KnowledgeAction):
 
     def validate(self, context: ActionContext) -> bool:
         text = (
-            context.message.get("content", {}).get("text", "")
-            or context.message.get("text", "")
+            context.message.get("content", {}).get("text", "") or context.message.get("text", "")
         ).lower()
 
         has_search_keyword = any(keyword in text for keyword in SEARCH_KEYWORDS)
-        has_knowledge_keyword = any(
-            keyword in text for keyword in KNOWLEDGE_SEARCH_KEYWORDS
-        )
+        has_knowledge_keyword = any(keyword in text for keyword in KNOWLEDGE_SEARCH_KEYWORDS)
 
         return has_search_keyword and has_knowledge_keyword
 
     async def execute(self, context: ActionContext) -> dict:
-        text = context.message.get("content", {}).get("text", "") or context.message.get(
-            "text", ""
-        )
+        text = context.message.get("content", {}).get("text", "") or context.message.get("text", "")
 
         query = text.lower()
         for word in [

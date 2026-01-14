@@ -122,7 +122,8 @@ describe("ACTIONS provider includes task control actions", () => {
 
   test("stop task -> PAUSE_TASK appears in possible actions", async () => {
     const msg = createMemory("stop task runner", roomId);
-    const res = await actionsProvider.get(runtime, msg, {} as State);
+    const emptyState: State = { values: {}, data: {}, text: "" };
+    const res = await actionsProvider.get(runtime, msg, emptyState);
     expect(res.data.actionsData.map((a) => a.name)).toContain("PAUSE_TASK");
   });
 
@@ -132,7 +133,8 @@ describe("ACTIONS provider includes task control actions", () => {
     await service.createCodeTask("Runner", "desc", roomId);
 
     const msg = createMemory("restart task runner", roomId);
-    const res = await actionsProvider.get(runtime, msg, {} as State);
+    const emptyState: State = { values: {}, data: {}, text: "" };
+    const res = await actionsProvider.get(runtime, msg, emptyState);
     expect(res.data.actionsData.map((a) => a.name)).toContain("RESUME_TASK");
     delete process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION;
   });

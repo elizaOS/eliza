@@ -13,6 +13,3 @@ pub trait TeeVendorInterface: Send + Sync {
     fn action_names(&self) -> Vec<&'static str>;
     fn provider_names(&self) -> Vec<&'static str>;
 }
-
-
-

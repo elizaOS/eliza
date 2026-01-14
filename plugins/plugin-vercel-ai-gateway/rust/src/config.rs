@@ -69,10 +69,7 @@ mod tests {
         assert!(!model_supports_temperature("gpt-5"));
         assert!(!model_supports_temperature("gpt-5-mini"));
         assert!(!model_supports_temperature("o1-preview"));
-        assert!(model_supports_temperature("gpt-4o"));
+        assert!(model_supports_temperature("gpt-5"));
         assert!(model_supports_temperature("claude-3-sonnet"));
     }
 }
-
-
-

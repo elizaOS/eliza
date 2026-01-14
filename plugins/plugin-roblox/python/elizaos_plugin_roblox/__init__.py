@@ -4,6 +4,7 @@ from elizaos_plugin_roblox.actions import (
     SendGameMessageAction,
     get_roblox_action_names,
 )
+from elizaos_plugin_roblox.plugin import get_roblox_plugin
 from elizaos_plugin_roblox.client import RobloxClient
 from elizaos_plugin_roblox.config import RobloxConfig
 from elizaos_plugin_roblox.error import (
@@ -69,4 +70,5 @@ __all__ = [
     "PLUGIN_DESCRIPTION",
     "ROBLOX_SERVICE_NAME",
     "ROBLOX_SOURCE",
+    "get_roblox_plugin",
 ]

@@ -69,7 +69,11 @@ const prompt = () => {
       id: uuidv4() as UUID,
       entityId: userId,
       roomId,
-      content: { text },
+      content: {
+        text,
+        source: "client_chat",
+        channelType: ChannelType.DM,
+      },
     });
 
     let _response = "";

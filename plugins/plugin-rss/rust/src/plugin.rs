@@ -6,9 +6,7 @@ use tokio::sync::RwLock;
 
 use crate::client::RssClient;
 use crate::error::{Result, RssError};
-use crate::types::{
-    FeedFormat, FeedItemMetadata, FeedSubscriptionMetadata, RssConfig, RssFeed,
-};
+use crate::types::{FeedFormat, FeedItemMetadata, FeedSubscriptionMetadata, RssConfig, RssFeed};
 
 pub struct RssPlugin {
     config: RssConfig,
@@ -59,7 +57,8 @@ impl RssPlugin {
 
     pub async fn subscribe_feed(&mut self, url: &str, title: Option<&str>) -> Result<()> {
         {
-            let feeds: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.read().await;
+            let feeds: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedSubscriptionMetadata>> =
+                self.subscribed_feeds.read().await;
             if feeds.contains_key(url) {
                 return Err(RssError::AlreadySubscribed(url.to_string()));
             }
@@ -72,21 +71,27 @@ impl RssPlugin {
                 Ok(feed) => {
                     let title_str: &str = feed.title();
                     Some(title_str.to_string())
-                },
+                }
                 Err(_) => None,
             }
         };
 
         let metadata = FeedSubscriptionMetadata::new();
 
-        let mut feeds: tokio::sync::RwLockWriteGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.write().await;
+        let mut feeds: tokio::sync::RwLockWriteGuard<
+            '_,
+            HashMap<String, FeedSubscriptionMetadata>,
+        > = self.subscribed_feeds.write().await;
         feeds.insert(url.to_string(), metadata);
 
         Ok(())
     }
 
     pub async fn unsubscribe_feed(&mut self, url: &str) -> Result<()> {
-        let mut feeds: tokio::sync::RwLockWriteGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.write().await;
+        let mut feeds: tokio::sync::RwLockWriteGuard<
+            '_,
+            HashMap<String, FeedSubscriptionMetadata>,
+        > = self.subscribed_feeds.write().await;
         if feeds.remove(url).is_none() {
             return Err(RssError::NotSubscribed(url.to_string()));
         }
@@ -94,11 +99,10 @@ impl RssPlugin {
     }
 
     pub async fn get_subscribed_feeds(&self) -> Vec<(String, FeedSubscriptionMetadata)> {
-        let feeds: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.read().await;
-        let result: Vec<(String, FeedSubscriptionMetadata)> = feeds
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let feeds: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedSubscriptionMetadata>> =
+            self.subscribed_feeds.read().await;
+        let result: Vec<(String, FeedSubscriptionMetadata)> =
+            feeds.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         result
     }
 
@@ -118,15 +122,14 @@ impl RssPlugin {
 
             let mut new_items: usize = 0;
             {
-                let mut items: tokio::sync::RwLockWriteGuard<'_, HashMap<String, FeedItemMetadata>> = self.feed_items.write().await;
+                let mut items: tokio::sync::RwLockWriteGuard<
+                    '_,
+                    HashMap<String, FeedItemMetadata>,
+                > = self.feed_items.write().await;
                 for item in &feed.items {
-                    let item_id = format!(
-                        "{}_{}_{}", 
-                        url, 
-                        item.guid.as_str(), 
-                        item.pub_date.as_str()
-                    );
-                    
+                    let item_id =
+                        format!("{}_{}_{}", url, item.guid.as_str(), item.pub_date.as_str());
+
                     if let std::collections::hash_map::Entry::Vacant(e) = items.entry(item_id) {
                         e.insert(FeedItemMetadata::from_item(item, &url, feed.title()));
                         new_items += 1;
@@ -135,7 +138,10 @@ impl RssPlugin {
             }
 
             {
-                let mut subs: tokio::sync::RwLockWriteGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.write().await;
+                let mut subs: tokio::sync::RwLockWriteGuard<
+                    '_,
+                    HashMap<String, FeedSubscriptionMetadata>,
+                > = self.subscribed_feeds.write().await;
                 if let Some(meta) = subs.get_mut(&url) {
                     meta.last_checked = chrono::Utc::now().timestamp_millis();
                     meta.last_item_count = feed.items.len();
@@ -149,7 +155,8 @@ impl RssPlugin {
     }
 
     pub async fn get_feed_items(&self, limit: usize) -> Vec<FeedItemMetadata> {
-        let items: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedItemMetadata>> = self.feed_items.read().await;
+        let items: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedItemMetadata>> =
+            self.feed_items.read().await;
         let mut result: Vec<FeedItemMetadata> = items.values().cloned().collect();
         result.sort_by(|a, b| {
             let a_date = a.pub_date.as_deref().unwrap_or("");
@@ -174,7 +181,10 @@ impl RssPlugin {
         let mut by_feed: HashMap<String, Vec<&FeedItemMetadata>> = HashMap::new();
         for item in &items {
             let feed_title = item.feed_title.as_deref().unwrap_or("Unknown Feed");
-            by_feed.entry(feed_title.to_string()).or_default().push(item);
+            by_feed
+                .entry(feed_title.to_string())
+                .or_default()
+                .push(item);
         }
 
         match self.config.feed_format {
@@ -195,12 +205,16 @@ impl RssPlugin {
         );
 
         for (feed_title, feed_items) in by_feed {
-            output.push_str(&format!("## {} ({} items)\n\n", feed_title, feed_items.len()));
+            output.push_str(&format!(
+                "## {} ({} items)\n\n",
+                feed_title,
+                feed_items.len()
+            ));
 
             for item in feed_items {
                 let title = item.title.as_deref().unwrap_or("Untitled");
                 output.push_str(&format!("### {}\n", title));
-                
+
                 if let Some(ref link) = item.link {
                     output.push_str(&format!("- URL: {}\n", link));
                 }
@@ -240,7 +254,11 @@ impl RssPlugin {
         output.push_str("Feed,Title,URL,Published,Description\n");
 
         for item in items {
-            let feed = item.feed_title.as_deref().unwrap_or("Unknown").replace('"', "\"\"");
+            let feed = item
+                .feed_title
+                .as_deref()
+                .unwrap_or("Unknown")
+                .replace('"', "\"\"");
             let title = item.title.as_deref().unwrap_or("").replace('"', "\"\"");
             let url = item.link.as_deref().unwrap_or("");
             let pub_date = item.pub_date.as_deref().unwrap_or("");
@@ -283,16 +301,21 @@ mod tests {
     #[tokio::test]
     async fn test_subscribe_unsubscribe() {
         let mut plugin = RssPlugin::default_plugin();
-        
+
         // Subscribe (will fail to fetch but should still subscribe)
-        let _ = plugin.subscribe_feed("https://example.com/feed.rss", Some("Test Feed")).await;
-        
+        let _ = plugin
+            .subscribe_feed("https://example.com/feed.rss", Some("Test Feed"))
+            .await;
+
         let feeds = plugin.get_subscribed_feeds().await;
         assert_eq!(feeds.len(), 1);
 
         // Unsubscribe
-        plugin.unsubscribe_feed("https://example.com/feed.rss").await.unwrap();
-        
+        plugin
+            .unsubscribe_feed("https://example.com/feed.rss")
+            .await
+            .unwrap();
+
         let feeds = plugin.get_subscribed_feeds().await;
         assert!(feeds.is_empty());
     }

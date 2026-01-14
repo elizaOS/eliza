@@ -29,8 +29,8 @@ class SearchMessagesAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord"
 
     async def handler(
         self,
@@ -47,8 +47,7 @@ class SearchMessagesAction:
         search_query = await service.extract_search_query(text)
         if not search_query:
             return ActionResult.failure_result(
-                "I need a search term to look for messages. "
-                "What would you like me to search for?"
+                "I need a search term to look for messages. What would you like me to search for?"
             )
 
         # Extract channel (default to current)
@@ -73,8 +72,8 @@ class SearchMessagesAction:
         # Format results
         formatted_results = []
         for msg in results[:10]:  # Limit to 10 displayed results
-            author = msg.get("author", {}).get("username", "Unknown")
-            msg_content = msg.get("content", "")
+            author = msg["author"]["username"]
+            msg_content = msg["content"]
             # Truncate long messages
             if len(msg_content) > 100:
                 msg_content = msg_content[:100] + "..."

@@ -85,10 +85,7 @@ impl KnowledgePlugin {
                 continue;
             }
 
-            let ext = file_path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
+            let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
             let content_type = extensions
                 .iter()
@@ -121,11 +118,7 @@ impl KnowledgePlugin {
                                 );
                             }
                             Ok(result) => {
-                                log::warn!(
-                                    "Failed to load '{}': {:?}",
-                                    filename,
-                                    result.error
-                                );
+                                log::warn!("Failed to load '{}': {:?}", filename, result.error);
                             }
                             Err(e) => {
                                 log::error!("Error loading '{}': {}", filename, e);
@@ -142,7 +135,10 @@ impl KnowledgePlugin {
         Ok(())
     }
 
-    pub async fn add_knowledge(&self, options: AddKnowledgeOptions) -> types::Result<ProcessingResult> {
+    pub async fn add_knowledge(
+        &self,
+        options: AddKnowledgeOptions,
+    ) -> types::Result<ProcessingResult> {
         let mut service = self.service.write().await;
         service.add_knowledge(options).await
     }
@@ -157,7 +153,11 @@ impl KnowledgePlugin {
         service.search(query, count, threshold).await
     }
 
-    pub async fn get_knowledge(&self, query: &str, count: usize) -> types::Result<Vec<KnowledgeItem>> {
+    pub async fn get_knowledge(
+        &self,
+        query: &str,
+        count: usize,
+    ) -> types::Result<Vec<KnowledgeItem>> {
         let service = self.service.read().await;
         service.get_knowledge(query, count).await
     }
@@ -183,22 +183,20 @@ impl KnowledgePlugin {
         }
 
         match self.get_knowledge(message, count).await {
-            Ok(items) if !items.is_empty() => {
-                items
-                    .iter()
-                    .enumerate()
-                    .map(|(i, item)| {
-                        let similarity_pct = (item.similarity.unwrap_or(0.0) * 100.0) as i32;
-                        format!(
-                            "[Knowledge {}] (relevance: {}%)\n{}",
-                            i + 1,
-                            similarity_pct,
-                            item.content
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n\n---\n\n")
-            }
+            Ok(items) if !items.is_empty() => items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| {
+                    let similarity_pct = (item.similarity.unwrap_or(0.0) * 100.0) as i32;
+                    format!(
+                        "[Knowledge {}] (relevance: {}%)\n{}",
+                        i + 1,
+                        similarity_pct,
+                        item.content
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n---\n\n"),
             _ => String::new(),
         }
     }
@@ -314,4 +312,3 @@ mod tests {
         assert!(!plugin2.initialized);
     }
 }
-

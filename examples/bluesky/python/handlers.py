@@ -1,199 +1,331 @@
 """
-Event handlers for Bluesky interactions.
+Bluesky Event Handlers
+
+These handlers process Bluesky events through the FULL elizaOS pipeline:
+- State composition with providers (CHARACTER, RECENT_MESSAGES, ACTIONS, etc.)
+- shouldRespond evaluation
+- Action planning and execution
+- Response generation via messageHandlerTemplate
+- Evaluators
+
+This is the canonical way to handle messages in elizaOS - NO bypassing the pipeline.
 """
 
 from __future__ import annotations
 
 import logging
-import time
-from typing import TYPE_CHECKING, Protocol
-from uuid import uuid4
+from typing import TYPE_CHECKING, Any
+
+from uuid6 import uuid7
+
+from elizaos import ChannelType, Content, Memory, string_to_uuid
+from elizaos.types.primitives import UUID
 
 if TYPE_CHECKING:
-    from typing import Optional
+    from elizaos.runtime import AgentRuntime
+    from elizaos_plugin_bluesky import BlueSkyNotification, BlueSkyService
 
 logger = logging.getLogger(__name__)
 
-
-# Template for generating replies to mentions
-REPLY_TEMPLATE = """# Task: Generate a reply to a Bluesky mention
-
-You are {agent_name}, responding to a mention on Bluesky.
-
-## Your Character
-{bio}
-
-## The Mention
-From: @{author_handle}
-Text: {mention_text}
-
-## Guidelines
-- Keep your response under 280 characters (leave room for @mention)
-- Be helpful, friendly, and on-brand
-- Address the user's question or comment directly
-- Don't use hashtags unless relevant
-
-Generate a concise, engaging reply:"""
+BLUESKY_SERVICE_NAME = "bluesky"
+BLUESKY_WORLD_ID = string_to_uuid("bluesky-world")
 
 
-# Template for generating automated posts
-POST_TEMPLATE = """# Task: Generate an original Bluesky post
-
-You are {agent_name}, creating an original post on Bluesky.
-
-## Your Character
-{bio}
-
-## Post Examples
-{post_examples}
-
-## Guidelines
-- Keep it under 300 characters
-- Be engaging and on-brand
-- Share something interesting, helpful, or thought-provoking
-- Don't use excessive hashtags or emojis
-
-Generate an original post:"""
+def create_unique_uuid(runtime: AgentRuntime, base_id: str) -> UUID:
+    """Create a unique UUID by combining base ID with agent ID."""
+    if base_id == runtime.agent_id:
+        return runtime.agent_id
+    combined = f"{base_id}:{runtime.agent_id}"
+    return string_to_uuid(combined)
 
 
-class CharacterProtocol(Protocol):
-    """Protocol for character configuration."""
-    name: str
-    bio: str | None
-    post_examples: list[str] | None
-
-
-class NotificationAuthor(Protocol):
-    """Protocol for notification author."""
-    did: str
-    handle: str
-    display_name: str | None
-
-
-class NotificationProtocol(Protocol):
-    """Protocol for notifications."""
-    uri: str
-    cid: str
-    author: NotificationAuthor
-    reason: str
-    record: dict
-    is_read: bool
-    indexed_at: str
-
-
-class TextResult(Protocol):
-    """Protocol for text generation result."""
-    text: str | None
-
-
-class RuntimeProtocol(Protocol):
-    """Protocol for the agent runtime."""
-    agent_id: str
-    character: CharacterProtocol
-
-    async def generate_text(
-        self, *, prompt: str, max_tokens: int, temperature: float
-    ) -> TextResult:
-        ...
-
-    async def create_memory(self, memory: object, table: str) -> None:
-        ...
-
-
-class PostResult(Protocol):
-    """Protocol for post result."""
-    uri: str
-    cid: str
-
-
-class ClientProtocol(Protocol):
-    """Protocol for the Bluesky client."""
-
-    async def send_post(self, text: str, reply_to: dict | None = None) -> PostResult:
-        ...
+def get_bluesky_service(runtime: AgentRuntime) -> BlueSkyService | None:
+    """Get the BlueSky service from the runtime."""
+    services = runtime.services.get(BLUESKY_SERVICE_NAME)
+    if services and len(services) > 0:
+        return services[0]  # type: ignore[return-value]
+    return None
 
 
 async def handle_mention_received(
-    runtime: RuntimeProtocol,
-    client: ClientProtocol,
-    notification: NotificationProtocol,
+    runtime: AgentRuntime,
+    notification: BlueSkyNotification,
 ) -> None:
     """
-    Process an incoming mention and generate a reply.
-    """
-    logger.info(
-        "Processing mention from @%s: %s",
-        notification.author.handle,
-        notification.reason,
-    )
+    Handle incoming Bluesky mentions through the FULL elizaOS pipeline.
 
-    # Skip non-mention/reply notifications
+    This processes mentions through messageService.handleMessage() which runs:
+    - State composition with all registered providers
+    - shouldRespond evaluation
+    - Action planning (if enabled)
+    - Response generation via the full messageHandlerTemplate
+    - Evaluator execution
+    """
+    # Skip non-mentions
     if notification.reason not in ("mention", "reply"):
+        logger.debug(f"Skipping notification with reason: {notification.reason}")
         return
 
-    # Extract post text
-    mention_text = ""
-    record = notification.record
-    if isinstance(record, dict):
-        mention_text = record.get("text", "")
-    elif hasattr(record, "text"):
-        mention_text = getattr(record, "text", "") or ""
-
-    if not mention_text.strip():
+    # Extract text from notification
+    record = notification.record or {}
+    mention_text = record.get("text", "")
+    if not mention_text or not mention_text.strip():
         logger.debug("Empty mention text, skipping")
         return
 
-    # Generate reply
-    prompt = REPLY_TEMPLATE.format(
-        agent_name=runtime.character.name,
-        bio=runtime.character.bio or "",
-        author_handle=notification.author.handle,
-        mention_text=mention_text,
+    logger.info(
+        f"Processing Bluesky mention from @{notification.author.handle}: {mention_text[:50]}..."
     )
 
-    result = await runtime.generate_text(prompt=prompt, max_tokens=100, temperature=0.7)
-    reply_text = result.text.strip() if result.text else ""
+    # Create unique IDs for this conversation
+    entity_id = create_unique_uuid(runtime, notification.author.did)
+    room_id = create_unique_uuid(runtime, notification.uri)
 
-    if not reply_text:
-        logger.warning("Generated empty reply, skipping")
+    # Ensure the connection exists
+    # Note: ensure_connection signature is (entity_id, room_id, world_id, ...)
+    await runtime.ensure_connection(
+        entity_id=entity_id,
+        room_id=room_id,
+        world_id=BLUESKY_WORLD_ID,
+        user_name=notification.author.handle,
+        name=notification.author.display_name or notification.author.handle,
+        source="bluesky",
+        channel_id=notification.uri,
+        channel_type=ChannelType.GROUP.value,
+    )
+
+    # Create the incoming message memory
+    message = Memory(
+        id=str(uuid7()),
+        entity_id=entity_id,
+        room_id=room_id,
+        content=Content(
+            text=mention_text,
+            source="bluesky",
+            channel_type=ChannelType.GROUP.value,
+            # Include mention context for shouldRespond evaluation
+            metadata={
+                "is_mention": notification.reason == "mention",
+                "is_reply": notification.reason == "reply",
+                "mention_type": "platform_mention" if notification.reason == "mention" else "reply",
+                "uri": notification.uri,
+                "cid": notification.cid,
+                "author_did": notification.author.did,
+                "author_handle": notification.author.handle,
+                "platform": "bluesky",
+            },
+        ),
+    )
+
+    # Get the BlueSky service for posting replies
+    bluesky_service = get_bluesky_service(runtime)
+    if not bluesky_service:
+        logger.error("BlueSky service not available, cannot post reply")
         return
 
-    # Post the reply
+    # Define callback to post response to Bluesky
+    async def callback(content: Content) -> list[Memory]:
+        """Post the response to Bluesky."""
+        # Check if response is targeted elsewhere
+        if content.target and content.target.lower() != "bluesky":
+            logger.debug(f"Response targeted to {content.target}, skipping Bluesky post")
+            return []
+
+        if not content.text or not content.text.strip():
+            logger.debug("No text in response, skipping Bluesky post")
+            return []
+
+        # Truncate to Bluesky's limit (300 chars)
+        response_text = content.text.strip()
+        if len(response_text) > 300:
+            response_text = response_text[:297] + "..."
+
+        try:
+            from elizaos_plugin_bluesky import CreatePostRequest
+
+            # Post the reply
+            post = await bluesky_service.client.send_post(
+                CreatePostRequest(
+                    content=Content(text=response_text),
+                    reply_to={"uri": notification.uri, "cid": notification.cid},
+                )
+            )
+
+            logger.info(f"Posted reply to @{notification.author.handle}: {post.uri}")
+
+            # Create memory for the response
+            response_memory = Memory(
+                id=str(uuid7()),
+                entity_id=runtime.agent_id,
+                room_id=room_id,
+                content=Content(
+                    text=response_text,
+                    source="bluesky",
+                    in_reply_to=message.id,
+                    metadata={
+                        "uri": post.uri,
+                        "cid": post.cid,
+                        "platform": "bluesky",
+                    },
+                ),
+            )
+
+            return [response_memory]
+
+        except Exception as e:
+            logger.error(f"Failed to post reply: {e}")
+            return []
+
+    # Process through the FULL elizaOS pipeline
+    if not runtime.message_service:
+        logger.error("MessageService not available - cannot process through elizaOS pipeline")
+        return
+
     try:
-        reply_ref = {"uri": notification.uri, "cid": notification.cid}
-        post = await client.send_post(reply_text, reply_to=reply_ref)
-        logger.info("Posted reply to @%s: %s", notification.author.handle, post.uri)
+        result = await runtime.message_service.handle_message(runtime, message, callback)
+
+        logger.debug(
+            f"elizaOS pipeline completed: did_respond={result.did_respond}, mode={result.mode}"
+        )
 
     except Exception as e:
-        logger.error("Failed to post reply: %s", e)
+        logger.error(f"Error processing message through elizaOS pipeline: {e}")
+
+
+async def handle_should_respond(
+    runtime: AgentRuntime,
+    notification: BlueSkyNotification,
+) -> None:
+    """Handle should_respond events by routing to handle_mention_received."""
+    if notification.reason in ("mention", "reply"):
+        await handle_mention_received(runtime, notification)
 
 
 async def handle_create_post(
-    runtime: RuntimeProtocol,
-    client: ClientProtocol,
+    runtime: AgentRuntime,
+    automated: bool = True,
 ) -> None:
     """
-    Generate and post automated content.
+    Handle automated post creation through the elizaOS pipeline.
     """
-    logger.info("Generating automated Bluesky post")
+    if not automated:
+        return
 
-    post_examples = "\n- ".join(runtime.character.post_examples or [])
-    prompt = POST_TEMPLATE.format(
-        agent_name=runtime.character.name,
-        bio=runtime.character.bio or "",
-        post_examples=f"- {post_examples}" if post_examples else "No examples provided",
+    logger.info("Generating automated Bluesky post via elizaOS pipeline")
+
+    bluesky_service = get_bluesky_service(runtime)
+    if not bluesky_service:
+        logger.error("BlueSky service not available for automated posting")
+        return
+
+    # Create a room for automated posts
+    room_id = create_unique_uuid(runtime, "bluesky-automated-posts")
+
+    # Note: ensure_connection signature is (entity_id, room_id, world_id, ...)
+    await runtime.ensure_connection(
+        entity_id=runtime.agent_id,
+        room_id=room_id,
+        world_id=BLUESKY_WORLD_ID,
+        user_name=runtime.character.name,
+        name=runtime.character.name,
+        source="bluesky",
+        channel_id="automated-posts",
+        channel_type=ChannelType.SELF.value,
     )
 
-    result = await runtime.generate_text(prompt=prompt, max_tokens=100, temperature=0.8)
-    post_text = result.text.strip() if result.text else ""
+    # Create trigger message for post generation
+    trigger_message = Memory(
+        id=str(uuid7()),
+        entity_id=runtime.agent_id,
+        room_id=room_id,
+        content=Content(
+            text="Generate a new post for Bluesky",
+            source="bluesky",
+            metadata={
+                "is_automated_post_trigger": True,
+                "platform": "bluesky",
+                "max_length": 300,
+            },
+        ),
+    )
 
-    if not post_text:
-        logger.warning("Generated empty post, skipping")
+    async def callback(content: Content) -> list[Memory]:
+        """Post the generated content to Bluesky."""
+        if not content.text or not content.text.strip():
+            logger.debug("No text generated for automated post")
+            return []
+
+        post_text = content.text.strip()
+        if len(post_text) > 300:
+            post_text = post_text[:297] + "..."
+
+        try:
+            from elizaos_plugin_bluesky import CreatePostRequest
+
+            post = await bluesky_service.client.send_post(
+                CreatePostRequest(content=Content(text=post_text))
+            )
+
+            logger.info(f"Created automated post: {post.uri}")
+
+            post_memory = Memory(
+                id=str(uuid7()),
+                entity_id=runtime.agent_id,
+                room_id=room_id,
+                content=Content(
+                    text=post_text,
+                    source="bluesky",
+                    metadata={
+                        "uri": post.uri,
+                        "cid": post.cid,
+                        "platform": "bluesky",
+                        "automated": True,
+                    },
+                ),
+            )
+
+            return [post_memory]
+
+        except Exception as e:
+            logger.error(f"Failed to create automated post: {e}")
+            return []
+
+    if not runtime.message_service:
+        logger.error("MessageService not available for automated posting")
         return
 
     try:
-        post = await client.send_post(post_text)
-        logger.info("Created automated post: %s", post.uri)
-
+        await runtime.message_service.handle_message(runtime, trigger_message, callback)
     except Exception as e:
-        logger.error("Failed to create automated post: %s", e)
+        logger.error(f"Error generating automated post: {e}")
+
+
+def register_bluesky_handlers(runtime: AgentRuntime) -> None:
+    """
+    Register all Bluesky event handlers with the runtime.
+
+    These handlers integrate with the BlueSky plugin's event system:
+    - bluesky.mention_received: When the agent is mentioned in a post
+    - bluesky.should_respond: Trigger to evaluate and respond to a notification
+    - bluesky.create_post: Trigger for automated post generation
+    """
+
+    async def on_mention_received(payload: dict[str, Any]) -> None:
+        notification = payload.get("notification")
+        if notification:
+            await handle_mention_received(runtime, notification)
+
+    async def on_should_respond(payload: dict[str, Any]) -> None:
+        notification = payload.get("notification")
+        if notification:
+            await handle_should_respond(runtime, notification)
+
+    async def on_create_post(payload: dict[str, Any]) -> None:
+        automated = payload.get("automated", True)
+        await handle_create_post(runtime, automated=automated)
+
+    runtime.register_event("bluesky.mention_received", on_mention_received)
+    runtime.register_event("bluesky.should_respond", on_should_respond)
+    runtime.register_event("bluesky.create_post", on_create_post)
+
+    logger.info("Registered Bluesky event handlers (full elizaOS pipeline)")

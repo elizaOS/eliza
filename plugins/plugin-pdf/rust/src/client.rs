@@ -106,8 +106,8 @@ impl PdfClient {
         let page_count = match tokio::task::spawn_blocking({
             let bytes = bytes.clone();
             move || -> Result<usize> {
-                let doc = Document::load_mem(&bytes)
-                    .map_err(|e| PdfError::ParseError(e.to_string()))?;
+                let doc =
+                    Document::load_mem(&bytes).map_err(|e| PdfError::ParseError(e.to_string()))?;
                 Ok(doc.get_pages().len())
             }
         })

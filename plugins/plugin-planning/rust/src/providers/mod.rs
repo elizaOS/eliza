@@ -28,7 +28,7 @@ pub struct MessageClassifierProvider;
 impl MessageClassifierProvider {
     fn classify(text: &str) -> (&'static str, f64, &'static str, bool) {
         let lower = text.to_lowercase();
-        
+
         if lower.contains("strategic") || lower.contains("strategy") {
             ("strategic", 0.8, "strategic_planning", true)
         } else if lower.contains("analyze") || lower.contains("analysis") {
@@ -60,13 +60,17 @@ impl Provider for MessageClassifierProvider {
     }
 
     async fn get(&self, params: ProviderParams) -> ProviderResult {
-        let (classification, confidence, planning_type, planning_required) = 
+        let (classification, confidence, planning_type, planning_required) =
             Self::classify(&params.message_text);
 
         let text = format!(
             "Message classified as: {} ({} complexity, {}) with confidence: {}",
-            classification, 
-            if planning_required { "complex" } else { "simple" },
+            classification,
+            if planning_required {
+                "complex"
+            } else {
+                "simple"
+            },
             planning_type,
             confidence
         );
@@ -117,7 +121,7 @@ mod tests {
             agent_id: "test".to_string(),
             message_text: "create a strategic plan".to_string(),
         };
-        
+
         let result = provider.get(params).await;
         assert!(result.text.contains("strategic"));
     }

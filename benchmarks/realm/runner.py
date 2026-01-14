@@ -41,6 +41,7 @@ class REALMRunner:
         config: REALMConfig,
         runtime: Optional["AgentRuntime"] = None,
         use_mock: bool = False,
+        enable_trajectory_logging: bool = True,
     ):
         """
         Initialize the REALM benchmark runner.
@@ -49,10 +50,12 @@ class REALMRunner:
             config: Benchmark configuration
             runtime: Optional ElizaOS runtime for model interactions
             use_mock: If True, use mock agent for testing
+            enable_trajectory_logging: Enable trajectory logging for training export
         """
         self.config = config
         self.runtime = runtime
         self.use_mock = use_mock
+        self.enable_trajectory_logging = enable_trajectory_logging
 
         # Initialize components
         self.dataset = REALMDataset(config.data_path)
@@ -70,6 +73,7 @@ class REALMRunner:
                 enable_adaptation=config.enable_adaptation,
                 temperature=config.temperature,
                 use_llm=True,
+                enable_trajectory_logging=enable_trajectory_logging,
             )
         
         self.evaluator = REALMEvaluator()
@@ -206,6 +210,10 @@ class REALMRunner:
         if self.config.generate_report:
             await self._save_results(report)
 
+        # Export trajectories for training if configured
+        if self.config.save_trajectories and isinstance(self.agent, REALMAgent):
+            await self._export_training_trajectories(report)
+
         logger.info(
             f"[REALMRunner] Benchmark completed in {duration:.1f}s. "
             f"Success rate: {metrics.overall_success_rate:.1%}"
@@ -326,6 +334,37 @@ class REALMRunner:
             "key_findings": key_findings,
             "recommendations": recommendations,
         }
+
+    async def _export_training_trajectories(self, report: REALMReport) -> None:
+        """Export trajectories in training-ready formats (ART/GRPO)."""
+        if not isinstance(self.agent, REALMAgent):
+            return
+
+        output_dir = Path(self.config.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        completed = self.agent.get_completed_trajectories()
+        if not completed:
+            logger.info("[REALMRunner] No completed trajectories to export")
+            return
+
+        logger.info(f"[REALMRunner] Exporting {len(completed)} trajectories for training")
+
+        # Export ART format (for OpenPipe)
+        art_path = self.agent.export_trajectories_art(
+            dataset_name=f"realm-{self.config.model_name}",
+            output_dir=str(output_dir),
+        )
+        if art_path:
+            logger.info(f"[REALMRunner] Saved ART trajectories to {art_path}")
+
+        # Export GRPO format (for group-relative training)
+        grpo_path = self.agent.export_trajectories_grpo(
+            dataset_name=f"realm-{self.config.model_name}",
+            output_dir=str(output_dir),
+        )
+        if grpo_path:
+            logger.info(f"[REALMRunner] Saved GRPO trajectories to {grpo_path}")
 
     async def _save_results(self, report: REALMReport) -> None:
         """Save benchmark results to files."""

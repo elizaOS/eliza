@@ -70,7 +70,9 @@ async def handle_update_todo(
     available_tasks = await data_service.get_todos(filters)
 
     if len(available_tasks) == 0:
-        error_msg = "You don't have any active tasks to update. Would you like to create a new task?"
+        error_msg = (
+            "You don't have any active tasks to update. Would you like to create a new task?"
+        )
         if callback:
             await callback(
                 {
@@ -200,7 +202,9 @@ UPDATE_TODO_ACTION = {
         [
             {
                 "name": "{{name1}}",
-                "content": {"text": "Change the priority of my report task to high priority and make it urgent"},
+                "content": {
+                    "text": "Change the priority of my report task to high priority and make it urgent"
+                },
             },
             {
                 "name": "{{name2}}",

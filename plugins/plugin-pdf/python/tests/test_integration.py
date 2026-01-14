@@ -6,10 +6,12 @@ pypdf = pytest.importorskip("pypdf", reason="pypdf not installed")
 class TestPdfPluginStructure:
     def test_import_plugin(self) -> None:
         from elizaos_plugin_pdf import PdfPlugin
+
         assert PdfPlugin is not None
 
     def test_import_client(self) -> None:
         from elizaos_plugin_pdf import PdfClient
+
         assert PdfClient is not None
 
     def test_import_types(self) -> None:
@@ -18,6 +20,7 @@ class TestPdfPluginStructure:
             PdfDocumentInfo,
             PdfExtractionOptions,
         )
+
         assert PdfConversionResult is not None
         assert PdfExtractionOptions is not None
         assert PdfDocumentInfo is not None

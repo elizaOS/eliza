@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::{ProviderContext, ProviderResult, GitHubProvider};
+use super::{GitHubProvider, ProviderContext, ProviderResult};
 use crate::error::Result;
 use crate::types::ListIssuesParams;
 use crate::GitHubService;
@@ -103,6 +103,3 @@ impl GitHubProvider for GitHubIssueContextProvider {
         IssueContextProvider.get(context, service)
     }
 }
-
-
-

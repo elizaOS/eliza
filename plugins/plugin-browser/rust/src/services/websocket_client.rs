@@ -28,8 +28,7 @@ impl BrowserWebSocketClient {
     }
 
     pub async fn connect(&self) -> Result<(), String> {
-        let url = url::Url::parse(&self.server_url)
-            .map_err(|e| format!("Invalid URL: {}", e))?;
+        let url = url::Url::parse(&self.server_url).map_err(|e| format!("Invalid URL: {}", e))?;
 
         let (ws_stream, _) = connect_async(url)
             .await
@@ -97,15 +96,24 @@ impl BrowserWebSocketClient {
         let message = WebSocketMessage {
             msg_type: msg_type.to_string(),
             request_id: request_id.clone(),
-            session_id: message_data.remove("sessionId").and_then(|v| v.as_str().map(|s| s.to_string())),
-            data: if message_data.is_empty() { None } else { Some(message_data) },
+            session_id: message_data
+                .remove("sessionId")
+                .and_then(|v| v.as_str().map(|s| s.to_string())),
+            data: if message_data.is_empty() {
+                None
+            } else {
+                Some(message_data)
+            },
         };
 
         let json = serde_json::to_string(&message)
             .map_err(|e| format!("Failed to serialize message: {}", e))?;
 
         let (tx, mut rx) = mpsc::channel::<WebSocketResponse>(1);
-        self.pending_requests.write().await.insert(request_id.clone(), tx);
+        self.pending_requests
+            .write()
+            .await
+            .insert(request_id.clone(), tx);
 
         if let Some(sender) = self.sender.read().await.as_ref() {
             sender
@@ -116,18 +124,17 @@ impl BrowserWebSocketClient {
 
         debug!("[Browser] Sent message: {} ({})", msg_type, request_id);
 
-        let response = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            rx.recv(),
-        )
-        .await
-        .map_err(|_| format!("Request timeout for {}", msg_type))?
-        .ok_or_else(|| "No response received".to_string())?;
+        let response = tokio::time::timeout(std::time::Duration::from_secs(30), rx.recv())
+            .await
+            .map_err(|_| format!("Request timeout for {}", msg_type))?
+            .ok_or_else(|| "No response received".to_string())?;
 
         self.pending_requests.write().await.remove(&request_id);
 
         if response.msg_type == "error" {
-            return Err(response.error.unwrap_or_else(|| "Unknown error".to_string()));
+            return Err(response
+                .error
+                .unwrap_or_else(|| "Unknown error".to_string()));
         }
 
         Ok(response)
@@ -146,7 +153,7 @@ impl BrowserWebSocketClient {
     pub async fn navigate(&self, session_id: &str, url: &str) -> Result<NavigationResult, String> {
         let mut data = HashMap::new();
         data.insert("sessionId".to_string(), serde_json::json!(session_id));
-        
+
         let mut inner_data = HashMap::new();
         inner_data.insert("url".to_string(), serde_json::json!(url));
         data.insert("data".to_string(), serde_json::json!(inner_data));
@@ -156,13 +163,24 @@ impl BrowserWebSocketClient {
         let resp_data = response.data.unwrap_or_default();
         Ok(NavigationResult {
             success: response.success,
-            url: resp_data.get("url").and_then(|v| v.as_str()).unwrap_or(url).to_string(),
-            title: resp_data.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            url: resp_data
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or(url)
+                .to_string(),
+            title: resp_data
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             error: response.error,
         })
     }
 
-    pub async fn get_state(&self, session_id: &str) -> Result<HashMap<String, serde_json::Value>, String> {
+    pub async fn get_state(
+        &self,
+        session_id: &str,
+    ) -> Result<HashMap<String, serde_json::Value>, String> {
         let mut data = HashMap::new();
         data.insert("sessionId".to_string(), serde_json::json!(session_id));
 
@@ -179,8 +197,16 @@ impl BrowserWebSocketClient {
 
         Ok(NavigationResult {
             success: response.success,
-            url: resp_data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            title: resp_data.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            url: resp_data
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            title: resp_data
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             error: response.error,
         })
     }
@@ -194,8 +220,16 @@ impl BrowserWebSocketClient {
 
         Ok(NavigationResult {
             success: response.success,
-            url: resp_data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            title: resp_data.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            url: resp_data
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            title: resp_data
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             error: response.error,
         })
     }
@@ -209,13 +243,25 @@ impl BrowserWebSocketClient {
 
         Ok(NavigationResult {
             success: response.success,
-            url: resp_data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            title: resp_data.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            url: resp_data
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            title: resp_data
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             error: response.error,
         })
     }
 
-    pub async fn click(&self, session_id: &str, description: &str) -> Result<WebSocketResponse, String> {
+    pub async fn click(
+        &self,
+        session_id: &str,
+        description: &str,
+    ) -> Result<WebSocketResponse, String> {
         let mut data = HashMap::new();
         data.insert("sessionId".to_string(), serde_json::json!(session_id));
 
@@ -226,7 +272,12 @@ impl BrowserWebSocketClient {
         self.send_message("click", data).await
     }
 
-    pub async fn type_text(&self, session_id: &str, text: &str, field: &str) -> Result<WebSocketResponse, String> {
+    pub async fn type_text(
+        &self,
+        session_id: &str,
+        text: &str,
+        field: &str,
+    ) -> Result<WebSocketResponse, String> {
         let mut data = HashMap::new();
         data.insert("sessionId".to_string(), serde_json::json!(session_id));
 
@@ -238,7 +289,12 @@ impl BrowserWebSocketClient {
         self.send_message("type", data).await
     }
 
-    pub async fn select(&self, session_id: &str, option: &str, dropdown: &str) -> Result<WebSocketResponse, String> {
+    pub async fn select(
+        &self,
+        session_id: &str,
+        option: &str,
+        dropdown: &str,
+    ) -> Result<WebSocketResponse, String> {
         let mut data = HashMap::new();
         data.insert("sessionId".to_string(), serde_json::json!(session_id));
 
@@ -250,7 +306,11 @@ impl BrowserWebSocketClient {
         self.send_message("select", data).await
     }
 
-    pub async fn extract(&self, session_id: &str, instruction: &str) -> Result<WebSocketResponse, String> {
+    pub async fn extract(
+        &self,
+        session_id: &str,
+        instruction: &str,
+    ) -> Result<WebSocketResponse, String> {
         let mut data = HashMap::new();
         data.insert("sessionId".to_string(), serde_json::json!(session_id));
 
@@ -279,7 +339,8 @@ impl BrowserWebSocketClient {
         let response = self.send_message("health", HashMap::new()).await?;
 
         let is_healthy = response.msg_type == "health"
-            && response.data
+            && response
+                .data
                 .as_ref()
                 .and_then(|d| d.get("status"))
                 .and_then(|v| v.as_str())

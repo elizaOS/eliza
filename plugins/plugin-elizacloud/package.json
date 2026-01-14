@@ -79,7 +79,7 @@
       },
       "ELIZAOS_CLOUD_SMALL_MODEL": {
         "type": "string",
-        "description": "Small/fast model for quick tasks (overrides SMALL_MODEL). Available: gpt-4o-mini, gpt-4o, claude-3-5-sonnet, gemini-2.0-flash",
+        "description": "Small/fast model for quick tasks (overrides SMALL_MODEL). Available: gpt-5-mini, gpt-5, claude-3-5-sonnet, gemini-2.0-flash",
         "required": false,
         "sensitive": false
       },
@@ -87,12 +87,12 @@
         "type": "string",
         "description": "Fallback identifier for the small language model if ELIZAOS_CLOUD_SMALL_MODEL is not set.",
         "required": false,
-        "default": "gpt-4o-mini",
+        "default": "gpt-5-mini",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_LARGE_MODEL": {
         "type": "string",
-        "description": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Available: gpt-4o-mini, gpt-4o, claude-3-5-sonnet, gemini-2.0-flash",
+        "description": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Available: gpt-5-mini, gpt-5, claude-3-5-sonnet, gemini-2.0-flash",
         "required": false,
         "sensitive": false
       },
@@ -100,7 +100,7 @@
         "type": "string",
         "description": "Fallback identifier for the large language model if ELIZAOS_CLOUD_LARGE_MODEL is not set.",
         "required": false,
-        "default": "gpt-4o",
+        "default": "gpt-5",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_EMBEDDING_MODEL": {
@@ -133,7 +133,7 @@
         "type": "string",
         "description": "Identifier of the model used for describing images.",
         "required": false,
-        "default": "gpt-4o-mini",
+        "default": "gpt-5-mini",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS": {
@@ -147,7 +147,7 @@
         "type": "string",
         "description": "Identifier of the model used for text-to-speech generation.",
         "required": false,
-        "default": "gpt-4o-mini-tts",
+        "default": "gpt-5-mini-tts",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_TTS_VOICE": {

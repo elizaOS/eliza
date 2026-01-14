@@ -18,7 +18,6 @@ class ProviderResult:
 
 @dataclass
 class GameStateProvider:
-
     @property
     def name(self) -> str:
         return "roblox-game-state"

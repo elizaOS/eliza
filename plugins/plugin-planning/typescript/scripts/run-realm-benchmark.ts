@@ -2,12 +2,10 @@
 
 /**
  * REALM-Bench Runner Script
- * 
+ *
  * This script provides information about running REALM benchmarks.
  * The actual benchmark implementation is in benchmarks/realm/
  */
-
-import { logger } from "@elizaos/core";
 
 async function main(): Promise<void> {
   console.log("🚀 REALM-Bench for ElizaOS\n");

@@ -12,7 +12,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Callable, Awaitable
+from typing import Callable, Awaitable
 
 from elizaos.types.plugin import Plugin
 from elizaos.types.memory import Memory
@@ -43,6 +43,11 @@ class TypeScriptPluginBridge:
         cwd: str | Path | None = None,
         env: dict[str, str] | None = None,
         timeout: float = 30.0,
+        inherit_env: bool = True,
+        env_denylist: list[str] | None = None,
+        max_pending_requests: int = 1000,
+        max_message_bytes: int = 1_000_000,
+        max_buffer_bytes: int = 2_000_000,
     ) -> None:
         """
         Initialize the TypeScript plugin bridge.
@@ -57,14 +62,27 @@ class TypeScriptPluginBridge:
         self.plugin_path = Path(plugin_path)
         self.node_path = node_path
         self.cwd = Path(cwd) if cwd else self.plugin_path.parent
-        self.env = {**os.environ, **(env or {})}
+        base_env: dict[str, str] = dict(os.environ) if inherit_env else {}
+        if env_denylist:
+            for key in env_denylist:
+                base_env.pop(key, None)
+        if env:
+            base_env.update(env)
+        # Also pass sizing limits to the runner so it can fail-closed.
+        base_env.setdefault("ELIZA_INTEROP_MAX_MESSAGE_BYTES", str(max_message_bytes))
+        base_env.setdefault("ELIZA_INTEROP_MAX_BUFFER_BYTES", str(max_buffer_bytes))
+        self.env = base_env
         self.timeout = timeout
+        self.max_pending_requests = max_pending_requests
+        self.max_message_bytes = max_message_bytes
+        self.max_buffer_bytes = max_buffer_bytes
 
         self.process: subprocess.Popen[bytes] | None = None
-        self.manifest: dict[str, Any] | None = None
+        self.manifest: dict[str, object] | None = None
         self._request_counter = 0
-        self._pending_requests: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._pending_requests: dict[str, asyncio.Future[dict[str, object]]] = {}
         self._reader_task: asyncio.Task[None] | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
         self._buffer = ""
 
     async def start(self) -> None:
@@ -82,231 +100,18 @@ class TypeScriptPluginBridge:
 
         # Start the reader task
         self._reader_task = asyncio.create_task(self._read_responses())
+        self._stderr_task = asyncio.create_task(self._drain_stderr())
 
         # Wait for ready message with manifest
         await self._wait_for_ready()
 
     def _get_bridge_script(self) -> str:
         """Get the path to the TypeScript bridge script."""
-        # Look for bridge script relative to this file
         script_dir = Path(__file__).parent
         bridge_path = script_dir / "ts_bridge_runner.mjs"
-
         if not bridge_path.exists():
-            # Create the bridge script if it doesn't exist
-            self._create_bridge_script(bridge_path)
-
+            raise FileNotFoundError(f"Missing bridge runner: {bridge_path}")
         return str(bridge_path)
-
-    def _create_bridge_script(self, path: Path) -> None:
-        """Create the TypeScript bridge runner script."""
-        script_content = '''#!/usr/bin/env node
-/**
- * TypeScript Plugin Bridge Runner for Python
- *
- * This script loads a TypeScript plugin and communicates with Python
- * via JSON-RPC over stdin/stdout.
- */
-
-import { createRequire } from 'module';
-import { dirname, resolve } from 'path';
-import { createInterface } from 'readline';
-import { fileURLToPath } from 'url';
-
-const pluginPath = process.argv[2];
-if (!pluginPath) {
-  console.error('Usage: ts_bridge_runner.mjs <plugin_path>');
-  process.exit(1);
-}
-
-// Dynamic import the plugin
-const loadPlugin = async () => {
-  try {
-    // Try to load as ESM module
-    const module = await import(resolve(pluginPath));
-    return module.default || module.plugin || module;
-  } catch (e) {
-    // Fall back to require for CJS
-    const require = createRequire(import.meta.url);
-    const module = require(resolve(pluginPath));
-    return module.default || module.plugin || module;
-  }
-};
-
-// Main
-(async () => {
-  let plugin;
-
-  try {
-    plugin = await loadPlugin();
-  } catch (e) {
-    console.error(`Failed to load plugin: ${e.message}`);
-    process.exit(1);
-  }
-
-  // Index actions, providers, evaluators
-  const actions = {};
-  const providers = {};
-  const evaluators = {};
-
-  for (const action of plugin.actions || []) {
-    actions[action.name] = action;
-  }
-  for (const provider of plugin.providers || []) {
-    providers[provider.name] = provider;
-  }
-  for (const evaluator of plugin.evaluators || []) {
-    evaluators[evaluator.name] = evaluator;
-  }
-
-  // Build manifest
-  const manifest = {
-    name: plugin.name,
-    description: plugin.description,
-    version: plugin.version || '1.0.0',
-    language: 'typescript',
-    config: plugin.config,
-    dependencies: plugin.dependencies,
-    actions: Object.values(actions).map(a => ({
-      name: a.name,
-      description: a.description,
-      similes: a.similes,
-    })),
-    providers: Object.values(providers).map(p => ({
-      name: p.name,
-      description: p.description,
-      dynamic: p.dynamic,
-      position: p.position,
-      private: p.private,
-    })),
-    evaluators: Object.values(evaluators).map(e => ({
-      name: e.name,
-      description: e.description,
-      alwaysRun: e.alwaysRun,
-      similes: e.similes,
-    })),
-  };
-
-  // Send ready message
-  console.log(JSON.stringify({ type: 'ready', manifest }));
-
-  // Process requests
-  const rl = createInterface({ input: process.stdin });
-
-  rl.on('line', async (line) => {
-    if (!line.trim()) return;
-
-    try {
-      const request = JSON.parse(line);
-      const response = await handleRequest(request, plugin, actions, providers, evaluators);
-      console.log(JSON.stringify(response));
-    } catch (e) {
-      console.log(JSON.stringify({
-        type: 'error',
-        id: '',
-        error: e.message,
-      }));
-    }
-  });
-
-  rl.on('close', () => {
-    process.exit(0);
-  });
-})();
-
-async function handleRequest(request, plugin, actions, providers, evaluators) {
-  const { type, id } = request;
-
-  try {
-    switch (type) {
-      case 'plugin.init': {
-        if (plugin.init) {
-          await plugin.init(request.config, null);
-        }
-        return { type: 'plugin.init.result', id, success: true };
-      }
-
-      case 'action.validate': {
-        const action = actions[request.action];
-        if (!action) {
-          return { type: 'validate.result', id, valid: false };
-        }
-        const valid = await action.validate(null, request.memory, request.state);
-        return { type: 'validate.result', id, valid };
-      }
-
-      case 'action.invoke': {
-        const action = actions[request.action];
-        if (!action) {
-          return {
-            type: 'action.result',
-            id,
-            result: { success: false, error: `Action not found: ${request.action}` },
-          };
-        }
-        const result = await action.handler(
-          null,
-          request.memory,
-          request.state,
-          request.options,
-          null,
-          null,
-        );
-        return {
-          type: 'action.result',
-          id,
-          result: {
-            success: result?.success ?? true,
-            text: result?.text,
-            error: result?.error?.message || result?.error,
-            data: result?.data,
-            values: result?.values,
-          },
-        };
-      }
-
-      case 'provider.get': {
-        const provider = providers[request.provider];
-        if (!provider) {
-          return {
-            type: 'provider.result',
-            id,
-            result: { text: null, values: null, data: null },
-          };
-        }
-        const result = await provider.get(null, request.memory, request.state);
-        return { type: 'provider.result', id, result };
-      }
-
-      case 'evaluator.invoke': {
-        const evaluator = evaluators[request.evaluator];
-        if (!evaluator) {
-          return { type: 'action.result', id, result: null };
-        }
-        const result = await evaluator.handler(null, request.memory, request.state);
-        return {
-          type: 'action.result',
-          id,
-          result: result ? {
-            success: result.success ?? true,
-            text: result.text,
-            error: result.error?.message || result.error,
-            data: result.data,
-            values: result.values,
-          } : null,
-        };
-      }
-
-      default:
-        return { type: 'error', id, error: `Unknown request type: ${type}` };
-    }
-  } catch (e) {
-    return { type: 'error', id, error: e.message };
-  }
-}
-'''
-        path.write_text(script_content)
-        os.chmod(path, 0o755)
 
     async def _read_responses(self) -> None:
         """Read responses from the subprocess stdout."""
@@ -326,16 +131,29 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
                 line_str = line.decode("utf-8").strip()
                 if not line_str:
                     continue
+                if len(line) > self.max_message_bytes:
+                    raise RuntimeError("Subprocess output exceeded maximum message size")
 
                 message = json.loads(line_str)
                 self._handle_message(message)
-            except json.JSONDecodeError:
-                # Invalid JSON from subprocess - skip malformed messages
-                continue
-            except Exception:
-                break
+            except json.JSONDecodeError as e:
+                # Protocol violation: fail closed.
+                await self.stop()
+                raise RuntimeError("Invalid JSON received from subprocess") from e
 
-    def _handle_message(self, message: dict[str, Any]) -> None:
+    async def _drain_stderr(self) -> None:
+        if not self.process or not self.process.stderr:
+            return
+        loop = asyncio.get_event_loop()
+        while True:
+            line = await loop.run_in_executor(None, self.process.stderr.readline)
+            if not line:
+                break
+            # Drain to avoid deadlock; stderr content may be sensitive.
+            # In production, route to a controlled logger sink if desired.
+            _ = line
+
+    def _handle_message(self, message: dict[str, object]) -> None:
         """Handle an incoming message from the subprocess."""
         msg_id = message.get("id")
 
@@ -370,16 +188,19 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
         except asyncio.TimeoutError:
             raise RuntimeError(f"Plugin startup timeout after {self.timeout}s")
 
-    async def send_request(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def send_request(self, request: dict[str, object]) -> dict[str, object]:
         """Send a request and wait for the response."""
         if not self.process or not self.process.stdin:
             raise RuntimeError("Bridge not started")
+
+        if len(self._pending_requests) >= self.max_pending_requests:
+            raise RuntimeError("Too many pending requests")
 
         self._request_counter += 1
         request_id = f"req_{self._request_counter}"
         request["id"] = request_id
 
-        future: asyncio.Future[dict[str, Any]] = asyncio.get_event_loop().create_future()
+        future: asyncio.Future[dict[str, object]] = asyncio.get_event_loop().create_future()
         self._pending_requests[request_id] = future
 
         json_line = json.dumps(request) + "\n"
@@ -401,6 +222,13 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
             except asyncio.CancelledError:
                 pass
 
+        if self._stderr_task:
+            self._stderr_task.cancel()
+            try:
+                await self._stderr_task
+            except asyncio.CancelledError:
+                pass
+
         if self.process:
             self.process.terminate()
             try:
@@ -408,6 +236,9 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
             except subprocess.TimeoutExpired:
                 self.process.kill()
 
+        for fut in self._pending_requests.values():
+            if not fut.done():
+                fut.set_exception(RuntimeError("Bridge stopped"))
         self._pending_requests.clear()
 
     def get_manifest(self) -> dict[str, Any] | None:

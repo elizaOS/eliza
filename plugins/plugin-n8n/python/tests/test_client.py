@@ -85,7 +85,7 @@ class TestPluginSpecification:
         spec = PluginSpecification(**valid_plugin_spec)
         assert spec.name == "@test/plugin-example"
         assert spec.description == "A test plugin for testing purposes"
-        assert spec.version == "1.0.0"
+        assert spec.version == "2.0.0"
 
     def test_default_version(self) -> None:
         """Test default version."""
@@ -105,8 +105,3 @@ class TestPluginSpecification:
         assert spec.providers is None
         assert spec.services is None
         assert spec.evaluators is None
-
-
-
-
-

@@ -117,8 +117,3 @@ class TestPluginFactory:
         retrieved = get_knowledge_plugin()
 
         assert retrieved is created
-
-
-
-
-

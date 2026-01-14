@@ -91,12 +91,10 @@ def _normalize_schema_name(input_str: str) -> str:
 
 
 class MigrationBase(DeclarativeBase):
-
     pass
 
 
 class MigrationTable(MigrationBase):
-
     __tablename__ = "_migrations"
 
     id = Column(Integer, primary_key=True)
@@ -106,7 +104,6 @@ class MigrationTable(MigrationBase):
 
 
 class JournalTable(MigrationBase):
-
     __tablename__ = "_journal"
 
     plugin_name = Column(String(255), primary_key=True)
@@ -116,7 +113,6 @@ class JournalTable(MigrationBase):
 
 
 class SnapshotTable(MigrationBase):
-
     __tablename__ = "_snapshots"
 
     id = Column(Integer, primary_key=True)

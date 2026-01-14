@@ -337,7 +337,9 @@ class TwitterClient:
         poll: PollData | None = None,
     ) -> PostCreateResult:
         if self._config.dry_run:
-            return PostCreateResult(id="dry-run", text=text)
+            # Return a unique, stable-ish ID so callers can safely dedupe and persist
+            # without collisions across multiple dry-run posts.
+            return PostCreateResult(id=f"dry-run-{time.time_ns()}", text=text)
 
         body: dict = {"text": text}
 

@@ -105,5 +105,3 @@ class TestMessagePayload:
                 timestamp="2024-01-01T00:00:00Z",
                 is_bot=False,
             )
-
-

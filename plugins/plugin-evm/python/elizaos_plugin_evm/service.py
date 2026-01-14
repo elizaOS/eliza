@@ -98,4 +98,3 @@ class EVMService:
     async def force_update(self) -> EvmWalletData | None:
         await self.refresh_wallet_data()
         return await self.get_cached_data()
-

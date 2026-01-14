@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,7 +6,6 @@ from typing import Literal
 
 
 class VisionMode(str, Enum):
-
     OFF = "OFF"
     CAMERA = "CAMERA"
     SCREEN = "SCREEN"
@@ -16,14 +14,12 @@ class VisionMode(str, Enum):
 
 @dataclass
 class Point2D:
-
     x: float
     y: float
 
 
 @dataclass
 class BoundingBox:
-
     x: float
     y: float
     width: float
@@ -50,7 +46,6 @@ class CameraInfo:
 
 @dataclass
 class VisionFrame:
-
     timestamp: int
     width: int
     height: int
@@ -70,7 +65,6 @@ class DetectedObject:
 
 @dataclass
 class Keypoint:
-
     part: str
     position: Point2D
     score: float
@@ -90,7 +84,6 @@ class PersonInfo:
 
 @dataclass
 class SceneDescription:
-
     timestamp: int
     description: str
     objects: list[DetectedObject]
@@ -102,7 +95,6 @@ class SceneDescription:
 
 @dataclass
 class OCRBlock:
-
     text: str
     bbox: BoundingBox
     confidence: float
@@ -111,7 +103,6 @@ class OCRBlock:
 
 @dataclass
 class OCRWord:
-
     text: str
     bbox: BoundingBox
     confidence: float
@@ -119,7 +110,6 @@ class OCRWord:
 
 @dataclass
 class OCRResult:
-
     text: str
     blocks: list[OCRBlock]
     full_text: str
@@ -127,7 +117,6 @@ class OCRResult:
 
 @dataclass
 class Florence2Result:
-
     caption: str | None = None
     objects: list[dict] = field(default_factory=list)
     regions: list[dict] = field(default_factory=list)
@@ -136,7 +125,6 @@ class Florence2Result:
 
 @dataclass
 class TileAnalysis:
-
     timestamp: int
     florence2: Florence2Result | None = None
     ocr: OCRResult | None = None
@@ -147,7 +135,6 @@ class TileAnalysis:
 
 @dataclass
 class ScreenTile:
-
     id: str
     row: int
     col: int
@@ -161,7 +148,6 @@ class ScreenTile:
 
 @dataclass
 class ScreenCapture:
-
     timestamp: int
     width: int
     height: int
@@ -171,7 +157,6 @@ class ScreenCapture:
 
 @dataclass
 class ScreenAnalysis:
-
     full_screen_ocr: str | None = None
     active_tile: TileAnalysis | None = None
     grid_summary: str | None = None
@@ -181,14 +166,12 @@ class ScreenAnalysis:
 
 @dataclass
 class EnhancedSceneDescription(SceneDescription):
-
     screen_capture: ScreenCapture | None = None
     screen_analysis: ScreenAnalysis | None = None
 
 
 @dataclass
 class EntityAppearance:
-
     timestamp: int
     bounding_box: BoundingBox
     confidence: float
@@ -215,7 +198,6 @@ class EntityAttributes:
 
 @dataclass
 class TrackedEntity:
-
     id: str
     entity_type: Literal["person", "object", "pet"]
     first_seen: int
@@ -229,7 +211,6 @@ class TrackedEntity:
 
 @dataclass
 class RecentlyLeftEntity:
-
     entity_id: str
     left_at: int
     last_position: BoundingBox

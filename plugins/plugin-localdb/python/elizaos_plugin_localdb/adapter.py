@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from elizaos.types.database import IDatabaseAdapter
+from elizaos.types.memory import Memory as MemoryModel
 
 from .hnsw import SimpleHNSW
 from .storage import JsonFileStorage
@@ -46,6 +47,19 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
     async def init(self) -> None:
         await self._storage.init()
 
+        # Load any existing vector index ONCE, asynchronously.
+        # NOTE: We must not call `loop.run_until_complete` here because `init()`
+        # runs inside an already-running event loop (e.g., AgentRuntime.initialize()).
+        index_obj: dict[str, object] | None = None
+        try:
+            raw = await self._storage.load_raw("vectors/hnsw_index.json")
+            if raw:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    index_obj = parsed
+        except (FileNotFoundError, json.JSONDecodeError):
+            index_obj = None
+
         def save_cb():
             if self._vector_index:
                 index = self._vector_index.serialize()
@@ -57,19 +71,9 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
                 )
 
         def load_cb() -> Optional[Dict[str, Any]]:
-            import asyncio
-
-            try:
-                loop = asyncio.get_event_loop()
-                data = loop.run_until_complete(
-                    self._storage.load_raw("vectors/hnsw_index.json")
-                )
-                if data:
-                    return json.loads(data)
-            except (FileNotFoundError, json.JSONDecodeError):
-                # Index file doesn't exist yet or is invalid - will be created on save
-                pass
-            return None
+            # Best-effort: return the snapshot loaded during init().
+            # If there's no snapshot, the index starts empty and will be created on save.
+            return index_obj  # type: ignore[return-value]
 
         self._vector_index = SimpleHNSW(save_callback=save_cb, load_callback=load_cb)
         await self._vector_index.init(self._embedding_dimension)
@@ -212,7 +216,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
     async def delete_component(self, component_id: str) -> None:
         await self._storage.delete(COLLECTIONS["COMPONENTS"], component_id)
 
-    async def get_memories(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def get_memories(self, params: Dict[str, Any]) -> List[Any]:
         def predicate(m: Dict[str, Any]) -> bool:
             if params.get("entityId") and m.get("entityId") != params["entityId"]:
                 return False
@@ -244,14 +248,29 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
         if count:
             memories = memories[:count]
 
-        return memories
+        # Return pydantic Memory models so bootstrap providers can read `.content`, etc.
+        out: list[Any] = []
+        for m in memories:
+            if isinstance(m, dict):
+                try:
+                    out.append(MemoryModel.model_validate(m))
+                except Exception:
+                    # If a record is malformed, fall back to raw dict.
+                    out.append(m)
+        return out
 
-    async def get_memory_by_id(self, memory_id: str) -> Optional[Dict[str, Any]]:
-        return await self._storage.get(COLLECTIONS["MEMORIES"], memory_id)
+    async def get_memory_by_id(self, memory_id: str) -> Optional[Any]:
+        raw = await self._storage.get(COLLECTIONS["MEMORIES"], memory_id)
+        if isinstance(raw, dict):
+            try:
+                return MemoryModel.model_validate(raw)
+            except Exception:
+                return raw
+        return raw
 
     async def get_memories_by_ids(
         self, memory_ids: List[str], table_name: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Any]:
         memories = []
         for memory_id in memory_ids:
             memory = await self._storage.get(COLLECTIONS["MEMORIES"], memory_id)
@@ -259,11 +278,16 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
                 if table_name and memory.get("metadata", {}).get("type") != table_name:
                     continue
                 memories.append(memory)
-        return memories
+        out: list[Any] = []
+        for m in memories:
+            if isinstance(m, dict):
+                try:
+                    out.append(MemoryModel.model_validate(m))
+                except Exception:
+                    out.append(m)
+        return out
 
-    async def get_memories_by_room_ids(
-        self, params: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+    async def get_memories_by_room_ids(self, params: Dict[str, Any]) -> List[Any]:
         room_ids = params.get("roomIds", [])
         table_name = params.get("tableName")
         limit = params.get("limit")
@@ -281,7 +305,14 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
         if limit:
             memories = memories[:limit]
 
-        return memories
+        out: list[Any] = []
+        for m in memories:
+            if isinstance(m, dict):
+                try:
+                    out.append(MemoryModel.model_validate(m))
+                except Exception:
+                    out.append(m)
+        return out
 
     async def get_cached_embeddings(
         self, params: Dict[str, Any]
@@ -361,12 +392,28 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
 
     async def create_memory(
         self,
-        memory: Dict[str, Any],
+        memory: Any,
         table_name: str,
         unique: bool = False,
     ) -> str:
+        # The runtime may pass a Pydantic Memory model. Normalize to a dict.
+        if not isinstance(memory, dict):
+            dumped: object | None = None
+            model_dump = getattr(memory, "model_dump", None)
+            if callable(model_dump):
+                dumped = model_dump(by_alias=True)
+            else:
+                as_dict = getattr(memory, "dict", None)
+                if callable(as_dict):
+                    dumped = as_dict(by_alias=True)
+            if isinstance(dumped, dict):
+                memory = dumped
+
         memory_id = memory.get("id") or str(uuid.uuid4())
         now = int(datetime.utcnow().timestamp() * 1000)
+
+        raw_meta = memory.get("metadata")
+        meta = raw_meta if isinstance(raw_meta, dict) else {}
 
         stored_memory = {
             **memory,
@@ -375,7 +422,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
             "unique": unique or memory.get("unique", False),
             "createdAt": memory.get("createdAt") or now,
             "metadata": {
-                **memory.get("metadata", {}),
+                **meta,
                 "type": table_name,
             },
         }
@@ -389,6 +436,19 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
         return memory_id
 
     async def update_memory(self, memory: Dict[str, Any]) -> bool:
+        # Normalize to dict (runtime may pass a Pydantic model).
+        if not isinstance(memory, dict):
+            dumped: object | None = None
+            model_dump = getattr(memory, "model_dump", None)
+            if callable(model_dump):
+                dumped = model_dump(by_alias=True)
+            else:
+                as_dict = getattr(memory, "dict", None)
+                if callable(as_dict):
+                    dumped = as_dict(by_alias=True)
+            if isinstance(dumped, dict):
+                memory = dumped
+
         memory_id = memory.get("id")
         if not memory_id:
             return False
@@ -397,10 +457,15 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
         if not existing:
             return False
 
+        raw_meta = memory.get("metadata")
+        meta = raw_meta if isinstance(raw_meta, dict) else {}
+        raw_existing_meta = existing.get("metadata")
+        existing_meta = raw_existing_meta if isinstance(raw_existing_meta, dict) else {}
+
         updated = {
             **existing,
             **memory,
-            "metadata": {**existing.get("metadata", {}), **memory.get("metadata", {})},
+            "metadata": {**existing_meta, **meta},
         }
 
         await self._storage.set(COLLECTIONS["MEMORIES"], memory_id, updated)

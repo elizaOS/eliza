@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -76,4 +75,3 @@ async def test_generate_object_with_schema(client: GoogleGenAIClient) -> None:
     assert response.object
     assert "name" in response.object
     assert "age" in response.object
-

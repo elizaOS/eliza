@@ -2,6 +2,11 @@ import pytest
 
 from elizaos import AgentRuntime, Character
 from elizaos.settings import decrypt_string_value, encrypt_string_value, get_salt
+from elizaos.settings import migrate_encrypted_string_value
+from elizaos.settings import _derive_key
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.padding import PKCS7
+import secrets
 
 
 class TestSettingsCrypto:
@@ -32,6 +37,41 @@ class TestSettingsCrypto:
     def test_decrypt_non_encrypted_returns_original(self) -> None:
         salt = "test-salt-value"
         assert decrypt_string_value("not-encrypted", salt) == "not-encrypted"
+
+    def test_decrypt_legacy_v1_aes_cbc_value(self) -> None:
+        salt = "test-salt-value"
+        plaintext = "legacy-secret"
+
+        key = _derive_key(salt)
+        iv = secrets.token_bytes(16)
+
+        padder = PKCS7(128).padder()
+        padded = padder.update(plaintext.encode("utf-8")) + padder.finalize()
+
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(padded) + encryptor.finalize()
+
+        legacy = f"{iv.hex()}:{ciphertext.hex()}"
+        assert decrypt_string_value(legacy, salt) == plaintext
+
+    def test_migrate_legacy_v1_to_v2(self) -> None:
+        salt = "test-salt-value"
+        plaintext = "legacy-migrate"
+
+        key = _derive_key(salt)
+        iv = secrets.token_bytes(16)
+        padder = PKCS7(128).padder()
+        padded = padder.update(plaintext.encode("utf-8")) + padder.finalize()
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(padded) + encryptor.finalize()
+        legacy = f"{iv.hex()}:{ciphertext.hex()}"
+
+        migrated = migrate_encrypted_string_value(legacy, salt)
+        assert isinstance(migrated, str)
+        assert migrated.startswith("v2:")
+        assert decrypt_string_value(migrated, salt) == plaintext
 
     def test_runtime_get_setting_decrypts_secret_strings(
         self, monkeypatch: pytest.MonkeyPatch

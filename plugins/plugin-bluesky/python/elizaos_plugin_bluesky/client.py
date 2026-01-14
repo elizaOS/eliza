@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -34,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 
 class BlueSkyClient:
-
     def __init__(self, config: BlueSkyConfig) -> None:
         self.config = config
         self._http = httpx.AsyncClient(timeout=30.0)
@@ -334,7 +332,9 @@ class BlueSkyClient:
         except httpx.RequestError as e:
             raise NetworkError(f"Request failed: {e}") from e
 
-    def _map_post(self, data: dict[str, str | int | float | bool | dict | list | None]) -> BlueSkyPost:
+    def _map_post(
+        self, data: dict[str, str | int | float | bool | dict | list | None]
+    ) -> BlueSkyPost:
         record = data.get("record", {})
         return BlueSkyPost(
             uri=data["uri"],

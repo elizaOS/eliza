@@ -51,8 +51,3 @@ class CastError(FarcasterError):
 
 class ProfileError(FarcasterError):
     pass
-
-
-
-
-

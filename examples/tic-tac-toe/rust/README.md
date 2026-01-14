@@ -2,45 +2,30 @@
 
 A tic-tac-toe game demonstrating perfect play using minimax algorithm without any LLM.
 
-## Status
+## Running
 
-Coming soon! The Rust implementation will mirror the TypeScript version with:
+```bash
+cd examples/tic-tac-toe/rust
 
-- No character (anonymous agent)
-- Custom model handlers for TEXT_LARGE/TEXT_SMALL
-- Minimax algorithm for perfect play
-- Zero LLM calls
+# Interactive (prompts for mode)
+cargo run
 
-## Planned Structure
+# Watch AI vs AI
+cargo run -- --watch
 
-```rust
-// Custom model handler - no LLM
-async fn tic_tac_toe_model_handler(
-    _runtime: &AgentRuntime,
-    params: serde_json::Value,
-) -> Result<String> {
-    let prompt = params["prompt"].as_str().unwrap_or("");
-    let board = parse_board_from_text(prompt)?;
-    let ai_player = detect_ai_player(prompt);
-    let optimal_move = minimax(&board, true, ai_player);
-    Ok(optimal_move.to_string())
-}
+# Play vs AI
+cargo run -- --human
 
-// Plugin registration
-let plugin = Plugin {
-    name: "tic-tac-toe",
-    models: [(ModelType::TEXT_SMALL, tic_tac_toe_model_handler)].into(),
-    priority: 100,
-    ..Default::default()
-};
-
-// Anonymous agent
-let runtime = AgentRuntime::new(RuntimeOptions {
-    character: None,  // Uses Agent-N
-    plugins: vec![local_db_plugin, bootstrap_plugin, plugin],
-    ..Default::default()
-}).await?;
+# Benchmark
+cargo run -- --bench
 ```
+
+## How It Works
+
+- The game loop sends each board update as a real Eliza `Memory`.
+- Each turn is processed through `runtime.message_service().handle_message(...)` (canonical pipeline).
+- A custom plugin intercepts `TEXT_LARGE` / `TEXT_SMALL` model calls and returns an XML response containing the optimal move computed via minimax.
+- **No LLM calls are made** — the “model” is just a rule-based minimax handler.
 
 
 

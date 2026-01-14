@@ -416,7 +416,7 @@ class BFCLReporter:
         ])
 
         # Add category comparison with GPT-4o as reference
-        gpt4o = LEADERBOARD_SCORES.get("gpt-4o")
+        gpt4o = LEADERBOARD_SCORES.get("gpt-5")
         if gpt4o:
             lines.extend([
                 "### vs GPT-4o",

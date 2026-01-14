@@ -78,6 +78,3 @@ impl GitHubAction for CreateCommentAction {
         ))
     }
 }
-
-
-

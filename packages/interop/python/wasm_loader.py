@@ -53,7 +53,15 @@ class WasmPluginLoader:
     - dealloc(ptr: i32, size: i32)
     """
 
-    def __init__(self, wasm_path: str | Path) -> None:
+    def __init__(
+        self,
+        wasm_path: str | Path,
+        *,
+        max_module_bytes: int | None = None,
+        max_memory_bytes: int | None = None,
+        fuel: int | None = None,
+        max_string_bytes: int = 1_000_000,
+    ) -> None:
         """
         Initialize the WASM plugin loader.
 
@@ -74,9 +82,26 @@ class WasmPluginLoader:
         if not self.wasm_path.exists():
             raise FileNotFoundError(f"WASM file not found: {wasm_path}")
 
+        if max_module_bytes is not None:
+            size = self.wasm_path.stat().st_size
+            if size > max_module_bytes:
+                raise ValueError(
+                    f"WASM module too large ({size} bytes > {max_module_bytes} bytes)"
+                )
+
+        self.max_memory_bytes = max_memory_bytes
+        self.max_string_bytes = max_string_bytes
+
         # Initialize wasmtime engine and store
-        self.engine = wasmtime.Engine()
+        if fuel is not None:
+            config = wasmtime.Config()
+            config.consume_fuel = True
+            self.engine = wasmtime.Engine(config)
+        else:
+            self.engine = wasmtime.Engine()
         self.store = wasmtime.Store(self.engine)
+        if fuel is not None:
+            self.store.add_fuel(fuel)
         self.linker = wasmtime.Linker(self.engine)
 
         # Load and instantiate the module
@@ -121,6 +146,13 @@ class WasmPluginLoader:
             raise RuntimeError("WASM module does not export 'memory'")
         self.memory = memory_export
 
+        if self.max_memory_bytes is not None:
+            mem_data = self.memory.data_ptr(self.store)
+            if len(mem_data) > self.max_memory_bytes:
+                raise RuntimeError(
+                    f"WASM memory too large ({len(mem_data)} bytes > {self.max_memory_bytes} bytes)"
+                )
+
     def _read_memory(self, ptr: int, length: int) -> bytes:
         """Read bytes from WASM memory."""
         data = self.memory.data_ptr(self.store)
@@ -136,8 +168,11 @@ class WasmPluginLoader:
         """Read a null-terminated string from WASM memory."""
         mem_data = self.memory.data_ptr(self.store)
         end = ptr
-        while mem_data[end] != 0:
+        limit = ptr + self.max_string_bytes
+        while end < len(mem_data) and end < limit and mem_data[end] != 0:
             end += 1
+        if end >= len(mem_data) or end >= limit:
+            raise RuntimeError("WASM string exceeded maximum length or memory bounds")
         return bytes(mem_data[ptr:end]).decode("utf-8")
 
     def _call_with_string(self, func_name: str, *strings: str) -> str | None:
@@ -308,7 +343,14 @@ class WasmPluginLoader:
         return result
 
 
-def load_wasm_plugin(wasm_path: str | Path, manifest_path: str | Path | None = None) -> Plugin:
+def load_wasm_plugin(
+    wasm_path: str | Path,
+    manifest_path: str | Path | None = None,
+    *,
+    max_module_bytes: int | None = None,
+    max_memory_bytes: int | None = None,
+    fuel: int | None = None,
+) -> Plugin:
     """
     Load a WASM plugin and return an elizaOS Plugin interface.
 
@@ -319,7 +361,12 @@ def load_wasm_plugin(wasm_path: str | Path, manifest_path: str | Path | None = N
     Returns:
         elizaOS Plugin instance.
     """
-    loader = WasmPluginLoader(wasm_path)
+    loader = WasmPluginLoader(
+        wasm_path,
+        max_module_bytes=max_module_bytes,
+        max_memory_bytes=max_memory_bytes,
+        fuel=fuel,
+    )
 
     # Get manifest
     if manifest_path:

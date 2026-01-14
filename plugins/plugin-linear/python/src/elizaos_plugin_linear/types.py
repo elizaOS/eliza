@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -68,7 +67,12 @@ class LinearSearchFilters:
 
 
 class LinearAPIError(Exception):
-    def __init__(self, message: str, status: int | None = None, response: dict[str, str | int | float | bool | list | dict | None] | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        status: int | None = None,
+        response: dict[str, str | int | float | bool | list | dict | None] | None = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.status = status
@@ -139,6 +143,3 @@ class CommentData(TypedDict):
     id: str
     body: str
     createdAt: str
-
-
-

@@ -21,6 +21,7 @@ def extract_issue_number(text: str) -> int | None:
 
     return None
 
+
 class IssueContextProvider:
     @property
     def name(self) -> str:

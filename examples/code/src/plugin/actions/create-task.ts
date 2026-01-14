@@ -11,6 +11,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { CodeTaskService } from "../services/code-task.js";
+import type { SubAgentType } from "../../types.js";
 
 interface TaskRequest {
   name: string;
@@ -311,7 +312,9 @@ IMPORTANT:
     return parseTaskRequest(
       stripTaskContext(currentMessage).trim() || conversationContext.trim(),
     );
-  } catch {
+  } catch (err: Error) {
+    const msg = err.message;
+    logger.error(`CREATE_TASK planning model failed: ${msg}`);
     // Fallback to simple parsing if LLM fails
     const context = conversationContext.trim();
     const current = stripTaskContext(currentMessage).trim();
@@ -338,8 +341,6 @@ USE THIS ACTION WHEN:
 - User describes a complex feature without specifying individual files
 
 DO NOT USE WHEN:
-- User wants a single file created (use WRITE_FILE)
-- User provides an explicit file path like "create tetris.html" (use WRITE_FILE)
 - User wants a small code snippet or function (use GENERATE)
 - User wants to understand or plan something (use PLAN or ASK)
 - Request is simple enough to complete in one action
@@ -366,13 +367,18 @@ INPUTS:
       text.includes("implement") ||
       text.includes("build") ||
       text.includes("create") ||
-      text.includes("develop");
+      text.includes("develop") ||
+      text.includes("add") ||
+      text.includes("update") ||
+      text.includes("modify") ||
+      text.includes("change") ||
+      text.includes("refactor") ||
+      text.includes("fix");
 
     if (!isExplicitTaskRequest && !hasBuildIntent) return false;
 
-    // If the user provided an explicit file path (e.g., "tetris.html"), prefer WRITE_FILE / EDIT_FILE.
-    const hasFileExtension = /\.[a-z0-9]{1,8}\b/i.test(text);
-    if (hasFileExtension && !isExplicitTaskRequest) return false;
+    // In orchestrator mode, we allow tasks even for explicit file edits/creates,
+    // so the main agent does not write/edit files directly.
 
     // Avoid spawning tasks for tiny “generate a function/class” requests unless explicitly asked.
     const looksLikeSmallSnippet =
@@ -400,15 +406,22 @@ INPUTS:
 
     // Check for options-provided title and steps (useful for programmatic calls and tests)
     const opts = options as
-      | { title?: string; steps?: string[]; description?: string }
+      | {
+          title?: string;
+          steps?: string[];
+          description?: string;
+          subAgentType?: string;
+        }
       | undefined;
     const optTitle = opts?.title;
     const optSteps = opts?.steps;
     const optDescription = opts?.description;
+    const optSubAgentType = normalizeSubAgentType(opts?.subAgentType);
 
     const rawText = message.content.text ?? "";
     const stripped = stripTaskContext(rawText);
     const parsed = parseTaskRequest(rawText);
+    const parsedSubAgentType = extractRequestedSubAgentType(stripped);
 
     const hasStructuredFields =
       /(?:^|\n)\s*(?:create\s+(?:a\s+)?task|start\s+(?:a\s+)?task|new\s+task|task)\s*[:-]/i.test(
@@ -446,7 +459,14 @@ INPUTS:
     try {
       // Create task using service (persisted via core runtime)
       const roomId = message.roomId as UUID | undefined;
-      const task = await service.createCodeTask(name, description, roomId);
+      const subAgentType: SubAgentType =
+        optSubAgentType ?? parsedSubAgentType ?? "eliza";
+      const task = await service.createCodeTask(
+        name,
+        description,
+        roomId,
+        subAgentType,
+      );
 
       // If user didn't provide steps via options or parsing, generate a plan using a model.
       // When steps are explicitly provided (optSteps), skip model generation.
@@ -515,6 +535,7 @@ INPUTS:
           : description;
       const lines: string[] = [];
       lines.push(`Created task: ${task.name}`);
+      lines.push(`Sub-agent: ${subAgentType}`);
       lines.push(`Description: ${descPreview}`);
       if (finalSteps.length > 0) lines.push(`Steps: ${finalSteps.length}`);
       if (planPreview) {
@@ -582,6 +603,65 @@ INPUTS:
     ],
   ],
 };
+
+function extractRequestedSubAgentType(text: string): SubAgentType | undefined {
+  const lower = text.toLowerCase();
+
+  // Explicit directive patterns
+  const patterns = [
+    /(?:^|\n)\s*(?:agent|sub-agent|subagent|worker)\s*[:=]\s*([a-z0-9_-]+)/i,
+    /\buse\s+([a-z0-9_-]+)\s+(?:agent|sub-agent|subagent|worker)\b/i,
+    /\bwith\s+([a-z0-9_-]+)\s+(?:agent|sub-agent|subagent|worker)\b/i,
+  ];
+
+  for (const p of patterns) {
+    const m = lower.match(p);
+    if (m?.[1]) {
+      const normalized = normalizeSubAgentType(m[1]);
+      if (normalized) return normalized;
+    }
+  }
+
+  // Shorthand mentions
+  if (lower.includes("claude-code") || lower.includes("claude code")) {
+    return "claude-code";
+  }
+  if (lower.includes("codex")) return "codex";
+  if (lower.includes("opencode") || lower.includes("open code")) return "opencode";
+  if (lower.includes("sweagent") || lower.includes("swe-agent")) return "sweagent";
+  if (
+    lower.includes("elizaos-native") ||
+    lower.includes("eliza native") ||
+    lower.includes("native sub-agent")
+  ) {
+    return "elizaos-native";
+  }
+
+  return undefined;
+}
+
+function normalizeSubAgentType(input: string | undefined): SubAgentType | null {
+  const raw = (input ?? "").trim().toLowerCase();
+  if (!raw) return null;
+
+  if (raw === "eliza") return "eliza";
+  if (raw === "claude" || raw === "claude-code" || raw === "claudecode")
+    return "claude-code";
+  if (raw === "codex") return "codex";
+  if (raw === "opencode" || raw === "open-code" || raw === "open_code")
+    return "opencode";
+  if (raw === "sweagent" || raw === "swe-agent" || raw === "swe_agent")
+    return "sweagent";
+  if (
+    raw === "elizaos-native" ||
+    raw === "eliza-native" ||
+    raw === "native" ||
+    raw === "elizaosnative"
+  )
+    return "elizaos-native";
+
+  return null;
+}
 
 function parseNumberedSteps(text: string): string[] {
   const lines = text

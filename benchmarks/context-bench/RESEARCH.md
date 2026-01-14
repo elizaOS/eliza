@@ -635,7 +635,7 @@ export ANTHROPIC_API_KEY=your_key
 python run_benchmark.py --provider anthropic
 ```
 
-### With ElizaOS Runtime
+### With ElizaOS Runtime (Model Layer Only)
 ```python
 from elizaos.runtime import AgentRuntime
 from elizaos_plugin_openai import get_openai_plugin
@@ -653,6 +653,58 @@ async def main():
     results = await run_eliza_benchmark(runtime)
     print(f"Accuracy: {results.metrics.overall_accuracy:.1%}")
 ```
+
+### Full Agent Loop Benchmark (Canonical Eliza Flow)
+
+The most comprehensive mode tests the **entire Eliza agent architecture**, not just the model layer:
+
+```bash
+export OPENAI_API_KEY=your_key
+python run_benchmark.py --provider eliza-agent
+```
+
+This mode exercises the **canonical Eliza flow**:
+
+1. **CONTEXT_BENCH Provider** → Injects benchmark context into agent state
+2. **MESSAGE_HANDLER_TEMPLATE** → Agent generates response with action selection
+3. **REPLY Action** (from bootstrap) → Processes and formats the response
+4. **CONTEXT_BENCH_EVALUATOR** → Assesses answer accuracy
+
+```python
+from elizaos_plugin_openai import get_openai_plugin
+from elizaos_context_bench.eliza_plugin import (
+    setup_benchmark_runtime,
+    BenchmarkSession,
+    run_benchmark_task_through_agent,
+)
+
+async def main():
+    # Setup runtime with bootstrap enabled (REPLY, CHARACTER, etc.)
+    runtime = await setup_benchmark_runtime(get_openai_plugin())
+    
+    # Run a benchmark task through the FULL agent loop
+    session = BenchmarkSession()
+    result = await run_benchmark_task_through_agent(
+        runtime=runtime,
+        session=session,
+        task_id="test_1",
+        context="The secret code for project NEXUS is ALPHA-7.",
+        question="What is the secret code for project NEXUS?",
+        expected_answer="ALPHA-7",
+    )
+    
+    print(f"Retrieval success: {result.retrieval_success}")
+    print(f"Response: {result.predicted_answer}")
+    
+    await runtime.stop()
+```
+
+**What makes this canonical:**
+- **Bootstrap is enabled** (default) - loads `REPLY`, `IGNORE`, `NONE` actions
+- **12 bootstrap providers** - `CHARACTER`, `ACTIONS`, `RECENT_MESSAGES`, etc.
+- **Full message processing** - `message_service.handle_message()` orchestrates everything
+- **Action execution** - The agent chooses and executes actions via `process_actions()`
+- **Evaluator pipeline** - Runs after response via `runtime.evaluate()`
 
 ---
 

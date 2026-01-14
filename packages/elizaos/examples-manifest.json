@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-01-12T07:03:29.765Z",
+  "generatedAt": "2026-01-13T18:35:23.857Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "examples": [
     {
@@ -68,6 +68,70 @@
       "category": "a2a"
     },
     {
+      "name": "art",
+      "description": "Continuous reinforcement learning system for training local LLMs to play games and solve puzzles usi",
+      "path": "/Users/shawwalters/eliza-ok/examples/art",
+      "languages": [
+        {
+          "language": "python",
+          "path": "/Users/shawwalters/eliza-ok/examples/art",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": true
+        }
+      ],
+      "category": "art"
+    },
+    {
+      "name": "autonomous",
+      "description": "This folder contains **three** minimal, sandboxed “always-on” autonomous loop examples (TypeScript, ",
+      "path": "/Users/shawwalters/eliza-ok/examples/autonomous",
+      "languages": [
+        {
+          "language": "python",
+          "path": "/Users/shawwalters/eliza-ok/examples/autonomous/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/autonomous/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/Users/shawwalters/eliza-ok/examples/autonomous/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "autonomous"
+    },
+    {
+      "name": "avatar",
+      "description": "This is a simple, browser-only demo that renders a VRM avatar and chats with an ElizaOS agent.",
+      "path": "/Users/shawwalters/eliza-ok/examples/avatar",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/avatar",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "avatar"
+    },
+    {
       "name": "aws",
       "description": "Deploy AI chat agents as serverless AWS Lambda functions. These examples show how to run an elizaOS ",
       "path": "/Users/shawwalters/eliza-ok/examples/aws",
@@ -98,6 +162,38 @@
         }
       ],
       "category": "aws"
+    },
+    {
+      "name": "bluesky",
+      "description": "A full-featured AI agent running on Bluesky, implemented in TypeScript, Python, and Rust. This agent",
+      "path": "/Users/shawwalters/eliza-ok/examples/bluesky",
+      "languages": [
+        {
+          "language": "python",
+          "path": "/Users/shawwalters/eliza-ok/examples/bluesky/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/bluesky/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/Users/shawwalters/eliza-ok/examples/bluesky/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "bluesky"
     },
     {
       "name": "chat",
@@ -173,15 +269,31 @@
     },
     {
       "name": "discord",
-      "description": "This example runs an **elizaOS** agent on Discord using:",
+      "description": "Full-featured Discord AI agents using elizaOS, available in **TypeScript**, **Python**, and **Rust**",
       "path": "/Users/shawwalters/eliza-ok/examples/discord",
       "languages": [
         {
+          "language": "python",
+          "path": "/Users/shawwalters/eliza-ok/examples/discord/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
           "language": "typescript",
-          "path": "/Users/shawwalters/eliza-ok/examples/discord",
+          "path": "/Users/shawwalters/eliza-ok/examples/discord/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/Users/shawwalters/eliza-ok/examples/discord/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
           "hasPyprojectToml": false
         }
       ],
@@ -222,6 +334,14 @@
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/Users/shawwalters/eliza-ok/examples/game-of-life/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
           "hasPyprojectToml": false
         }
       ],
@@ -276,6 +396,22 @@
       "category": "html"
     },
     {
+      "name": "lp-manager",
+      "description": "Autonomous liquidity position management agent for DeFi. Monitors LP positions across Solana (Raydium, Orca, Meteora) and EVM (Uniswap V3, PancakeSwap V3, Aerodrome) DEXes with automatic rebalancing.",
+      "path": "/Users/shawwalters/eliza-ok/examples/lp-manager",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/lp-manager/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "lp-manager"
+    },
+    {
       "name": "mcp",
       "description": "This directory contains MCP (Model Context Protocol) server implementations that expose an elizaOS a",
       "path": "/Users/shawwalters/eliza-ok/examples/mcp",
@@ -322,6 +458,38 @@
         }
       ],
       "category": "next"
+    },
+    {
+      "name": "polymarket",
+      "description": "This folder contains a small **autonomous Polymarket demo agent** with a CLI in:",
+      "path": "/Users/shawwalters/eliza-ok/examples/polymarket",
+      "languages": [
+        {
+          "language": "python",
+          "path": "/Users/shawwalters/eliza-ok/examples/polymarket/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": true
+        },
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/polymarket/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/Users/shawwalters/eliza-ok/examples/polymarket/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "polymarket"
     },
     {
       "name": "react",
@@ -428,6 +596,38 @@
       "category": "rest-api"
     },
     {
+      "name": "roblox",
+      "description": "This folder shows how to run an **elizaOS agent** that can talk to a Roblox experience and trigger i",
+      "path": "/Users/shawwalters/eliza-ok/examples/roblox",
+      "languages": [
+        {
+          "language": "python",
+          "path": "/Users/shawwalters/eliza-ok/examples/roblox/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/roblox/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/Users/shawwalters/eliza-ok/examples/roblox/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "roblox"
+    },
+    {
       "name": "supabase",
       "description": "Deploy AI chat agents as serverless Supabase Edge Functions. These examples show how to run an eliza",
       "path": "/Users/shawwalters/eliza-ok/examples/supabase",
@@ -442,6 +642,38 @@
         }
       ],
       "category": "supabase"
+    },
+    {
+      "name": "telegram",
+      "description": "Telegram bots using elizaOS with the full message pipeline (providers → LLM → actions → evaluators).",
+      "path": "/Users/shawwalters/eliza-ok/examples/telegram",
+      "languages": [
+        {
+          "language": "python",
+          "path": "/Users/shawwalters/eliza-ok/examples/telegram/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/telegram/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/Users/shawwalters/eliza-ok/examples/telegram/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "telegram"
     },
     {
       "name": "text-adventure",
@@ -503,6 +735,14 @@
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
           "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/Users/shawwalters/eliza-ok/examples/tic-tac-toe/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
         }
       ],
       "category": "tic-tac-toe"
@@ -522,11 +762,47 @@
         }
       ],
       "category": "vercel"
+    },
+    {
+      "name": "xai",
+      "description": "A full-featured elizaOS agent that runs on **X (formerly Twitter)** and uses:",
+      "path": "/Users/shawwalters/eliza-ok/examples/xai",
+      "languages": [
+        {
+          "language": "python",
+          "path": "/Users/shawwalters/eliza-ok/examples/twitter-xai/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/twitter-xai/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/Users/shawwalters/eliza-ok/examples/twitter-xai/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "xai"
     }
   ],
   "categories": [
     "a2a",
+    "art",
+    "autonomous",
+    "avatar",
     "aws",
+    "bluesky",
     "chat",
     "cloudflare",
     "code",
@@ -535,16 +811,21 @@
     "game-of-life",
     "gcp",
     "html",
+    "lp-manager",
     "mcp",
     "next",
     "plugin",
+    "polymarket",
     "react",
     "react-wasm",
     "rest-api",
+    "roblox",
     "supabase",
+    "telegram",
     "text-adventure",
     "tic-tac-toe",
-    "vercel"
+    "vercel",
+    "xai"
   ],
   "languages": [
     "actix",

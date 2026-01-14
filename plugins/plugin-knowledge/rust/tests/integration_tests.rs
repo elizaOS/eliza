@@ -1,9 +1,9 @@
 //! Integration tests for knowledge plugin.
 
 use elizaos_plugin_knowledge::{
-    KnowledgeConfig, KnowledgeItem, KnowledgeFragment, KnowledgeDocument,
-    EmbeddingResult, SearchResult, AddKnowledgeOptions,
-    ProviderRateLimits, ChunkResult, ProcessingResult, EmbeddingProvider, MemoryType,
+    AddKnowledgeOptions, ChunkResult, EmbeddingProvider, EmbeddingResult, KnowledgeConfig,
+    KnowledgeDocument, KnowledgeFragment, KnowledgeItem, MemoryType, ProcessingResult,
+    ProviderRateLimits, SearchResult,
 };
 use std::collections::HashMap;
 
@@ -36,7 +36,7 @@ fn test_knowledge_item_serialization() {
         embedding: Some(vec![0.1, 0.2, 0.3]),
         similarity: Some(0.95),
     };
-    
+
     let json = serde_json::to_string(&item).unwrap();
     assert!(json.contains("test-id"));
     assert!(json.contains("Test content"));
@@ -52,7 +52,7 @@ fn test_knowledge_fragment_serialization() {
         embedding: None,
         metadata: HashMap::new(),
     };
-    
+
     let json = serde_json::to_string(&fragment).unwrap();
     assert!(json.contains("frag-1"));
     assert!(json.contains("doc-1"));
@@ -69,7 +69,7 @@ fn test_knowledge_document_serialization() {
         fragments: vec![],
         metadata: HashMap::new(),
     };
-    
+
     let json = serde_json::to_string(&doc).unwrap();
     assert!(json.contains("doc-1"));
     assert!(json.contains("test.txt"));
@@ -82,7 +82,7 @@ fn test_embedding_result_serialization() {
         tokens_used: 10,
         model: "text-embedding-3-small".to_string(),
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("text-embedding-3-small"));
 }
@@ -97,7 +97,7 @@ fn test_search_result_serialization() {
         document_title: Some("Test Doc".to_string()),
         metadata: HashMap::new(),
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("result-1"));
     assert!(json.contains("0.95"));
@@ -129,7 +129,7 @@ fn test_chunk_result_serialization() {
         total_tokens: 100,
         chunk_count: 2,
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("chunk1"));
     assert!(json.contains("chunk2"));
@@ -143,7 +143,7 @@ fn test_processing_result_serialization() {
         success: true,
         error: None,
     };
-    
+
     let json = serde_json::to_string(&result).unwrap();
     assert!(json.contains("doc-1"));
     assert!(json.contains("true"));
@@ -154,7 +154,7 @@ fn test_memory_type_serialization() {
     let memory_type = MemoryType::Document;
     let json = serde_json::to_string(&memory_type).unwrap();
     assert_eq!(json, "\"document\"");
-    
+
     let memory_type = MemoryType::Fragment;
     let json = serde_json::to_string(&memory_type).unwrap();
     assert_eq!(json, "\"fragment\"");

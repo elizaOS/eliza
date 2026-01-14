@@ -70,7 +70,7 @@ class TrainingConfig:
     max_steps: int = 100
 
     # RULER settings
-    judge_model: str = "openai/gpt-4o-mini"
+    judge_model: str = "openai/gpt-5-mini"
     judge_temperature: float = 0.0
 
     # Checkpointing

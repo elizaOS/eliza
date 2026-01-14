@@ -45,7 +45,8 @@ impl Provider for FeedItemsProvider {
             ("feedCount".to_string(), "0".to_string()),
         ]);
 
-        let text = "No RSS feed items available. Subscribe to feeds to see news articles here.".to_string();
+        let text = "No RSS feed items available. Subscribe to feeds to see news articles here."
+            .to_string();
 
         let data = serde_json::json!({
             "count": 0,
@@ -75,7 +76,7 @@ mod tests {
             conversation_id: "test".to_string(),
             agent_id: "test".to_string(),
         };
-        
+
         let result = provider.get(params).await;
         assert!(result.text.contains("No RSS feed items"));
     }

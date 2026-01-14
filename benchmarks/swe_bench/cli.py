@@ -17,6 +17,7 @@ _PYTHON_PKG = _ROOT / "packages" / "python"
 if _PYTHON_PKG.exists():
     sys.path.insert(0, str(_PYTHON_PKG))
 
+from .character import create_swe_bench_character
 from .dataset import SWEBenchDataset
 from .runner import SWEBenchRunner
 from .types import SWEBenchConfig, SWEBenchVariant
@@ -228,7 +229,6 @@ async def run_benchmark(args: argparse.Namespace) -> None:
     # Import here to avoid import errors if elizaos not installed
     try:
         from elizaos.runtime import AgentRuntime
-        from elizaos.types.agent import Character
     except ImportError:
         print("Error: elizaos package not found. Please install it first.")
         print("  pip install elizaos")
@@ -251,18 +251,23 @@ async def run_benchmark(args: argparse.Namespace) -> None:
         swebench_max_workers=args.swebench_max_workers,
     )
 
-    # Create runtime
-    character = Character(
+    # Create SWE-bench character with proper templates and settings
+    character = create_swe_bench_character(
         name="SWE-Agent",
-        bio="A software engineering agent for fixing bugs and implementing features.",
+        model_name=args.model,
     )
 
+    # Create runtime with character - basicCapabilities enabled by default
     runtime = AgentRuntime(
         character=character,
         log_level="DEBUG" if args.verbose else "INFO",
+        # Don't disable basic capabilities - we want providers, actions, etc.
+        disable_basic_capabilities=False,
+        # Disable the should-respond check - always respond in benchmark mode
+        check_should_respond=False,
     )
 
-    # Initialize runtime
+    # Initialize runtime - this registers bootstrap plugin with basic capabilities
     await runtime.initialize()
 
     # Register a model handler (Python runtime does not ship with one by default).
@@ -273,10 +278,46 @@ async def run_benchmark(args: argparse.Namespace) -> None:
         from elizaos.types.model import ModelType
 
         if args.mock_model:
-            async def _mock_text_large(_runtime, params: dict[str, object]) -> str:
+            # Counter to track mock calls for varied responses
+            _mock_call_count = [0]
+
+            async def _mock_text_large(_runtime: object, params: dict[str, object]) -> str:
+                """Mock model that returns XML-formatted responses for testing."""
                 _ = _runtime
                 _ = params
-                return "THOUGHT: Running in mock mode.\nACTION: SUBMIT\nPARAMS: {}"
+                _mock_call_count[0] += 1
+                call_num = _mock_call_count[0]
+
+                # Return a sequence of actions for testing the flow
+                if call_num == 1:
+                    return """<response>
+<thought>Let me start by listing the files to understand the repository structure.</thought>
+<text>Listing repository files...</text>
+<actions>LIST_FILES</actions>
+<params>
+<LIST_FILES>
+<directory>.</directory>
+<pattern>*.py</pattern>
+</LIST_FILES>
+</params>
+</response>"""
+                elif call_num == 2:
+                    return """<response>
+<thought>Now that I've seen the structure, let me submit since this is a mock test.</thought>
+<text>Submitting mock solution...</text>
+<actions>SUBMIT</actions>
+<params>
+</params>
+</response>"""
+                else:
+                    # Default: just submit
+                    return """<response>
+<thought>Mock mode - submitting.</thought>
+<text>Done.</text>
+<actions>SUBMIT</actions>
+<params>
+</params>
+</response>"""
 
             runtime.register_model(
                 ModelType.TEXT_LARGE, _mock_text_large, provider="mock", priority=100
@@ -293,10 +334,14 @@ async def run_benchmark(args: argparse.Namespace) -> None:
             client = AsyncOpenAI()
             model_name = args.model
 
-            async def _openai_text_large(_runtime, params: dict[str, object]) -> str:
+            async def _openai_text_large(_runtime: object, params: dict[str, object]) -> str:
+                """OpenAI model handler for SWE-bench."""
                 _ = _runtime
                 prompt_raw = params.get("prompt", "")
                 prompt = str(prompt_raw) if prompt_raw is not None else ""
+
+                system_raw = params.get("system", "")
+                system = str(system_raw) if system_raw else None
 
                 temperature_raw = params.get("temperature", 0.1)
                 temperature = (
@@ -310,9 +355,14 @@ async def run_benchmark(args: argparse.Namespace) -> None:
                 elif isinstance(max_tokens_raw, float):
                     max_tokens = int(max_tokens_raw)
 
+                messages: list[dict[str, str]] = []
+                if system:
+                    messages.append({"role": "system", "content": system})
+                messages.append({"role": "user", "content": prompt})
+
                 resp = await client.chat.completions.create(
                     model=model_name,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=messages,  # type: ignore[arg-type]
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )

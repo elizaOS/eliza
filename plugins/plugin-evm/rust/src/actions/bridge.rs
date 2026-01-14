@@ -266,13 +266,15 @@ impl BridgeAction {
         let chain_id = params.from_chain.chain_id();
         let routes = self.get_routes(&params).await?;
 
-        let route = routes.routes.first().ok_or_else(|| {
-            EVMError::new(EVMErrorCode::RouteNotFound, "No bridge routes found")
-        })?;
+        let route = routes
+            .routes
+            .first()
+            .ok_or_else(|| EVMError::new(EVMErrorCode::RouteNotFound, "No bridge routes found"))?;
 
-        let step = route.steps.first().ok_or_else(|| {
-            EVMError::new(EVMErrorCode::RouteNotFound, "No bridge steps found")
-        })?;
+        let step = route
+            .steps
+            .first()
+            .ok_or_else(|| EVMError::new(EVMErrorCode::RouteNotFound, "No bridge steps found"))?;
 
         let tx_request = step.transaction_request.as_ref().ok_or_else(|| {
             EVMError::new(
@@ -281,17 +283,17 @@ impl BridgeAction {
             )
         })?;
 
-        let to: Address = tx_request.to.parse().map_err(|_| {
-            EVMError::invalid_params("Invalid to address in route")
-        })?;
+        let to: Address = tx_request
+            .to
+            .parse()
+            .map_err(|_| EVMError::invalid_params("Invalid to address in route"))?;
 
         let value = U256::from_str_radix(tx_request.value.trim_start_matches("0x"), 16)
             .unwrap_or(U256::ZERO);
 
         let data = Bytes::from(
-            hex::decode(tx_request.data.trim_start_matches("0x")).map_err(|e| {
-                EVMError::invalid_params(format!("Invalid data in route: {e}"))
-            })?,
+            hex::decode(tx_request.data.trim_start_matches("0x"))
+                .map_err(|e| EVMError::invalid_params(format!("Invalid data in route: {e}")))?,
         );
 
         let gas_limit: Option<u64> = tx_request.gas_limit.as_ref().and_then(|g| g.parse().ok());

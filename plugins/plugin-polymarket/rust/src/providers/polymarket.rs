@@ -32,8 +32,7 @@ impl PolymarketProviderTrait for PolymarketProvider {
             features_available.push("wallet_operations");
         }
         if context.has_api_creds {
-            features_available.push("authenticated_trading");
-            features_available.push("order_management");
+            features_available.push("authenticated_requests");
         }
 
         let features_str = features_available.join(", ");
@@ -86,7 +85,7 @@ mod tests {
         let result = provider.get(&context).await;
 
         assert!(result.text.contains("wallet_operations"));
-        assert!(result.text.contains("authenticated_trading"));
+        assert!(result.text.contains("authenticated_requests"));
         assert!(result.text.contains("custom.api"));
     }
 

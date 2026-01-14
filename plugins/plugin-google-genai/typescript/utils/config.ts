@@ -2,6 +2,15 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from "@google/genai";
 
+function getEnvValue(key: string): string | undefined {
+  // In browsers, `process` is not defined. `typeof process` is safe.
+  if (typeof process === "undefined") {
+    return undefined;
+  }
+  const value = process.env[key];
+  return value === undefined ? undefined : String(value);
+}
+
 export function getSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -11,11 +20,7 @@ export function getSetting(
   if (runtimeValue !== undefined) {
     return String(runtimeValue);
   }
-  const envValue = process.env[key];
-  if (envValue !== undefined) {
-    return envValue;
-  }
-  return defaultValue;
+  return getEnvValue(key) ?? defaultValue;
 }
 
 export function getApiKey(runtime: IAgentRuntime): string | undefined {

@@ -1,0 +1,30 @@
+[package]
+name = "tic-tac-toe"
+version = "0.1.0"
+edition = "2021"
+description = "elizaOS Tic-Tac-Toe Demo - perfect play via minimax (no LLM)"
+publish = false
+
+[[bin]]
+name = "tic-tac-toe"
+path = "src/main.rs"
+
+[dependencies]
+# elizaOS Core
+elizaos = { path = "../../../packages/rust" }
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "time"] }
+
+# Error handling
+anyhow = "1.0"
+
+# Serialization
+serde_json = "1.0"
+
+# UUID generation
+uuid = { version = "1.0", features = ["v4"] }
+
+# Environment
+dotenvy = "0.15"
+

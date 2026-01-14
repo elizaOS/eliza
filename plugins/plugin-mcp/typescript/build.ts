@@ -1,91 +1,92 @@
 #!/usr/bin/env bun
 
 /**
- * Build script for @elizaos/plugin-mcp TypeScript implementation
- * Generates ESM output and TypeScript declarations
+ * Build script for @elizaos/plugin-mcp (TypeScript package).
+ *
+ * Outputs:
+ * - ESM (Node): dist/node/index.js
+ * - CJS (Node): dist/cjs/index.cjs
+ * - Types: dist/index.d.ts + dist/node/index.d.ts + dist/cjs/index.d.ts
  */
-
-import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 
 const externalDeps = ["@elizaos/core", "@modelcontextprotocol/sdk", "ajv", "json5"];
 
-async function build(): Promise<boolean> {
+async function build(): Promise<void> {
   const totalStart = Date.now();
 
-  // ESM build for Node
-  const esmStart = Date.now();
+  const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-mcp for Node (ESM)...");
-  const esmResult = await Bun.build({
+  const nodeResult = await Bun.build({
     entrypoints: ["src/index.ts"],
-    outdir: "../dist/node",
+    outdir: "dist/node",
     target: "node",
     format: "esm",
     sourcemap: "external",
     minify: false,
     external: externalDeps,
   });
-
-  if (!esmResult.success) {
-    console.error("ESM build errors:", esmResult.logs);
-    throw new Error("ESM build failed");
+  if (!nodeResult.success) {
+    console.error("Node ESM build failed:", nodeResult.logs);
+    throw new Error("Node ESM build failed");
   }
-  console.log(`✅ ESM build complete in ${((Date.now() - esmStart) / 1000).toFixed(2)}s`);
+  console.log(
+    `✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
+  );
 
-  // CJS build for Node (CommonJS compatibility)
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-mcp for Node (CJS)...");
   const cjsResult = await Bun.build({
     entrypoints: ["src/index.ts"],
-    outdir: "../dist/cjs",
+    outdir: "dist/cjs",
     target: "node",
     format: "cjs",
     sourcemap: "external",
     minify: false,
     external: externalDeps,
   });
-
   if (!cjsResult.success) {
-    console.error("CJS build errors:", cjsResult.logs);
-    throw new Error("CJS build failed");
+    console.error("Node CJS build failed:", cjsResult.logs);
+    throw new Error("Node CJS build failed");
   }
 
-  // Rename .js to .cjs for correct loading when package type is module
-  const { rename, readdir } = await import("node:fs/promises");
-  const files = await readdir("../dist/cjs");
-  for (const file of files) {
-    if (file.endsWith(".js")) {
-      await rename(`../dist/cjs/${file}`, `../dist/cjs/${file.replace(".js", ".cjs")}`);
-    }
-  }
-  console.log(`✅ CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
+  const { rename, access, mkdir, writeFile } = await import("node:fs/promises");
+  const { $ } = await import("bun");
 
-  // Ensure dist directories exist
-  const distDir = join(process.cwd(), "dist");
-  const nodeDir = join(distDir, "node");
-  if (!existsSync(nodeDir)) {
-    await mkdir(nodeDir, { recursive: true });
-  }
+  // Rename Bun's CJS output to .cjs to be loadable under "type": "module".
+  await access("dist/cjs/index.js");
+  await rename("dist/cjs/index.js", "dist/cjs/index.cjs");
 
-  // Create root index.d.ts alias
-  const rootIndexDtsPath = join(distDir, "index.d.ts");
-  const rootAlias = [
-    'export * from "./node/index";',
-    'export { default } from "./node/index";',
-    "",
-  ].join("\n");
-  await writeFile(rootIndexDtsPath, rootAlias, "utf8");
+  console.log(
+    `✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`,
+  );
 
-  console.log(`🎉 All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
-  return true;
+  const dtsStart = Date.now();
+  console.log("📝 Generating TypeScript declarations...");
+  await $`tsc --project tsconfig.build.json`;
+
+  await mkdir("dist/node", { recursive: true });
+  await mkdir("dist/cjs", { recursive: true });
+
+  const rootReexport = `export * from "./node/index";
+export { default } from "./node/index";
+`;
+  const cjsReexport = `export * from "../node/index";
+export { default } from "../node/index";
+`;
+
+  await writeFile("dist/index.d.ts", rootReexport);
+  await writeFile("dist/cjs/index.d.ts", cjsReexport);
+
+  console.log(
+    `✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`,
+  );
+
+  console.log(
+    `🎉 All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`,
+  );
 }
 
-build()
-  .then((ok) => {
-    if (!ok) process.exit(1);
-  })
-  .catch((err) => {
-    console.error("Build failed:", err);
-    process.exit(1);
-  });
+build().catch((err) => {
+  console.error("Build failed:", err);
+  process.exit(1);
+});

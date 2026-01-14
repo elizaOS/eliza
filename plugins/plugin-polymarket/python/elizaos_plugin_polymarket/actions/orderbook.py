@@ -2,7 +2,8 @@
 Order book actions for Polymarket.
 """
 
-from typing import Protocol
+from collections.abc import Callable
+from typing import Protocol, cast
 
 from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 from elizaos_plugin_polymarket.providers import get_clob_client
@@ -46,14 +47,41 @@ async def get_order_book(
 
     try:
         client = get_clob_client(runtime)
-        response = client.get_order_book(token_id)
+        fn = getattr(client, "get_order_book", None)
+        if not callable(fn):
+            raise PolymarketError(
+                PolymarketErrorCode.API_ERROR,
+                "get_order_book method not available in CLOB client",
+            )
 
-        bids = [BookEntry(price=b["price"], size=b["size"]) for b in response.get("bids", [])]
-        asks = [BookEntry(price=a["price"], size=a["size"]) for a in response.get("asks", [])]
+        response_obj = cast(Callable[[str], object], fn)(token_id)
+        response: dict[str, object] = response_obj if isinstance(response_obj, dict) else {}
+
+        bids: list[BookEntry] = []
+        bids_obj = response.get("bids", [])
+        if isinstance(bids_obj, list):
+            for b in bids_obj:
+                if not isinstance(b, dict):
+                    continue
+                price = b.get("price")
+                size = b.get("size")
+                if isinstance(price, str) and isinstance(size, str):
+                    bids.append(BookEntry(price=price, size=size))
+
+        asks: list[BookEntry] = []
+        asks_obj = response.get("asks", [])
+        if isinstance(asks_obj, list):
+            for a in asks_obj:
+                if not isinstance(a, dict):
+                    continue
+                price = a.get("price")
+                size = a.get("size")
+                if isinstance(price, str) and isinstance(size, str):
+                    asks.append(BookEntry(price=price, size=size))
 
         return OrderBook(
-            market=response.get("market", ""),
-            asset_id=response.get("asset_id", token_id),
+            market=str(response.get("market", "")),
+            asset_id=str(response.get("asset_id", token_id)),
             bids=bids,
             asks=asks,
         )
@@ -92,8 +120,30 @@ async def get_order_book_depth(
 
     try:
         client = get_clob_client(runtime)
-        response = client.get_order_books_depth(token_ids)
-        return response
+        fn = getattr(client, "get_order_books_depth", None)
+        if not callable(fn):
+            raise PolymarketError(
+                PolymarketErrorCode.API_ERROR,
+                "get_order_books_depth method not available in CLOB client",
+            )
+
+        response_obj = cast(Callable[[list[str]], object], fn)(token_ids)
+        if not isinstance(response_obj, dict):
+            return {}
+
+        out: dict[str, dict[str, int]] = {}
+        for token_id, depth_obj in response_obj.items():
+            if not isinstance(token_id, str):
+                continue
+            if not isinstance(depth_obj, dict):
+                continue
+            inner: dict[str, int] = {}
+            for k, v in depth_obj.items():
+                if isinstance(k, str) and isinstance(v, int):
+                    inner[k] = v
+            out[token_id] = inner
+
+        return out
     except PolymarketError:
         raise
     except Exception as e:
@@ -179,7 +229,13 @@ async def get_midpoint_price(
 
     try:
         client = get_clob_client(runtime)
-        midpoint = client.get_midpoint(token_id)
+        fn = getattr(client, "get_midpoint", None)
+        if not callable(fn):
+            raise PolymarketError(
+                PolymarketErrorCode.API_ERROR,
+                "get_midpoint method not available in CLOB client",
+            )
+        midpoint = cast(Callable[[str], object], fn)(token_id)
         return str(midpoint)
     except PolymarketError:
         raise
@@ -216,7 +272,13 @@ async def get_spread(
 
     try:
         client = get_clob_client(runtime)
-        spread = client.get_spread(token_id)
+        fn = getattr(client, "get_spread", None)
+        if not callable(fn):
+            raise PolymarketError(
+                PolymarketErrorCode.API_ERROR,
+                "get_spread method not available in CLOB client",
+            )
+        spread = cast(Callable[[str], object], fn)(token_id)
         return str(spread)
     except PolymarketError:
         raise
@@ -231,7 +293,7 @@ async def get_spread(
 async def get_order_book_summary(
     token_id: str,
     runtime: RuntimeProtocol | None = None,
-) -> dict[str, any]:
+) -> dict[str, object]:
     """
     Get order book summary for a specific token, including best bid/ask and spread.
 
@@ -290,8 +352,3 @@ async def get_order_book_summary(
             f"Failed to get order book summary: {e}",
             cause=e,
         ) from e
-
-
-
-
-

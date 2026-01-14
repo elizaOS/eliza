@@ -66,7 +66,13 @@ class ReplyAction:
 
         prompt = runtime.compose_prompt_from_state(state=state, template=template)
 
-        response = await runtime.use_model(ModelType.TEXT_LARGE, {"prompt": prompt})
+        response = await runtime.use_model(
+            ModelType.TEXT_LARGE,
+            {
+                "prompt": prompt,
+                "system": str(runtime.character.system or ""),
+            },
+        )
 
         parsed = parse_key_value_xml(response)
         thought = parsed.get("thought", "") if parsed else ""

@@ -1,0 +1,188 @@
+# Used for our SWE-Bench lite benchmark submission from 12 Feb 2025
+# Used together with swe-agent as
+# sweagent run-batch --num_workers=12 --instances.type=swe_bench --instances.subset=lite --instances.split=test
+# --instances.shuffle=True --instances.evaluate=True --instances.deployment.docker_args=--memory=10g --config config/retry_heavy_v3.yaml
+# This template is heavily inspired by anthropic's computer use demo
+agent:
+  type: retry
+  agent_configs:
+    # +filemap
+    - type: default
+      model: &model
+        name: claude-3-7-sonnet-latest
+        api_key: $CLAUDE_API_KEY_ROTATION
+        per_instance_cost_limit: 1.5
+        per_instance_call_limit: 75
+        total_cost_limit: 1000.0
+        temperature: 0.0
+        delay: 1.0
+      templates:
+        system_template: &system_template |-
+          You are a helpful assistant that can interact with a computer to solve tasks.
+        instance_template: &instance_template |-
+          <uploaded_files>
+          {{working_dir}}
+          </uploaded_files>
+          I've uploaded a python code repository in the directory {{working_dir}}. Consider the following PR description:
+
+          <pr_description>
+          {{problem_statement}}
+          </pr_description>
+
+          Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met?
+          I've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!
+          Your task is to make the minimal changes to non-tests files in the {{working_dir}} directory to ensure the <pr_description> is satisfied.
+          Follow these steps to resolve the issue:
+          1. As a first step, it might be a good idea to find and read code relevant to the <pr_description>
+          2. Create a script to reproduce the error and execute it with `python <filename.py>` using the bash tool, to confirm the error
+          3. Edit the sourcecode of the repo to resolve the issue
+          4. Rerun your reproduce script and confirm that the error is fixed!
+          5. Think about edgecases and make sure your fix handles them as well
+          Your thinking should be thorough and so it's fine if it's very long.
+        next_step_template: &next_step_no_diff |-
+          OBSERVATION:
+          {{observation}}
+        next_step_no_output_template: &next_step_no_output_no_diff |-
+          Your last command ran successfully and did not produce any output.
+      tools:
+        execution_timeout: &execution_timeout 300
+        bundles: &vanilla_bundles
+          - path: tools/registry
+          - path: tools/edit_anthropic
+          - path: tools/review_on_submit_m
+          - path: tools/diff_state
+        enable_bash_tool: true
+        parse_function: &parse_function
+          type: function_calling
+        registry_variables:
+          USE_FILEMAP: 'true'
+          SUBMIT_REVIEW_MESSAGES: &submit_review_messages
+            - |
+              Thank you for your work on this issue. Please carefully follow the steps below to help review your changes.
+
+              1. If you made any changes to your code after running the reproduction script, please run the reproduction script again.
+                If the reproduction script is failing, please revisit your changes and make sure they are correct.
+                If you have already removed your reproduction script, please ignore this step.
+              2. Remove your reproduction script (if you haven't done so already).
+              3. If you have modified any TEST files, please revert them to the state they had before you started fixing the issue.
+                You can do this with `git checkout -- /path/to/test/file.py`. Use below <diff> to find the files you need to revert.
+              4. Run the submit command again to confirm.
+
+              Here is a list of all of your changes:
+
+              <diff>
+              {{diff}}
+              </diff>
+      history_processors: &vanilla_history_processors
+        - type: cache_control
+          last_n_messages: 2
+    # vanilla anthropic
+    - type: default
+      model: *model
+      templates:
+        system_template: *system_template
+        instance_template: *instance_template
+        next_step_template: *next_step_no_diff
+        next_step_no_output_template: *next_step_no_output_no_diff
+      tools:
+        execution_timeout: *execution_timeout
+        bundles: *vanilla_bundles
+        enable_bash_tool: true
+        parse_function: *parse_function
+        registry_variables:
+          SUBMIT_REVIEW_MESSAGES: *submit_review_messages
+      history_processors: *vanilla_history_processors
+    # + state
+    - type: default
+      model: *model
+      templates:
+        system_template: *system_template
+        instance_template: *instance_template
+        next_step_template: &next_step_with_diff |-
+          {% if diff %}
+          <diff>
+          Your cumulative changes so far:
+          {{diff}}
+          </diff>
+
+          {% endif %}
+          The observation from the last command:
+          {{observation}}
+        next_step_no_output_template: &next_step_no_output_with_diff |-
+          {% if diff %}
+          <diff>
+          Your cumulative changes so far:
+          {{diff}}
+          </diff>
+          {% endif %}
+
+          Your last command ran successfully and did not produce any output.
+      tools:
+        execution_timeout: *execution_timeout
+        bundles: *vanilla_bundles
+        enable_bash_tool: true
+        parse_function: *parse_function
+        registry_variables:
+          SUBMIT_REVIEW_MESSAGES: *submit_review_messages
+      history_processors: &diff_history_processors
+        - type: remove_regex
+          keep_last: 2
+          remove:
+            - "<diff>.*</diff>"
+        - type: cache_control
+          last_n_messages: 2
+          last_n_messages_offset: 2
+  retry_loop:
+    type: chooser
+    cost_limit: 6.0
+    max_attempts: 10
+    min_budget_for_new_attempt: 1.0
+    chooser:
+      system_template: |
+        You are an expert software engineer reviewing code. Your thinking is very thorough, so it is ok if its very long.
+      instance_template: |
+        You will be given a problem statement and a list of patch submissions.
+
+        Pick the most reasonable patch.
+        The patch should solve the problem described in the problem statement in a way that is consistent with the rest of the codebase and the conventions of the codebase.
+
+        Note: Disregard all testing code in the patch, as testing was already done in a separate step.
+        Having a test in the patch does not make it any better.
+
+        <IMPORTANT>The last line of your response should be the index of the patch you chose.
+        You must choose a single index no matter what. If you cannot decide between two or more
+        submissions, choose the first one of these.
+        </IMPORTANT>
+
+        Problem statement:
+        {{problem_statement}}
+
+        Submissions:
+        {% for submission in submissions %}
+        Submission {{loop.index0}}:
+
+        {{submission}}
+
+        {% endfor %}
+
+        <IMPORTANT>The last line of your response should be the index of the patch you chose without any other text.</IMPORTANT>
+      submission_template: |
+        Patch:
+
+        ```python
+        {{submission}}
+        ```
+
+        The final edited file with 30 lines of context:
+
+        ```python
+        {{edited_files30}}
+        ```
+      max_len_submission: &chooser_max_len_submission 5000
+      model: &chooser_model
+        name: o1
+        top_p: null
+        temperature: 1.
+        per_instance_cost_limit: 30
+        completion_kwargs:
+          reasoning_effort: "high"

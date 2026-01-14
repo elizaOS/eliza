@@ -39,4 +39,3 @@ class PdfService:
 
     async def get_document_info(self, pdf_bytes: bytes) -> PdfDocumentInfo:
         return await self._client.get_document_info(pdf_bytes)
-

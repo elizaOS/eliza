@@ -2,9 +2,9 @@
   "name": "@elizaos/plugin-farcaster",
   "version": "2.0.0",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/node/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos-plugins/plugin-farcaster.git"
@@ -12,22 +12,22 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/node/index.d.ts",
       "browser": {
-        "types": "./dist/index.d.ts",
-        "import": "./dist/index.js",
-        "default": "./dist/index.js"
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
       },
       "node": {
-        "types": "./dist/index.d.ts",
-        "import": "./dist/index.js",
-        "default": "./dist/index.js"
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
       },
       "bun": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
       },
-      "default": "./dist/index.js"
+      "default": "./dist/node/index.node.js"
     }
   },
   "files": [

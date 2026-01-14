@@ -38,6 +38,12 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["elizaos_plugin_eliza_classic"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"elizaos_plugin_eliza_classic/data/doctor.json" = "elizaos_plugin_eliza_classic/data/doctor.json"
+
+[tool.hatch.build.targets.sdist.force-include]
+"elizaos_plugin_eliza_classic/data/doctor.json" = "elizaos_plugin_eliza_classic/data/doctor.json"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-p no:anchorpy"

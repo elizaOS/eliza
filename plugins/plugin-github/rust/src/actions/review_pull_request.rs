@@ -13,11 +13,8 @@ pub struct ReviewPullRequestAction;
 impl ReviewPullRequestAction {
     fn determine_review_event(text: &str) -> ReviewEvent {
         let lower = text.to_lowercase();
-        
-        if lower.contains("approve")
-            || lower.contains("lgtm")
-            || lower.contains("looks good")
-        {
+
+        if lower.contains("approve") || lower.contains("lgtm") || lower.contains("looks good") {
             ReviewEvent::Approve
         } else if lower.contains("request changes")
             || lower.contains("needs work")
@@ -122,7 +119,9 @@ impl GitHubAction for ReviewPullRequestAction {
         let event_label = match review.state {
             ReviewState::Approved => "approved",
             ReviewState::ChangesRequested => "requested changes on",
-            ReviewState::Commented | ReviewState::Dismissed | ReviewState::Pending => "commented on",
+            ReviewState::Commented | ReviewState::Dismissed | ReviewState::Pending => {
+                "commented on"
+            }
         };
 
         Ok(ActionResult::success(

@@ -162,7 +162,9 @@ async function loadWasmModule(): Promise<WasmExports> {
         if (offset !== 0) {
           arg = arg.slice(offset);
         }
-        ptr = realloc(ptr, len, (len = offset + arg.length * 3), 1) >>> 0;
+        const newLen = offset + arg.length * 3;
+        ptr = realloc(ptr, len, newLen, 1) >>> 0;
+        len = newLen;
         const view = getUint8Memory().subarray(ptr + offset, ptr + len);
         const ret = textEncoder.encodeInto(arg, view);
         offset += ret.written ?? 0;

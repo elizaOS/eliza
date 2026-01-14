@@ -1,4 +1,3 @@
-
 import re
 import uuid
 from datetime import datetime
@@ -69,7 +68,6 @@ def parse_key_value_xml(text: str) -> dict[str, str] | None:
 
 
 class FormsService:
-
     service_name = "forms"
     service_type = "forms"
 

@@ -4,7 +4,7 @@
 
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
 use crate::types::components::{
-    ActionHandler, ActionResult, EvaluatorHandler, HandlerOptions, ProviderHandler,
+    ActionDefinition, ActionHandler, ActionResult, EvaluatorHandler, HandlerOptions, ProviderHandler,
 };
 use crate::types::database::{GetMemoriesParams, SearchMemoriesParams};
 use crate::types::environment::{Entity, Room, World};
@@ -17,6 +17,7 @@ use crate::types::settings::{RuntimeSettings, SettingValue};
 use crate::types::state::State;
 use crate::types::task::Task;
 use anyhow::{Context, Result};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
@@ -27,6 +28,11 @@ use tokio::sync::RwLock;
 
 #[cfg(feature = "wasm")]
 use std::sync::RwLock;
+
+// Bootstrap uses an agent-runtime interface trait that is historically imported
+// via `crate::runtime::IAgentRuntime`. Re-export it when the bootstrap module is present.
+#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
+pub use crate::bootstrap::runtime::{IAgentRuntime, ModelOutput, ModelParams};
 
 /// Database adapter trait for runtime storage operations
 #[async_trait::async_trait]
@@ -240,6 +246,59 @@ pub type RuntimeModelHandler = Box<
 /// Static counter for anonymous agent naming
 static ANONYMOUS_AGENT_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Provider access log entry for trajectory tracing.
+#[derive(Clone, Debug, Default)]
+pub struct TrajectoryProviderAccess {
+    /// Trajectory step identifier.
+    pub step_id: String,
+    /// Provider name executed.
+    pub provider_name: String,
+    /// Purpose string (e.g. "compose_state").
+    pub purpose: String,
+    /// Provider result data (best-effort).
+    pub data: HashMap<String, Value>,
+    /// Optional query metadata (best-effort).
+    pub query: Option<HashMap<String, Value>>,
+    /// Timestamp in milliseconds.
+    pub timestamp_ms: i64,
+}
+
+/// LLM call log entry for trajectory tracing.
+#[derive(Clone, Debug, Default)]
+pub struct TrajectoryLlmCall {
+    /// Trajectory step identifier.
+    pub step_id: String,
+    /// Model type/name.
+    pub model: String,
+    /// System prompt used.
+    pub system_prompt: String,
+    /// User prompt used.
+    pub user_prompt: String,
+    /// Model response (possibly truncated).
+    pub response: String,
+    /// Temperature used.
+    pub temperature: f64,
+    /// Max tokens used.
+    pub max_tokens: i64,
+    /// Purpose string (e.g. "action").
+    pub purpose: String,
+    /// Action type string (e.g. "runtime.use_model").
+    pub action_type: String,
+    /// Latency in milliseconds.
+    pub latency_ms: i64,
+    /// Timestamp in milliseconds.
+    pub timestamp_ms: i64,
+}
+
+/// Trajectory logs collected during a run.
+#[derive(Clone, Debug, Default)]
+pub struct TrajectoryLogs {
+    /// Provider access events captured during the trajectory step.
+    pub provider_access: Vec<TrajectoryProviderAccess>,
+    /// LLM call events captured during the trajectory step.
+    pub llm_calls: Vec<TrajectoryLlmCall>,
+}
+
 /// The core runtime for an elizaOS agent
 pub struct AgentRuntime {
     /// Agent ID
@@ -270,6 +329,10 @@ pub struct AgentRuntime {
     current_run_id: Mutex<Option<UUID>>,
     /// Current room ID (for associating logs with a conversation)
     current_room_id: Mutex<Option<UUID>>,
+    /// Current trajectory step ID (benchmarks / training traces)
+    current_trajectory_step_id: Mutex<Option<String>>,
+    /// In-memory trajectory logs (benchmarks / training traces)
+    trajectory_logs: Mutex<TrajectoryLogs>,
     /// Initialization promise/future resolved
     initialized: RwLock<bool>,
     /// Log level for this runtime
@@ -339,6 +402,8 @@ impl AgentRuntime {
             settings: RwLock::new(opts.settings.unwrap_or_default()),
             current_run_id: Mutex::new(None),
             current_room_id: Mutex::new(None),
+            current_trajectory_step_id: Mutex::new(None),
+            trajectory_logs: Mutex::new(TrajectoryLogs::default()),
             initialized: RwLock::new(false),
             log_level,
             is_anonymous_character: is_anonymous,
@@ -536,6 +601,36 @@ impl AgentRuntime {
         Ok(())
     }
 
+    /// Register a long-running service with the runtime.
+    ///
+    /// Registered services are stopped automatically when `runtime.stop()` is called.
+    pub async fn register_service(&self, name: &str, service: Arc<dyn Service>) {
+        #[cfg(not(feature = "wasm"))]
+        {
+            let mut services = self.services.write().await;
+            services.insert(name.to_string(), service);
+        }
+        #[cfg(feature = "wasm")]
+        {
+            let mut services = self.services.write().unwrap();
+            services.insert(name.to_string(), service);
+        }
+    }
+
+    /// Get a previously registered service by name.
+    pub async fn get_service(&self, name: &str) -> Option<Arc<dyn Service>> {
+        #[cfg(not(feature = "wasm"))]
+        {
+            let services = self.services.read().await;
+            services.get(name).cloned()
+        }
+        #[cfg(feature = "wasm")]
+        {
+            let services = self.services.read().unwrap();
+            services.get(name).cloned()
+        }
+    }
+
     /// Get a setting value
     pub async fn get_setting(&self, key: &str) -> Option<SettingValue> {
         // Read character once for consistent lookups.
@@ -670,6 +765,7 @@ impl AgentRuntime {
         let providers: Vec<_> = self.providers.read().unwrap().iter().cloned().collect();
 
         // Run each provider to gather context
+        let traj_step_id = self.get_trajectory_step_id();
         for provider in providers.iter() {
             let def = provider.definition();
             if def.private.unwrap_or(false) {
@@ -690,6 +786,30 @@ impl AgentRuntime {
                             state.values.insert(k, v);
                         }
                     }
+
+                    // Trajectory logging (best-effort; must never break core flow)
+                    if let Some(step_id) = &traj_step_id {
+                        let mut logs = self.trajectory_logs.lock().expect("lock poisoned");
+                        logs.provider_access.push(TrajectoryProviderAccess {
+                            step_id: step_id.clone(),
+                            provider_name: def.name.clone(),
+                            purpose: "compose_state".to_string(),
+                            data: HashMap::new(),
+                            query: message
+                                .content
+                                .text
+                                .as_ref()
+                                .map(|t| {
+                                    [(
+                                        "message".to_string(),
+                                        Value::String(t.chars().take(2000).collect()),
+                                    )]
+                                    .into_iter()
+                                    .collect()
+                                }),
+                            timestamp_ms: chrono_timestamp(),
+                        });
+                    }
                 }
                 Err(e) => {
                     warn!("Provider {} failed: {}", def.name, e);
@@ -698,6 +818,16 @@ impl AgentRuntime {
         }
 
         Ok(state)
+    }
+
+    /// List registered action definitions (best-effort).
+    pub async fn list_action_definitions(&self) -> Vec<ActionDefinition> {
+        #[cfg(not(feature = "wasm"))]
+        let actions: Vec<_> = self.actions.read().await.iter().cloned().collect();
+        #[cfg(feature = "wasm")]
+        let actions: Vec<_> = self.actions.read().unwrap().iter().cloned().collect();
+
+        actions.into_iter().map(|a| a.definition()).collect()
     }
 
     /// Process actions for a message
@@ -751,6 +881,103 @@ impl AgentRuntime {
             }
         }
 
+        Ok(results)
+    }
+
+    /// Process a specific ordered list of selected actions (TypeScript/Python parity).
+    ///
+    /// This executes only the actions selected by the model, in order, optionally attaching
+    /// per-action parameters parsed from a `<params>` block.
+    pub async fn process_selected_actions(
+        &self,
+        message: &Memory,
+        state: &State,
+        selected_actions: &[String],
+        action_params: &HashMap<String, HashMap<String, Value>>,
+    ) -> Result<Vec<ActionResult>> {
+        let action_planning_enabled = self.is_action_planning_enabled().await;
+        let to_run: Vec<String> = if action_planning_enabled {
+            selected_actions.to_vec()
+        } else {
+            selected_actions.get(0).cloned().into_iter().collect()
+        };
+
+        // Clone to avoid holding lock across await
+        #[cfg(not(feature = "wasm"))]
+        let handlers: Vec<_> = self.actions.read().await.iter().cloned().collect();
+        #[cfg(feature = "wasm")]
+        let handlers: Vec<_> = self.actions.read().unwrap().iter().cloned().collect();
+
+        fn normalize_action_name(s: &str) -> String {
+            s.to_lowercase().replace('_', "")
+        }
+
+        let mut results: Vec<ActionResult> = Vec::new();
+        for name in to_run {
+            let normalized = normalize_action_name(&name);
+
+            let handler = handlers.iter().find(|h| {
+                let def = h.definition();
+                let def_norm = normalize_action_name(&def.name);
+                if def_norm == normalized {
+                    return true;
+                }
+                if let Some(similes) = &def.similes {
+                    return similes
+                        .iter()
+                        .any(|s| normalize_action_name(s) == normalized);
+                }
+                false
+            });
+
+            let Some(handler) = handler else {
+                results.push(ActionResult::failure(&format!("Action not found: {}", name)));
+                continue;
+            };
+
+            if !handler.validate(message, Some(state)).await {
+                continue;
+            }
+
+            let mut opts = HandlerOptions::default();
+            let key = name.trim().to_uppercase();
+            if let Some(p) = action_params.get(&key) {
+                opts.parameters = Some(p.clone());
+            }
+
+            match handler.handle(message, Some(state), Some(&opts)).await {
+                Ok(Some(r)) => results.push(r),
+                Ok(None) => {}
+                Err(e) => results.push(ActionResult::failure(&e.to_string())),
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Run evaluators for a message (TypeScript/Python parity).
+    pub async fn evaluate_message(
+        &self,
+        message: &Memory,
+        state: &State,
+    ) -> Result<Vec<ActionResult>> {
+        // Clone to avoid holding lock across await
+        #[cfg(not(feature = "wasm"))]
+        let evaluators: Vec<_> = self.evaluators.read().await.iter().cloned().collect();
+        #[cfg(feature = "wasm")]
+        let evaluators: Vec<_> = self.evaluators.read().unwrap().iter().cloned().collect();
+
+        let mut results: Vec<ActionResult> = Vec::new();
+        for evaluator in evaluators.iter() {
+            if !evaluator.validate(message, Some(state)).await {
+                continue;
+            }
+            match evaluator.handle(message, Some(state)).await {
+                Ok(Some(r)) => results.push(r),
+                Ok(None) => {}
+                Err(e) => results.push(ActionResult::failure(&e.to_string())),
+            }
+        }
         Ok(results)
     }
 
@@ -843,6 +1070,30 @@ impl AgentRuntime {
         current.clone()
     }
 
+    /// Set the current trajectory step ID for tracing (benchmarks/training).
+    pub fn set_trajectory_step_id(&self, step_id: Option<String>) {
+        let mut current = self
+            .current_trajectory_step_id
+            .lock()
+            .expect("lock poisoned");
+        *current = step_id;
+    }
+
+    /// Get the current trajectory step ID for tracing (benchmarks/training).
+    pub fn get_trajectory_step_id(&self) -> Option<String> {
+        let current = self
+            .current_trajectory_step_id
+            .lock()
+            .expect("lock poisoned");
+        current.clone()
+    }
+
+    /// Get a snapshot of collected trajectory logs.
+    pub fn get_trajectory_logs(&self) -> TrajectoryLogs {
+        let guard = self.trajectory_logs.lock().expect("lock poisoned");
+        guard.clone()
+    }
+
     /// Get a reference to the database adapter (if any)
     pub fn get_adapter(&self) -> Option<&Arc<dyn DatabaseAdapter>> {
         self.adapter.as_ref()
@@ -924,13 +1175,54 @@ impl AgentRuntime {
             }
         };
 
-        match handler {
+        let start_ms = chrono_timestamp();
+        let result = match handler {
             Some(future) => future.await,
             None => Err(anyhow::anyhow!(
                 "No model handler registered for type: {}. Register a model handler using register_model() or pass a plugin with model handlers.",
                 effective_model_type
             )),
+        };
+
+        // Trajectory logging (best-effort; must never break core model flow)
+        if let Ok(ref response_text) = result {
+            if let Some(step_id) = self.get_trajectory_step_id() {
+                let end_ms = chrono_timestamp();
+                let prompt = params
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .chars()
+                    .take(2000)
+                    .collect::<String>();
+                let system_prompt = params
+                    .get("system")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .chars()
+                    .take(2000)
+                    .collect::<String>();
+                let temperature = params.get("temperature").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let max_tokens = params.get("maxTokens").and_then(|v| v.as_i64()).unwrap_or(0);
+
+                let mut logs = self.trajectory_logs.lock().expect("lock poisoned");
+                logs.llm_calls.push(TrajectoryLlmCall {
+                    step_id,
+                    model: effective_model_type.to_string(),
+                    system_prompt,
+                    user_prompt: prompt,
+                    response: response_text.chars().take(2000).collect::<String>(),
+                    temperature,
+                    max_tokens,
+                    purpose: "action".to_string(),
+                    action_type: "runtime.use_model".to_string(),
+                    latency_ms: (end_ms - start_ms).max(0),
+                    timestamp_ms: end_ms,
+                });
+            }
         }
+
+        result
     }
 
     /// Stop the runtime
@@ -965,6 +1257,14 @@ impl AgentRuntime {
         info!("AgentRuntime stopped successfully");
         Ok(())
     }
+}
+
+/// Get current timestamp in milliseconds.
+fn chrono_timestamp() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
 }
 
 #[cfg(test)]

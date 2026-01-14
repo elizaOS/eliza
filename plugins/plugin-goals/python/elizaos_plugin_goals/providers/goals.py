@@ -9,8 +9,7 @@ class RuntimeProtocol(Protocol):
 
 
 class GoalServiceProtocol(Protocol):
-    async def get_goals(self, filters: GoalFilters | None = None) -> list[Goal]:
-        ...
+    async def get_goals(self, filters: GoalFilters | None = None) -> list[Goal]: ...
 
 
 @dataclass
@@ -94,7 +93,9 @@ class GoalsProvider:
             output += f"- Completed goals: {total_completed}\n"
 
             if not active_goals and not completed_goals:
-                output = "No goals have been set yet. Consider creating some goals to track progress!"
+                output = (
+                    "No goals have been set yet. Consider creating some goals to track progress!"
+                )
 
             return ProviderResult(
                 text=output.strip(),

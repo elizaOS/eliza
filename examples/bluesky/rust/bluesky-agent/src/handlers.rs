@@ -1,111 +1,64 @@
-//! Event handlers for Bluesky interactions.
+//! Bluesky Event Handlers
+//!
+//! These handlers process Bluesky events through the FULL elizaOS pipeline:
+//! - State composition with providers (CHARACTER, RECENT_MESSAGES, ACTIONS, etc.)
+//! - shouldRespond evaluation
+//! - Action planning and execution
+//! - Response generation via messageHandlerTemplate
+//! - Evaluators
+//!
+//! This is the canonical way to handle messages in elizaOS - NO bypassing the pipeline.
 
 use anyhow::Result;
-use elizaos_plugin_bluesky::{BlueSkyClient, CreatePostRequest};
-use elizaos_plugin_bluesky::types::{BlueSkyNotification, NotificationReason};
+use elizaos::{
+    runtime::AgentRuntime,
+    types::{Content, Memory, ChannelType, UUID},
+    string_to_uuid,
+    IMessageService,
+};
+use elizaos_plugin_bluesky::{
+    BlueSkyClient, BlueSkyNotification, CreatePostRequest, PostReference,
+};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-use crate::character::AgentCharacter;
+/// World ID for all Bluesky rooms
+const BLUESKY_WORLD_ID: &str = "bluesky-world";
 
-/// Template for generating replies to mentions
-const REPLY_TEMPLATE: &str = r#"# Task: Generate a reply to a Bluesky mention
-
-You are {agent_name}, responding to a mention on Bluesky.
-
-## Your Character
-{bio}
-
-## The Mention
-From: @{author_handle}
-Text: {mention_text}
-
-## Guidelines
-- Keep your response under 280 characters (leave room for @mention)
-- Be helpful, friendly, and on-brand
-- Address the user's question or comment directly
-- Don't use hashtags unless relevant
-
-Generate a concise, engaging reply:"#;
-
-/// Template for generating automated posts (for LLM integration)
-#[allow(dead_code)]
-const POST_TEMPLATE: &str = r#"# Task: Generate an original Bluesky post
-
-You are {agent_name}, creating an original post on Bluesky.
-
-## Your Character
-{bio}
-
-## Post Examples
-{post_examples}
-
-## Guidelines
-- Keep it under 300 characters
-- Be engaging and on-brand
-- Share something interesting, helpful, or thought-provoking
-- Don't use excessive hashtags or emojis
-
-Generate an original post:"#;
-
-/// Simple text generation using a placeholder response
-/// In production, this would call an LLM API
-fn generate_simple_response(_character: &AgentCharacter, mention_text: &str) -> String {
-    // For this example, generate a simple acknowledgment
-    // In production, replace with actual LLM call (OpenAI, Anthropic, etc.)
-    let responses = [
-        "Thanks for reaching out! 🙌",
-        "Great question! Let me think about that...",
-        "Hello! Happy to help! 😊",
-        "Appreciate the mention! 💙",
-        "Thanks for connecting! How can I help?",
-    ];
-
-    // Simple hash-based selection for variety
-    let hash = mention_text.bytes().fold(0usize, |acc, b| acc.wrapping_add(b as usize));
-    let idx = hash % responses.len();
-
-    responses[idx].to_string()
+/// Create a unique UUID by combining base ID with agent ID.
+pub fn create_unique_uuid(agent_id: &UUID, base_id: &str) -> UUID {
+    if base_id == agent_id.to_string() {
+        return agent_id.clone();
+    }
+    let combined = format!("{}:{}", base_id, agent_id);
+    string_to_uuid(&combined)
 }
 
-/// Generate an automated post
-fn generate_automated_post(character: &AgentCharacter) -> String {
-    // For this example, cycle through post examples
-    // In production, replace with actual LLM call
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    let idx = (now as usize) % character.post_examples.len();
-    character.post_examples[idx].clone()
-}
-
-/// Process an incoming mention and generate a reply.
+/// Handle incoming Bluesky mentions through the FULL elizaOS pipeline.
+///
+/// This processes mentions through message_service.handle_message() which runs:
+/// - State composition with all registered providers
+/// - shouldRespond evaluation
+/// - Action planning (if enabled)
+/// - Response generation via the full messageHandlerTemplate
+/// - Evaluator execution
 pub async fn handle_mention_received(
-    client: &BlueSkyClient,
-    character: &AgentCharacter,
+    runtime: &AgentRuntime,
     notification: &BlueSkyNotification,
+    client: Arc<Mutex<BlueSkyClient>>,
 ) -> Result<()> {
-    info!(
-        handle = %notification.author.handle,
-        reason = ?notification.reason,
-        "Processing mention"
-    );
-
-    // Skip non-mention/reply notifications
-    if notification.reason != NotificationReason::Mention
-        && notification.reason != NotificationReason::Reply
-    {
+    // Skip non-mentions
+    let reason = notification.reason.as_str();
+    if reason != "mention" && reason != "reply" {
+        debug!(reason = %reason, "Skipping notification - not a mention or reply");
         return Ok(());
     }
 
-    // Extract post text from record
-    let mention_text = notification
-        .record
-        .get("text")
-        .and_then(|v| v.as_str())
+    // Extract text from notification
+    let mention_text = notification.record.as_ref()
+        .and_then(|r| r.get("text"))
+        .and_then(|t| t.as_str())
         .unwrap_or("");
 
     if mention_text.trim().is_empty() {
@@ -113,59 +66,283 @@ pub async fn handle_mention_received(
         return Ok(());
     }
 
-    // Generate reply
-    let reply_text = generate_simple_response(character, mention_text);
-
-    if reply_text.is_empty() {
-        warn!("Generated empty reply, skipping");
-        return Ok(());
-    }
-
-    // Post the reply
-    let request = CreatePostRequest::new(&reply_text).with_reply(
-        notification.uri.clone(),
-        notification.cid.clone(),
+    info!(
+        handle = %notification.author.handle,
+        reason = %reason,
+        text = %&mention_text[..mention_text.len().min(50)],
+        "Processing Bluesky mention through elizaOS pipeline"
     );
 
-    match client.send_post(request).await {
-        Ok(post) => {
-            info!(
-                uri = %post.uri,
-                reply_to = %notification.author.handle,
-                "Posted reply"
-            );
-        }
-        Err(e) => {
-            error!(error = %e, "Failed to post reply");
-        }
-    }
+    // Create unique IDs for this conversation
+    let entity_id = create_unique_uuid(&runtime.agent_id(), &notification.author.did);
+    let room_id = create_unique_uuid(&runtime.agent_id(), &notification.uri);
+    let world_id = string_to_uuid(BLUESKY_WORLD_ID);
+
+    // Ensure the connection exists
+    runtime.ensure_connection(
+        &entity_id,
+        &room_id,
+        &notification.author.handle,
+        notification.author.display_name.as_deref().unwrap_or(&notification.author.handle),
+        "bluesky",
+        &notification.uri,
+        ChannelType::Group,
+        Some(&world_id),
+    ).await?;
+
+    // Create the incoming message memory
+    let is_mention = reason == "mention";
+    let mention_type = if is_mention { "platform_mention" } else { "reply" };
+
+    let mut content = Content {
+        text: Some(mention_text.to_string()),
+        source: Some("bluesky".to_string()),
+        channel_type: Some(ChannelType::Group),
+        ..Default::default()
+    };
+
+    // Add metadata for mention context
+    let mut metadata = serde_json::Map::new();
+    metadata.insert("is_mention".to_string(), serde_json::json!(is_mention));
+    metadata.insert("is_reply".to_string(), serde_json::json!(!is_mention));
+    metadata.insert("mention_type".to_string(), serde_json::json!(mention_type));
+    metadata.insert("uri".to_string(), serde_json::json!(notification.uri));
+    metadata.insert("cid".to_string(), serde_json::json!(notification.cid));
+    metadata.insert("author_did".to_string(), serde_json::json!(notification.author.did));
+    metadata.insert("author_handle".to_string(), serde_json::json!(notification.author.handle));
+    metadata.insert("platform".to_string(), serde_json::json!("bluesky"));
+    content.metadata = Some(serde_json::Value::Object(metadata));
+
+    let mut message = Memory::new(entity_id.clone(), room_id.clone(), content);
+
+    // Capture notification info for callback
+    let notification_uri = notification.uri.clone();
+    let notification_cid = notification.cid.clone();
+    let author_handle = notification.author.handle.clone();
+    let agent_id = runtime.agent_id().clone();
+    let room_id_for_callback = room_id.clone();
+    let message_id = message.id.clone();
+
+    // Define callback to post response to Bluesky
+    let callback = move |response_content: Content| {
+        let client = client.clone();
+        let notification_uri = notification_uri.clone();
+        let notification_cid = notification_cid.clone();
+        let author_handle = author_handle.clone();
+        let agent_id = agent_id.clone();
+        let room_id = room_id_for_callback.clone();
+        let message_id = message_id.clone();
+
+        Box::pin(async move {
+            // Check if response is targeted elsewhere
+            if let Some(ref target) = response_content.target {
+                if target.to_lowercase() != "bluesky" {
+                    debug!(target = %target, "Response targeted elsewhere, skipping Bluesky post");
+                    return Ok(vec![]);
+                }
+            }
+
+            let response_text = match &response_content.text {
+                Some(text) if !text.trim().is_empty() => {
+                    let text = text.trim();
+                    if text.len() > 300 {
+                        format!("{}...", &text[..297])
+                    } else {
+                        text.to_string()
+                    }
+                }
+                _ => {
+                    debug!("No text in response, skipping Bluesky post");
+                    return Ok(vec![]);
+                }
+            };
+
+            // Post the reply to Bluesky
+            let client_guard = client.lock().await;
+            let post_result = client_guard.send_post(CreatePostRequest {
+                content: Content {
+                    text: Some(response_text.clone()),
+                    ..Default::default()
+                },
+                reply_to: Some(PostReference {
+                    uri: notification_uri,
+                    cid: notification_cid,
+                }),
+            }).await;
+
+            match post_result {
+                Ok(post) => {
+                    info!(uri = %post.uri, reply_to = %author_handle, "Posted reply to Bluesky");
+
+                    // Create memory for the response
+                    let mut response_memory = Memory::new(
+                        agent_id.clone(),
+                        room_id,
+                        Content {
+                            text: Some(response_text),
+                            source: Some("bluesky".to_string()),
+                            in_reply_to: Some(message_id),
+                            ..Default::default()
+                        },
+                    );
+
+                    let mut metadata = serde_json::Map::new();
+                    metadata.insert("uri".to_string(), serde_json::json!(post.uri));
+                    metadata.insert("cid".to_string(), serde_json::json!(post.cid));
+                    metadata.insert("platform".to_string(), serde_json::json!("bluesky"));
+                    response_memory.content.metadata = Some(serde_json::Value::Object(metadata));
+
+                    Ok(vec![response_memory])
+                }
+                Err(e) => {
+                    error!(error = %e, "Failed to post reply to Bluesky");
+                    Ok(vec![])
+                }
+            }
+        })
+    };
+
+    // Process through the FULL elizaOS pipeline
+    let result = runtime.message_service()
+        .handle_message(runtime, &mut message, Some(Box::new(callback)), None)
+        .await?;
+
+    debug!(
+        did_respond = %result.did_respond,
+        mode = ?result.mode,
+        "elizaOS pipeline completed"
+    );
 
     Ok(())
 }
 
-/// Generate and post automated content.
-pub async fn handle_create_post(
-    client: &BlueSkyClient,
-    character: &AgentCharacter,
+/// Handle should_respond events by routing to handle_mention_received.
+pub async fn handle_should_respond(
+    runtime: &AgentRuntime,
+    notification: &BlueSkyNotification,
+    client: Arc<Mutex<BlueSkyClient>>,
 ) -> Result<()> {
-    info!("Generating automated post");
+    let reason = notification.reason.as_str();
+    if reason == "mention" || reason == "reply" {
+        handle_mention_received(runtime, notification, client).await
+    } else {
+        Ok(())
+    }
+}
 
-    let post_text = generate_automated_post(character);
-
-    if post_text.is_empty() {
-        warn!("Generated empty post, skipping");
+/// Handle automated post creation through the elizaOS pipeline.
+pub async fn handle_create_post(
+    runtime: &AgentRuntime,
+    client: Arc<Mutex<BlueSkyClient>>,
+    automated: bool,
+) -> Result<()> {
+    if !automated {
         return Ok(());
     }
 
-    // Create the post
-    match client.send_post(CreatePostRequest::new(&post_text)).await {
-        Ok(post) => {
-            info!(uri = %post.uri, "Created automated post");
-        }
-        Err(e) => {
-            error!(error = %e, "Failed to create automated post");
-        }
-    }
+    info!("Generating automated Bluesky post via elizaOS pipeline");
+
+    // Create a room for automated posts
+    let room_id = create_unique_uuid(&runtime.agent_id(), "bluesky-automated-posts");
+    let world_id = string_to_uuid(BLUESKY_WORLD_ID);
+
+    runtime.ensure_connection(
+        &runtime.agent_id(),
+        &room_id,
+        &runtime.character().name,
+        &runtime.character().name,
+        "bluesky",
+        "automated-posts",
+        ChannelType::Self_,
+        Some(&world_id),
+    ).await?;
+
+    // Create trigger message for post generation
+    let mut trigger_content = Content {
+        text: Some("Generate a new post for Bluesky".to_string()),
+        source: Some("bluesky".to_string()),
+        ..Default::default()
+    };
+
+    let mut metadata = serde_json::Map::new();
+    metadata.insert("is_automated_post_trigger".to_string(), serde_json::json!(true));
+    metadata.insert("platform".to_string(), serde_json::json!("bluesky"));
+    metadata.insert("max_length".to_string(), serde_json::json!(300));
+    trigger_content.metadata = Some(serde_json::Value::Object(metadata));
+
+    let mut trigger_message = Memory::new(
+        runtime.agent_id().clone(),
+        room_id.clone(),
+        trigger_content,
+    );
+
+    let agent_id = runtime.agent_id().clone();
+    let room_id_for_callback = room_id.clone();
+
+    let callback = move |response_content: Content| {
+        let client = client.clone();
+        let agent_id = agent_id.clone();
+        let room_id = room_id_for_callback.clone();
+
+        Box::pin(async move {
+            let post_text = match &response_content.text {
+                Some(text) if !text.trim().is_empty() => {
+                    let text = text.trim();
+                    if text.len() > 300 {
+                        format!("{}...", &text[..297])
+                    } else {
+                        text.to_string()
+                    }
+                }
+                _ => {
+                    debug!("No text generated for automated post");
+                    return Ok(vec![]);
+                }
+            };
+
+            let client_guard = client.lock().await;
+            let post_result = client_guard.send_post(CreatePostRequest {
+                content: Content {
+                    text: Some(post_text.clone()),
+                    ..Default::default()
+                },
+                reply_to: None,
+            }).await;
+
+            match post_result {
+                Ok(post) => {
+                    info!(uri = %post.uri, "Created automated post on Bluesky");
+
+                    let mut post_memory = Memory::new(
+                        agent_id,
+                        room_id,
+                        Content {
+                            text: Some(post_text),
+                            source: Some("bluesky".to_string()),
+                            ..Default::default()
+                        },
+                    );
+
+                    let mut metadata = serde_json::Map::new();
+                    metadata.insert("uri".to_string(), serde_json::json!(post.uri));
+                    metadata.insert("cid".to_string(), serde_json::json!(post.cid));
+                    metadata.insert("platform".to_string(), serde_json::json!("bluesky"));
+                    metadata.insert("automated".to_string(), serde_json::json!(true));
+                    post_memory.content.metadata = Some(serde_json::Value::Object(metadata));
+
+                    Ok(vec![post_memory])
+                }
+                Err(e) => {
+                    error!(error = %e, "Failed to create automated post");
+                    Ok(vec![])
+                }
+            }
+        })
+    };
+
+    runtime.message_service()
+        .handle_message(runtime, &mut trigger_message, Some(Box::new(callback)), None)
+        .await?;
 
     Ok(())
 }
@@ -175,45 +352,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_reply_template_placeholders() {
-        let filled = REPLY_TEMPLATE
-            .replace("{agent_name}", "TestBot")
-            .replace("{bio}", "A test bot")
-            .replace("{author_handle}", "user.bsky.social")
-            .replace("{mention_text}", "Hello!");
-
-        assert!(filled.contains("TestBot"));
-        assert!(filled.contains("A test bot"));
-        assert!(filled.contains("user.bsky.social"));
-        assert!(filled.contains("Hello!"));
+    fn test_create_unique_uuid_same_id() {
+        let agent_id = UUID::new_v4();
+        let result = create_unique_uuid(&agent_id, &agent_id.to_string());
+        assert_eq!(result, agent_id);
     }
 
     #[test]
-    fn test_post_template_placeholders() {
-        let filled = POST_TEMPLATE
-            .replace("{agent_name}", "TestBot")
-            .replace("{bio}", "A test bot")
-            .replace("{post_examples}", "- Example 1\n- Example 2");
-
-        assert!(filled.contains("TestBot"));
-        assert!(filled.contains("Example 1"));
-    }
-
-    #[test]
-    fn test_generate_simple_response() {
-        let character = AgentCharacter::new();
-        let response = generate_simple_response(&character, "hello");
-
-        assert!(!response.is_empty());
-        assert!(response.len() < 280); // Fits in a Bluesky reply
-    }
-
-    #[test]
-    fn test_generate_automated_post() {
-        let character = AgentCharacter::new();
-        let post = generate_automated_post(&character);
-
-        assert!(!post.is_empty());
-        assert!(post.len() <= 300); // Fits in a Bluesky post
+    fn test_create_unique_uuid_different_id() {
+        let agent_id = UUID::new_v4();
+        let result = create_unique_uuid(&agent_id, "different-id");
+        assert_ne!(result, agent_id);
     }
 }

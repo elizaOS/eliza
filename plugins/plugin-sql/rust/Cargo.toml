@@ -19,7 +19,9 @@ wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_er
 
 [dependencies]
 # Core dependency (path for local dev, version for publishing)
-elizaos = { version = "2.0.0", path = "../../../packages/rust" }
+# NOTE: disable default features so `--no-default-features --features wasm` can build for wasm32
+# without pulling in native Tokio/Mio.
+elizaos = { version = "2.0.0", path = "../../../packages/rust", default-features = false }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

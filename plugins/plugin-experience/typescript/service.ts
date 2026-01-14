@@ -67,8 +67,9 @@ export class ExperienceService extends Service {
 
     for (const memory of memories) {
       const experienceData = memory.content.data as Partial<Experience> | null;
-      if (experienceData && experienceData.id) {
-        const memoryCreatedAt = typeof memory.createdAt === "number" ? memory.createdAt : Date.now();
+      if (experienceData?.id) {
+        const memoryCreatedAt =
+          typeof memory.createdAt === "number" ? memory.createdAt : Date.now();
 
         const toTimestamp = (value: number | Date | undefined, fallback: number): number => {
           if (value === undefined) return fallback;
@@ -90,8 +91,14 @@ export class ExperienceService extends Service {
           tags: experienceData.tags || [],
           confidence: experienceData.confidence || 0.5,
           importance: experienceData.importance || 0.5,
-          createdAt: toTimestamp(experienceData.createdAt as number | Date | undefined, memoryCreatedAt),
-          updatedAt: toTimestamp(experienceData.updatedAt as number | Date | undefined, memoryCreatedAt),
+          createdAt: toTimestamp(
+            experienceData.createdAt as number | Date | undefined,
+            memoryCreatedAt
+          ),
+          updatedAt: toTimestamp(
+            experienceData.updatedAt as number | Date | undefined,
+            memoryCreatedAt
+          ),
           accessCount: experienceData.accessCount ?? 0,
           lastAccessedAt: toTimestamp(
             experienceData.lastAccessedAt as number | Date | undefined,
@@ -110,12 +117,12 @@ export class ExperienceService extends Service {
         if (!this.experiencesByDomain.has(experience.domain)) {
           this.experiencesByDomain.set(experience.domain, new Set());
         }
-        this.experiencesByDomain.get(experience.domain)!.add(experience.id);
+        this.experiencesByDomain.get(experience.domain)?.add(experience.id);
 
         if (!this.experiencesByType.has(experience.type)) {
           this.experiencesByType.set(experience.type, new Set());
         }
-        this.experiencesByType.get(experience.type)!.add(experience.id);
+        this.experiencesByType.get(experience.type)?.add(experience.id);
       }
     }
 
@@ -162,12 +169,12 @@ export class ExperienceService extends Service {
     if (!this.experiencesByDomain.has(experience.domain)) {
       this.experiencesByDomain.set(experience.domain, new Set());
     }
-    this.experiencesByDomain.get(experience.domain)!.add(experience.id);
+    this.experiencesByDomain.get(experience.domain)?.add(experience.id);
 
     if (!this.experiencesByType.has(experience.type)) {
       this.experiencesByType.set(experience.type, new Set());
     }
-    this.experiencesByType.get(experience.type)!.add(experience.id);
+    this.experiencesByType.get(experience.type)?.add(experience.id);
 
     // Save to memory service
     await this.saveExperienceToMemory(experience);
@@ -258,24 +265,26 @@ export class ExperienceService extends Service {
       }
 
       if (query.tags && query.tags.length > 0) {
-        candidates = candidates.filter((exp) => query.tags!.some((tag) => exp.tags.includes(tag)));
+        candidates = candidates.filter((exp) => query.tags?.some((tag) => exp.tags.includes(tag)));
       }
 
       if (query.minConfidence !== undefined) {
+        const minConfidence = query.minConfidence;
         candidates = candidates.filter((exp) => {
           const decayedConfidence = this.decayManager.getDecayedConfidence(exp);
-          return decayedConfidence >= query.minConfidence!;
+          return decayedConfidence >= minConfidence;
         });
       }
 
       if (query.minImportance !== undefined) {
-        candidates = candidates.filter((exp) => exp.importance >= query.minImportance!);
+        const minImportance = query.minImportance;
+        candidates = candidates.filter((exp) => exp.importance >= minImportance);
       }
 
       if (query.timeRange) {
         candidates = candidates.filter((exp) => {
-          if (query.timeRange!.start && exp.createdAt < query.timeRange!.start) return false;
-          if (query.timeRange!.end && exp.createdAt > query.timeRange!.end) return false;
+          if (query.timeRange?.start && exp.createdAt < query.timeRange?.start) return false;
+          if (query.timeRange?.end && exp.createdAt > query.timeRange?.end) return false;
           return true;
         });
       }
@@ -300,24 +309,26 @@ export class ExperienceService extends Service {
       }
 
       if (query.tags && query.tags.length > 0) {
-        candidates = candidates.filter((exp) => query.tags!.some((tag) => exp.tags.includes(tag)));
+        candidates = candidates.filter((exp) => query.tags?.some((tag) => exp.tags.includes(tag)));
       }
 
       if (query.minConfidence !== undefined) {
+        const minConfidence = query.minConfidence;
         candidates = candidates.filter((exp) => {
           const decayedConfidence = this.decayManager.getDecayedConfidence(exp);
-          return decayedConfidence >= query.minConfidence!;
+          return decayedConfidence >= minConfidence;
         });
       }
 
       if (query.minImportance !== undefined) {
-        candidates = candidates.filter((exp) => exp.importance >= query.minImportance!);
+        const minImportance = query.minImportance;
+        candidates = candidates.filter((exp) => exp.importance >= minImportance);
       }
 
       if (query.timeRange) {
         candidates = candidates.filter((exp) => {
-          if (query.timeRange!.start && exp.createdAt < query.timeRange!.start) return false;
-          if (query.timeRange!.end && exp.createdAt > query.timeRange!.end) return false;
+          if (query.timeRange?.start && exp.createdAt < query.timeRange?.start) return false;
+          if (query.timeRange?.end && exp.createdAt > query.timeRange?.end) return false;
           return true;
         });
       }
@@ -337,7 +348,9 @@ export class ExperienceService extends Service {
       const relatedIds = new Set<UUID>();
       for (const exp of results) {
         if (exp.relatedExperiences) {
-          exp.relatedExperiences.forEach((id) => relatedIds.add(id));
+          exp.relatedExperiences.forEach((id) => {
+            relatedIds.add(id);
+          });
         }
       }
 
@@ -407,7 +420,8 @@ export class ExperienceService extends Service {
     const learnings = experiences.map((exp) => exp.learning);
     const commonWords = this.findCommonPatterns(learnings);
 
-    const avgConfidence = experiences.reduce((sum, exp) => sum + exp.confidence, 0) / experiences.length;
+    const avgConfidence =
+      experiences.reduce((sum, exp) => sum + exp.confidence, 0) / experiences.length;
     const outcomeConsistency = this.calculateOutcomeConsistency(experiences);
     const reliability = (avgConfidence + outcomeConsistency) / 2;
 
@@ -415,7 +429,10 @@ export class ExperienceService extends Service {
     const recommendations = this.generateRecommendations(experiences, reliability);
 
     return {
-      pattern: commonWords.length > 0 ? `Common patterns: ${commonWords.join(", ")}` : "No clear patterns detected",
+      pattern:
+        commonWords.length > 0
+          ? `Common patterns: ${commonWords.join(", ")}`
+          : "No clear patterns detected",
       frequency: experiences.length,
       reliability,
       alternatives,
@@ -611,4 +628,3 @@ function getNumberSetting(runtime: IAgentRuntime, key: string, fallback: number)
   }
   return fallback;
 }
-

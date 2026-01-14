@@ -244,9 +244,23 @@ async def chat(request: ChatRequest):
     user_id = request.userId or str(uuid.uuid4())
 
     try:
-        response = await runtime.use_model("TEXT_LARGE", {
-            "prompt": request.message,
-        })
+        from elizaos import ChannelType, Content, Memory, string_to_uuid
+
+        message = Memory(
+            entity_id=string_to_uuid(user_id),
+            room_id=string_to_uuid("rest-api-room"),
+            content=Content(
+                text=request.message,
+                source="rest-api",
+                channel_type=ChannelType.DM.value,
+            ),
+        )
+        result = await runtime.message_service.handle_message(runtime, message)
+        response = (
+            result.response_content.text
+            if result.response_content and result.response_content.text
+            else ""
+        )
 
         return ChatResponse(
             response=str(response),
@@ -329,10 +343,26 @@ req: web::Json<ChatRequest>,
 let user_id = req.user_id.clone()
 .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    let response = data.runtime
-        .use_model("TEXT_LARGE", &req.message)
+    let content = elizaos::types::Content {
+        text: Some(req.message.clone()),
+        source: Some("rest-api".to_string()),
+        channel_type: Some(elizaos::types::ChannelType::Dm),
+        ..Default::default()
+    };
+
+    let mut msg =
+        elizaos::types::Memory::new(elizaos::types::UUID::new_v4(), elizaos::types::UUID::new_v4(), content);
+
+    let result = data.runtime
+        .message_service()
+        .handle_message(data.runtime.as_ref(), &mut msg, None, None)
         .await
         .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to process"))?;
+
+    let response = result
+        .response_content
+        .and_then(|c| c.text)
+        .unwrap_or_default();
 
     Ok(HttpResponse::Ok().json(ChatResponse {
         response,

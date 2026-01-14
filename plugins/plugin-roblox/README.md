@@ -151,6 +151,32 @@ MessagingService:SubscribeAsync(TOPIC, function(message)
 end)
 ```
 
+## Limitations & recommended architecture (critical notes)
+
+### Inbound messages (Roblox → agent)
+
+Roblox Open Cloud **does not provide an external “subscribe” API** for `MessagingService`. That means:
+
+- This plugin supports **agent → Roblox** (publish) reliably.
+- It cannot, by itself, “listen to player chat” from outside Roblox by polling Open Cloud.
+
+**Recommended approach**: run a small HTTP bridge server that Roblox calls via `HttpService:RequestAsync(...)` and let the agent respond. See `examples/roblox/`.
+
+### Movement / “walking around”
+
+Agents cannot move things in Roblox via Open Cloud directly. Movement is possible only when your Roblox experience:
+
+- subscribes to the topic
+- interprets `agent_action` payloads (e.g. `move_npc`, `teleport`)
+- performs the movement using Roblox APIs (Humanoid / Pathfinding / TeleportService)
+
+### Voice
+
+Open Cloud does not provide a direct “agent voice” channel.
+
+- You can generate audio externally, but Roblox playback requires game-side logic and Roblox’s audio constraints (assets / permissions / allowed sources).
+- Most deployments start with **text** and add voice later with custom UI and an audio pipeline.
+
 ## Project Structure
 
 ```

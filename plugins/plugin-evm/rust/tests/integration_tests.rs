@@ -7,8 +7,8 @@
 //! Run with: cargo test --test integration_tests -- --ignored
 
 use elizaos_plugin_evm::{
-    BridgeParams, SwapAction, SwapParams, TransferAction, TransferParams,
-    SupportedChain, WalletProvider, WalletProviderConfig,
+    BridgeParams, SupportedChain, SwapAction, SwapParams, TransferAction, TransferParams,
+    WalletProvider, WalletProviderConfig,
 };
 use std::env;
 use std::sync::Arc;
@@ -29,12 +29,16 @@ fn get_test_config() -> Option<WalletProviderConfig> {
 #[ignore = "requires TEST_PRIVATE_KEY environment variable"]
 async fn test_wallet_provider_balance() {
     let config = get_test_config().expect("TEST_PRIVATE_KEY not set");
-    let provider = WalletProvider::new(config).await.expect("Failed to create provider");
+    let provider = WalletProvider::new(config)
+        .await
+        .expect("Failed to create provider");
 
     let address = provider.address();
     println!("Wallet address: {address}");
 
-    let balance = provider.get_formatted_balance(SupportedChain::Sepolia).await;
+    let balance = provider
+        .get_formatted_balance(SupportedChain::Sepolia)
+        .await;
     match balance {
         Ok(b) => println!("Sepolia balance: {b} ETH"),
         Err(e) => println!("Failed to get balance: {e}"),
@@ -45,7 +49,9 @@ async fn test_wallet_provider_balance() {
 #[ignore = "requires TEST_PRIVATE_KEY environment variable"]
 async fn test_wallet_provider_nonce() {
     let config = get_test_config().expect("TEST_PRIVATE_KEY not set");
-    let provider = WalletProvider::new(config).await.expect("Failed to create provider");
+    let provider = WalletProvider::new(config)
+        .await
+        .expect("Failed to create provider");
 
     let nonce = provider.get_nonce(SupportedChain::Sepolia).await;
     match nonce {
@@ -58,7 +64,9 @@ async fn test_wallet_provider_nonce() {
 #[ignore = "requires TEST_PRIVATE_KEY environment variable"]
 async fn test_wallet_provider_gas_price() {
     let config = get_test_config().expect("TEST_PRIVATE_KEY not set");
-    let provider = WalletProvider::new(config).await.expect("Failed to create provider");
+    let provider = WalletProvider::new(config)
+        .await
+        .expect("Failed to create provider");
 
     let gas_price = provider.get_gas_price(SupportedChain::Sepolia).await;
     match gas_price {
@@ -72,7 +80,9 @@ async fn test_wallet_provider_gas_price() {
 async fn test_transfer_action() {
     let config = get_test_config().expect("TEST_PRIVATE_KEY not set");
     let provider = Arc::new(
-        WalletProvider::new(config).await.expect("Failed to create provider")
+        WalletProvider::new(config)
+            .await
+            .expect("Failed to create provider"),
     );
 
     // Check balance first
@@ -80,7 +90,7 @@ async fn test_transfer_action() {
         .get_formatted_balance(SupportedChain::Sepolia)
         .await
         .expect("Failed to get balance");
-    
+
     let balance_f: f64 = balance.parse().unwrap_or(0.0);
     if balance_f < 0.001 {
         println!("Insufficient balance for transfer test: {balance} ETH");
@@ -90,11 +100,7 @@ async fn test_transfer_action() {
     let transfer = TransferAction::new(provider.clone());
 
     // Create a self-transfer to test without losing funds
-    let params = TransferParams::native(
-        SupportedChain::Sepolia,
-        provider.address(),
-        "0.0001",
-    );
+    let params = TransferParams::native(SupportedChain::Sepolia, provider.address(), "0.0001");
 
     match transfer.execute(params).await {
         Ok(tx) => {
@@ -112,7 +118,9 @@ async fn test_transfer_action() {
 async fn test_swap_quote() {
     let config = get_test_config().expect("TEST_PRIVATE_KEY not set");
     let provider = Arc::new(
-        WalletProvider::new(config).await.expect("Failed to create provider")
+        WalletProvider::new(config)
+            .await
+            .expect("Failed to create provider"),
     );
 
     let swap = SwapAction::new(provider);
@@ -168,14 +176,18 @@ async fn test_chain_ids() {
 async fn test_transfer_params_validation() {
     let valid = TransferParams::native(
         SupportedChain::Sepolia,
-        "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045".parse().unwrap(),
+        "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+            .parse()
+            .unwrap(),
         "1.0",
     );
     assert!(valid.validate().is_ok());
 
     let invalid_amount = TransferParams::native(
         SupportedChain::Sepolia,
-        "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045".parse().unwrap(),
+        "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+            .parse()
+            .unwrap(),
         "-1.0",
     );
     assert!(invalid_amount.validate().is_err());
@@ -226,5 +238,3 @@ async fn test_bridge_params_validation() {
     );
     assert!(same_chain.validate().is_err());
 }
-
-

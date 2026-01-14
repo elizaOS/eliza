@@ -1,4 +1,3 @@
-
 from elizaos_plugin_github.config import GitHubConfig
 from elizaos_plugin_github.error import (
     BranchExistsError,

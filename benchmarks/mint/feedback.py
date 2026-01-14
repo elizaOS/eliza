@@ -56,6 +56,35 @@ class FeedbackGenerator:
         """Get the runtime instance."""
         return self._runtime
 
+    async def generate(
+        self,
+        task: MINTTask,
+        predicted: str,
+        turn_num: int,
+    ) -> str:
+        """
+        Generate feedback for incorrect answer (simplified interface).
+
+        Args:
+            task: The MINT task being solved
+            predicted: The agent's predicted answer
+            turn_num: Current turn number
+
+        Returns:
+            Feedback string to guide the agent
+        """
+        # Create a minimal trajectory for the feedback generator
+        from benchmarks.mint.types import MINTTrajectory
+        trajectory = MINTTrajectory(task_id=task.id)
+        trajectory.final_answer = predicted
+
+        return await self.generate_feedback(
+            task=task,
+            trajectory=trajectory,
+            current_answer=predicted,
+            current_turn=turn_num,
+        )
+
     async def generate_feedback(
         self,
         task: MINTTask,

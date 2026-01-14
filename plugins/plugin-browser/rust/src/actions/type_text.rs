@@ -9,10 +9,7 @@ pub const TYPE_ACTION_NAME: &str = "BROWSER_TYPE";
 pub const TYPE_SIMILES: &[&str] = &["TYPE_TEXT", "INPUT", "ENTER_TEXT"];
 pub const TYPE_DESCRIPTION: &str = "Type text into an input field on the webpage";
 
-pub async fn browser_type(
-    service: Arc<BrowserService>,
-    message: &str,
-) -> ActionResult {
+pub async fn browser_type(service: Arc<BrowserService>, message: &str) -> ActionResult {
     let session = match service.get_or_create_session().await {
         Ok(s) => s,
         Err(e) => {
@@ -34,7 +31,10 @@ pub async fn browser_type(
     match result {
         Ok(response) if response.success => {
             let mut data = HashMap::new();
-            data.insert("actionName".to_string(), serde_json::json!(TYPE_ACTION_NAME));
+            data.insert(
+                "actionName".to_string(),
+                serde_json::json!(TYPE_ACTION_NAME),
+            );
             data.insert("textTyped".to_string(), serde_json::json!(text_to_type));
             data.insert("field".to_string(), serde_json::json!(field));
             data.insert("sessionId".to_string(), serde_json::json!(session.id));
@@ -52,5 +52,3 @@ pub async fn browser_type(
         }
     }
 }
-
-

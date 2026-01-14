@@ -6,6 +6,7 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 
+import { withCanonicalActionDocs, withCanonicalEvaluatorDocs } from "./action-docs";
 import { parseActionParams, validateActionParams } from "./actions";
 import {
   type CapabilityConfig,
@@ -14,12 +15,14 @@ import {
 import { createUniqueUuid } from "./entities";
 import { createLogger } from "./logger";
 import { BM25 } from "./search";
+import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { DefaultMessageService } from "./services/message";
 import { decryptSecret, getSalt } from "./settings";
 import {
   getStreamingContext,
   runWithStreamingContext,
 } from "./streaming-context";
+import { getTrajectoryContext } from "./trajectory-context";
 import {
   type Action,
   type ActionContext,
@@ -559,12 +562,24 @@ export class AgentRuntime implements IAgentRuntime {
         "Stopping service",
       );
       for (const service of services) {
-        await service.stop();
+        const maybe = service as { stop?: () => Promise<void> };
+        if (typeof maybe.stop === "function") {
+          await maybe.stop();
+        } else {
+          this.logger.warn(
+            { src: "agent", agentId: this.agentId, serviceType },
+            "Service instance is missing stop(); skipping",
+          );
+        }
       }
     }
   }
 
-  async initialize(options?: { skipMigrations?: boolean }): Promise<void> {
+  async initialize(options?: {
+    skipMigrations?: boolean;
+    /** Allow running without a persistent database adapter (benchmarks/tests). */
+    allowNoDatabase?: boolean;
+  }): Promise<void> {
     const pluginRegistrationPromises: Promise<void>[] = [];
 
     // Bootstrap plugin is now built into core - auto-register it first
@@ -578,7 +593,18 @@ export class AgentRuntime implements IAgentRuntime {
     }
     await Promise.all(pluginRegistrationPromises);
 
+    const allowNoDatabase =
+      options?.allowNoDatabase === true ||
+      String(this.getSetting("ALLOW_NO_DATABASE") ?? "").toLowerCase() === "true";
+
     if (!this.adapter) {
+      if (allowNoDatabase) {
+        this.logger.warn(
+          { src: "agent", agentId: this.agentId },
+          "Database adapter not initialized; using in-memory adapter (ALLOW_NO_DATABASE)",
+        );
+        this.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
+      } else {
       this.logger.error(
         { src: "agent", agentId: this.agentId },
         "Database adapter not initialized",
@@ -586,6 +612,7 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error(
         "Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.",
       );
+      }
     }
 
     // Make adapter init idempotent - check if already initialized
@@ -1008,22 +1035,23 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerAction(action: Action) {
-    if (this.actions.find((a) => a.name === action.name)) {
+    const canonical = withCanonicalActionDocs(action);
+    if (this.actions.find((a) => a.name === canonical.name)) {
       this.logger.warn(
-        { src: "agent", agentId: this.agentId, action: action.name },
+        { src: "agent", agentId: this.agentId, action: canonical.name },
         "Action already registered, skipping",
       );
     } else {
-      this.actions.push(action);
+      this.actions.push(canonical);
       this.logger.debug(
-        { src: "agent", agentId: this.agentId, action: action.name },
+        { src: "agent", agentId: this.agentId, action: canonical.name },
         "Action registered",
       );
     }
   }
 
   registerEvaluator(evaluator: Evaluator) {
-    this.evaluators.push(evaluator);
+    this.evaluators.push(withCanonicalEvaluatorDocs(evaluator));
   }
 
   // Helper functions for immutable action plan updates
@@ -1335,55 +1363,19 @@ export class AgentRuntime implements IAgentRuntime {
             actionParamsByName.get(actionKey);
           const validation = validateActionParams(action, extractedParams);
           if (!validation.valid) {
-            const errorMsg = `Invalid parameters for action ${action.name}: ${validation.errors.join("; ")}`;
-            this.logger.error(
+            this.logger.warn(
               {
                 src: "agent",
                 agentId: this.agentId,
                 action: action.name,
                 errors: validation.errors,
               },
-              "Action parameter validation failed",
+              "Action parameter validation incomplete; continuing to handler",
             );
-
-            if (actionPlan?.steps?.[actionIndex]) {
-              actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-                status: "failed",
-                error: errorMsg,
-              });
-            }
-
-            const failureResult: ActionResult = {
-              success: false,
-              text: errorMsg,
-              error: errorMsg,
-              data: { actionName: action.name },
-            };
-            actionResults.push(failureResult);
-
-            const actionMemory: Memory = {
-              id: uuidv4() as UUID,
-              entityId: message.entityId,
-              roomId: message.roomId,
-              worldId: message.worldId,
-              content: {
-                thought: errorMsg,
-                source: "auto",
-                type: "action_result",
-                actionName: action.name,
-                actionStatus: "failed",
-                runId,
-              },
-            };
-            await this.createMemory(actionMemory, "messages");
-
-            actionIndex++;
-            continue;
+            options.parameterErrors = validation.errors;
           }
 
-          if (validation.params) {
-            options.parameters = validation.params;
-          }
+          if (validation.params) options.parameters = validation.params;
         }
 
         const actionId = uuidv4() as UUID;
@@ -2166,6 +2158,24 @@ export class AgentRuntime implements IAgentRuntime {
     onlyInclude = false,
     skipCache = false,
   ): Promise<State> {
+    const trajectoryStepIdFromMessage =
+      typeof message.metadata === "object" &&
+      message.metadata !== null &&
+      "trajectoryStepId" in message.metadata
+        ? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
+        : undefined;
+    const trajectoryStepId =
+      typeof trajectoryStepIdFromMessage === "string" &&
+      trajectoryStepIdFromMessage.trim() !== ""
+        ? trajectoryStepIdFromMessage
+        : getTrajectoryContext()?.trajectoryStepId;
+
+    // If we're running inside a trajectory step, always bypass the state cache so
+    // providers are executed and can be logged for training/benchmark traces.
+    if (trajectoryStepId) {
+      skipCache = true;
+    }
+
     const filterList = onlyInclude ? includeList : null;
     const emptyObj = {
       values: {},
@@ -2194,6 +2204,18 @@ export class AgentRuntime implements IAgentRuntime {
     const providersToGet = Array.from(
       new Set(this.providers.filter((p) => providerNames.has(p.name))),
     ).sort((a, b) => (a.position || 0) - (b.position || 0));
+
+    // Optional trajectory logging service (no-op by default).
+    type TrajectoryLogger = Service & {
+      logProviderAccess: (params: {
+        stepId: string;
+        providerName: string;
+        data: Record<string, string | number | boolean | null>;
+        purpose: string;
+        query?: Record<string, string | number | boolean | null>;
+      }) => void;
+    };
+    const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
     const providerData = await Promise.all(
       providersToGet.map(async (provider) => {
         const start = Date.now();
@@ -2222,6 +2244,25 @@ export class AgentRuntime implements IAgentRuntime {
         };
       }),
     );
+
+    if (trajectoryStepId && trajLogger) {
+      const userText =
+        typeof message.content?.text === "string" ? message.content.text : "";
+      for (const r of providerData) {
+        try {
+          const textLen = typeof r.text === "string" ? r.text.length : 0;
+          trajLogger.logProviderAccess({
+            stepId: trajectoryStepId,
+            providerName: r.providerName,
+            data: { textLength: textLen },
+            purpose: "compose_state",
+            query: { message: userText.slice(0, 2000) },
+          });
+        } catch {
+          // Trajectory logging must never break core message flow.
+        }
+      }
+    }
     const currentProviderResults: Record<
       string,
       { text?: string; values?: Record<string, unknown>; providerName: string }
@@ -2515,7 +2556,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   /// ensures servicePromises & servicePromiseHandlers for a serviceType
-  private _createServiceResolver(serviceType: ServiceTypeName) {
+  private _createServiceResolver(serviceType: ServiceTypeName | string) {
     let resolver: ServiceResolver | undefined;
     let rejecter: ServiceRejecter | undefined;
     this.servicePromises.set(
@@ -2543,7 +2584,10 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   /// returns a promise that's resolved once this service is loaded
-  getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service> {
+  ///
+  /// Note: Plugins can register arbitrary service type strings; callers may
+  /// therefore provide either a core `ServiceTypeName` or a plugin-defined string.
+  getServiceLoadPromise(serviceType: ServiceTypeName | string): Promise<Service> {
     // if this.isInitialized then the this p will exist and already be resolved
     let p = this.servicePromises.get(serviceType);
     if (!p) {
@@ -2795,7 +2839,11 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    const paramsObj = params as Record<string, unknown> | null | undefined;
+    // Only treat params as an object if it's actually an object (not a string or primitive)
+    const paramsObj =
+      params && typeof params === "object" && !Array.isArray(params)
+        ? (params as Record<string, unknown>)
+        : null;
     const promptContent =
       (paramsObj &&
       "prompt" in paramsObj &&
@@ -2807,7 +2855,8 @@ export class AgentRuntime implements IAgentRuntime {
         : null) ||
       (paramsObj && "messages" in paramsObj && Array.isArray(paramsObj.messages)
         ? JSON.stringify(paramsObj.messages)
-        : null);
+        : null) ||
+      (typeof params === "string" ? params : null);
     const model = this.getModel(modelKey);
     const modelsForKey = this.models.get(modelKey);
     const modelWithProvider =
@@ -2989,6 +3038,51 @@ export class AgentRuntime implements IAgentRuntime {
         provider,
         fullText,
       );
+
+      // Optional trajectory logging: associate model calls with current trajectory step
+      try {
+        type TrajectoryLogger = Service & {
+          logLlmCall: (params: {
+            stepId: string;
+            model: string;
+            systemPrompt: string;
+            userPrompt: string;
+            response: string;
+            temperature: number;
+            maxTokens: number;
+            purpose: string;
+            actionType: string;
+            latencyMs: number;
+          }) => void;
+        };
+        const stepId = getTrajectoryContext()?.trajectoryStepId;
+        const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
+        if (stepId && trajLogger) {
+          const tempRaw = isPlainObject(modelParams)
+            ? (modelParams as { temperature?: number }).temperature
+            : undefined;
+          const maxTokensRaw = isPlainObject(modelParams)
+            ? (modelParams as { maxTokens?: number }).maxTokens
+            : undefined;
+          trajLogger.logLlmCall({
+            stepId,
+            model: String(modelKey),
+            systemPrompt: typeof this.character.system === "string"
+              ? this.character.system
+              : "",
+            userPrompt: promptContent ?? "",
+            response: fullText,
+            temperature: typeof tempRaw === "number" ? tempRaw : 0,
+            maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+            purpose: "action",
+            actionType: "runtime.useModel",
+            latencyMs: Math.max(0, Math.round(elapsedTime)),
+          });
+        }
+      } catch {
+        // Trajectory logging must never break core model flow.
+      }
+
       return fullText as R;
     }
 
@@ -3018,6 +3112,49 @@ export class AgentRuntime implements IAgentRuntime {
       provider,
       response,
     );
+
+    // Optional trajectory logging: associate model calls with current trajectory step
+    try {
+      type TrajectoryLogger = Service & {
+        logLlmCall: (params: {
+          stepId: string;
+          model: string;
+          systemPrompt: string;
+          userPrompt: string;
+          response: string;
+          temperature: number;
+          maxTokens: number;
+          purpose: string;
+          actionType: string;
+          latencyMs: number;
+        }) => void;
+      };
+      const stepId = getTrajectoryContext()?.trajectoryStepId;
+      const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
+      if (stepId && trajLogger) {
+        const tempRaw = isPlainObject(modelParams)
+          ? (modelParams as { temperature?: number }).temperature
+          : undefined;
+        const maxTokensRaw = isPlainObject(modelParams)
+          ? (modelParams as { maxTokens?: number }).maxTokens
+          : undefined;
+        trajLogger.logLlmCall({
+          stepId,
+          model: String(modelKey),
+          systemPrompt:
+            typeof this.character.system === "string" ? this.character.system : "",
+          userPrompt: promptContent ?? "",
+          response: typeof response === "string" ? response : JSON.stringify(response),
+          temperature: typeof tempRaw === "number" ? tempRaw : 0,
+          maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+          purpose: "action",
+          actionType: "runtime.useModel",
+          latencyMs: Math.max(0, Math.round(elapsedTime)),
+        });
+      }
+    } catch {
+      // Trajectory logging must never break core model flow.
+    }
     return response as R;
   }
 

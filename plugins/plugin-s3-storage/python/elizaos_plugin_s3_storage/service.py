@@ -72,4 +72,3 @@ class AwsS3Service:
 
     async def stop(self) -> None:
         await self._plugin.close()
-

@@ -520,7 +520,13 @@ BEHAVIOR:
       if (task.metadata.status !== "running") {
         await service.resumeTask(taskId);
       }
-      service.startTaskExecution(taskId).catch(() => {});
+      service.startTaskExecution(taskId).then(
+        () => {},
+        (err: Error) => {
+          const error = err.message;
+          logger.error(`RESUME_TASK startTaskExecution error: ${error}`);
+        },
+      );
 
       const msg = `Resumed task: ${task.name}`;
       await callback?.({ content: { text: msg } });

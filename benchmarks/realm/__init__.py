@@ -26,9 +26,23 @@ from benchmarks.realm.types import (
     LEADERBOARD_SCORES,
 )
 from benchmarks.realm.dataset import REALMDataset
-from benchmarks.realm.agent import REALMAgent, MockREALMAgent, ELIZAOS_AVAILABLE
+from benchmarks.realm.agent import (
+    REALMAgent,
+    MockREALMAgent,
+    ELIZAOS_AVAILABLE,
+    TRAJECTORY_LOGGER_AVAILABLE,
+)
 from benchmarks.realm.evaluator import REALMEvaluator, MetricsCalculator
 from benchmarks.realm.runner import REALMRunner
+
+# Plugin components (optional - requires ElizaOS)
+try:
+    from benchmarks.realm.plugin import realm_plugin, create_realm_plugin
+    REALM_PLUGIN_AVAILABLE = True
+except ImportError:
+    realm_plugin = None  # type: ignore[misc, assignment]
+    create_realm_plugin = None  # type: ignore[misc, assignment]
+    REALM_PLUGIN_AVAILABLE = False
 
 __all__ = [
     # Types
@@ -54,6 +68,11 @@ __all__ = [
     "REALMEvaluator",
     "MetricsCalculator",
     "REALMRunner",
-    # Availability flag
+    # Availability flags
     "ELIZAOS_AVAILABLE",
+    "REALM_PLUGIN_AVAILABLE",
+    "TRAJECTORY_LOGGER_AVAILABLE",
+    # Plugin (optional)
+    "realm_plugin",
+    "create_realm_plugin",
 ]

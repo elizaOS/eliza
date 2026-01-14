@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
@@ -48,9 +47,7 @@ class FormsContextProvider:
                     desc = f" ({fld.description})" if fld.description else ""
                     context_text += f"  - {fld.label}{desc}\n"
 
-            optional_fields = [
-                f for f in current_step.fields if f.optional and f.value is None
-            ]
+            optional_fields = [f for f in current_step.fields if f.optional and f.value is None]
             if optional_fields:
                 context_text += "Optional fields:\n"
                 for fld in optional_fields:
@@ -59,20 +56,20 @@ class FormsContextProvider:
 
             context_text += f"Progress: Step {form.current_step_index + 1} of {len(form.steps)}\n"
 
-            serialized_forms.append({
-                "id": str(form.id),
-                "name": form.name,
-                "description": form.description,
-                "status": (
-                    form.status.value
-                    if isinstance(form.status, FormStatus)
-                    else form.status
-                ),
-                "currentStepIndex": form.current_step_index,
-                "stepsCount": len(form.steps),
-                "createdAt": form.created_at.isoformat() if form.created_at else None,
-                "updatedAt": form.updated_at.isoformat() if form.updated_at else None,
-            })
+            serialized_forms.append(
+                {
+                    "id": str(form.id),
+                    "name": form.name,
+                    "description": form.description,
+                    "status": (
+                        form.status.value if isinstance(form.status, FormStatus) else form.status
+                    ),
+                    "currentStepIndex": form.current_step_index,
+                    "stepsCount": len(form.steps),
+                    "createdAt": form.created_at.isoformat() if form.created_at else None,
+                    "updatedAt": form.updated_at.isoformat() if form.updated_at else None,
+                }
+            )
 
         return ProviderResult(
             text=context_text,

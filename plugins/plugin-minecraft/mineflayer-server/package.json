@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos/plugin-minecraft-mineflayer-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun --hot src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "mineflayer": "^4.30.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "minecraft-data": "^3.92.0",
+    "prismarine-item": "^1.16.0",
+    "vec3": "^0.1.10",
+    "ws": "^8.18.0",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,6 +1,5 @@
 """Tests for types module."""
 
-
 from eliza_plugin_simple_voice.types import (
     DEFAULT_SAM_OPTIONS,
     SPEECH_TRIGGERS,

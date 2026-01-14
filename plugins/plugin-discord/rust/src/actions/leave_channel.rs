@@ -60,8 +60,9 @@ impl DiscordAction for LeaveChannelAction {
 
         // Check if this is a voice leave request
         let text_lower = text.to_lowercase();
-        let is_voice_request =
-            text_lower.contains("voice") || text_lower.contains("vc") || text_lower.contains("disconnect");
+        let is_voice_request = text_lower.contains("voice")
+            || text_lower.contains("vc")
+            || text_lower.contains("disconnect");
 
         // Parse channel info from message
         let channel_info = service.parse_channel_info(text).await?;
@@ -80,7 +81,9 @@ impl DiscordAction for LeaveChannelAction {
                     serde_json::json!({"type": "voice"}),
                 ));
             } else {
-                return Ok(ActionResult::failure("I'm not currently in a voice channel."));
+                return Ok(ActionResult::failure(
+                    "I'm not currently in a voice channel.",
+                ));
             }
         }
 
@@ -112,9 +115,15 @@ impl DiscordAction for LeaveChannelAction {
             )));
         }
 
-        let channel_name = channel.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown");
+        let channel_name = channel
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("Unknown");
         let channel_id = channel.get("id").and_then(|i| i.as_str()).unwrap_or("");
-        let channel_type = channel.get("type").and_then(|t| t.as_str()).unwrap_or("text");
+        let channel_type = channel
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("text");
 
         // Handle voice channels
         if channel_type == "voice" {
@@ -129,7 +138,9 @@ impl DiscordAction for LeaveChannelAction {
                     }),
                 ));
             } else {
-                return Ok(ActionResult::failure("I'm not currently in that voice channel."));
+                return Ok(ActionResult::failure(
+                    "I'm not currently in that voice channel.",
+                ));
             }
         }
 
@@ -137,7 +148,10 @@ impl DiscordAction for LeaveChannelAction {
         let success = service.remove_allowed_channel(channel_id).await?;
         if success {
             Ok(ActionResult::success_with_data(
-                format!("I've stopped listening to {} (<#{}>).", channel_name, channel_id),
+                format!(
+                    "I've stopped listening to {} (<#{}>).",
+                    channel_name, channel_id
+                ),
                 serde_json::json!({
                     "channel_id": channel_id,
                     "channel_name": channel_name,

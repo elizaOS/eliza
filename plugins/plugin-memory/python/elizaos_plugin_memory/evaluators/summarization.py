@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -93,8 +92,7 @@ def parse_summary_xml(xml: str) -> SummaryResult:
 
 
 class ModelHandler(Protocol):
-    async def generate(self, prompt: str, max_tokens: int = 2500) -> str:
-        ...
+    async def generate(self, prompt: str, max_tokens: int = 2500) -> str: ...
 
 
 @dataclass

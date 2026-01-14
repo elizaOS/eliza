@@ -16,10 +16,7 @@ class JoinChannelAction:
 
     @property
     def description(self) -> str:
-        return (
-            "Adds a channel to the list of channels the bot will listen to "
-            "and respond in."
-        )
+        return "Adds a channel to the list of channels the bot will listen to and respond in."
 
     @property
     def similes(self) -> list[str]:
@@ -33,8 +30,8 @@ class JoinChannelAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord"
 
     async def handler(
         self,
@@ -55,16 +52,12 @@ class JoinChannelAction:
 
         # Check if already listening
         if service.is_channel_allowed(channel_id):
-            return ActionResult.failure_result(
-                "I'm already listening to this channel."
-            )
+            return ActionResult.failure_result("I'm already listening to this channel.")
 
         # Add channel to allowed list
         success = await service.add_allowed_channel(channel_id)
         if not success:
-            return ActionResult.failure_result(
-                "Failed to add channel to the listening list."
-            )
+            return ActionResult.failure_result("Failed to add channel to the listening list.")
 
         channel_name = await service.get_channel_name(channel_id)
         return ActionResult.success_result(

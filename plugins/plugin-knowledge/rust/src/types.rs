@@ -120,7 +120,6 @@ fn default_knowledge_path() -> String {
     "./docs".to_string()
 }
 
-
 impl Default for KnowledgeConfig {
     fn default() -> Self {
         Self {
@@ -248,7 +247,6 @@ fn default_batch_delay() -> u64 {
     100
 }
 
-
 impl Default for ProviderRateLimits {
     fn default() -> Self {
         Self {
@@ -335,4 +333,3 @@ mod tests {
         assert!(options.metadata.is_empty());
     }
 }
-

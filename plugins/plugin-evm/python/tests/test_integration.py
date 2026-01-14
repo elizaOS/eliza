@@ -24,6 +24,8 @@ from elizaos_plugin_evm import (
 )
 from elizaos_plugin_evm.error import EVMError
 
+pytestmark = pytest.mark.integration
+
 # Mark for tests that require the private key
 requires_private_key = pytest.mark.skipif(
     not os.getenv("EVM_PRIVATE_KEY"),

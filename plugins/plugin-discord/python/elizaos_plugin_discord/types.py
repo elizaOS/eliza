@@ -30,9 +30,7 @@ class Snowflake(str):
             raise InvalidSnowflakeError("Snowflake cannot be empty")
 
         if len(value) < 17 or len(value) > 19:
-            raise InvalidSnowflakeError(
-                f"Snowflake must be 17-19 characters, got {len(value)}"
-            )
+            raise InvalidSnowflakeError(f"Snowflake must be 17-19 characters, got {len(value)}")
 
         if not value.isdigit():
             raise InvalidSnowflakeError("Snowflake must contain only digits")
@@ -253,6 +251,14 @@ class DiscordWorldPayload(BaseModel):
     guild_id: str
     guild_name: str
     member_count: int
+    created_at: str | None = None
+    owner_id: str | None = None
+    owner_name: str | None = None
+    description: str | None = None
+    role_count: int | None = None
+    channel_count: int | None = None
+    premium_tier: int | None = None
+    premium_subscription_count: int | None = None
     text_channels: list[DiscordChannelInfo] = []
     voice_channels: list[DiscordChannelInfo] = []
 
@@ -260,6 +266,13 @@ class DiscordWorldPayload(BaseModel):
     @classmethod
     def validate_guild_id(cls, v: str) -> str:
         Snowflake(v)
+        return v
+
+    @field_validator("owner_id")
+    @classmethod
+    def validate_owner_id(cls, v: str | None) -> str | None:
+        if v is not None:
+            Snowflake(v)
         return v
 
 
@@ -291,5 +304,3 @@ class DiscordSettings(BaseModel):
     should_ignore_bot_messages: bool = True
     should_ignore_direct_messages: bool = False
     should_respond_only_to_mentions: bool = False
-
-

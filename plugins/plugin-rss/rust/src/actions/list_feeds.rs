@@ -1,13 +1,16 @@
+use super::get_feed::{Action, ActionExample};
 use async_trait::async_trait;
 use serde_json::Value;
-use super::get_feed::{Action, ActionExample};
 
 pub struct ListFeedsAction;
 
 impl ListFeedsAction {
     fn is_list_request(text: &str) -> bool {
         let lower = text.to_lowercase();
-        (lower.contains("list") || lower.contains("show") || lower.contains("what") || lower.contains("subscrib"))
+        (lower.contains("list")
+            || lower.contains("show")
+            || lower.contains("what")
+            || lower.contains("subscrib"))
             && (lower.contains("rss") || lower.contains("feed"))
     }
 }

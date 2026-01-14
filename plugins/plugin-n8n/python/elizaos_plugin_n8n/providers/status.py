@@ -19,9 +19,7 @@ class PluginCreationStatusProvider:
     async def get(self, context: ProviderContext) -> ProviderResult:
         jobs = context.state.get("jobs", [])
 
-        active_jobs = [
-            j for j in jobs if j.get("status") in ("running", "pending")
-        ]
+        active_jobs = [j for j in jobs if j.get("status") in ("running", "pending")]
 
         if not active_jobs:
             return ProviderResult(

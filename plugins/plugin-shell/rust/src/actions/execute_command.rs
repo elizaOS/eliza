@@ -6,10 +6,32 @@ pub struct ExecuteCommandAction;
 
 impl ExecuteCommandAction {
     const COMMAND_KEYWORDS: &'static [&'static str] = &[
-        "run", "execute", "command", "shell", "install", "brew", "npm",
-        "create", "file", "directory", "folder", "list", "show", "system",
-        "info", "check", "status", "cd", "ls", "mkdir", "echo", "cat",
-        "touch", "git", "build", "test",
+        "run",
+        "execute",
+        "command",
+        "shell",
+        "install",
+        "brew",
+        "npm",
+        "create",
+        "file",
+        "directory",
+        "folder",
+        "list",
+        "show",
+        "system",
+        "info",
+        "check",
+        "status",
+        "cd",
+        "ls",
+        "mkdir",
+        "echo",
+        "cat",
+        "touch",
+        "git",
+        "build",
+        "test",
     ];
 
     /// Check if text contains command keywords.
@@ -21,11 +43,13 @@ impl ExecuteCommandAction {
     /// Check if text starts with a direct command.
     fn has_direct_command(text: &str) -> bool {
         let direct_commands = [
-            "brew", "npm", "apt", "git", "ls", "cd", "echo", "cat", "touch", "mkdir", "rm", "mv", "cp",
+            "brew", "npm", "apt", "git", "ls", "cd", "echo", "cat", "touch", "mkdir", "rm", "mv",
+            "cp",
         ];
         let lower = text.to_lowercase();
         direct_commands.iter().any(|cmd| {
-            lower.starts_with(cmd) && (lower.len() == cmd.len() || lower.chars().nth(cmd.len()) == Some(' '))
+            lower.starts_with(cmd)
+                && (lower.len() == cmd.len() || lower.chars().nth(cmd.len()) == Some(' '))
         })
     }
 }
@@ -98,7 +122,9 @@ impl Action for ExecuteCommandAction {
         if command.is_empty() {
             return ActionResult {
                 success: false,
-                text: "Could not determine which command to execute. Please specify a shell command.".to_string(),
+                text:
+                    "Could not determine which command to execute. Please specify a shell command."
+                        .to_string(),
                 data: None,
                 error: Some("Could not extract command".to_string()),
             };
@@ -122,7 +148,8 @@ impl Action for ExecuteCommandAction {
                         result.executed_in, output
                     )
                 } else {
-                    let exit_code_str = result.exit_code
+                    let exit_code_str = result
+                        .exit_code
                         .map(|c| c.to_string())
                         .unwrap_or_else(|| String::from("unknown"));
                     let mut msg = format!(
@@ -144,7 +171,11 @@ impl Action for ExecuteCommandAction {
                         "stdout": result.stdout,
                         "stderr": result.stderr,
                     })),
-                    error: if result.success { None } else { Some(result.stderr) },
+                    error: if result.success {
+                        None
+                    } else {
+                        Some(result.stderr)
+                    },
                 }
             }
             Err(e) => ActionResult {

@@ -9,10 +9,7 @@ pub const SCREENSHOT_ACTION_NAME: &str = "BROWSER_SCREENSHOT";
 pub const SCREENSHOT_SIMILES: &[&str] = &["TAKE_SCREENSHOT", "CAPTURE_PAGE", "SCREENSHOT"];
 pub const SCREENSHOT_DESCRIPTION: &str = "Take a screenshot of the current page";
 
-pub async fn browser_screenshot(
-    service: Arc<BrowserService>,
-    _message: &str,
-) -> ActionResult {
+pub async fn browser_screenshot(service: Arc<BrowserService>, _message: &str) -> ActionResult {
     let session = match service.get_or_create_session().await {
         Ok(s) => s,
         Err(e) => {
@@ -40,7 +37,10 @@ pub async fn browser_screenshot(
             let screenshot = resp_data.get("screenshot").cloned();
 
             let mut data = HashMap::new();
-            data.insert("actionName".to_string(), serde_json::json!(SCREENSHOT_ACTION_NAME));
+            data.insert(
+                "actionName".to_string(),
+                serde_json::json!(SCREENSHOT_ACTION_NAME),
+            );
             data.insert("url".to_string(), serde_json::json!(url));
             data.insert("title".to_string(), serde_json::json!(title));
             data.insert("sessionId".to_string(), serde_json::json!(session.id));
@@ -61,5 +61,3 @@ pub async fn browser_screenshot(
         }
     }
 }
-
-

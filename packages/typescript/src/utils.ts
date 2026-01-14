@@ -18,6 +18,72 @@ import { getEnv } from "./utils/environment";
 // Text Utils
 
 /**
+ * Detect if we're in a restricted CSP environment (browser extension)
+ * where eval() and new Function() are not allowed.
+ */
+let _isRestrictedCSP: boolean | null = null;
+
+function isRestrictedCSPEnvironment(): boolean {
+  if (_isRestrictedCSP !== null) return _isRestrictedCSP;
+
+  // Check if we're in a browser extension context
+  const isBrowserExtension =
+    typeof globalThis !== "undefined" &&
+    typeof (globalThis as Record<string, unknown>).chrome === "object" &&
+    (globalThis as Record<string, unknown>).chrome !== null &&
+    typeof ((globalThis as Record<string, unknown>).chrome as Record<string, unknown>)?.runtime === "object" &&
+    typeof (((globalThis as Record<string, unknown>).chrome as Record<string, unknown>)?.runtime as Record<string, unknown>)?.id === "string";
+
+  if (isBrowserExtension) {
+    _isRestrictedCSP = true;
+    return true;
+  }
+
+  // Try to detect if eval is blocked by testing it
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    new Function("return 1");
+    _isRestrictedCSP = false;
+  } catch {
+    _isRestrictedCSP = true;
+  }
+
+  return _isRestrictedCSP;
+}
+
+/**
+ * CSP-safe simple template replacement function.
+ * Handles basic {{variable}} and {{{variable}}} syntax without eval.
+ * Does not support Handlebars helpers, conditionals, or loops.
+ */
+function simpleTemplateReplace(
+  template: string,
+  context: Record<string, unknown>
+): string {
+  // First handle triple-brace (unescaped) - {{{varName}}}
+  let result = template.replace(/\{\{\{([^{}]+)\}\}\}/g, (_match, varName: string) => {
+    const key = varName.trim();
+    const value = context[key];
+    if (value === undefined || value === null) return "";
+    return String(value);
+  });
+
+  // Then handle double-brace - {{varName}}
+  result = result.replace(/\{\{([^{}]+)\}\}/g, (_match, varName: string) => {
+    const key = varName.trim();
+    // Skip block helpers like {{#if}}, {{/if}}, {{else}}, {{>partial}}
+    if (key.startsWith("#") || key.startsWith("/") || key.startsWith(">") || key === "else") {
+      return "";
+    }
+    const value = context[key];
+    if (value === undefined || value === null) return "";
+    return String(value);
+  });
+
+  return result;
+}
+
+/**
  * Convert all double-brace bindings in a Handlebars template
  * to triple-brace bindings, so the output is NOT HTML-escaped.
  *
@@ -92,10 +158,20 @@ export const composePrompt = ({
 }) => {
   const templateStr =
     typeof template === "function" ? template({ state }) : template;
-  const templateFunction = Handlebars.compile(
-    upgradeDoubleToTriple(templateStr),
-  );
-  const output = composeRandomUser(templateFunction(state), 10);
+
+  let rendered: string;
+  if (isRestrictedCSPEnvironment()) {
+    // Use CSP-safe simple replacement (no eval)
+    const upgraded = upgradeDoubleToTriple(templateStr);
+    rendered = simpleTemplateReplace(upgraded, state);
+  } else {
+    const templateFunction = Handlebars.compile(
+      upgradeDoubleToTriple(templateStr),
+    );
+    rendered = templateFunction(state);
+  }
+
+  const output = composeRandomUser(rendered, 10);
   return output;
 };
 
@@ -116,9 +192,6 @@ export const composePromptFromState = ({
 }) => {
   const templateStr =
     typeof template === "function" ? template({ state }) : template;
-  const templateFunction = Handlebars.compile(
-    upgradeDoubleToTriple(templateStr),
-  );
 
   // get any keys that are in state but are not named text, values or data
   const stateKeys = Object.keys(state);
@@ -135,11 +208,22 @@ export const composePromptFromState = ({
     {},
   );
 
+  const context = { ...filteredState, ...state.values };
+
+  let rendered: string;
+  if (isRestrictedCSPEnvironment()) {
+    // Use CSP-safe simple replacement (no eval)
+    const upgraded = upgradeDoubleToTriple(templateStr);
+    rendered = simpleTemplateReplace(upgraded, context);
+  } else {
+    const templateFunction = Handlebars.compile(
+      upgradeDoubleToTriple(templateStr),
+    );
+    rendered = templateFunction(context);
+  }
+
   // and then we flat state.values again
-  const output = composeRandomUser(
-    templateFunction({ ...filteredState, ...state.values }),
-    10,
-  );
+  const output = composeRandomUser(rendered, 10);
   return output;
 };
 

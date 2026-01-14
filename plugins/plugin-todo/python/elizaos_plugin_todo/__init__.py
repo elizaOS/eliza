@@ -1,4 +1,3 @@
-
 from elizaos_plugin_todo.actions import (
     CANCEL_TODO_ACTION,
     COMPLETE_TODO_ACTION,
@@ -102,8 +101,3 @@ __all__ = [
     "TaskUpdate",
     "ConfirmationResponse",
 ]
-
-
-
-
-

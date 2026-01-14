@@ -6,7 +6,6 @@ from elizaos_plugin_planning.actions.analyze_input import ActionExample
 
 @dataclass
 class ProcessAnalysisAction:
-
     @property
     def name(self) -> str:
         return "PROCESS_ANALYSIS"
@@ -30,7 +29,7 @@ class ProcessAnalysisAction:
         word_count = analysis.get("wordCount", 0)
         if not isinstance(word_count, int):
             word_count = 0
-            
+
         sentiment = analysis.get("sentiment", "neutral")
         if not isinstance(sentiment, str):
             sentiment = "neutral"

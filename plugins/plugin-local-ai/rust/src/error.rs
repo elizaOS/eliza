@@ -24,6 +24,3 @@ pub enum LocalAIError {
     #[error("Tokenization failed: {0}")]
     TokenizationError(String),
 }
-
-
-

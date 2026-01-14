@@ -123,5 +123,3 @@ class TestConfigFromEnv:
         config = DiscordConfig.from_env()
 
         assert config.should_ignore_bot_messages is False
-
-

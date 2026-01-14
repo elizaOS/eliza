@@ -57,10 +57,7 @@ impl FarcasterService {
 
         info!("Farcaster service started for FID {}", self.config.fid);
 
-        if matches!(
-            self.config.mode,
-            crate::config::FarcasterMode::Polling
-        ) {
+        if matches!(self.config.mode, crate::config::FarcasterMode::Polling) {
             self.start_poll_loop();
         }
 
@@ -127,11 +124,7 @@ impl FarcasterService {
         *cb = Some(callback);
     }
 
-    pub async fn send_cast(
-        &self,
-        text: &str,
-        reply_to: Option<&str>,
-    ) -> Result<Vec<Cast>> {
+    pub async fn send_cast(&self, text: &str, reply_to: Option<&str>) -> Result<Vec<Cast>> {
         let client_guard = self.client.read().await;
         let client = client_guard
             .as_ref()

@@ -13,9 +13,11 @@ export interface PluginConfig {
   readonly ANTHROPIC_COT_BUDGET_LARGE?: string;
 }
 
-const _globalThis = globalThis as Record<string, unknown>;
-if (_globalThis["AI_SDK_LOG_WARNINGS"] === undefined) {
-  _globalThis["AI_SDK_LOG_WARNINGS"] = false;
+const _globalThis = globalThis as typeof globalThis & {
+  AI_SDK_LOG_WARNINGS?: boolean;
+};
+if (_globalThis.AI_SDK_LOG_WARNINGS === undefined) {
+  _globalThis.AI_SDK_LOG_WARNINGS = false;
 }
 
 export function initializeAnthropic(_config: PluginConfig, runtime: IAgentRuntime): void {

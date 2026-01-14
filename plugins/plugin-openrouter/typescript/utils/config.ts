@@ -8,6 +8,14 @@ export const DEFAULT_IMAGE_GENERATION_MODEL = "google/gemini-2.5-flash-image-pre
 export const DEFAULT_EMBEDDING_MODEL = "openai/text-embedding-3-small";
 export const DEFAULT_EMBEDDING_DIMENSIONS = 1536;
 
+function getEnvValue(key: string): string | undefined {
+  if (typeof process === "undefined" || !process.env) {
+    return undefined;
+  }
+  const value = process.env[key];
+  return value === undefined ? undefined : String(value);
+}
+
 export function getSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -17,7 +25,7 @@ export function getSetting(
   if (value !== undefined && value !== null) {
     return String(value);
   }
-  return process.env[key] ?? defaultValue;
+  return getEnvValue(key) ?? defaultValue;
 }
 
 export function getBaseURL(runtime: IAgentRuntime): string {

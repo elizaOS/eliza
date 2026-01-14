@@ -6,10 +6,14 @@ use sha2::{Digest, Sha256};
 pub fn hex_to_bytes(hex_str: &str) -> Result<Vec<u8>> {
     let hex_str = hex_str.trim().trim_start_matches("0x");
     if hex_str.is_empty() {
-        return Err(TeeError::config("Invalid hex string: empty after stripping prefix"));
+        return Err(TeeError::config(
+            "Invalid hex string: empty after stripping prefix",
+        ));
     }
     if !hex_str.len().is_multiple_of(2) {
-        return Err(TeeError::config("Invalid hex string: odd number of characters"));
+        return Err(TeeError::config(
+            "Invalid hex string: odd number of characters",
+        ));
     }
     hex::decode(hex_str).map_err(TeeError::from)
 }
@@ -105,6 +109,3 @@ mod tests {
         assert!(get_tee_endpoint("INVALID").is_err());
     }
 }
-
-
-

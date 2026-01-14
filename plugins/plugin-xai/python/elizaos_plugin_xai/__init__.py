@@ -73,22 +73,24 @@ try:
         get_xai_plugin,
     )
 
-    __all__.extend([
-        # Main plugin
-        "XAIPlugin",
-        "create_plugin",
-        "get_xai_plugin",
-        "get_xai_elizaos_plugin",
-        # Actions
-        "POST_ACTION",
-        # Model handlers
-        "TEXT_SMALL_HANDLER",
-        "TEXT_LARGE_HANDLER",
-        "TEXT_EMBEDDING_HANDLER",
-        "handle_text_small",
-        "handle_text_large",
-        "handle_text_embedding",
-    ])
+    __all__.extend(
+        [
+            # Main plugin
+            "XAIPlugin",
+            "create_plugin",
+            "get_xai_plugin",
+            "get_xai_elizaos_plugin",
+            # Actions
+            "POST_ACTION",
+            # Model handlers
+            "TEXT_SMALL_HANDLER",
+            "TEXT_LARGE_HANDLER",
+            "TEXT_EMBEDDING_HANDLER",
+            "handle_text_small",
+            "handle_text_large",
+            "handle_text_embedding",
+        ]
+    )
 except ImportError:
     # elizaos not installed - plugin/action/model features not available
     # Standalone Grok and X clients are still usable

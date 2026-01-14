@@ -46,6 +46,18 @@ class OpenAIPlugin:
         if not key:
             raise ValueError("OPENAI_API_KEY must be provided or set in environment variables")
 
+        timeout_raw = (
+            os.environ.get("OPENAI_TIMEOUT")
+            or os.environ.get("OPENAI_REQUEST_TIMEOUT")
+            or os.environ.get("OPENAI_HTTP_TIMEOUT")
+        )
+        timeout: float = 60.0
+        if timeout_raw:
+            try:
+                timeout = float(timeout_raw)
+            except ValueError:
+                timeout = 60.0
+
         self._config = OpenAIConfig(
             api_key=key,
             base_url=base_url,
@@ -53,6 +65,7 @@ class OpenAIPlugin:
             large_model=large_model,
             embedding_model=embedding_model,
             embedding_dimensions=embedding_dimensions,
+            timeout=timeout,
         )
         self._client = OpenAIClient(self._config)
 
@@ -337,9 +350,7 @@ def create_openai_elizaos_plugin() -> Plugin:
     async def text_large_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
         temperature_raw = params.get("temperature")
-        temperature = (
-            float(temperature_raw) if isinstance(temperature_raw, (int, float)) else None
-        )
+        temperature = float(temperature_raw) if isinstance(temperature_raw, (int, float)) else None
         return await client.generate_text_large(
             params.get("prompt", ""),
             system=params.get("system"),
@@ -350,9 +361,7 @@ def create_openai_elizaos_plugin() -> Plugin:
     async def text_small_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
         temperature_raw = params.get("temperature")
-        temperature = (
-            float(temperature_raw) if isinstance(temperature_raw, (int, float)) else None
-        )
+        temperature = float(temperature_raw) if isinstance(temperature_raw, (int, float)) else None
         # Note: gpt-5-mini has limited temperature support - use defaults
         return await client.generate_text_small(
             params.get("prompt", ""),

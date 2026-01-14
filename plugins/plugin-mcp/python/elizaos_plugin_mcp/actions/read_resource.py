@@ -8,22 +8,21 @@ logger = logging.getLogger(__name__)
 
 
 class McpClientProtocol(Protocol):
-    async def read_resource(self, server_name: str, uri: str) -> dict:
-        ...
+    async def read_resource(self, server_name: str, uri: str) -> dict[str, object]: ...
 
 
 @dataclass
 class ActionContext:
     message_text: str
-    state: dict
+    state: dict[str, object]
 
 
 @dataclass
 class ActionResult:
     success: bool
     text: str
-    values: dict
-    data: dict
+    values: dict[str, object]
+    data: dict[str, object]
 
 
 class ReadResourceAction:
@@ -40,12 +39,16 @@ class ReadResourceAction:
     ]
 
     async def validate(self, context: ActionContext) -> bool:
-        servers = context.state.get("mcpServers", [])
+        servers_obj = context.state.get("mcpServers", [])
+        servers: list[object] = servers_obj if isinstance(servers_obj, list) else []
 
-        for server in servers:
-            if server.get("status") == "connected":
-                resources = server.get("resources", [])
-                if resources:
+        for server_obj in servers:
+            if not isinstance(server_obj, dict):
+                continue
+
+            if server_obj.get("status") == "connected":
+                resources_obj = server_obj.get("resources", [])
+                if isinstance(resources_obj, list) and resources_obj:
                     return True
 
         return False
@@ -55,9 +58,15 @@ class ReadResourceAction:
         context: ActionContext,
         client: McpClientProtocol | None = None,
     ) -> ActionResult:
-        selected_resource = context.state.get("selectedResource", {})
-        uri = selected_resource.get("uri", "")
-        server_name = selected_resource.get("server", "")
+        selected_resource_obj = context.state.get("selectedResource", {})
+        selected_resource: dict[str, object] = (
+            selected_resource_obj if isinstance(selected_resource_obj, dict) else {}
+        )
+
+        uri_obj = selected_resource.get("uri", "")
+        server_name_obj = selected_resource.get("server", "")
+        uri = uri_obj if isinstance(uri_obj, str) else str(uri_obj)
+        server_name = server_name_obj if isinstance(server_name_obj, str) else str(server_name_obj)
 
         logger.info(f"Reading resource {uri} from server {server_name}")
 

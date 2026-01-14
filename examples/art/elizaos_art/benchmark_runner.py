@@ -1,11 +1,13 @@
 """
 Unified Benchmark Runner for ART Games
 
-Runs benchmarks across all games and generates comparison reports.
+Runs baseline benchmarks and full training pipelines
+across all games with consistent reporting.
 """
 
 import asyncio
 import json
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -13,20 +15,6 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-
-from elizaos_art.base import TrainingConfig, TrainingMetrics
-from elizaos_art.games.codenames import CodenamesEnvironment
-from elizaos_art.games.codenames.agent import CodenamesGuesserAgent, CodenamesRandomAgent
-from elizaos_art.games.codenames.types import CodenamesConfig, Role
-from elizaos_art.games.game_2048 import Game2048Environment
-from elizaos_art.games.game_2048.agent import Game2048HeuristicAgent, Game2048RandomAgent
-from elizaos_art.games.temporal_clue import TemporalClueEnvironment
-from elizaos_art.games.temporal_clue.agent import TemporalClueGreedyAgent, TemporalClueRandomAgent
-from elizaos_art.games.temporal_clue.types import TemporalClueConfig
-from elizaos_art.games.tic_tac_toe import TicTacToeEnvironment
-from elizaos_art.games.tic_tac_toe.agent import TicTacToeOptimalAgent, TicTacToeRandomAgent
-from elizaos_art.games.tic_tac_toe.types import TicTacToeConfig
-from elizaos_art.trainer import GRPOTrainer
 
 console = Console()
 
@@ -36,26 +24,33 @@ class BenchmarkResult:
     """Result of a single benchmark run."""
 
     game: str
-    agent: str
+    agent_type: str
     episodes: int
     wins: int
+    losses: int
+    draws: int
     avg_reward: float
     max_reward: float
-    win_rate: float
-    elapsed_seconds: float
-    metadata: dict = field(default_factory=dict)
+    min_reward: float
+    duration_seconds: float
+
+    @property
+    def win_rate(self) -> float:
+        return self.wins / self.episodes if self.episodes > 0 else 0.0
 
     def to_dict(self) -> dict:
         return {
             "game": self.game,
-            "agent": self.agent,
+            "agent_type": self.agent_type,
             "episodes": self.episodes,
             "wins": self.wins,
+            "losses": self.losses,
+            "draws": self.draws,
+            "win_rate": self.win_rate,
             "avg_reward": self.avg_reward,
             "max_reward": self.max_reward,
-            "win_rate": self.win_rate,
-            "elapsed_seconds": self.elapsed_seconds,
-            "metadata": self.metadata,
+            "min_reward": self.min_reward,
+            "duration_seconds": self.duration_seconds,
         }
 
 
@@ -65,361 +60,222 @@ class PipelineResult:
 
     game: str
     model: str
-    baseline: dict
-    final: dict
-    improvement: dict
+    baseline: BenchmarkResult
+    final: BenchmarkResult
     training_steps: int
-    total_trajectories: int
-    elapsed_seconds: float
-
-    def to_dict(self) -> dict:
-        return {
-            "game": self.game,
-            "model": self.model,
-            "baseline": self.baseline,
-            "final": self.final,
-            "improvement": self.improvement,
-            "training_steps": self.training_steps,
-            "total_trajectories": self.total_trajectories,
-            "elapsed_seconds": self.elapsed_seconds,
-        }
+    training_trajectories: int
+    training_duration_seconds: float
+    improvement_pct: float
 
 
-class BenchmarkRunner:
-    """
-    Runs benchmarks and training pipelines across all ART games.
+async def run_game_baseline(
+    game_name: str,
+    episodes: int = 100,
+) -> BenchmarkResult:
+    """Run baseline benchmark for a single game."""
+    start_time = time.time()
 
-    Supports:
-    - Baseline benchmarks (random, heuristic agents)
-    - Full training pipelines (GRPO)
-    - Comparison reports
-    """
+    rewards: list[float] = []
+    wins = 0
+    losses = 0
+    draws = 0
 
-    def __init__(
-        self,
-        output_dir: Path | str = "./benchmark_results/art",
-        episodes_per_game: int = 100,
-    ):
-        self.output_dir = Path(output_dir)
-        self.episodes_per_game = episodes_per_game
-        self.results: list[BenchmarkResult] = []
-        self.pipeline_results: list[PipelineResult] = []
-
-    async def run_all_baselines(self) -> list[BenchmarkResult]:
-        """Run baseline benchmarks for all games."""
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.results = []
-
-        console.print("\n[bold cyan]═══ ART Baseline Benchmarks ═══[/bold cyan]\n")
-
-        # 2048
-        await self._benchmark_2048()
-
-        # Tic-Tac-Toe
-        await self._benchmark_tictactoe()
-
-        # Codenames
-        await self._benchmark_codenames()
-
-        # Temporal Clue
-        await self._benchmark_temporal()
-
-        # Save results
-        self._save_results()
-        self._print_summary()
-
-        return self.results
-
-    async def run_all_pipelines(
-        self,
-        model: str = "meta-llama/Llama-3.2-3B-Instruct",
-        steps: int = 50,
-        eval_episodes: int = 50,
-    ) -> list[PipelineResult]:
-        """Run training pipelines for all games."""
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.pipeline_results = []
-
-        console.print("\n[bold cyan]═══ ART Training Pipelines ═══[/bold cyan]\n")
-        console.print(f"Model: {model}")
-        console.print(f"Training steps: {steps}")
-        console.print(f"Evaluation episodes: {eval_episodes}\n")
-
-        games = ["game_2048", "tic_tac_toe", "codenames", "temporal_clue"]
-
-        for game in games:
-            console.print(f"\n[bold]Training {game}...[/bold]")
-            try:
-                result = await self._run_pipeline(game, model, steps, eval_episodes)
-                self.pipeline_results.append(result)
-            except Exception as e:
-                console.print(f"[red]Error training {game}: {e}[/red]")
-
-        # Save and report
-        self._save_pipeline_results()
-        self._print_pipeline_summary()
-
-        return self.pipeline_results
-
-    async def _benchmark_2048(self) -> None:
-        """Benchmark 2048 strategies."""
-        console.print("[cyan]Benchmarking 2048...[/cyan]")
+    if game_name == "game_2048":
+        from elizaos_art.games.game_2048 import Game2048Environment, Game2048HeuristicAgent
 
         env = Game2048Environment()
+        agent = Game2048HeuristicAgent()
         await env.initialize()
 
-        agents = [
-            ("Random", Game2048RandomAgent()),
-            ("Heuristic", Game2048HeuristicAgent()),
-        ]
+        for i in range(episodes):
+            state = await env.reset(seed=i)
+            total_reward = 0.0
 
-        for name, agent in agents:
-            result = await self._run_benchmark(env, agent, "2048", name)
-            self.results.append(result)
+            while not state.game_over:
+                actions = env.get_available_actions(state)
+                if not actions:
+                    break
+                action = await agent.decide(state, actions)
+                state, reward, _ = await env.step(action)
+                total_reward += reward
 
-    async def _benchmark_tictactoe(self) -> None:
-        """Benchmark Tic-Tac-Toe strategies."""
-        console.print("[cyan]Benchmarking Tic-Tac-Toe...[/cyan]")
+            rewards.append(total_reward)
+            if state.max_tile >= 2048:
+                wins += 1
+            elif state.max_tile >= 1024:
+                draws += 1
+            else:
+                losses += 1
+
+    elif game_name == "tic_tac_toe":
+        from elizaos_art.games.tic_tac_toe import TicTacToeEnvironment, TicTacToeHeuristicAgent
+        from elizaos_art.games.tic_tac_toe.types import TicTacToeConfig
 
         config = TicTacToeConfig(opponent="random")
         env = TicTacToeEnvironment(config)
+        agent = TicTacToeHeuristicAgent()
         await env.initialize()
 
-        agents = [
-            ("Random", TicTacToeRandomAgent()),
-            ("Optimal", TicTacToeOptimalAgent()),
-        ]
+        for i in range(episodes):
+            state = await env.reset(seed=i)
+            total_reward = 0.0
 
-        for name, agent in agents:
-            result = await self._run_benchmark(env, agent, "Tic-Tac-Toe", name)
-            self.results.append(result)
+            while not state.is_terminal():
+                actions = env.get_available_actions(state)
+                if not actions:
+                    break
+                action = await agent.decide(state, actions)
+                state, reward, _ = await env.step(action)
+                total_reward += reward
 
-    async def _benchmark_codenames(self) -> None:
-        """Benchmark Codenames strategies."""
-        console.print("[cyan]Benchmarking Codenames...[/cyan]")
+            rewards.append(total_reward)
+            if state.winner and state.winner.value == 1:  # X wins
+                wins += 1
+            elif state.winner:
+                losses += 1
+            else:
+                draws += 1
 
-        config = CodenamesConfig(train_role=Role.GUESSER)
+    elif game_name == "codenames":
+        from elizaos_art.games.codenames import CodenamesEnvironment, CodenamesGuesserAgent
+        from elizaos_art.games.codenames.types import CardColor, CodenamesConfig, Role
+
+        config = CodenamesConfig(ai_role=Role.GUESSER, ai_team=CardColor.RED)
         env = CodenamesEnvironment(config)
+        agent = CodenamesGuesserAgent()
         await env.initialize()
 
-        agents = [
-            ("Random", CodenamesRandomAgent()),
-            ("Heuristic", CodenamesGuesserAgent()),
-        ]
+        for i in range(episodes):
+            state = await env.reset(seed=i)
+            total_reward = 0.0
 
-        for name, agent in agents:
-            result = await self._run_benchmark(env, agent, "Codenames", name)
-            self.results.append(result)
+            while not state.game_over:
+                actions = env.get_available_actions(state)
+                if not actions:
+                    break
 
-    async def _benchmark_temporal(self) -> None:
-        """Benchmark Temporal Clue strategies."""
-        console.print("[cyan]Benchmarking Temporal Clue...[/cyan]")
-
-        config = TemporalClueConfig()
-        env = TemporalClueEnvironment(config)
-        await env.initialize()
-
-        agents = [
-            ("Random", TemporalClueRandomAgent()),
-            ("Greedy", TemporalClueGreedyAgent()),
-        ]
-
-        for name, agent in agents:
-            result = await self._run_benchmark(env, agent, "Temporal Clue", name)
-            self.results.append(result)
-
-    async def _run_benchmark(
-        self,
-        env,
-        agent,
-        game_name: str,
-        agent_name: str,
-    ) -> BenchmarkResult:
-        """Run benchmark for a single agent."""
-        import time
-
-        start_time = time.time()
-        rewards: list[float] = []
-        wins = 0
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-            transient=True,
-        ) as progress:
-            task = progress.add_task(f"{game_name}/{agent_name}", total=self.episodes_per_game)
-
-            for ep in range(self.episodes_per_game):
-                state = await env.reset(seed=ep)
-                ep_reward = 0.0
-
-                while not state.is_terminal():
-                    actions = env.get_available_actions(state)
-                    if not actions:
-                        break
+                if state.current_team == config.ai_team:
                     action = await agent.decide(state, actions)
-                    state, reward, done = await env.step(action)
-                    ep_reward += reward
+                    state, reward, _ = await env.step(action)
+                    total_reward += reward
+                else:
+                    # Opponent turn
+                    for a in actions:
+                        if a.value < 25:  # Select word
+                            state, _, _ = await env.step(a)
+                            break
+                    else:
+                        from elizaos_art.games.codenames.types import CodenamesAction
 
-                rewards.append(ep_reward)
-                if ep_reward > 0:
-                    wins += 1
+                        state, _, _ = await env.step(CodenamesAction.PASS)
 
-                progress.update(task, advance=1)
+            rewards.append(total_reward)
+            if state.winner == config.ai_team:
+                wins += 1
+            else:
+                losses += 1
 
-        elapsed = time.time() - start_time
-        avg_reward = sum(rewards) / len(rewards)
-        max_reward = max(rewards)
-        win_rate = wins / self.episodes_per_game
-
-        console.print(
-            f"  {agent_name}: Avg={avg_reward:.2f}, Max={max_reward:.2f}, "
-            f"WinRate={win_rate:.1%}"
+    elif game_name == "temporal_clue":
+        from elizaos_art.games.temporal_clue import (
+            TemporalClueEnvironment,
+            TemporalClueHeuristicAgent,
         )
 
-        return BenchmarkResult(
-            game=game_name,
-            agent=agent_name,
-            episodes=self.episodes_per_game,
-            wins=wins,
-            avg_reward=avg_reward,
-            max_reward=max_reward,
-            win_rate=win_rate,
-            elapsed_seconds=elapsed,
-        )
+        env = TemporalClueEnvironment()
+        agent = TemporalClueHeuristicAgent()
+        await env.initialize()
 
-    async def _run_pipeline(
-        self,
-        game: str,
-        model: str,
-        steps: int,
-        eval_episodes: int,
-    ) -> PipelineResult:
-        """Run training pipeline for a game."""
-        import time
+        for i in range(episodes):
+            state = await env.reset(seed=i)
+            total_reward = 0.0
 
-        start_time = time.time()
+            while not state.submitted:
+                actions = env.get_available_actions(state)
+                if not actions:
+                    break
+                action = await agent.decide(state, actions)
+                state, reward, _ = await env.step(action)
+                total_reward += reward
 
-        # Create environment and agent based on game
-        if game == "game_2048":
-            from elizaos_art.games.game_2048 import Game2048Agent, Game2048Environment
+            rewards.append(total_reward)
+            if state.is_correct:
+                wins += 1
+            else:
+                losses += 1
 
-            env = Game2048Environment()
-            agent = Game2048Agent(model_name=model)
-        elif game == "tic_tac_toe":
-            from elizaos_art.games.tic_tac_toe import TicTacToeAgent, TicTacToeEnvironment
-            from elizaos_art.games.tic_tac_toe.types import TicTacToeConfig
+    else:
+        raise ValueError(f"Unknown game: {game_name}")
 
-            env = TicTacToeEnvironment(TicTacToeConfig())
-            agent = TicTacToeAgent(model_name=model)
-        elif game == "codenames":
-            from elizaos_art.games.codenames import CodenamesEnvironment
-            from elizaos_art.games.codenames.agent import CodenamesGuesserAgent
-            from elizaos_art.games.codenames.types import CodenamesConfig, Role
+    duration = time.time() - start_time
 
-            env = CodenamesEnvironment(CodenamesConfig(train_role=Role.GUESSER))
-            agent = CodenamesGuesserAgent(model_name=model)
-        elif game == "temporal_clue":
-            from elizaos_art.games.temporal_clue import TemporalClueAgent, TemporalClueEnvironment
-
-            env = TemporalClueEnvironment()
-            agent = TemporalClueAgent(model_name=model)
-        else:
-            raise ValueError(f"Unknown game: {game}")
-
-        config = TrainingConfig(
-            model_name=model,
-            max_steps=steps,
-            eval_episodes=eval_episodes,
-        )
-
-        trainer = GRPOTrainer(env=env, agent=agent, config=config)
-        results = await trainer.pipeline(steps, eval_episodes)
-
-        elapsed = time.time() - start_time
-
-        return PipelineResult(
-            game=game,
-            model=model,
-            baseline=results["baseline"],
-            final=results["final"],
-            improvement=results["improvement"],
-            training_steps=steps,
-            total_trajectories=trainer.state.total_trajectories,
-            elapsed_seconds=elapsed,
-        )
-
-    def _save_results(self) -> None:
-        """Save benchmark results to file."""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = self.output_dir / f"baseline_results_{timestamp}.json"
-
-        with open(results_file, "w") as f:
-            json.dump([r.to_dict() for r in self.results], f, indent=2)
-
-        console.print(f"\n[dim]Results saved to {results_file}[/dim]")
-
-    def _save_pipeline_results(self) -> None:
-        """Save pipeline results to file."""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = self.output_dir / f"pipeline_results_{timestamp}.json"
-
-        with open(results_file, "w") as f:
-            json.dump([r.to_dict() for r in self.pipeline_results], f, indent=2)
-
-        console.print(f"\n[dim]Results saved to {results_file}[/dim]")
-
-    def _print_summary(self) -> None:
-        """Print benchmark summary table."""
-        table = Table(title="ART Baseline Benchmark Results")
-        table.add_column("Game")
-        table.add_column("Agent")
-        table.add_column("Avg Reward", justify="right")
-        table.add_column("Max Reward", justify="right")
-        table.add_column("Win Rate", justify="right")
-
-        for r in self.results:
-            table.add_row(
-                r.game,
-                r.agent,
-                f"{r.avg_reward:.2f}",
-                f"{r.max_reward:.2f}",
-                f"{r.win_rate:.1%}",
-            )
-
-        console.print("\n")
-        console.print(table)
-
-    def _print_pipeline_summary(self) -> None:
-        """Print pipeline summary table."""
-        table = Table(title="ART Training Pipeline Results")
-        table.add_column("Game")
-        table.add_column("Baseline", justify="right")
-        table.add_column("Trained", justify="right")
-        table.add_column("Improvement", justify="right")
-        table.add_column("Time")
-
-        for r in self.pipeline_results:
-            table.add_row(
-                r.game,
-                f"{r.baseline.get('avg_reward', 0):.2f}",
-                f"{r.final.get('avg_reward', 0):.2f}",
-                f"{r.improvement.get('avg_reward_pct', 0):+.1f}%",
-                f"{r.elapsed_seconds / 60:.1f}m",
-            )
-
-        console.print("\n")
-        console.print(table)
+    return BenchmarkResult(
+        game=game_name,
+        agent_type="heuristic",
+        episodes=episodes,
+        wins=wins,
+        losses=losses,
+        draws=draws,
+        avg_reward=sum(rewards) / len(rewards) if rewards else 0,
+        max_reward=max(rewards) if rewards else 0,
+        min_reward=min(rewards) if rewards else 0,
+        duration_seconds=duration,
+    )
 
 
 async def run_baselines(
     episodes: int = 100,
     output_dir: str = "./benchmark_results/art",
-) -> list[BenchmarkResult]:
+) -> dict[str, BenchmarkResult]:
     """Run baseline benchmarks for all games."""
-    runner = BenchmarkRunner(output_dir=output_dir, episodes_per_game=episodes)
-    return await runner.run_all_baselines()
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    games = ["game_2048", "tic_tac_toe", "codenames", "temporal_clue"]
+    results: dict[str, BenchmarkResult] = {}
+
+    console.print("\n[bold cyan]═══ ART Baseline Benchmarks ═══[/bold cyan]\n")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        for game in games:
+            task = progress.add_task(f"Benchmarking {game}...", total=1)
+            result = await run_game_baseline(game, episodes)
+            results[game] = result
+            progress.update(task, completed=1)
+            console.print(f"  {game}: {result.win_rate:.1%} win rate, {result.avg_reward:.1f} avg reward")
+
+    # Display summary table
+    table = Table(title="Baseline Benchmark Results")
+    table.add_column("Game")
+    table.add_column("Win Rate", justify="right")
+    table.add_column("Avg Reward", justify="right")
+    table.add_column("Episodes", justify="right")
+    table.add_column("Duration", justify="right")
+
+    for game, result in results.items():
+        table.add_row(
+            game,
+            f"{result.win_rate:.1%}",
+            f"{result.avg_reward:.1f}",
+            str(result.episodes),
+            f"{result.duration_seconds:.1f}s",
+        )
+
+    console.print("\n")
+    console.print(table)
+
+    # Save results
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_file = output_path / f"baselines_{timestamp}.json"
+    with open(results_file, "w") as f:
+        json.dump({g: r.to_dict() for g, r in results.items()}, f, indent=2)
+
+    console.print(f"\n[green]Results saved to {results_file}[/green]")
+
+    return results
 
 
 async def run_pipelines(
@@ -427,7 +283,154 @@ async def run_pipelines(
     steps: int = 50,
     eval_episodes: int = 50,
     output_dir: str = "./benchmark_results/art",
-) -> list[PipelineResult]:
-    """Run training pipelines for all games."""
-    runner = BenchmarkRunner(output_dir=output_dir)
-    return await runner.run_all_pipelines(model, steps, eval_episodes)
+) -> dict[str, PipelineResult]:
+    """Run full training pipelines for all games."""
+    from elizaos_art.base import TrainingConfig
+    from elizaos_art.trainer import GRPOTrainer
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    console.print("\n[bold cyan]═══ ART Training Pipelines ═══[/bold cyan]")
+    console.print(f"Model: {model}")
+    console.print(f"Steps: {steps}")
+    console.print(f"Eval episodes: {eval_episodes}\n")
+
+    results: dict[str, PipelineResult] = {}
+
+    games_configs = [
+        ("game_2048", None),
+        ("tic_tac_toe", None),
+        ("codenames", None),
+        ("temporal_clue", None),
+    ]
+
+    for game_name, _ in games_configs:
+        console.print(f"\n[bold blue]Training {game_name}...[/bold blue]")
+
+        try:
+            # Get environment and agent
+            if game_name == "game_2048":
+                from elizaos_art.games.game_2048 import Game2048Agent, Game2048Environment
+
+                env = Game2048Environment()
+                agent = Game2048Agent(model_name=model)
+
+            elif game_name == "tic_tac_toe":
+                from elizaos_art.games.tic_tac_toe import TicTacToeAgent, TicTacToeEnvironment
+
+                env = TicTacToeEnvironment()
+                agent = TicTacToeAgent(model_name=model)
+
+            elif game_name == "codenames":
+                from elizaos_art.games.codenames import CodenamesAgent, CodenamesEnvironment
+
+                env = CodenamesEnvironment()
+                agent = CodenamesAgent(model_name=model)
+
+            elif game_name == "temporal_clue":
+                from elizaos_art.games.temporal_clue import (
+                    TemporalClueAgent,
+                    TemporalClueEnvironment,
+                )
+
+                env = TemporalClueEnvironment()
+                agent = TemporalClueAgent(model_name=model)
+
+            else:
+                continue
+
+            config = TrainingConfig(
+                model_name=model,
+                max_steps=steps,
+                eval_episodes=eval_episodes,
+            )
+
+            trainer = GRPOTrainer(env=env, agent=agent, config=config)
+            pipeline_results = await trainer.pipeline(steps, eval_episodes)
+
+            # Create result
+            baseline = BenchmarkResult(
+                game=game_name,
+                agent_type=model,
+                episodes=eval_episodes,
+                wins=int(pipeline_results["baseline"]["win_rate"] * eval_episodes),
+                losses=eval_episodes - int(pipeline_results["baseline"]["win_rate"] * eval_episodes),
+                draws=0,
+                avg_reward=pipeline_results["baseline"]["avg_reward"],
+                max_reward=pipeline_results["baseline"]["max_reward"],
+                min_reward=pipeline_results["baseline"]["min_reward"],
+                duration_seconds=0,
+            )
+
+            final = BenchmarkResult(
+                game=game_name,
+                agent_type=f"{model} (trained)",
+                episodes=eval_episodes,
+                wins=int(pipeline_results["final"]["win_rate"] * eval_episodes),
+                losses=eval_episodes - int(pipeline_results["final"]["win_rate"] * eval_episodes),
+                draws=0,
+                avg_reward=pipeline_results["final"]["avg_reward"],
+                max_reward=pipeline_results["final"]["max_reward"],
+                min_reward=pipeline_results["final"]["min_reward"],
+                duration_seconds=0,
+            )
+
+            results[game_name] = PipelineResult(
+                game=game_name,
+                model=model,
+                baseline=baseline,
+                final=final,
+                training_steps=steps,
+                training_trajectories=len(pipeline_results.get("training", [])) * 8,
+                training_duration_seconds=0,
+                improvement_pct=pipeline_results["improvement"]["avg_reward_pct"],
+            )
+
+            console.print(f"  [green]✓[/green] {game_name}: {results[game_name].improvement_pct:+.1f}% improvement")
+
+        except Exception as e:
+            console.print(f"  [red]✗[/red] {game_name}: {e}")
+
+    # Display summary
+    if results:
+        table = Table(title="Training Pipeline Results")
+        table.add_column("Game")
+        table.add_column("Baseline", justify="right")
+        table.add_column("Trained", justify="right")
+        table.add_column("Improvement", justify="right")
+
+        for game, result in results.items():
+            table.add_row(
+                game,
+                f"{result.baseline.avg_reward:.1f}",
+                f"{result.final.avg_reward:.1f}",
+                f"{result.improvement_pct:+.1f}%",
+            )
+
+        console.print("\n")
+        console.print(table)
+
+    # Save results
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_file = output_path / f"pipelines_{timestamp}.json"
+    with open(results_file, "w") as f:
+        json.dump(
+            {
+                g: {
+                    "game": r.game,
+                    "model": r.model,
+                    "baseline": r.baseline.to_dict(),
+                    "final": r.final.to_dict(),
+                    "improvement_pct": r.improvement_pct,
+                    "training_steps": r.training_steps,
+                }
+                for g, r in results.items()
+            },
+            f,
+            indent=2,
+        )
+
+    console.print(f"\n[green]Results saved to {results_file}[/green]")
+
+    return results

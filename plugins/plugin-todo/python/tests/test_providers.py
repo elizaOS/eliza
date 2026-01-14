@@ -19,9 +19,11 @@ class MockRuntime:
 
     async def get_room(self, room_id):
         """Mock get_room."""
+
         class MockRoom:
             def __init__(self) -> None:
                 self.world_id = uuid4()
+
         return MockRoom()
 
 
@@ -116,7 +118,10 @@ async def test_get_todos_no_room() -> None:
     result = await get_todos(runtime, message)
 
     assert result is not None
-    assert "No room context" in result.text or result.text == "Sorry, there was an error retrieving your tasks."
+    assert (
+        "No room context" in result.text
+        or result.text == "Sorry, there was an error retrieving your tasks."
+    )
 
 
 @pytest.mark.asyncio

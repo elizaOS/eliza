@@ -210,9 +210,7 @@ pub fn parse_simple_xml(text: &str) -> Option<HashMap<String, XmlValue>> {
                         .collect();
                     XmlValue::List(items)
                 }
-                "simple" | "success" | "error" => {
-                    XmlValue::Bool(value.to_lowercase() == "true")
-                }
+                "simple" | "success" | "error" => XmlValue::Bool(value.to_lowercase() == "true"),
                 _ => XmlValue::String(value),
             };
             result.insert(tag_name.to_string(), typed_value);
@@ -388,7 +386,10 @@ function test() {
 
     #[test]
     fn test_parity_extract() {
-        assert_eq!(extract_xml_tag("<r><x>Y</x></r>", "x"), Some("Y".to_string()));
+        assert_eq!(
+            extract_xml_tag("<r><x>Y</x></r>", "x"),
+            Some("Y".to_string())
+        );
     }
 
     #[test]
@@ -415,10 +416,10 @@ function test() {
     fn test_parity_special_fields() {
         let xml = "<response><actions>a1, a2, a3</actions><success>true</success></response>";
         let result = parse_simple_xml(xml).unwrap();
-        
+
         let actions = result.get("actions").and_then(|v| v.as_list()).unwrap();
         assert_eq!(actions, &["a1", "a2", "a3"]);
-        
+
         assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(true));
     }
 }

@@ -23,4 +23,3 @@ pub use schema_namespace::{derive_schema_name, SchemaNamespaceManager};
 pub use service::MigrationService;
 pub use storage::{JournalStorage, SnapshotStorage};
 pub use tracker::MigrationTracker;
-

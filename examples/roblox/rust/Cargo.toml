@@ -1,0 +1,22 @@
+[package]
+name = "elizaos-example-roblox-agent"
+version = "2.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.7", features = ["json"] }
+chrono = "0.4"
+dotenvy = "0.15"
+elizaos-plugin-eliza-classic = { path = "../../../plugins/plugin-eliza-classic/rust" }
+elizaos-plugin-roblox = { path = "../../../plugins/plugin-roblox/rust" }
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
+tower-http = { version = "0.6.2", features = ["cors"] }
+uuid = { version = "1.11.1", features = ["v4"] }
+
