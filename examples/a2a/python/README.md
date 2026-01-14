@@ -10,10 +10,7 @@ An HTTP server that exposes an elizaOS agent for agent-to-agent communication us
 ## Setup
 
 ```bash
-# Use the existing Python venv from packages/python (recommended)
-source packages/python/venv/bin/activate
-
-# Or create a new venv and install all required packages:
+# Create a venv and install all required packages
 python -m venv venv
 source venv/bin/activate
 pip install -e packages/python
