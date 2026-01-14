@@ -6,8 +6,8 @@
 use elizaos::{
     parse_character,
     runtime::{AgentRuntime, RuntimeOptions},
+    services::IMessageService,
     types::{Content, Memory, UUID},
-    IMessageService,
 };
 use elizaos_plugin_openai::create_openai_elizaos_plugin;
 use lambda_http::{
