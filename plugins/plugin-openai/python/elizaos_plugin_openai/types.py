@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class AudioFormat(str, Enum):
-
     MP3 = "mp3"
     WAV = "wav"
     WEBM = "webm"
@@ -78,7 +77,6 @@ class ImageStyle(str, Enum):
 
 
 class TranscriptionParams(BaseModel):
-
     model: str = Field(default="whisper-1", description="The model to use for transcription")
     language: str | None = Field(default=None, description="The language of the audio (ISO-639-1)")
     response_format: TranscriptionResponseFormat = Field(
@@ -94,7 +92,6 @@ class TranscriptionParams(BaseModel):
 
 
 class TextToSpeechParams(BaseModel):
-
     text: str = Field(..., min_length=1, max_length=4096, description="The text to convert")
     model: str = Field(default="tts-1", description="The model to use")
     voice: TTSVoice = Field(default=TTSVoice.NOVA, description="The voice to use")
@@ -113,7 +110,6 @@ class EmbeddingParams(BaseModel):
 
 
 class ImageGenerationParams(BaseModel):
-
     prompt: str = Field(..., min_length=1, description="The prompt describing the image")
     model: str = Field(default="dall-e-3", description="The model to use")
     n: int = Field(default=1, ge=1, le=10, description="Number of images to generate")
@@ -123,7 +119,6 @@ class ImageGenerationParams(BaseModel):
 
 
 class ImageDescriptionParams(BaseModel):
-
     image_url: str = Field(..., description="URL of the image to analyze")
     prompt: str = Field(
         default="Please analyze this image and provide a title and detailed description.",
@@ -134,7 +129,6 @@ class ImageDescriptionParams(BaseModel):
 
 
 class TextGenerationParams(BaseModel):
-
     prompt: str = Field(..., min_length=1, description="The prompt for generation")
     model: str = Field(default="gpt-5-mini", description="The model to use")
     system: str | None = Field(default=None, description="System message for the model")
@@ -147,26 +141,22 @@ class TextGenerationParams(BaseModel):
 
 
 class ObjectGenerationParams(BaseModel):
-
     prompt: str = Field(..., min_length=1, description="The prompt for generation")
     model: str = Field(default="gpt-5-mini", description="The model to use")
     temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Temperature for sampling")
 
 
 class ImageDescriptionResult(BaseModel):
-
     title: str = Field(..., description="A title for the image")
     description: str = Field(..., description="A detailed description of the image")
 
 
 class ImageGenerationResult(BaseModel):
-
     url: str = Field(..., description="URL of the generated image")
     revised_prompt: str | None = Field(default=None, description="Revised prompt if applicable")
 
 
 class TokenUsage(BaseModel):
-
     prompt_tokens: int = Field(..., ge=0, description="Number of prompt tokens")
     completion_tokens: int = Field(
         default=0,
@@ -177,14 +167,12 @@ class TokenUsage(BaseModel):
 
 
 class EmbeddingData(BaseModel):
-
     object: Literal["embedding"] = "embedding"
     embedding: list[float] = Field(..., description="The embedding vector")
     index: int = Field(..., ge=0, description="Index of the embedding")
 
 
 class EmbeddingResponse(BaseModel):
-
     object: Literal["list"] = "list"
     data: list[EmbeddingData] = Field(..., description="List of embeddings")
     model: str = Field(..., description="The model used")
@@ -199,7 +187,6 @@ class ChatMessage(BaseModel):
 
 
 class ChatChoice(BaseModel):
-
     index: int = Field(..., ge=0, description="Choice index")
     message: ChatMessage = Field(..., description="The message")
     finish_reason: str | None = Field(default=None, description="Finish reason")
@@ -217,7 +204,6 @@ class ChatCompletionResponse(BaseModel):
 
 
 class ImageResponseData(BaseModel):
-
     url: str = Field(..., description="URL of the generated image")
     revised_prompt: str | None = Field(default=None, description="Revised prompt")
 
@@ -230,14 +216,12 @@ class ImageGenerationResponse(BaseModel):
 
 
 class TranscriptionResponse(BaseModel):
-
     text: str = Field(..., description="Transcribed text")
     language: str | None = Field(default=None, description="Detected language")
     duration: float | None = Field(default=None, description="Audio duration in seconds")
 
 
 class ModelInfo(BaseModel):
-
     id: str = Field(..., description="Model ID")
     object: Literal["model"] = "model"
     created: int = Field(..., description="Creation timestamp")
@@ -245,13 +229,11 @@ class ModelInfo(BaseModel):
 
 
 class ModelsResponse(BaseModel):
-
     object: Literal["list"] = "list"
     data: list[ModelInfo] = Field(..., description="List of models")
 
 
 class OpenAIConfig(BaseModel):
-
     api_key: str = Field(..., min_length=1, description="OpenAI API key")
     base_url: str = Field(default="https://api.openai.com/v1", description="API base URL")
     small_model: str = Field(default="gpt-5-mini", description="Small model identifier")

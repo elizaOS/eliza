@@ -60,4 +60,3 @@ build()
     console.error("Build script error:", error);
     process.exit(1);
   });
-

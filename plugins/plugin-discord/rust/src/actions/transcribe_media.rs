@@ -64,7 +64,10 @@ impl DiscordAction for TranscribeMediaAction {
         // Check attachments first
         for attachment in &attachments {
             if let Some(obj) = attachment.as_object() {
-                let content_type = obj.get("content_type").and_then(|c| c.as_str()).unwrap_or("");
+                let content_type = obj
+                    .get("content_type")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("");
                 if content_type.contains("audio") || content_type.contains("video") {
                     media_url = obj.get("url").and_then(|u| u.as_str()).map(String::from);
                     break;

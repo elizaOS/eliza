@@ -15,8 +15,7 @@ import json
 import logging
 import sys
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
+from typing import Any
 
 from elizaos_plugin_planning.benchmarks.types import BenchmarkConfig
 from elizaos_plugin_planning.benchmarks.benchmark_runner import BenchmarkRunner
@@ -182,7 +181,7 @@ def print_config(config: BenchmarkConfig) -> None:
     print()
 
 
-def print_results_summary(results: dict) -> None:
+def print_results_summary(results: dict[str, Any]) -> None:
     """Print a summary of benchmark results."""
     metrics = results.get("overall_metrics", {})
     summary = results.get("summary", {})
@@ -192,7 +191,7 @@ def print_results_summary(results: dict) -> None:
     print("=" * 70)
 
     # Overall metrics
-    print(f"\n🎯 Overall Performance:")
+    print("\n🎯 Overall Performance:")
     print(f"   Status: {summary.get('status', 'unknown').upper()}")
     print(f"   Performance Score: {summary.get('performance_score', 0)}/100")
     print(f"   Total Tests: {metrics.get('total_tests', 0)}")
@@ -200,28 +199,28 @@ def print_results_summary(results: dict) -> None:
     print(f"   Success Rate: {metrics.get('overall_success_rate', 0) * 100:.1f}%")
 
     # Timing metrics
-    print(f"\n⏱️  Performance Metrics:")
+    print("\n⏱️  Performance Metrics:")
     print(f"   Avg Planning Time: {metrics.get('average_planning_time', 0):.0f}ms")
     print(f"   Avg Execution Time: {metrics.get('average_execution_time', 0):.0f}ms")
 
     # Memory usage
     memory = metrics.get("memory_usage", {})
     if memory.get("peak", 0) > 0:
-        print(f"\n💾 Memory Usage:")
+        print("\n💾 Memory Usage:")
         print(f"   Peak: {memory.get('peak', 0) / 1024 / 1024:.1f}MB")
         print(f"   Average: {memory.get('average', 0) / 1024 / 1024:.1f}MB")
 
     # Key findings
     findings = summary.get("key_findings", [])
     if findings:
-        print(f"\n📌 Key Findings:")
+        print("\n📌 Key Findings:")
         for finding in findings:
             print(f"   • {finding}")
 
     # REALM-Bench specific results
     realm_results = results.get("realm_bench_results")
     if realm_results:
-        print(f"\n🏆 REALM-Bench Results:")
+        print("\n🏆 REALM-Bench Results:")
         print(f"   Tests: {realm_results.get('total_tests', 0)}")
         print(f"   Passed: {realm_results.get('passed_tests', 0)}")
         passed = realm_results.get("passed_tests", 0)
@@ -234,7 +233,7 @@ def print_results_summary(results: dict) -> None:
     # API-Bank specific results
     api_results = results.get("api_bank_results")
     if api_results:
-        print(f"\n🔌 API-Bank Results:")
+        print("\n🔌 API-Bank Results:")
         print(f"   Tests: {api_results.get('total_tests', 0)}")
         print(f"   Passed: {api_results.get('passed_tests', 0)}")
         passed = api_results.get("passed_tests", 0)
@@ -247,10 +246,12 @@ def print_results_summary(results: dict) -> None:
         # Level breakdown
         levels = api_results.get("level_breakdown", {})
         if levels:
-            print(f"\n   Level Breakdown:")
+            print("\n   Level Breakdown:")
             for level, stats in sorted(levels.items()):
-                print(f"      Level {level}: {stats.get('passed', 0)}/{stats.get('total', 0)} "
-                      f"({stats.get('success_rate', 0) * 100:.1f}%)")
+                print(
+                    f"      Level {level}: {stats.get('passed', 0)}/{stats.get('total', 0)} "
+                    f"({stats.get('success_rate', 0) * 100:.1f}%)"
+                )
 
     # Comparison / Recommendations
     comparison = results.get("comparison", {})
@@ -258,26 +259,26 @@ def print_results_summary(results: dict) -> None:
 
     strengths = sw.get("strengths", [])
     if strengths:
-        print(f"\n💪 Strengths:")
+        print("\n💪 Strengths:")
         for s in strengths[:5]:
             print(f"   • {s}")
 
     weaknesses = sw.get("weaknesses", [])
     if weaknesses:
-        print(f"\n⚠️  Areas for Improvement:")
+        print("\n⚠️  Areas for Improvement:")
         for w in weaknesses[:5]:
             print(f"   • {w}")
 
     recommendations = sw.get("recommendations", [])
     if recommendations:
-        print(f"\n💡 Recommendations:")
+        print("\n💡 Recommendations:")
         for r in recommendations[:5]:
             print(f"   • {r}")
 
     print("\n" + "=" * 70)
 
 
-async def run_benchmarks(config: BenchmarkConfig, verbose: bool = False) -> dict:
+async def run_benchmarks(config: BenchmarkConfig, verbose: bool = False) -> dict[str, Any]:
     """Run the benchmarks with the given configuration."""
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)

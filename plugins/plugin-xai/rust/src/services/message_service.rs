@@ -13,7 +13,8 @@ pub trait IMessageService: Send + Sync {
     async fn send_message(&self, recipient_id: &str, text: &str) -> crate::error::Result<Value>;
 
     /// Get messages from conversations.
-    async fn get_messages(&self, conversation_id: Option<&str>) -> crate::error::Result<Vec<Value>>;
+    async fn get_messages(&self, conversation_id: Option<&str>)
+        -> crate::error::Result<Vec<Value>>;
 }
 
 /// Message service implementation for X direct messages.
@@ -59,7 +60,11 @@ impl Default for MessageService {
 impl IMessageService for MessageService {
     async fn send_message(&self, recipient_id: &str, text: &str) -> crate::error::Result<Value> {
         // Placeholder - actual implementation would use X API client
-        info!("Sending message to {}: {}...", recipient_id, &text[..text.len().min(50)]);
+        info!(
+            "Sending message to {}: {}...",
+            recipient_id,
+            &text[..text.len().min(50)]
+        );
         Ok(serde_json::json!({
             "id": "placeholder",
             "recipient_id": recipient_id,
@@ -68,7 +73,10 @@ impl IMessageService for MessageService {
         }))
     }
 
-    async fn get_messages(&self, conversation_id: Option<&str>) -> crate::error::Result<Vec<Value>> {
+    async fn get_messages(
+        &self,
+        conversation_id: Option<&str>,
+    ) -> crate::error::Result<Vec<Value>> {
         // Placeholder - actual implementation would use X API client
         info!("Getting messages for conversation: {:?}", conversation_id);
         Ok(vec![])

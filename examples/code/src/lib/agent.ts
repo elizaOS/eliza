@@ -1,8 +1,12 @@
 import "dotenv/config";
 import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
 import anthropicPlugin from "@elizaos/plugin-anthropic";
+import goalsPlugin from "@elizaos/plugin-goals";
+import mcpPlugin from "@elizaos/plugin-mcp";
 import openaiPlugin from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import todoPlugin from "@elizaos/plugin-todo";
+import trajectoryLoggerPlugin from "@elizaos/plugin-trajectory-logger";
 import { elizaCodePlugin } from "../plugin/index.js";
 import { resolveModelProvider } from "./model-provider.js";
 import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
@@ -13,12 +17,15 @@ import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
 const elizaCodeCharacter: Character = {
   name: "Eliza",
   bio: [
-    "An autonomous coding agent who can build apps in any popular programming language",
+    "An orchestrator that helps users with coding by delegating implementation to specialized worker sub-agents",
   ],
   system: `${CODE_ASSISTANT_SYSTEM_PROMPT}
 
-You have access to actions for file I/O, searching, running commands, git, and background tasks.
-Use tools proactively: search/read before editing, and verify changes (tests/build) when appropriate.
+You are an orchestrator. You MAY research (read/search/list), explain, and plan in-chat.
+You MUST NOT write code or edit/write files directly. All implementation work (new files, edits, refactors) must be done via background tasks.
+Avoid outputting large code blocks in chat. Instead, create a task and describe what it should change.
+When the user asks for code changes, create a task with a clear title and a detailed description, and let the task worker do the implementation.
+Use tools proactively: search/read before proposing a task, and include a verify/test step in the task plan when appropriate.
 The current working directory is provided dynamically.`,
 
   topics: [
@@ -135,6 +142,17 @@ The current working directory is provided dynamically.`,
       },
     ],
   ],
+  settings: {
+    mcp: {
+      servers: {
+        context7: {
+          type: "streamable-http",
+          url: "https://mcp.context7.com/mcp",
+          timeout: 30,
+        },
+      },
+    },
+  },
 };
 
 /**
@@ -154,7 +172,15 @@ export async function initializeAgent(): Promise<AgentRuntime> {
   const providerPlugin =
     provider === "anthropic" ? anthropicPlugin : openaiPlugin;
 
-  const plugins: Plugin[] = [sqlPlugin, providerPlugin, elizaCodePlugin];
+  const plugins: Plugin[] = [
+    sqlPlugin,
+    providerPlugin,
+    mcpPlugin,
+    goalsPlugin,
+    todoPlugin,
+    trajectoryLoggerPlugin,
+    elizaCodePlugin,
+  ];
 
   const runtime = new AgentRuntime({
     character: elizaCodeCharacter,

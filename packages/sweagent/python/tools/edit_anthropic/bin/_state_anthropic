@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+
+import json
+import os
+from pathlib import Path
+
+
+def main():
+    state_path = Path("/root/state.json")
+    if state_path.exists():
+        state = json.loads(state_path.read_text())
+    else:
+        state = {}
+
+    state["working_dir"] = os.getcwd()
+
+    state_path.write_text(json.dumps(state))
+
+
+if __name__ == "__main__":
+    main()

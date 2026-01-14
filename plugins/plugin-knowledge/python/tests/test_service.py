@@ -157,8 +157,3 @@ class TestKnowledgeService:
         # Orthogonal vectors should have similarity 0.0
         sim_ortho = service._cosine_similarity(vec1, vec3)
         assert abs(sim_ortho) < 0.001
-
-
-
-
-

@@ -1,0 +1,183 @@
+{
+  "name": "@elizaos/plugin-elevenlabs",
+  "version": "1.6.0",
+  "type": "module",
+  "main": "dist/cjs/index.node.cjs",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-elevenlabs.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "require": "./dist/cjs/index.node.cjs",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.16.0",
+    "@elizaos/core": "workspace:*",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.22",
+    "@types/node": "^24.5.2",
+    "@types/uuid": "^10.0.0",
+    "prettier": "3.6.2",
+    "typescript": "^5.9.2"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "test": "elizaos test",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "lint": "prettier --write ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ELEVENLABS_API_KEY": {
+        "type": "string",
+        "description": "Primary ElevenLabs API key used for authenticating requests",
+        "required": true,
+        "sensitive": true
+      },
+      "ELEVENLABS_VOICE_ID": {
+        "type": "string",
+        "description": "ID of the voice to synthesize with",
+        "required": false,
+        "default": "EXAVITQu4vr4xnSDxMaL",
+        "sensitive": false
+      },
+      "ELEVENLABS_MODEL_ID": {
+        "type": "string",
+        "description": "Model identifier to use for TTS generation",
+        "required": false,
+        "default": "eleven_monolingual_v1",
+        "sensitive": false
+      },
+      "ELEVENLABS_VOICE_STABILITY": {
+        "type": "number",
+        "description": "Voice stability factor (0-1) influencing consistency of speech",
+        "required": false,
+        "default": "0.5",
+        "sensitive": false
+      },
+      "ELEVENLABS_OPTIMIZE_STREAMING_LATENCY": {
+        "type": "number",
+        "description": "Latency optimization level for streaming audio (0-4)",
+        "required": false,
+        "default": "0",
+        "sensitive": false
+      },
+      "ELEVENLABS_OUTPUT_FORMAT": {
+        "type": "string",
+        "description": "Audio output format returned by the API (e.g., mp3_44100_128 or pcm_16000)",
+        "required": false,
+        "default": "mp3_44100_128",
+        "sensitive": false
+      },
+      "ELEVENLABS_BROWSER_URL": {
+        "type": "string",
+        "description": "Optional browser-safe proxy base URL that injects the API key server-side",
+        "required": false,
+        "sensitive": false
+      },
+      "ELEVENLABS_VOICE_SIMILARITY_BOOST": {
+        "type": "number",
+        "description": "Similarity boost factor (0-1) affecting how closely the voice matches the target",
+        "required": false,
+        "default": "0.75",
+        "sensitive": false
+      },
+      "ELEVENLABS_VOICE_STYLE": {
+        "type": "number",
+        "description": "Style intensity (0-1) for the generated voice",
+        "required": false,
+        "default": "0",
+        "sensitive": false
+      },
+      "ELEVENLABS_VOICE_USE_SPEAKER_BOOST": {
+        "type": "boolean",
+        "description": "Flag to enable or disable speaker boost feature",
+        "required": false,
+        "default": "true",
+        "sensitive": false
+      },
+      "ELEVENLABS_STT_MODEL_ID": {
+        "type": "string",
+        "description": "Model identifier to use for speech-to-text transcription",
+        "required": false,
+        "default": "scribe_v1",
+        "sensitive": false
+      },
+      "ELEVENLABS_STT_LANGUAGE_CODE": {
+        "type": "string",
+        "description": "Language code for transcription (e.g., 'en', 'es'). Leave empty for automatic detection",
+        "required": false,
+        "sensitive": false
+      },
+      "ELEVENLABS_STT_TIMESTAMPS_GRANULARITY": {
+        "type": "string",
+        "description": "Timestamp detail level: 'none', 'word', or 'character'",
+        "required": false,
+        "default": "word",
+        "sensitive": false
+      },
+      "ELEVENLABS_STT_DIARIZE": {
+        "type": "boolean",
+        "description": "Enable speaker diarization to identify different speakers",
+        "required": false,
+        "default": "false",
+        "sensitive": false
+      },
+      "ELEVENLABS_STT_NUM_SPEAKERS": {
+        "type": "number",
+        "description": "Expected number of speakers for diarization (1-32)",
+        "required": false,
+        "sensitive": false
+      },
+      "ELEVENLABS_STT_TAG_AUDIO_EVENTS": {
+        "type": "boolean",
+        "description": "Tag audio events like laughter, applause, etc.",
+        "required": false,
+        "default": "false",
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
+}

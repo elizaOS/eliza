@@ -4,8 +4,57 @@
 //! This module provides strongly typed definitions for all Polymarket operations.
 
 use rust_decimal::Decimal;
+use serde::de::{Error as DeError, Visitor};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+
+fn de_string_from_any<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct V;
+    impl<'de> Visitor<'de> for V {
+        type Value = String;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "string, number, bool, or null")
+        }
+
+        fn visit_str<E: DeError>(self, v: &str) -> Result<Self::Value, E> {
+            Ok(v.to_string())
+        }
+
+        fn visit_string<E: DeError>(self, v: String) -> Result<Self::Value, E> {
+            Ok(v)
+        }
+
+        fn visit_i64<E: DeError>(self, v: i64) -> Result<Self::Value, E> {
+            Ok(v.to_string())
+        }
+
+        fn visit_u64<E: DeError>(self, v: u64) -> Result<Self::Value, E> {
+            Ok(v.to_string())
+        }
+
+        fn visit_f64<E: DeError>(self, v: f64) -> Result<Self::Value, E> {
+            Ok(v.to_string())
+        }
+
+        fn visit_bool<E: DeError>(self, v: bool) -> Result<Self::Value, E> {
+            Ok(v.to_string())
+        }
+
+        fn visit_none<E: DeError>(self) -> Result<Self::Value, E> {
+            Ok(String::new())
+        }
+
+        fn visit_unit<E: DeError>(self) -> Result<Self::Value, E> {
+            Ok(String::new())
+        }
+    }
+
+    deserializer.deserialize_any(V)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Token {
@@ -13,7 +62,8 @@ pub struct Token {
     pub outcome: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct Rewards {
     pub min_size: f64,
     pub max_spread: f64,
@@ -26,33 +76,56 @@ pub struct Rewards {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Market {
     pub condition_id: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub question_id: String,
-    pub tokens: (Token, Token),
+    #[serde(default)]
+    pub tokens: Vec<Token>,
+    #[serde(default)]
     pub rewards: Rewards,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub minimum_order_size: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub minimum_tick_size: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub category: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub end_date_iso: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub game_start_time: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub question: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub market_slug: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub min_incentive_size: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub max_incentive_spread: String,
+    #[serde(default)]
     pub active: bool,
+    #[serde(default)]
     pub closed: bool,
+    #[serde(default)]
     pub seconds_delay: i64,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub icon: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub fpmm: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimplifiedMarket {
     pub condition_id: String,
-    pub tokens: (Token, Token),
+    #[serde(default)]
+    pub tokens: Vec<Token>,
+    #[serde(default)]
     pub rewards: Rewards,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub min_incentive_size: String,
+    #[serde(default, deserialize_with = "de_string_from_any")]
     pub max_incentive_spread: String,
+    #[serde(default)]
     pub active: bool,
+    #[serde(default)]
     pub closed: bool,
 }
 

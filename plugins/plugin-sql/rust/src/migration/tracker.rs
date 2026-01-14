@@ -114,11 +114,7 @@ impl MigrationTracker {
         .context("Failed to query last migration")?;
 
         if let Some(row) = row {
-            Ok(Some((
-                row.get(0),
-                row.get(1),
-                row.get(2),
-            )))
+            Ok(Some((row.get(0), row.get(1), row.get(2))))
         } else {
             Ok(None)
         }
@@ -178,4 +174,3 @@ impl MigrationTracker {
         Ok(status)
     }
 }
-

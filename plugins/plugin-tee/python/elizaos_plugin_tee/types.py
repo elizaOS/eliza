@@ -120,4 +120,3 @@ def parse_tee_vendor(vendor: str) -> TeeVendor:
     if vendor_lower == "phala":
         return TeeVendor.PHALA
     raise ValueError(f"Invalid TEE_VENDOR: {vendor}. Must be one of: phala")
-

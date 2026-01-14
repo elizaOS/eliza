@@ -6,7 +6,7 @@ These tables mirror the TypeScript Drizzle schema for compatibility.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
@@ -27,16 +27,14 @@ from sqlalchemy.orm import DeclarativeBase, relationship
 
 def _utc_now() -> datetime:
     """Return current UTC time as timezone-aware datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
-
     pass
 
 
 class AgentTable(Base):
-
     __tablename__ = "agents"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
@@ -49,7 +47,9 @@ class AgentTable(Base):
     enabled = Column(Boolean, default=True)
     status = Column(String(50), default="active")
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )
 
     # Relationships
     entities = relationship("EntityTable", back_populates="agent")
@@ -60,7 +60,6 @@ class AgentTable(Base):
 
 
 class EntityTable(Base):
-
     __tablename__ = "entities"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
@@ -70,7 +69,9 @@ class EntityTable(Base):
     names: Column[list[str]] = Column(ARRAY(String), nullable=False)
     entity_metadata = Column("metadata", JSON, default={})
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )
 
     # Relationships
     agent = relationship("AgentTable", back_populates="entities")
@@ -81,7 +82,6 @@ class EntityTable(Base):
 
 
 class ComponentTable(Base):
-
     __tablename__ = "components"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
@@ -106,7 +106,6 @@ class ComponentTable(Base):
 
 
 class WorldTable(Base):
-
     __tablename__ = "worlds"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
@@ -117,7 +116,9 @@ class WorldTable(Base):
     message_server_id = Column(UUID(as_uuid=True), nullable=True)
     world_metadata = Column("metadata", JSON, default={})
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )
 
     # Relationships
     agent = relationship("AgentTable", back_populates="worlds")
@@ -127,7 +128,6 @@ class WorldTable(Base):
 
 
 class RoomTable(Base):
-
     __tablename__ = "rooms"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
@@ -144,7 +144,9 @@ class RoomTable(Base):
     )
     room_metadata = Column("metadata", JSON, default={})
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )
 
     # Relationships
     agent = relationship("AgentTable", back_populates="rooms")
@@ -160,7 +162,6 @@ class RoomTable(Base):
 
 
 class ParticipantTable(Base):
-
     __tablename__ = "participants"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
@@ -183,7 +184,6 @@ class ParticipantTable(Base):
 
 
 class MemoryTable(Base):
-
     __tablename__ = "memories"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
@@ -209,7 +209,6 @@ class MemoryTable(Base):
 
 
 class EmbeddingTable(Base):
-
     __tablename__ = "embeddings"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
@@ -232,7 +231,6 @@ class EmbeddingTable(Base):
 
 
 class RelationshipTable(Base):
-
     __tablename__ = "relationships"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
@@ -251,7 +249,6 @@ class RelationshipTable(Base):
 
 
 class TaskTable(Base):
-
     __tablename__ = "tasks"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
@@ -264,7 +261,9 @@ class TaskTable(Base):
     task_tags: Column[list[str]] = Column("tags", ARRAY(String), default=[])
     task_metadata = Column("metadata", JSON, default={})
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )
 
     __table_args__ = (
         Index("idx_tasks_name", "name"),
@@ -274,7 +273,6 @@ class TaskTable(Base):
 
 
 class CacheTable(Base):
-
     __tablename__ = "cache"
 
     key = Column(String(512), primary_key=True)
@@ -286,7 +284,6 @@ class CacheTable(Base):
 
 
 class LogTable(Base):
-
     __tablename__ = "logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True)

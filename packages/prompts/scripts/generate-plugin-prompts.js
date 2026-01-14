@@ -194,6 +194,28 @@ from __future__ import annotations
   fs.writeFileSync(path.join(outputDir, "prompts.py"), output);
 
   console.log(`Generated Python output: ${outputDir}/prompts.py`);
+  
+  // Try to copy to Python package directory if it exists
+  // Look for python/elizaos_plugin_*/ directory structure
+  const pluginRoot = path.resolve(outputBaseDir, "../..");
+  const pythonDir = path.join(pluginRoot, "python");
+  
+  if (fs.existsSync(pythonDir)) {
+    // Find elizaos_plugin_* directory
+    const pythonPkgDirs = fs.readdirSync(pythonDir).filter(dir => 
+      dir.startsWith("elizaos_plugin_") && 
+      fs.statSync(path.join(pythonDir, dir)).isDirectory()
+    );
+    
+    if (pythonPkgDirs.length > 0) {
+      const pythonPkgDir = path.join(pythonDir, pythonPkgDirs[0]);
+      const targetFile = path.join(pythonPkgDir, "_generated_prompts.py");
+      
+      // Copy generated prompts to Python package as _generated_prompts.py
+      fs.copyFileSync(path.join(outputDir, "prompts.py"), targetFile);
+      console.log(`Copied Python prompts to ${targetFile}`);
+    }
+  }
 }
 
 /**

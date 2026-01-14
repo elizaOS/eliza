@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+markers = [
+  "integration: live network tests (requires POLYMARKET_LIVE_TESTS=1)",
+]
+

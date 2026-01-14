@@ -6,7 +6,6 @@ No defensive programming or error swallowing.
 """
 
 
-
 class DiscordError(Exception):
     """Base class for Discord plugin errors."""
 
@@ -149,5 +148,3 @@ class ValidationError(DiscordError):
 
     def __init__(self, reason: str) -> None:
         super().__init__(f"Action validation failed: {reason}")
-
-

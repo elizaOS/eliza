@@ -14,4 +14,3 @@ def mock_config() -> OllamaConfig:
         embedding_model="nomic-embed-text:latest",
         timeout_seconds=30,
     )
-

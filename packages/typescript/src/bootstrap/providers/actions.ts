@@ -1,4 +1,5 @@
 import {
+  composeActionCallExamples,
   composeActionExamples,
   formatActionNames,
   formatActions,
@@ -75,6 +76,14 @@ export const actionsProvider: Provider = {
         ? addHeader("# Action Examples", composeActionExamples(actionsData, 10))
         : "";
 
+    const actionCallExamples =
+      actionsData.length > 0
+        ? addHeader(
+            "# Action Call Examples (with <params>)",
+            composeActionCallExamples(actionsData, 5),
+          )
+        : "";
+
     const _data = {
       actionsData,
     };
@@ -82,11 +91,17 @@ export const actionsProvider: Provider = {
     const values = {
       actionNames,
       actionExamples,
+      actionCallExamples,
       actionsWithDescriptions,
     };
 
     // Combine all text sections - now including actionsWithDescriptions
-    const text = [actionNames, actionsWithDescriptions, actionExamples]
+    const text = [
+      actionNames,
+      actionsWithDescriptions,
+      actionExamples,
+      actionCallExamples,
+    ]
       .filter(Boolean)
       .join("\n\n");
 

@@ -90,10 +90,7 @@ impl DiscordAction for GetUserInfoAction {
         // Format the response
         let formatted = service.format_user_info(&user_info);
 
-        let user_id = user_info
-            .get("id")
-            .and_then(|i| i.as_str())
-            .unwrap_or("");
+        let user_id = user_info.get("id").and_then(|i| i.as_str()).unwrap_or("");
         let username = user_info
             .get("username")
             .and_then(|u| u.as_str())

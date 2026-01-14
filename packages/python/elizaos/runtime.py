@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 import uuid
 import xml.etree.ElementTree as ET
@@ -8,6 +9,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from elizaos.logger import Logger, create_logger
+from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
 from elizaos.settings import decrypt_secret, get_salt
 from elizaos.types.agent import Character, TemplateType
 from elizaos.types.components import (
@@ -294,9 +296,7 @@ class AgentRuntime(IAgentRuntime):
     def has_service(self, service_type: str) -> bool:
         return service_type in self._services and len(self._services[service_type]) > 0
 
-    def set_setting(
-        self, key: str, value: str | bool | int | float | None, secret: bool = False
-    ) -> None:
+    def set_setting(self, key: str, value: object | None, secret: bool = False) -> None:
         if value is None:
             return
 
@@ -310,7 +310,7 @@ class AgentRuntime(IAgentRuntime):
             self._character.settings = {}
         self._character.settings[key] = value  # type: ignore[assignment]
 
-    def get_setting(self, key: str) -> str | bool | int | float | None:
+    def get_setting(self, key: str) -> object | None:
         settings = self._character.settings
         secrets = self._character.secrets
 
@@ -335,7 +335,7 @@ class AgentRuntime(IAgentRuntime):
 
         if isinstance(value, bool):
             return value
-        if isinstance(value, int | float):
+        if isinstance(value, (int, float)):
             return value
         if isinstance(value, str):
             decrypted = decrypt_secret(value, get_salt())
@@ -346,9 +346,10 @@ class AgentRuntime(IAgentRuntime):
             # Cast to str since decrypt_secret returns object for type flexibility
             return str(decrypted) if decrypted is not None else None
 
-        return None
+        # Allow non-primitive runtime settings (e.g. objects used by providers/actions).
+        return value
 
-    def get_all_settings(self) -> dict[str, str | bool | int | float | None]:
+    def get_all_settings(self) -> dict[str, object | None]:
         keys: set[str] = set(self._settings.keys())
         if isinstance(self._character.settings, dict):
             keys.update(self._character.settings.keys())
@@ -430,10 +431,10 @@ class AgentRuntime(IAgentRuntime):
         self._providers.append(provider)
 
     def register_action(self, action: Action) -> None:
-        self._actions.append(action)
+        self._actions.append(with_canonical_action_docs(action))
 
     def register_evaluator(self, evaluator: Evaluator) -> None:
-        self._evaluators.append(evaluator)
+        self._evaluators.append(with_canonical_evaluator_docs(evaluator))
 
     @staticmethod
     def _parse_param_value(value: str) -> str | int | float | bool | None:
@@ -457,7 +458,7 @@ class AgentRuntime(IAgentRuntime):
             return raw
         return raw
 
-    def _parse_action_params(self, params_raw: object | None) -> dict[str, dict[str, object]]:
+    def _parse_action_params(self, params_raw: object | None) -> dict[str, list[dict[str, object]]]:
         """
         Parse action parameters from either:
         - Nested dict structure (e.g. {"MOVE": {"direction": "north"}})
@@ -476,42 +477,50 @@ class AgentRuntime(IAgentRuntime):
             if root.tag.lower() != "params":
                 return {}
 
-            result: dict[str, dict[str, object]] = {}
+            result: dict[str, list[dict[str, object]]] = {}
             for action_elem in list(root):
                 action_name = action_elem.tag.upper()
                 action_params: dict[str, object] = {}
                 for param_elem in list(action_elem):
                     action_params[param_elem.tag] = self._parse_param_value(param_elem.text or "")
                 if action_params:
-                    result[action_name] = action_params
+                    result.setdefault(action_name, []).append(action_params)
             return result
 
         if isinstance(params_raw, dict):
-            result_dict: dict[str, dict[str, object]] = {}
+            result_dict: dict[str, list[dict[str, object]]] = {}
             for action_name, params_value in params_raw.items():
                 action_key = str(action_name).upper()
 
-                normalized_params_value = params_value
-                if (
-                    isinstance(normalized_params_value, list)
-                    and len(normalized_params_value) > 0
-                    and isinstance(normalized_params_value[0], dict)
-                ):
-                    normalized_params_value = normalized_params_value[0]
-
-                if not isinstance(normalized_params_value, dict):
+                entries: list[dict[str, object]] = []
+                if isinstance(params_value, list):
+                    for item in params_value:
+                        if not isinstance(item, dict):
+                            continue
+                        inner_action_params: dict[str, object] = {}
+                        for param_name, raw_value in item.items():
+                            key = str(param_name)
+                            if isinstance(raw_value, str):
+                                inner_action_params[key] = self._parse_param_value(raw_value)
+                            else:
+                                inner_action_params[key] = raw_value
+                        if inner_action_params:
+                            entries.append(inner_action_params)
+                elif isinstance(params_value, dict):
+                    inner_action_params = {}
+                    for param_name, raw_value in params_value.items():
+                        key = str(param_name)
+                        if isinstance(raw_value, str):
+                            inner_action_params[key] = self._parse_param_value(raw_value)
+                        else:
+                            inner_action_params[key] = raw_value
+                    if inner_action_params:
+                        entries.append(inner_action_params)
+                else:
                     continue
 
-                inner_action_params: dict[str, object] = {}
-                for param_name, raw_value in normalized_params_value.items():
-                    key = str(param_name)
-                    if isinstance(raw_value, str):
-                        inner_action_params[key] = self._parse_param_value(raw_value)
-                    else:
-                        inner_action_params[key] = raw_value
-
-                if inner_action_params:
-                    result_dict[action_key] = inner_action_params
+                if entries:
+                    result_dict[action_key] = entries
             return result_dict
 
         return {}
@@ -527,6 +536,12 @@ class AgentRuntime(IAgentRuntime):
 
         for param_def in action.parameters:
             extracted_value = extracted.get(param_def.name) if extracted else None
+            if extracted_value is None and extracted:
+                # Be tolerant to parameter name casing produced by models (e.g. "Expression" vs "expression")
+                for k, v in extracted.items():
+                    if isinstance(k, str) and k.lower() == param_def.name.lower():
+                        extracted_value = v
+                        break
 
             # Treat explicit None as missing
             if extracted_value is None:
@@ -541,6 +556,13 @@ class AgentRuntime(IAgentRuntime):
             schema_type = param_def.schema_def.type
 
             if schema_type == "string":
+                # Parameters often come from XML and may be parsed into scalars
+                # (e.g., "200" -> int 200). For string-typed params, coerce
+                # scalars back to strings rather than failing validation.
+                if isinstance(extracted_value, bool):
+                    extracted_value = "true" if extracted_value else "false"
+                elif isinstance(extracted_value, (int, float)):
+                    extracted_value = str(extracted_value)
                 if not isinstance(extracted_value, str):
                     errors.append(
                         f"Parameter '{param_def.name}' expected string, got {type(extracted_value).__name__}"
@@ -563,7 +585,7 @@ class AgentRuntime(IAgentRuntime):
 
             if schema_type == "number":
                 if isinstance(extracted_value, bool) or not isinstance(
-                    extracted_value, int | float
+                    extracted_value, (int, float)
                 ):
                     errors.append(
                         f"Parameter '{param_def.name}' expected number, got {type(extracted_value).__name__}"
@@ -651,6 +673,10 @@ class AgentRuntime(IAgentRuntime):
             if not response.content.actions:
                 continue
 
+            # Track Nth occurrence of each action within this response so repeated actions
+            # (e.g., multiple WRITE_FILE actions) consume the corresponding Nth params entry.
+            param_index: dict[str, int] = {}
+
             for response_action in response.content.actions:
                 if not isinstance(response_action, str):
                     continue
@@ -670,19 +696,35 @@ class AgentRuntime(IAgentRuntime):
                 if action.parameters:
                     params_raw = getattr(response.content, "params", None)
                     params_by_action = self._parse_action_params(params_raw)
-                    extracted = params_by_action.get(
-                        response_action.upper()
-                    ) or params_by_action.get(action.name.upper())
+                    action_key = response_action.upper()
+                    extracted_list = params_by_action.get(action_key) or params_by_action.get(
+                        action.name.upper()
+                    )
+
+                    idx = param_index.get(action_key, 0)
+                    extracted: dict[str, object] | None = None
+                    if isinstance(extracted_list, list):
+                        if idx < len(extracted_list):
+                            entry = extracted_list[idx]
+                            if isinstance(entry, dict):
+                                extracted = entry
+                        param_index[action_key] = idx + 1
+                    elif isinstance(extracted_list, dict):
+                        extracted = extracted_list
                     valid, validated_params, errors = self._validate_action_params(
                         action, extracted
                     )
-                    if not valid:
-                        self.logger.error(
-                            f"Action parameter validation failed for {action.name}: {errors}"
-                        )
-                        continue
-                    if validated_params:
-                        options_obj.parameters = validated_params
+                if not valid:
+                    self.logger.warning(
+                        "Action parameter validation incomplete",
+                        src="runtime:actions",
+                        actionName=action.name,
+                        errors=errors,
+                    )
+                    options_obj.parameter_errors = errors
+
+                if validated_params:
+                    options_obj.parameters = validated_params
 
                 result = await action.handler(
                     self,
@@ -813,6 +855,15 @@ class AgentRuntime(IAgentRuntime):
         only_include: bool = False,
         skip_cache: bool = False,
     ) -> State:
+        # If we're running inside a trajectory step, always bypass the state cache
+        # so providers are executed and logged for training/benchmark traces.
+        traj_step_id: str | None = None
+        if message.metadata is not None:
+            maybe_step = getattr(message.metadata, "trajectoryStepId", None)
+            if isinstance(maybe_step, str) and maybe_step:
+                traj_step_id = maybe_step
+                skip_cache = True
+
         cache_key = str(message.room_id)
 
         if not skip_cache and cache_key in self._state_cache:
@@ -836,6 +887,43 @@ class AgentRuntime(IAgentRuntime):
         # Sort by position
         providers_to_run.sort(key=lambda p: p.position or 0)
 
+        # Optional trajectory logging (end-to-end capture)
+
+        from typing import Protocol, runtime_checkable
+
+        @runtime_checkable
+        class _TrajectoryLogger(Protocol):
+            def log_provider_access(
+                self,
+                *,
+                step_id: str,
+                provider_name: str,
+                data: dict[str, str | int | float | bool | None],
+                purpose: str,
+                query: dict[str, str | int | float | bool | None] | None = None,
+            ) -> None: ...
+
+        traj_svc = self.get_service("trajectory_logger")
+        traj_logger = traj_svc if isinstance(traj_svc, _TrajectoryLogger) else None
+
+        def _as_json_scalar(value: object) -> str | int | float | bool | None:
+            if value is None:
+                return None
+            if isinstance(value, (str, int, float, bool)):
+                if isinstance(value, str):
+                    return value[:2000]
+                return value
+            return str(value)[:2000]
+
+        def _as_json_dict(data: object) -> dict[str, str | int | float | bool | None]:
+            if not isinstance(data, dict):
+                return {"value": _as_json_scalar(data)}
+            out: dict[str, str | int | float | bool | None] = {}
+            for k, v in data.items():
+                if isinstance(k, str):
+                    out[k] = _as_json_scalar(v)
+            return out
+
         text_parts: list[str] = []
         for provider in providers_to_run:
             if provider.private:
@@ -851,7 +939,24 @@ class AgentRuntime(IAgentRuntime):
                     state.data.providers = {}
                 state.data.providers[provider.name] = result.data
 
+            # Log provider access to trajectory service (if available)
+            if traj_step_id and traj_logger is not None:
+                try:
+                    user_text = message.content.text or ""
+                    traj_logger.log_provider_access(
+                        step_id=traj_step_id,
+                        provider_name=provider.name,
+                        data=_as_json_dict(result.data or {}),
+                        purpose="compose_state",
+                        query={"message": _as_json_scalar(user_text)},
+                    )
+                except Exception:
+                    # Trajectory logging must never break core message flow.
+                    pass
+
         state.text = "\n".join(text_parts)
+        # Match TypeScript behavior: expose providers text under {{providers}}.
+        state.values["providers"] = state.text
 
         if not skip_cache:
             self._state_cache[cache_key] = state
@@ -915,7 +1020,42 @@ class AgentRuntime(IAgentRuntime):
                 raise RuntimeError(f"No model handler for provider: {provider}")
 
         handler = handlers[0]
-        return await handler.handler(self, params)
+        start_ms = self.get_current_time_ms()
+        result = await handler.handler(self, params)
+        end_ms = self.get_current_time_ms()
+
+        # Optional trajectory logging: associate model calls with the current trajectory step
+        try:
+            from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
+
+            step_id = CURRENT_TRAJECTORY_STEP_ID.get()
+            traj_svc = self.get_service("trajectory_logger")
+            if step_id and traj_svc is not None and hasattr(traj_svc, "log_llm_call"):
+                prompt = str(params.get("prompt", "")) if isinstance(params, dict) else ""
+                system_prompt = str(params.get("system", "")) if isinstance(params, dict) else ""
+                temperature_raw = params.get("temperature") if isinstance(params, dict) else None
+                temperature = (
+                    float(temperature_raw) if isinstance(temperature_raw, (int, float)) else 0.0
+                )
+                max_tokens_raw = params.get("maxTokens") if isinstance(params, dict) else None
+                max_tokens = int(max_tokens_raw) if isinstance(max_tokens_raw, int) else 0
+
+                traj_svc.log_llm_call(  # type: ignore[call-arg]
+                    step_id=step_id,
+                    model=str(effective_model_type),
+                    system_prompt=system_prompt,
+                    user_prompt=prompt,
+                    response=str(result),
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    purpose="action",
+                    action_type="runtime.use_model",
+                    latency_ms=max(0, end_ms - start_ms),
+                )
+        except Exception:
+            pass
+
+        return result
 
     async def generate_text(
         self,
@@ -1228,6 +1368,13 @@ class AgentRuntime(IAgentRuntime):
         if self._adapter:
             await self._adapter.ensure_embedding_dimension(dimension)
 
+    async def get_entity(self, entity_id: UUID) -> Any | None:
+        """Get a single entity by ID."""
+        if not self._adapter:
+            return None
+        entities = await self._adapter.get_entities_by_ids([entity_id])
+        return entities[0] if entities else None
+
     async def get_entities_by_ids(self, entity_ids: list[UUID]) -> list[Any] | None:
         if not self._adapter:
             return None
@@ -1293,8 +1440,17 @@ class AgentRuntime(IAgentRuntime):
         limit: int | None = None,
         order_by: str | None = None,
         order_direction: str | None = None,
+        table_name: str | None = None,
         **kwargs: Any,
     ) -> list[Any]:
+        """
+        Get memories, supporting both dict-style and kwargs-style calling.
+
+        Can be called as:
+            get_memories({"roomId": room_id, "limit": 10})
+        or:
+            get_memories(room_id=room_id, limit=10)
+        """
         if not self._adapter:
             return []
         # Start with provided params or empty dict
@@ -1308,6 +1464,8 @@ class AgentRuntime(IAgentRuntime):
             merged_params["orderBy"] = order_by
         if order_direction is not None:
             merged_params["orderDirection"] = order_direction
+        if table_name is not None:
+            merged_params["tableName"] = table_name
         # Additional kwargs also take precedence
         merged_params.update(kwargs)
         return await self._adapter.get_memories(merged_params)

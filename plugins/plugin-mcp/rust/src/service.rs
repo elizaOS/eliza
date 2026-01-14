@@ -42,4 +42,3 @@ impl Default for McpService {
         Self::new()
     }
 }
-

@@ -10,7 +10,6 @@ pub struct TextChunker {
     pub chunk_overlap: usize,
 }
 
-
 impl Default for TextChunker {
     fn default() -> Self {
         Self {
@@ -161,7 +160,7 @@ mod tests {
         let tokens = chunker.estimate_tokens(text);
 
         // 13 / 3.5 ≈ 3
-        assert!(tokens >= 3 && tokens <= 4);
+        assert!((3..=4).contains(&tokens));
     }
 
     #[test]
@@ -172,10 +171,10 @@ mod tests {
         let result = chunker.split(text);
 
         for chunk in &result.chunks {
-            let ends_with_term = chunk.ends_with('.') || chunk.ends_with('!') || chunk.ends_with('?');
+            let ends_with_term =
+                chunk.ends_with('.') || chunk.ends_with('!') || chunk.ends_with('?');
             let is_continuation = !chunk.starts_with(|c: char| c.is_uppercase());
             assert!(ends_with_term || is_continuation || chunk.len() < 10);
         }
     }
 }
-

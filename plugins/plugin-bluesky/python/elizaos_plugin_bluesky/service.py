@@ -29,4 +29,3 @@ class BlueSkyService:
 
     async def stop(self) -> None:
         await self._client.close()
-

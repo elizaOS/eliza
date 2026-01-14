@@ -33,4 +33,3 @@ class InvalidModeError(ConfigError):
 class InvalidVendorError(ConfigError):
     def __init__(self, vendor: str) -> None:
         super().__init__(f"Invalid TEE_VENDOR: {vendor}. Must be one of: phala")
-

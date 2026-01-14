@@ -1,24 +1,26 @@
 {
   "name": "@elizaos/example-autonomous",
-  "version": "1.0.0",
-  "description": "Autonomous self-looping agent with local AI, shell access, and in-memory database",
+  "version": "2.0.0",
+  "description": "Sandboxed autonomous loop using local-ai + shell + inmemorydb",
   "type": "module",
-  "main": "index.ts",
+  "private": true,
   "scripts": {
-    "start": "bun run index.ts",
-    "build": "bun build index.ts --outdir=dist",
-    "dev": "bun run --watch index.ts"
+    "start": "bun run autonomous.ts",
+    "dev": "bun --watch run autonomous.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*",
     "@elizaos/plugin-local-ai": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*",
-    "uuid": "^11.1.0"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.15.29",
-    "@types/uuid": "^10.0.0",
-    "typescript": "^5.8.3"
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

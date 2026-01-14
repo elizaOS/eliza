@@ -119,4 +119,3 @@ def is_forbidden_command(
                 return True
 
     return False
-

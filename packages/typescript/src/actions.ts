@@ -1,4 +1,5 @@
 import { names, uniqueNamesGenerator } from "unique-names-generator";
+import { allActionDocs } from "./generated/action-docs.ts";
 import type {
   Action,
   ActionExample,
@@ -7,6 +8,16 @@ import type {
   ActionParameters,
   ActionParameterValue,
 } from "./types";
+
+type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
+
+const actionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(
+  (acc, doc) => {
+    acc[doc.name] = doc;
+    return acc;
+  },
+  {},
+);
 
 export const composeActionExamples = (
   actionsData: Action[],
@@ -54,6 +65,70 @@ export const composeActionExamples = (
 
   return formatSelectedExamples(selectedExamples);
 };
+
+function escapeXmlText(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function formatActionCallExample(example: {
+  user: string;
+  actions: readonly string[];
+  params?: Record<string, Record<string, string | number | boolean | null>>;
+}): string {
+  const actionTags = example.actions
+    .map((a) => `  <action>${escapeXmlText(a)}</action>`)
+    .join("\n");
+
+  const paramsByAction = example.params ?? {};
+  const paramsBlocks = Object.entries(paramsByAction)
+    .map(([actionName, params]) => {
+      const inner = Object.entries(params)
+        .map(([k, v]) => {
+          const raw =
+            typeof v === "string" ? v : v === null ? "null" : JSON.stringify(v);
+          return `    <${k}>${escapeXmlText(raw)}</${k}>`;
+        })
+        .join("\n");
+      return `  <${actionName}>\n${inner}\n  </${actionName}>`;
+    })
+    .join("\n");
+
+  const paramsSection =
+    paramsBlocks.length > 0
+      ? `\n<params>\n${paramsBlocks}\n</params>`
+      : "";
+
+  return `User: ${example.user}\nAssistant:\n<actions>\n${actionTags}\n</actions>${paramsSection}`;
+}
+
+/**
+ * Render canonical action-call examples (including <params> blocks).
+ *
+ * Deterministic ordering is important to keep tests stable and avoid prompt churn.
+ */
+export function composeActionCallExamples(
+  actionsData: Action[],
+  maxExamples: number,
+): string {
+  if (!actionsData.length || maxExamples <= 0) return "";
+
+  const blocks: string[] = [];
+  const sorted = [...actionsData].sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const action of sorted) {
+    const doc = actionDocByName[action.name];
+    if (!doc?.exampleCalls || doc.exampleCalls.length === 0) continue;
+    for (const ex of doc.exampleCalls) {
+      blocks.push(formatActionCallExample(ex));
+      if (blocks.length >= maxExamples) return blocks.join("\n\n");
+    }
+  }
+
+  return blocks.join("\n\n");
+}
 
 const formatSelectedExamples = (examples: ActionExample[][]): string => {
   const MAX_NAME_PLACEHOLDERS = 5;
@@ -125,8 +200,12 @@ export function formatActionParameters(parameters: ActionParameter[]): string {
       const enumStr = param.schema.enum
         ? ` [values: ${param.schema.enum.join(", ")}]`
         : "";
+      const examplesStr =
+        param.examples && param.examples.length > 0
+          ? ` [examples: ${param.examples.map((v) => JSON.stringify(v)).join(", ")}]`
+          : "";
 
-      return `    - ${param.name}${requiredStr}: ${param.description} (${typeStr}${enumStr}${defaultStr})`;
+      return `    - ${param.name}${requiredStr}: ${param.description} (${typeStr}${enumStr}${defaultStr}${examplesStr})`;
     })
     .join("\n");
 }

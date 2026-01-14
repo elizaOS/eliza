@@ -54,6 +54,8 @@ class MINTRunner:
         self,
         config: MINTConfig,
         runtime: Optional[ModelRuntime] = None,
+        trajectory_logger_service: object | None = None,
+        trajectory_dataset: str = "mint-benchmark",
     ) -> None:
         """
         Initialize the MINT benchmark runner.
@@ -73,6 +75,15 @@ class MINTRunner:
         if runtime is not None and isinstance(runtime, ModelRuntime):
             self._runtime = runtime
 
+        # Optional: elizaOS trajectory logger plugin service (Python)
+        self._trajectory_logger_service: object | None = trajectory_logger_service
+        self._trajectory_dataset: str = trajectory_dataset
+        self._trajectory_ids: list[str] = []
+
+        # MINT uses the canonical Eliza runtime + `compose_state`/`use_model`.
+        # Core runtime already logs providers + LLM calls when a trajectory step is bound.
+        # We therefore do NOT monkeypatch the runtime here.
+
         # Initialize components
         self.dataset = MINTDataset(config.data_path)
         self.executor = PythonExecutor(
@@ -89,6 +100,8 @@ class MINTRunner:
             tool_executor=self.executor,
             feedback_generator=self.feedback_generator,
             temperature=config.temperature,
+            trajectory_logger_service=self._trajectory_logger_service,
+            trajectory_ids_sink=self._trajectory_ids,
         )
         self.evaluator = MINTEvaluator()
         self.metrics_calculator = MetricsCalculator()
@@ -208,6 +221,44 @@ class MINTRunner:
         # Save results
         if self.config.generate_report:
             await self._save_results(results)
+
+        # Export elizaOS trajectories (ART + GRPO) for training use.
+        if self._trajectory_logger_service is not None and self._trajectory_ids:
+            try:
+                # Prefer the plugin service export API if available.
+                from elizaos_plugin_trajectory_logger.runtime_service import (
+                    TrajectoryExportConfig,
+                    TrajectoryLoggerRuntimeService,
+                )
+
+                out_dir = Path(self.config.output_dir) / "eliza_trajectories"
+                out_dir.mkdir(parents=True, exist_ok=True)
+
+                svc = self._trajectory_logger_service
+                if isinstance(svc, TrajectoryLoggerRuntimeService):
+                    # Export both formats for training pipelines.
+                    art_res = svc.export(
+                        TrajectoryExportConfig(
+                            dataset_name=self._trajectory_dataset,
+                            export_format="art",
+                            output_dir=str(out_dir),
+                            max_trajectories=len(self._trajectory_ids),
+                        )
+                    )
+                    grpo_res = svc.export(
+                        TrajectoryExportConfig(
+                            dataset_name=self._trajectory_dataset,
+                            export_format="grpo",
+                            output_dir=str(out_dir),
+                            max_trajectories=len(self._trajectory_ids),
+                        )
+                    )
+                    logger.info(
+                        f"[MINTRunner] Exported trajectories for training: "
+                        f"art={art_res.dataset_url} grpo={grpo_res.dataset_url}"
+                    )
+            except Exception as e:
+                logger.warning(f"[MINTRunner] Failed to export elizaOS trajectories: {e}")
 
         logger.info(
             f"[MINTRunner] Benchmark completed in {duration:.1f}s. "

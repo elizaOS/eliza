@@ -1,16 +1,17 @@
-
-
 class TestRssPluginStructure:
     def test_import_plugin(self) -> None:
         from elizaos_plugin_rss import RssPlugin
+
         assert RssPlugin is not None
 
     def test_import_client(self) -> None:
         from elizaos_plugin_rss import RssClient
+
         assert RssClient is not None
 
     def test_import_parser(self) -> None:
         from elizaos_plugin_rss import create_empty_feed, parse_rss_to_json
+
         assert parse_rss_to_json is not None
         assert create_empty_feed is not None
 
@@ -21,6 +22,7 @@ class TestRssPluginStructure:
             RssFeed,
             RssItem,
         )
+
         assert RssConfig is not None
         assert RssFeed is not None
         assert RssItem is not None

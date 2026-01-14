@@ -14,11 +14,13 @@ class TestOpenAIPluginStructure:
     def test_import_plugin(self) -> None:
         """Test that plugin can be imported."""
         from elizaos_plugin_openai import OpenAIPlugin
+
         assert OpenAIPlugin is not None
 
     def test_import_client(self) -> None:
         """Test that client can be imported."""
         from elizaos_plugin_openai import OpenAIClient
+
         assert OpenAIClient is not None
 
     def test_import_types(self) -> None:
@@ -28,6 +30,7 @@ class TestOpenAIPluginStructure:
             OpenAIConfig,
             TextGenerationParams,
         )
+
         assert OpenAIConfig is not None
         assert TextGenerationParams is not None
         assert EmbeddingParams is not None

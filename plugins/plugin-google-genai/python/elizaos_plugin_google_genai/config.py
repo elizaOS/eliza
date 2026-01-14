@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -142,4 +141,3 @@ class GoogleGenAIConfig:
             image_model=self._image_model,
             timeout_seconds=seconds,
         )
-

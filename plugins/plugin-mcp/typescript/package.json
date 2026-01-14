@@ -3,8 +3,8 @@
   "version": "2.0.0",
   "description": "elizaOS plugin to integrate with MCP (Model Context Protocol) servers",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
+  "main": "dist/node/index.js",
+  "module": "dist/node/index.js",
   "types": "dist/index.d.ts",
   "sideEffects": false,
   "repository": {
@@ -15,8 +15,15 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.js",
+        "require": "./dist/cjs/index.cjs",
+        "default": "./dist/node/index.js"
+      },
+      "import": "./dist/node/index.js",
+      "require": "./dist/cjs/index.cjs",
+      "default": "./dist/node/index.js"
     }
   },
   "files": [

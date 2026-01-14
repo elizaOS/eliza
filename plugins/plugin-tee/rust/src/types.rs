@@ -31,7 +31,6 @@ impl TeeMode {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
@@ -54,7 +53,6 @@ impl TeeVendor {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -129,7 +127,6 @@ pub struct TeeServiceConfig {
     pub vendor: TeeVendor,
     pub secret_salt: Option<String>,
 }
-
 
 impl Default for TeeServiceConfig {
     fn default() -> Self {

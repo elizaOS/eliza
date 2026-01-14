@@ -49,6 +49,7 @@ async def get_character_context(
         adjectives_list = _to_str_list(adjectives)
         sections.append(f"\n## Personality Traits\n{', '.join(adjectives_list)}")
 
+    # lore is optional and may not exist on all Character instances
     lore = getattr(character, "lore", None)
     if lore:
         lore_list = _to_str_list(lore)

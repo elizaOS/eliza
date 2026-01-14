@@ -1,30 +1,31 @@
-# Tic-Tac-Toe Demo - Python Version
+# Agentic Game of Life - Python Version
 
-A tic-tac-toe game demonstrating perfect play using minimax algorithm without any LLM.
+A tiny grid-world simulation demonstrating **the full elizaOS message pipeline** with **no LLM**.
 
 ## Running
 
 ```bash
-cd examples/tic-tac-toe/python
+cd examples/game-of-life/python
+pip install -r requirements.txt
 python game.py
 ```
 
 ## How It Works
 
-This Python version demonstrates the core concept:
+Each tick is processed by routing an **environment message** through the canonical entrypoint:
 
-- Custom model handlers that parse board state from text prompts
-- Minimax algorithm for perfect play
-- No LLM calls needed
+- `runtime.message_service.handle_message(runtime, message)`
 
-In a full implementation with the Python elizaOS runtime, you would:
+That triggers:
 
-1. Create an `AgentRuntime` with no character (anonymous)
-2. Register custom model handlers for `TEXT_LARGE` and `TEXT_SMALL`
-3. The handlers would intercept model calls and return optimal moves
+- saving the message to memory (when an adapter is present)
+- `runtime.compose_state(...)`
+- `runtime.use_model(TEXT_LARGE, { prompt })`
+- a **custom rule-based model handler** that returns deterministic XML:
+  - `<actions>MOVE_TOWARD_FOOD</actions>` / `<actions>EAT</actions>` / `<actions>WANDER</actions>`
+- `runtime.process_actions(...)` which executes real elizaOS `Action` handlers (mutating the world)
 
 ## Current Status
 
-This implementation uses a simplified runtime simulation since the full Python
-elizaOS runtime integration is still in development. The core logic (minimax,
-board parsing, model handler) is fully functional and demonstrates the concept.
+This implementation is intentionally minimal (single agent) but fully canonical:
+**no bypassing** and **no “pretend” agent loop**.

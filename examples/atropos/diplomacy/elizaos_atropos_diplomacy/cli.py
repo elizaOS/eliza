@@ -39,7 +39,14 @@ def _load_dotenv() -> None:
             pass
 
 
-async def run_auto_mode(max_years: int = 10, press_mode: bool = False) -> None:
+async def run_auto_mode(
+    max_years: int = 10,
+    press_mode: bool = False,
+    *,
+    log_trajectories: bool = False,
+    trajectory_output: str | None = None,
+    trajectory_format: str = "art",
+) -> None:
     """Run automatic play mode with AI agents."""
     _load_dotenv()
 
@@ -64,9 +71,26 @@ async def run_auto_mode(max_years: int = 10, press_mode: bool = False) -> None:
     if os.environ.get("OPENAI_API_KEY"):
         try:
             from elizaos.runtime import AgentRuntime
+            from elizaos.bootstrap import bootstrap_plugin
             from elizaos_plugin_openai import get_openai_plugin
 
-            runtime = AgentRuntime(plugins=[get_openai_plugin()])
+            from elizaos_atropos_diplomacy.eliza_plugin import (
+                create_diplomacy_character,
+                get_diplomacy_eliza_plugin,
+            )
+
+            plugins = [bootstrap_plugin, get_openai_plugin(), get_diplomacy_eliza_plugin()]
+
+            if log_trajectories:
+                try:
+                    from elizaos_plugin_trajectory_logger import get_trajectory_logger_plugin
+
+                    plugins.append(get_trajectory_logger_plugin())
+                except ImportError:
+                    print("⚠️ Trajectory logger plugin not installed; disabling trajectory logging")
+                    log_trajectories = False
+
+            runtime = AgentRuntime(character=create_diplomacy_character(), plugins=plugins)
             await runtime.initialize()
             use_llm = True
             print("✅ LLM initialized - using intelligent agents")
@@ -83,6 +107,25 @@ async def run_auto_mode(max_years: int = 10, press_mode: bool = False) -> None:
             power=power,
             use_llm=use_llm,
         )
+
+    traj_svc = None
+    trajectories_by_power: dict[Power, str] = {}
+    if log_trajectories and runtime is not None:
+        traj_svc = runtime.get_service("trajectory_logger")
+        if traj_svc is None:
+            print("⚠️ Trajectory logger service not registered; disabling trajectory logging")
+            log_trajectories = False
+        else:
+            for power in Power:
+                try:
+                    trajectories_by_power[power] = traj_svc.start_trajectory(  # type: ignore[attr-defined]
+                        agent_id=f"diplomacy_{power.value}",
+                        scenario_id=f"atropos:diplomacy:{power.value}",
+                        episode_id="game",
+                        metadata={"power": power.value, "pressMode": bool(press_mode)},
+                    )
+                except Exception:
+                    pass
 
     print("\n🎮 Starting game...")
     print("-" * 50)
@@ -105,7 +148,25 @@ async def run_auto_mode(max_years: int = 10, press_mode: bool = False) -> None:
         # Order submission
         orders = {}
         for power in state.active_powers:
-            power_orders = await agents[power].decide_orders(state)
+            step_id: str | None = None
+            trajectory_id: str | None = trajectories_by_power.get(power)
+            if log_trajectories and traj_svc is not None and trajectory_id is not None:
+                try:
+                    step_id = traj_svc.start_step(  # type: ignore[attr-defined]
+                        trajectory_id,
+                        agent_balance=float(state.powers[power].center_count),
+                        agent_points=float(state.powers[power].unit_count),
+                        custom={
+                            "phase": state.phase.value,
+                            "phaseName": state.phase_name,
+                            "centerCount": int(state.powers[power].center_count),
+                            "unitCount": int(state.powers[power].unit_count),
+                        },
+                    )
+                except Exception:
+                    step_id = None
+
+            power_orders = await agents[power].decide_orders(state, trajectory_step_id=step_id)
             orders[power] = power_orders
 
         # Execute orders
@@ -145,6 +206,22 @@ async def run_auto_mode(max_years: int = 10, press_mode: bool = False) -> None:
     # Cleanup
     await env.close()
     if runtime:
+        if log_trajectories and traj_svc is not None:
+            try:
+                from elizaos_plugin_trajectory_logger.runtime_service import TrajectoryExportConfig
+
+                export_cfg = TrajectoryExportConfig(
+                    dataset_name="atropos_diplomacy_trajectories",
+                    export_format=trajectory_format,  # type: ignore[arg-type]
+                    output_dir=trajectory_output or "./trajectories",
+                )
+                export_result = traj_svc.export(export_cfg)  # type: ignore[attr-defined]
+                print("\n📦 Exported trajectories")
+                print(f"   - count: {export_result.trajectories_exported}")
+                print(f"   - file: {export_result.dataset_url}")
+            except Exception as e:
+                print(f"\n⚠️ Trajectory export failed: {e}")
+
         await runtime.stop()
 
 
@@ -279,14 +356,47 @@ def main() -> None:
         default=10,
         help="Maximum game years (default: 10)",
     )
+    parser.add_argument(
+        "--trajectories",
+        action="store_true",
+        help="Enable trajectory logging for RL training export (requires trajectory logger plugin)",
+    )
+    parser.add_argument(
+        "--trajectory-format",
+        choices=["art", "grpo"],
+        default="art",
+        help="Trajectory export format (art=OpenPipe ART, grpo=GRPO groups)",
+    )
+    parser.add_argument(
+        "--trajectory-output",
+        type=str,
+        default="./trajectories",
+        help="Output directory for trajectory files (default: ./trajectories)",
+    )
 
     args = parser.parse_args()
 
     try:
         if args.mode == "auto":
-            asyncio.run(run_auto_mode(args.years, press_mode=False))
+            asyncio.run(
+                run_auto_mode(
+                    args.years,
+                    press_mode=False,
+                    log_trajectories=args.trajectories,
+                    trajectory_output=args.trajectory_output,
+                    trajectory_format=args.trajectory_format,
+                )
+            )
         elif args.mode == "press":
-            asyncio.run(run_auto_mode(args.years, press_mode=True))
+            asyncio.run(
+                run_auto_mode(
+                    args.years,
+                    press_mode=True,
+                    log_trajectories=args.trajectories,
+                    trajectory_output=args.trajectory_output,
+                    trajectory_format=args.trajectory_format,
+                )
+            )
         elif args.mode == "interactive":
             asyncio.run(run_interactive_mode(args.nation))
     except KeyboardInterrupt:

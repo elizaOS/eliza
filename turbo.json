@@ -144,7 +144,7 @@
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
     "@elizaos/plugin-telegram-root#build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
@@ -233,6 +233,17 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
+    "@elizaos/sweagent-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/target/release/**", "python/dist/**"]
+    },
+    "@elizaos/sweagent-root#test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": ["typescript/src/**", "typescript/tests/**", "rust/src/**", "rust/tests/**", "python/sweagent/**", "python/tests/**"],
+      "cache": false
+    },
     "@elizaos/plugin-bluesky#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
@@ -271,6 +282,26 @@
     "@elizaos/schemas#build": {
       "dependsOn": [],
       "outputs": []
+    },
+    "@elizaos/plugin-auto-trader-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    },
+    "@elizaos/plugin-elevenlabs-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    },
+    "@elizaos/plugin-experience-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    },
+    "@elizaos/plugin-trajectory-logger-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
     "@elizaos/plugin-elizacloud-root#build": {
       "dependsOn": ["^build"],

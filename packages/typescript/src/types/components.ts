@@ -41,12 +41,27 @@ export interface ActionParameter {
   required?: boolean;
   /** JSON Schema for parameter validation */
   schema: ActionParameterSchema;
+  /**
+   * Optional example values for this parameter.
+   * These are shown to the model in action descriptions to improve extraction accuracy.
+   */
+  examples?: ActionParameterExampleValue[];
 }
 
 /**
  * Primitive value types that can be used in action parameters.
  */
 export type ActionParameterValue = string | number | boolean | null;
+
+/**
+ * Example value types allowed for action parameter examples.
+ * Supports primitives as well as nested objects/arrays for documentation purposes.
+ */
+export type ActionParameterExampleValue =
+  | ActionParameterValue
+  | ActionParameters
+  | ActionParameterValue[]
+  | ActionParameters[];
 
 /**
  * Validated parameters passed to an action handler.
@@ -360,4 +375,12 @@ export interface HandlerOptions {
    * ```
    */
   parameters?: ActionParameters;
+
+  /**
+   * Parameter validation errors, if the action defined parameters but extraction/validation was incomplete.
+   *
+   * Actions SHOULD handle these errors gracefully (e.g. ask the user for missing required values,
+   * or infer from context when safe).
+   */
+  parameterErrors?: string[];
 }

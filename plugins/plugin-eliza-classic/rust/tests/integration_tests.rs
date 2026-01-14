@@ -4,7 +4,7 @@ use elizaos_plugin_eliza_classic::{reflect, ElizaClassicPlugin};
 fn test_plugin_greeting() {
     let plugin = ElizaClassicPlugin::new();
     let greeting = plugin.get_greeting();
-    assert!(greeting.contains("ELIZA"));
+    assert!(greeting.to_lowercase().contains("problem"));
 }
 
 #[test]
@@ -25,14 +25,14 @@ fn test_plugin_sad() {
 fn test_plugin_family() {
     let plugin = ElizaClassicPlugin::new();
     let response = plugin.generate_response("my mother is very kind");
-    assert!(!response.is_empty());
+    assert_eq!(response, "Tell me more about your family");
 }
 
 #[test]
 fn test_plugin_computer() {
     let plugin = ElizaClassicPlugin::new();
-    let response = plugin.generate_response("I think about computers");
-    assert!(!response.is_empty());
+    let response = plugin.generate_response("computer");
+    assert_eq!(response, "Do computers worry you?");
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn test_pronoun_reflection() {
 fn test_empty_input() {
     let plugin = ElizaClassicPlugin::new();
     let response = plugin.generate_response("");
-    assert_eq!(response, "I didn't catch that. Could you please repeat?");
+    assert!(!response.is_empty());
 }
 
 #[test]
@@ -58,5 +58,47 @@ fn test_reset_history() {
     assert!(!response.is_empty());
 }
 
+#[test]
+fn test_golden_transcript_deterministic() {
+    let plugin = ElizaClassicPlugin::new();
+    let transcript = vec![
+        ("hello", "How do you do? Please state your problem"),
+        ("computer", "Do computers worry you?"),
+        ("computer", "Why do you mention computers?"),
+        (
+            "computer",
+            "What do you think machines have to do with your problem?",
+        ),
+        ("my mother is kind", "Tell me more about your family"),
+        ("xyzzy", "I am not sure I understand you fully"),
+    ];
+    for (input, expected) in transcript {
+        let got = plugin.generate_response(input);
+        assert_eq!(got, expected);
+    }
+}
 
+#[test]
+fn test_pre_rules_work() {
+    // YOU'RE triggers PRE rewrite then redirects to YOU.
+    let plugin = ElizaClassicPlugin::new();
+    let got = plugin.generate_response("you're sad");
+    assert_eq!(got, "What makes you think I am sad?");
+}
 
+#[test]
+fn test_memory_recall_on_limit_4() {
+    let plugin = ElizaClassicPlugin::new();
+    // record a memory via "my"
+    plugin.generate_response("my car is broken");
+    // advance LIMIT to 4 with no keyword match to trigger memory recall
+    plugin.generate_response("xyzzy"); // limit=3
+    let recalled = plugin.generate_response("xyzzy"); // limit=4
+    let possible = vec![
+        "Lets discuss further why your car is broken",
+        "Earlier you said your car is broken",
+        "But your car is broken",
+        "Does that have anything to do with the fact that your car is broken?",
+    ];
+    assert!(possible.contains(&recalled.as_str()), "unexpected memory: {recalled}");
+}

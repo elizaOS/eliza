@@ -317,5 +317,3 @@ impl JsonRpcNotification {
         }
     }
 }
-
-

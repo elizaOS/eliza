@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use log::error;
 
@@ -116,7 +115,11 @@ impl KnowledgeProviderTrait for DocumentsProvider {
         let documents_list = self.format_documents(&doc_refs);
         let documents_text = Self::add_header(
             "# Available Documents",
-            &format!("{} document(s) in knowledge base:\n{}", documents.len(), documents_list),
+            &format!(
+                "{} document(s) in knowledge base:\n{}",
+                documents.len(),
+                documents_list
+            ),
         );
 
         let documents_data: Vec<serde_json::Value> = documents

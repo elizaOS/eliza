@@ -82,12 +82,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 }
 
 pub fn is_safe_command(command: &str) -> bool {
-    let path_traversal_patterns = [
-        r"\.\./",
-        r"\.\.\\",
-        r"/\.\.",
-        r"\\\.\.",
-    ];
+    let path_traversal_patterns = [r"\.\./", r"\.\.\\", r"/\.\.", r"\\\.\."];
 
     let dangerous_patterns = [
         r"\$\(",
@@ -126,10 +121,7 @@ pub fn is_safe_command(command: &str) -> bool {
 }
 
 pub fn extract_base_command(full_command: &str) -> &str {
-    full_command
-        .split_whitespace()
-        .next()
-        .unwrap_or("")
+    full_command.split_whitespace().next().unwrap_or("")
 }
 
 pub fn is_forbidden_command(command: &str, forbidden_commands: &[String]) -> bool {
@@ -212,6 +204,3 @@ mod tests {
         assert!(is_forbidden_command("Shutdown", &forbidden));
     }
 }
-
-
-

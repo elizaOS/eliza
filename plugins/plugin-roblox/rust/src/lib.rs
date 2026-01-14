@@ -66,7 +66,8 @@ pub fn create_client_from_env() -> Result<RobloxClient> {
 /// Stable plugin identifier used by elizaOS registries.
 pub const PLUGIN_NAME: &str = "roblox";
 /// Human-readable description of this plugin.
-pub const PLUGIN_DESCRIPTION: &str = "Roblox integration for elizaOS - game communication via Open Cloud API";
+pub const PLUGIN_DESCRIPTION: &str =
+    "Roblox integration for elizaOS - game communication via Open Cloud API";
 /// Plugin version, sourced from the crate version.
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Service name used when registering the Roblox integration.
@@ -81,5 +82,3 @@ pub mod defaults {
     /// Default polling interval (in seconds) used by native services.
     pub const POLL_INTERVAL: u64 = 30;
 }
-
-

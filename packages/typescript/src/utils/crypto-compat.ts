@@ -167,6 +167,24 @@ function validateKeyAndIv(key: Uint8Array, iv: Uint8Array): void {
 }
 
 /**
+ * Validate key and IV lengths for AES-256-GCM
+ *
+ * GCM requires a 32-byte key. The recommended nonce/IV length is 12 bytes.
+ */
+function validateKeyAndGcmIv(key: Uint8Array, iv: Uint8Array): void {
+  if (key.length !== 32) {
+    throw new Error(
+      `Invalid key length: ${key.length} bytes. Expected 32 bytes for AES-256.`,
+    );
+  }
+  if (iv.length !== 12) {
+    throw new Error(
+      `Invalid IV length: ${iv.length} bytes. Expected 12 bytes for AES-GCM.`,
+    );
+  }
+}
+
+/**
  * Create a hash object for incremental hashing (cross-platform - synchronous)
  *
  * This function works in both Node.js and browser environments. In browsers, it uses
@@ -425,4 +443,82 @@ export async function decryptAsync(
   }
 
   return webCryptoDecrypt(key, iv, data);
+}
+
+/**
+ * Encrypt using AES-256-GCM (synchronous; Node.js or crypto-browserify).
+ *
+ * This is used for cross-language secret encryption with integrity protection.
+ */
+export function encryptAes256Gcm(
+  key: Uint8Array,
+  iv: Uint8Array,
+  plaintext: Uint8Array,
+  aad?: Uint8Array,
+): { ciphertext: Uint8Array; tag: Uint8Array } {
+  validateKeyAndGcmIv(key, iv);
+
+  if (hasNodeCrypto()) {
+    const crypto = getNodeCrypto();
+    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+    if (aad && aad.length > 0) {
+      cipher.setAAD(aad);
+    }
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return { ciphertext: new Uint8Array(ciphertext), tag: new Uint8Array(tag) };
+  }
+
+  const cryptoBrowserify = require("crypto-browserify");
+  const cipher = cryptoBrowserify.createCipheriv("aes-256-gcm", key, iv);
+  if (aad && aad.length > 0) {
+    cipher.setAAD(Buffer.from(aad));
+  }
+  const ciphertext = Buffer.concat([cipher.update(Buffer.from(plaintext)), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return { ciphertext: new Uint8Array(ciphertext), tag: new Uint8Array(tag) };
+}
+
+/**
+ * Decrypt using AES-256-GCM (synchronous; Node.js or crypto-browserify).
+ */
+export function decryptAes256Gcm(
+  key: Uint8Array,
+  iv: Uint8Array,
+  ciphertext: Uint8Array,
+  tag: Uint8Array,
+  aad?: Uint8Array,
+): Uint8Array {
+  validateKeyAndGcmIv(key, iv);
+  if (tag.length !== 16) {
+    throw new Error(
+      `Invalid tag length: ${tag.length} bytes. Expected 16 bytes for AES-GCM tag.`,
+    );
+  }
+
+  if (hasNodeCrypto()) {
+    const crypto = getNodeCrypto();
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    if (aad && aad.length > 0) {
+      decipher.setAAD(aad);
+    }
+    decipher.setAuthTag(Buffer.from(tag));
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(ciphertext)),
+      decipher.final(),
+    ]);
+    return new Uint8Array(plaintext);
+  }
+
+  const cryptoBrowserify = require("crypto-browserify");
+  const decipher = cryptoBrowserify.createDecipheriv("aes-256-gcm", key, iv);
+  if (aad && aad.length > 0) {
+    decipher.setAAD(Buffer.from(aad));
+  }
+  decipher.setAuthTag(Buffer.from(tag));
+  const plaintext = Buffer.concat([
+    decipher.update(Buffer.from(ciphertext)),
+    decipher.final(),
+  ]);
+  return new Uint8Array(plaintext);
 }

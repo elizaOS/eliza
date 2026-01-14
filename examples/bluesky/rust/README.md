@@ -1,93 +1,47 @@
 # Bluesky Agent - Rust Implementation
 
-A full-featured Bluesky AI agent implemented in Rust using elizaOS.
-
-## Prerequisites
-
-- Rust 1.70 or later
-- OpenAI API key (or other model provider)
-- Bluesky account with app password
-
-## Quick Start
-
-```bash
-# Navigate to the agent directory
-cd bluesky-agent
-
-# Copy environment template and fill in credentials
-cp ../../env.example .env
-# Edit .env with your credentials
-
-# Build and run
-cargo run --release
-```
+A full-featured AI agent running on Bluesky, using the complete elizaOS pipeline.
 
 ## Building
 
 ```bash
-# Debug build
-cargo build
-
-# Release build
+cd bluesky-agent
 cargo build --release
+```
 
-# Run tests
+## Running
+
+```bash
+# Copy env.example to .env and fill in credentials
+cp ../../env.example .env
+
+# Run the agent
+cargo run --release
+```
+
+## Testing
+
+```bash
+# Unit tests
 cargo test
 
-# Run live integration tests (requires credentials)
+# Live integration tests (requires credentials)
 cargo test --features live
 ```
 
-## Project Structure
+## Architecture
 
-```
-bluesky-agent/
-├── Cargo.toml          # Project configuration
-├── src/
-│   ├── main.rs         # Entry point
-│   ├── lib.rs          # Library exports
-│   ├── character.rs    # Agent personality
-│   └── handlers.rs     # Event handlers
-└── tests/
-    └── integration.rs  # Integration tests
-```
+The Rust implementation follows the same canonical elizaOS patterns:
 
-## Features
+1. **Full Pipeline Processing**: All messages go through `message_service.handle_message()`
+2. **State Composition**: Providers (CHARACTER, RECENT_MESSAGES, ACTIONS) compose the state
+3. **shouldRespond Evaluation**: LLM decides whether to respond
+4. **Action Planning**: Available actions are planned and executed
+5. **Callback-based Posting**: Responses are posted via callbacks
 
-- **Async/Await**: Built on Tokio for efficient async operations
-- **Strong Types**: Full type safety with Rust's type system
-- **Error Handling**: Comprehensive error handling with `anyhow`
-- **Logging**: Structured logging with `tracing`
-- **Graceful Shutdown**: Proper signal handling for clean shutdown
+## Files
 
-## Configuration
-
-Environment variables (see `../../env.example`):
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `BLUESKY_HANDLE` | Your Bluesky handle | Yes |
-| `BLUESKY_PASSWORD` | App password | Yes |
-| `OPENAI_API_KEY` | OpenAI API key | Yes* |
-| `BLUESKY_DRY_RUN` | Simulate without posting | No |
-| `BLUESKY_POLL_INTERVAL` | Seconds between polls | No |
-
-*Or another model provider like `ANTHROPIC_API_KEY`
-
-## Development
-
-```bash
-# Watch for changes and rebuild
-cargo watch -x run
-
-# Run with debug logging
-RUST_LOG=debug cargo run
-
-# Check for issues
-cargo clippy
-cargo fmt --check
-```
-
-## License
-
-MIT - See the main elizaOS repository for details.
+- `src/main.rs` - Main entry point and polling loop
+- `src/character.rs` - Agent personality configuration
+- `src/handlers.rs` - Event handlers for mentions and posts
+- `tests/integration_tests.rs` - Unit and integration tests

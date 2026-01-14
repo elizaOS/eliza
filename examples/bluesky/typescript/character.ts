@@ -153,7 +153,7 @@ Remember: You're responding on Bluesky, so keep it brief and engaging!`,
   // Settings that can be overridden by environment variables
   settings: {
     // These are read by getSetting() if not in environment
-    model: "gpt-4o-mini",
+    model: "gpt-5-mini",
     maxOutputTokens: 300,
   },
 };

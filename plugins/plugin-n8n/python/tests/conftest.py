@@ -73,8 +73,3 @@ def env_with_api_key(mock_api_key: str) -> Generator[None, None, None]:
         os.environ["ANTHROPIC_API_KEY"] = original
     else:
         os.environ.pop("ANTHROPIC_API_KEY", None)
-
-
-
-
-

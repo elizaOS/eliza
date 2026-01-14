@@ -9,6 +9,7 @@
 // Export core modules (all browser-compatible after refactoring)
 export * from "./actions";
 export * from "./database";
+export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./logger";
 export * from "./memory";
@@ -20,8 +21,10 @@ export * from "./schemas/character";
 export * from "./search";
 export * from "./services";
 export * from "./services/message";
+export * from "./services/trajectoryLogger";
 export * from "./settings";
 export * from "./streaming-context";
+export * from "./trajectory-context";
 // Export everything from types (type-only, safe for browser)
 export * from "./types";
 export * from "./types/message-service";

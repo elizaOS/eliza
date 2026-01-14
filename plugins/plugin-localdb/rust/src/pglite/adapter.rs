@@ -228,8 +228,8 @@ impl DatabaseAdapter for PgLiteAdapter {
         self.manager.close().await
     }
 
-    async fn get_connection(&self) -> Result<Box<dyn std::any::Any + Send>> {
-        Ok(Box::new(()))
+    async fn get_connection(&self) -> Result<DatabaseConnection> {
+        Ok(DatabaseConnection::None)
     }
 
     async fn get_agent(&self, agent_id: &UUID) -> Result<Option<Agent>> {

@@ -15,8 +15,8 @@ use elizaos::{
     parse_character,
     runtime::{AgentRuntime, RuntimeOptions},
     types::{Content, Memory, UUID},
-    IMessageService,
 };
+use elizaos::services::IMessageService;
 use elizaos_plugin_openai::create_openai_elizaos_plugin;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, env, net::SocketAddr, sync::Arc};
@@ -27,7 +27,7 @@ use tracing::{error, info};
 // Async singleton runtime instance
 static RUNTIME: OnceCell<Arc<AgentRuntime>> = OnceCell::const_new();
 
-async fn get_runtime() -> Result<Arc<AgentRuntime>, String> {
+async fn get_runtime() -> Result<Arc<AgentRuntime>> {
     RUNTIME
         .get_or_try_init(|| async {
             info!("Initializing elizaOS runtime...");
@@ -42,11 +42,9 @@ async fn get_runtime() -> Result<Arc<AgentRuntime>, String> {
                 })
             );
 
-            let character = parse_character(&character_json)
-                .map_err(|e| format!("Failed to parse character: {}", e))?;
+            let character = parse_character(&character_json)?;
 
-            let openai_plugin = create_openai_elizaos_plugin()
-                .map_err(|e| format!("Failed to create OpenAI plugin: {}", e))?;
+            let openai_plugin = create_openai_elizaos_plugin()?;
 
             let runtime = AgentRuntime::new(RuntimeOptions {
                 character: Some(character),
@@ -54,18 +52,18 @@ async fn get_runtime() -> Result<Arc<AgentRuntime>, String> {
                 ..Default::default()
             })
             .await
-            .map_err(|e| format!("Failed to create runtime: {}", e))?;
+            ?;
 
             runtime
                 .initialize()
                 .await
-                .map_err(|e| format!("Failed to initialize runtime: {}", e))?;
+                ?;
 
             info!("elizaOS runtime initialized successfully");
             Ok(Arc::new(runtime))
         })
         .await
-        .map(|r| r.clone())
+        .cloned()
 }
 
 /// Get character configuration from environment variables
@@ -166,7 +164,7 @@ async fn handle_chat(Json(request): Json<ChatRequest>) -> Response {
     match process_chat(request).await {
         Ok(response) => Json(response).into_response(),
         Err(e) => {
-            error!("Chat error: {}", e);
+            error!("Chat error: {:#}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
@@ -179,11 +177,15 @@ async fn handle_chat(Json(request): Json<ChatRequest>) -> Response {
     }
 }
 
-async fn process_chat(request: ChatRequest) -> Result<ChatResponse, String> {
+async fn process_chat(request: ChatRequest) -> Result<ChatResponse> {
     let runtime = get_runtime().await?;
 
     // Generate IDs for this conversation
-    let user_id = UUID::new_v4();
+    let user_id = request
+        .user_id
+        .as_deref()
+        .and_then(|s| UUID::new(s).ok())
+        .unwrap_or_else(UUID::new_v4);
     let conversation_id = request
         .conversation_id
         .unwrap_or_else(|| format!("conv-{}", &uuid::Uuid::new_v4().to_string()[..12]));
@@ -202,7 +204,7 @@ async fn process_chat(request: ChatRequest) -> Result<ChatResponse, String> {
         .message_service()
         .handle_message(&runtime, &mut message, None, None)
         .await
-        .map_err(|e| format!("Message handling error: {}", e))?;
+        ?;
 
     // Extract response text
     let response_text = result

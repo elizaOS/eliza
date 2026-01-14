@@ -1,11 +1,10 @@
 use elizaos_plugin_farcaster::{
-    FarcasterClient, FarcasterConfig, FarcasterService, Profile,
-    PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION,
+    FarcasterClient, FarcasterConfig, FarcasterService, Profile, PLUGIN_DESCRIPTION, PLUGIN_NAME,
+    PLUGIN_VERSION,
 };
 
 fn test_config() -> FarcasterConfig {
-    FarcasterConfig::new(12345, "test-signer-uuid", "test-api-key")
-        .with_dry_run(true)
+    FarcasterConfig::new(12345, "test-signer-uuid", "test-api-key").with_dry_run(true)
 }
 
 #[test]

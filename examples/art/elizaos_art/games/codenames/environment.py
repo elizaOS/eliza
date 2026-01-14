@@ -1,22 +1,21 @@
 """
-Codenames Environment
+Codenames Game Environment
 
-A word-guessing game where spymasters give clues and guessers identify words.
+Implements the Codenames word association game.
 """
 
 import random
+from typing import ClassVar
 
 from elizaos_art.base import BaseEnvironment
 from elizaos_art.games.codenames.types import (
-    CardType,
+    CardColor,
     Clue,
     CodenamesAction,
     CodenamesConfig,
     CodenamesState,
-    DEFAULT_WORDS,
+    DEFAULT_WORD_LIST,
     Role,
-    Team,
-    WordCard,
 )
 
 
@@ -24,15 +23,19 @@ class CodenamesEnvironment(BaseEnvironment[CodenamesState, CodenamesAction]):
     """
     Codenames game environment.
 
-    Supports training either Spymaster or Guesser roles.
+    The AI can play as either Spymaster (gives clues) or Guesser (selects words).
     """
+
+    SIZE: ClassVar[int] = 5
+    BOARD_SIZE: ClassVar[int] = 25
 
     def __init__(self, config: CodenamesConfig | None = None):
         self.config = config or CodenamesConfig()
         self._rng: random.Random | None = None
         self._current_state: CodenamesState | None = None
-        self._word_list = DEFAULT_WORDS.copy()
+        self._word_list = self.config.word_list or DEFAULT_WORD_LIST
         self._initialized = False
+        self._pending_clue: Clue | None = None
 
     @property
     def name(self) -> str:
@@ -40,65 +43,64 @@ class CodenamesEnvironment(BaseEnvironment[CodenamesState, CodenamesAction]):
 
     @property
     def description(self) -> str:
-        return "Codenames word association game. Give clues or guess words!"
+        return "Codenames word association game. Give or guess clues!"
 
     async def initialize(self) -> None:
         """Initialize the environment."""
         self._initialized = True
 
     async def reset(self, seed: int | None = None) -> CodenamesState:
-        """Reset and create a new game."""
+        """Reset the game and return initial state."""
         self._rng = random.Random(seed)
 
-        # Select 25 random words
-        words = self._rng.sample(self._word_list, 25)
+        # Select random words for the board
+        words = tuple(self._rng.sample(self._word_list, self.BOARD_SIZE))
 
-        # Assign card types
-        types: list[CardType] = (
-            [CardType.RED] * self.config.red_count +
-            [CardType.BLUE] * self.config.blue_count +
-            [CardType.NEUTRAL] * self.config.neutral_count +
-            [CardType.ASSASSIN] * self.config.assassin_count
+        # Assign colors
+        colors_list = (
+            [CardColor.RED.value] * self.config.red_count
+            + [CardColor.BLUE.value] * self.config.blue_count
+            + [CardColor.ASSASSIN.value] * self.config.assassin_count
+            + [CardColor.NEUTRAL.value]
+            * (self.BOARD_SIZE - self.config.red_count - self.config.blue_count - self.config.assassin_count)
         )
-        self._rng.shuffle(types)
+        self._rng.shuffle(colors_list)
+        colors = tuple(colors_list)
 
-        # Create board
-        board = tuple(
-            WordCard(word=words[i], card_type=types[i], revealed=False)
-            for i in range(25)
-        )
+        # All cards start unrevealed
+        revealed = tuple([False] * self.BOARD_SIZE)
 
-        # Team with more cards goes first (usually red with 9)
-        first_team = Team.RED if self.config.red_count > self.config.blue_count else Team.BLUE
+        # Red goes first (has more words)
+        starting_team = CardColor.RED
+
+        # Determine starting role
+        if self.config.ai_role == Role.SPYMASTER:
+            starting_role = Role.SPYMASTER
+        else:
+            starting_role = Role.GUESSER
 
         self._current_state = CodenamesState(
-            board=board,
-            current_team=first_team,
-            current_role=Role.SPYMASTER,  # Spymaster gives clue first
+            words=words,
+            colors=colors,
+            revealed=revealed,
+            current_team=starting_team,
+            current_role=starting_role,
             current_clue=None,
             guesses_remaining=0,
             red_remaining=self.config.red_count,
             blue_remaining=self.config.blue_count,
-            game_over=False,
-            winner=None,
-            move_count=0,
         )
 
-        # If we're training the guesser, auto-generate a clue
-        if self.config.train_role == Role.GUESSER:
-            await self._generate_opponent_clue()
+        # If AI is guesser, have spymaster give initial clue
+        if self.config.ai_role == Role.GUESSER:
+            self._current_state = self._generate_opponent_clue(self._current_state)
 
         return self._current_state
 
     async def step(
         self, action: CodenamesAction
     ) -> tuple[CodenamesState, float, bool]:
-        """
-        Execute an action.
-
-        For Spymaster: action is ignored, clue should be set via give_clue()
-        For Guesser: action is position to guess or PASS
-        """
+        """Execute an action and return new state."""
         if self._current_state is None:
             raise RuntimeError("Environment not reset")
 
@@ -106,212 +108,200 @@ class CodenamesEnvironment(BaseEnvironment[CodenamesState, CodenamesAction]):
             return self._current_state, 0.0, True
 
         state = self._current_state
-        reward = 0.0
 
-        if state.current_role == Role.GUESSER:
-            # Handle guess
+        if state.current_role == Role.SPYMASTER:
+            # Spymaster gives clue (action is GIVE_CLUE, clue set via set_pending_clue)
+            if self._pending_clue is None:
+                return state, -0.1, False  # Invalid - no clue set
+
+            new_state = CodenamesState(
+                words=state.words,
+                colors=state.colors,
+                revealed=state.revealed,
+                current_team=state.current_team,
+                current_role=Role.GUESSER,  # Switch to guesser
+                current_clue=self._pending_clue,
+                guesses_remaining=self._pending_clue.number + 1,  # Can guess n+1 words
+                red_remaining=state.red_remaining,
+                blue_remaining=state.blue_remaining,
+            )
+            self._pending_clue = None
+            self._current_state = new_state
+            return new_state, 0.0, False
+
+        else:
+            # Guesser selects a word
             if action == CodenamesAction.PASS:
                 # End turn
-                state = self._end_turn(state)
-            else:
-                state, reward = self._handle_guess(state, action)
-        else:
-            # Spymaster turn - this shouldn't happen in normal flow
-            # The give_clue method handles spymaster actions
-            pass
+                new_state = self._end_turn(state)
+                self._current_state = new_state
+                return new_state, 0.0, new_state.game_over
 
-        self._current_state = state
-        return state, reward, state.game_over
+            if action.value < 0 or action.value >= self.BOARD_SIZE:
+                return state, -0.1, False  # Invalid action
 
-    def give_clue(self, clue: Clue) -> CodenamesState:
-        """
-        Give a clue as spymaster.
+            if state.revealed[action.value]:
+                return state, -0.1, False  # Already revealed
 
-        Args:
-            clue: The clue to give
+            # Reveal the card
+            new_state, reward = self._reveal_card(state, action.value)
+            self._current_state = new_state
+            return new_state, reward, new_state.game_over
 
-        Returns:
-            Updated state
-        """
-        if self._current_state is None:
-            raise RuntimeError("Environment not reset")
-
-        if self._current_state.current_role != Role.SPYMASTER:
-            raise ValueError("Not spymaster's turn")
-
-        # Validate clue word isn't on board
-        board_words = {card.word.upper() for card in self._current_state.board}
-        if clue.word.upper() in board_words:
-            raise ValueError(f"Clue word '{clue.word}' is on the board")
-
-        # Transition to guesser phase
-        self._current_state = CodenamesState(
-            board=self._current_state.board,
-            current_team=self._current_state.current_team,
-            current_role=Role.GUESSER,
-            current_clue=clue,
-            guesses_remaining=clue.number + 1,  # Can guess one extra
-            red_remaining=self._current_state.red_remaining,
-            blue_remaining=self._current_state.blue_remaining,
-            game_over=False,
-            winner=None,
-            move_count=self._current_state.move_count + 1,
-        )
-
-        return self._current_state
+    def set_pending_clue(self, clue: Clue) -> None:
+        """Set the pending clue (for spymaster action)."""
+        self._pending_clue = clue
 
     def get_available_actions(self, state: CodenamesState) -> list[CodenamesAction]:
-        """Get available actions for current state."""
+        """Get list of valid actions."""
         if state.game_over:
             return []
 
         if state.current_role == Role.SPYMASTER:
-            # Spymaster doesn't use discrete actions
-            return []
+            return [CodenamesAction.GIVE_CLUE]
 
-        # Guesser can choose unrevealed cards or pass
-        actions = [
-            CodenamesAction(i)
-            for i, card in enumerate(state.board)
-            if not card.revealed
-        ]
-        actions.append(CodenamesAction.PASS)
+        # Guesser actions
+        actions = [CodenamesAction.PASS]
+        for i in range(self.BOARD_SIZE):
+            if not state.revealed[i]:
+                actions.append(CodenamesAction.from_word_index(i))
+
         return actions
 
     def render(self, state: CodenamesState) -> str:
-        """Render state for display."""
+        """Render the state as a string."""
         return state.render()
 
-    def _handle_guess(
-        self,
-        state: CodenamesState,
-        action: CodenamesAction,
+    def _reveal_card(
+        self, state: CodenamesState, idx: int
     ) -> tuple[CodenamesState, float]:
-        """Handle a guess action."""
-        pos = action.value
-        card = state.board[pos]
+        """Reveal a card and update game state."""
+        revealed = list(state.revealed)
+        revealed[idx] = True
 
-        if card.revealed:
-            # Invalid - card already revealed
-            return state, -0.1
+        color = CardColor(state.colors[idx])
+        team = state.current_team
 
-        # Reveal the card
-        new_board = list(state.board)
-        new_board[pos] = WordCard(
-            word=card.word,
-            card_type=card.card_type,
-            revealed=True,
-        )
-
-        # Update remaining counts
         red_remaining = state.red_remaining
         blue_remaining = state.blue_remaining
-
-        if card.card_type == CardType.RED:
-            red_remaining -= 1
-        elif card.card_type == CardType.BLUE:
-            blue_remaining -= 1
-
-        # Calculate reward and check game end
-        reward = 0.0
+        guesses_remaining = state.guesses_remaining - 1
         game_over = False
         winner = None
-        end_turn = False
+        reward = 0.0
 
-        current_team = state.current_team
-        team_card_type = CardType.RED if current_team == Team.RED else CardType.BLUE
-
-        if card.card_type == CardType.ASSASSIN:
-            # Hit assassin - lose immediately
+        if color == CardColor.ASSASSIN:
+            # Game over - other team wins
             game_over = True
-            winner = current_team.opponent()
-            reward = -10.0
+            winner = CardColor.BLUE if team == CardColor.RED else CardColor.RED
+            reward = -3.0  # Big penalty
 
-        elif card.card_type == team_card_type:
+        elif color == team:
             # Correct guess
             reward = 1.0
+            if team == CardColor.RED:
+                red_remaining -= 1
+                if red_remaining == 0:
+                    game_over = True
+                    winner = CardColor.RED
+            else:
+                blue_remaining -= 1
+                if blue_remaining == 0:
+                    game_over = True
+                    winner = CardColor.BLUE
 
-            # Check win condition
-            if (current_team == Team.RED and red_remaining == 0) or \
-               (current_team == Team.BLUE and blue_remaining == 0):
-                game_over = True
-                winner = current_team
-                reward = 5.0
-            elif state.guesses_remaining <= 1:
-                end_turn = True
-
-        elif card.card_type == team_card_type.opponent() if hasattr(team_card_type, 'opponent') else (
-            CardType.BLUE if team_card_type == CardType.RED else CardType.RED
-        ):
-            # Opponent's card
-            reward = -1.0
-            end_turn = True
-
-            # Check if opponent wins
-            opp_type = CardType.BLUE if current_team == Team.RED else CardType.RED
-            if (opp_type == CardType.RED and red_remaining == 0) or \
-               (opp_type == CardType.BLUE and blue_remaining == 0):
-                game_over = True
-                winner = current_team.opponent()
+        elif color == CardColor.NEUTRAL:
+            # Neutral - turn ends
+            reward = 0.0
+            guesses_remaining = 0
 
         else:
-            # Neutral card
-            reward = -0.5
-            end_turn = True
+            # Wrong team - turn ends, helps opponent
+            reward = -1.0
+            guesses_remaining = 0
+            if color == CardColor.RED:
+                red_remaining -= 1
+                if red_remaining == 0:
+                    game_over = True
+                    winner = CardColor.RED
+            else:
+                blue_remaining -= 1
+                if blue_remaining == 0:
+                    game_over = True
+                    winner = CardColor.BLUE
 
         new_state = CodenamesState(
-            board=tuple(new_board),
-            current_team=current_team,
-            current_role=Role.GUESSER,
+            words=state.words,
+            colors=state.colors,
+            revealed=tuple(revealed),
+            current_team=state.current_team,
+            current_role=state.current_role,
             current_clue=state.current_clue,
-            guesses_remaining=state.guesses_remaining - 1,
+            guesses_remaining=guesses_remaining,
             red_remaining=red_remaining,
             blue_remaining=blue_remaining,
             game_over=game_over,
             winner=winner,
-            move_count=state.move_count + 1,
         )
 
-        if end_turn and not game_over:
+        # Check if turn should end
+        if guesses_remaining <= 0 and not game_over:
             new_state = self._end_turn(new_state)
 
         return new_state, reward
 
     def _end_turn(self, state: CodenamesState) -> CodenamesState:
-        """End current team's turn."""
-        next_team = state.current_team.opponent()
+        """End the current turn and switch teams."""
+        next_team = CardColor.BLUE if state.current_team == CardColor.RED else CardColor.RED
 
-        return CodenamesState(
-            board=state.board,
+        new_state = CodenamesState(
+            words=state.words,
+            colors=state.colors,
+            revealed=state.revealed,
             current_team=next_team,
-            current_role=Role.SPYMASTER,
+            current_role=Role.SPYMASTER if self.config.ai_role == Role.SPYMASTER else Role.GUESSER,
             current_clue=None,
             guesses_remaining=0,
             red_remaining=state.red_remaining,
             blue_remaining=state.blue_remaining,
             game_over=state.game_over,
             winner=state.winner,
-            move_count=state.move_count,
         )
 
-    async def _generate_opponent_clue(self) -> None:
-        """Generate a clue for the opponent spymaster."""
-        if self._current_state is None:
-            return
+        # If AI is guesser, generate opponent clue
+        if self.config.ai_role == Role.GUESSER and new_state.current_team == self.config.ai_team:
+            new_state = self._generate_opponent_clue(new_state)
 
-        # Simple heuristic: find first unrevealed team word
-        team_type = (
-            CardType.RED if self._current_state.current_team == Team.RED
-            else CardType.BLUE
+        return new_state
+
+    def _generate_opponent_clue(self, state: CodenamesState) -> CodenamesState:
+        """Generate a simple clue from opponent spymaster."""
+        if self._rng is None:
+            self._rng = random.Random()
+
+        # Find unrevealed words for current team
+        team_words = []
+        for i in range(self.BOARD_SIZE):
+            if not state.revealed[i] and CardColor(state.colors[i]) == state.current_team:
+                team_words.append(i)
+
+        if not team_words:
+            # No words left
+            return state
+
+        # Simple clue: pick 1-2 random words
+        num_words = min(2, len(team_words))
+        clue = Clue(word="HINT", number=num_words)
+
+        return CodenamesState(
+            words=state.words,
+            colors=state.colors,
+            revealed=state.revealed,
+            current_team=state.current_team,
+            current_role=Role.GUESSER,
+            current_clue=clue,
+            guesses_remaining=num_words + 1,
+            red_remaining=state.red_remaining,
+            blue_remaining=state.blue_remaining,
+            game_over=state.game_over,
+            winner=state.winner,
         )
-
-        team_words = [
-            card.word for card in self._current_state.board
-            if card.card_type == team_type and not card.revealed
-        ]
-
-        if team_words:
-            # Simple clue: first letter of first word + "HINT"
-            hint_word = team_words[0][:3] + "HINT"
-            clue = Clue(word=hint_word, number=1)
-            self.give_clue(clue)

@@ -1,6 +1,14 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 
+function getEnvValue(key: string): string | undefined {
+  if (typeof process === "undefined") {
+    return undefined;
+  }
+  const value = process.env[key];
+  return value === undefined ? undefined : String(value);
+}
+
 export function getSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -10,7 +18,7 @@ export function getSetting(
   if (value !== undefined && value !== null) {
     return String(value);
   }
-  return process.env[key] ?? defaultValue;
+  return getEnvValue(key) ?? defaultValue;
 }
 
 export function isBrowser(): boolean {
@@ -86,14 +94,14 @@ export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL") ??
-    (getSetting(runtime, "SMALL_MODEL", "gpt-4o-mini") as string)
+    (getSetting(runtime, "SMALL_MODEL", "gpt-5-mini") as string)
   );
 }
 
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL") ??
-    (getSetting(runtime, "LARGE_MODEL", "gpt-4o") as string)
+    (getSetting(runtime, "LARGE_MODEL", "gpt-5") as string)
   );
 }
 
@@ -102,8 +110,8 @@ export function getImageDescriptionModel(runtime: IAgentRuntime): string {
     getSetting(
       runtime,
       "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL",
-      "gpt-4o-mini",
-    ) ?? "gpt-4o-mini"
+      "gpt-5-mini",
+    ) ?? "gpt-5-mini"
   );
 }
 

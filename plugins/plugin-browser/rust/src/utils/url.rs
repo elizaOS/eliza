@@ -66,7 +66,8 @@ pub fn parse_select_action(text: &str) -> (String, String) {
 }
 
 pub fn parse_extract_instruction(text: &str) -> String {
-    let re = Regex::new(r"(?i)(?:extract|get|find|scrape|read) (?:the )?(.+?)(?:\s+from|\s*$)").unwrap();
+    let re =
+        Regex::new(r"(?i)(?:extract|get|find|scrape|read) (?:the )?(.+?)(?:\s+from|\s*$)").unwrap();
     match re.captures(text) {
         Some(caps) => caps[1].to_string(),
         None => text.to_string(),
@@ -79,14 +80,26 @@ mod tests {
 
     #[test]
     fn test_extract_url() {
-        assert_eq!(extract_url("Go to google.com"), Some("https://google.com".to_string()));
-        assert_eq!(extract_url("Navigate to https://example.com"), Some("https://example.com".to_string()));
-        assert_eq!(extract_url("Open 'https://test.com'"), Some("https://test.com".to_string()));
+        assert_eq!(
+            extract_url("Go to google.com"),
+            Some("https://google.com".to_string())
+        );
+        assert_eq!(
+            extract_url("Navigate to https://example.com"),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            extract_url("Open 'https://test.com'"),
+            Some("https://test.com".to_string())
+        );
     }
 
     #[test]
     fn test_parse_click_target() {
-        assert_eq!(parse_click_target("click on the search button"), "the search button");
+        assert_eq!(
+            parse_click_target("click on the search button"),
+            "the search button"
+        );
         assert_eq!(parse_click_target("Click the submit"), "submit");
     }
 
@@ -97,5 +110,3 @@ mod tests {
         assert_eq!(field, "search box");
     }
 }
-
-

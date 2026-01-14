@@ -2,12 +2,20 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { GatewayConfig } from "../types";
 import { DEFAULT_CONFIG } from "../types";
 
+function getEnvValue(key: string): string | undefined {
+  if (typeof process === "undefined") {
+    return undefined;
+  }
+  const value = process.env[key];
+  return value === undefined ? undefined : String(value);
+}
+
 export function getSetting(runtime: IAgentRuntime | undefined, key: string): string | undefined {
   if (runtime) {
     const value = runtime.getSetting(key);
     if (value) return String(value);
   }
-  return process.env[key];
+  return getEnvValue(key);
 }
 
 export function getApiKey(runtime?: IAgentRuntime): string {

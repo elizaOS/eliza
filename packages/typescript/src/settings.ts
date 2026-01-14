@@ -46,14 +46,52 @@ let saltCache: SaltCache | null = null;
 let saltErrorLogged = false;
 const SALT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
 
+function isEncryptedV1(value: string): boolean {
+  const parts = value.split(":");
+  if (parts.length !== 2) return false;
+  try {
+    const iv = BufferUtils.fromHex(parts[0]);
+    return iv.length === 16;
+  } catch {
+    return false;
+  }
+}
+
+function isEncryptedV2(value: string): boolean {
+  const parts = value.split(":");
+  if (parts.length !== 4) return false;
+  if (parts[0] !== "v2") return false;
+  try {
+    const iv = BufferUtils.fromHex(parts[1]);
+    const tag = BufferUtils.fromHex(parts[3]);
+    return iv.length === 12 && tag.length === 16;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Gets the salt for the agent.
  *
  * @returns {string} The salt for the agent.
  */
 export function getSalt(): string {
-  // Always read current env first to detect changes
-  const currentEnvSalt = getEnv("SECRET_SALT", "secretsalt") || "secretsalt";
+  // Always read *current* env first to detect changes.
+  // (We intentionally avoid `getEnv` here because it caches reads.)
+  const currentEnvSalt =
+    typeof process !== "undefined" && process.env
+      ? (process.env.SECRET_SALT ?? "secretsalt")
+      : (getEnv("SECRET_SALT", "secretsalt") || "secretsalt");
+  const nodeEnv =
+    typeof process !== "undefined" && process.env
+      ? (process.env.NODE_ENV ?? "").toLowerCase()
+      : (getEnv("NODE_ENV", "") || "").toLowerCase();
+  const isProduction = nodeEnv === "production";
+  const allowDefaultSaltRaw =
+    typeof process !== "undefined" && process.env
+      ? (process.env.ELIZA_ALLOW_DEFAULT_SECRET_SALT ?? "")
+      : (getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "");
+  const allowDefaultSalt = allowDefaultSaltRaw.toLowerCase() === "true";
   const now = Date.now();
 
   // Return cached value only if still valid AND matches current env
@@ -64,9 +102,16 @@ export function getSalt(): string {
     }
   }
 
+  if (isProduction && currentEnvSalt === "secretsalt" && !allowDefaultSalt) {
+    throw new Error(
+      "SECRET_SALT must be set to a non-default value in production. " +
+        "Set ELIZA_ALLOW_DEFAULT_SECRET_SALT=true to override (not recommended).",
+    );
+  }
+
   if (currentEnvSalt === "secretsalt" && !saltErrorLogged) {
     logger.warn(
-      { src: "core:settings" },
+      { src: "core:settings", event: "core.settings.default_secret_salt" },
       "SECRET_SALT is not set or using default value",
     );
     saltErrorLogged = true;
@@ -109,36 +154,30 @@ export function encryptStringValue(value: string, salt: string): string {
     return value;
   }
 
-  // Check if value is already encrypted (has the format "iv:encrypted")
-  const parts = value.split(":");
-  if (parts.length === 2) {
-    try {
-      // Try to parse the first part as hex to see if it's already encrypted
-      const possibleIv = BufferUtils.fromHex(parts[0]);
-      if (possibleIv.length === 16) {
-        // Value is likely already encrypted, return as is
-        return value;
-      }
-    } catch {
-      // Not a valid hex string, proceed with encryption
-    }
+  // If already encrypted (legacy v1 iv:ciphertext or v2:iv:ciphertext:tag), return as-is.
+  if (isEncryptedV1(value) || isEncryptedV2(value)) {
+    return value;
   }
 
-  // Create key and iv from the salt
+  // v2 encryption: AES-256-GCM with integrity tag
   const key = cryptoUtils
     .createHash("sha256")
     .update(salt)
     .digest()
     .slice(0, 32);
-  const iv = BufferUtils.randomBytes(16);
+  const iv = BufferUtils.randomBytes(12);
 
-  // Encrypt the value
-  const cipher = cryptoUtils.createCipheriv("aes-256-cbc", key, iv);
-  let encrypted = cipher.update(value, "utf8", "hex");
-  encrypted += cipher.final("hex");
+  const aad = new TextEncoder().encode("elizaos:settings:v2");
+  const plaintextBytes = BufferUtils.fromString(value, "utf8");
+  const { ciphertext, tag } = cryptoUtils.encryptAes256Gcm(
+    key,
+    iv,
+    plaintextBytes,
+    aad,
+  );
 
-  // Store IV with the encrypted value so we can decrypt it later
-  return `${BufferUtils.toHex(iv)}:${encrypted}`;
+  // Store version + IV + ciphertext + tag so we can decrypt and authenticate later
+  return `v2:${BufferUtils.toHex(iv)}:${BufferUtils.toHex(ciphertext)}:${BufferUtils.toHex(tag)}`;
 }
 
 /**
@@ -149,38 +188,77 @@ export function encryptStringValue(value: string, salt: string): string {
  */
 export function decryptStringValue(value: string, salt: string): string {
   try {
-    // Split the IV and encrypted value
     const parts = value.split(":");
-    if (parts.length !== 2) {
-      return value; // Return the original value without decryption
+
+    // v2: AES-256-GCM with tag
+    if (isEncryptedV2(value)) {
+      // v2:<ivHex>:<ciphertextHex>:<tagHex>
+      const iv = BufferUtils.fromHex(parts[1]);
+      const ciphertext = BufferUtils.fromHex(parts[2]);
+      const tag = BufferUtils.fromHex(parts[3]);
+
+      const key = cryptoUtils
+        .createHash("sha256")
+        .update(salt)
+        .digest()
+        .slice(0, 32);
+      const aad = new TextEncoder().encode("elizaos:settings:v2");
+      const plaintextBytes = cryptoUtils.decryptAes256Gcm(
+        key,
+        iv,
+        ciphertext,
+        tag,
+        aad,
+      );
+      return BufferUtils.bufferToString(plaintextBytes, "utf8");
+    }
+
+    // v1 legacy: ivHex:ciphertextHex (AES-256-CBC)
+    if (!isEncryptedV1(value)) {
+      return value;
     }
 
     const iv = BufferUtils.fromHex(parts[0]);
     const encrypted = parts[1];
 
-    // Verify IV length
-    if (iv.length !== 16) {
-      return value; // Return the original value without decryption
-    }
-
-    // Create key from the salt
     const key = cryptoUtils
       .createHash("sha256")
       .update(salt)
       .digest()
       .slice(0, 32);
-
-    // Decrypt the value
     const decipher = cryptoUtils.createDecipheriv("aes-256-cbc", key, iv);
     let decrypted = decipher.update(encrypted, "hex", "utf8");
     decrypted += decipher.final("utf8");
-
     return decrypted;
   } catch (error) {
     logger.error({ src: "core:settings", error }, "Decryption failed");
     // Return the original value on error
     return value;
   }
+}
+
+/**
+ * Migrates an encrypted string from legacy v1 (AES-CBC) to v2 (AES-GCM).
+ *
+ * - v2 values are returned unchanged
+ * - v1 values are decrypted then re-encrypted as v2
+ * - non-encrypted values are returned unchanged
+ */
+export function migrateEncryptedStringValue(value: string, salt: string): string {
+  if (typeof value !== "string") {
+    return value;
+  }
+  if (isEncryptedV2(value)) {
+    return value;
+  }
+  if (!isEncryptedV1(value)) {
+    return value;
+  }
+  const decrypted = decryptStringValue(value, salt);
+  if (decrypted === value) {
+    return value;
+  }
+  return encryptStringValue(decrypted, salt);
 }
 
 /**

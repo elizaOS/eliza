@@ -14,4 +14,3 @@ def config() -> LocalAIConfig:
 @pytest.fixture
 def plugin(config: LocalAIConfig) -> LocalAIPlugin:
     return LocalAIPlugin(config)
-

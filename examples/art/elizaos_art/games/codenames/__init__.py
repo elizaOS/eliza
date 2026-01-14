@@ -1,25 +1,31 @@
 """
-Codenames Environment for ART Training
+Codenames Game Environment for ART Training
 
-Train LLM agents to play Codenames as Spymaster or Guesser.
+Train LLMs to play both Spymaster and Guesser roles in Codenames.
 """
 
 from elizaos_art.games.codenames.agent import (
+    CodenamesAgent,
     CodenamesGuesserAgent,
     CodenamesSpymasterAgent,
 )
 from elizaos_art.games.codenames.environment import CodenamesEnvironment
 from elizaos_art.games.codenames.types import (
+    CardColor,
     CodenamesAction,
     CodenamesState,
-    WordCard,
+    CodenamesConfig,
+    Role,
 )
 
 __all__ = [
     "CodenamesEnvironment",
+    "CodenamesAgent",
     "CodenamesSpymasterAgent",
     "CodenamesGuesserAgent",
     "CodenamesState",
     "CodenamesAction",
-    "WordCard",
+    "CardColor",
+    "Role",
+    "CodenamesConfig",
 ]

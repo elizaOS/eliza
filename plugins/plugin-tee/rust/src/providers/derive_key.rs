@@ -50,7 +50,9 @@ impl PhalaDeriveKeyProvider {
         };
 
         let report_data = serde_json::to_string(&derive_key_data)?;
-        self.ra_provider.generate_attestation(&report_data, None).await
+        self.ra_provider
+            .generate_attestation(&report_data, None)
+            .await
     }
 
     pub async fn derive_ed25519_keypair(
@@ -144,4 +146,3 @@ impl DeriveKeyProvider for PhalaDeriveKeyProvider {
         })
     }
 }
-

@@ -1,6 +1,5 @@
 """Tests for SAM engine module."""
 
-
 from eliza_plugin_simple_voice.sam_engine import (
     FORMANT_FREQUENCIES,
     PHONEME_MAP,
@@ -38,8 +37,27 @@ class TestPhonemeMap:
     def test_consonants_have_one_phoneme(self) -> None:
         """Test that consonants map to one phoneme."""
         consonants = [
-            "b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n",
-            "p", "q", "r", "s", "t", "v", "w", "x", "y", "z",
+            "b",
+            "c",
+            "d",
+            "f",
+            "g",
+            "h",
+            "j",
+            "k",
+            "l",
+            "m",
+            "n",
+            "p",
+            "q",
+            "r",
+            "s",
+            "t",
+            "v",
+            "w",
+            "x",
+            "y",
+            "z",
         ]
         for consonant in consonants:
             assert len(PHONEME_MAP[consonant]) == 1

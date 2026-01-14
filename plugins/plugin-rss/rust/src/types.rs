@@ -129,7 +129,6 @@ pub struct FeedSubscriptionMetadata {
     pub last_item_count: usize,
 }
 
-
 impl Default for FeedSubscriptionMetadata {
     fn default() -> Self {
         Self {
@@ -162,7 +161,6 @@ pub struct RssConfig {
     pub timeout_secs: u64,
     pub user_agent: String,
 }
-
 
 impl Default for RssConfig {
     fn default() -> Self {
@@ -202,7 +200,3 @@ impl RssConfig {
         self
     }
 }
-
-
-
-

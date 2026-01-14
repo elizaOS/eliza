@@ -255,7 +255,7 @@ def train(
         help="Model to train",
     ),
     judge: str = typer.Option(
-        "openai/gpt-4o-mini",
+        "openai/gpt-5-mini",
         help="RULER judge model",
     ),
     resume: bool = typer.Option(False, help="Resume from checkpoint"),

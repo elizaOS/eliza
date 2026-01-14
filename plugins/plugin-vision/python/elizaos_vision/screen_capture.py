@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -20,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class ScreenCaptureService:
-
     def __init__(self, config: VisionConfig):
         self._config = config
         self._active_tile_index = 0

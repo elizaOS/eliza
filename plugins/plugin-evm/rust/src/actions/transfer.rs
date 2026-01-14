@@ -60,9 +60,10 @@ impl TransferParams {
     }
 
     pub fn validate(&self) -> EVMResult<()> {
-        let amount: f64 = self.amount.parse().map_err(|_| {
-            EVMError::invalid_params(format!("Invalid amount: {}", self.amount))
-        })?;
+        let amount: f64 = self
+            .amount
+            .parse()
+            .map_err(|_| EVMError::invalid_params(format!("Invalid amount: {}", self.amount)))?;
 
         if amount <= 0.0 {
             return Err(EVMError::invalid_params("Amount must be positive"));
@@ -100,7 +101,7 @@ impl TransferAction {
             return Err(EVMError::insufficient_funds(format!(
                 "Insufficient balance: have {}, need {}",
                 balance, value
-            )            ));
+            )));
         }
 
         let mut tx = TransactionRequest::default()
@@ -111,15 +112,12 @@ impl TransferAction {
             tx = tx.with_input(data.clone());
         }
 
-        let pending = chain_provider
-            .send_transaction(tx)
-            .await
-            .map_err(|e| {
-                EVMError::new(
-                    EVMErrorCode::TransactionFailed,
-                    format!("Failed to send transaction: {e}"),
-                )
-            })?;
+        let pending = chain_provider.send_transaction(tx).await.map_err(|e| {
+            EVMError::new(
+                EVMErrorCode::TransactionFailed,
+                format!("Failed to send transaction: {e}"),
+            )
+        })?;
 
         let tx_hash = *pending.tx_hash();
         let receipt = pending.get_receipt().await.map_err(|e| {
@@ -147,9 +145,9 @@ impl TransferAction {
     }
 
     pub async fn execute_erc20(&self, params: TransferParams) -> EVMResult<Transaction> {
-        let token_address = params.token.ok_or_else(|| {
-            EVMError::invalid_params("Token address required for ERC20 transfer")
-        })?;
+        let token_address = params
+            .token
+            .ok_or_else(|| EVMError::invalid_params("Token address required for ERC20 transfer"))?;
 
         params.validate()?;
 
@@ -167,15 +165,12 @@ impl TransferAction {
             .with_to(token_address)
             .with_input(Bytes::from(calldata));
 
-        let pending = chain_provider
-            .send_transaction(tx)
-            .await
-            .map_err(|e| {
-                EVMError::new(
-                    EVMErrorCode::TransactionFailed,
-                    format!("Failed to send ERC20 transfer: {e}"),
-                )
-            })?;
+        let pending = chain_provider.send_transaction(tx).await.map_err(|e| {
+            EVMError::new(
+                EVMErrorCode::TransactionFailed,
+                format!("Failed to send ERC20 transfer: {e}"),
+            )
+        })?;
 
         let tx_hash = *pending.tx_hash();
 

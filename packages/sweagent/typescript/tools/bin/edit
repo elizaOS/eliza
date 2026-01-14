@@ -1,0 +1,40 @@
+#!/usr/bin/env node
+// Windowed editor edit command
+const { WindowedEditor } = require('../dist/windowed/index.js');
+const readline = require('readline');
+
+const args = process.argv.slice(2);
+
+// Parse line range from first argument (e.g., "10:20")
+const lineRange = args[0];
+if (!lineRange || !lineRange.includes(':')) {
+  console.error('Usage: edit <start_line>:<end_line>');
+  console.error('<replacement_text>');
+  console.error('end_of_edit');
+  process.exit(1);
+}
+
+const [startLine, endLine] = lineRange.split(':').map(n => parseInt(n));
+
+// Read replacement text from stdin until "end_of_edit"
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  terminal: false
+});
+
+let replacementText = [];
+let readingInput = true;
+
+rl.on('line', (line) => {
+  if (line === 'end_of_edit') {
+    readingInput = false;
+    rl.close();
+    
+    // Perform the edit
+    const editor = new WindowedEditor();
+    editor.edit(startLine, endLine, replacementText.join('\n'));
+  } else {
+    replacementText.push(line);
+  }
+});

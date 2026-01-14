@@ -69,4 +69,3 @@ class TEEService:
 
     async def raw_derive_key(self, path: str, subject: str) -> DeriveKeyResult:
         return await self._provider.raw_derive_key(path, subject)
-

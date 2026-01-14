@@ -23,4 +23,3 @@ class RemoteAttestationProvider(ABC):
         hash_algorithm: TdxQuoteHashAlgorithm | None = None,
     ) -> RemoteAttestationQuote:
         pass
-

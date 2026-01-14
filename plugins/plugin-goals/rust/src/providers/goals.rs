@@ -21,4 +21,3 @@ impl GoalProvider for GoalsProvider {
         GoalsStateProvider.get(context).await
     }
 }
-

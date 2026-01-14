@@ -86,7 +86,12 @@ impl ElizaCloudError {
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
-            Self::RateLimit { .. } | Self::Network(_) | Self::Api { status: 500..=599, .. }
+            Self::RateLimit { .. }
+                | Self::Network(_)
+                | Self::Api {
+                    status: 500..=599,
+                    ..
+                }
         )
     }
 

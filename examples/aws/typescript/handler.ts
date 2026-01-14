@@ -176,7 +176,11 @@ async function handleChat(
     id: uuidv4() as UUID,
     entityId: userId,
     roomId,
-    content: { text: request.message },
+    content: {
+      text: request.message,
+      source: "client_chat",
+      channelType: ChannelType.DM,
+    },
   });
 
   // Process message and collect response (same as chat demo)

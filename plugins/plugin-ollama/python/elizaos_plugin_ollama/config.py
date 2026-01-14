@@ -130,4 +130,3 @@ class OllamaConfig:
             embedding_model=self._embedding_model,
             timeout_seconds=seconds,
         )
-

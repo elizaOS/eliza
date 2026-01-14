@@ -57,15 +57,14 @@ impl McpClient {
             })),
         );
 
-        self.transport.send(&serde_json::to_value(&init_request)?).await?;
+        self.transport
+            .send(&serde_json::to_value(&init_request)?)
+            .await?;
         let response: JsonRpcResponse = serde_json::from_value(self.transport.receive().await?)?;
 
         if let Some(error) = response.error {
             self.status = ConnectionStatus::Failed;
-            return Err(McpError::server(
-                error.code,
-                error.message,
-            ));
+            return Err(McpError::server(error.code, error.message));
         }
 
         self.server_info = response.result;
@@ -91,7 +90,9 @@ impl McpClient {
         }
 
         let request = JsonRpcRequest::new(self.next_id(), "tools/list", None);
-        self.transport.send(&serde_json::to_value(&request)?).await?;
+        self.transport
+            .send(&serde_json::to_value(&request)?)
+            .await?;
 
         let response: JsonRpcResponse = serde_json::from_value(self.transport.receive().await?)?;
 
@@ -99,22 +100,16 @@ impl McpClient {
             return Err(McpError::server(error.code, error.message));
         }
 
-        let result = response.result.ok_or_else(|| McpError::protocol("Missing result"))?;
-        let tools: Vec<McpTool> = serde_json::from_value(
-            result
-                .get("tools")
-                .cloned()
-                .unwrap_or(Value::Array(vec![])),
-        )?;
+        let result = response
+            .result
+            .ok_or_else(|| McpError::protocol("Missing result"))?;
+        let tools: Vec<McpTool> =
+            serde_json::from_value(result.get("tools").cloned().unwrap_or(Value::Array(vec![])))?;
 
         Ok(tools)
     }
 
-    pub async fn call_tool(
-        &mut self,
-        name: &str,
-        arguments: Value,
-    ) -> McpResult<McpToolResult> {
+    pub async fn call_tool(&mut self, name: &str, arguments: Value) -> McpResult<McpToolResult> {
         if self.status != ConnectionStatus::Connected {
             return Err(McpError::NotConnected);
         }
@@ -132,14 +127,18 @@ impl McpClient {
             })),
         );
 
-        self.transport.send(&serde_json::to_value(&request)?).await?;
+        self.transport
+            .send(&serde_json::to_value(&request)?)
+            .await?;
         let response: JsonRpcResponse = serde_json::from_value(self.transport.receive().await?)?;
 
         if let Some(error) = response.error {
             return Err(McpError::server(error.code, error.message));
         }
 
-        let result = response.result.ok_or_else(|| McpError::protocol("Missing result"))?;
+        let result = response
+            .result
+            .ok_or_else(|| McpError::protocol("Missing result"))?;
         Ok(serde_json::from_value(result)?)
     }
 
@@ -149,7 +148,9 @@ impl McpClient {
         }
 
         let request = JsonRpcRequest::new(self.next_id(), "resources/list", None);
-        self.transport.send(&serde_json::to_value(&request)?).await?;
+        self.transport
+            .send(&serde_json::to_value(&request)?)
+            .await?;
 
         let response: JsonRpcResponse = serde_json::from_value(self.transport.receive().await?)?;
 
@@ -157,7 +158,9 @@ impl McpClient {
             return Err(McpError::server(error.code, error.message));
         }
 
-        let result = response.result.ok_or_else(|| McpError::protocol("Missing result"))?;
+        let result = response
+            .result
+            .ok_or_else(|| McpError::protocol("Missing result"))?;
         let resources: Vec<McpResource> = serde_json::from_value(
             result
                 .get("resources")
@@ -185,14 +188,18 @@ impl McpClient {
             })),
         );
 
-        self.transport.send(&serde_json::to_value(&request)?).await?;
+        self.transport
+            .send(&serde_json::to_value(&request)?)
+            .await?;
         let response: JsonRpcResponse = serde_json::from_value(self.transport.receive().await?)?;
 
         if let Some(error) = response.error {
             return Err(McpError::server(error.code, error.message));
         }
 
-        let result = response.result.ok_or_else(|| McpError::protocol("Missing result"))?;
+        let result = response
+            .result
+            .ok_or_else(|| McpError::protocol("Missing result"))?;
         let contents: Vec<McpResourceContent> = serde_json::from_value(
             result
                 .get("contents")
@@ -209,7 +216,9 @@ impl McpClient {
         }
 
         let request = JsonRpcRequest::new(self.next_id(), "resources/templates/list", None);
-        self.transport.send(&serde_json::to_value(&request)?).await?;
+        self.transport
+            .send(&serde_json::to_value(&request)?)
+            .await?;
 
         let response: JsonRpcResponse = serde_json::from_value(self.transport.receive().await?)?;
 
@@ -217,7 +226,9 @@ impl McpClient {
             return Err(McpError::server(error.code, error.message));
         }
 
-        let result = response.result.ok_or_else(|| McpError::protocol("Missing result"))?;
+        let result = response
+            .result
+            .ok_or_else(|| McpError::protocol("Missing result"))?;
         let templates: Vec<McpResourceTemplate> = serde_json::from_value(
             result
                 .get("resourceTemplates")
@@ -254,5 +265,3 @@ mod tests {
         assert_eq!(client.status(), ConnectionStatus::Disconnected);
     }
 }
-
-

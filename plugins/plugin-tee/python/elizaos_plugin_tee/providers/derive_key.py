@@ -198,4 +198,3 @@ async def get_derived_keys(
 
     finally:
         await provider.close()
-

@@ -34,13 +34,13 @@
 
 pub mod client;
 pub mod error;
-pub mod types;
 pub mod service;
+pub mod types;
 
 pub use client::S3StorageClient;
-pub use error::{S3StorageError, Result};
-pub use types::*;
+pub use error::{Result, S3StorageError};
 pub use service::AwsS3Service;
+pub use types::*;
 
 use anyhow::Result as AnyhowResult;
 
@@ -86,7 +86,9 @@ impl S3StoragePlugin {
         use_signed_url: bool,
         expires_in: u64,
     ) -> Result<UploadResult> {
-        self.client.upload_file(file_path, sub_directory, use_signed_url, expires_in).await
+        self.client
+            .upload_file(file_path, sub_directory, use_signed_url, expires_in)
+            .await
     }
 
     /// Uploads raw byte data to S3.
@@ -112,7 +114,16 @@ impl S3StoragePlugin {
         use_signed_url: bool,
         expires_in: u64,
     ) -> Result<UploadResult> {
-        self.client.upload_bytes(data, file_name, content_type, sub_directory, use_signed_url, expires_in).await
+        self.client
+            .upload_bytes(
+                data,
+                file_name,
+                content_type,
+                sub_directory,
+                use_signed_url,
+                expires_in,
+            )
+            .await
     }
 
     /// Uploads JSON data to S3.
@@ -138,7 +149,15 @@ impl S3StoragePlugin {
         use_signed_url: bool,
         expires_in: u64,
     ) -> Result<JsonUploadResult> {
-        self.client.upload_json(json_data, file_name, sub_directory, use_signed_url, expires_in).await
+        self.client
+            .upload_json(
+                json_data,
+                file_name,
+                sub_directory,
+                use_signed_url,
+                expires_in,
+            )
+            .await
     }
 
     /// Generates a pre-signed URL for accessing an existing S3 object.
@@ -202,6 +221,3 @@ pub async fn get_s3_storage_plugin() -> AnyhowResult<S3StoragePlugin> {
         .await
         .map_err(|e| anyhow::anyhow!("Failed to create S3 storage plugin: {}", e))
 }
-
-
-

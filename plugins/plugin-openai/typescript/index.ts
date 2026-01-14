@@ -29,24 +29,35 @@ import {
 import type { ImageGenerationResult, OpenAIPluginConfig, TextStreamResult } from "./types";
 import { getAuthHeader, getBaseURL } from "./utils/config";
 
+type ProcessEnvLike = Record<string, string | undefined>;
+
+function getProcessEnv(): ProcessEnvLike {
+  if (typeof process === "undefined") {
+    return {};
+  }
+  return process.env as ProcessEnvLike;
+}
+
+const env = getProcessEnv();
+
 export const openaiPlugin: Plugin = {
   name: "openai",
   description: "OpenAI API integration for text, image, audio, and embedding models",
 
   config: {
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? null,
-    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL ?? null,
-    OPENAI_SMALL_MODEL: process.env.OPENAI_SMALL_MODEL ?? null,
-    OPENAI_LARGE_MODEL: process.env.OPENAI_LARGE_MODEL ?? null,
-    SMALL_MODEL: process.env.SMALL_MODEL ?? null,
-    LARGE_MODEL: process.env.LARGE_MODEL ?? null,
-    OPENAI_EMBEDDING_MODEL: process.env.OPENAI_EMBEDDING_MODEL ?? null,
-    OPENAI_EMBEDDING_API_KEY: process.env.OPENAI_EMBEDDING_API_KEY ?? null,
-    OPENAI_EMBEDDING_URL: process.env.OPENAI_EMBEDDING_URL ?? null,
-    OPENAI_EMBEDDING_DIMENSIONS: process.env.OPENAI_EMBEDDING_DIMENSIONS ?? null,
-    OPENAI_IMAGE_DESCRIPTION_MODEL: process.env.OPENAI_IMAGE_DESCRIPTION_MODEL ?? null,
-    OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS: process.env.OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS ?? null,
-    OPENAI_EXPERIMENTAL_TELEMETRY: process.env.OPENAI_EXPERIMENTAL_TELEMETRY ?? null,
+    OPENAI_API_KEY: env.OPENAI_API_KEY ?? null,
+    OPENAI_BASE_URL: env.OPENAI_BASE_URL ?? null,
+    OPENAI_SMALL_MODEL: env.OPENAI_SMALL_MODEL ?? null,
+    OPENAI_LARGE_MODEL: env.OPENAI_LARGE_MODEL ?? null,
+    SMALL_MODEL: env.SMALL_MODEL ?? null,
+    LARGE_MODEL: env.LARGE_MODEL ?? null,
+    OPENAI_EMBEDDING_MODEL: env.OPENAI_EMBEDDING_MODEL ?? null,
+    OPENAI_EMBEDDING_API_KEY: env.OPENAI_EMBEDDING_API_KEY ?? null,
+    OPENAI_EMBEDDING_URL: env.OPENAI_EMBEDDING_URL ?? null,
+    OPENAI_EMBEDDING_DIMENSIONS: env.OPENAI_EMBEDDING_DIMENSIONS ?? null,
+    OPENAI_IMAGE_DESCRIPTION_MODEL: env.OPENAI_IMAGE_DESCRIPTION_MODEL ?? null,
+    OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS: env.OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS ?? null,
+    OPENAI_EXPERIMENTAL_TELEMETRY: env.OPENAI_EXPERIMENTAL_TELEMETRY ?? null,
   },
 
   async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {

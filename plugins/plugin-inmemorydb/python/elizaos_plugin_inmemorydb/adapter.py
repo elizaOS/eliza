@@ -211,10 +211,7 @@ class InMemoryDatabaseAdapter:
                 and (agent_id is None or m.get("agentId") == agent_id)
                 and (room_id is None or m.get("roomId") == room_id)
                 and (world_id is None or m.get("worldId") == world_id)
-                and (
-                    table_name is None
-                    or (m.get("metadata") or {}).get("type") == table_name
-                )
+                and (table_name is None or (m.get("metadata") or {}).get("type") == table_name)
                 and (start is None or (m.get("createdAt") or 0) >= start)
                 and (end is None or (m.get("createdAt") or 0) <= end)
                 and (unique is None or not unique or m.get("unique"))
@@ -586,9 +583,7 @@ class InMemoryDatabaseAdapter:
     async def delete_task(self, id_: str) -> None:
         await self._storage.delete(COLLECTIONS.TASKS, id_)
 
-    async def log(
-        self, body: dict[str, Any], entity_id: str, room_id: str, type_: str
-    ) -> None:
+    async def log(self, body: dict[str, Any], entity_id: str, room_id: str, type_: str) -> None:
         id_ = str(uuid.uuid4())
         log = {
             "id": id_,
@@ -628,5 +623,3 @@ class InMemoryDatabaseAdapter:
 
     async def delete_log(self, log_id: str) -> None:
         await self._storage.delete(COLLECTIONS.LOGS, log_id)
-
-

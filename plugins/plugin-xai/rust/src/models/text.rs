@@ -61,13 +61,11 @@ impl TextSmallHandler {
                     error: None,
                 }
             }
-            Err(e) => {
-                TextGenerationResult {
-                    success: false,
-                    text: String::new(),
-                    error: Some(e.to_string()),
-                }
-            }
+            Err(e) => TextGenerationResult {
+                success: false,
+                text: String::new(),
+                error: Some(e.to_string()),
+            },
         }
     }
 }
@@ -118,13 +116,11 @@ impl TextLargeHandler {
                     error: None,
                 }
             }
-            Err(e) => {
-                TextGenerationResult {
-                    success: false,
-                    text: String::new(),
-                    error: Some(e.to_string()),
-                }
-            }
+            Err(e) => TextGenerationResult {
+                success: false,
+                text: String::new(),
+                error: Some(e.to_string()),
+            },
         }
     }
 }

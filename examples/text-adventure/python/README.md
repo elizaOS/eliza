@@ -75,7 +75,9 @@ await runtime.stop()
 ### Adventure Game Example
 
 ```python
-from elizaos import Character, ModelType
+import uuid
+
+from elizaos import ChannelType, Character, Content, Memory, string_to_uuid
 from elizaos.runtime import AgentRuntime
 from elizaos_plugin_openai import get_openai_plugin
 
@@ -83,12 +85,24 @@ from elizaos_plugin_openai import get_openai_plugin
 runtime = AgentRuntime(character=character, plugins=[get_openai_plugin()])
 await runtime.initialize()
 
-# Use model directly for AI decisions
-result = await runtime.use_model(
-    str(ModelType.TEXT_SMALL),
-    {"prompt": "Choose an action...", "maxTokens": 50, "temperature": 0.3},
+# Route through the full message pipeline (planning/actions/providers/memory)
+room_id = string_to_uuid("adventure-game-room")
+entity_id = string_to_uuid(str(uuid.uuid4()))
+message = Memory(
+    entity_id=entity_id,
+    room_id=room_id,
+    content=Content(
+        text="Choose an action...",
+        source="game",
+        channel_type=ChannelType.DM.value,
+    ),
 )
-chosen_action = str(result).strip()
+result = await runtime.message_service.handle_message(runtime, message)
+chosen_action = (
+    result.response_content.text
+    if result.response_content and result.response_content.text
+    else ""
+).strip()
 
 # Cleanup
 await runtime.stop()

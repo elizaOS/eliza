@@ -1,13 +1,23 @@
 import { EventEmitter } from "node:events";
 import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
+import type { GoalData, GoalDataServiceWrapper } from "@elizaos/plugin-goals";
+import { createTodoDataService, type TodoData } from "@elizaos/plugin-todo";
 import { v4 as uuidv4 } from "uuid";
-import { createElizaSubAgent } from "../../lib/sub-agents/eliza-sub-agent.js";
+import { createSubAgent } from "../../lib/sub-agents/registry.js";
 import { createTools } from "../../lib/sub-agents/tools.js";
-import type { SubAgent, SubAgentTool } from "../../lib/sub-agents/types.js";
+import type {
+  McpToolDefinition,
+  SubAgent,
+  SubAgentTool,
+  ToolResult,
+} from "../../lib/sub-agents/types.js";
 import type {
   CodeTask,
   CodeTaskMetadata,
   JsonValue,
+  SubAgentGoal,
+  SubAgentTodo,
+  SubAgentType,
   TaskEvent,
   TaskEventType,
   TaskResult,
@@ -17,35 +27,6 @@ import type {
   TaskUserStatus,
 } from "../../types.js";
 import { getCwd } from "../providers/cwd.js";
-
-/**
- * Safely converts a value to JsonValue by recursively validating and converting.
- * This ensures type safety without using unsafe casts.
- */
-function toJsonValue(value: unknown): JsonValue {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map(toJsonValue);
-  }
-  if (typeof value === "object") {
-    const result: Record<string, JsonValue> = {};
-    for (const [key, val] of Object.entries(value)) {
-      result[key] = toJsonValue(val);
-    }
-    return result;
-  }
-  // Fallback: convert to string for unsupported types
-  return String(value);
-}
 
 /**
  * CodeTaskService - Manages code tasks using core runtime.
@@ -112,7 +93,7 @@ export class CodeTaskService extends Service {
     name: string,
     description: string,
     roomId?: UUID,
-    subAgentType: "eliza" | "claude" = "eliza",
+    subAgentType: SubAgentType = "eliza",
   ): Promise<CodeTask> {
     // NOTE: The SQL adapter requires `worldId` when creating tasks.
     // When we have a roomId, prefer the room's worldId; otherwise fall back to the agentId.
@@ -150,7 +131,7 @@ export class CodeTaskService extends Service {
       this.currentTaskId = taskId;
     }
 
-    this.emit("task:created", taskId, { task: toJsonValue(task) });
+    this.emit("task:created", taskId, { name: task.name });
     return task;
   }
 
@@ -202,6 +183,17 @@ export class CodeTaskService extends Service {
     if (!next) return;
     await this.runtime.updateTask(taskId as UUID, { name: next });
     this.emit("task:message", taskId, { renamed: true, name: next });
+  }
+
+  async setTaskSubAgentType(taskId: string, subAgentType: SubAgentType): Promise<void> {
+    const task = await this.getTask(taskId);
+    if (!task) return;
+
+    const metadata = { ...task.metadata } as CodeTaskMetadata;
+    metadata.subAgentType = subAgentType;
+    await this.runtime.updateTask(taskId as UUID, { metadata });
+    this.emit("task:message", taskId, { subAgentType });
+    await this.appendOutput(taskId, `Sub-agent: ${subAgentType}`);
   }
 
   async getTasksByStatus(status: TaskStatus): Promise<CodeTask[]> {
@@ -314,7 +306,6 @@ export class CodeTaskService extends Service {
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
     this.emit("task:progress", taskId, {
-      step: toJsonValue(step),
       progress: metadata.progress,
     });
   }
@@ -339,10 +330,15 @@ export class CodeTaskService extends Service {
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
     if (metadata.status === "cancelled") {
-      this.emit("task:cancelled", taskId, { result: toJsonValue(result) });
+      this.emit("task:cancelled", taskId, {
+        success: false,
+        summary: result.summary,
+      });
     } else {
       this.emit(result.success ? "task:completed" : "task:failed", taskId, {
-        result: toJsonValue(result),
+        success: result.success,
+        summary: result.summary,
+        error: result.error ?? null,
       });
     }
   }
@@ -444,11 +440,7 @@ export class CodeTaskService extends Service {
     const existing = this.executions.get(taskId);
     if (existing) return existing;
 
-    const run = this.runTaskExecution(taskId, options)
-      .catch(() => {
-        // Errors are persisted into task metadata via setTaskError; no need to throw.
-      })
-      .finally(() => {
+    const run = this.runTaskExecution(taskId, options).finally(() => {
         this.executions.delete(taskId);
       });
 
@@ -485,47 +477,72 @@ export class CodeTaskService extends Service {
     taskId: string,
     options?: TaskExecutionOptions,
   ): Promise<void> {
-    const task = await this.getTask(taskId);
-    if (!task) return;
-
-    // Reset control state (in case this task was previously paused/cancelled in this process).
-    this.clearControlState(taskId);
-    this.setControlState(taskId, { cancelled: false, paused: false });
-
-    const workingDirectory = task.metadata.workingDirectory;
-    const wasPaused = task.metadata.status === "paused";
-
-    await this.updateTaskStatus(taskId, "running");
-    await this.appendOutput(
-      taskId,
-      wasPaused ? `Resuming: ${task.name}` : `Starting: ${task.name}`,
-    );
-
-    const subAgent = options?.subAgent ?? createElizaSubAgent();
-    const tools = options?.tools ?? createTools(workingDirectory);
-
     try {
+      const task = await this.getTask(taskId);
+      if (!task) return;
+
+      // Reset control state (in case this task was previously paused/cancelled in this process).
+      this.clearControlState(taskId);
+      this.setControlState(taskId, { cancelled: false, paused: false });
+
+      const workingDirectory = task.metadata.workingDirectory;
+      const wasPaused = task.metadata.status === "paused";
+
+      await this.updateTaskStatus(taskId, "running");
+      await this.appendOutput(
+        taskId,
+        wasPaused ? `Resuming: ${task.name}` : `Starting: ${task.name}`,
+      );
+
+      const requestedType = task.metadata.subAgentType ?? "eliza";
+      const subAgent =
+        options?.subAgent ??
+        createSubAgent(
+          requestedType === "claude" ? "claude-code" : requestedType,
+        );
+      const tools = options?.tools ?? createTools(workingDirectory);
+
+      const reportInternalError = (where: string, err: Error): void => {
+        const msg = err.message;
+        // Avoid recursion by not writing back into the task from here; log loudly.
+        console.error(`[CodeTaskService] ${where}: ${msg}`);
+      };
+
+      const extras = await this.buildSubAgentContextExtras(task, tools);
       const result = await subAgent.execute(task, {
         runtime: this.runtime,
         workingDirectory,
         tools,
         onProgress: (update) => {
-          this.updateTaskProgress(taskId, update.progress).catch(() => {});
+          this.updateTaskProgress(taskId, update.progress).catch((err: Error) => {
+            reportInternalError("updateTaskProgress", err);
+          });
           if (update.message) {
-            this.appendOutput(taskId, update.message).catch(() => {});
+            this.appendOutput(taskId, update.message).catch((err: Error) => {
+              reportInternalError("appendOutput(progress.message)", err);
+            });
           }
         },
         onMessage: (msg, priority) => {
-          this.appendOutput(taskId, msg).catch(() => {});
+          this.appendOutput(taskId, msg).catch((err: Error) => {
+            reportInternalError("appendOutput(onMessage)", err);
+          });
+          this.emit("task:message", taskId, {
+            message: msg,
+            priority,
+          });
           if (priority === "error") {
             // Avoid throwing; error details are persisted via task output and metadata.
           }
         },
         onTrace: (event) => {
-          this.appendTrace(taskId, event).catch(() => {});
+          this.appendTrace(taskId, event).catch((err: Error) => {
+            reportInternalError("appendTrace", err);
+          });
         },
         isCancelled: () => this.isTaskCancelled(taskId),
         isPaused: () => this.isTaskPaused(taskId),
+        ...extras,
       });
 
       await this.setTaskResult(taskId, result);
@@ -564,6 +581,255 @@ export class CodeTaskService extends Service {
       paused: false,
     };
     this.controlStates.set(taskId, { ...current, ...updates });
+  }
+
+  // ============================================================================
+  // Sub-agent context enrichment (MCP / goals / todos)
+  // ============================================================================
+
+  private async buildSubAgentContextExtras(
+    task: CodeTask,
+    tools: SubAgentTool[],
+  ): Promise<{
+    mcpTools?: McpToolDefinition[];
+    callMcpTool?: (
+      server: string,
+      toolName: string,
+      args: Record<string, string>,
+    ) => Promise<ToolResult>;
+    goals?: SubAgentGoal[];
+    todos?: SubAgentTodo[];
+    createTodo?: (name: string, description?: string) => Promise<SubAgentTodo>;
+    completeTodo?: (id: string) => Promise<void>;
+  }> {
+    const [mcpTools, callMcpTool] = await this.getMcpTooling();
+    const goals = await this.getActiveGoals();
+    const { todos, createTodo, completeTodo } = await this.getTodoTooling(task);
+
+    return {
+      mcpTools,
+      callMcpTool,
+      goals,
+      todos,
+      createTodo,
+      completeTodo,
+    };
+  }
+
+  private async getMcpTooling(): Promise<
+    [
+      McpToolDefinition[] | undefined,
+      ((
+        server: string,
+        toolName: string,
+        args: Record<string, string>,
+      ) => Promise<ToolResult>) | undefined,
+    ]
+  > {
+    type McpTool = {
+      name: string;
+      description?: string;
+      inputSchema?: {
+        type?: string;
+        properties?: Record<
+          string,
+          { type?: string; description?: string }
+        >;
+        required?: string[];
+      };
+    };
+    type McpServer = {
+      name: string;
+      tools?: readonly McpTool[];
+    };
+    type McpCallResult = {
+      content: ReadonlyArray<
+        | { type: "text"; text: string }
+        | { type: string; [k: string]: JsonValue | undefined }
+      >;
+      isError?: boolean;
+    };
+    type McpServiceLike = {
+      getServers: () => McpServer[];
+      callTool: (
+        serverName: string,
+        toolName: string,
+        toolArguments?: Readonly<Record<string, JsonValue>>,
+      ) => Promise<McpCallResult>;
+    };
+
+    const svc = this.runtime.getService("mcp") as McpServiceLike | null;
+    if (!svc) return [undefined, undefined];
+
+    const servers = svc.getServers();
+    const defs: McpToolDefinition[] = [];
+    for (const s of servers) {
+      for (const t of s.tools ?? []) {
+        const props = t.inputSchema?.properties ?? {};
+        const simplifiedProps: Record<
+          string,
+          { type: string; description: string }
+        > = {};
+        for (const [k, v] of Object.entries(props)) {
+          simplifiedProps[k] = {
+            type: v.type ?? "string",
+            description: v.description ?? "",
+          };
+        }
+        defs.push({
+          server: s.name,
+          name: t.name,
+          description: t.description ?? "",
+          inputSchema: {
+            type: "object",
+            properties: simplifiedProps,
+            required: (t.inputSchema?.required ?? []) as string[],
+          },
+        });
+      }
+    }
+
+    const callMcpTool = async (
+      server: string,
+      toolName: string,
+      args: Record<string, string>,
+    ): Promise<ToolResult> => {
+      const result = await svc.callTool(server, toolName, args);
+      const textParts: string[] = [];
+      for (const c of result.content) {
+        if (c.type === "text") {
+          textParts.push(c.text);
+        } else {
+          textParts.push(`[${c.type}]`);
+        }
+      }
+      return {
+        success: result.isError !== true,
+        output: textParts.join("\n").trim() || "(no output)",
+      };
+    };
+
+    return [defs, callMcpTool];
+  }
+
+  private async getActiveGoals(): Promise<SubAgentGoal[] | undefined> {
+    const wrapper = this.runtime.getService(
+      "GOAL_DATA",
+    ) as GoalDataServiceWrapper | null;
+    const service = wrapper?.getDataService?.() ?? null;
+    if (!service) return undefined;
+
+    const raw = (await service.getUncompletedGoals(
+      "agent",
+      this.runtime.agentId,
+    )) as GoalData[];
+
+    return raw.map((g) => ({
+      id: String(g.id),
+      name: g.name,
+      description: g.description ?? undefined,
+      isCompleted: g.isCompleted,
+      tags: g.tags ?? undefined,
+    }));
+  }
+
+  private async getTodoTooling(task: CodeTask): Promise<{
+    todos: SubAgentTodo[] | undefined;
+    createTodo: ((name: string, description?: string) => Promise<SubAgentTodo>) | undefined;
+    completeTodo: ((id: string) => Promise<void>) | undefined;
+  }> {
+    // Only enable todo tooling when the Todo plugin is actually loaded.
+    // In unit tests, we often run without plugin-todo migrations/services.
+    const todoPluginPresent =
+      this.runtime.getService("TODO_REMINDER") !== null ||
+      this.runtime.getService("TODO_INTEGRATION_BRIDGE") !== null;
+    if (!todoPluginPresent) {
+      return { todos: undefined, createTodo: undefined, completeTodo: undefined };
+    }
+
+    if (!this.runtime.db) {
+      return { todos: undefined, createTodo: undefined, completeTodo: undefined };
+    }
+
+    const todoService = createTodoDataService(this.runtime);
+
+    const roomId = (task.roomId ?? this.runtime.agentId) as UUID;
+    const worldId = await this.resolveWorldId(roomId);
+    const entityId = this.runtime.agentId;
+
+    const raw = await todoService.getTodos({
+      agentId: this.runtime.agentId,
+      worldId,
+      roomId,
+      entityId,
+      isCompleted: false,
+      limit: 50,
+    });
+
+    const todos: SubAgentTodo[] = raw.map((t: TodoData) => ({
+      id: String(t.id),
+      name: t.name,
+      description: t.description ?? undefined,
+      type: t.type,
+      priority:
+        typeof t.priority === "number" &&
+        (t.priority === 1 ||
+          t.priority === 2 ||
+          t.priority === 3 ||
+          t.priority === 4)
+          ? t.priority
+          : undefined,
+      isCompleted: t.isCompleted,
+      isUrgent: t.isUrgent,
+    }));
+
+    const createTodo = async (
+      name: string,
+      description?: string,
+    ): Promise<SubAgentTodo> => {
+      const id = await todoService.createTodo({
+        agentId: this.runtime.agentId,
+        worldId,
+        roomId,
+        entityId,
+        name,
+        description,
+        type: "one-off",
+        isUrgent: false,
+        priority: 3,
+        metadata: {},
+        tags: ["code-task"],
+      });
+      const created = await todoService.getTodo(id);
+      if (!created) {
+        throw new Error("Todo creation failed");
+      }
+      return {
+        id: String(created.id),
+        name: created.name,
+        description: created.description ?? undefined,
+        type: created.type,
+        priority:
+          typeof created.priority === "number" &&
+          (created.priority === 1 ||
+            created.priority === 2 ||
+            created.priority === 3 ||
+            created.priority === 4)
+            ? (created.priority as 1 | 2 | 3 | 4)
+            : undefined,
+        isCompleted: created.isCompleted,
+        isUrgent: created.isUrgent,
+      };
+    };
+
+    const completeTodo = async (id: string): Promise<void> => {
+      await todoService.updateTodo(id as UUID, {
+        isCompleted: true,
+        completedAt: new Date(),
+      });
+    };
+
+    return { todos, createTodo, completeTodo };
   }
 
   // ============================================================================
@@ -775,11 +1041,9 @@ function truncate(text: string, maxChars: number): string {
 
 function formatTimestamp(ms: number | undefined): string {
   if (!ms) return "unknown";
-  try {
-    return new Date(ms).toISOString();
-  } catch {
-    return "unknown";
-  }
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return "unknown";
+  return d.toISOString();
 }
 
 function takeTailByCharBudget(

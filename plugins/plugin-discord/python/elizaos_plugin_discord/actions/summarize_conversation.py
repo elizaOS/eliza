@@ -34,8 +34,8 @@ class SummarizeConversationAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord"
 
     async def handler(
         self,
@@ -67,9 +67,7 @@ class SummarizeConversationAction:
         # Fetch messages
         messages = await service.get_channel_messages(channel_id, limit)
         if not messages:
-            return ActionResult.failure_result(
-                "I couldn't fetch any messages to summarize."
-            )
+            return ActionResult.failure_result("I couldn't fetch any messages to summarize.")
 
         if len(messages) < 5:
             return ActionResult.failure_result(
@@ -79,8 +77,8 @@ class SummarizeConversationAction:
         # Format messages for summarization
         messages_text = []
         for msg in messages:
-            author = msg.get("author", {}).get("username", "Unknown")
-            msg_content = msg.get("content", "")
+            author = msg["author"]["username"]
+            msg_content = msg["content"]
             if msg_content:
                 messages_text.append(f"{author}: {msg_content}")
 
@@ -89,14 +87,11 @@ class SummarizeConversationAction:
         # Generate summary using the service's model
         summary = await service.generate_conversation_summary(conversation_text)
         if not summary:
-            return ActionResult.failure_result(
-                "I couldn't generate a summary. Please try again."
-            )
+            return ActionResult.failure_result("I couldn't generate a summary. Please try again.")
 
         channel_name = await service.get_channel_name(channel_id)
         response_text = (
-            f"**Summary of #{channel_name}** (last {len(messages)} messages)\n\n"
-            f"{summary}"
+            f"**Summary of #{channel_name}** (last {len(messages)} messages)\n\n{summary}"
         )
 
         return ActionResult.success_result(

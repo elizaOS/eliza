@@ -66,6 +66,3 @@ fn test_tee_vendor_parse() {
     assert_eq!(TeeVendor::parse("PHALA").unwrap(), TeeVendor::Phala);
     assert!(TeeVendor::parse("invalid").is_err());
 }
-
-
-

@@ -98,6 +98,3 @@ impl GitHubAction for CreatePullRequestAction {
         ))
     }
 }
-
-
-

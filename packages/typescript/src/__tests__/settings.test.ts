@@ -18,6 +18,7 @@ import {
   getSalt,
   getWorldSettings,
   initializeOnboarding,
+  migrateEncryptedStringValue,
   saltSettingValue,
   saltWorldSettings,
   unsaltSettingValue,
@@ -33,6 +34,8 @@ import type {
   World,
   WorldSettings,
 } from "../types";
+import { BufferUtils } from "../utils/buffer";
+import * as cryptoUtils from "../utils/crypto-compat";
 import { getEnvironment } from "../utils/environment";
 
 // Remove global module mocks - they interfere with other tests
@@ -248,7 +251,8 @@ describe("settings utilities", () => {
       const encrypted = encryptStringValue(fakeEncrypted, salt);
 
       expect(encrypted).not.toBe(fakeEncrypted);
-      expect(encrypted.split(":").length).toBe(2);
+      expect(encrypted.startsWith("v2:")).toBe(true);
+      expect(encrypted.split(":").length).toBe(4);
     });
 
     it("should handle values with colons that are not hex (e.g., URLs)", () => {
@@ -286,6 +290,41 @@ describe("settings utilities", () => {
       const decrypted = decryptStringValue(encrypted, salt);
 
       expect(decrypted).toBe(original);
+    });
+
+    it("should decrypt legacy v1 AES-CBC values (iv:ciphertext)", () => {
+      const original = "legacy-secret";
+      const key = cryptoUtils
+        .createHash("sha256")
+        .update(salt)
+        .digest()
+        .slice(0, 32);
+      const iv = BufferUtils.randomBytes(16);
+      const cipher = cryptoUtils.createCipheriv("aes-256-cbc", key, iv);
+      let encrypted = cipher.update(original, "utf8", "hex");
+      encrypted += cipher.final("hex");
+      const legacy = `${BufferUtils.toHex(iv)}:${encrypted}`;
+
+      expect(decryptStringValue(legacy, salt)).toBe(original);
+    });
+
+    it("should migrate legacy v1 AES-CBC values to v2 AES-GCM", () => {
+      const original = "legacy-migrate";
+      const key = cryptoUtils
+        .createHash("sha256")
+        .update(salt)
+        .digest()
+        .slice(0, 32);
+      const iv = BufferUtils.randomBytes(16);
+      const cipher = cryptoUtils.createCipheriv("aes-256-cbc", key, iv);
+      let encrypted = cipher.update(original, "utf8", "hex");
+      encrypted += cipher.final("hex");
+      const legacy = `${BufferUtils.toHex(iv)}:${encrypted}`;
+
+      const migrated = migrateEncryptedStringValue(legacy, salt);
+      expect(migrated).not.toBe(legacy);
+      expect(migrated.startsWith("v2:")).toBe(true);
+      expect(decryptStringValue(migrated, salt)).toBe(original);
     });
 
     it("should return undefined/null values as is", () => {

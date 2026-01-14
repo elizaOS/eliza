@@ -23,7 +23,7 @@ This demo mirrors the structure of `examples/chat/typescript/chat.ts` exactly, b
 │  │  └──────────────────┘  └──────────────────────┘     │    │
 │  └─────────────────────────────────────────────────────┘    │
 │                              │                               │
-│                    runtime.useModel(TEXT_LARGE)              │
+│               runtime.messageService.handleMessage()         │
 │                              │                               │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │                    localStorage                       │    │
@@ -103,13 +103,17 @@ await runtime.ensureConnection({
 });
 ```
 
-### Message Handling
+### Message Handling (full pipeline)
 
 ```javascript
-// Use the model directly (elizaClassicPlugin provides TEXT_LARGE handler)
-const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-  prompt: text,
+const message = createMessageMemory({
+  id: uuidv4(),
+  entityId: userId,
+  roomId,
+  content: { text, source: "client_chat", channelType: ChannelType.DM },
 });
+
+await runtime.messageService.handleMessage(runtime, message, callback);
 ```
 
 ## Comparison: Browser vs Node.js

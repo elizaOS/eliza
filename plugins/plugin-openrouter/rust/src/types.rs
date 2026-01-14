@@ -238,4 +238,3 @@ pub(crate) struct EmbeddingsResponseBody {
 pub(crate) struct ModelsResponse {
     pub data: Vec<ModelInfo>,
 }
-

@@ -191,5 +191,3 @@ class TestGetAllActions:
         assert "SUMMARIZE_CONVERSATION" in names
         assert "TRANSCRIBE_MEDIA" in names
         assert "UNPIN_MESSAGE" in names
-
-

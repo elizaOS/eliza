@@ -1,0 +1,82 @@
+{
+  "name": "@elizaos/plugin-elevenlabs-root",
+  "version": "1.6.0",
+  "description": "High-quality text-to-speech and speech-to-text plugin for ElizaOS using ElevenLabs API",
+  "type": "module",
+  "main": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
+  "browser": "typescript/dist/browser/index.browser.js",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./typescript/dist/index.d.ts",
+      "browser": {
+        "types": "./typescript/dist/browser/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "require": "./typescript/dist/cjs/index.node.cjs",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "default": "./typescript/dist/node/index.node.js"
+    }
+  },
+  "files": [
+    "typescript/dist",
+    "README.md",
+    "python",
+    "rust/src",
+    "rust/Cargo.toml"
+  ],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "tts",
+    "stt",
+    "text-to-speech",
+    "speech-to-text",
+    "elevenlabs",
+    "voice-synthesis",
+    "transcription",
+    "ai"
+  ],
+  "author": "ElizaOS Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-elevenlabs.git"
+  },
+  "scripts": {
+    "build": "bun run build:ts && bun run build:rust && bun run build:python",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
+    "build:python": "test -d python && cd python && (python3 -m build 2>/dev/null || pyproject-build) || echo 'Python build skipped - no python directory'",
+    "dev": "cd typescript && bun --hot build.ts",
+    "test": "bun run test:ts && bun run test:rust && bun run test:python",
+    "test:ts": "cd typescript && elizaos test || echo 'TypeScript tests skipped'",
+    "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
+    "test:python": "test -d python && cd python && pip install pytest pytest-asyncio pytest-cov --quiet && pytest || echo 'Python tests skipped'",
+    "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
+    "lint": "bun run lint:ts && bun run lint:rust && bun run lint:python",
+    "lint:ts": "prettier --write ./typescript/src",
+    "lint:check": "prettier --check ./typescript/src",
+    "lint:rust": "test -d rust && cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt || echo 'Rust lint skipped'",
+    "lint:python": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint skipped'",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.22",
+    "@types/node": "^24.5.2",
+    "prettier": "3.6.2",
+    "typescript": "^5.9.2"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -15,7 +15,6 @@ pub struct PlanningConfig {
     pub planning_max_tokens: i32,
 }
 
-
 impl Default for PlanningConfig {
     fn default() -> Self {
         Self {

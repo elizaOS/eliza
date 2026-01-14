@@ -36,5 +36,3 @@ pub struct ElizaMatchResult {
     pub rule: ElizaRule,
     pub captures: Vec<String>,
 }
-
-

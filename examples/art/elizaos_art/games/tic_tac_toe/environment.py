@@ -1,7 +1,7 @@
 """
-Tic-Tac-Toe Environment
+Tic-Tac-Toe Game Environment
 
-Classic 3x3 Tic-Tac-Toe with configurable opponent.
+Implements the classic 3x3 Tic-Tac-Toe game.
 """
 
 import random
@@ -20,26 +20,26 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
     """
     Tic-Tac-Toe game environment.
 
-    The agent plays against a configurable opponent.
+    The AI agent plays as one player (default X),
+    and an opponent (random, heuristic, or minimax) plays as the other.
     """
 
     SIZE: ClassVar[int] = 3
-    WIN_PATTERNS: ClassVar[list[tuple[int, ...]]] = [
-        (0, 1, 2),  # Top row
-        (3, 4, 5),  # Middle row
-        (6, 7, 8),  # Bottom row
-        (0, 3, 6),  # Left column
-        (1, 4, 7),  # Center column
-        (2, 5, 8),  # Right column
-        (0, 4, 8),  # Diagonal
-        (2, 4, 6),  # Anti-diagonal
+    WIN_LINES: ClassVar[list[tuple[int, ...]]] = [
+        (0, 1, 2),  # Rows
+        (3, 4, 5),
+        (6, 7, 8),
+        (0, 3, 6),  # Columns
+        (1, 4, 7),
+        (2, 5, 8),
+        (0, 4, 8),  # Diagonals
+        (2, 4, 6),
     ]
 
     def __init__(self, config: TicTacToeConfig | None = None):
         self.config = config or TicTacToeConfig()
         self._rng: random.Random | None = None
         self._current_state: TicTacToeState | None = None
-        self._agent_player = Player(self.config.ai_player)
         self._initialized = False
 
     @property
@@ -58,31 +58,19 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
         """Reset the game and return initial state."""
         self._rng = random.Random(seed)
 
-        # Create empty board
-        board = [Player.EMPTY.value] * 9
+        # Empty board
+        board = tuple([0] * 9)
 
-        # X always goes first
         self._current_state = TicTacToeState(
-            board=tuple(board),
-            current_player=Player.X.value,
+            board=board,
+            current_player=Player.X,  # X always goes first
             winner=None,
-            move_count=0,
+            is_draw=False,
         )
 
-        # If agent is O, opponent (X) moves first
-        # Note: When opponent="none" (interactive mode), _get_opponent_move returns None
-        # and we skip the automatic opponent move - the caller handles human input
-        if self._agent_player == Player.O:
-            opponent_move = self._get_opponent_move(self._current_state)
-            if opponent_move is not None:
-                board = list(self._current_state.board)
-                board[opponent_move.value] = Player.X.value
-                self._current_state = TicTacToeState(
-                    board=tuple(board),
-                    current_player=Player.O.value,
-                    winner=None,
-                    move_count=1,
-                )
+        # If AI plays O, let opponent move first (unless interactive mode)
+        if self.config.ai_player == Player.O and self.config.opponent != "none":
+            self._current_state = await self._opponent_move(self._current_state)
 
         return self._current_state
 
@@ -90,10 +78,10 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
         self, action: TicTacToeAction
     ) -> tuple[TicTacToeState, float, bool]:
         """
-        Execute a move.
+        Execute a move and return new state.
 
         Args:
-            action: Position to place marker
+            action: Position to place mark (0-8)
 
         Returns:
             Tuple of (new_state, reward, done)
@@ -101,74 +89,36 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
         if self._current_state is None:
             raise RuntimeError("Environment not reset")
 
-        if self._current_state.winner is not None:
+        if self._current_state.is_terminal():
             return self._current_state, 0.0, True
 
+        # Make AI's move
         board = list(self._current_state.board)
-        current = Player(self._current_state.current_player)
 
-        # Validate move
         if board[action.value] != Player.EMPTY.value:
-            # Invalid move penalty
-            return self._current_state, -1.0, True
+            # Invalid move - penalize
+            return self._current_state, -0.5, False
 
-        # Make agent's move
-        board[action.value] = current.value
-        check_result = self._check_winner(board)
-        move_count = self._current_state.move_count + 1
+        board[action.value] = self.config.ai_player.value
+        new_state = self._check_game_state(tuple(board), self._other_player(self.config.ai_player))
 
-        if check_result is not None:
-            # Game over - convert _check_winner result to proper state
-            # _check_winner returns 0 for draw, 1/2 for winner
-            is_draw = check_result == 0
-            winner = None if is_draw else check_result
-            self._current_state = TicTacToeState(
-                board=tuple(board),
-                current_player=current.opponent().value,
-                winner=winner,
-                is_draw=is_draw,
-                move_count=move_count,
-            )
-            reward = self._calculate_reward(check_result)
-            return self._current_state, reward, True
+        if new_state.is_terminal():
+            self._current_state = new_state
+            return self._current_state, self._calculate_reward(new_state), True
 
-        # Opponent's turn
-        opponent = current.opponent()
-        temp_state = TicTacToeState(
-            board=tuple(board),
-            current_player=opponent.value,
-            winner=None,
-            move_count=move_count,
-        )
+        # Opponent's turn (skip if interactive mode)
+        if self.config.opponent != "none":
+            new_state = await self._opponent_move(new_state)
+        self._current_state = new_state
 
-        # Get opponent move
-        opponent_move = self._get_opponent_move(temp_state)
-        if opponent_move is not None:
-            board[opponent_move.value] = opponent.value
-            check_result = self._check_winner(board)
-            move_count += 1
-        else:
-            check_result = None
+        reward = self._calculate_reward(new_state)
+        done = new_state.is_terminal()
 
-        # Convert _check_winner result to proper state
-        is_draw = check_result == 0
-        winner = None if (check_result is None or is_draw) else check_result
-        self._current_state = TicTacToeState(
-            board=tuple(board),
-            current_player=current.value,  # Back to agent's turn
-            winner=winner,
-            is_draw=is_draw,
-            move_count=move_count,
-        )
-
-        done = check_result is not None
-        reward = self._calculate_reward(check_result) if done else 0.0
         return self._current_state, reward, done
 
     def get_available_actions(self, state: TicTacToeState) -> list[TicTacToeAction]:
-        """Get empty positions."""
-        # Check terminal conditions - consistent with TicTacToeState.is_terminal()
-        if state.winner is not None or state.is_draw:
+        """Get list of valid moves (empty positions)."""
+        if state.is_terminal():
             return []
 
         return [
@@ -178,143 +128,176 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
         ]
 
     def render(self, state: TicTacToeState) -> str:
-        """Render the state."""
+        """Render the state as a string."""
         return state.render()
 
-    def _check_winner(self, board: list[int]) -> int | None:
-        """
-        Check for a winner (internal helper).
-
-        Note: This is an internal method. Callers should convert the result
-        to proper TicTacToeState fields: winner=None and is_draw=True for draws.
-
-        Returns:
-            1 if X wins, 2 if O wins, 0 if draw, None if game ongoing.
-        """
-        for pattern in self.WIN_PATTERNS:
-            values = [board[i] for i in pattern]
+    def _check_game_state(
+        self, board: tuple[int, ...], next_player: Player
+    ) -> TicTacToeState:
+        """Check for winner or draw."""
+        # Check for winner
+        for line in self.WIN_LINES:
+            values = [board[i] for i in line]
             if values[0] != Player.EMPTY.value and values[0] == values[1] == values[2]:
-                return values[0]
+                return TicTacToeState(
+                    board=board,
+                    current_player=next_player,
+                    winner=Player(values[0]),
+                )
 
         # Check for draw
         if all(cell != Player.EMPTY.value for cell in board):
-            return 0
-
-        return None
-
-    def _calculate_reward(self, winner: int | None) -> float:
-        """Calculate reward based on game outcome."""
-        if winner is None:
-            return 0.0
-        elif winner == 0:
-            return 0.0  # Draw
-        elif winner == self._agent_player.value:
-            return 1.0  # Win
-        else:
-            return -1.0  # Loss
-
-    def _get_opponent_move(self, state: TicTacToeState) -> TicTacToeAction | None:
-        """Get opponent's move based on config.
-
-        Supported opponent types:
-        - "none": No automatic opponent (interactive/human play). Returns None.
-        - "random": Selects a random available position.
-        - "heuristic": Simple priority-based strategy (center > corners > edges).
-        - "optimal" / "minimax": Uses minimax algorithm for perfect play.
-
-        Returns:
-            The opponent's move, or None if no available moves or opponent="none".
-
-        Raises:
-            ValueError: If opponent type is not recognized.
-        """
-        available = self.get_available_actions(state)
-        if not available:
-            return None
-
-        if self.config.opponent == "none":
-            # Interactive mode: no automatic opponent, caller handles input
-            return None
-        elif self.config.opponent == "random":
-            if self._rng is None:
-                self._rng = random.Random()
-            return self._rng.choice(available)
-        elif self.config.opponent == "heuristic":
-            return self._heuristic_move(available)
-        elif self.config.opponent in ("optimal", "minimax"):
-            return self._minimax_move(state)
-        else:
-            raise ValueError(
-                f"Unknown opponent type: {self.config.opponent!r}. "
-                f"Expected one of: 'none', 'random', 'heuristic', 'optimal', 'minimax'"
+            return TicTacToeState(
+                board=board,
+                current_player=next_player,
+                is_draw=True,
             )
 
-    def _heuristic_move(self, available: list[TicTacToeAction]) -> TicTacToeAction:
-        """Get a move using simple heuristics.
-        
-        Priority: center (4) > corners (0,2,6,8) > edges (1,3,5,7)
-        """
-        # Priority order: center, then corners, then edges
-        priority = [4, 0, 2, 6, 8, 1, 3, 5, 7]
-        for pos in priority:
-            action = TicTacToeAction(pos)
-            if action in available:
-                return action
-        # Fallback (shouldn't reach here if available is non-empty)
-        return available[0]
+        # Game continues
+        return TicTacToeState(
+            board=board,
+            current_player=next_player,
+        )
 
-    def _minimax_move(self, state: TicTacToeState) -> TicTacToeAction:
-        """Get optimal move using minimax."""
+    def _other_player(self, player: Player) -> Player:
+        """Get the other player."""
+        return Player.O if player == Player.X else Player.X
+
+    def _calculate_reward(self, state: TicTacToeState) -> float:
+        """Calculate reward from AI's perspective."""
+        if state.winner == self.config.ai_player:
+            return 1.0  # Win
+        elif state.winner == self._other_player(self.config.ai_player):
+            return -1.0  # Loss
+        elif state.is_draw:
+            return 0.0  # Draw
+        return 0.0  # Game continues
+
+    async def _opponent_move(self, state: TicTacToeState) -> TicTacToeState:
+        """Make opponent's move."""
+        if state.is_terminal():
+            return state
+
+        empty_positions = [i for i, cell in enumerate(state.board) if cell == Player.EMPTY.value]
+        if not empty_positions:
+            return state
+
+        opponent = self._other_player(self.config.ai_player)
+
+        if self.config.opponent == "minimax":
+            pos = self._minimax_move(state, opponent)
+        elif self.config.opponent == "heuristic":
+            pos = self._heuristic_move(state, opponent)
+        else:  # random
+            pos = self._rng.choice(empty_positions) if self._rng else empty_positions[0]
+
+        # Make move
         board = list(state.board)
-        player = state.current_player
+        board[pos] = opponent.value
 
+        return self._check_game_state(tuple(board), self.config.ai_player)
+
+    def _heuristic_move(self, state: TicTacToeState, player: Player) -> int:
+        """
+        Simple heuristic opponent:
+        1. Win if possible
+        2. Block opponent's win
+        3. Take center
+        4. Take corner
+        5. Take edge
+        """
+        opponent = self._other_player(player)
+        board = list(state.board)
+        empty = [i for i in range(9) if board[i] == Player.EMPTY.value]
+
+        # 1. Win if possible
+        for pos in empty:
+            test_board = board.copy()
+            test_board[pos] = player.value
+            if self._is_winner(test_board, player):
+                return pos
+
+        # 2. Block opponent
+        for pos in empty:
+            test_board = board.copy()
+            test_board[pos] = opponent.value
+            if self._is_winner(test_board, opponent):
+                return pos
+
+        # 3. Take center
+        if 4 in empty:
+            return 4
+
+        # 4. Take corner
+        corners = [0, 2, 6, 8]
+        available_corners = [c for c in corners if c in empty]
+        if available_corners and self._rng:
+            return self._rng.choice(available_corners)
+
+        # 5. Take edge
+        if empty and self._rng:
+            return self._rng.choice(empty)
+
+        return empty[0] if empty else 0
+
+    def _minimax_move(self, state: TicTacToeState, player: Player) -> int:
+        """Minimax opponent - plays optimally."""
         best_score = float("-inf")
-        best_move = None
+        best_move = -1
+        board = list(state.board)
 
-        for action in self.get_available_actions(state):
-            board[action.value] = player
-            score = self._minimax(board, False, player)
-            board[action.value] = Player.EMPTY.value
+        for pos in range(9):
+            if board[pos] == Player.EMPTY.value:
+                board[pos] = player.value
+                score = self._minimax(board, 0, False, player)
+                board[pos] = Player.EMPTY.value
 
-            if score > best_score:
-                best_score = score
-                best_move = action
+                if score > best_score:
+                    best_score = score
+                    best_move = pos
 
-        return best_move if best_move is not None else self.get_available_actions(state)[0]
+        return best_move
 
     def _minimax(
         self,
         board: list[int],
+        depth: int,
         is_maximizing: bool,
-        player: int,
+        player: Player,
     ) -> float:
         """Minimax algorithm."""
-        winner = self._check_winner(board)
-        if winner is not None:
-            if winner == 0:
-                return 0.0
-            elif winner == player:
-                return 1.0
-            else:
-                return -1.0
+        opponent = self._other_player(player)
 
-        current = player if is_maximizing else Player(player).opponent().value
+        # Check terminal states
+        if self._is_winner(board, player):
+            return 10 - depth
+        if self._is_winner(board, opponent):
+            return depth - 10
+        if all(cell != Player.EMPTY.value for cell in board):
+            return 0
 
         if is_maximizing:
             best_score = float("-inf")
-            for i in range(9):
-                if board[i] == Player.EMPTY.value:
-                    board[i] = current
-                    score = self._minimax(board, False, player)
-                    board[i] = Player.EMPTY.value
-                    best_score = max(best_score, score)
+            for pos in range(9):
+                if board[pos] == Player.EMPTY.value:
+                    board[pos] = player.value
+                    score = self._minimax(board, depth + 1, False, player)
+                    board[pos] = Player.EMPTY.value
+                    best_score = max(score, best_score)
             return best_score
         else:
             best_score = float("inf")
-            for i in range(9):
-                if board[i] == Player.EMPTY.value:
-                    board[i] = current
-                    score = self._minimax(board, True, player)
-                    board[i] = Player.EMPTY.value
-                    best_score = min(best_score, score)
+            for pos in range(9):
+                if board[pos] == Player.EMPTY.value:
+                    board[pos] = opponent.value
+                    score = self._minimax(board, depth + 1, True, player)
+                    board[pos] = Player.EMPTY.value
+                    best_score = min(score, best_score)
             return best_score
+
+    def _is_winner(self, board: list[int], player: Player) -> bool:
+        """Check if player has won."""
+        for line in self.WIN_LINES:
+            if all(board[i] == player.value for i in line):
+                return True
+        return False

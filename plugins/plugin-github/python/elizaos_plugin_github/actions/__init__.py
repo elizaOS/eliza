@@ -25,4 +25,3 @@ all_actions = [
     PushCodeAction(),
     MergePullRequestAction(),
 ]
-

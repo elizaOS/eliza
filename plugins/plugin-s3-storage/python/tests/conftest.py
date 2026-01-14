@@ -9,4 +9,3 @@ def s3_config() -> dict[str, str]:
         "region": "us-east-1",
         "bucket": "test-bucket",
     }
-

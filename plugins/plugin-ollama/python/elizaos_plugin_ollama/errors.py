@@ -28,4 +28,3 @@ class ModelNotFoundError(OllamaError):
     def __init__(self, model: str) -> None:
         self.model = model
         super().__init__(f"Model '{model}' not found. Try: ollama pull {model}")
-

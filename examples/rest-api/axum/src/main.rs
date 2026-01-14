@@ -59,12 +59,6 @@ struct HealthResponse {
     character: String,
     timestamp: String,
 }
-
-#[derive(Debug, Serialize)]
-struct ErrorResponse {
-    error: String,
-}
-
 // ============================================================================
 // App State
 // ============================================================================

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -109,13 +108,11 @@ def parse_memory_extraction_xml(xml: str) -> list[MemoryExtraction]:
 
 
 class ModelHandler(Protocol):
-    async def generate(self, prompt: str, max_tokens: int = 2000) -> str:
-        ...
+    async def generate(self, prompt: str, max_tokens: int = 2000) -> str: ...
 
 
 class MemoryCounter(Protocol):
-    async def count_memories(self, room_id: UUID) -> int:
-        ...
+    async def count_memories(self, room_id: UUID) -> int: ...
 
 
 @dataclass

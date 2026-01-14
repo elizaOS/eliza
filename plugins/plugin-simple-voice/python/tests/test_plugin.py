@@ -1,6 +1,5 @@
 """Tests for plugin module."""
 
-
 from eliza_plugin_simple_voice import (
     SamTTSOptions,
     SamTTSService,
@@ -71,10 +70,7 @@ class TestSimpleVoicePluginClass:
 
     def test_custom_values(self) -> None:
         """Test custom values can be set."""
-        plugin = SimpleVoicePlugin(
-            name="custom-name",
-            description="custom description"
-        )
+        plugin = SimpleVoicePlugin(name="custom-name", description="custom description")
         assert plugin.name == "custom-name"
         assert plugin.description == "custom description"
 

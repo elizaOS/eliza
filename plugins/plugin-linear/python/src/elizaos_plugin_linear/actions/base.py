@@ -1,4 +1,3 @@
-
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, Protocol, TypedDict
@@ -19,14 +18,11 @@ class ActionResult(TypedDict, total=False):
 
 
 class RuntimeProtocol(Protocol):
-    def get_setting(self, key: str) -> str | None:
-        ...
+    def get_setting(self, key: str) -> str | None: ...
 
-    def get_service(self, name: str) -> object | None:
-        ...
+    def get_service(self, name: str) -> object | None: ...
 
-    async def use_model(self, model_type: str, params: dict[str, Any]) -> str | None:
-        ...
+    async def use_model(self, model_type: str, params: dict[str, Any]) -> str | None: ...
 
 
 HandlerCallback = Callable[[dict[str, Any]], Coroutine[Any, Any, None]]

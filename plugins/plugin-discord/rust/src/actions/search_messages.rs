@@ -77,7 +77,12 @@ impl DiscordAction for SearchMessagesAction {
 
         // Search messages
         let results = service
-            .search_messages(&context.channel_id, search_query, author_filter.as_deref(), limit)
+            .search_messages(
+                &context.channel_id,
+                search_query,
+                author_filter.as_deref(),
+                limit,
+            )
             .await?;
 
         if results.is_empty() {
@@ -104,7 +109,10 @@ impl DiscordAction for SearchMessagesAction {
             .iter()
             .take(10)
             .map(|msg| {
-                let author = msg.get("author").and_then(|a| a.as_str()).unwrap_or("Unknown");
+                let author = msg
+                    .get("author")
+                    .and_then(|a| a.as_str())
+                    .unwrap_or("Unknown");
                 let mut content = msg
                     .get("content")
                     .and_then(|c| c.as_str())
@@ -122,7 +130,11 @@ impl DiscordAction for SearchMessagesAction {
             })
             .collect();
 
-        let mut response_text = format!("Found {} message(s):\n\n{}", results.len(), display_results.join("\n"));
+        let mut response_text = format!(
+            "Found {} message(s):\n\n{}",
+            results.len(),
+            display_results.join("\n")
+        );
 
         if results.len() > 10 {
             response_text.push_str(&format!("\n\n*...and {} more*", results.len() - 10));

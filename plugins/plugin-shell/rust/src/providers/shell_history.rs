@@ -30,7 +30,12 @@ impl Provider for ShellHistoryProvider {
         99
     }
 
-    async fn get(&self, message: &Value, _state: &Value, service: Option<&ShellService>) -> ProviderResult {
+    async fn get(
+        &self,
+        message: &Value,
+        _state: &Value,
+        service: Option<&ShellService>,
+    ) -> ProviderResult {
         let service = match service {
             Some(s) => s,
             None => {

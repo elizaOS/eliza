@@ -30,12 +30,18 @@
 #![warn(rustdoc::missing_crate_level_docs)]
 
 pub mod character;
+#[cfg(all(feature = "bootstrap-internal", feature = "native", not(feature = "wasm")))]
+pub mod bootstrap;
+#[cfg(all(feature = "bootstrap-internal", feature = "native", not(feature = "wasm")))]
+pub mod error;
 pub mod plugin;
 pub mod prompts;
 pub mod runtime;
 pub mod services;
 pub mod settings;
+pub mod template;
 pub mod types;
+pub mod xml;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;

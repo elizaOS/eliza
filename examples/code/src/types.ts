@@ -103,6 +103,76 @@ export type TaskTraceEvent =
   | TaskTraceToolResultEvent
   | TaskTraceStatusEvent;
 
+// ============================================================================
+// Sub-Agent Type Definitions
+// ============================================================================
+
+/**
+ * Available sub-agent types for task execution.
+ * - eliza: Default ElizaOS tool-calling worker using runtime model
+ * - claude-code: Claude Agent SDK-based worker
+ * - codex: OpenAI Codex SDK-based worker
+ * - opencode: OpenCode CLI-based worker (supports 75+ LLM providers)
+ * - sweagent: SWE-agent methodology worker (Think/Act pattern, ACI)
+ * - elizaos-native: Best-of-all native ElizaOS agent with monologue reasoning
+ */
+export type SubAgentType =
+  | "eliza"
+  | "claude"
+  | "claude-code"
+  | "codex"
+  | "opencode"
+  | "sweagent"
+  | "elizaos-native";
+
+/**
+ * Configuration options for sub-agents
+ */
+export interface SubAgentConfig {
+  /** The type of sub-agent to use */
+  type: SubAgentType;
+  /** Override the model used by the sub-agent */
+  model?: string;
+  /** Maximum iterations/turns for the sub-agent */
+  maxIterations?: number;
+  /** Custom system prompt override */
+  systemPromptOverride?: string;
+  /** Enable Context7 MCP for documentation lookup */
+  enableContext7?: boolean;
+  /** Enable goals provider in context */
+  enableGoals?: boolean;
+  /** Enable todo tracking during task execution */
+  enableTodos?: boolean;
+  /** Enable thinking/monologue output */
+  enableThinking?: boolean;
+  /** Working directory for the sub-agent */
+  workingDirectory?: string;
+}
+
+/**
+ * Goal data available to sub-agents
+ */
+export interface SubAgentGoal {
+  id: string;
+  name: string;
+  description?: string;
+  isCompleted: boolean;
+  tags?: string[];
+}
+
+/**
+ * Todo item available to sub-agents
+ */
+export interface SubAgentTodo {
+  id: string;
+  name: string;
+  description?: string;
+  type: "daily" | "one-off" | "aspirational";
+  priority?: 1 | 2 | 3 | 4;
+  isCompleted: boolean;
+  isUrgent?: boolean;
+}
+
 /** Extended metadata for code tasks */
 export interface CodeTaskMetadata {
   status: TaskStatus;
@@ -127,7 +197,7 @@ export interface CodeTaskMetadata {
   filesModified?: string[];
   filesCreated?: string[];
   workingDirectory: string;
-  subAgentType?: "eliza" | "claude";
+  subAgentType?: SubAgentType;
   createdAt: number;
   startedAt?: number;
   completedAt?: number;
@@ -135,8 +205,12 @@ export interface CodeTaskMetadata {
   updateInterval?: number;
   /** Optional items for UI state selections */
   options?: Array<{ name: string; description: string }>;
+  /** Goals context for the sub-agent */
+  goals?: SubAgentGoal[];
+  /** Todos created during task execution */
+  todos?: SubAgentTodo[];
   /** Additional plugin-specific metadata. */
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 /** Code task - uses core Task with typed metadata */

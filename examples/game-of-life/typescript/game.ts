@@ -20,7 +20,9 @@ import {
   type Action,
   type ActionResult,
   AgentRuntime,
+  ChannelType,
   type Character,
+  createMessageMemory,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -28,6 +30,7 @@ import {
   ModelType,
   type Plugin,
   type State,
+  stringToUuid,
   type UUID,
 } from "@elizaos/core";
 // Import the in-memory database adapter directly from plugin source (bun handles .ts)
@@ -101,6 +104,11 @@ let world: WorldState;
 
 // Shared storage for all agents
 const sharedStorage = new MemoryStorage();
+
+// Shared simulation room/world + environment entity (the "world" speaks to agents)
+const SIM_ROOM_ID = stringToUuid("game-of-life");
+const SIM_WORLD_ID = stringToUuid("game-of-life-world");
+const ENV_ENTITY_ID = stringToUuid("game-of-life-environment");
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -549,18 +557,52 @@ const pendingBirths: AgentState[] = [];
 // MODEL HANDLER - DECIDES WHICH ACTION TO TAKE
 // ============================================================================
 
+function escapeXml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function decisionXml(actionName: string, thought: string, text: string): string {
+  // DefaultMessageService expects XML-ish tags like <thought>, <actions>, <text>.
+  // We return a minimal, deterministic payload (no LLM) that still flows through
+  // the full Eliza message pipeline.
+  return [
+    "<thought>",
+    escapeXml(thought),
+    "</thought>",
+    "<actions>",
+    escapeXml(actionName),
+    "</actions>",
+    "<text>",
+    escapeXml(text),
+    "</text>",
+  ].join("");
+}
+
+type DecisionModelParams = { prompt?: string };
+
 async function decisionModelHandler(
   runtime: IAgentRuntime,
-  _params: { prompt?: string },
+  params: DecisionModelParams,
 ): Promise<string> {
   const state = getAgentState(runtime);
-  if (!state || !state.isAlive) return "NONE";
+  if (!state || !state.isAlive) {
+    return decisionXml("NONE", "I am not alive; no action.", "NONE");
+  }
 
   // Priority-based action selection (no LLM, pure rules)
 
   // 1. If standing on food, eat it
   if (world.food.has(posKey(state.position.x, state.position.y))) {
-    return "EAT";
+    return decisionXml(
+      "EAT",
+      "Food is underfoot; eating is the highest value action.",
+      "EAT",
+    );
   }
 
   // 2. If can reproduce and safe, do it
@@ -582,7 +624,13 @@ async function decisionModelHandler(
         }
       }
     }
-    if (safe) return "REPRODUCE";
+    if (safe) {
+      return decisionXml(
+        "REPRODUCE",
+        "Energy is high and conditions look safe; reproducing increases lineage fitness.",
+        "REPRODUCE",
+      );
+    }
   }
 
   // 3. If low aggression and threat nearby, flee
@@ -594,7 +642,11 @@ async function decisionModelHandler(
         other.dna.aggression > 0.5
       ) {
         if (distance(state.position, other.position) <= state.dna.vision) {
-          return "FLEE";
+          return decisionXml(
+            "FLEE",
+            "A nearby aggressive agent is within vision; fleeing reduces risk.",
+            "FLEE",
+          );
         }
       }
     }
@@ -609,7 +661,11 @@ async function decisionModelHandler(
         other.energy < state.energy * 0.8
       ) {
         if (distance(state.position, other.position) <= 2) {
-          return "ATTACK";
+          return decisionXml(
+            "ATTACK",
+            "A weaker agent is within striking range; attacking can steal energy.",
+            "ATTACK",
+          );
         }
       }
     }
@@ -618,12 +674,25 @@ async function decisionModelHandler(
   // 5. If see food, move toward it
   for (const food of world.food.values()) {
     if (distance(state.position, food) <= state.dna.vision) {
-      return "MOVE_TOWARD_FOOD";
+      return decisionXml(
+        "MOVE_TOWARD_FOOD",
+        "Visible food detected; moving toward it improves survival odds.",
+        "MOVE_TOWARD_FOOD",
+      );
     }
   }
 
   // 6. Default: wander
-  return "WANDER";
+  // Include a tiny prompt preview so it’s obvious the agent received environment input
+  // via the message pipeline (not bypassed).
+  const promptPreview = params.prompt
+    ? params.prompt.trim().slice(0, 120)
+    : "(no prompt)";
+  return decisionXml(
+    "WANDER",
+    `No immediate opportunities; wandering explores. envPreview=${promptPreview}`,
+    "WANDER",
+  );
 }
 
 // ============================================================================
@@ -706,6 +775,18 @@ async function createAgentRuntime(agentState: AgentState): Promise<LiveAgent> {
   });
 
   await runtime.initialize({ skipMigrations: true });
+
+  // Ensure the simulation "environment" entity is connected to the same room as the agent.
+  // This makes each tick a real inbound message processed via messageService.handleMessage().
+  await runtime.ensureConnection({
+    entityId: ENV_ENTITY_ID,
+    roomId: SIM_ROOM_ID,
+    worldId: SIM_WORLD_ID,
+    userName: "Environment",
+    source: "simulation",
+    channelId: "game-of-life",
+    type: ChannelType.DM,
+  });
 
   return { runtime, state: agentState };
 }
@@ -855,6 +936,7 @@ function render(): string {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const fast = args.includes("--fast");
+  const stats = args.includes("--stats");
   const agentCountArg = args.find((a) => a.startsWith("--agents="));
   const agentCount = agentCountArg
     ? parseInt(agentCountArg.split("=")[1], 10)
@@ -916,21 +998,51 @@ async function main(): Promise<void> {
       const state = world.agents.get(id);
       if (!state || !state.isAlive) continue;
 
-      // Get decision from agent's model handler
-      const decision = await liveAgent.runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: "decide",
+      // Send a real "environment tick" message through the full Eliza pipeline.
+      // This MUST go through runtime.messageService.handleMessage (no bypassing).
+      const envText = [
+        `TICK=${world.tick}`,
+        `AGENT_ID=${state.id}`,
+        `POS=${state.position.x},${state.position.y}`,
+        `ENERGY=${Math.round(state.energy)}`,
+        `DNA_SPEED=${state.dna.speed}`,
+        `DNA_VISION=${state.dna.vision}`,
+        `DNA_AGGRESSION=${state.dna.aggression.toFixed(3)}`,
+        `FOOD_COUNT=${world.food.size}`,
+      ].join("\n");
+
+      const message = createMessageMemory({
+        id: randomUUID() as UUID,
+        entityId: ENV_ENTITY_ID,
+        roomId: SIM_ROOM_ID,
+        content: {
+          text: envText,
+          source: "simulation",
+          channelType: ChannelType.DM,
+        },
       });
 
-      // Execute the chosen action
-      const action = liveAgent.runtime.actions.find((a) => a.name === decision);
-      if (action) {
-        const isValid = await action.validate(
+      if (liveAgent.runtime.messageService) {
+        const result = await liveAgent.runtime.messageService.handleMessage(
           liveAgent.runtime,
-          {} as Memory,
-          {} as State,
+          message,
+          async () => [],
         );
-        if (isValid) {
-          await action.handler(liveAgent.runtime, {} as Memory, {} as State);
+
+        if (stats && message.id) {
+          const decisionActions = result.responseContent?.actions ?? [];
+          const decisionThought = result.responseContent?.thought ?? "";
+          const executed = liveAgent.runtime.getActionResults(message.id);
+          const executedNames = executed
+            .map((r) => r.data?.actionName)
+            .filter((n): n is string => typeof n === "string");
+
+          // Keep output compact: only print when something executed or every ~25 ticks.
+          if (executedNames.length > 0 && (world.tick % 25 === 0 || world.tick <= 5)) {
+            console.log(
+              `tick=${world.tick} agent=${id.slice(0, 6)} decision=${decisionActions.join(",")} executed=${executedNames.join(",")} thought=${decisionThought.slice(0, 80)}`,
+            );
+          }
         }
       }
 

@@ -72,4 +72,3 @@ class TestConfig:
         config = OpenRouterConfig(api_key=mock_api_key)
         assert config.chat_completions_url == "https://openrouter.ai/api/v1/chat/completions"
         assert config.embeddings_url == "https://openrouter.ai/api/v1/embeddings"
-

@@ -11,7 +11,7 @@ import type {
   SubAgentTool,
 } from "../lib/sub-agents/types.js";
 import { CodeTaskService } from "../plugin/services/code-task.js";
-import type { CodeTask, CodeTaskMetadata } from "../types.js";
+import type { CodeTask, CodeTaskMetadata, JsonValue } from "../types.js";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 
 function tick(): Promise<void> {
@@ -321,5 +321,128 @@ describe("CodeTaskService execution", () => {
       "Paused due to restart",
     );
     expect(updated2?.metadata.status).toBe("completed");
+  });
+
+  test("provides MCP tooling to sub-agent context when MCP plugin is loaded", async () => {
+    // Minimal MCP-like service surface used by CodeTaskService.
+    const mcpService = {
+      getServers: () => [
+        {
+          name: "context7",
+          tools: [
+            {
+              name: "query-docs",
+              description: "Query docs",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  query: { type: "string", description: "query" },
+                },
+                required: ["query"],
+              },
+            },
+          ],
+        },
+      ],
+      callTool: async (
+        serverName: string,
+        toolName: string,
+        toolArguments?: Readonly<Record<string, JsonValue>>,
+      ) => {
+        const args = toolArguments ?? {};
+        const query = typeof args.query === "string" ? args.query : "";
+        return {
+          isError: false,
+          content: [
+            {
+              type: "text" as const,
+              text: `ok:${serverName}/${toolName}:${query}`,
+            },
+          ],
+        };
+      },
+    };
+
+    vi.spyOn(runtime, "getService").mockImplementation((type: string) => {
+      if (type === "mcp") return mcpService as object;
+      return null;
+    });
+
+    const task = await service.createCodeTask("MCP", "desc");
+    const taskId = task.id ?? "";
+
+    const subAgent: SubAgent = {
+      name: "test-agent",
+      type: "eliza",
+      cancel: () => {},
+      execute: async (_t, ctx) => {
+        expect(Array.isArray(ctx.mcpTools)).toBe(true);
+        expect(ctx.mcpTools?.[0]?.server).toBe("context7");
+        expect(ctx.callMcpTool).toBeDefined();
+        const r = await ctx.callMcpTool?.("context7", "query-docs", {
+          query: "hello",
+        });
+        expect(r?.success).toBe(true);
+        expect(r?.output).toContain("ok:context7/query-docs:hello");
+        return {
+          success: true,
+          summary: "ok",
+          filesCreated: [],
+          filesModified: [],
+        };
+      },
+    };
+
+    await service.startTaskExecution(taskId, {
+      subAgent,
+      tools: createNoopTools(),
+    });
+  });
+
+  test("provides active goals to sub-agent context when Goals plugin is loaded", async () => {
+    const goalsWrapper = {
+      getDataService: () => ({
+        getUncompletedGoals: async () => {
+          return [
+            {
+              id: "g1",
+              name: "Ship it",
+              description: "Ship the feature",
+              isCompleted: false,
+              tags: ["priority"],
+            },
+          ];
+        },
+      }),
+    };
+
+    vi.spyOn(runtime, "getService").mockImplementation((type: string) => {
+      if (type === "GOAL_DATA") return goalsWrapper as object;
+      return null;
+    });
+
+    const task = await service.createCodeTask("Goals", "desc");
+    const taskId = task.id ?? "";
+
+    const subAgent: SubAgent = {
+      name: "test-agent",
+      type: "eliza",
+      cancel: () => {},
+      execute: async (_t, ctx) => {
+        expect(ctx.goals?.length).toBe(1);
+        expect(ctx.goals?.[0]?.name).toBe("Ship it");
+        return {
+          success: true,
+          summary: "ok",
+          filesCreated: [],
+          filesModified: [],
+        };
+      },
+    };
+
+    await service.startTaskExecution(taskId, {
+      subAgent,
+      tools: createNoopTools(),
+    });
   });
 });

@@ -7,10 +7,9 @@ use tracing::{debug, error};
 use crate::config::OpenRouterConfig;
 use crate::error::{OpenRouterError, Result};
 use crate::types::{
-    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, EmbeddingParams,
-    EmbeddingResponse, EmbeddingsRequest, EmbeddingsResponseBody, ModelInfo, ModelsResponse,
-    ObjectGenerationParams, ObjectGenerationResponse, ResponseFormat, TextGenerationParams,
-    TextGenerationResponse,
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, EmbeddingParams, EmbeddingResponse,
+    EmbeddingsRequest, EmbeddingsResponseBody, ModelInfo, ModelsResponse, ObjectGenerationParams,
+    ObjectGenerationResponse, ResponseFormat, TextGenerationParams, TextGenerationResponse,
 };
 
 pub struct OpenRouterClient {
@@ -24,9 +23,8 @@ impl OpenRouterClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", config.api_key())).map_err(|e| {
-                OpenRouterError::config(format!("Invalid API key format: {}", e))
-            })?,
+            HeaderValue::from_str(&format!("Bearer {}", config.api_key()))
+                .map_err(|e| OpenRouterError::config(format!("Invalid API key format: {}", e)))?,
         );
         headers.insert(
             "HTTP-Referer",
@@ -381,4 +379,3 @@ mod tests {
         assert_eq!(result.unwrap()["message"], "hello");
     }
 }
-

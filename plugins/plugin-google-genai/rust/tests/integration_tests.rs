@@ -1,4 +1,3 @@
-
 use elizaos_plugin_google_genai::{
     EmbeddingParams, GoogleGenAIClient, GoogleGenAIConfig, ObjectGenerationParams,
     TextGenerationParams,
@@ -18,11 +17,15 @@ async fn test_generate_text_small() {
         return;
     };
 
-    let params = TextGenerationParams::new("What is 2+2? Answer with just the number.")
-        .with_max_tokens(10);
+    let params =
+        TextGenerationParams::new("What is 2+2? Answer with just the number.").with_max_tokens(10);
 
     let response = client.generate_text_small(params).await;
-    assert!(response.is_ok(), "Failed to generate text: {:?}", response.err());
+    assert!(
+        response.is_ok(),
+        "Failed to generate text: {:?}",
+        response.err()
+    );
 
     let response = response.unwrap();
     assert!(!response.text.is_empty());
@@ -39,7 +42,11 @@ async fn test_generate_text_large() {
     let params = TextGenerationParams::new("Say hello in French.");
 
     let response = client.generate_text_large(params).await;
-    assert!(response.is_ok(), "Failed to generate text: {:?}", response.err());
+    assert!(
+        response.is_ok(),
+        "Failed to generate text: {:?}",
+        response.err()
+    );
 
     let response = response.unwrap();
     assert!(!response.text.is_empty());
@@ -55,7 +62,11 @@ async fn test_generate_embedding() {
     let params = EmbeddingParams::new("Hello, world!");
 
     let response = client.generate_embedding(params).await;
-    assert!(response.is_ok(), "Failed to generate embedding: {:?}", response.err());
+    assert!(
+        response.is_ok(),
+        "Failed to generate embedding: {:?}",
+        response.err()
+    );
 
     let response = response.unwrap();
     assert!(!response.embedding.is_empty());
@@ -68,11 +79,16 @@ async fn test_generate_object_small() {
         return;
     };
 
-    let params =
-        ObjectGenerationParams::new("Create a JSON object with a 'greeting' field that says 'hello'.");
+    let params = ObjectGenerationParams::new(
+        "Create a JSON object with a 'greeting' field that says 'hello'.",
+    );
 
     let response = client.generate_object_small(params).await;
-    assert!(response.is_ok(), "Failed to generate object: {:?}", response.err());
+    assert!(
+        response.is_ok(),
+        "Failed to generate object: {:?}",
+        response.err()
+    );
 
     let response = response.unwrap();
     assert!(response.object.is_object());
@@ -97,7 +113,11 @@ async fn test_generate_object_with_schema() {
     let params = ObjectGenerationParams::new("Generate a person profile.").with_schema(schema);
 
     let response = client.generate_object_small(params).await;
-    assert!(response.is_ok(), "Failed to generate object: {:?}", response.err());
+    assert!(
+        response.is_ok(),
+        "Failed to generate object: {:?}",
+        response.err()
+    );
 
     let response = response.unwrap();
     assert!(response.object.get("name").is_some());

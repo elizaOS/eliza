@@ -151,9 +151,7 @@ class TestPersonInfo:
 class TestSceneDescription:
     """Tests for SceneDescription."""
 
-    def test_scene_description_creation(
-        self, sample_scene_description: SceneDescription
-    ) -> None:
+    def test_scene_description_creation(self, sample_scene_description: SceneDescription) -> None:
         """Test scene description creation."""
         assert sample_scene_description.timestamp == 1704067200000
         assert "person" in sample_scene_description.description.lower()
@@ -224,9 +222,7 @@ class TestVisionFrame:
 class TestEntityAttributes:
     """Tests for EntityAttributes."""
 
-    def test_entity_attributes_creation(
-        self, sample_entity_attributes: EntityAttributes
-    ) -> None:
+    def test_entity_attributes_creation(self, sample_entity_attributes: EntityAttributes) -> None:
         """Test entity attributes creation."""
         assert sample_entity_attributes.name == "Test Person"
         assert "blue shirt" in sample_entity_attributes.clothing
@@ -271,9 +267,7 @@ class TestScreenCapture:
 
     def test_screen_capture_creation(self) -> None:
         """Test screen capture creation."""
-        tile = ScreenTile(
-            id="tile-001", row=0, col=0, x=0, y=0, width=256, height=256
-        )
+        tile = ScreenTile(id="tile-001", row=0, col=0, x=0, y=0, width=256, height=256)
         capture = ScreenCapture(
             timestamp=1704067200000,
             width=1920,

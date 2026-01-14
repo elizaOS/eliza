@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 
 class TestMigrationService:
-
     @pytest.mark.asyncio
     async def test_initialization(self, migration_service: MigrationService) -> None:
         # Service should be initialized without errors
@@ -140,7 +139,6 @@ class TestMigrationService:
 
 
 class TestPluginSchemaNamespacing:
-
     def test_derive_schema_name(self) -> None:
         # Core plugin uses public schema
         assert derive_schema_name("@elizaos/plugin-sql") == "public"
@@ -207,7 +205,6 @@ class TestPluginSchemaNamespacing:
 
 
 class TestMigrationEdgeCases:
-
     @pytest.mark.asyncio
     async def test_empty_snapshot(self, migration_service: MigrationService) -> None:
         plugin_name = "@test/empty-snapshot"

@@ -40,15 +40,17 @@ pub async fn handle_object_small(
     params: ObjectGenerationParams,
 ) -> Result<serde_json::Value> {
     let client = ElizaCloudClient::new(config)?;
-    
+
     let enhanced_prompt = format!("{}\n\nRespond with valid JSON only.", params.prompt);
-    
-    let text = client.generate_text_small(TextGenerationParams {
-        prompt: enhanced_prompt,
-        temperature: params.temperature,
-        ..Default::default()
-    }).await?;
-    
+
+    let text = client
+        .generate_text_small(TextGenerationParams {
+            prompt: enhanced_prompt,
+            temperature: params.temperature,
+            ..Default::default()
+        })
+        .await?;
+
     parse_json_response(&text)
 }
 
@@ -57,14 +59,16 @@ pub async fn handle_object_large(
     params: ObjectGenerationParams,
 ) -> Result<serde_json::Value> {
     let client = ElizaCloudClient::new(config)?;
-    
+
     let enhanced_prompt = format!("{}\n\nRespond with valid JSON only.", params.prompt);
-    
-    let text = client.generate_text_large(TextGenerationParams {
-        prompt: enhanced_prompt,
-        temperature: params.temperature,
-        ..Default::default()
-    }).await?;
-    
+
+    let text = client
+        .generate_text_large(TextGenerationParams {
+            prompt: enhanced_prompt,
+            temperature: params.temperature,
+            ..Default::default()
+        })
+        .await?;
+
     parse_json_response(&text)
 }

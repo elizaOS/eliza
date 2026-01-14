@@ -2,9 +2,10 @@
 //!
 //! Providers that supply autonomous context information.
 
-use crate::bootstrap::error::PluginResult;
+use crate::error::PluginResult;
+use crate::runtime::IAgentRuntime;
+use crate::types::{Memory, ProviderResult, State};
 use crate::bootstrap::providers::Provider;
-use crate::bootstrap::types::{Memory, ProviderResult, State};
 
 /// Admin Chat Provider.
 ///
@@ -27,19 +28,20 @@ impl Default for AdminChatProvider {
 
 #[async_trait::async_trait]
 impl Provider for AdminChatProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "ADMIN_CHAT_HISTORY"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Provides recent conversation history with the admin user for autonomous context"
     }
 
-    fn private(&self) -> Option<bool> {
-        Some(false)
-    }
-
-    async fn get(&self, _message: &Memory, _state: &State) -> PluginResult<ProviderResult> {
+    async fn get(
+        &self,
+        _runtime: &dyn IAgentRuntime,
+        _message: &Memory,
+        _state: Option<&State>,
+    ) -> PluginResult<ProviderResult> {
         // Simplified implementation - full version would query admin messages from runtime
         Ok(ProviderResult::new("[ADMIN_CHAT_HISTORY]\nNo admin messages available in this context.\n[/ADMIN_CHAT_HISTORY]"))
     }
@@ -66,19 +68,20 @@ impl Default for AutonomyStatusProvider {
 
 #[async_trait::async_trait]
 impl Provider for AutonomyStatusProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "AUTONOMY_STATUS"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Provides current autonomy status for agent awareness in conversations"
     }
 
-    fn private(&self) -> Option<bool> {
-        Some(false)
-    }
-
-    async fn get(&self, _message: &Memory, _state: &State) -> PluginResult<ProviderResult> {
+    async fn get(
+        &self,
+        _runtime: &dyn IAgentRuntime,
+        _message: &Memory,
+        _state: Option<&State>,
+    ) -> PluginResult<ProviderResult> {
         // Simplified implementation - full version would query autonomy service status
         Ok(ProviderResult::new("[AUTONOMY_STATUS]\nCurrent status: 🔕 autonomy disabled\nThinking interval: 30 seconds\n[/AUTONOMY_STATUS]")
             .with_data("autonomyEnabled", false)

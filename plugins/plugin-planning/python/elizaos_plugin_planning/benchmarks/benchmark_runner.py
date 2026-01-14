@@ -189,18 +189,18 @@ class BenchmarkRunner:
             total_tests += realm_bench_results.total_tests
             total_passed += realm_bench_results.passed_tests
 
-            for result in realm_bench_results.results:
-                total_planning_time += result.metrics.get("planning_time", 0)
-                total_execution_time += result.metrics.get("execution_time", 0)
+            for realm_result in realm_bench_results.results:
+                total_planning_time += realm_result.metrics.get("planning_time", 0)
+                total_execution_time += realm_result.metrics.get("execution_time", 0)
                 test_count += 1
 
         if api_bank_results:
             total_tests += api_bank_results.total_tests
             total_passed += api_bank_results.passed_tests
 
-            for result in api_bank_results.results:
-                total_planning_time += result.metrics.get("planning_time", 0)
-                total_execution_time += result.metrics.get("execution_time", 0)
+            for api_result in api_bank_results.results:
+                total_planning_time += api_result.metrics.get("planning_time", 0)
+                total_execution_time += api_result.metrics.get("execution_time", 0)
                 test_count += 1
 
         overall_metrics = {
@@ -224,7 +224,7 @@ class BenchmarkRunner:
             api_bank_results=api_bank_results,
             overall_metrics=overall_metrics,
             comparison=comparison,
-            summary=            summary,
+            summary=summary,
         )
 
     def _generate_comparison(

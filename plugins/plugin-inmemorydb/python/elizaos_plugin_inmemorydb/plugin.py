@@ -37,5 +37,3 @@ plugin = Plugin(
     description="Pure in-memory, ephemeral database storage for elizaOS - no persistence",
     init=init_plugin,
 )
-
-

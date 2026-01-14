@@ -12,6 +12,6 @@
     "lib": ["ES2022"],
     "types": ["node", "bun-types"]
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "*.d.ts"],
   "exclude": ["node_modules"]
 }

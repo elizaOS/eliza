@@ -88,7 +88,9 @@ class TestShellHistoryProvider:
         assert result.data["historyCount"] == 1
 
     @pytest.mark.asyncio
-    async def test_get_provider_data_with_file_operations(self, provider: ShellHistoryProvider) -> None:
+    async def test_get_provider_data_with_file_operations(
+        self, provider: ShellHistoryProvider
+    ) -> None:
         """Test provider includes file operations in output."""
         history = [
             CommandHistoryEntry(

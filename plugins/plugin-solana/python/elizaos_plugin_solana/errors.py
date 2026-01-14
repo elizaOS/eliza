@@ -1,5 +1,3 @@
-
-
 class SolanaError(Exception):
     """Base error for Solana operations."""
 

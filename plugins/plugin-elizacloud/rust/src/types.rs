@@ -27,19 +27,19 @@ impl ElizaCloudConfig {
         Self {
             api_key: api_key.into(),
             base_url: "https://www.elizacloud.ai/api/v1".to_string(),
-            small_model: "gpt-4o-mini".to_string(),
-            large_model: "gpt-4o".to_string(),
+            small_model: "gpt-5-mini".to_string(),
+            large_model: "gpt-5".to_string(),
             embedding_model: "text-embedding-3-small".to_string(),
             embedding_dimensions: 1536,
             embedding_api_key: None,
             embedding_url: None,
-            image_description_model: "gpt-4o-mini".to_string(),
+            image_description_model: "gpt-5-mini".to_string(),
             image_description_max_tokens: 8192,
             image_generation_model: "dall-e-3".to_string(),
-            tts_model: "gpt-4o-mini-tts".to_string(),
+            tts_model: "gpt-5-mini-tts".to_string(),
             tts_voice: "nova".to_string(),
             tts_instructions: None,
-            transcription_model: "gpt-4o-mini-transcribe".to_string(),
+            transcription_model: "gpt-5-mini-transcribe".to_string(),
             experimental_telemetry: false,
         }
     }
@@ -126,7 +126,6 @@ pub struct ObjectGenerationParams {
     pub temperature: f32,
 }
 
-
 impl Default for ObjectGenerationParams {
     fn default() -> Self {
         Self {
@@ -187,7 +186,6 @@ fn default_quality() -> String {
 fn default_style() -> String {
     "vivid".to_string()
 }
-
 
 impl Default for ImageGenerationParams {
     fn default() -> Self {
@@ -266,7 +264,6 @@ fn default_mime_type() -> String {
     "audio/wav".to_string()
 }
 
-
 impl Default for TranscriptionParams {
     fn default() -> Self {
         Self {
@@ -333,9 +330,9 @@ mod tests {
         let config = ElizaCloudConfig::new("test_key");
         assert_eq!(config.api_key, "test_key");
         assert_eq!(config.base_url, "https://www.elizacloud.ai/api/v1");
-        assert_eq!(config.small_model, "gpt-4o-mini");
-        assert_eq!(config.large_model, "gpt-4o");
-        assert_eq!(config.transcription_model, "gpt-4o-mini-transcribe");
+        assert_eq!(config.small_model, "gpt-5-mini");
+        assert_eq!(config.large_model, "gpt-5");
+        assert_eq!(config.transcription_model, "gpt-5-mini-transcribe");
     }
 
     #[test]

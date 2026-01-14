@@ -175,9 +175,15 @@ pub struct EvaluationExample {
 }
 
 // Type aliases for handler functions (these will be trait objects in practice)
-/// Handler callback function type
-pub type HandlerCallback =
-    Arc<dyn Fn(Content) -> Pin<Box<dyn Future<Output = Vec<Memory>> + Send>> + Send + Sync>;
+/// Handler callback function type (async).
+///
+/// Used by message services and action pipelines to emit outbound messages via an application-defined
+/// side effect (e.g., post a reply on X) while still returning `Memory` entries for persistence.
+pub type HandlerCallback = Arc<
+    dyn Fn(Content) -> Pin<Box<dyn Future<Output = Result<Vec<Memory>, anyhow::Error>> + Send>>
+        + Send
+        + Sync,
+>;
 
 /// JSON Schema for action parameter validation
 #[derive(Clone, Debug, Serialize, Deserialize)]

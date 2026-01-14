@@ -6,6 +6,12 @@ Maps ART trajectories to ElizaOS trajectory format for:
 - Export to HuggingFace
 - GRPO grouping
 - RULER scoring integration
+
+This adapter provides end-to-end capture of the entire ElizaOS flow:
+- All LLM calls (prompts, responses, latency, tokens)
+- Provider accesses (game state, context, etc.)
+- Action executions (parameters, results, rewards)
+- Environment state at each step
 """
 
 import json
@@ -13,7 +19,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Callable, Protocol, runtime_checkable
 
 from elizaos_art.base import EpisodeResult, State, Trajectory
 
@@ -54,8 +60,23 @@ class TrajectoryLoggerService(Protocol):
         purpose: str,
         action_type: str | None = None,
         latency_ms: int | None = None,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+        reasoning: str | None = None,
+        messages: list[dict] | None = None,
     ) -> None:
         """Log an LLM call within a step."""
+        ...
+
+    def log_provider_access(
+        self,
+        step_id: str,
+        provider_name: str,
+        data: dict,
+        purpose: str,
+        query: dict | None = None,
+    ) -> None:
+        """Log a provider access within a step."""
         ...
 
     def complete_step(
@@ -68,6 +89,8 @@ class TrajectoryLoggerService(Protocol):
         success: bool,
         reward: float | None = None,
         error: str | None = None,
+        result: dict | None = None,
+        reasoning: str | None = None,
     ) -> None:
         """Complete a step with action outcome."""
         ...
@@ -122,11 +145,13 @@ class ElizaLLMCall:
     response: str
     temperature: float = 0.7
     max_tokens: int = 2048
-    purpose: str = "action"
+    purpose: str = "action"  # "action" | "reasoning" | "evaluation" | "response" | "other"
     action_type: str | None = None
     latency_ms: int | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    reasoning: str | None = None
+    messages: list[dict] | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -141,6 +166,54 @@ class ElizaLLMCall:
             "latencyMs": self.latency_ms,
             "promptTokens": self.prompt_tokens,
             "completionTokens": self.completion_tokens,
+            "reasoning": self.reasoning,
+            "messages": self.messages,
+        }
+
+
+@dataclass
+class ElizaProviderAccess:
+    """Provider access in ElizaOS format."""
+
+    provider_name: str
+    data: dict
+    purpose: str
+    query: dict | None = None
+    timestamp: int | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "providerName": self.provider_name,
+            "data": self.data,
+            "purpose": self.purpose,
+            "query": self.query,
+            "timestamp": self.timestamp or int(time.time() * 1000),
+        }
+
+
+@dataclass
+class ElizaActionAttempt:
+    """Action attempt in ElizaOS format."""
+
+    action_type: str
+    action_name: str
+    parameters: dict
+    success: bool
+    result: dict | None = None
+    error: str | None = None
+    reasoning: str | None = None
+    immediate_reward: float | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "actionType": self.action_type,
+            "actionName": self.action_name,
+            "parameters": self.parameters,
+            "success": self.success,
+            "result": self.result,
+            "error": self.error,
+            "reasoning": self.reasoning,
+            "immediateReward": self.immediate_reward,
         }
 
 
@@ -151,6 +224,12 @@ class ElizaTrajectoryLogger:
     When an external TrajectoryLoggerService is available, uses it.
     Otherwise, provides a standalone implementation that stores
     trajectories locally in ElizaOS-compatible format.
+    
+    This adapter provides end-to-end capture of:
+    - All LLM calls (prompts, responses, latency, tokens)
+    - Provider accesses (game state, context, etc.)
+    - Action executions (parameters, results, rewards)
+    - Environment state at each step
     """
 
     def __init__(
@@ -158,15 +237,34 @@ class ElizaTrajectoryLogger:
         agent_id: str,
         data_dir: str | Path = "./data/trajectories",
         external_logger: TrajectoryLoggerService | None = None,
+        auto_persist: bool = True,
     ):
         self.agent_id = agent_id
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._external_logger = external_logger
+        self._auto_persist = auto_persist
         
         # Active trajectories (when not using external logger)
         self._active_trajectories: dict[str, dict] = {}
         self._active_steps: dict[str, str] = {}  # trajectory_id -> current_step_id
+        
+        # Hooks for intercepting LLM calls
+        self._llm_call_hooks: list[Callable] = []
+        self._provider_hooks: list[Callable] = []
+        self._action_hooks: list[Callable] = []
+
+    def register_llm_hook(self, hook: Callable) -> None:
+        """Register a hook to intercept LLM calls."""
+        self._llm_call_hooks.append(hook)
+
+    def register_provider_hook(self, hook: Callable) -> None:
+        """Register a hook to intercept provider accesses."""
+        self._provider_hooks.append(hook)
+
+    def register_action_hook(self, hook: Callable) -> None:
+        """Register a hook to intercept action executions."""
+        self._action_hooks.append(hook)
 
     def start_trajectory(
         self,
@@ -251,6 +349,10 @@ class ElizaTrajectoryLogger:
         self._active_steps[trajectory_id] = step_id
         return step_id
 
+    def get_current_step_id(self, trajectory_id: str) -> str | None:
+        """Get the current active step ID for a trajectory."""
+        return self._active_steps.get(trajectory_id)
+
     def log_llm_call(
         self,
         step_id: str,
@@ -262,18 +364,29 @@ class ElizaTrajectoryLogger:
         else:
             call_dict = llm_call
 
+        # Notify hooks
+        for hook in self._llm_call_hooks:
+            try:
+                hook(step_id, call_dict)
+            except Exception:
+                pass
+
         if self._external_logger:
             self._external_logger.log_llm_call(
                 step_id=step_id,
-                model=call_dict["model"],
-                system_prompt=call_dict["systemPrompt"],
-                user_prompt=call_dict["userPrompt"],
-                response=call_dict["response"],
+                model=call_dict.get("model", "unknown"),
+                system_prompt=call_dict.get("systemPrompt", ""),
+                user_prompt=call_dict.get("userPrompt", ""),
+                response=call_dict.get("response", ""),
                 temperature=call_dict.get("temperature", 0.7),
                 max_tokens=call_dict.get("maxTokens", 2048),
                 purpose=call_dict.get("purpose", "action"),
                 action_type=call_dict.get("actionType"),
                 latency_ms=call_dict.get("latencyMs"),
+                prompt_tokens=call_dict.get("promptTokens"),
+                completion_tokens=call_dict.get("completionTokens"),
+                reasoning=call_dict.get("reasoning"),
+                messages=call_dict.get("messages"),
             )
             return
 
@@ -286,28 +399,96 @@ class ElizaTrajectoryLogger:
                     step["llmCalls"].append(call_dict)
                     return
 
+    def log_llm_call_by_trajectory_id(
+        self,
+        trajectory_id: str,
+        llm_call: ElizaLLMCall | dict,
+    ) -> None:
+        """Log an LLM call using trajectory ID (uses current step)."""
+        step_id = self._active_steps.get(trajectory_id)
+        if step_id:
+            self.log_llm_call(step_id, llm_call)
+
+    def log_provider_access(
+        self,
+        step_id: str,
+        provider_access: ElizaProviderAccess | dict,
+    ) -> None:
+        """Log a provider access within a step."""
+        if isinstance(provider_access, ElizaProviderAccess):
+            access_dict = provider_access.to_dict()
+        else:
+            access_dict = provider_access
+
+        # Notify hooks
+        for hook in self._provider_hooks:
+            try:
+                hook(step_id, access_dict)
+            except Exception:
+                pass
+
+        if self._external_logger:
+            self._external_logger.log_provider_access(
+                step_id=step_id,
+                provider_name=access_dict.get("providerName", "unknown"),
+                data=access_dict.get("data", {}),
+                purpose=access_dict.get("purpose", "context"),
+                query=access_dict.get("query"),
+            )
+            return
+
+        # Find the step
+        for trajectory in self._active_trajectories.values():
+            for step in trajectory["steps"]:
+                if step["stepId"] == step_id:
+                    access_dict["providerId"] = str(uuid.uuid4())
+                    access_dict["timestamp"] = int(time.time() * 1000)
+                    step["providerAccesses"].append(access_dict)
+                    return
+
+    def log_provider_access_by_trajectory_id(
+        self,
+        trajectory_id: str,
+        provider_access: ElizaProviderAccess | dict,
+    ) -> None:
+        """Log a provider access using trajectory ID (uses current step)."""
+        step_id = self._active_steps.get(trajectory_id)
+        if step_id:
+            self.log_provider_access(step_id, provider_access)
+
     def complete_step(
         self,
         trajectory_id: str,
         step_id: str,
-        action_type: str,
-        action_name: str,
-        parameters: dict,
-        success: bool,
+        action: ElizaActionAttempt | dict,
         reward: float | None = None,
-        error: str | None = None,
+        done: bool = False,
     ) -> None:
         """Complete a step with action outcome."""
+        if isinstance(action, ElizaActionAttempt):
+            action_dict = action.to_dict()
+        else:
+            action_dict = action
+
+        # Notify hooks
+        for hook in self._action_hooks:
+            try:
+                hook(trajectory_id, step_id, action_dict, reward)
+            except Exception:
+                pass
+
         if self._external_logger:
             self._external_logger.complete_step(
                 trajectory_id=trajectory_id,
                 step_id=step_id,
-                action_type=action_type,
-                action_name=action_name,
-                parameters=parameters,
-                success=success,
+                action_type=action_dict.get("actionType", "unknown"),
+                action_name=action_dict.get("actionName", "unknown"),
+                parameters=action_dict.get("parameters", {}),
+                success=action_dict.get("success", True),
                 reward=reward,
-                error=error,
+                error=action_dict.get("error"),
+                result=action_dict.get("result"),
+                reasoning=action_dict.get("reasoning"),
             )
             return
 
@@ -320,18 +501,27 @@ class ElizaTrajectoryLogger:
                 step["action"] = {
                     "attemptId": str(uuid.uuid4()),
                     "timestamp": int(time.time() * 1000),
-                    "actionType": action_type,
-                    "actionName": action_name,
-                    "parameters": parameters,
-                    "success": success,
-                    "error": error,
+                    **action_dict,
                 }
+                step["done"] = done
                 if reward is not None:
                     step["reward"] = reward
                     trajectory["totalReward"] += reward
                 break
 
         self._active_steps.pop(trajectory_id, None)
+
+    def complete_current_step(
+        self,
+        trajectory_id: str,
+        action: ElizaActionAttempt | dict,
+        reward: float | None = None,
+        done: bool = False,
+    ) -> None:
+        """Complete the current step for a trajectory."""
+        step_id = self._active_steps.get(trajectory_id)
+        if step_id:
+            self.complete_step(trajectory_id, step_id, action, reward, done)
 
     def end_trajectory(
         self,
@@ -361,16 +551,33 @@ class ElizaTrajectoryLogger:
         if final_metrics:
             trajectory["metrics"].update(final_metrics)
 
-        # Save to file
-        output_path = self.data_dir / f"{trajectory_id}.json"
-        with open(output_path, "w") as f:
-            json.dump(trajectory, f, indent=2)
+        # Save to file if auto-persist is enabled
+        if self._auto_persist:
+            output_path = self.data_dir / f"{trajectory_id}.json"
+            with open(output_path, "w") as f:
+                json.dump(trajectory, f, indent=2)
 
         return trajectory
 
     def get_active_trajectory(self, trajectory_id: str) -> dict | None:
         """Get an active trajectory by ID."""
         return self._active_trajectories.get(trajectory_id)
+
+    def get_all_active_trajectories(self) -> list[dict]:
+        """Get all active trajectories."""
+        return list(self._active_trajectories.values())
+
+    def load_trajectory(self, trajectory_id: str) -> dict | None:
+        """Load a persisted trajectory from disk."""
+        path = self.data_dir / f"{trajectory_id}.json"
+        if path.exists():
+            with open(path) as f:
+                return json.load(f)
+        return None
+
+    def list_trajectories(self) -> list[str]:
+        """List all persisted trajectory IDs."""
+        return [p.stem for p in self.data_dir.glob("*.json")]
 
 
 def convert_to_eliza_trajectory(
@@ -470,3 +677,86 @@ def _pair_messages(messages: list[dict]) -> list[dict]:
             current_pair = {"system": current_pair.get("system", "")}
 
     return pairs
+
+
+# Context manager for trajectory logging
+class TrajectoryLoggingContext:
+    """
+    Context manager for automatic trajectory lifecycle management.
+    
+    Usage:
+        ```python
+        logger = ElizaTrajectoryLogger(agent_id="my-agent")
+        
+        async with TrajectoryLoggingContext(
+            logger,
+            scenario_id="game-scenario-1",
+            metadata={"game": "2048"},
+        ) as ctx:
+            # ctx.trajectory_id is available
+            # Steps are automatically created/completed
+            await run_episode(ctx)
+        # Trajectory is automatically ended
+        ```
+    """
+
+    def __init__(
+        self,
+        logger: ElizaTrajectoryLogger,
+        scenario_id: str | None = None,
+        episode_id: str | None = None,
+        batch_id: str | None = None,
+        group_index: int | None = None,
+        metadata: dict | None = None,
+    ):
+        self._logger = logger
+        self._scenario_id = scenario_id
+        self._episode_id = episode_id
+        self._batch_id = batch_id
+        self._group_index = group_index
+        self._metadata = metadata
+        self.trajectory_id: str = ""
+        self._final_status = "completed"
+
+    async def __aenter__(self) -> "TrajectoryLoggingContext":
+        self.trajectory_id = self._logger.start_trajectory(
+            scenario_id=self._scenario_id,
+            episode_id=self._episode_id,
+            batch_id=self._batch_id,
+            group_index=self._group_index,
+            metadata=self._metadata,
+        )
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_type is not None:
+            self._final_status = "error"
+        self._logger.end_trajectory(self.trajectory_id, self._final_status)
+
+    def set_status(self, status: str) -> None:
+        """Set the final status before exit."""
+        self._final_status = status
+
+    def start_step(self, env_state: ElizaEnvironmentState | dict) -> str:
+        """Start a new step in the trajectory."""
+        return self._logger.start_step(self.trajectory_id, env_state)
+
+    def log_llm_call(self, step_id: str, llm_call: ElizaLLMCall | dict) -> None:
+        """Log an LLM call within a step."""
+        self._logger.log_llm_call(step_id, llm_call)
+
+    def log_provider_access(
+        self, step_id: str, provider_access: ElizaProviderAccess | dict
+    ) -> None:
+        """Log a provider access within a step."""
+        self._logger.log_provider_access(step_id, provider_access)
+
+    def complete_step(
+        self,
+        step_id: str,
+        action: ElizaActionAttempt | dict,
+        reward: float | None = None,
+        done: bool = False,
+    ) -> None:
+        """Complete a step with action outcome."""
+        self._logger.complete_step(self.trajectory_id, step_id, action, reward, done)

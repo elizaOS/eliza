@@ -121,4 +121,3 @@ def get_s3_storage_plugin() -> S3StoragePlugin:
     if _s3_plugin_instance is None:
         _s3_plugin_instance = create_plugin()
     return _s3_plugin_instance
-

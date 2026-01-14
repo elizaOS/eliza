@@ -1,10 +1,10 @@
 #![allow(missing_docs)]
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::env;
+use std::path::PathBuf;
 
-use crate::error::{ShellError, Result};
+use crate::error::{Result, ShellError};
 use crate::path_utils::DEFAULT_FORBIDDEN_COMMANDS;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -79,7 +79,6 @@ pub struct ShellConfig {
     pub timeout_ms: u64,
     pub forbidden_commands: Vec<String>,
 }
-
 
 impl Default for ShellConfig {
     fn default() -> Self {
@@ -172,7 +171,8 @@ impl ShellConfigBuilder {
     }
 
     pub fn build(self) -> Result<ShellConfig> {
-        let allowed_directory = self.allowed_directory
+        let allowed_directory = self
+            .allowed_directory
             .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
         if !allowed_directory.exists() {

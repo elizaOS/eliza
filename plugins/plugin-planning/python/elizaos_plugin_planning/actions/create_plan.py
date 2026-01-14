@@ -7,7 +7,6 @@ from elizaos_plugin_planning.actions.analyze_input import ActionExample
 
 @dataclass
 class CreatePlanAction:
-
     @property
     def name(self) -> str:
         return "CREATE_PLAN"
@@ -22,7 +21,9 @@ class CreatePlanAction:
 
     def _is_plan_request(self, text: str) -> bool:
         lower = text.lower()
-        return any(word in lower for word in ["plan", "project", "comprehensive", "organize", "strategy"])
+        return any(
+            word in lower for word in ["plan", "project", "comprehensive", "organize", "strategy"]
+        )
 
     async def validate(self, message_text: str) -> bool:
         return self._is_plan_request(message_text)

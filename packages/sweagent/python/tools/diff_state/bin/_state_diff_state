@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+
+def main() -> None:
+    import json
+    import os
+    from pathlib import Path
+    import subprocess
+
+    from registry import registry
+
+    state_path = Path("/root/state.json")
+    if state_path.exists():
+        state = json.loads(state_path.read_text())
+    else:
+        state = {}
+
+    repo_root = registry.get("ROOT", os.getenv("ROOT"))
+
+    patch_path = Path("/root/model.patch")
+
+    subprocess.run(
+        f"git add -A && git diff --cached > {patch_path}",
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        cwd=repo_root,
+    )
+
+    patch = patch_path.read_text(errors="backslashreplace")
+    state["diff"] = patch.strip()
+
+    state_path.write_text(json.dumps(state))
+
+
+def _del_diff():
+    from pathlib import Path
+    import json
+
+    state_path = Path("/root/state.json")
+    if state_path.exists():
+        state = json.loads(state_path.read_text())
+    else:
+        state = {}
+    state["diff"] = ""
+    state_path.write_text(json.dumps(state))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        _del_diff()

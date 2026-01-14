@@ -12,4 +12,3 @@ pub fn init_wasm() {
         console_error_panic_hook::set_once();
     }
 }
-

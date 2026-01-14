@@ -114,20 +114,32 @@ const pluginTests = [
   },
 ];
 
+type ProcessEnvLike = Record<string, string | undefined>;
+
+function getProcessEnv(): ProcessEnvLike {
+  // In browsers, `process` is not defined (and we must not reference it unguarded).
+  if (typeof process === "undefined") {
+    return {};
+  }
+  return process.env as ProcessEnvLike;
+}
+
+const env = getProcessEnv();
+
 export const anthropicPlugin: Plugin = {
   name: "anthropic",
   description: "Anthropic plugin (supports text and object generation)",
 
   config: {
-    ["ANTHROPIC_API_KEY"]: process.env["ANTHROPIC_API_KEY"],
-    ["ANTHROPIC_SMALL_MODEL"]: process.env["ANTHROPIC_SMALL_MODEL"],
-    ["ANTHROPIC_LARGE_MODEL"]: process.env["ANTHROPIC_LARGE_MODEL"],
-    ["ANTHROPIC_EXPERIMENTAL_TELEMETRY"]: process.env["ANTHROPIC_EXPERIMENTAL_TELEMETRY"],
-    ["ANTHROPIC_BASE_URL"]: process.env["ANTHROPIC_BASE_URL"],
-    ["ANTHROPIC_BROWSER_BASE_URL"]: process.env["ANTHROPIC_BROWSER_BASE_URL"],
-    ["ANTHROPIC_COT_BUDGET"]: process.env["ANTHROPIC_COT_BUDGET"],
-    ["ANTHROPIC_COT_BUDGET_SMALL"]: process.env["ANTHROPIC_COT_BUDGET_SMALL"],
-    ["ANTHROPIC_COT_BUDGET_LARGE"]: process.env["ANTHROPIC_COT_BUDGET_LARGE"],
+    ["ANTHROPIC_API_KEY"]: env["ANTHROPIC_API_KEY"],
+    ["ANTHROPIC_SMALL_MODEL"]: env["ANTHROPIC_SMALL_MODEL"],
+    ["ANTHROPIC_LARGE_MODEL"]: env["ANTHROPIC_LARGE_MODEL"],
+    ["ANTHROPIC_EXPERIMENTAL_TELEMETRY"]: env["ANTHROPIC_EXPERIMENTAL_TELEMETRY"],
+    ["ANTHROPIC_BASE_URL"]: env["ANTHROPIC_BASE_URL"],
+    ["ANTHROPIC_BROWSER_BASE_URL"]: env["ANTHROPIC_BROWSER_BASE_URL"],
+    ["ANTHROPIC_COT_BUDGET"]: env["ANTHROPIC_COT_BUDGET"],
+    ["ANTHROPIC_COT_BUDGET_SMALL"]: env["ANTHROPIC_COT_BUDGET_SMALL"],
+    ["ANTHROPIC_COT_BUDGET_LARGE"]: env["ANTHROPIC_COT_BUDGET_LARGE"],
   },
 
   async init(config, runtime) {

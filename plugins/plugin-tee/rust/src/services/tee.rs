@@ -49,7 +49,8 @@ impl TEEService {
     }
 
     pub const SERVICE_TYPE: &'static str = "tee";
-    pub const CAPABILITY_DESCRIPTION: &'static str = "Trusted Execution Environment for secure key management";
+    pub const CAPABILITY_DESCRIPTION: &'static str =
+        "Trusted Execution Environment for secure key management";
 
     pub async fn derive_ecdsa_keypair(
         &self,
@@ -57,7 +58,9 @@ impl TEEService {
         subject: &str,
         agent_id: &str,
     ) -> Result<EcdsaKeypairResult> {
-        self.provider.derive_ecdsa_keypair(path, subject, agent_id).await
+        self.provider
+            .derive_ecdsa_keypair(path, subject, agent_id)
+            .await
     }
 
     pub async fn derive_ed25519_keypair(
@@ -66,13 +69,12 @@ impl TEEService {
         subject: &str,
         agent_id: &str,
     ) -> Result<Ed25519KeypairResult> {
-        self.provider.derive_ed25519_keypair(path, subject, agent_id).await
+        self.provider
+            .derive_ed25519_keypair(path, subject, agent_id)
+            .await
     }
 
     pub async fn raw_derive_key(&self, path: &str, subject: &str) -> Result<DeriveKeyResult> {
         self.provider.raw_derive_key(path, subject).await
     }
 }
-
-
-

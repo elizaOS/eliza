@@ -13,11 +13,10 @@ from pathlib import Path
 
 def _load_dotenv() -> None:
     """Best-effort load of repo/root .env (no external dependency)."""
-    candidates = [
-        Path.cwd() / ".env",
-        # repo_root/examples/atropos/reasoning/elizaos_atropos_reasoning/cli.py -> repo_root is parents[4]
-        Path(__file__).resolve().parents[4] / ".env",
-    ]
+    candidates: list[Path] = [Path.cwd() / ".env"]
+    # Also search upward from this file location (handles running from any cwd).
+    for parent in Path(__file__).resolve().parents:
+        candidates.append(parent / ".env")
 
     for path in candidates:
         if not path.is_file():
@@ -44,6 +43,9 @@ async def run_eval_mode(
     task_type: str = "math",
     difficulty: str = "medium",
     use_llm: bool = False,
+    log_trajectories: bool = False,
+    trajectory_output: str | None = None,
+    trajectory_format: str = "art",
 ) -> None:
     """Run evaluation mode."""
     _load_dotenv()
@@ -75,9 +77,28 @@ async def run_eval_mode(
     if use_llm:
         try:
             from elizaos.runtime import AgentRuntime
+            from elizaos.bootstrap import bootstrap_plugin
             from elizaos_plugin_openai import get_openai_plugin
 
-            runtime = AgentRuntime(plugins=[get_openai_plugin()])
+            plugins = [bootstrap_plugin, get_openai_plugin()]
+
+            # Optional: register trajectory logger plugin for end-to-end capture
+            if log_trajectories:
+                try:
+                    from elizaos_plugin_trajectory_logger import get_trajectory_logger_plugin
+
+                    plugins.append(get_trajectory_logger_plugin())
+                except ImportError:
+                    print("⚠️ Trajectory logger plugin not installed; disabling trajectory logging")
+                    log_trajectories = False
+
+            from elizaos_atropos_reasoning.eliza_plugin import (
+                create_reasoning_character,
+                get_reasoning_eliza_plugin,
+            )
+
+            plugins.append(get_reasoning_eliza_plugin())
+            runtime = AgentRuntime(character=create_reasoning_character(), plugins=plugins)
             await runtime.initialize()
             print("✅ LLM initialized")
         except ImportError:
@@ -91,14 +112,97 @@ async def run_eval_mode(
 
     print("\n📊 Running evaluation...\n")
 
+    traj_svc = None
+    if log_trajectories and runtime is not None:
+        traj_svc = runtime.get_service("trajectory_logger")
+        if traj_svc is None:
+            print("⚠️ Trajectory logger service not registered; disabling trajectory logging")
+            log_trajectories = False
+
     correct = 0
     for i in range(num_problems):
         state = await env.reset()
+        trajectory_id: str | None = None
+        if log_trajectories and traj_svc is not None:
+            try:
+                trajectory_id = traj_svc.start_trajectory(  # type: ignore[attr-defined]
+                    agent_id="reasoning_agent_001",
+                    scenario_id=f"atropos:reasoning:{task_type}",
+                    episode_id=f"problem_{i:04d}",
+                    metadata={
+                        "taskType": str(task_type),
+                        "difficulty": str(difficulty),
+                        "useLLM": bool(use_llm),
+                    },
+                )
+            except Exception:
+                trajectory_id = None
 
         # Get agent's response
+        step_num = 0
         while not state.done:
+            step_id: str | None = None
+            if log_trajectories and traj_svc is not None and trajectory_id is not None:
+                try:
+                    step_id = traj_svc.start_step(  # type: ignore[attr-defined]
+                        trajectory_id,
+                        agent_balance=0.0,
+                        agent_points=float(state.attempts),
+                        custom={
+                            "problemIndex": int(i),
+                            "stepNumber": int(step_num),
+                            "attempts": int(state.attempts),
+                            "question": str(state.problem.question)[:2000],
+                        },
+                    )
+                except Exception:
+                    step_id = None
+
+            token = None
+            if step_id is not None:
+                try:
+                    from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
+
+                    token = CURRENT_TRAJECTORY_STEP_ID.set(step_id)
+                except Exception:
+                    token = None
+
             response = await agent.reason(state)
             state = await env.step(response)
+
+            if token is not None:
+                try:
+                    from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
+
+                    CURRENT_TRAJECTORY_STEP_ID.reset(token)
+                except Exception:
+                    pass
+
+            if (
+                log_trajectories
+                and traj_svc is not None
+                and trajectory_id is not None
+                and step_id is not None
+            ):
+                try:
+                    traj_svc.complete_step(  # type: ignore[attr-defined]
+                        trajectory_id=trajectory_id,
+                        step_id=step_id,
+                        action_type="atropos",
+                        action_name="reasoning",
+                        parameters={"answer": str(response.answer)[:2000]},
+                        success=True,
+                        reward=float(state.reward),
+                        done=bool(state.done),
+                        result={
+                            "done": bool(state.done),
+                            "attempts": int(state.attempts),
+                        },
+                    )
+                except Exception:
+                    pass
+
+            step_num += 1
 
         # Record result
         result = env.get_episode_result()
@@ -110,12 +214,42 @@ async def run_eval_mode(
 
         print(f"  {i + 1}. {status} (Attempts: {result.attempts})")
 
+        if log_trajectories and traj_svc is not None and trajectory_id is not None:
+            try:
+                await traj_svc.end_trajectory(  # type: ignore[attr-defined]
+                    trajectory_id,
+                    status="completed" if result.is_correct else "terminated",
+                    final_metrics={
+                        "isCorrect": bool(result.is_correct),
+                        "attempts": int(result.attempts),
+                    },
+                )
+            except Exception:
+                pass
+
     # Final summary
     print("\n" + "=" * 50)
     print("EVALUATION RESULTS")
     print("=" * 50)
     print(f"Accuracy: {correct}/{num_problems} ({correct/num_problems:.1%})")
     print(agent.get_summary())
+
+    # Export trajectories if logging was enabled
+    if log_trajectories and traj_svc is not None:
+        try:
+            from elizaos_plugin_trajectory_logger.runtime_service import TrajectoryExportConfig
+
+            export_cfg = TrajectoryExportConfig(
+                dataset_name="atropos_reasoning_trajectories",
+                export_format=trajectory_format,  # type: ignore[arg-type]
+                output_dir=trajectory_output or "./trajectories",
+            )
+            export_result = traj_svc.export(export_cfg)  # type: ignore[attr-defined]
+            print("\n📦 Exported trajectories")
+            print(f"   - count: {export_result.trajectories_exported}")
+            print(f"   - file: {export_result.dataset_url}")
+        except Exception as e:
+            print(f"\n⚠️ Trajectory export failed: {e}")
 
     # Cleanup
     await env.close()
@@ -352,6 +486,23 @@ def main() -> None:
         action="store_true",
         help="Use LLM for reasoning",
     )
+    parser.add_argument(
+        "--trajectories",
+        action="store_true",
+        help="Enable trajectory logging for RL training export (requires trajectory logger plugin)",
+    )
+    parser.add_argument(
+        "--trajectory-format",
+        choices=["art", "grpo"],
+        default="art",
+        help="Trajectory export format (art=OpenPipe ART, grpo=GRPO groups)",
+    )
+    parser.add_argument(
+        "--trajectory-output",
+        type=str,
+        default="./trajectories",
+        help="Output directory for trajectory files (default: ./trajectories)",
+    )
 
     args = parser.parse_args()
 
@@ -363,7 +514,17 @@ def main() -> None:
 
     try:
         if args.mode == "eval":
-            asyncio.run(run_eval_mode(args.problems, args.task, args.difficulty, args.llm))
+            asyncio.run(
+                run_eval_mode(
+                    args.problems,
+                    args.task,
+                    args.difficulty,
+                    args.llm,
+                    log_trajectories=args.trajectories,
+                    trajectory_output=args.trajectory_output,
+                    trajectory_format=args.trajectory_format,
+                )
+            )
         elif args.mode == "interactive":
             asyncio.run(run_interactive_mode(args.task, args.difficulty))
         elif args.mode == "benchmark":

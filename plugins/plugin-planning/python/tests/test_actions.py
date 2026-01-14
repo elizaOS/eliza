@@ -29,7 +29,7 @@ class TestAnalyzeInputAction:
     async def test_handler(self, action: AnalyzeInputAction) -> None:
         params = {"text": "hello world test"}
         result = await action.handler(params)
-        
+
         assert result["action"] == "ANALYZE_INPUT"
         assert result["wordCount"] == 3
         assert result["sentiment"] == "neutral"
@@ -55,7 +55,7 @@ class TestProcessAnalysisAction:
     async def test_handler(self, action: ProcessAnalysisAction) -> None:
         params = {"analysis": {"wordCount": 10, "sentiment": "positive"}}
         result = await action.handler(params)
-        
+
         assert result["action"] == "PROCESS_ANALYSIS"
         assert "Thank you" in result["suggestedResponse"]
 
@@ -79,7 +79,7 @@ class TestExecuteFinalAction:
     async def test_handler(self, action: ExecuteFinalAction) -> None:
         params = {"decisions": {"requiresAction": True, "suggestedResponse": "Done!"}}
         result = await action.handler(params)
-        
+
         assert result["action"] == "EXECUTE_FINAL"
         assert result["executedAction"] == "RESPOND"
 
@@ -103,7 +103,7 @@ class TestCreatePlanAction:
     @pytest.mark.asyncio
     async def test_handler(self, action: CreatePlanAction) -> None:
         result = await action.handler({})
-        
+
         assert result["action"] == "CREATE_PLAN"
         assert "planId" in result
         assert result["totalPhases"] == 3

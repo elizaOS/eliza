@@ -1,668 +1,481 @@
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
-import type { ElizaPattern, ElizaRule } from "../types";
+import doctorScript from "../../shared/doctor.json";
+import type {
+  ElizaDoctorJson,
+  ElizaKeywordEntry,
+  ElizaScriptRule,
+  ElizaSessionState,
+} from "../types";
 
-const elizaPatterns: ElizaPattern[] = [
-  {
-    keyword: "sorry",
-    weight: 1,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "Please don't apologize.",
-          "Apologies are not necessary.",
-          "What feelings do you have when you apologize?",
-          "I've told you that apologies are not required.",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "remember",
-    weight: 5,
-    rules: [
-      {
-        pattern: /do you remember (.*)/i,
-        responses: [
-          "Did you think I would forget $1?",
-          "Why do you think I should recall $1 now?",
-          "What about $1?",
-          "You mentioned $1.",
-        ],
-      },
-      {
-        pattern: /i remember (.*)/i,
-        responses: [
-          "Do you often think of $1?",
-          "Does thinking of $1 bring anything else to mind?",
-          "What else do you remember?",
-          "Why do you remember $1 just now?",
-          "What in the present situation reminds you of $1?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "if",
-    weight: 3,
-    rules: [
-      {
-        pattern: /if (.*)/i,
-        responses: [
-          "Do you think it's likely that $1?",
-          "Do you wish that $1?",
-          "What do you know about $1?",
-          "Really, if $1?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "dreamed",
-    weight: 4,
-    rules: [
-      {
-        pattern: /i dreamed (.*)/i,
-        responses: [
-          "Really, $1?",
-          "Have you ever fantasized $1 while you were awake?",
-          "Have you ever dreamed $1 before?",
-          "What does that dream suggest to you?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "dream",
-    weight: 3,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "What does that dream suggest to you?",
-          "Do you dream often?",
-          "What persons appear in your dreams?",
-          "Do you believe that dreams have something to do with your problems?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "perhaps",
-    weight: 0,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "You don't seem quite certain.",
-          "Why the uncertain tone?",
-          "Can't you be more positive?",
-          "You aren't sure?",
-          "Don't you know?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "name",
-    weight: 15,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "I am not interested in names.",
-          "I've told you before, I don't care about names -- please continue.",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "hello",
-    weight: 0,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "How do you do. Please state your problem.",
-          "Hi. What seems to be your problem?",
-          "Hello. Tell me what's on your mind.",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "hi",
-    weight: 0,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "How do you do. Please state your problem.",
-          "Hi there. What brings you here today?",
-          "Hello. Tell me what's on your mind.",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "computer",
-    weight: 50,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "Do computers worry you?",
-          "Why do you mention computers?",
-          "What do you think machines have to do with your problem?",
-          "Don't you think computers can help people?",
-          "What about machines worries you?",
-          "What do you think about machines?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "am",
-    weight: 0,
-    rules: [
-      {
-        pattern: /am i (.*)/i,
-        responses: [
-          "Do you believe you are $1?",
-          "Would you want to be $1?",
-          "Do you wish I would tell you you are $1?",
-          "What would it mean if you were $1?",
-        ],
-      },
-      {
-        pattern: /i am (.*)/i,
-        responses: [
-          "Is it because you are $1 that you came to me?",
-          "How long have you been $1?",
-          "How do you feel about being $1?",
-          "Do you enjoy being $1?",
-          "Do you believe it is normal to be $1?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "are",
-    weight: 0,
-    rules: [
-      {
-        pattern: /are you (.*)/i,
-        responses: [
-          "Why are you interested in whether I am $1 or not?",
-          "Would you prefer if I weren't $1?",
-          "Perhaps I am $1 in your fantasies.",
-          "Do you sometimes think I am $1?",
-        ],
-      },
-      {
-        pattern: /(.*) are (.*)/i,
-        responses: [
-          "Did you think they might not be $2?",
-          "Would you like it if they were not $2?",
-          "What if they were not $2?",
-          "Possibly they are $2.",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "your",
-    weight: 0,
-    rules: [
-      {
-        pattern: /your (.*)/i,
-        responses: [
-          "Why are you concerned over my $1?",
-          "What about your own $1?",
-          "Are you worried about someone else's $1?",
-          "Really, my $1?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "was",
-    weight: 2,
-    rules: [
-      {
-        pattern: /was i (.*)/i,
-        responses: [
-          "What if you were $1?",
-          "Do you think you were $1?",
-          "Were you $1?",
-          "What would it mean if you were $1?",
-        ],
-      },
-      {
-        pattern: /i was (.*)/i,
-        responses: [
-          "Were you really?",
-          "Why do you tell me you were $1 now?",
-          "Perhaps I already know you were $1.",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "i",
-    weight: 0,
-    rules: [
-      {
-        pattern: /i (?:desire|want|need) (.*)/i,
-        responses: [
-          "What would it mean to you if you got $1?",
-          "Why do you want $1?",
-          "Suppose you got $1 soon?",
-          "What if you never got $1?",
-          "What would getting $1 mean to you?",
-        ],
-      },
-      {
-        pattern: /i am (?:sad|depressed|unhappy|sick)/i,
-        responses: [
-          "I am sorry to hear that you are feeling that way.",
-          "Do you think coming here will help you?",
-          "I'm sure it's not pleasant to feel that way.",
-          "Can you explain what made you feel this way?",
-        ],
-      },
-      {
-        pattern: /i am (?:happy|elated|glad|joyful)/i,
-        responses: [
-          "How have I helped you to feel this way?",
-          "What makes you feel this way just now?",
-          "Can you explain why you are suddenly feeling this way?",
-        ],
-      },
-      {
-        pattern: /i (?:believe|think) (.*)/i,
-        responses: [
-          "Do you really think so?",
-          "But you are not sure?",
-          "Do you really doubt that?",
-        ],
-      },
-      {
-        pattern: /i (?:feel|felt) (.*)/i,
-        responses: [
-          "Tell me more about such feelings.",
-          "Do you often feel $1?",
-          "Do you enjoy feeling $1?",
-          "Of what does feeling $1 remind you?",
-        ],
-      },
-      {
-        pattern: /i can'?t (.*)/i,
-        responses: [
-          "How do you know that you can't $1?",
-          "Have you tried?",
-          "Perhaps you could $1 now.",
-          "Do you really want to be able to $1?",
-        ],
-      },
-      {
-        pattern: /i don'?t (.*)/i,
-        responses: [
-          "Don't you really $1?",
-          "Why don't you $1?",
-          "Do you wish to be able to $1?",
-          "Does that trouble you?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "you",
-    weight: 0,
-    rules: [
-      {
-        pattern: /you remind me of (.*)/i,
-        responses: [
-          "What makes you think of $1?",
-          "What resemblance do you see?",
-          "What does that similarity suggest to you?",
-          "What other connections do you see?",
-        ],
-      },
-      {
-        pattern: /you are (.*)/i,
-        responses: [
-          "What makes you think I am $1?",
-          "Does it please you to believe I am $1?",
-          "Do you sometimes wish you were $1?",
-          "Perhaps you would like to be $1.",
-        ],
-      },
-      {
-        pattern: /you (.*) me/i,
-        responses: [
-          "Why do you think I $1 you?",
-          "You like to think I $1 you -- don't you?",
-          "What makes you think I $1 you?",
-          "Really, I $1 you?",
-        ],
-      },
-      {
-        pattern: /you (.*)/i,
-        responses: [
-          "We were discussing you -- not me.",
-          "Oh, I $1?",
-          "You're not really talking about me -- are you?",
-          "What are your feelings now?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "yes",
-    weight: 0,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: ["You seem quite positive.", "You are sure.", "I see.", "I understand."],
-      },
-    ],
-  },
-  {
-    keyword: "no",
-    weight: 0,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "Are you saying 'no' just to be negative?",
-          "You are being a bit negative.",
-          "Why not?",
-          "Why 'no'?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "my",
-    weight: 2,
-    rules: [
-      {
-        pattern: /my (?:mother|mom|father|dad|sister|brother|wife|husband|children|child)/i,
-        responses: [
-          "Tell me more about your family.",
-          "Who else in your family concerns you?",
-          "What else comes to mind when you think of your family?",
-        ],
-      },
-      {
-        pattern: /my (.*)/i,
-        responses: [
-          "Your $1?",
-          "Why do you say your $1?",
-          "Does that suggest anything else which belongs to you?",
-          "Is it important to you that your $1?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "can",
-    weight: 0,
-    rules: [
-      {
-        pattern: /can you (.*)/i,
-        responses: [
-          "You believe I can $1 don't you?",
-          "You want me to be able to $1.",
-          "Perhaps you would like to be able to $1 yourself.",
-        ],
-      },
-      {
-        pattern: /can i (.*)/i,
-        responses: [
-          "Whether or not you can $1 depends on you more than on me.",
-          "Do you want to be able to $1?",
-          "Perhaps you don't want to $1.",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "what",
-    weight: 0,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "Why do you ask?",
-          "Does that question interest you?",
-          "What is it you really want to know?",
-          "Are such questions much on your mind?",
-          "What answer would please you most?",
-          "What do you think?",
-          "What comes to your mind when you ask that?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "because",
-    weight: 0,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "Is that the real reason?",
-          "Don't any other reasons come to mind?",
-          "Does that reason seem to explain anything else?",
-          "What other reasons might there be?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "why",
-    weight: 0,
-    rules: [
-      {
-        pattern: /why don'?t you (.*)/i,
-        responses: [
-          "Do you believe I don't $1?",
-          "Perhaps I will $1 in good time.",
-          "Should you $1 yourself?",
-          "You want me to $1?",
-        ],
-      },
-      {
-        pattern: /why can'?t i (.*)/i,
-        responses: [
-          "Do you think you should be able to $1?",
-          "Do you want to be able to $1?",
-          "Do you believe this will help you to $1?",
-          "Have you any idea why you can't $1?",
-        ],
-      },
-      {
-        pattern: /.*/,
-        responses: [
-          "Why do you ask?",
-          "Does that question interest you?",
-          "What is it you really want to know?",
-          "Are such questions much on your mind?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "everyone",
-    weight: 2,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "Really, everyone?",
-          "Surely not everyone.",
-          "Can you think of anyone in particular?",
-          "Who, for example?",
-          "Are you thinking of a very special person?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "always",
-    weight: 1,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "Can you think of a specific example?",
-          "When?",
-          "What incident are you thinking of?",
-          "Really, always?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "alike",
-    weight: 10,
-    rules: [
-      {
-        pattern: /.*/,
-        responses: [
-          "In what way?",
-          "What resemblance do you see?",
-          "What does that similarity suggest to you?",
-          "What other connections do you see?",
-          "How?",
-        ],
-      },
-    ],
-  },
-  {
-    keyword: "like",
-    weight: 10,
-    rules: [
-      {
-        pattern: /.*(?:am|is|are|was) like.*/i,
-        responses: [
-          "In what way?",
-          "What resemblance do you see?",
-          "What does that similarity suggest to you?",
-          "What other connections do you see?",
-          "How?",
-        ],
-      },
-    ],
-  },
-];
+const script = doctorScript as ElizaDoctorJson;
+const substitutions = script.substitutions ?? {};
 
-const defaultResponses = [
-  "Very interesting.",
-  "I am not sure I understand you fully.",
-  "What does that suggest to you?",
-  "Please continue.",
-  "Go on.",
-  "Do you feel strongly about discussing such things?",
-  "Tell me more.",
-  "That is quite interesting.",
-  "Can you elaborate on that?",
-  "Why do you say that?",
-  "I see.",
-  "What does that mean to you?",
-  "How does that make you feel?",
-  "Let's explore that further.",
-  "Interesting. Please go on.",
-];
-
-const responseHistory: string[] = [];
-const MAX_HISTORY = 10;
-
-function getRandomResponse(responses: string[]): string {
-  const availableResponses = responses.filter((r) => !responseHistory.includes(r));
-  const pool = availableResponses.length > 0 ? availableResponses : responses;
-
-  const response = pool[Math.floor(Math.random() * pool.length)];
-
-  responseHistory.push(response);
-  if (responseHistory.length > MAX_HISTORY) {
-    responseHistory.shift();
-  }
-
-  return response;
-}
-
-const reflections: Record<string, string> = {
-  am: "are",
-  was: "were",
-  i: "you",
-  "i'd": "you would",
-  "i've": "you have",
-  "i'll": "you will",
-  my: "your",
-  are: "am",
-  "you've": "I have",
-  "you'll": "I will",
-  your: "my",
-  yours: "mine",
-  you: "me",
-  me: "you",
-  myself: "yourself",
-  yourself: "myself",
-  "i'm": "you are",
+const sessionStateByRuntime = new WeakMap<IAgentRuntime, ElizaSessionState>();
+const defaultStandaloneSession: ElizaSessionState = {
+  limit: 1,
+  memories: [],
+  reassemblyIndex: new Map<string, number>(),
 };
 
-export function reflect(text: string): string {
-  const words = text.toLowerCase().split(/\s+/);
-  const reflected = words.map((word) => reflections[word] ?? word);
-  return reflected.join(" ");
+function getOrCreateSession(runtime: IAgentRuntime): ElizaSessionState {
+  const existing = sessionStateByRuntime.get(runtime);
+  if (existing) return existing;
+  const created: ElizaSessionState = {
+    limit: 1,
+    memories: [],
+    reassemblyIndex: new Map<string, number>(),
+  };
+  sessionStateByRuntime.set(runtime, created);
+  return created;
 }
 
-export function generateElizaResponse(input: string): string {
-  const normalizedInput = input.toLowerCase().trim();
+type Token =
+  | { kind: "wildcard" }
+  | { kind: "literal"; value: string }
+  | { kind: "alt"; options: readonly string[] }
+  | { kind: "group"; groupName: string };
 
-  if (!normalizedInput) {
-    return "I didn't catch that. Could you please repeat?";
+function normalizeRawInput(input: string): string {
+  return input
+    .trim()
+    .replace(/[!?;:]+/g, " ")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/\s+/g, " ");
+}
+
+function tokenizeWords(text: string): string[] {
+  const cleaned = normalizeRawInput(text)
+    .replace(/[.,"()]/g, " ")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return [];
+  const canonicalizationKeys = new Set(["dont", "cant", "wont", "dreamed", "dreams", "mom", "dad"]);
+  return cleaned
+    .split(" ")
+    .filter((w) => w.length > 0)
+    .map((w) =>
+      canonicalizationKeys.has(w) ? (substitutions[w] ?? script.reflections[w] ?? w) : w
+    );
+}
+
+function reflectWords(words: readonly string[]): string[] {
+  return words.map((w) => script.reflections[w] ?? w);
+}
+
+function reflectText(text: string): string {
+  return reflectWords(tokenizeWords(text)).join(" ");
+}
+
+function substituteWordsForMatching(words: readonly string[]): string[] {
+  // Approximate classic keyword substitutions. `doctor.json` encodes the script's "=" substitutions
+  // via `reflections` values (e.g. "my" -> "your", "you're" -> "I am").
+  // We apply these substitutions for matching (not for keyword scanning), and normalize to lowercase.
+  const out: string[] = [];
+  for (const w of words) {
+    const mapped = substitutions[w] ?? script.reflections[w];
+    if (!mapped) {
+      out.push(w.toLowerCase());
+      continue;
+    }
+
+    const parts = mapped
+      .toLowerCase()
+      .split(/\s+/g)
+      .filter((p) => p.length > 0);
+
+    if (parts.length === 0) out.push(w.toLowerCase());
+    else out.push(...parts);
   }
+  return out;
+}
 
-  const matches: Array<{ pattern: ElizaPattern; rule: ElizaRule }> = [];
+function tokenizeForScan(input: string): string[] {
+  // Keep ',' and '.' as clause delimiters, and treat 'but' as a delimiter word.
+  const cleaned = normalizeRawInput(input)
+    .replace(/[.,]/g, " | ")
+    .replace(/["()]/g, " ")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return [];
+  const canonicalizationKeys = new Set(["dont", "cant", "wont", "dreamed", "dreams", "mom", "dad"]);
+  return cleaned
+    .split(" ")
+    .filter((w) => w.length > 0)
+    .map((w) =>
+      canonicalizationKeys.has(w) ? (substitutions[w] ?? script.reflections[w] ?? w) : w
+    );
+}
 
-  for (const pattern of elizaPatterns) {
-    if (normalizedInput.includes(pattern.keyword)) {
-      for (const rule of pattern.rules) {
-        if (rule.pattern.test(normalizedInput)) {
-          matches.push({ pattern, rule });
-        }
-      }
+function splitIntoClauses(words: readonly string[]): string[][] {
+  const clauses: string[][] = [];
+  let current: string[] = [];
+
+  for (const w of words) {
+    if (w === "|" || w === "but") {
+      if (current.length > 0) clauses.push(current);
+      current = [];
+      continue;
+    }
+    current.push(w);
+  }
+  if (current.length > 0) clauses.push(current);
+  return clauses;
+}
+
+function buildKeywordIndex(keywords: readonly ElizaKeywordEntry[]): Map<string, ElizaKeywordEntry> {
+  const map = new Map<string, ElizaKeywordEntry>();
+  for (const entry of keywords) {
+    for (const k of entry.keyword) {
+      map.set(k.toLowerCase(), entry);
     }
   }
+  return map;
+}
 
-  if (matches.length > 0) {
-    matches.sort((a, b) => b.pattern.weight - a.pattern.weight);
-    const best = matches[0];
+const keywordIndex = buildKeywordIndex(script.keywords);
 
-    let response = getRandomResponse(best.rule.responses);
+interface FoundKeyword {
+  entry: ElizaKeywordEntry;
+  keyword: string;
+  position: number;
+}
 
-    const match = normalizedInput.match(best.rule.pattern);
-    if (match) {
-      for (let i = 1; i < match.length; i++) {
-        const captured = match[i] ? reflect(match[i]) : "";
-        response = response.replace(`$${i}`, captured);
+function findKeywordsInClause(words: readonly string[]): FoundKeyword[] {
+  const found: FoundKeyword[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    const entry = keywordIndex.get(w);
+    if (!entry) continue;
+    found.push({ entry, keyword: w, position: i });
+  }
+  return found;
+}
+
+function selectKeywordStack(words: readonly string[]): {
+  stack: FoundKeyword[];
+  clauseWords: string[];
+} {
+  // Recreate keyword-stack behavior: choose best clause (left-to-right) that contains any keyword,
+  // then order by precedence desc, tie-break by earliest position.
+  const clauses = splitIntoClauses(words);
+  for (const clause of clauses) {
+    const found = findKeywordsInClause(clause);
+    if (found.length === 0) continue;
+    const stack = [...found].sort((a, b) => {
+      if (b.entry.precedence !== a.entry.precedence) return b.entry.precedence - a.entry.precedence;
+      return a.position - b.position;
+    });
+    return { stack, clauseWords: clause };
+  }
+  return { stack: [], clauseWords: [] };
+}
+
+function parseDecomposition(pattern: string): Token[] {
+  // Pattern language used by doctor.json:
+  // - "*" wildcard (matches 0+ words)
+  // - "[a b c]" one-of alternatives
+  // - "@group" group reference (e.g. @belief)
+  // - otherwise: literal word
+  const raw = pattern.trim().replace(/\s+/g, " ").toLowerCase();
+  if (!raw) return [];
+
+  const tokens: Token[] = [];
+  let i = 0;
+  while (i < raw.length) {
+    while (i < raw.length && raw[i] === " ") i++;
+    if (i >= raw.length) break;
+
+    const ch = raw[i];
+    if (ch === "*") {
+      tokens.push({ kind: "wildcard" });
+      i++;
+      continue;
+    }
+    if (ch === "@") {
+      let j = i + 1;
+      while (j < raw.length && raw[j] !== " ") j++;
+      const groupName = raw.slice(i + 1, j).trim();
+      if (groupName.length > 0) tokens.push({ kind: "group", groupName });
+      i = j;
+      continue;
+    }
+    if (ch === "[") {
+      const close = raw.indexOf("]", i + 1);
+      if (close === -1) {
+        // Malformed; treat the rest as literal.
+        const rest = raw.slice(i).trim();
+        if (rest.length > 0) tokens.push({ kind: "literal", value: rest });
+        break;
       }
+      const inside = raw.slice(i + 1, close).trim();
+      const options = inside.length > 0 ? inside.split(/\s+/g) : [];
+      tokens.push({ kind: "alt", options });
+      i = close + 1;
+      continue;
     }
 
-    response = response.replace(/\$\d+/g, "that");
+    // literal word
+    let j = i;
+    while (j < raw.length && raw[j] !== " ") j++;
+    const word = raw.slice(i, j).trim();
+    if (word.length > 0) tokens.push({ kind: "literal", value: word });
+    i = j;
+  }
+  return tokens;
+}
 
-    return response;
+function tokenMatchesWord(token: Token, word: string): boolean {
+  if (token.kind === "literal") return token.value === word;
+  if (token.kind === "alt") return token.options.includes(word);
+  if (token.kind === "group") {
+    const groupWords = script.groups[token.groupName];
+    if (!groupWords) return false;
+    return groupWords.includes(word);
+  }
+  return false;
+}
+
+interface MatchResult {
+  /** Parts aligned to pattern tokens, 1-indexed in reassembly strings as $1, $2... */
+  parts: string[];
+}
+
+function matchDecomposition(
+  tokens: readonly Token[],
+  words: readonly string[]
+): MatchResult | null {
+  // Backtracking match for wildcard "*" tokens.
+  // We produce `parts` array where parts[i] is the matched text for tokens[i].
+  const parts: string[] = new Array(tokens.length).fill("");
+
+  function backtrack(ti: number, wi: number): boolean {
+    if (ti === tokens.length) return wi === words.length;
+
+    const token = tokens[ti];
+    if (token.kind === "wildcard") {
+      // Try minimal to maximal consumption.
+      for (let end = wi; end <= words.length; end++) {
+        parts[ti] = words.slice(wi, end).join(" ").trim();
+        if (backtrack(ti + 1, end)) return true;
+      }
+      return false;
+    }
+
+    if (wi >= words.length) return false;
+    const w = words[wi];
+    if (!tokenMatchesWord(token, w)) return false;
+
+    parts[ti] = w;
+    return backtrack(ti + 1, wi + 1);
   }
 
-  return getRandomResponse(defaultResponses);
+  if (!backtrack(0, 0)) return null;
+  return { parts };
+}
+
+function applyReassembly(template: string, parts: readonly string[]): string {
+  // Replace $N with reflected part N (1-indexed).
+  return template.replace(/\$(\d+)/g, (_m, nRaw: string) => {
+    const n = Number.parseInt(nRaw, 10);
+    if (!Number.isFinite(n) || n <= 0) return "";
+    const part = parts[n - 1] ?? "";
+    return reflectText(part);
+  });
+}
+
+function stableKeyForRule(keyword: string, rule: ElizaScriptRule, ruleIndex: number): string {
+  return `${keyword}::${ruleIndex}::${rule.decomposition}`;
+}
+
+function pickNextReassembly(
+  session: ElizaSessionState,
+  keyword: string,
+  rule: ElizaScriptRule,
+  ruleIndex: number
+): string {
+  const key = stableKeyForRule(keyword, rule, ruleIndex);
+  const current = session.reassemblyIndex.get(key) ?? 0;
+  const idx = current % rule.reassembly.length;
+  session.reassemblyIndex.set(key, (current + 1) % Math.max(1, rule.reassembly.length));
+  return rule.reassembly[idx] ?? "";
+}
+
+function computeWordHash(word: string): number {
+  // Deterministic small hash (not SLIP HASH, but stable enough for memory rule selection).
+  let h = 0;
+  for (let i = 0; i < word.length; i++) {
+    h = (h * 31 + word.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+function chooseDefaultResponse(session: ElizaSessionState): string {
+  if (session.limit === 4 && session.memories.length > 0) {
+    const m = session.memories.shift();
+    if (m) return m;
+  }
+  // Cycle through NONE/default like classic: doctor.json provides the NONE list as `default`.
+  const idx = (session.reassemblyIndex.get("__default__") ?? 0) % script.default.length;
+  session.reassemblyIndex.set("__default__", idx + 1);
+  return script.default[idx] ?? script.default[0] ?? "Please go on.";
+}
+
+function isGoodbye(words: readonly string[]): boolean {
+  if (words.length === 0) return false;
+  const first = words[0];
+  return script.goodbyes.some((g) => tokenizeWords(g)[0] === first);
+}
+
+function resolveRedirectKeyword(s: string): string | null {
+  const trimmed = s.trim();
+  if (!trimmed.startsWith("=")) return null;
+  const k = trimmed.slice(1).trim().toLowerCase();
+  return k.length > 0 ? k : null;
+}
+
+function parsePreDirective(s: string): { preText: string; redirect: string } | null {
+  // Format: ":pre <text> (=keyword)"
+  const m = s.trim().match(/^:pre\s+(.+?)\s+\(=\s*([^)]+)\s*\)\s*$/i);
+  if (!m) return null;
+  const preText = m[1]?.trim() ?? "";
+  const redirect = m[2]?.trim().toLowerCase() ?? "";
+  if (!preText || !redirect) return null;
+  return { preText, redirect };
+}
+
+function isNewKeyDirective(s: string): boolean {
+  return s.trim().toLowerCase() === ":newkey" || s.trim().toLowerCase() === "newkey";
+}
+
+type RuleEvalResult =
+  | { kind: "no_match" }
+  | { kind: "newkey" }
+  | { kind: "redirect"; keyword: string }
+  | { kind: "pre"; preText: string; redirect: string; parts: readonly string[] }
+  | { kind: "response"; text: string };
+
+function tryRulesForKeyword(
+  session: ElizaSessionState,
+  keyword: string,
+  entry: ElizaKeywordEntry,
+  words: readonly string[]
+): RuleEvalResult {
+  for (let i = 0; i < entry.rules.length; i++) {
+    const rule = entry.rules[i];
+    const tokens = parseDecomposition(rule.decomposition);
+    const match = matchDecomposition(tokens, words);
+    if (!match) continue;
+
+    const picked = pickNextReassembly(session, keyword, rule, i);
+    if (isNewKeyDirective(picked)) return { kind: "newkey" };
+
+    const pre = parsePreDirective(picked);
+    if (pre)
+      return { kind: "pre", preText: pre.preText, redirect: pre.redirect, parts: match.parts };
+
+    const redirect = resolveRedirectKeyword(picked);
+    if (redirect) return { kind: "redirect", keyword: redirect };
+
+    return {
+      kind: "response",
+      text: applyReassembly(picked, match.parts).replace(/\s+/g, " ").trim(),
+    };
+  }
+  return { kind: "no_match" };
+}
+
+function maybeRecordMemory(
+  session: ElizaSessionState,
+  entry: ElizaKeywordEntry,
+  words: readonly string[]
+): void {
+  const memoryRules = entry.memory;
+  if (!memoryRules || memoryRules.length === 0) return;
+  const last = words.length > 0 ? words[words.length - 1] : "";
+  const chosenIdx = computeWordHash(last) % memoryRules.length;
+  const chosen = memoryRules[chosenIdx];
+  if (!chosen) return;
+
+  const tokens = parseDecomposition(chosen.decomposition);
+  const match = matchDecomposition(tokens, words);
+  if (!match) return;
+
+  // In the original script, MEMORY has 4 patterns; in doctor.json it's represented as one rule with 4 reassemblies.
+  const responseIdx = computeWordHash(last) % Math.max(1, chosen.reassembly.length);
+  const template = chosen.reassembly[responseIdx] ?? chosen.reassembly[0] ?? "";
+  const response = applyReassembly(template, match.parts).replace(/\s+/g, " ").trim();
+  if (response.length > 0) session.memories.push(response);
+}
+
+export function reflect(text: string): string {
+  return reflectText(text);
+}
+
+export function generateElizaResponse(input: string): string;
+export function generateElizaResponse(runtime: IAgentRuntime, input: string): string;
+export function generateElizaResponse(arg1: IAgentRuntime | string, arg2?: string): string {
+  const runtime = typeof arg1 === "string" ? null : arg1;
+  const input = typeof arg1 === "string" ? arg1 : (arg2 ?? "");
+
+  const session = runtime ? getOrCreateSession(runtime) : defaultStandaloneSession;
+
+  // LIMIT increments each user input (1..4 cycle).
+  session.limit = session.limit === 4 ? 1 : ((session.limit + 1) as 2 | 3 | 4);
+
+  const scanWords = tokenizeForScan(input);
+  const words = tokenizeWords(input);
+  if (words.length === 0) return chooseDefaultResponse(session);
+
+  if (isGoodbye(words)) {
+    return script.goodbyes[0] ?? "Goodbye.";
+  }
+
+  const { stack: keywordStack, clauseWords } = selectKeywordStack(scanWords);
+  if (keywordStack.length === 0 || clauseWords.length === 0) {
+    return chooseDefaultResponse(session);
+  }
+
+  const matchWords = substituteWordsForMatching(clauseWords);
+
+  // Try keywords in order; NEWKEY forces trying the next one.
+  for (const found of keywordStack) {
+    maybeRecordMemory(session, found.entry, matchWords);
+    const result = tryRulesForKeyword(session, found.keyword, found.entry, matchWords);
+    if (result.kind === "no_match") continue;
+    if (result.kind === "newkey") continue;
+
+    if (result.kind === "pre") {
+      const preApplied = applyReassembly(result.preText, result.parts).replace(/\s+/g, " ").trim();
+      // PRE constructs a new input phrase that should be fed directly into the target keyword's
+      // decomposition rules (without additional global substitutions).
+      const preWords = tokenizeWords(preApplied);
+      const redirectedEntry = keywordIndex.get(result.redirect);
+      if (!redirectedEntry) continue;
+      const redirected = tryRulesForKeyword(session, result.redirect, redirectedEntry, preWords);
+      if (redirected.kind === "response") return redirected.text;
+      continue;
+    }
+
+    if (result.kind === "redirect") {
+      const redirectedEntry = keywordIndex.get(result.keyword);
+      if (!redirectedEntry) continue;
+      const redirected = tryRulesForKeyword(session, result.keyword, redirectedEntry, matchWords);
+      if (redirected.kind === "response") return redirected.text;
+      continue;
+    }
+
+    if (result.kind === "response") return result.text;
+  }
+
+  return chooseDefaultResponse(session);
 }
 
 export function getElizaGreeting(): string {
-  return "Hello. I am ELIZA, a Rogerian psychotherapist simulation. How are you feeling today?";
+  return (
+    script.greetings[1] ?? script.greetings[0] ?? "How do you do. Please tell me your problem."
+  );
 }
 
 function extractUserMessage(prompt: string): string {
@@ -675,7 +488,7 @@ export async function handleTextLarge(
   params: GenerateTextParams
 ): Promise<string> {
   const input = extractUserMessage(params.prompt);
-  return generateElizaResponse(input);
+  return generateElizaResponse(_runtime, input);
 }
 
 export async function handleTextSmall(

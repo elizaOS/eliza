@@ -310,14 +310,16 @@ export async function handleMentionReceived(
       callback,
     );
 
-    runtime.logger.debug(
-      {
-        didRespond: result.didRespond,
-        mode: result.mode,
-        actionsExecuted: result.state?.data?.actionResults?.length || 0,
-      },
-      "elizaOS pipeline completed",
-    );
+    if (result) {
+      runtime.logger.debug(
+        {
+          didRespond: result.didRespond,
+          mode: result.mode,
+          actionsExecuted: result.state?.data?.actionResults?.length || 0,
+        },
+        "elizaOS pipeline completed",
+      );
+    }
   } catch (error) {
     runtime.logger.error(
       { error: error instanceof Error ? error.message : String(error) },

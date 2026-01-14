@@ -71,9 +71,7 @@ class TelegramService:
     def on_message(self, handler: Callable[[TelegramMessagePayload], None]) -> None:
         self._message_handlers.append(handler)
 
-    def on_event(
-        self, event_type: TelegramEventType, handler: Callable[..., None]
-    ) -> None:
+    def on_event(self, event_type: TelegramEventType, handler: Callable[..., None]) -> None:
         if event_type not in self._event_handlers:
             self._event_handlers[event_type] = []
         self._event_handlers[event_type].append(handler)
@@ -93,9 +91,7 @@ class TelegramService:
 
                 keyboard = []
                 for button in content.buttons:
-                    keyboard.append(
-                        [InlineKeyboardButton(text=button.text, url=button.url)]
-                    )
+                    keyboard.append([InlineKeyboardButton(text=button.text, url=button.url)])
                 reply_markup = InlineKeyboardMarkup(keyboard)
 
             await self._bot.send_message(

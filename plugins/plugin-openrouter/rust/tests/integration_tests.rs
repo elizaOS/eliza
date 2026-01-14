@@ -4,7 +4,7 @@ use elizaos_plugin_openrouter::{
 };
 
 fn should_run_integration_tests() -> bool {
-    std::env::var("OPENROUTER_INTEGRATION_TESTS").map_or(false, |v| v == "1")
+    std::env::var("OPENROUTER_INTEGRATION_TESTS").is_ok_and(|v| v == "1")
 }
 
 fn get_client() -> OpenRouterClient {
@@ -62,8 +62,7 @@ async fn test_generate_object_small() {
     }
 
     let client = get_client();
-    let params =
-        ObjectGenerationParams::new("Generate a simple JSON object with a message field");
+    let params = ObjectGenerationParams::new("Generate a simple JSON object with a message field");
     let response = client.generate_object_small(params).await;
 
     assert!(response.is_ok());
@@ -85,4 +84,3 @@ async fn test_generate_embedding() {
     let response = response.unwrap();
     assert!(!response.embedding.is_empty());
 }
-

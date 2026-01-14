@@ -17,7 +17,7 @@ class GuildInfoProvider:
     def description(self) -> str:
         return "Provides information about the current Discord guild/server, including name, members, and channels."
 
-    async def get(self, context: "ProviderContext") -> dict:
+    async def get(self, context: "ProviderContext") -> dict[str, object]:
         """Get the provider's data for the current context."""
         if context.guild_id:
             # This would be populated from the Discord service when running
@@ -57,5 +57,3 @@ class GuildInfoProviderCamel(GuildInfoProvider):
     @property
     def name(self) -> str:
         return "guildInfo"
-
-

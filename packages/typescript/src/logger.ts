@@ -285,47 +285,44 @@ const serverId =
     : Math.random().toString(36).slice(2, 10));
 
 // Configure sensitive data redaction
-// Paths use wildcards to match nested objects: *.password matches { user: { password: 'x' } }
-const redact = fastRedact({
-  paths: [
-    "password",
-    "passwd",
-    "secret",
-    "token",
-    "apiKey",
-    "api_key",
-    "apiSecret",
-    "api_secret",
-    "authorization",
-    "auth",
-    "credential",
-    "credentials",
-    "privateKey",
-    "private_key",
-    "accessToken",
-    "access_token",
-    "refreshToken",
-    "refresh_token",
-    "cookie",
-    "session",
-    "jwt",
-    "bearer",
-    // Wildcard paths for nested objects
-    "*.password",
-    "*.secret",
-    "*.token",
-    "*.apiKey",
-    "*.api_key",
-    "*.authorization",
-    "*.credential",
-    "*.credentials",
-    "*.privateKey",
-    "*.accessToken",
-    "*.refreshToken",
-  ],
-  serialize: false, // Don't stringify, just redact in place
-  censor: "[REDACTED]",
-});
+// fast-redact requires bracket notation for top-level keys or wildcard paths for nested
+// Using wildcard paths that match both top-level and nested objects
+let redact: ReturnType<typeof fastRedact>;
+try {
+  redact = fastRedact({
+    paths: [
+      // Wildcard paths for nested objects (also catches some top-level in object context)
+      "*.password",
+      "*.passwd",
+      "*.secret",
+      "*.token",
+      "*.apiKey",
+      "*.api_key",
+      "*.apiSecret",
+      "*.api_secret",
+      "*.authorization",
+      "*.auth",
+      "*.credential",
+      "*.credentials",
+      "*.privateKey",
+      "*.private_key",
+      "*.accessToken",
+      "*.access_token",
+      "*.refreshToken",
+      "*.refresh_token",
+      "*.cookie",
+      "*.session",
+      "*.jwt",
+      "*.bearer",
+    ],
+    serialize: false, // Don't stringify, just redact in place
+    censor: "[REDACTED]",
+  });
+} catch {
+  // Fallback for environments where fast-redact fails (e.g., browser extensions)
+  redact = ((obj: unknown) => obj) as ReturnType<typeof fastRedact>;
+  (redact as { restore?: (obj: unknown) => unknown }).restore = (obj: unknown) => obj;
+}
 
 // ============================================================================
 // In-Memory Log Storage

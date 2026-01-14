@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -48,9 +47,7 @@ class LongTermMemoryProvider:
                 text="",
             )
 
-        formatted_memories = await self._memory_service.get_formatted_long_term_memories(
-            entity_id
-        )
+        formatted_memories = await self._memory_service.get_formatted_long_term_memories(entity_id)
         text = f"# What I Know About You\n\n{formatted_memories}"
 
         category_counts: dict[str, int] = {}

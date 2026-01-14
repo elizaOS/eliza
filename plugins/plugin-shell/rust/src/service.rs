@@ -354,7 +354,10 @@ impl ShellService {
 
     pub fn clear_command_history(&mut self, conversation_id: &str) {
         self.command_history.remove(conversation_id);
-        info!("Cleared command history for conversation: {}", conversation_id);
+        info!(
+            "Cleared command history for conversation: {}",
+            conversation_id
+        );
     }
 
     pub fn get_current_directory(&self, _conversation_id: Option<&str>) -> &Path {
@@ -408,7 +411,10 @@ mod tests {
         let mut service = ShellService::new(config);
         let conv_id = "test-conv";
 
-        service.execute_command("echo hello", Some(conv_id)).await.unwrap();
+        service
+            .execute_command("echo hello", Some(conv_id))
+            .await
+            .unwrap();
 
         let history = service.get_command_history(conv_id, None);
         assert_eq!(history.len(), 1);
@@ -421,7 +427,10 @@ mod tests {
         let mut service = ShellService::new(config);
         let conv_id = "test-conv";
 
-        service.execute_command("echo test", Some(conv_id)).await.unwrap();
+        service
+            .execute_command("echo test", Some(conv_id))
+            .await
+            .unwrap();
         assert_eq!(service.get_command_history(conv_id, None).len(), 1);
 
         service.clear_command_history(conv_id);

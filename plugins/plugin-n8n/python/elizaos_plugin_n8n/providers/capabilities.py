@@ -29,7 +29,7 @@ class PluginCreationCapabilitiesProvider:
             )
 
         return ProviderResult(
-            text="Plugin creation service is operational",
+            text="Plugin creation service is fully operational",
             data={
                 "serviceAvailable": True,
                 "aiEnabled": True,

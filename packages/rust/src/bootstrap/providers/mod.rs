@@ -9,6 +9,7 @@ mod attachments;
 mod capabilities;
 mod character;
 mod choice;
+mod context_bench;
 mod contacts;
 mod current_time;
 mod entities;
@@ -31,6 +32,7 @@ pub use attachments::AttachmentsProvider;
 pub use capabilities::CapabilitiesProvider;
 pub use character::CharacterProvider;
 pub use choice::ChoiceProvider;
+pub use context_bench::ContextBenchProvider;
 pub use contacts::ContactsProvider;
 pub use current_time::CurrentTimeProvider;
 pub use entities::EntitiesProvider;
@@ -80,6 +82,7 @@ pub fn basic_providers() -> Vec<Box<dyn Provider>> {
         Box::new(CharacterProvider),
         Box::new(CurrentTimeProvider),
         Box::new(TimeProvider),
+        Box::new(ContextBenchProvider),
         Box::new(RecentMessagesProvider),
         Box::new(EntitiesProvider),
         Box::new(ActionStateProvider),

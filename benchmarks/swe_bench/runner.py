@@ -9,12 +9,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .agent import SWEAgent
+from .agent import SWEAgent, TRAJECTORY_LOGGER_AVAILABLE
 from .dataset import SWEBenchDataset
 from .evaluator import SimplePatchEvaluator, SWEBenchEvaluator
+from .plugin import RepoManagerService, create_swe_bench_plugin
 from .repo_manager import RepositoryManager
 from .tools import REPO_MANAGER_KEY
-from .plugin import create_swe_bench_plugin
 from .types import (
     LEADERBOARD_SCORES,
     PatchStatus,
@@ -23,6 +23,21 @@ from .types import (
     SWEBenchReport,
     SWEBenchResult,
 )
+
+# Trajectory logger integration
+if TRAJECTORY_LOGGER_AVAILABLE:
+    from elizaos_plugin_trajectory_logger import (
+        ExportOptions,
+        Trajectory,
+        TrajectoryLoggerService,
+        export_for_openpipe_art,
+        export_grouped_for_grpo,
+    )
+
+    from .trajectory_service import TrajectoryLoggerAdapterService
+else:
+    TrajectoryLoggerService = None  # type: ignore[misc, assignment]
+    TrajectoryLoggerAdapterService = None  # type: ignore[misc, assignment]
 
 if TYPE_CHECKING:
     from elizaos.runtime import AgentRuntime
@@ -37,6 +52,7 @@ class SWEBenchRunner:
         self,
         runtime: AgentRuntime,
         config: SWEBenchConfig | None = None,
+        enable_trajectory_logging: bool = True,
     ):
         self.runtime = runtime
         self.config = config or SWEBenchConfig()
@@ -56,26 +72,59 @@ class SWEBenchRunner:
             env_image_tag=self.config.swebench_env_image_tag,
         )
         self.patch_evaluator = SimplePatchEvaluator()
+        
+        # Initialize trajectory logger if available and enabled
+        self.trajectory_logger: TrajectoryLoggerService | None = None
+        self._logged_trajectories: list[Trajectory] = []
+        if enable_trajectory_logging and TRAJECTORY_LOGGER_AVAILABLE:
+            # TrajectoryLoggerService is guaranteed to be available when TRAJECTORY_LOGGER_AVAILABLE is True
+            self.trajectory_logger = TrajectoryLoggerService()  # type: ignore[misc]
+            logger.info("Trajectory logging enabled for training data export")
+        
         self.agent = SWEAgent(
             runtime,
             self.repo_manager,
             max_steps=self.config.max_steps,
+            trajectory_logger=self.trajectory_logger,
         )
         self._plugin_registered = False
+        self._trajectory_service_registered = False
 
     async def _ensure_swe_bench_plugin(self) -> None:
-        """Register the SWE-bench plugin and bind its service to our repo manager."""
+        """Register the SWE-bench plugin and bind its service to our repo manager.
+        
+        This ensures the runtime's actions operate on the same RepositoryManager
+        instance that the runner uses, so they share repository state.
+        """
         if self._plugin_registered:
             return
+
+        # Register trajectory logger adapter service (so runtime can log provider/model calls)
+        if (
+            not self._trajectory_service_registered
+            and self.trajectory_logger is not None
+            and TRAJECTORY_LOGGER_AVAILABLE
+        ):
+            TrajectoryLoggerAdapterService.set_shared_logger(self.trajectory_logger)  # type: ignore[union-attr]
+            await self.runtime.register_service(TrajectoryLoggerAdapterService)  # type: ignore[arg-type]
+            self._trajectory_service_registered = True
+
+        # Set the shared manager BEFORE registering the plugin
+        # This ensures the service uses our manager instance
+        RepoManagerService.set_shared_manager(self.repo_manager)
+        RepoManagerService.set_workspace_dir(self.config.workspace_dir)
 
         await self.runtime.register_plugin(
             create_swe_bench_plugin(workspace_dir=self.config.workspace_dir)
         )
 
+        # Verify the service is using our manager
         service = self.runtime.get_service(REPO_MANAGER_KEY)
         if service is not None and hasattr(service, "manager"):
-            # Ensure the runtime actions operate on the same RepositoryManager instance.
-            setattr(service, "manager", self.repo_manager)
+            # Double-check and bind if needed
+            if getattr(service, "manager", None) is not self.repo_manager:
+                setattr(service, "manager", self.repo_manager)
+                logger.debug("Bound runner's repo_manager to service")
 
         self._plugin_registered = True
 
@@ -155,6 +204,12 @@ class SWEBenchRunner:
                     )
 
                 results.append(result)
+                
+                # Collect trajectory for training export
+                if self.trajectory_logger and TRAJECTORY_LOGGER_AVAILABLE:
+                    logged_traj = self.agent.get_logged_trajectory()
+                    if logged_traj:
+                        self._logged_trajectories.append(logged_traj)
 
                 # Log progress
                 status = "✓ RESOLVED" if result.success else "✗ Failed"
@@ -199,6 +254,10 @@ class SWEBenchRunner:
 
         # Save report
         self._save_report(report)
+        
+        # Export trajectories for training if available
+        if self._logged_trajectories and TRAJECTORY_LOGGER_AVAILABLE:
+            self._export_trajectories()
 
         total_time = time.time() - start_time
         logger.info(f"Benchmark complete in {total_time:.1f}s")
@@ -298,6 +357,51 @@ class SWEBenchRunner:
 
         return errors
 
+    def _export_trajectories(self) -> None:
+        """Export collected trajectories for training."""
+        if not self._logged_trajectories or not TRAJECTORY_LOGGER_AVAILABLE:
+            return
+        
+        output_dir = Path(self.config.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        try:
+            # Export in ART format for OpenPipe
+            art_result = export_for_openpipe_art(
+                ExportOptions(
+                    dataset_name=f"swe-bench-{self.config.variant.value}",
+                    trajectories=self._logged_trajectories,
+                    output_dir=str(output_dir / "trajectories"),
+                )
+            )
+            if art_result.success:
+                logger.info(
+                    f"Exported {art_result.trajectories_exported} trajectories "
+                    f"to {art_result.dataset_url}"
+                )
+            
+            # Export in GRPO format for group preference optimization
+            grpo_result = export_grouped_for_grpo(
+                ExportOptions(
+                    dataset_name=f"swe-bench-{self.config.variant.value}",
+                    trajectories=self._logged_trajectories,
+                    output_dir=str(output_dir / "trajectories"),
+                )
+            )
+            if grpo_result.success:
+                logger.info(
+                    f"Exported {grpo_result.trajectories_exported} trajectories "
+                    f"for GRPO to {grpo_result.dataset_url}"
+                )
+                
+        except Exception as e:
+            logger.warning(f"Failed to export trajectories: {e}")
+    
+    def get_logged_trajectories(self) -> list[Trajectory]:
+        """Get all logged trajectories for external processing."""
+        return self._logged_trajectories
+
     def _save_report(self, report: SWEBenchReport) -> None:
         """Save benchmark report to file."""
         output_dir = Path(self.config.output_dir)
@@ -356,6 +460,23 @@ class SWEBenchRunner:
                     "tests_passed": len(r.tests_passed),
                     "tests_failed": len(r.tests_failed),
                     "error": r.error,
+                    "trajectory": {
+                        "steps": [
+                            {
+                                "step_number": s.step_number,
+                                "action": s.action,
+                                "action_input": s.action_input,
+                                "observation": s.observation[:500] if s.observation else "",
+                                "thought": s.thought,
+                            }
+                            for s in (r.trajectory.steps if r.trajectory else [])
+                        ],
+                        "files_viewed": r.trajectory.files_viewed if r.trajectory else [],
+                        "files_edited": r.trajectory.files_edited if r.trajectory else [],
+                        "search_queries": r.trajectory.search_queries if r.trajectory else [],
+                    }
+                    if r.trajectory
+                    else None,
                 }
                 for r in report.results
             ],

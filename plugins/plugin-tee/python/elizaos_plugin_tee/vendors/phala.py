@@ -24,4 +24,3 @@ class PhalaVendor(TeeVendorInterface):
 
     def get_description(self) -> str:
         return "Phala Network TEE for secure agent execution"
-

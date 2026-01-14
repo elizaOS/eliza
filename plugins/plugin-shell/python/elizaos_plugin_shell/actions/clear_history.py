@@ -18,7 +18,6 @@ class ActionResult:
 
 
 class ClearHistoryAction:
-
     CLEAR_KEYWORDS = ["clear", "reset", "delete", "remove", "clean", "wipe", "forget"]
     HISTORY_KEYWORDS = ["history", "terminal", "shell", "command", "commands"]
 

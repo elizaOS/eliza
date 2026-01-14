@@ -28,8 +28,8 @@ class UnpinMessageAction:
 
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
-        source = context.message.get("source", "")
-        return source == "discord"
+        source = context.message.get("source")
+        return isinstance(source, str) and source == "discord"
 
     async def handler(
         self,
@@ -46,8 +46,7 @@ class UnpinMessageAction:
         message_ref = await service.extract_message_reference(text)
         if not message_ref:
             return ActionResult.failure_result(
-                "I couldn't understand which message you want to unpin. "
-                "Please be more specific."
+                "I couldn't understand which message you want to unpin. Please be more specific."
             )
 
         # Check permissions
@@ -58,28 +57,20 @@ class UnpinMessageAction:
             )
 
         # Find the message
-        target_message = await service.find_message(
-            context.channel_id, message_ref
-        )
+        target_message = await service.find_message(context.channel_id, message_ref)
         if not target_message:
-            return ActionResult.failure_result(
-                "I couldn't find the message you want to unpin."
-            )
+            return ActionResult.failure_result("I couldn't find the message you want to unpin.")
 
         # Check if pinned
-        if not target_message.get("pinned", False):
+        if not target_message["pinned"]:
             return ActionResult.failure_result("That message is not pinned.")
 
         # Unpin the message
-        success = await service.unpin_message(
-            context.channel_id, target_message["id"]
-        )
+        success = await service.unpin_message(context.channel_id, target_message["id"])
         if not success:
-            return ActionResult.failure_result(
-                "I couldn't unpin that message. Please try again."
-            )
+            return ActionResult.failure_result("I couldn't unpin that message. Please try again.")
 
-        author = target_message.get("author", {}).get("username", "unknown")
+        author = target_message["author"]["username"]
         return ActionResult.success_result(
             f"I've unpinned the message from {author}.",
             {"message_id": target_message["id"], "author": author},

@@ -119,3 +119,24 @@ Respond using XML format like this:
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above.
 ```
+
+## Security & Privacy Guidance (SOC2-aligned)
+
+- **Do not embed real secrets** in prompt templates. Prompts are source-controlled and often distributed.
+- **Avoid including PII** (emails, phone numbers, addresses, IDs) in templates or examples.
+- Prefer placeholders (e.g., `{{apiKey}}`, `{{userEmail}}`) and ensure the runtime injects only the minimum needed.
+
+### Secret scan
+
+This package includes a conservative scanner that flags prompt templates containing strings that strongly resemble real credentials (or private key material).
+
+Run:
+
+```bash
+npm run check:secrets
+```
+
+It scans:
+
+- `packages/prompts/prompts/**/*.txt`
+- `plugins/**/prompts/**/*.txt`

@@ -109,11 +109,7 @@ impl GitHubAction for PushCodeAction {
         let short_sha = commit.sha.chars().take(7).collect::<String>();
 
         Ok(ActionResult::success(
-            format!(
-                "Pushed commit {} to {}",
-                short_sha,
-                &commit.html_url
-            ),
+            format!("Pushed commit {} to {}", short_sha, &commit.html_url),
             json!({
                 "sha": commit.sha,
                 "html_url": commit.html_url,

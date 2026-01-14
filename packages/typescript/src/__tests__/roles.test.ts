@@ -12,7 +12,7 @@ describe("roles utilities", () => {
   let runtime: IAgentRuntime;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
 
     // Create REAL runtime
     runtime = await createTestRuntime();
@@ -53,7 +53,7 @@ describe("roles utilities", () => {
   });
 
   afterEach(async () => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
     await cleanupTestRuntime(runtime);
   });
 

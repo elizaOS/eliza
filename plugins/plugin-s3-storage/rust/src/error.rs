@@ -8,9 +8,7 @@ pub enum S3StorageError {
     ConfigError(String),
 
     #[error("AWS error: {message}")]
-    AwsError {
-        message: String,
-    },
+    AwsError { message: String },
 
     #[error("File error: {0}")]
     FileError(#[from] std::io::Error),
@@ -29,6 +27,3 @@ pub enum S3StorageError {
 }
 
 pub type Result<T> = std::result::Result<T, S3StorageError>;
-
-
-

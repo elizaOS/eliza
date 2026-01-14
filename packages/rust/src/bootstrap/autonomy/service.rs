@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::bootstrap::error::PluginResult;
 use crate::bootstrap::runtime::IAgentRuntime;
-use crate::bootstrap::services::Service;
+use crate::bootstrap::services::{Service, ServiceType};
 use super::types::AutonomyStatus;
 
 /// Service type constant for autonomy.
@@ -183,8 +183,12 @@ impl Default for AutonomyService {
 
 #[async_trait::async_trait]
 impl Service for AutonomyService {
-    fn service_type(&self) -> &str {
+    fn name(&self) -> &'static str {
         AUTONOMY_SERVICE_TYPE
+    }
+
+    fn service_type(&self) -> ServiceType {
+        ServiceType::Core
     }
 
     async fn start(&mut self, runtime: Arc<dyn IAgentRuntime>) -> PluginResult<()> {
@@ -200,8 +204,11 @@ impl Service for AutonomyService {
         Ok(())
     }
 
-    async fn stop(&self) -> PluginResult<()> {
-        // Stop logic would go here
+    async fn stop(&mut self) -> PluginResult<()> {
+        self.is_enabled = false;
+        self.is_thinking = false;
+        self.is_stopped = true;
+        self.is_running = false;
         Ok(())
     }
 }

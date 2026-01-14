@@ -108,4 +108,3 @@ export interface ExperienceMemory extends Memory {
   experienceId: string;
   experienceType: ExperienceType;
 }
-

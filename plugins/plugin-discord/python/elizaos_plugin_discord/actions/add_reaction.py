@@ -33,8 +33,8 @@ class AddReactionAction:
     async def validate(self, context: "ActionContext") -> bool:
         """Validate the action can be executed."""
         # Check source is Discord
-        source = context.message.get("source", "")
-        if source != "discord":
+        source = context.message.get("source")
+        if not isinstance(source, str) or source != "discord":
             return False
 
         # Check we have a valid channel ID
@@ -88,5 +88,3 @@ class AddReactionAction:
                 "emoji": emoji,
             },
         )
-
-

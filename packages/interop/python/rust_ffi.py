@@ -272,14 +272,13 @@ def load_rust_plugin(lib_path: str | Path) -> Plugin:
     for action_def in manifest.get("actions", []):
         action_name = action_def["name"]
 
-        async def make_validate(name: str) -> Callable[..., Awaitable[bool]]:
-            async def validate(
-                runtime: Any, message: Memory, state: State | None
-            ) -> bool:
+        def make_validate(name: str) -> Callable[..., Awaitable[bool]]:
+            async def validate(runtime: Any, message: Memory, state: State | None) -> bool:
                 return ffi.validate_action(name, message, state)
+
             return validate
 
-        async def make_handler(name: str) -> Callable[..., Awaitable[ActionResult | None]]:
+        def make_handler(name: str) -> Callable[..., Awaitable[ActionResult | None]]:
             async def handler(
                 runtime: Any,
                 message: Memory,
@@ -291,9 +290,9 @@ def load_rust_plugin(lib_path: str | Path) -> Plugin:
                 return ffi.invoke_action(
                     name, message, state, options.model_dump() if options else None
                 )
+
             return handler
 
-        # Note: We need to capture the current name in the closure
         validate_fn = make_validate(action_name)
         handler_fn = make_handler(action_name)
 
@@ -313,9 +312,10 @@ def load_rust_plugin(lib_path: str | Path) -> Plugin:
     for provider_def in manifest.get("providers", []):
         provider_name = provider_def["name"]
 
-        async def make_get(name: str) -> Callable[..., Awaitable[ProviderResult]]:
+        def make_get(name: str) -> Callable[..., Awaitable[ProviderResult]]:
             async def get(runtime: Any, message: Memory, state: State) -> ProviderResult:
                 return ffi.get_provider(name, message, state)
+
             return get
 
         get_fn = make_get(provider_name)
@@ -336,12 +336,13 @@ def load_rust_plugin(lib_path: str | Path) -> Plugin:
     for eval_def in manifest.get("evaluators", []):
         eval_name = eval_def["name"]
 
-        async def make_eval_validate(name: str) -> Callable[..., Awaitable[bool]]:
+        def make_eval_validate(name: str) -> Callable[..., Awaitable[bool]]:
             async def validate(runtime: Any, message: Memory, state: State | None) -> bool:
                 return ffi.validate_evaluator(name, message, state)
+
             return validate
 
-        async def make_eval_handler(name: str) -> Callable[..., Awaitable[ActionResult | None]]:
+        def make_eval_handler(name: str) -> Callable[..., Awaitable[ActionResult | None]]:
             async def handler(
                 runtime: Any,
                 message: Memory,
@@ -351,6 +352,7 @@ def load_rust_plugin(lib_path: str | Path) -> Plugin:
                 responses: Any,
             ) -> ActionResult | None:
                 return ffi.invoke_evaluator(name, message, state)
+
             return handler
 
         validate_fn = make_eval_validate(eval_name)

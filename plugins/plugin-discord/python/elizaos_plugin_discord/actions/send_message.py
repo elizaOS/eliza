@@ -29,8 +29,8 @@ class SendMessageAction:
         ]
 
     async def validate(self, context: "ActionContext") -> bool:
-        source = context.message.get("source", "")
-        if source != "discord":
+        source = context.message.get("source")
+        if not isinstance(source, str) or source != "discord":
             return False
 
         try:
@@ -64,5 +64,3 @@ class SendMessageAction:
                 "channel_id": context.channel_id,
             },
         )
-
-

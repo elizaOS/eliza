@@ -108,7 +108,7 @@ class TextWorldAgent:
         """Get agent ID."""
         return str(self._agent_id)
 
-    async def decide(self, state: GameState) -> str:
+    async def decide(self, state: GameState, *, trajectory_step_id: str | None = None) -> str:
         """
         Decide the next action to take.
         
@@ -119,7 +119,7 @@ class TextWorldAgent:
             The action to take as a string
         """
         if self._use_llm and self._runtime is not None:
-            return await self._decide_with_llm(state)
+            return await self._decide_with_eliza(state, trajectory_step_id=trajectory_step_id)
         return self._decide_with_heuristics(state)
 
     def _decide_with_heuristics(self, state: GameState) -> str:
@@ -142,70 +142,35 @@ class TextWorldAgent:
         # Default to look
         return "look"
 
-    async def _decide_with_llm(self, state: GameState) -> str:
-        """Use LLM for decision making."""
+    async def _decide_with_eliza(self, state: GameState, *, trajectory_step_id: str | None = None) -> str:
+        """Use canonical ElizaOS message pipeline for decision making."""
         if self._runtime is None:
             return self._decide_with_heuristics(state)
 
-        # Build prompt
-        commands_str = "\n".join(f"  - {cmd}" for cmd in state.admissible_commands[:20])
-
-        prompt = f"""You are playing a text adventure game. Your goal is to explore and collect treasures.
-
-CURRENT LOCATION:
-{state.description}
-
-YOUR INVENTORY:
-{state.inventory_str}
-
-PROGRESS: {state.score}/{state.max_score} items collected (Step {state.steps}/{state.max_steps})
-
-AVAILABLE COMMANDS:
-{commands_str}
-
-STRATEGY TIPS:
-1. Explore all rooms systematically
-2. Open containers to find hidden items
-3. Take items that look valuable or useful
-4. Keep track of where you've been
-
-Choose the best action to make progress. Respond with ONLY the command to execute.
-"""
-
         try:
-            from elizaos.types.model import ModelType
-
-            result = await self._runtime.use_model(
-                ModelType.TEXT_SMALL.value,
-                {"prompt": prompt, "maxTokens": 50, "temperature": 0.3},
+            from elizaos_atropos_shared.canonical_eliza import run_with_context
+            from elizaos_atropos_textworld.eliza_plugin import (
+                TEXTWORLD_STORE,
+                TextWorldDecisionContext,
             )
 
-            # Only take the first line to avoid matching on extra commentary.
-            response = str(result).strip().lower()
-            response = response.splitlines()[0].strip()
+            _result, ctx = await run_with_context(
+                self._runtime,
+                TEXTWORLD_STORE,
+                TextWorldDecisionContext(state=state),
+                source="atropos_textworld",
+                text="Choose the next TextWorld command.",
+                trajectory_step_id=trajectory_step_id,
+            )
+            chosen = ctx.chosen_command
 
-            # "look" is almost always a stalling move because the observation already
-            # contains the full room description. If the model picks "look" but there
-            # are progress-making actions available, fall back to heuristics.
-            if response == "look":
-                heuristic = self._decide_with_heuristics(state)
-                if heuristic != "look":
-                    return heuristic
+            if chosen:
+                # Validate against admissible commands (case-insensitive)
+                admissible_lower = {cmd.lower(): cmd for cmd in state.admissible_commands}
+                if chosen.lower() in admissible_lower:
+                    return admissible_lower[chosen.lower()]
 
-            # Validate action is admissible
-            admissible_lower = [cmd.lower() for cmd in state.admissible_commands]
-
-            if response in admissible_lower:
-                return response
-
-            # Try to find a partial match
-            for cmd in state.admissible_commands:
-                if cmd.lower() in response or response in cmd.lower():
-                    return cmd
-
-            # Fallback to heuristics
             return self._decide_with_heuristics(state)
-
         except Exception:
             return self._decide_with_heuristics(state)
 

@@ -1,4 +1,3 @@
-
 from elizaos_plugin_eliza_classic.actions import GenerateResponseAction
 from elizaos_plugin_eliza_classic.plugin import (
     ElizaClassicPlugin,

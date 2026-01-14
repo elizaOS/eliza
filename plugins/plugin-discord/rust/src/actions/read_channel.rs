@@ -61,7 +61,9 @@ impl DiscordAction for ReadChannelAction {
         if !read_info.is_null() {
             if let Some(identifier) = read_info.get("channel_identifier").and_then(|c| c.as_str()) {
                 // Find the specified channel
-                let channel = service.find_channel(identifier, context.guild_id.as_deref(), false).await?;
+                let channel = service
+                    .find_channel(identifier, context.guild_id.as_deref(), false)
+                    .await?;
                 if !channel.is_null() {
                     if let Some(id) = channel.get("id").and_then(|i| i.as_str()) {
                         channel_id = id.to_string();
@@ -87,7 +89,10 @@ impl DiscordAction for ReadChannelAction {
         // Format messages
         let mut formatted_messages = Vec::new();
         for msg in &messages {
-            let author = msg.get("author").and_then(|a| a.as_str()).unwrap_or("Unknown");
+            let author = msg
+                .get("author")
+                .and_then(|a| a.as_str())
+                .unwrap_or("Unknown");
             let content = msg.get("content").and_then(|c| c.as_str()).unwrap_or("");
             let timestamp = msg.get("timestamp").and_then(|t| t.as_str()).unwrap_or("");
             formatted_messages.push(format!("**{}** ({}):\n{}", author, timestamp, content));

@@ -2,7 +2,9 @@
 
 use crate::config::FarcasterConfig;
 use crate::error::{FarcasterError, Result};
-use crate::types::{Cast, CastEmbed, CastId, CastParent, CastStats, EmbedType, FidRequest, Profile};
+use crate::types::{
+    Cast, CastEmbed, CastId, CastParent, CastStats, EmbedType, FidRequest, Profile,
+};
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use reqwest::Client;
@@ -26,8 +28,7 @@ fn parse_embed_type(embed: &Value) -> EmbedType {
         {
             return EmbedType::Image;
         }
-        if url_lower.contains(".mp4") || url_lower.contains(".webm") || url_lower.contains(".mov")
-        {
+        if url_lower.contains(".mp4") || url_lower.contains(".webm") || url_lower.contains(".mov") {
             return EmbedType::Video;
         }
         if url_lower.contains(".mp3") || url_lower.contains(".wav") || url_lower.contains(".ogg") {
@@ -53,7 +54,10 @@ fn neynar_cast_to_cast(neynar_cast: &Value) -> Cast {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
-        pfp: author.get("pfp_url").and_then(|v| v.as_str()).map(String::from),
+        pfp: author
+            .get("pfp_url")
+            .and_then(|v| v.as_str())
+            .map(String::from),
         bio: author
             .get("profile")
             .and_then(|p| p.get("bio"))
@@ -268,7 +272,7 @@ fn split_paragraph(paragraph: &str, max_length: usize) -> Vec<String> {
 fn split_by_chars(text: &str, max_length: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current = String::new();
-    
+
     for ch in text.chars() {
         if current.len() + ch.len_utf8() > max_length {
             if !current.is_empty() {
@@ -278,11 +282,11 @@ fn split_by_chars(text: &str, max_length: usize) -> Vec<String> {
         }
         current.push(ch);
     }
-    
+
     if !current.is_empty() {
         chunks.push(current);
     }
-    
+
     chunks
 }
 
@@ -424,14 +428,21 @@ impl FarcasterClient {
             )
             .await?;
 
-        if !result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if !result
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             return Err(FarcasterError::cast(format!(
                 "Failed to publish cast: {}",
                 &text[..text.len().min(50)]
             )));
         }
 
-        if let Some(hash) = result.get("cast").and_then(|c| c.get("hash")).and_then(|v| v.as_str())
+        if let Some(hash) = result
+            .get("cast")
+            .and_then(|c| c.get("hash"))
+            .and_then(|v| v.as_str())
         {
             return self.get_cast(hash).await;
         }
@@ -451,7 +462,10 @@ impl FarcasterClient {
 
     pub async fn get_cast(&self, cast_hash: &str) -> Result<Cast> {
         {
-            let cache = self.cast_cache.read().map_err(|_| FarcasterError::cast("Cache lock error"))?;
+            let cache = self
+                .cast_cache
+                .read()
+                .map_err(|_| FarcasterError::cast("Cache lock error"))?;
             if let Some(cast) = cache.get(cast_hash) {
                 return Ok(cast.clone());
             }
@@ -508,7 +522,10 @@ impl FarcasterClient {
 
     pub async fn get_profile(&self, fid: u64) -> Result<Profile> {
         {
-            let cache = self.profile_cache.read().map_err(|_| FarcasterError::profile("Cache lock error"))?;
+            let cache = self
+                .profile_cache
+                .read()
+                .map_err(|_| FarcasterError::profile("Cache lock error"))?;
             if let Some(profile) = cache.get(&fid) {
                 return Ok(profile.clone());
             }
@@ -551,7 +568,10 @@ impl FarcasterClient {
                 .and_then(|b| b.get("text"))
                 .and_then(|v| v.as_str())
                 .map(String::from),
-            pfp: user.get("pfp_url").and_then(|v| v.as_str()).map(String::from),
+            pfp: user
+                .get("pfp_url")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             url: None,
         };
 

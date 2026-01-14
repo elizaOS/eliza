@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -38,7 +37,9 @@ impl KnowledgeAction for ProcessKnowledgeAction {
             .unwrap_or("")
             .to_lowercase();
 
-        let has_keyword = KNOWLEDGE_KEYWORDS.iter().any(|keyword| text.contains(keyword));
+        let has_keyword = KNOWLEDGE_KEYWORDS
+            .iter()
+            .any(|keyword| text.contains(keyword));
         let has_path = text.contains('/') && !text.contains("http");
 
         Ok(has_keyword || has_path)
@@ -188,7 +189,10 @@ mod tests {
         let result = action.execute(&context).await.unwrap();
         assert_eq!(result["action"], "PROCESS_KNOWLEDGE");
         assert_eq!(result["mode"], "file");
-        assert!(result["file_path"].as_str().unwrap().contains("/documents/test.pdf"));
+        assert!(result["file_path"]
+            .as_str()
+            .unwrap()
+            .contains("/documents/test.pdf"));
     }
 
     #[tokio::test]

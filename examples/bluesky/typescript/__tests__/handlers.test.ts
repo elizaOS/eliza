@@ -8,9 +8,9 @@
  * - Handle callbacks that post to Bluesky
  */
 
-import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory, Service } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import {
   type BlueSkyCreatePostEventPayload,
   type BlueSkyNotification,
@@ -22,21 +22,34 @@ import {
 } from "../handlers";
 
 // ============================================================================
+// Mock Types
+// ============================================================================
+
+interface MockPostService {
+  createPost: Mock;
+}
+
+interface MockBlueSkyService extends Service {
+  getPostService: Mock;
+  getMessageService: Mock;
+}
+
+// ============================================================================
 // Mock Factories
 // ============================================================================
 
 function createMockRuntime(): IAgentRuntime {
-  const mockPostService = {
+  const mockPostService: MockPostService = {
     createPost: vi.fn().mockResolvedValue({
       uri: "at://did:plc:test/app.bsky.feed.post/123",
       cid: "bafyreic123",
     }),
   };
 
-  const mockService = {
+  const mockService: MockBlueSkyService = {
     getPostService: vi.fn().mockReturnValue(mockPostService),
     getMessageService: vi.fn().mockReturnValue(null),
-  };
+  } as unknown as MockBlueSkyService;
 
   // Mock messageService that captures the callback and invokes it
   const mockMessageService = {
@@ -109,6 +122,19 @@ function createMockNotification(
 }
 
 // ============================================================================
+// Helper to get mock service from runtime
+// ============================================================================
+
+function getMockService(runtime: IAgentRuntime): MockBlueSkyService {
+  return runtime.getService("bluesky") as unknown as MockBlueSkyService;
+}
+
+function getMockPostService(runtime: IAgentRuntime): MockPostService {
+  const service = getMockService(runtime);
+  return service.getPostService(runtime.agentId) as MockPostService;
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -160,10 +186,7 @@ describe("Bluesky Handlers - Full elizaOS Pipeline", () => {
       );
 
       // Should have posted the reply via the callback
-      const service = runtime.getService("bluesky") as {
-        getPostService: ReturnType<typeof vi.fn>;
-      };
-      const postService = service.getPostService(runtime.agentId);
+      const postService = getMockPostService(runtime);
       expect(postService.createPost).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
@@ -257,9 +280,7 @@ describe("Bluesky Handlers - Full elizaOS Pipeline", () => {
     it("should truncate responses over 300 characters", async () => {
       // Mock a long response
       const longResponse = "A".repeat(400);
-      (
-        runtime.messageService?.handleMessage as ReturnType<typeof vi.fn>
-      ).mockImplementation(
+      (runtime.messageService?.handleMessage as Mock).mockImplementation(
         async (
           _runtime: IAgentRuntime,
           _message: Memory,
@@ -272,7 +293,7 @@ describe("Bluesky Handlers - Full elizaOS Pipeline", () => {
             didRespond: true,
             responseContent: null,
             responseMessages: [],
-            state: {} as never,
+            state: { values: {}, data: {}, text: "" },
             mode: "actions",
           };
         },
@@ -287,10 +308,7 @@ describe("Bluesky Handlers - Full elizaOS Pipeline", () => {
 
       await handleMentionReceived(payload);
 
-      const service = runtime.getService("bluesky") as {
-        getPostService: ReturnType<typeof vi.fn>;
-      };
-      const postService = service.getPostService(runtime.agentId);
+      const postService = getMockPostService(runtime);
 
       // Check that the posted text is truncated
       expect(postService.createPost).toHaveBeenCalledWith(
@@ -353,10 +371,7 @@ describe("Bluesky Handlers - Full elizaOS Pipeline", () => {
       );
 
       // Should have posted via the callback
-      const service = runtime.getService("bluesky") as {
-        getPostService: ReturnType<typeof vi.fn>;
-      };
-      const postService = service.getPostService(runtime.agentId);
+      const postService = getMockPostService(runtime);
       expect(postService.createPost).toHaveBeenCalledWith(expect.any(String));
     });
 

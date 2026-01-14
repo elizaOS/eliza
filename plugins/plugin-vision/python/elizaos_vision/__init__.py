@@ -1,4 +1,3 @@
-
 from .actions import (
     capture_image_action,
     describe_scene_action,

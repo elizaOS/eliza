@@ -157,8 +157,3 @@ class PlanExecutionResult:
     errors: Optional[list[Exception]] = None
     duration: float = 0.0
     adaptations: Optional[list[str]] = None
-
-
-
-
-

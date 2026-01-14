@@ -8,5 +8,4 @@
 -e ../../../plugins/plugin-telegram/python
 
 # Additional dependencies
-uuid6>=2024.1.12
 python-dotenv>=1.0.0

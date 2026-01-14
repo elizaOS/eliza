@@ -21,7 +21,7 @@ impl McpProvider {
             for server in servers_arr {
                 let name = server.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let status = server.get("status").and_then(|s| s.as_str()).unwrap_or("");
-                
+
                 output.push_str(&format!("## {} ({})\n", name, status));
 
                 if let Some(tools) = server.get("tools").and_then(|t| t.as_array()) {
@@ -29,7 +29,10 @@ impl McpProvider {
                         output.push_str("\n**Tools:**\n");
                         for tool in tools {
                             let tool_name = tool.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                            let description = tool.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                            let description = tool
+                                .get("description")
+                                .and_then(|d| d.as_str())
+                                .unwrap_or("");
                             output.push_str(&format!("- {}: {}\n", tool_name, description));
                         }
                     }
@@ -73,8 +76,12 @@ impl McpProviderTrait for McpProvider {
     }
 
     async fn get(&self, context: &ProviderContext) -> ProviderResult {
-        let servers = context.state.get("mcpServers").cloned().unwrap_or(serde_json::json!([]));
-        
+        let servers = context
+            .state
+            .get("mcpServers")
+            .cloned()
+            .unwrap_or(serde_json::json!([]));
+
         let text = self.format_servers(&servers);
         let server_count = servers.as_array().map(|a| a.len()).unwrap_or(0);
 

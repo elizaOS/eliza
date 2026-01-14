@@ -16,4 +16,3 @@ def agent_id() -> str:
 @pytest.fixture
 def secret_salt() -> str:
     return "test-secret-salt"
-

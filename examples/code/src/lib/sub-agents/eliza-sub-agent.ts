@@ -1,3 +1,5 @@
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   type IAgentRuntime,
   ModelType,
@@ -17,7 +19,7 @@ import type {
   ToolResult,
 } from "./types.js";
 
-const SYSTEM_PROMPT = `You are a coding assistant. Execute tasks using these tools:
+const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `You are a coding assistant. Execute tasks using these tools:
 
 AVAILABLE TOOLS:
 1. TOOL: read_file(filepath="path/to/file")
@@ -39,19 +41,33 @@ RULES:
 
 Working directory: {cwd}`;
 
+export interface ToolCallingSubAgentConfig {
+  name: string;
+  type: SubAgent["type"];
+  systemPromptTemplate: string;
+}
+
 /**
  * ElizaSubAgent - Executes tasks using the runtime's LLM.
  * Implements an agentic tool-calling loop.
  */
 export class ElizaSubAgent implements SubAgent {
-  readonly name = "Eliza Code Agent";
-  readonly type = "eliza" as const;
+  readonly name: string;
+  readonly type: SubAgent["type"];
+  private readonly systemPromptTemplate: string;
 
   private cancelled = false;
   private readonly maxIterations = getEnvInt(
     "ELIZA_CODE_SUBAGENT_MAX_ITERATIONS",
     25,
   );
+
+  constructor(config?: Partial<ToolCallingSubAgentConfig>) {
+    this.name = config?.name ?? "Eliza Code Agent";
+    this.type = config?.type ?? "eliza";
+    this.systemPromptTemplate =
+      config?.systemPromptTemplate ?? DEFAULT_SYSTEM_PROMPT_TEMPLATE;
+  }
 
   cancel(): void {
     this.cancelled = true;
@@ -255,6 +271,8 @@ export class ElizaSubAgent implements SubAgent {
           tools,
           filesCreated,
           filesModified,
+          workingDirectory,
+          onMessage,
         );
 
         const toolResultLines = results.executed
@@ -338,7 +356,7 @@ export class ElizaSubAgent implements SubAgent {
     messages: ConversationMessage[],
     cwd: string,
   ): Promise<{ prompt: string; response: string; modelType: ModelTypeName }> {
-    const systemPrompt = SYSTEM_PROMPT.replace("{cwd}", cwd);
+    const systemPrompt = this.systemPromptTemplate.replace("{cwd}", cwd);
 
     const history = messages
       .map((m) =>
@@ -363,6 +381,11 @@ export class ElizaSubAgent implements SubAgent {
     tools: SubAgentTool[],
     filesCreated: string[],
     filesModified: string[],
+    workingDirectory: string,
+    onMessage: (
+      message: string,
+      priority: "info" | "warning" | "error",
+    ) => void,
   ): Promise<{
     output: string;
     summary: string;
@@ -398,6 +421,17 @@ export class ElizaSubAgent implements SubAgent {
           if (!filesCreated.includes(filepath)) filesCreated.push(filepath);
         } else if (toolName.includes("edit")) {
           if (!filesModified.includes(filepath)) filesModified.push(filepath);
+        }
+
+        // Emit file events into the user-visible log so the user can follow along.
+        if (toolName === "write_file" || toolName === "edit_file") {
+          const abs = path.resolve(workingDirectory, filepath);
+          const link = pathToFileURL(abs).toString();
+          const kind = toolName === "write_file" ? "write" : "edit";
+          const sizeValue: JsonValue | undefined = result.data?.size;
+          const sizeSuffix =
+            typeof sizeValue === "number" ? ` (${sizeValue} chars)` : "";
+          onMessage(`FILE ${kind}: ${filepath}${sizeSuffix} — ${link}`, "info");
         }
       }
     }

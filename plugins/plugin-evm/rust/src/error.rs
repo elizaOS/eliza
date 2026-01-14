@@ -108,7 +108,9 @@ impl fmt::Display for EVMError {
 
 impl std::error::Error for EVMError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
+        self.source
+            .as_ref()
+            .map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
     }
 }
 
@@ -143,5 +145,3 @@ impl From<url::ParseError> for EVMError {
 }
 
 pub type EVMResult<T> = Result<T, EVMError>;
-
-

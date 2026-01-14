@@ -216,6 +216,19 @@ IMPORTANT ACTION PARAMETERS:
 - Required parameters MUST be provided; optional parameters can be omitted if not mentioned
 - If you cannot determine a required parameter value, ask the user for clarification in your <text>
 
+EXAMPLE (action parameters):
+User message: "Send a message to @dev_guru on telegram saying Hello!"
+Actions: REPLY,SEND_MESSAGE
+Params:
+<params>
+    <SEND_MESSAGE>
+        <targetType>user</targetType>
+        <source>telegram</source>
+        <target>dev_guru</target>
+        <text>Hello!</text>
+    </SEND_MESSAGE>
+</params>
+
 IMPORTANT PROVIDER SELECTION RULES:
 - Only include providers if they are needed to respond accurately.
 - If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
@@ -268,6 +281,93 @@ If an action has no parameters or you're only using REPLY/IGNORE, omit the <para
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>"#;
+
+/// Template for multi-step decision making (iterative workflow).
+pub const MULTI_STEP_DECISION_TEMPLATE: &str = r#"<task>
+Determine the next step the assistant should take in this conversation to help the user reach their goal.
+</task>
+
+{{recentMessages}}
+
+# Multi-Step Workflow
+
+In each step, decide:
+
+1. **Which providers (if any)** should be called to gather necessary data.
+2. **Which action (if any)** should be executed after providers return.
+3. Decide whether the task is complete. If so, set `isFinish: true`. Do not select the `REPLY` action; replies are handled separately after task completion.
+
+You can select **multiple providers** and at most **one action** per step.
+
+If the task is fully resolved and no further steps are needed, mark the step as `isFinish: true`.
+
+---
+
+{{actionsWithDescriptions}}
+
+{{providersWithDescriptions}}
+
+These are the actions or data provider calls that have already been used in this run. Use this to avoid redundancy and guide your next move.
+
+{{actionResults}}
+
+<keys>
+"thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
+"action"  Name of the action to execute after providers return (can be empty if no action is needed).
+"providers" List of provider names to call in this step (can be empty if none are needed).
+"isFinish" Set to true only if the task is fully complete.
+</keys>
+
+⚠️ IMPORTANT: Do **not** mark the task as `isFinish: true` immediately after calling an action. Wait for the action to complete before deciding the task is finished.
+
+<output>
+<response>
+  <thought>Your thought here</thought>
+  <action>ACTION</action>
+  <providers>PROVIDER1,PROVIDER2</providers>
+  <isFinish>true | false</isFinish>
+</response>
+</output>"#;
+
+/// Template for multi-step final summary.
+pub const MULTI_STEP_SUMMARY_TEMPLATE: &str = r#"<task>
+Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
+</task>
+
+# Context Information
+{{bio}}
+
+---
+
+{{system}}
+
+---
+
+{{messageDirections}}
+
+# Conversation Summary
+Below is the user's original request and conversation so far:
+{{recentMessages}}
+
+# Execution Trace
+Here are the actions taken by the assistant to fulfill the request:
+{{actionResults}}
+
+# Assistant's Last Reasoning Step
+{{recentMessage}}
+
+# Instructions
+
+ - Review the execution trace and last reasoning step carefully
+
+ - Your final output MUST be in this XML format:
+<output>
+<response>
+  <thought>Your thought here</thought>
+  <text>Your final message to the user</text>
+</response>
+</output>
+"#;
 
 /// Footer for boolean yes/no responses.
 pub const BOOLEAN_FOOTER: &str = "Respond with only a YES or a NO.";
