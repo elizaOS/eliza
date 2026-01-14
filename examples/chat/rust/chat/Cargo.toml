@@ -11,10 +11,10 @@ path = "src/main.rs"
 
 [dependencies]
 # elizaOS Core
-elizaos = { path = "../../../packages/rust" }
+elizaos = { path = "../../../../packages/rust" }
 
 # elizaOS OpenAI Plugin
-elizaos-plugin-openai = { path = "../../../packages/plugin-openai/rust" }
+elizaos-plugin-openai = { path = "../../../../plugins/plugin-openai/rust" }
 
 # Async runtime
 tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
