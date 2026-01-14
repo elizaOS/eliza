@@ -12,7 +12,7 @@ import Parser from "tree-sitter";
 import * as Python from "tree-sitter-python";
 
 // tree-sitter-python exports a Language type that's compatible with Parser but TypeScript can't verify it
-type TreeSitterLanguage = Parameters<Parser["setLanguage"]>[0];
+type TreeSitterLanguage = Parameters<InstanceType<typeof Parser>["setLanguage"]>[0];
 
 interface ElidedRange {
   start: number;

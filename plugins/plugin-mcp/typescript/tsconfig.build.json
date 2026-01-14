@@ -5,6 +5,8 @@
     "declaration": true,
     "declarationDir": "dist/node",
     "declarationMap": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
     "rootDir": "src",
     "baseUrl": ".",
     "paths": {
