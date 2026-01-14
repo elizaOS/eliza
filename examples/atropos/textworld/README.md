@@ -29,19 +29,19 @@ pip install -e "examples/atropos/textworld[openai]"
 
 ```bash
 # Watch AI play a simple game
-elizaos-textworld --mode auto
+python -m elizaos_atropos_textworld --mode auto
 
 # Interactive mode (play yourself)
-elizaos-textworld --mode interactive
+python -m elizaos_atropos_textworld --mode interactive
 
 # Custom difficulty
-elizaos-textworld --mode auto --difficulty hard
+python -m elizaos_atropos_textworld --mode auto --difficulty hard
 
 # Run benchmark comparing heuristic vs random
-elizaos-textworld --mode benchmark --episodes 100
+python -m elizaos_atropos_textworld --mode benchmark --episodes 100
 
 # Generate Atropos training data
-elizaos-textworld --mode atropos-gen --episodes 100 -o trajectories.jsonl
+python -m elizaos_atropos_textworld --mode atropos-gen --episodes 100 -o trajectories.jsonl
 ```
 
 ## Environment Details
@@ -156,13 +156,13 @@ on text adventure gameplay.
 
 ```bash
 # Generate training data with elizaOS agent
-elizaos-textworld --mode atropos-gen --episodes 500 --use-elizaos -o train.jsonl
+python -m elizaos_atropos_textworld --mode atropos-gen --episodes 500 -o train.jsonl
 
 # Generate baseline with heuristic agent (no LLM calls)
-elizaos-textworld --mode atropos-gen --episodes 500 --no-use-elizaos -o baseline.jsonl
+python -m elizaos_atropos_textworld --mode atropos-gen --episodes 500 --no-use-elizaos -o baseline.jsonl
 
 # Specify tokenizer (default: meta-llama/Llama-3.2-3B-Instruct)
-elizaos-textworld --mode atropos-gen --episodes 100 --tokenizer gpt2 -o test.jsonl
+python -m elizaos_atropos_textworld --mode atropos-gen --episodes 100 --tokenizer gpt2 -o test.jsonl
 ```
 
 ### Generating Training Data (Python API)
