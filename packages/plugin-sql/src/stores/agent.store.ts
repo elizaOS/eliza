@@ -187,6 +187,20 @@ export class AgentStore implements Store {
     }, 'AgentStore.count');
   }
 
+  async deleteAll(): Promise<void> {
+    return this.ctx.withRetry(async () => {
+      try {
+        await this.db.delete(agentTable);
+      } catch (error) {
+        logger.error(
+          { src: 'plugin:sql', error: error instanceof Error ? error.message : String(error) },
+          'Failed to clean up agent table'
+        );
+        throw error;
+      }
+    }, 'AgentStore.deleteAll');
+  }
+
   private async mergeSettings<T extends Record<string, unknown>>(
     tx: DrizzleDatabase,
     agentId: UUID,
