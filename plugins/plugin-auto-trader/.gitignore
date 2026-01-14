@@ -1,0 +1,12 @@
+.turbo
+dist
+node_modules
+
+.env
+.eliza
+.elizadb
+*.tsbuildinfo
+.cursor
+.elizadb-*
+coverage/
+data/
