@@ -20,6 +20,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     super(agentId);
     this.manager = manager;
     this.db = manager.getDatabase();
+    this.initStores();
   }
 
   getManager(): PostgresConnectionManager {
