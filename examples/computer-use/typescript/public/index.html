@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ComputerUse Agent (semi-autonomous)</title>
+    <style>
+      :root {
+        --bg: #0b0f17;
+        --panel: #121a2a;
+        --muted: #8aa0c6;
+        --text: #e7eefc;
+        --border: rgba(255, 255, 255, 0.08);
+        --accent: #6ea8ff;
+        --danger: #ff6e6e;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+          "Apple Color Emoji", "Segoe UI Emoji";
+        background: var(--bg);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 16px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      button {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: rgba(110, 168, 255, 0.35);
+        background: rgba(110, 168, 255, 0.12);
+      }
+      button.danger {
+        border-color: rgba(255, 110, 110, 0.35);
+        background: rgba(255, 110, 110, 0.12);
+      }
+      input,
+      textarea {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.2);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        outline: none;
+      }
+      textarea {
+        min-height: 90px;
+        resize: vertical;
+      }
+      .pane {
+        height: 420px;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.12);
+        white-space: pre-wrap;
+      }
+      .msg {
+        margin: 0 0 10px 0;
+      }
+      .msg .who {
+        font-weight: 600;
+        color: var(--accent);
+      }
+      .msg .time {
+        font-size: 12px;
+        color: var(--muted);
+        margin-left: 6px;
+      }
+      .msg .text {
+        margin-top: 4px;
+      }
+      .grid-span {
+        grid-column: 1 / -1;
+      }
+      .small {
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card grid-span">
+        <div class="row">
+          <div style="font-weight: 700">ComputerUse Agent</div>
+          <div class="muted small">semi-autonomous chat + autonomy toggle + autonomy logs</div>
+          <div style="flex: 1"></div>
+          <div class="muted small">Session:</div>
+          <code id="sessionId" class="small">(new)</code>
+        </div>
+        <div class="row" style="margin-top: 10px">
+          <button id="btnAutonomyEnable" class="primary">Enable autonomy</button>
+          <button id="btnAutonomyDisable" class="danger">Disable autonomy</button>
+          <span id="autonomyState" class="muted small">loading...</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div style="font-weight: 700">Chat</div>
+          <div class="muted small">talk to the agent; it may call ComputerUse actions</div>
+        </div>
+        <div id="chatPane" class="pane" style="margin-top: 10px"></div>
+        <div style="margin-top: 10px">
+          <textarea id="chatInput" placeholder="Type a message..."></textarea>
+          <div class="row" style="margin-top: 8px">
+            <button id="btnSend" class="primary">Send</button>
+            <span id="chatStatus" class="muted small"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div style="font-weight: 700">Autonomy logs</div>
+          <div class="muted small">what the background loop is doing</div>
+        </div>
+        <div id="logsPane" class="pane" style="margin-top: 10px"></div>
+        <div class="muted small" style="margin-top: 8px">
+          Logs are pulled from the autonomy room memories.
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
+

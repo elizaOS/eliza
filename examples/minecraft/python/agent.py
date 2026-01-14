@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -19,12 +20,39 @@ async def main() -> None:
     # Connect (uses env defaults from the Mineflayer bridge server)
     await plugin.handle_action("MC_CONNECT", "{}")
 
+    # Demonstrate all providers
+    print("=== World State ===")
+    world_state = await plugin.get_provider("MC_WORLD_STATE")
+    print(json.dumps(world_state, indent=2, default=str))
+
+    print("\n=== Vision ===")
+    vision = await plugin.get_provider("MC_VISION")
+    print(vision.get("text", ""))
+
+    print("\n=== Scan (stone, logs) ===")
+    scan_result = await plugin.handle_action("MC_SCAN", '{"blocks": ["stone", "oak_log"], "radius": 16}')
+    print(json.dumps(scan_result, indent=2, default=str))
+
+    # Waypoints demo
+    print("\n=== Set Waypoint 'spawn' ===")
+    wp_set = await plugin.handle_action("MC_WAYPOINT_SET", "spawn")
+    print(wp_set)
+
+    print("\n=== Waypoints Provider ===")
+    waypoints = await plugin.get_provider("MC_WAYPOINTS")
+    print(waypoints.get("text", ""))
+
+    print("\n=== List Waypoints (action) ===")
+    wp_list = await plugin.handle_action("MC_WAYPOINT_LIST", "")
+    print(wp_list)
+
     # Minimal autonomous loop: keep walking forward, occasionally jump.
     i = 0
     try:
         while True:
-            state = await plugin.get_provider("MC_WORLD_STATE")
-            print(state)
+            # Show vision context each iteration
+            vision = await plugin.get_provider("MC_VISION")
+            print(f"\n[{i}] {vision.get('text', '')}")
             await plugin.handle_action("MC_CONTROL", "forward true 750")
             if i % 4 == 0:
                 await plugin.handle_action("MC_CONTROL", "jump true 250")

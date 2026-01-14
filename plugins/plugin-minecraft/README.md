@@ -99,8 +99,22 @@ It’s intentionally stable so Python and Rust can interoperate with the TypeScr
 - **`MC_DIG`**: dig block at `x y z`
 - **`MC_PLACE`**: place onto a reference block face: `x y z face` (face: up/down/north/south/east/west)
 - **`MC_ATTACK`**: attack entity by `entityId` (from `MC_WORLD_STATE`)
+- **`MC_SCAN`**: scan nearby blocks (optional JSON: `{"blocks":["oak_log"],"radius":16,"maxResults":32}`)
+- **`MC_WAYPOINT_SET`**: save current position as a named waypoint (message text = name)
+- **`MC_WAYPOINT_LIST`**: list waypoints
+- **`MC_WAYPOINT_GOTO`**: pathfind to a named waypoint (message text = name)
+- **`MC_WAYPOINT_DELETE`**: delete waypoint (message text = name)
 
 ## Providers (current)
 
 - **`MC_WORLD_STATE`**: bot vitals + position + inventory + nearby entities
+- **`MC_VISION`**: semantic environment snapshot (biome, lookingAt, key blocks, nearby entities)
+- **`MC_WAYPOINTS`**: saved waypoints (names and coordinates)
+
+## Waypoint persistence
+
+Waypoints are stored in a dedicated internal room as **memories**. This means they persist **whenever your runtime uses a durable adapter**.
+
+- The TypeScript example includes `@elizaos/plugin-sql`, which defaults to **PGlite** if `POSTGRES_URL` is not set, so waypoints persist out of the box.
+- If you run without a durable adapter, waypoints will exist only in-memory for that process.
 

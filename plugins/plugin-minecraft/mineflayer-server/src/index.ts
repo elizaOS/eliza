@@ -119,6 +119,41 @@ function directionToVec(face: string): Vec3 | null {
 
 function serializeBotState(bot: Bot): JsonObject {
   const pos = bot.entity?.position;
+  const floored = pos ? new Vec3(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z)) : null;
+  const mcData = minecraftData(bot.version);
+
+  // Best-effort biome detection from the block at the bot's feet.
+  const feetBlock = floored ? bot.blockAt(floored) : null;
+  const biomeObj =
+    feetBlock && (feetBlock as { biome?: { id?: number; name?: string } }).biome
+      ? (feetBlock as { biome?: { id?: number; name?: string } }).biome
+      : null;
+  const biomeId = biomeObj && typeof biomeObj.id === "number" ? biomeObj.id : null;
+  const biomeNameFromBlock = biomeObj && typeof biomeObj.name === "string" ? biomeObj.name : null;
+  const biomeNameFromData =
+    biomeId !== null && mcData.biomes && mcData.biomes[biomeId] && typeof mcData.biomes[biomeId].name === "string"
+      ? mcData.biomes[biomeId].name
+      : null;
+  const biomeName = biomeNameFromBlock ?? biomeNameFromData;
+
+  // "Vision": what the bot is currently looking at (best-effort).
+  let lookingAt: JsonObject | null = null;
+  try {
+    const cursorBlock = bot.blockAtCursor(6);
+    if (cursorBlock) {
+      const cp = cursorBlock.position;
+      const dist = pos ? cursorBlock.position.distanceTo(pos) : null;
+      lookingAt = {
+        kind: "block",
+        name: cursorBlock.name,
+        position: { x: cp.x, y: cp.y, z: cp.z },
+        distance: typeof dist === "number" ? dist : null,
+      };
+    }
+  } catch {
+    lookingAt = null;
+  }
+
   const entities = Object.values(bot.entities ?? {});
   const nearby = pos
     ? entities
@@ -153,6 +188,8 @@ function serializeBotState(bot: Bot): JsonObject {
     yaw: typeof bot.entity?.yaw === "number" ? bot.entity.yaw : null,
     pitch: typeof bot.entity?.pitch === "number" ? bot.entity.pitch : null,
     time: typeof bot.time?.timeOfDay === "number" ? bot.time.timeOfDay : null,
+    biome: biomeId !== null || biomeName !== null ? { id: biomeId, name: biomeName } : null,
+    lookingAt,
     inventory: inv,
     nearbyEntities: nearby,
   };
@@ -205,33 +242,57 @@ wss.on("connection", (ws) => {
             ? data.username
             : process.env.MC_USERNAME ?? "ElizaBot";
         const auth = typeof data.auth === "string" ? data.auth : process.env.MC_AUTH ?? "offline";
-        const version = typeof data.version === "string" ? data.version : process.env.MC_VERSION;
+        // Mineflayer can auto-detect version when it connects, but if the connection fails
+        // very early (e.g. closed port) some downstream code can crash when version is undefined.
+        // Use a safe default to keep error handling reliable.
+        const version =
+          typeof data.version === "string"
+            ? data.version
+            : process.env.MC_VERSION ?? "1.20.4";
 
         const botId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-        const bot = mineflayer.createBot({
-          host,
-          port: serverPort,
-          username,
-          auth: auth === "microsoft" ? "microsoft" : "offline",
-          version,
-        });
-
-        bot.loadPlugin(pathfinder);
-
-        const mcData = minecraftData(bot.version);
-        const defaultMovements = new Movements(bot);
-        bot.pathfinder.setMovements(defaultMovements);
+        let bot: Bot;
+        try {
+          bot = mineflayer.createBot({
+            host,
+            port: serverPort,
+            username,
+            auth: auth === "microsoft" ? "microsoft" : "offline",
+            version,
+          });
+        } catch (e) {
+          const raw = e instanceof Error ? e.message : String(e);
+          const normalized = raw.includes("blocksByName")
+            ? `Failed to connect to Minecraft server at ${host}:${serverPort} (is it running?)`
+            : raw;
+          send(ws, fail(request, normalized));
+          return;
+        }
 
         bots.set(botId, { bot, createdAtMs: Date.now() });
 
         bot.once("spawn", () => {
+          // Load pathfinder only after spawn (bot.version is known).
+          try {
+            bot.loadPlugin(pathfinder);
+            const defaultMovements = new Movements(bot);
+            bot.pathfinder.setMovements(defaultMovements);
+          } catch {
+            // Non-fatal: bot can still operate without pathfinder.
+          }
           send(ws, ok(request, { botId }));
         });
 
         bot.once("error", (e) => {
           bots.delete(botId);
-          send(ws, fail(request, e instanceof Error ? e.message : String(e)));
+          const raw = e instanceof Error ? e.message : String(e);
+          // Mineflayer can emit confusing internal errors when the TCP connection fails very early.
+          // Normalize these to a helpful message for clients.
+          const normalized = raw.includes("blocksByName")
+            ? `Failed to connect to Minecraft server at ${host}:${serverPort} (is it running?)`
+            : raw;
+          send(ws, fail(request, normalized));
         });
 
         bot.once("end", () => {
@@ -300,6 +361,10 @@ wss.on("connection", (ws) => {
           return;
         }
         case "goto": {
+          if (!bot.pathfinder) {
+            send(ws, fail(request, "Pathfinder not ready (bot not spawned yet)"));
+            return;
+          }
           const vec = vecFromData(data);
           if (!vec) {
             send(ws, fail(request, "Missing numeric data.x/data.y/data.z"));
@@ -312,6 +377,10 @@ wss.on("connection", (ws) => {
           return;
         }
         case "stop": {
+          if (!bot.pathfinder) {
+            send(ws, ok(request, { ok: true }));
+            return;
+          }
           bot.pathfinder.setGoal(null);
           send(ws, ok(request, { ok: true }));
           return;

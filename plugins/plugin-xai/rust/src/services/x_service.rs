@@ -8,6 +8,7 @@ use elizaos::services::IMessageService;
 use elizaos::types::{string_to_uuid, ChannelType, Content, Entity, Memory, Room, World};
 use elizaos::AgentRuntime;
 use rand::Rng;
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -109,6 +110,10 @@ impl Default for XService {
 impl RuntimeService for XService {
     fn service_type(&self) -> &str {
         Self::SERVICE_TYPE
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 
     async fn stop(&self) -> anyhow::Result<()> {

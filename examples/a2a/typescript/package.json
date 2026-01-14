@@ -10,7 +10,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-eliza-classic": "workspace:*",
-    "@elizaos/plugin-localdb": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "express": "^4.18.0",

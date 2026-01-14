@@ -8,4 +8,11 @@ export { minecraftControlAction } from "./control.js";
 export { minecraftDigAction } from "./dig.js";
 export { minecraftPlaceAction } from "./place.js";
 export { minecraftAttackAction } from "./attack.js";
+export { minecraftScanAction } from "./scan.js";
+export {
+  minecraftWaypointDeleteAction,
+  minecraftWaypointGotoAction,
+  minecraftWaypointListAction,
+  minecraftWaypointSetAction,
+} from "./waypoints.js";
 

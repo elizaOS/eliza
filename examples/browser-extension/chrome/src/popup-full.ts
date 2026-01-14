@@ -191,6 +191,56 @@ function getMessagesFromDOM(): StoredMessage[] {
 // UI Helpers
 // ============================================
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function preprocessAssistantText(text: string): string {
+  // Convert common HTML line breaks into newlines so the markdown renderer can handle them.
+  return text.replace(/<br\s*\/?>/gi, "\n");
+}
+
+function renderMarkdownToSafeHtml(markdown: string): string {
+  const preprocessed = preprocessAssistantText(markdown);
+  const escaped = escapeHtml(preprocessed);
+
+  // Code blocks ```lang\n...\n```
+  const withCodeBlocks = escaped.replace(
+    /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g,
+    (_match, _lang, code) => `<pre><code>${code}</code></pre>`,
+  );
+
+  // Inline code `code`
+  const withInlineCode = withCodeBlocks.replace(/`([^`\n]+)`/g, (_m, code) => `<code>${code}</code>`);
+
+  // Bold **text**
+  const withBold = withInlineCode.replace(/\*\*([^*\n]+)\*\*/g, (_m, t) => `<strong>${t}</strong>`);
+
+  // Italic *text* (avoid matching bold)
+  const withItalic = withBold.replace(/(^|[^*])\*([^*\n]+)\*/g, (_m, lead, t) => `${lead}<em>${t}</em>`);
+
+  // Links [text](url)
+  const withLinks = withItalic.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, label, url) => {
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+  });
+
+  // Newlines -> <br>
+  return withLinks.replace(/\n/g, "<br>");
+}
+
+function setMessageContent(msgDiv: HTMLDivElement, role: "user" | "assistant", text: string): void {
+  if (role === "assistant") {
+    msgDiv.innerHTML = renderMarkdownToSafeHtml(text);
+  } else {
+    msgDiv.textContent = text;
+  }
+}
+
 function getModeLabel(mode: ProviderMode): string {
   const labels: Record<ProviderMode, string> = {
     elizaClassic: "ELIZA Classic",
@@ -276,7 +326,7 @@ function toggleScreenshot(): void {
 function addMessage(role: "user" | "assistant", text: string, save = true): HTMLDivElement {
   const msgDiv = document.createElement("div");
   msgDiv.className = `message ${role}`;
-  msgDiv.textContent = text;
+  setMessageContent(msgDiv, role, text);
   elements.messages.appendChild(msgDiv);
   elements.messages.scrollTop = elements.messages.scrollHeight;
   
@@ -289,7 +339,8 @@ function addMessage(role: "user" | "assistant", text: string, save = true): HTML
 }
 
 function updateMessage(msgDiv: HTMLDivElement, text: string, save = true): void {
-  msgDiv.textContent = text;
+  const role: "user" | "assistant" = msgDiv.classList.contains("user") ? "user" : "assistant";
+  setMessageContent(msgDiv, role, text);
   elements.messages.scrollTop = elements.messages.scrollHeight;
   
   // Save chat history after updating a message

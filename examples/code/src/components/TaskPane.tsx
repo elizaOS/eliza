@@ -2,7 +2,7 @@ import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import React, { useState } from "react";
 import { useStore } from "../lib/store.js";
-import type { CodeTaskService } from "../plugin/services/code-task.js";
+import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
 import type {
   SubAgentType,
   TaskStatus,

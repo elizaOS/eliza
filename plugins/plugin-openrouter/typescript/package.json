@@ -36,11 +36,11 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@ai-sdk/openai": "^2.0.32",
-    "@ai-sdk/ui-utils": "1.2.11",
+    "@ai-sdk/openai": "^3.0.9",
+    "@ai-sdk/ui-utils": "^1.2.8",
     "@elizaos/core": "workspace:*",
     "@openrouter/ai-sdk-provider": "^1.2.0",
-    "ai": "^5.0.47",
+    "ai": "^6.0.30",
     "undici": "^7.16.0"
   },
   "devDependencies": {

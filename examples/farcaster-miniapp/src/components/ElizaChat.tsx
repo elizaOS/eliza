@@ -2,11 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { api } from '../lib/api'
 import type { ChatMessage } from '../types'
 
-interface ElizaChatProps {
-    userFid?: number
-}
-
-export function ElizaChat({ userFid }: ElizaChatProps) {
+export function ElizaChat() {
     const [messages, setMessages] = useState<ChatMessage[]>([])
     const [inputMessage, setInputMessage] = useState('')
     const [loading, setLoading] = useState(false)
@@ -22,7 +18,7 @@ export function ElizaChat({ userFid }: ElizaChatProps) {
             {
                 id: '0',
                 role: 'assistant',
-                content: 'Hello! I\'m Eliza, your multi-chain trading assistant. I can help you with portfolio analysis, trading strategies, and market insights across Solana and EVM chains. How can I assist you today?',
+                content: 'Hi — I’m Eliza. What would you like to do today?',
                 timestamp: Date.now(),
                 confidence: 1,
             },
@@ -35,7 +31,10 @@ export function ElizaChat({ userFid }: ElizaChatProps) {
     }, [messages])
 
     function scrollToBottom() {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        const el = messagesEndRef.current
+        if (el && typeof el.scrollIntoView === 'function') {
+            el.scrollIntoView({ behavior: 'smooth' })
+        }
     }
 
     async function handleSend() {
@@ -56,7 +55,7 @@ export function ElizaChat({ userFid }: ElizaChatProps) {
             const result = await api.chatWithEliza({
                 message: inputMessage,
                 sessionId,
-                userId: userFid ? `farcaster:${userFid}` : undefined,
+                userId: 'demo-user',
             })
 
             const assistantMessage: ChatMessage = {
@@ -74,13 +73,14 @@ export function ElizaChat({ userFid }: ElizaChatProps) {
             if (result.sessionId) {
                 setSessionId(result.sessionId)
             }
-        } catch (error: any) {
-            console.error('Error sending message:', error)
+        } catch (err) {
+            console.error('Error sending message:', err)
+            const message = err instanceof Error ? err.message : 'Please try again.'
 
             const errorMessage: ChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: `Sorry, I encountered an error: ${error.message || 'Please try again.'}`,
+                content: `Sorry, I encountered an error: ${message}`,
                 timestamp: Date.now(),
             }
 
@@ -106,9 +106,9 @@ export function ElizaChat({ userFid }: ElizaChatProps) {
             <div className="chat-header">
                 <div className="chat-title">
                     <span className="chat-icon">🤖</span>
-                    <h2>Eliza AI</h2>
+                        <h2>Eliza</h2>
                 </div>
-                <div className="chat-subtitle">Multi-Chain Trading Assistant</div>
+                    <div className="chat-subtitle">Classic chat • in-memory sessions</div>
             </div>
 
             <div className="chat-messages">
@@ -162,7 +162,7 @@ export function ElizaChat({ userFid }: ElizaChatProps) {
             <div className="chat-input">
                 <textarea
                     className="chat-textarea"
-                    placeholder="Ask me anything about trading..."
+                    placeholder="Type a message…"
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     onKeyPress={handleKeyPress}

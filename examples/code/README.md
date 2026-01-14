@@ -79,10 +79,7 @@ eliza-code/
 │   │   ├── chat-manager.ts
 │   │   ├── task-manager.ts
 │   │   └── store.ts       # Zustand state
-│   ├── plugin/
-│   │   ├── index.ts       # Plugin export
-│   │   ├── actions/       # Coding actions
-│   │   └── providers/     # Context providers
+│   ├── lib/cwd.ts         # CWD tracking (no filesystem listing)
 │   └── types.ts           # TypeScript types
 ```
 
@@ -90,13 +87,12 @@ eliza-code/
 
 The agent can use these actions:
 
-- **READ_FILE**: Read file contents
-- **WRITE_FILE**: Create or overwrite files
-- **EDIT_FILE**: Edit files with search/replace
-- **LIST_FILES**: List directory contents
-- **SEARCH_FILES**: Search for text across files
-- **EXECUTE_SHELL**: Run shell commands
-- **CREATE_TASK**: Create background tasks for complex work
+In this example, the **main agent** is an orchestrator (no filesystem tools). It uses:
+
+- **@elizaos/plugin-agent-orchestrator**: task creation + lifecycle (CREATE_TASK, LIST_TASKS, etc.)
+- **@elizaos/plugin-shell**: shell execution (when enabled) for high-level commands
+
+All file reading/writing/editing and detailed repo work happens inside **worker sub-agents** (Codex, Claude Code, SWE-agent, etc.).
 
 ## How It Works
 

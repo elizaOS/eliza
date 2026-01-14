@@ -53,6 +53,22 @@ class StyleConfig(BaseModel):
 class Character(BaseModel):
     id: UUID | None = Field(default=None, description="Optional unique identifier")
     name: str = Field(..., min_length=1, description="Character name")
+    advanced_planning: bool | None = Field(
+        default=None,
+        alias="advancedPlanning",
+        description=(
+            "Enable built-in advanced planning. When true, the runtime auto-loads "
+            "planning capabilities."
+        ),
+    )
+    advanced_memory: bool | None = Field(
+        default=None,
+        alias="advancedMemory",
+        description=(
+            "Enable built-in advanced memory. When true, the runtime auto-loads "
+            "memory capabilities."
+        ),
+    )
     username: str | None = Field(default=None, description="Optional username")
     system: str | None = Field(default=None, description="Optional system prompt")
     templates: dict[str, str] | None = Field(default=None, description="Optional prompt templates")
