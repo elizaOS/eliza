@@ -141,7 +141,9 @@ export class TaskStore implements Store {
 
   async delete(id: UUID): Promise<void> {
     return this.ctx.withRetry(async () => {
-      await this.db.delete(taskTable).where(eq(taskTable.id, id));
+      await this.db
+        .delete(taskTable)
+        .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.ctx.agentId)));
     }, 'TaskStore.delete');
   }
 }
