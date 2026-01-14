@@ -1,4 +1,4 @@
-import type { CodeTaskService } from "../plugin/services/code-task.js";
+import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
 import type { Message, SubAgentType, TaskPaneVisibility } from "../types.js";
 
 export interface TaskSlashCommandDeps {

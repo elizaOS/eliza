@@ -18,7 +18,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
-import { plugin as localdbPlugin } from "@elizaos/plugin-localdb";
+import { plugin as inmemorydbPlugin } from "@elizaos/plugin-inmemorydb";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
 import express, {
@@ -66,7 +66,7 @@ async function initializeRuntime(): Promise<AgentRuntime> {
     character: CHARACTER,
     plugins: shouldUseOpenAi()
       ? [sqlPlugin, openaiPlugin]
-      : [localdbPlugin, elizaClassicPlugin],
+      : [inmemorydbPlugin, elizaClassicPlugin],
   });
 
   await runtime.initialize();

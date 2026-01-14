@@ -3,6 +3,13 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Scan result from the Mineflayer server
+#[derive(Debug)]
+pub struct ScanResult {
+    pub blocks: Vec<Value>,
+    pub count: usize,
+}
+
 pub async fn mc_connect(service: Arc<MinecraftService>) -> Result<String, String> {
     service.create_bot(HashMap::new()).await
 }
@@ -90,5 +97,41 @@ pub async fn mc_attack(service: Arc<MinecraftService>, entity_id: i64) -> Result
     data.insert("entityId".to_string(), Value::Number(serde_json::Number::from(entity_id)));
     let _ = service.request("attack", data).await?;
     Ok(())
+}
+
+/// Scan for nearby blocks
+/// blocks: optional list of block names to filter
+/// radius: scan radius (default 16)
+/// max_results: maximum results to return (default 32)
+pub async fn mc_scan(
+    service: Arc<MinecraftService>,
+    blocks: Option<Vec<String>>,
+    radius: Option<u32>,
+    max_results: Option<u32>,
+) -> Result<ScanResult, String> {
+    let mut data = HashMap::new();
+    if let Some(b) = blocks {
+        data.insert(
+            "blocks".to_string(),
+            Value::Array(b.into_iter().map(Value::String).collect()),
+        );
+    }
+    if let Some(r) = radius {
+        data.insert("radius".to_string(), Value::Number(r.into()));
+    }
+    if let Some(m) = max_results {
+        data.insert("maxResults".to_string(), Value::Number(m.into()));
+    }
+    let result = service.request("scan", data).await?;
+    let blocks_arr = result
+        .get("blocks")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let count = blocks_arr.len();
+    Ok(ScanResult {
+        blocks: blocks_arr,
+        count,
+    })
 }
 

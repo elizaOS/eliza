@@ -6,11 +6,11 @@ import { HelpOverlay } from "./components/HelpOverlay.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { TaskPane } from "./components/TaskPane.js";
 import { getAgentClient } from "./lib/agent-client.js";
+import { getCwd, setCwd } from "./lib/cwd.js";
 import { useStore } from "./lib/store.js";
 import { handleTaskSlashCommand } from "./lib/task-slash-command.js";
-import { getCwd, setCwd } from "./plugin/providers/cwd.js";
-import type { CodeTaskService } from "./plugin/services/code-task.js";
-import type { TaskEvent } from "./types.js";
+import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
+import type { SubAgentType, TaskEvent } from "./types.js";
 
 interface AppProps {
   runtime: AgentRuntime;
@@ -103,6 +103,7 @@ export function App({ runtime }: AppProps) {
     clearMessages,
     setTasks,
     setCurrentTaskId,
+    setSelectedSubAgentType,
     setTaskPaneVisibility,
     taskPaneVisibility,
     taskPaneWidthFraction,
@@ -112,6 +113,7 @@ export function App({ runtime }: AppProps) {
     currentRoomId,
     isTaskPaneVisible,
     loadSessionState,
+    selectedSubAgentType,
   } = useStore();
 
   const showTaskPane = isTaskPaneVisible();
@@ -226,6 +228,39 @@ export function App({ runtime }: AppProps) {
       const service = runtime.getService("CODE_TASK") as CodeTaskService | null;
 
       switch (command.toLowerCase()) {
+        // =====================
+        // Sub-agent selection
+        // =====================
+        case "agent":
+        case "subagent":
+        case "worker": {
+          const trimmed = args.trim();
+          if (!trimmed) {
+            addMessage(
+              currentRoomId,
+              "system",
+              `Active agent: ${selectedSubAgentType ?? "(not set)"}\n\nUsage: /agent <type>\nTypes:\n- eliza\n- claude-code\n- codex\n- opencode\n- sweagent\n- elizaos-native`,
+            );
+            return true;
+          }
+
+          const [typeRaw] = trimmed.split(/\s+/);
+          const next = normalizeSubAgentType(typeRaw);
+          if (!next) {
+            addMessage(
+              currentRoomId,
+              "system",
+              `Unknown agent type: "${typeRaw}". Try: eliza, claude-code, codex, opencode, sweagent, elizaos-native`,
+            );
+            return true;
+          }
+
+          setSelectedSubAgentType(next);
+          process.env.ELIZA_CODE_ACTIVE_SUB_AGENT = next;
+          addMessage(currentRoomId, "system", `Active agent: ${next}`);
+          return true;
+        }
+
         // =====================
         // Task Commands
         // =====================
@@ -483,6 +518,7 @@ export function App({ runtime }: AppProps) {
             "system",
             `Commands:
 Conversations: /new [name], /conversations, /switch <n|name>, /rename <name>, /delete <n|name>, /reset
+Agent: /agent <type>
 Tasks: /task, /tasks
 Dir: /cd [path], /pwd
 UI: /clear
@@ -502,6 +538,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
       addMessage,
       runtime,
       setCurrentTaskId,
+      setSelectedSubAgentType,
       setTaskPaneVisibility,
       taskPaneVisibility,
       showTaskPane,
@@ -510,6 +547,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
       deleteRoom,
       clearMessages,
       createRoom,
+      selectedSubAgentType,
     ],
   );
 
@@ -791,4 +829,27 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
       </Box>
     </Box>
   );
+}
+
+function normalizeSubAgentType(input: string | undefined): SubAgentType | null {
+  const raw = (input ?? "").trim().toLowerCase();
+  if (!raw) return null;
+
+  if (raw === "eliza") return "eliza";
+  if (raw === "claude" || raw === "claude-code" || raw === "claudecode")
+    return "claude-code";
+  if (raw === "codex") return "codex";
+  if (raw === "opencode" || raw === "open-code" || raw === "open_code")
+    return "opencode";
+  if (raw === "sweagent" || raw === "swe-agent" || raw === "swe_agent")
+    return "sweagent";
+  if (
+    raw === "elizaos-native" ||
+    raw === "eliza-native" ||
+    raw === "native" ||
+    raw === "elizaosnative"
+  )
+    return "elizaos-native";
+
+  return null;
 }

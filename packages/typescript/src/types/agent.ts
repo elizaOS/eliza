@@ -142,6 +142,26 @@ export interface Character {
   /** Character name */
   name: string;
 
+  /**
+   * Enable the built-in advanced planning capabilities.
+   *
+   * When `true`, the runtime will automatically register the planning provider,
+   * actions, and `PlanningService` ("planning").
+   *
+   * When `false` or omitted, advanced planning is not loaded.
+   */
+  advancedPlanning?: boolean;
+
+  /**
+   * Enable built-in advanced memory capabilities.
+   *
+   * When `true`, the runtime will automatically register the memory providers,
+   * evaluators, and `MemoryService` ("memory").
+   *
+   * When `false` or omitted, advanced memory is not loaded.
+   */
+  advancedMemory?: boolean;
+
   /** Optional username */
   username?: string;
 

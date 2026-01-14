@@ -79,3 +79,5 @@ Stream a response from the agent (Server-Sent Events).
 - `PORT` - Server port (default: 3000)
 - `OPENAI_API_KEY` - OpenAI API key (optional)
 - `OPENAI_BASE_URL` - Custom OpenAI endpoint
+
+When `OPENAI_API_KEY` is not set, the server uses `elizaos-plugin-inmemorydb` (ephemeral) + `elizaos-plugin-eliza-classic` so it can run deterministically without external services.

@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elizaos-plugin-agent-orchestrator"
+version = "2.0.0"
+description = "Agent Orchestrator Plugin for ElizaOS - orchestrates tasks across agent providers"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "elizaOS", email = "team@eliza.os"}
+]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+keywords = ["eliza", "elizaos", "plugin", "orchestrator", "agents", "tasks"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Repository = "https://github.com/elizaos/eliza.git"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["elizaos_plugin_agent_orchestrator*"]
+
+[tool.setuptools.package-data]
+elizaos_plugin_agent_orchestrator = ["py.typed"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

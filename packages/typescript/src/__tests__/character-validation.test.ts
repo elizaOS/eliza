@@ -33,6 +33,24 @@ describe("Character Schema Validation", () => {
       expect(result.error).toBeUndefined();
     });
 
+    test("should accept advancedPlanning flag", () => {
+      const characterWithAdvancedPlanning: Character = {
+        ...validCharacter,
+        advancedPlanning: true,
+      };
+      const result = validateCharacter(characterWithAdvancedPlanning);
+      expect(result.success).toBe(true);
+    });
+
+    test("should accept advancedMemory flag", () => {
+      const characterWithAdvancedMemory: Character = {
+        ...validCharacter,
+        advancedMemory: true,
+      };
+      const result = validateCharacter(characterWithAdvancedMemory);
+      expect(result.success).toBe(true);
+    });
+
     test("should validate a minimal valid character", () => {
       const result = validateCharacter(minimalValidCharacter);
       expect(result.success).toBe(true);

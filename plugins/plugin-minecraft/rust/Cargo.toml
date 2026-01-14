@@ -14,6 +14,7 @@ serde_json = "1.0.135"
 url = "2.5.4"
 uuid = { version = "1.12.1", features = ["v4"] }
 tracing = "0.1.41"
+chrono = { version = "0.4.39", features = ["serde"] }
 
 [dev-dependencies]
 tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "sync"] }

@@ -7,7 +7,14 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CodeTaskService } from "../plugin/services/code-task.js";
+import {
+  AgentOrchestratorService as CodeTaskService,
+  configureAgentOrchestratorPlugin,
+  type AgentProvider,
+  type OrchestratedTask,
+  type ProviderTaskExecutionContext,
+  type TaskResult,
+} from "@elizaos/plugin-agent-orchestrator";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 
@@ -93,6 +100,26 @@ describe("CodeTaskService", () => {
 
     vi.spyOn(runtime, "deleteTask").mockImplementation(async (id: UUID) => {
       tasks.delete(id);
+    });
+
+    const noOpProvider: AgentProvider = {
+      id: "eliza",
+      label: "Test Provider",
+      executeTask: async (
+        _task: OrchestratedTask,
+        _ctx: ProviderTaskExecutionContext,
+      ): Promise<TaskResult> => ({
+        success: true,
+        summary: "noop",
+        filesCreated: [],
+        filesModified: [],
+      }),
+    };
+    configureAgentOrchestratorPlugin({
+      providers: [noOpProvider],
+      defaultProviderId: "eliza",
+      getWorkingDirectory: () => process.cwd(),
+      activeProviderEnvVar: "ELIZA_CODE_ACTIVE_SUB_AGENT",
     });
 
     service = (await CodeTaskService.start(runtime)) as CodeTaskService;

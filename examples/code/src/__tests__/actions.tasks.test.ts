@@ -8,16 +8,21 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { createTaskAction } from "../plugin/actions/create-task.js";
 import {
+  configureAgentOrchestratorPlugin,
+  createTaskAction,
   cancelTaskAction,
   listTasksAction,
   pauseTaskAction,
   resumeTaskAction,
   searchTasksAction,
   switchTaskAction,
-} from "../plugin/actions/task-management.js";
-import { CodeTaskService } from "../plugin/services/code-task.js";
+  AgentOrchestratorService as CodeTaskService,
+  type AgentProvider,
+  type OrchestratedTask,
+  type ProviderTaskExecutionContext,
+  type TaskResult,
+} from "@elizaos/plugin-agent-orchestrator";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 
@@ -40,7 +45,7 @@ describe("plugin actions: task management", () => {
   let serviceRef: CodeTaskService | null;
 
   beforeEach(async () => {
-    process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION = "1";
+    process.env.ELIZA_CODE_ACTIVE_SUB_AGENT = "eliza";
 
     runtime = await createTestRuntime();
     tasks = new Map();
@@ -67,6 +72,26 @@ describe("plugin actions: task management", () => {
 
     // Mock getMemories to return empty array (avoids database queries)
     vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
+
+    const noOpProvider: AgentProvider = {
+      id: "eliza",
+      label: "Test Provider",
+      executeTask: async (
+        _task: OrchestratedTask,
+        _ctx: ProviderTaskExecutionContext,
+      ): Promise<TaskResult> => ({
+        success: true,
+        summary: "noop",
+        filesCreated: [],
+        filesModified: [],
+      }),
+    };
+    configureAgentOrchestratorPlugin({
+      providers: [noOpProvider],
+      defaultProviderId: "eliza",
+      getWorkingDirectory: () => process.cwd(),
+      activeProviderEnvVar: "ELIZA_CODE_ACTIVE_SUB_AGENT",
+    });
 
     vi.spyOn(runtime, "getService").mockImplementation(
       <T>(type: string): T | null => {
@@ -131,17 +156,12 @@ describe("plugin actions: task management", () => {
       tasks.delete(id);
     });
 
-    // In these tests we provide explicit steps so CREATE_TASK shouldn't need planning.
-    vi.spyOn(runtime, "useModel").mockImplementation(async () => {
-      throw new Error("useModel should not be called in this test");
-    });
-
     service = (await CodeTaskService.start(runtime)) as CodeTaskService;
     serviceRef = service;
   });
 
   afterEach(async () => {
-    delete process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION;
+    delete process.env.ELIZA_CODE_ACTIVE_SUB_AGENT;
     vi.clearAllMocks();
     await cleanupTestRuntime(runtime);
   });

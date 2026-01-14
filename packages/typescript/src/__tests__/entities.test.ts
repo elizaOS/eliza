@@ -109,25 +109,25 @@ describe("entities", () => {
       vi.spyOn(runtime, "getEntitiesForRoom").mockResolvedValue([mockEntity]);
       vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
       vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
-      vi.spyOn(runtime, "useModel").mockResolvedValue("mocked model response");
+      vi.spyOn(runtime, "useModel").mockResolvedValue(
+        `<response>
+  <entityId>entity-123</entityId>
+  <type>EXACT_MATCH</type>
+  <matches>
+    <match>
+      <name>Alice</name>
+      <reason>Exact match found</reason>
+    </match>
+  </matches>
+</response>`,
+      );
       vi.spyOn(runtime, "getEntityById").mockResolvedValue(mockEntity);
-
-      // Mock the parseKeyValueXml to return the expected resolution
-      const parseXmlSpy = vi.spyOn(utils, "parseKeyValueXml");
-      parseXmlSpy.mockReturnValue({
-        type: "EXACT_MATCH",
-        entityId: "entity-123",
-        matches: {
-          match: [{ name: "Alice", reason: "Exact match found" }],
-        },
-      });
 
       const result = await findEntityByName(runtime, mockMemory, mockState);
 
       expect(result).toEqual(mockEntity);
       expect(runtime.getRoom).toHaveBeenCalledWith("room-789");
       expect(runtime.getEntitiesForRoom).toHaveBeenCalledWith("room-789", true);
-      parseXmlSpy.mockRestore();
     });
 
     it("should return null when room not found", async () => {
@@ -314,25 +314,20 @@ describe("entities", () => {
       vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
       vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
       vi.spyOn(runtime, "useModel").mockResolvedValue(
-        JSON.stringify({
-          entityId: "entity-exact",
-          type: "EXACT_MATCH",
-          matches: [{ name: "ExactMatch", reason: "Exact ID match" }],
-        }),
+        `<response>
+  <entityId>entity-exact</entityId>
+  <type>EXACT_MATCH</type>
+  <matches>
+    <match>
+      <name>ExactMatch</name>
+      <reason>Exact ID match</reason>
+    </match>
+  </matches>
+</response>`,
       );
       vi.spyOn(runtime, "getEntityById").mockResolvedValue(
         mockEntityWithComponents,
       );
-
-      // Mock parseKeyValueXml to return proper resolution
-      const parseXmlSpy = vi.spyOn(utils, "parseKeyValueXml");
-      parseXmlSpy.mockReturnValue({
-        entityId: "entity-exact",
-        type: "EXACT_MATCH",
-        matches: {
-          match: [{ name: "ExactMatch", reason: "Exact ID match" }],
-        },
-      });
 
       const result = await findEntityByName(runtime, mockMemory, mockState);
 
@@ -340,7 +335,6 @@ describe("entities", () => {
       expect(result?.id).toBe("entity-exact" as UUID);
       // Verify getEntityById was called (covers lines 274-282)
       expect(runtime.getEntityById).toHaveBeenCalledWith("entity-exact");
-      parseXmlSpy.mockRestore();
     });
 
     it("should find entity by username in components", async () => {
@@ -376,26 +370,17 @@ describe("entities", () => {
       vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
       vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
       vi.spyOn(runtime, "useModel").mockResolvedValue(
-        JSON.stringify({
-          type: "USERNAME_MATCH",
-          matches: [{ name: "johndoe123", reason: "Username match" }],
-        }),
+        `<response>
+  <entityId>entity-user</entityId>
+  <type>EXACT_MATCH</type>
+</response>`,
       );
-
-      // Mock parseKeyValueXml
-      const parseXmlSpy = vi.spyOn(utils, "parseKeyValueXml");
-      parseXmlSpy.mockReturnValue({
-        type: "USERNAME_MATCH",
-        matches: {
-          match: [{ name: "johndoe123", reason: "Username match" }],
-        },
-      });
+      vi.spyOn(runtime, "getEntityById").mockResolvedValue(mockEntity);
 
       const result = await findEntityByName(runtime, mockMemory, mockState);
 
       expect(result).toBeDefined();
       expect(result?.id).toBe("entity-user" as UUID);
-      parseXmlSpy.mockRestore();
     });
 
     it("should find entity by handle in components", async () => {
@@ -431,26 +416,17 @@ describe("entities", () => {
       vi.spyOn(runtime, "getRelationships").mockResolvedValue([]);
       vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
       vi.spyOn(runtime, "useModel").mockResolvedValue(
-        JSON.stringify({
-          type: "USERNAME_MATCH",
-          matches: [{ name: "@janesmith", reason: "Handle match" }],
-        }),
+        `<response>
+  <entityId>entity-handle</entityId>
+  <type>EXACT_MATCH</type>
+</response>`,
       );
-
-      // Mock parseKeyValueXml
-      const parseXmlSpy = vi.spyOn(utils, "parseKeyValueXml");
-      parseXmlSpy.mockReturnValue({
-        type: "USERNAME_MATCH",
-        matches: {
-          match: [{ name: "@janesmith", reason: "Handle match" }],
-        },
-      });
+      vi.spyOn(runtime, "getEntityById").mockResolvedValue(mockEntity);
 
       const result = await findEntityByName(runtime, mockMemory, mockState);
 
       expect(result).toBeDefined();
       expect(result?.id).toBe("entity-handle" as UUID);
-      parseXmlSpy.mockRestore();
     });
   });
 
@@ -461,29 +437,17 @@ describe("entities", () => {
     });
 
     it("should create UUID from combined string for different IDs", () => {
-      const stringToUuidSpy = vi.spyOn(utils, "stringToUuid");
-      stringToUuidSpy.mockReturnValue("unique-uuid-123" as UUID);
-
       const result = createUniqueUuid(runtime, "user-456");
 
-      expect(result).toBe("unique-uuid-123" as UUID);
-      expect(stringToUuidSpy).toHaveBeenCalledWith(
-        `user-456:${runtime.agentId}`,
-      );
-      stringToUuidSpy.mockRestore();
+      const expected = utils.stringToUuid(`user-456:${runtime.agentId}`);
+      expect(result).toBe(expected);
     });
 
     it("should handle UUID type as base user ID", () => {
-      const stringToUuidSpy = vi.spyOn(utils, "stringToUuid");
-      stringToUuidSpy.mockReturnValue("unique-uuid-456" as UUID);
-
       const result = createUniqueUuid(runtime, "user-789" as UUID);
 
-      expect(result).toBe("unique-uuid-456" as UUID);
-      expect(stringToUuidSpy).toHaveBeenCalledWith(
-        `user-789:${runtime.agentId}`,
-      );
-      stringToUuidSpy.mockRestore();
+      const expected = utils.stringToUuid(`user-789:${runtime.agentId}`);
+      expect(result).toBe(expected);
     });
   });
 

@@ -586,6 +586,22 @@ export class AgentRuntime implements IAgentRuntime {
     const bootstrapPlugin = createBootstrapPlugin(this.capabilityOptions);
     pluginRegistrationPromises.push(this.registerPlugin(bootstrapPlugin));
 
+    // Advanced planning is built into core, but only loaded when enabled on the character.
+    if (this.character.advancedPlanning === true) {
+      const { createAdvancedPlanningPlugin } = await import("./advanced-planning/index.ts");
+      pluginRegistrationPromises.push(
+        this.registerPlugin(createAdvancedPlanningPlugin()),
+      );
+    }
+
+    // Advanced memory is built into core, but only loaded when enabled on the character.
+    if (this.character.advancedMemory === true) {
+      const { createAdvancedMemoryPlugin } = await import("./advanced-memory/index.ts");
+      pluginRegistrationPromises.push(
+        this.registerPlugin(createAdvancedMemoryPlugin()),
+      );
+    }
+
     for (const plugin of this.characterPlugins) {
       if (plugin) {
         pluginRegistrationPromises.push(this.registerPlugin(plugin));

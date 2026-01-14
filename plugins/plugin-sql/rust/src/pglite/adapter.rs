@@ -651,15 +651,56 @@ impl DatabaseAdapter for PgLiteAdapter {
 
         let mut js_params = vec![JsValue::from_str(&params.table_name)];
 
-        if params.room_id.is_some() {
-            sql.push_str(" AND room_id = $2");
-            js_params.push(JsValue::from_str(params.room_id.as_ref().unwrap().as_str()));
+        let mut idx: i32 = 2;
+
+        if let Some(entity_id) = params.entity_id.as_ref() {
+            sql.push_str(&format!(" AND entity_id = ${}", idx));
+            js_params.push(JsValue::from_str(entity_id.as_str()));
+            idx += 1;
+        }
+
+        if let Some(room_id) = params.room_id.as_ref() {
+            sql.push_str(&format!(" AND room_id = ${}", idx));
+            js_params.push(JsValue::from_str(room_id.as_str()));
+            idx += 1;
+        }
+
+        if let Some(agent_id) = params.agent_id.as_ref() {
+            sql.push_str(&format!(" AND agent_id = ${}", idx));
+            js_params.push(JsValue::from_str(agent_id.as_str()));
+            idx += 1;
+        }
+
+        if let Some(world_id) = params.world_id.as_ref() {
+            sql.push_str(&format!(" AND world_id = ${}", idx));
+            js_params.push(JsValue::from_str(world_id.as_str()));
+            idx += 1;
+        }
+
+        if params.unique.unwrap_or(false) {
+            sql.push_str(r#" AND "unique" = true"#);
+        }
+
+        if let Some(start) = params.start {
+            sql.push_str(&format!(" AND created_at >= ${}", idx));
+            js_params.push(JsValue::from_f64(start as f64));
+            idx += 1;
+        }
+
+        if let Some(end) = params.end {
+            sql.push_str(&format!(" AND created_at <= ${}", idx));
+            js_params.push(JsValue::from_f64(end as f64));
+            idx += 1;
         }
 
         sql.push_str(" ORDER BY created_at DESC");
 
         if let Some(count) = params.count {
             sql.push_str(&format!(" LIMIT {}", count));
+        }
+
+        if let Some(offset) = params.offset {
+            sql.push_str(&format!(" OFFSET {}", offset));
         }
 
         let result = self.manager.query(&sql, &js_params).await?;

@@ -60,7 +60,14 @@ async def handle_update_todo(
             )
         return UpdateTodoResult(success=False, text=error_msg, error=error_msg)
 
-    data_service = create_todo_data_service(runtime.db if hasattr(runtime, "db") else None)
+    # Prefer the runtime (task-backed persistence) when available, otherwise fall back to
+    # a pre-injected in-memory TodoDataService on `runtime.db` (used by tests/mocks).
+    runtime_or_db = (
+        runtime
+        if hasattr(runtime, "create_task") and hasattr(runtime, "get_tasks")
+        else (runtime.db if hasattr(runtime, "db") else None)
+    )
+    data_service = create_todo_data_service(runtime_or_db)
 
     # Get all active todos for this room
     filters = TodoFilters(
@@ -172,7 +179,8 @@ async def validate_update_todo(
     if not message.room_id:
         return False
 
-    data_service = create_todo_data_service(runtime.db if hasattr(runtime, "db") else None)
+    # Prefer passing the runtime so the data service can persist via plugin-sql tasks.
+    data_service = create_todo_data_service(runtime)
     filters = TodoFilters(
         room_id=message.room_id,
         is_completed=False,

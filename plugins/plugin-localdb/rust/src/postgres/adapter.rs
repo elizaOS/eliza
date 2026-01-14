@@ -540,6 +540,11 @@ impl DatabaseAdapter for PostgresAdapter {
 
         qb.push_bind(&params.table_name);
 
+        if let Some(entity_id) = params.entity_id.as_ref() {
+            let entity_uuid = uuid::Uuid::parse_str(entity_id.as_str())?;
+            qb.push(" AND m.entity_id = ").push_bind(entity_uuid);
+        }
+
         if let Some(room_id) = params.room_id.as_ref() {
             let room_uuid = uuid::Uuid::parse_str(room_id.as_str())?;
             qb.push(" AND m.room_id = ").push_bind(room_uuid);
@@ -548,6 +553,29 @@ impl DatabaseAdapter for PostgresAdapter {
         if let Some(agent_id) = params.agent_id.as_ref() {
             let agent_uuid = uuid::Uuid::parse_str(agent_id.as_str())?;
             qb.push(" AND m.agent_id = ").push_bind(agent_uuid);
+        }
+
+        if let Some(world_id) = params.world_id.as_ref() {
+            let world_uuid = uuid::Uuid::parse_str(world_id.as_str())?;
+            qb.push(" AND m.world_id = ").push_bind(world_uuid);
+        }
+
+        if params.unique.unwrap_or(false) {
+            qb.push(r#" AND m."unique" = true"#);
+        }
+
+        if let Some(start) = params.start {
+            let start_s = (start as f64) / 1000.0;
+            qb.push(" AND m.created_at >= to_timestamp(")
+                .push_bind(start_s)
+                .push(")");
+        }
+
+        if let Some(end) = params.end {
+            let end_s = (end as f64) / 1000.0;
+            qb.push(" AND m.created_at <= to_timestamp(")
+                .push_bind(end_s)
+                .push(")");
         }
 
         qb.push(" ORDER BY m.created_at DESC");

@@ -54,6 +54,13 @@ pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// A human-readable description of this plugin's purpose.
 pub const PLUGIN_DESCRIPTION: &str = "Goal management for elizaOS agents";
 
+/// Creates a runtime-native elizaOS plugin (`elizaos::Plugin`).
+///
+/// This is the interface expected by the Rust AgentRuntime plugin system.
+pub fn eliza_plugin() -> elizaos::Plugin {
+    elizaos::Plugin::new(PLUGIN_NAME, PLUGIN_DESCRIPTION)
+}
+
 /// Creates a new instance of the goals plugin with default configuration.
 ///
 /// # Returns

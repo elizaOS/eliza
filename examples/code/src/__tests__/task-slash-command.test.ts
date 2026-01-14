@@ -8,7 +8,14 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { handleTaskSlashCommand } from "../lib/task-slash-command.js";
-import { CodeTaskService } from "../plugin/services/code-task.js";
+import {
+  AgentOrchestratorService as CodeTaskService,
+  configureAgentOrchestratorPlugin,
+  type AgentProvider,
+  type OrchestratedTask,
+  type ProviderTaskExecutionContext,
+  type TaskResult,
+} from "@elizaos/plugin-agent-orchestrator";
 import type {
   CodeTask,
   CodeTaskMetadata,
@@ -30,8 +37,6 @@ describe("TUI /task slash commands", () => {
   let serviceRef: CodeTaskService | null;
 
   beforeEach(async () => {
-    process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION = "1";
-
     runtime = await createTestRuntime();
     tasks = new Map();
     rooms = new Map();
@@ -57,6 +62,26 @@ describe("TUI /task slash commands", () => {
     vi.spyOn(runtime, "getService").mockImplementation((type: string) => {
       if (type === "CODE_TASK") return serviceRef;
       return null;
+    });
+
+    const noOpProvider: AgentProvider = {
+      id: "eliza",
+      label: "Test Provider",
+      executeTask: async (
+        _task: OrchestratedTask,
+        _ctx: ProviderTaskExecutionContext,
+      ): Promise<TaskResult> => ({
+        success: true,
+        summary: "noop",
+        filesCreated: [],
+        filesModified: [],
+      }),
+    };
+    configureAgentOrchestratorPlugin({
+      providers: [noOpProvider],
+      defaultProviderId: "eliza",
+      getWorkingDirectory: () => process.cwd(),
+      activeProviderEnvVar: "ELIZA_CODE_ACTIVE_SUB_AGENT",
     });
 
     vi.spyOn(runtime, "createTask").mockImplementation(async (task: Task) => {
@@ -132,7 +157,6 @@ describe("TUI /task slash commands", () => {
   });
 
   afterEach(async () => {
-    delete process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION;
     vi.clearAllMocks();
     await cleanupTestRuntime(runtime);
   });
