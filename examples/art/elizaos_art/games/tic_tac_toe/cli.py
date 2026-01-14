@@ -112,8 +112,8 @@ def interactive(
     """Play Tic-Tac-Toe interactively."""
 
     async def run() -> None:
-        # Human is X (plays first), AI is O
-        config = TicTacToeConfig(opponent="none", ai_player=Player.O)
+        # Human is X (plays first), AI opponent is O
+        config = TicTacToeConfig(opponent=opponent, ai_player=Player.O)
         env = TicTacToeEnvironment(config)
         await env.initialize()
 
