@@ -10,6 +10,7 @@
     "src/index.browser.ts",
     "src/pglite/**/*.ts",
     "src/schema/**/*.ts",
+    "src/stores/**/*.ts",
     "src/base.ts",
     "src/types.ts",
     "src/utils.browser.ts",
