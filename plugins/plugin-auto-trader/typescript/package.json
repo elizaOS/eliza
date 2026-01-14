@@ -1,0 +1,65 @@
+{
+  "name": "@elizaos/plugin-auto-trader",
+  "description": "Autonomous trading plugin with LLM-powered strategies for Solana",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "trading",
+    "solana",
+    "jupiter",
+    "defi"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-solana": "workspace:*",
+    "@solana/web3.js": "^1.95.0",
+    "@solana/spl-token": "^0.4.0",
+    "bignumber.js": "^9.1.0",
+    "bs58": "^6.0.0",
+    "technicalindicators": "^3.1.0",
+    "zod": "^3.23.0"
+  },
+  "optionalDependencies": {
+    "@elizaos/plugin-trajectory-logger": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.3"
+  },
+  "scripts": {
+    "dev": "tsup --watch",
+    "build": "tsup",
+    "lint": "bunx @biomejs/biome check --write ./src",
+    "test": "vitest run",
+    "format": "bunx @biomejs/biome format --write ./src",
+    "format:check": "bunx @biomejs/biome format ./src",
+    "clean": "rm -rf dist .turbo node_modules tsconfig.tsbuildinfo"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
