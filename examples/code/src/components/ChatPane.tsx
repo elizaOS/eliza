@@ -25,6 +25,8 @@ const COMMANDS: CommandSuggestion[] = [
   { command: "/switch", description: "Switch conversation" },
   { command: "/rename", description: "Rename conversation" },
   { command: "/delete", description: "Delete a conversation" },
+  // Agent selection
+  { command: "/agent", description: "Select active worker sub-agent" },
   // Task commands
   { command: "/task", description: "Task management" },
   { command: "/task list", description: "List all tasks" },

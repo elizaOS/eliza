@@ -38,15 +38,15 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
-    "@elizaos/plugin-planning-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
     "@elizaos/plugin-s3-storage-root#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    },
+    "@elizaos/plugin-code-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/target/release/**", "python/dist/**"]
     },
     "@elizaos/plugin-anthropic-root#build": {
       "dependsOn": ["^build"],
@@ -209,11 +209,6 @@
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
     "@elizaos/plugin-openai-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-memory-root#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]

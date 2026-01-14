@@ -99,6 +99,12 @@ pub struct Character {
     pub id: Option<UUID>,
     /// Character name
     pub name: String,
+    /// Enable built-in advanced planning (core, gated by `advancedPlanning: true`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advanced_planning: Option<bool>,
+    /// Enable built-in advanced memory (core, gated by `advancedMemory: true`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advanced_memory: Option<bool>,
     /// Optional username
     #[serde(skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
@@ -165,6 +171,8 @@ impl Default for Character {
         Character {
             id: None,
             name: "Unnamed Character".to_string(),
+            advanced_planning: None,
+            advanced_memory: None,
             username: None,
             system: None,
             templates: None,
@@ -278,6 +286,30 @@ mod tests {
         let character = Character::from_json(json).unwrap();
         assert_eq!(character.name, "TestAgent");
         assert_eq!(character.bio_string(), "A test agent for testing purposes");
+    }
+
+    #[test]
+    fn test_character_parses_advanced_planning_flag() {
+        let json = r#"{
+            "name": "TestAgent",
+            "bio": "A test agent",
+            "advancedPlanning": true
+        }"#;
+
+        let character = Character::from_json(json).unwrap();
+        assert_eq!(character.advanced_planning, Some(true));
+    }
+
+    #[test]
+    fn test_character_parses_advanced_memory_flag() {
+        let json = r#"{
+            "name": "TestAgent",
+            "bio": "A test agent",
+            "advancedMemory": true
+        }"#;
+
+        let character = Character::from_json(json).unwrap();
+        assert_eq!(character.advanced_memory, Some(true));
     }
 
     #[test]

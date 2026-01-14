@@ -174,6 +174,18 @@ export const characterSchema = z
       .string()
       .min(1, "Character name is required")
       .describe('The name of the character (e.g., "Eliza")'),
+    advancedPlanning: z
+      .boolean()
+      .optional()
+      .describe(
+        "Enable built-in advanced planning. When true, the runtime auto-loads planning capabilities.",
+      ),
+    advancedMemory: z
+      .boolean()
+      .optional()
+      .describe(
+        "Enable built-in advanced memory. When true, the runtime auto-loads memory capabilities.",
+      ),
     username: z
       .string()
       .optional()

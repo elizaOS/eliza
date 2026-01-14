@@ -1,0 +1,13 @@
+[package]
+name = "example-computer-use-rust"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+serde_json = "1.0"
+anyhow = "1.0"
+
+elizaos-plugin-computeruse = { path = "../../../plugins/plugin-computeruse/rust" }
+

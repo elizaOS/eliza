@@ -5,7 +5,7 @@ This directory contains A2A (Agent-to-Agent) server implementations that expose 
 **Uses real elizaOS runtime.**
 
 - If `OPENAI_API_KEY` is set, the server will use an OpenAI-backed model (and SQL where supported).
-- If `OPENAI_API_KEY` is not set, the server runs in a deterministic “ELIZA classic” mode (no API keys required), so examples and tests can run anywhere (including CI).
+- If `OPENAI_API_KEY` is not set, the server runs in a deterministic “ELIZA classic” mode (no API keys required), backed by `@elizaos/plugin-inmemorydb` for ephemeral multi-turn state.
 
 ## Available Examples
 

@@ -1,13 +1,8 @@
 use crate::services::MinecraftService;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub struct ProviderResult {
-    pub text: String,
-    pub values: HashMap<String, Value>,
-    pub data: HashMap<String, Value>,
-}
+use super::ProviderResult;
 
 pub async fn get_world_state(service: Arc<MinecraftService>) -> ProviderResult {
     match service.get_state().await {

@@ -182,6 +182,18 @@ async function generateTypeScriptDeclarations() {
     `// Main entry point fallback for @elizaos/core\nexport * from './node/index.node.js';\n`,
   );
 
+  // Some tooling (including Bun in certain situations) may attempt to follow the
+  // "dist/index.d.ts -> ./index.node" re-export at runtime. Provide explicit JS
+  // entrypoints so resolution always lands on real JS modules.
+  await fs.writeFile(
+    "dist/index.node.js",
+    `// Node entry point (explicit)\nexport * from './node/index.node.js';\n`,
+  );
+  await fs.writeFile(
+    "dist/index.browser.js",
+    `// Browser entry point (explicit)\nexport * from './browser/index.browser.js';\n`,
+  );
+
   // Create main index.d.ts to re-export all types from node build
   // This ensures TypeScript resolves all exports when using moduleResolution: bundler
   await fs.writeFile(

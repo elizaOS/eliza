@@ -75,3 +75,10 @@ pub const PLUGIN_NAME: &str = "todo";
 pub const PLUGIN_DESCRIPTION: &str = "Todo task management with daily recurring and one-off tasks";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Creates a runtime-native elizaOS plugin (`elizaos::Plugin`).
+///
+/// This is the interface expected by the Rust AgentRuntime plugin system.
+pub fn plugin() -> elizaos::Plugin {
+    elizaos::Plugin::new(PLUGIN_NAME, PLUGIN_DESCRIPTION)
+}

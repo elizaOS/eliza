@@ -257,6 +257,104 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       expect(runtime.plugins.some((p) => p.name === "TestPlugin")).toBe(true);
     });
 
+    it("should auto-register advanced planning when enabled on character", async () => {
+      const characterWithAdvancedPlanning: Character = {
+        ...mockCharacter,
+        advancedPlanning: true,
+      };
+
+      const runtimeWithAdvancedPlanning = new AgentRuntime({
+        character: characterWithAdvancedPlanning,
+        agentId: agentId,
+        adapter: mockDatabaseAdapter,
+      });
+
+      const ensureAgentExistsSpy = vi
+        .spyOn(AgentRuntime.prototype, "ensureAgentExists")
+        .mockResolvedValue({
+          ...characterWithAdvancedPlanning,
+          id: agentId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          enabled: true,
+        });
+
+      (
+        mockDatabaseAdapter.getEntitiesByIds as VitestMockFunction<
+          IDatabaseAdapter["getEntitiesByIds"]
+        >
+      ).mockResolvedValue([
+        {
+          id: agentId,
+          agentId: agentId,
+          names: [characterWithAdvancedPlanning.name],
+          metadata: {},
+        },
+      ]);
+      (
+        mockDatabaseAdapter.getRoomsByIds as VitestMockFunction<
+          IDatabaseAdapter["getRoomsByIds"]
+        >
+      ).mockResolvedValue([]);
+      (
+        mockDatabaseAdapter.getParticipantsForRoom as VitestMockFunction<
+          IDatabaseAdapter["getParticipantsForRoom"]
+        >
+      ).mockResolvedValue([]);
+
+      await runtimeWithAdvancedPlanning.initialize();
+      await runtimeWithAdvancedPlanning.getServiceLoadPromise("planning");
+      expect(runtimeWithAdvancedPlanning.hasService("planning")).toBe(true);
+
+      ensureAgentExistsSpy.mockRestore();
+    });
+
+    it("should not auto-register advanced planning when disabled", async () => {
+      const runtimeWithoutAdvancedPlanning = new AgentRuntime({
+        character: mockCharacter,
+        agentId: agentId,
+        adapter: mockDatabaseAdapter,
+      });
+
+      const ensureAgentExistsSpy = vi
+        .spyOn(AgentRuntime.prototype, "ensureAgentExists")
+        .mockResolvedValue({
+          ...mockCharacter,
+          id: agentId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          enabled: true,
+        });
+
+      (
+        mockDatabaseAdapter.getEntitiesByIds as VitestMockFunction<
+          IDatabaseAdapter["getEntitiesByIds"]
+        >
+      ).mockResolvedValue([
+        {
+          id: agentId,
+          agentId: agentId,
+          names: [mockCharacter.name],
+          metadata: {},
+        },
+      ]);
+      (
+        mockDatabaseAdapter.getRoomsByIds as VitestMockFunction<
+          IDatabaseAdapter["getRoomsByIds"]
+        >
+      ).mockResolvedValue([]);
+      (
+        mockDatabaseAdapter.getParticipantsForRoom as VitestMockFunction<
+          IDatabaseAdapter["getParticipantsForRoom"]
+        >
+      ).mockResolvedValue([]);
+
+      await runtimeWithoutAdvancedPlanning.initialize();
+      expect(runtimeWithoutAdvancedPlanning.hasService("planning")).toBe(false);
+
+      ensureAgentExistsSpy.mockRestore();
+    });
+
     it("should call plugin init function", async () => {
       const initMock = vi.fn().mockResolvedValue(undefined);
       const mockPlugin: Plugin = {

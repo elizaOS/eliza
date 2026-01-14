@@ -516,6 +516,7 @@ dependencies = [
  "dotenvy",
  "elizaos",
  "elizaos-plugin-eliza-classic",
+ "elizaos-plugin-inmemorydb",
  "elizaos-plugin-openai",
  "futures",
  "http-body-util",
@@ -568,6 +569,21 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "elizaos-plugin-inmemorydb"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "parking_lot",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

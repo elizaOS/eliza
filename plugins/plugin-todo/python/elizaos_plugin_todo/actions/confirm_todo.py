@@ -135,7 +135,14 @@ async def handle_confirm_todo(
             )
         return ConfirmTodoResult(success=False, text="Task creation cancelled")
 
-    data_service = create_todo_data_service(runtime.db if hasattr(runtime, "db") else None)
+    # Prefer the runtime (task-backed persistence) when available, otherwise fall back to
+    # a pre-injected in-memory TodoDataService on `runtime.db` (used by tests/mocks).
+    runtime_or_db = (
+        runtime
+        if hasattr(runtime, "create_task") and hasattr(runtime, "get_tasks")
+        else (runtime.db if hasattr(runtime, "db") else None)
+    )
+    data_service = create_todo_data_service(runtime_or_db)
 
     filters = TodoFilters(
         entity_id=message.entity_id,

@@ -30,7 +30,6 @@ use std::{
     net::SocketAddr,
     sync::Arc,
 };
-use tokio::sync::RwLock;
 use tokio::sync::OnceCell;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
@@ -69,195 +68,341 @@ fn extract_user_text(prompt: &str) -> &str {
 }
 
 // ============================================================================
-// Minimal in-memory DatabaseAdapter (for multi-turn state)
+// In-memory DatabaseAdapter (plugin-inmemorydb-backed) for multi-turn state
 // ============================================================================
 
-#[derive(Default)]
-struct InMemoryAdapter {
-    ready: RwLock<bool>,
-    agents: RwLock<HashMap<UUID, Agent>>,
-    entities: RwLock<HashMap<UUID, Entity>>,
-    rooms: RwLock<HashMap<UUID, Room>>,
-    worlds: RwLock<HashMap<UUID, World>>,
-    memories: RwLock<HashMap<UUID, Memory>>,
-    tasks: RwLock<HashMap<UUID, Task>>,
-    participants: RwLock<HashMap<UUID, Vec<UUID>>>,
+use elizaos_plugin_inmemorydb::{IStorage, MemoryStorage, COLLECTIONS as IM_COLLECTIONS};
+
+#[derive(Clone)]
+struct InMemoryDbAdapter {
+    storage: Arc<MemoryStorage>,
+}
+
+impl Default for InMemoryDbAdapter {
+    fn default() -> Self {
+        Self {
+            storage: Arc::new(MemoryStorage::new()),
+        }
+    }
+}
+
+fn storage_err(e: impl std::fmt::Display) -> anyhow::Error {
+    anyhow::anyhow!(e.to_string())
+}
+
+fn insert_table_name(mut value: serde_json::Value, table_name: &str) -> serde_json::Value {
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("__tableName".to_string(), serde_json::Value::String(table_name.to_string()));
+    }
+    value
+}
+
+fn get_table_name(value: &serde_json::Value) -> Option<&str> {
+    value.get("__tableName").and_then(|v| v.as_str())
 }
 
 #[async_trait::async_trait]
-impl DatabaseAdapter for InMemoryAdapter {
+impl DatabaseAdapter for InMemoryDbAdapter {
     async fn init(&self) -> Result<()> {
-        let mut ready = self.ready.write().await;
-        *ready = true;
-        Ok(())
+        self.storage.init().await.map_err(storage_err)
     }
 
     async fn close(&self) -> Result<()> {
-        let mut ready = self.ready.write().await;
-        *ready = false;
-        Ok(())
+        self.storage.close().await.map_err(storage_err)
     }
 
     async fn is_ready(&self) -> Result<bool> {
-        Ok(*self.ready.read().await)
+        Ok(self.storage.is_ready().await)
     }
 
     async fn get_agent(&self, agent_id: &UUID) -> Result<Option<Agent>> {
-        Ok(self.agents.read().await.get(agent_id).cloned())
+        let raw = self
+            .storage
+            .get(IM_COLLECTIONS::AGENTS, &agent_id.to_string())
+            .await
+            .map_err(storage_err)?;
+        match raw {
+            None => Ok(None),
+            Some(v) => Ok(Some(serde_json::from_value(v)?)),
+        }
     }
 
     async fn create_agent(&self, agent: &Agent) -> Result<bool> {
         let id = agent.character.id.clone().unwrap_or_else(UUID::new_v4);
-        self.agents.write().await.insert(id, agent.clone());
+        self.storage
+            .set(
+                IM_COLLECTIONS::AGENTS,
+                &id.to_string(),
+                serde_json::to_value(agent)?,
+            )
+            .await
+            .map_err(storage_err)?;
         Ok(true)
     }
 
     async fn update_agent(&self, agent_id: &UUID, agent: &Agent) -> Result<bool> {
-        self.agents
-            .write()
+        self.storage
+            .set(
+                IM_COLLECTIONS::AGENTS,
+                &agent_id.to_string(),
+                serde_json::to_value(agent)?,
+            )
             .await
-            .insert(agent_id.clone(), agent.clone());
+            .map_err(storage_err)?;
         Ok(true)
     }
 
     async fn delete_agent(&self, agent_id: &UUID) -> Result<bool> {
-        Ok(self.agents.write().await.remove(agent_id).is_some())
+        self.storage
+            .delete(IM_COLLECTIONS::AGENTS, &agent_id.to_string())
+            .await
+            .map_err(storage_err)
     }
 
     async fn get_memories(&self, params: GetMemoriesParams) -> Result<Vec<Memory>> {
-        let count = params.count.unwrap_or(50).max(0) as usize;
-        let offset = params.offset.unwrap_or(0).max(0) as usize;
-
-        let mut items: Vec<Memory> = self
-            .memories
-            .read()
+        let mut values = self
+            .storage
+            .get_all(IM_COLLECTIONS::MEMORIES)
             .await
-            .values()
-            .filter(|m| {
-                if let Some(room_id) = &params.room_id {
-                    if &m.room_id != room_id {
-                        return false;
-                    }
-                }
-                if let Some(entity_id) = &params.entity_id {
-                    if &m.entity_id != entity_id {
-                        return false;
-                    }
-                }
-                if let Some(agent_id) = &params.agent_id {
-                    if m.agent_id.as_ref() != Some(agent_id) {
-                        return false;
-                    }
-                }
-                if let Some(start) = params.start {
-                    if m.created_at.unwrap_or(0) < start {
-                        return false;
-                    }
-                }
-                if let Some(end) = params.end {
-                    if m.created_at.unwrap_or(0) > end {
-                        return false;
-                    }
-                }
-                true
-            })
-            .cloned()
-            .collect();
+            .map_err(storage_err)?;
 
-        items.sort_by_key(|m| -(m.created_at.unwrap_or(0)));
+        // Filter by table_name (stored as __tableName)
+        values.retain(|v| get_table_name(v) == Some(params.table_name.as_str()));
 
-        Ok(items.into_iter().skip(offset).take(count).collect())
+        if let Some(room_id) = &params.room_id {
+            values.retain(|v| v.get("roomId").and_then(|x| x.as_str()) == Some(&room_id.to_string()));
+        }
+        if let Some(world_id) = &params.world_id {
+            values.retain(|v| v.get("worldId").and_then(|x| x.as_str()) == Some(&world_id.to_string()));
+        }
+        if let Some(entity_id) = &params.entity_id {
+            values.retain(|v| v.get("entityId").and_then(|x| x.as_str()) == Some(&entity_id.to_string()));
+        }
+        if let Some(agent_id) = &params.agent_id {
+            values.retain(|v| v.get("agentId").and_then(|x| x.as_str()) == Some(&agent_id.to_string()));
+        }
+        if let Some(start) = params.start {
+            values.retain(|v| v.get("createdAt").and_then(|x| x.as_i64()).unwrap_or(0) >= start);
+        }
+        if let Some(end) = params.end {
+            values.retain(|v| v.get("createdAt").and_then(|x| x.as_i64()).unwrap_or(0) <= end);
+        }
+        if params.unique == Some(true) {
+            values.retain(|v| v.get("unique").and_then(|x| x.as_bool()) == Some(true));
+        }
+
+        values.sort_by(|a, b| {
+            let a_time = a.get("createdAt").and_then(|v| v.as_i64()).unwrap_or(0);
+            let b_time = b.get("createdAt").and_then(|v| v.as_i64()).unwrap_or(0);
+            b_time.cmp(&a_time)
+        });
+
+        let offset = params.offset.unwrap_or(0).max(0) as usize;
+        let count = params.count.unwrap_or(50).max(0) as usize;
+        let values = values.into_iter().skip(offset).take(count);
+
+        let mut out: Vec<Memory> = Vec::new();
+        for mut v in values {
+            if let Some(obj) = v.as_object_mut() {
+                obj.remove("__tableName");
+            }
+            out.push(serde_json::from_value(v)?);
+        }
+        Ok(out)
     }
 
     async fn search_memories(&self, _params: SearchMemoriesParams) -> Result<Vec<Memory>> {
         Ok(Vec::new())
     }
 
-    async fn create_memory(&self, memory: &Memory, _table_name: &str) -> Result<UUID> {
+    async fn create_memory(&self, memory: &Memory, table_name: &str) -> Result<UUID> {
         let mut stored = memory.clone();
         let id = stored.id.clone().unwrap_or_else(UUID::new_v4);
         stored.id = Some(id.clone());
-        self.memories.write().await.insert(id.clone(), stored);
+        if stored.created_at.is_none() {
+            stored.created_at = Some(chrono::Utc::now().timestamp_millis());
+        }
+
+        let value = insert_table_name(serde_json::to_value(&stored)?, table_name);
+        self.storage
+            .set(IM_COLLECTIONS::MEMORIES, &id.to_string(), value)
+            .await
+            .map_err(storage_err)?;
         Ok(id)
     }
 
     async fn update_memory(&self, memory: &Memory) -> Result<bool> {
-        let id = match &memory.id {
-            Some(id) => id.clone(),
-            None => return Ok(false),
+        let Some(id) = &memory.id else {
+            return Ok(false);
         };
-        self.memories.write().await.insert(id, memory.clone());
+        let value = insert_table_name(serde_json::to_value(memory)?, "messages");
+        self.storage
+            .set(IM_COLLECTIONS::MEMORIES, &id.to_string(), value)
+            .await
+            .map_err(storage_err)?;
         Ok(true)
     }
 
     async fn delete_memory(&self, memory_id: &UUID) -> Result<()> {
-        self.memories.write().await.remove(memory_id);
+        let _ = self
+            .storage
+            .delete(IM_COLLECTIONS::MEMORIES, &memory_id.to_string())
+            .await
+            .map_err(storage_err)?;
         Ok(())
     }
 
     async fn get_memory_by_id(&self, id: &UUID) -> Result<Option<Memory>> {
-        Ok(self.memories.read().await.get(id).cloned())
+        let raw = self
+            .storage
+            .get(IM_COLLECTIONS::MEMORIES, &id.to_string())
+            .await
+            .map_err(storage_err)?;
+        match raw {
+            None => Ok(None),
+            Some(mut v) => {
+                if let Some(obj) = v.as_object_mut() {
+                    obj.remove("__tableName");
+                }
+                Ok(Some(serde_json::from_value(v)?))
+            }
+        }
     }
 
     async fn create_world(&self, world: &World) -> Result<UUID> {
-        self.worlds
-            .write()
+        self.storage
+            .set(
+                IM_COLLECTIONS::WORLDS,
+                &world.id.to_string(),
+                serde_json::to_value(world)?,
+            )
             .await
-            .insert(world.id.clone(), world.clone());
+            .map_err(storage_err)?;
         Ok(world.id.clone())
     }
 
     async fn get_world(&self, id: &UUID) -> Result<Option<World>> {
-        Ok(self.worlds.read().await.get(id).cloned())
+        let raw = self
+            .storage
+            .get(IM_COLLECTIONS::WORLDS, &id.to_string())
+            .await
+            .map_err(storage_err)?;
+        match raw {
+            None => Ok(None),
+            Some(v) => Ok(Some(serde_json::from_value(v)?)),
+        }
     }
 
     async fn create_room(&self, room: &Room) -> Result<UUID> {
-        self.rooms.write().await.insert(room.id.clone(), room.clone());
+        self.storage
+            .set(
+                IM_COLLECTIONS::ROOMS,
+                &room.id.to_string(),
+                serde_json::to_value(room)?,
+            )
+            .await
+            .map_err(storage_err)?;
         Ok(room.id.clone())
     }
 
     async fn get_room(&self, id: &UUID) -> Result<Option<Room>> {
-        Ok(self.rooms.read().await.get(id).cloned())
+        let raw = self
+            .storage
+            .get(IM_COLLECTIONS::ROOMS, &id.to_string())
+            .await
+            .map_err(storage_err)?;
+        match raw {
+            None => Ok(None),
+            Some(v) => Ok(Some(serde_json::from_value(v)?)),
+        }
     }
 
     async fn create_entity(&self, entity: &Entity) -> Result<bool> {
         let Some(id) = entity.id.clone() else {
             return Ok(false);
         };
-        self.entities.write().await.insert(id, entity.clone());
+        self.storage
+            .set(
+                IM_COLLECTIONS::ENTITIES,
+                &id.to_string(),
+                serde_json::to_value(entity)?,
+            )
+            .await
+            .map_err(storage_err)?;
         Ok(true)
     }
 
     async fn get_entity(&self, id: &UUID) -> Result<Option<Entity>> {
-        Ok(self.entities.read().await.get(id).cloned())
+        let raw = self
+            .storage
+            .get(IM_COLLECTIONS::ENTITIES, &id.to_string())
+            .await
+            .map_err(storage_err)?;
+        match raw {
+            None => Ok(None),
+            Some(v) => Ok(Some(serde_json::from_value(v)?)),
+        }
     }
 
     async fn add_participant(&self, entity_id: &UUID, room_id: &UUID) -> Result<bool> {
-        let mut parts = self.participants.write().await;
-        let entry = parts.entry(room_id.clone()).or_default();
-        if !entry.iter().any(|e| e == entity_id) {
-            entry.push(entity_id.clone());
-        }
+        let key = format!("{}:{}", room_id, entity_id);
+        self.storage
+            .set(
+                IM_COLLECTIONS::PARTICIPANTS,
+                &key,
+                serde_json::json!({
+                    "roomId": room_id.to_string(),
+                    "entityId": entity_id.to_string()
+                }),
+            )
+            .await
+            .map_err(storage_err)?;
         Ok(true)
     }
 
     async fn create_task(&self, task: &Task) -> Result<UUID> {
         let id = task.id.clone().unwrap_or_else(UUID::new_v4);
-        self.tasks.write().await.insert(id.clone(), task.clone());
+        self.storage
+            .set(
+                IM_COLLECTIONS::TASKS,
+                &id.to_string(),
+                serde_json::to_value(task)?,
+            )
+            .await
+            .map_err(storage_err)?;
         Ok(id)
     }
 
     async fn get_task(&self, id: &UUID) -> Result<Option<Task>> {
-        Ok(self.tasks.read().await.get(id).cloned())
+        let raw = self
+            .storage
+            .get(IM_COLLECTIONS::TASKS, &id.to_string())
+            .await
+            .map_err(storage_err)?;
+        match raw {
+            None => Ok(None),
+            Some(v) => Ok(Some(serde_json::from_value(v)?)),
+        }
     }
 
     async fn update_task(&self, id: &UUID, task: &Task) -> Result<()> {
-        self.tasks.write().await.insert(id.clone(), task.clone());
+        self.storage
+            .set(
+                IM_COLLECTIONS::TASKS,
+                &id.to_string(),
+                serde_json::to_value(task)?,
+            )
+            .await
+            .map_err(storage_err)?;
         Ok(())
     }
 
     async fn delete_task(&self, id: &UUID) -> Result<()> {
-        self.tasks.write().await.remove(id);
+        let _ = self
+            .storage
+            .delete(IM_COLLECTIONS::TASKS, &id.to_string())
+            .await
+            .map_err(storage_err)?;
         Ok(())
     }
 }
@@ -343,7 +488,7 @@ impl AppState {
 
                 let character = parse_character(CHARACTER_JSON)?;
 
-                let adapter: Arc<dyn DatabaseAdapter> = Arc::new(InMemoryAdapter::default());
+                let adapter: Arc<dyn DatabaseAdapter> = Arc::new(InMemoryDbAdapter::default());
 
                 let plugins = if has_openai_key() {
                     vec![create_openai_elizaos_plugin()?]

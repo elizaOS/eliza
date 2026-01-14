@@ -1,0 +1,21 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.3/schema.json",
+  "files": {
+    "ignoreUnknown": false,
+    "ignore": ["dist/**"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  }
+}
+

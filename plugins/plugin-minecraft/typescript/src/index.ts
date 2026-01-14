@@ -7,10 +7,12 @@ export * from "./types.js";
 export * from "./services/minecraft-service.js";
 export * from "./services/websocket-client.js";
 export * from "./services/process-manager.js";
+export * from "./services/waypoints-service.js";
 export * from "./actions/index.js";
 export * from "./providers/index.js";
 
 import { MinecraftService } from "./services/minecraft-service.js";
+import { WaypointsService } from "./services/waypoints-service.js";
 import {
   minecraftAttackAction,
   minecraftChatAction,
@@ -21,9 +23,18 @@ import {
   minecraftGotoAction,
   minecraftLookAction,
   minecraftPlaceAction,
+  minecraftScanAction,
   minecraftStopAction,
+  minecraftWaypointDeleteAction,
+  minecraftWaypointGotoAction,
+  minecraftWaypointListAction,
+  minecraftWaypointSetAction,
 } from "./actions/index.js";
-import { minecraftWorldStateProvider } from "./providers/world-state.js";
+import {
+  minecraftVisionProvider,
+  minecraftWaypointsProvider,
+  minecraftWorldStateProvider,
+} from "./providers/index.js";
 
 const configSchema = z.object({
   MC_SERVER_PORT: z
@@ -37,7 +48,7 @@ const configSchema = z.object({
   MC_VERSION: z.string().optional(),
 });
 
-// Backward-compatible provider reference (exported via providers/index.ts).
+// Backward-compatible provider reference.
 const minecraftStateProvider: Provider = minecraftWorldStateProvider;
 
 export const minecraftPlugin: Plugin = {
@@ -61,7 +72,7 @@ export const minecraftPlugin: Plugin = {
     }
     logger.info("Minecraft plugin initialized");
   },
-  services: [MinecraftService],
+  services: [MinecraftService, WaypointsService],
   actions: [
     minecraftConnectAction,
     minecraftDisconnectAction,
@@ -73,8 +84,13 @@ export const minecraftPlugin: Plugin = {
     minecraftDigAction,
     minecraftPlaceAction,
     minecraftAttackAction,
+    minecraftScanAction,
+    minecraftWaypointSetAction,
+    minecraftWaypointListAction,
+    minecraftWaypointGotoAction,
+    minecraftWaypointDeleteAction,
   ],
-  providers: [minecraftStateProvider],
+  providers: [minecraftStateProvider, minecraftWaypointsProvider, minecraftVisionProvider],
 };
 
 export default minecraftPlugin;

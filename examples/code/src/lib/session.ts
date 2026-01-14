@@ -8,6 +8,7 @@ import type {
   Message,
   MessageRole,
   PaneFocus,
+  SubAgentType,
   TaskPaneVisibility,
 } from "../types.js";
 import {
@@ -26,6 +27,7 @@ export interface SessionData {
   currentTaskId: string | null;
   rooms: SerializedRoom[];
   cwd: string;
+  selectedSubAgentType?: SubAgentType | null;
   // Identity fields are optional for backwards compatibility with older sessions.
   projectId?: UUID;
   userId?: UUID;
@@ -177,6 +179,7 @@ export interface SessionState {
   currentTaskId: string | null;
   cwd: string;
   identity: SessionIdentity;
+  selectedSubAgentType?: SubAgentType | null;
   // UI state (optional)
   focusedPane?: PaneFocus;
   taskPaneVisibility?: TaskPaneVisibility;
@@ -197,6 +200,7 @@ export async function saveSession(state: SessionState): Promise<void> {
     currentTaskId: state.currentTaskId,
     rooms: state.rooms.map(serializeRoom),
     cwd: state.cwd,
+    selectedSubAgentType: state.selectedSubAgentType ?? null,
     projectId: state.identity.projectId,
     userId: state.identity.userId,
     worldId: state.identity.worldId,
@@ -277,6 +281,10 @@ export async function loadSession(): Promise<SessionState | null> {
       currentTaskId: data.currentTaskId ?? null,
       cwd: data.cwd || process.cwd(),
       identity,
+      selectedSubAgentType:
+        typeof record.selectedSubAgentType === "string"
+          ? (record.selectedSubAgentType as SubAgentType)
+          : null,
       focusedPane:
         typeof record.focusedPane === "string"
           ? (record.focusedPane as PaneFocus)

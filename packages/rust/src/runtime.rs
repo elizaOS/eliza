@@ -4,7 +4,8 @@
 
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
 use crate::types::components::{
-    ActionDefinition, ActionHandler, ActionResult, EvaluatorHandler, HandlerOptions, ProviderHandler,
+    ActionDefinition, ActionHandler, ActionResult, EvaluatorDefinition, EvaluatorHandler,
+    HandlerOptions, ProviderDefinition, ProviderHandler,
 };
 use crate::types::database::{GetMemoriesParams, SearchMemoriesParams};
 use crate::types::environment::{Entity, Room, World};
@@ -16,11 +17,14 @@ use crate::types::primitives::{string_to_uuid, UUID};
 use crate::types::settings::{RuntimeSettings, SettingValue};
 use crate::types::state::State;
 use crate::types::task::Task;
+use crate::advanced_planning;
+use crate::advanced_memory;
 use anyhow::{Context, Result};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
+use std::any::Any;
 
 // RwLock type - different for native (async) vs wasm (sync)
 #[cfg(not(feature = "wasm"))]
@@ -156,10 +160,18 @@ pub struct RuntimeOptions {
     pub settings: Option<RuntimeSettings>,
     /// Log level for the runtime. Defaults to Error.
     pub log_level: LogLevel,
-    /// Disable basic bootstrap capabilities (reply, ignore, none)
-    pub disable_basic_capabilities: bool,
-    /// Enable extended bootstrap capabilities (facts, roles, settings, etc.)
-    pub enable_extended_capabilities: bool,
+    /// Disable basic bootstrap capabilities (reply, ignore, none).
+    ///
+    /// - `Some(true)`: disable basic capabilities regardless of character settings
+    /// - `Some(false)`: enable basic capabilities regardless of character settings
+    /// - `None` (default): defer to `DISABLE_BASIC_CAPABILITIES` character setting
+    pub disable_basic_capabilities: Option<bool>,
+    /// Enable extended bootstrap capabilities (facts, roles, settings, etc.).
+    ///
+    /// - `Some(true)`: enable extended capabilities regardless of character settings
+    /// - `Some(false)`: disable extended capabilities regardless of character settings
+    /// - `None` (default): defer to `ENABLE_EXTENDED_CAPABILITIES` character setting
+    pub enable_extended_capabilities: Option<bool>,
     /// Enable action planning mode for multi-action execution.
     /// When Some(true) (default), agent can plan and execute multiple actions per response.
     /// When Some(false), agent executes only a single action per response (performance
@@ -178,7 +190,11 @@ pub struct RuntimeOptions {
     pub check_should_respond: Option<bool>,
     /// Enable autonomy capabilities for autonomous agent operation.
     /// When true, the agent can operate autonomously with its own thinking loop.
-    pub enable_autonomy: bool,
+    ///
+    /// - `Some(true)`: enable autonomy regardless of character settings
+    /// - `Some(false)`: disable autonomy regardless of character settings
+    /// - `None` (default): defer to `ENABLE_AUTONOMY` character setting
+    pub enable_autonomy: Option<bool>,
 }
 
 /// Event handler function type
@@ -345,6 +361,17 @@ pub struct AgentRuntime {
     llm_mode_option: Option<LLMMode>,
     /// Check should respond option (None means check settings at runtime)
     check_should_respond_option: Option<bool>,
+    /// Capability options captured at construction time (tri-state; `None` means defer to settings).
+    capability_options: CapabilityOptions,
+}
+
+/// Tri-state capability options (mirrors TypeScript bootstrap capability config behavior).
+#[derive(Clone, Debug, Default)]
+struct CapabilityOptions {
+    disable_basic: Option<bool>,
+    enable_extended: Option<bool>,
+    enable_autonomy: Option<bool>,
+    skip_character_provider: bool,
 }
 
 /// Service trait for long-running services
@@ -353,13 +380,16 @@ pub trait Service: Send + Sync {
     /// Get the service type
     fn service_type(&self) -> &str;
 
+    /// Support downcasting to concrete service types.
+    fn as_any(&self) -> &dyn Any;
+
     /// Stop the service
     async fn stop(&self) -> Result<()>;
 }
 
 impl AgentRuntime {
     /// Create a new AgentRuntime
-    pub async fn new(opts: RuntimeOptions) -> Result<Self> {
+    pub async fn new(opts: RuntimeOptions) -> Result<Arc<Self>> {
         // Create default anonymous character if none provided
         let (character, is_anonymous) = match opts.character {
             Some(c) => (c, false),
@@ -410,9 +440,15 @@ impl AgentRuntime {
             action_planning_option: opts.action_planning,
             llm_mode_option: opts.llm_mode,
             check_should_respond_option: opts.check_should_respond,
+            capability_options: CapabilityOptions {
+                disable_basic: opts.disable_basic_capabilities,
+                enable_extended: opts.enable_extended_capabilities,
+                enable_autonomy: opts.enable_autonomy,
+                skip_character_provider: is_anonymous,
+            },
         };
 
-        Ok(runtime)
+        Ok(Arc::new(runtime))
     }
 
     /// Check if the character is anonymous (auto-generated)
@@ -486,9 +522,94 @@ impl AgentRuntime {
         true
     }
 
-    /// Initialize the runtime
-    pub async fn initialize(&self) -> Result<()> {
+    /// Initialize the runtime.
+    ///
+    /// Note: this method requires an `Arc<Self>` receiver so the runtime can safely
+    /// hand `Weak<AgentRuntime>` handles to internal/built-in plugins and services.
+    pub async fn initialize(self: &Arc<Self>) -> Result<()> {
         info!("Initializing AgentRuntime for agent: {}", self.agent_id);
+
+        // Resolve capability configuration (constructor options > character settings > defaults).
+        let disable_basic = self.capability_options.disable_basic.unwrap_or(
+            parse_truthy_setting(self.get_setting("DISABLE_BASIC_CAPABILITIES").await),
+        );
+        let enable_extended = self.capability_options.enable_extended.unwrap_or(
+            parse_truthy_setting(self.get_setting("ENABLE_EXTENDED_CAPABILITIES").await),
+        );
+        let enable_autonomy = self.capability_options.enable_autonomy.unwrap_or(
+            parse_truthy_setting(self.get_setting("ENABLE_AUTONOMY").await),
+        );
+
+        // Bootstrap plugin parity: always register built-in bootstrap capabilities first.
+        // Capability config precedence matches TS: constructor options > character settings > defaults.
+        let bootstrap_plugin = crate::bootstrap_core::create_bootstrap_plugin(
+            Arc::downgrade(self),
+            crate::bootstrap_core::CapabilityConfig {
+                disable_basic,
+                enable_extended,
+                enable_autonomy,
+                skip_character_provider: self.capability_options.skip_character_provider,
+            },
+        );
+        self.register_plugin(bootstrap_plugin).await?;
+
+        // Advanced planning is built into core, but only loaded when enabled on the character.
+        let advanced_planning_enabled = {
+            #[cfg(not(feature = "wasm"))]
+            {
+                let character = self.character.read().await;
+                character.advanced_planning.unwrap_or(false)
+            }
+            #[cfg(feature = "wasm")]
+            {
+                let character = self.character.read().unwrap();
+                character.advanced_planning.unwrap_or(false)
+            }
+        };
+        if advanced_planning_enabled {
+            self.register_service(
+                "planning",
+                Arc::new(advanced_planning::PlanningService::default()),
+            )
+            .await;
+
+            // Register advanced planning actions/providers (parity with TS createAdvancedPlanningPlugin()).
+            let plugin = advanced_planning::create_advanced_planning_plugin(Arc::downgrade(self));
+            self.register_plugin(plugin).await?;
+        }
+
+        // Advanced memory is built into core, but only loaded when enabled on the character.
+        let advanced_memory_enabled = {
+            #[cfg(not(feature = "wasm"))]
+            {
+                let character = self.character.read().await;
+                character.advanced_memory.unwrap_or(false)
+            }
+            #[cfg(feature = "wasm")]
+            {
+                let character = self.character.read().unwrap();
+                character.advanced_memory.unwrap_or(false)
+            }
+        };
+        if advanced_memory_enabled {
+            let svc = Arc::new(advanced_memory::MemoryService::default());
+            svc.configure_from_runtime(self).await;
+            self.register_service("memory", svc).await;
+            let plugin = advanced_memory::create_advanced_memory_plugin(Arc::downgrade(self));
+            self.register_plugin(plugin).await?;
+        }
+
+        // Autonomy is built into core, but only loaded when enabled via capability config.
+        if enable_autonomy {
+            #[cfg(not(feature = "wasm"))]
+            {
+                let service = crate::autonomy::AutonomyService::start(Arc::downgrade(self)).await?;
+                self.register_service(crate::autonomy::AUTONOMY_SERVICE_TYPE, service.clone())
+                    .await;
+                let plugin = crate::autonomy::create_autonomy_plugin(Arc::downgrade(self), service);
+                self.register_plugin(plugin).await?;
+            }
+        }
 
         // Register plugins provided during construction (mirrors TS/Py behavior).
         // This happens before database init so plugins can register adapters/services/models/events.
@@ -828,6 +949,26 @@ impl AgentRuntime {
         let actions: Vec<_> = self.actions.read().unwrap().iter().cloned().collect();
 
         actions.into_iter().map(|a| a.definition()).collect()
+    }
+
+    /// List registered provider definitions (best-effort).
+    pub async fn list_provider_definitions(&self) -> Vec<ProviderDefinition> {
+        #[cfg(not(feature = "wasm"))]
+        let providers: Vec<_> = self.providers.read().await.iter().cloned().collect();
+        #[cfg(feature = "wasm")]
+        let providers: Vec<_> = self.providers.read().unwrap().iter().cloned().collect();
+
+        providers.into_iter().map(|p| p.definition()).collect()
+    }
+
+    /// List registered evaluator definitions (best-effort).
+    pub async fn list_evaluator_definitions(&self) -> Vec<EvaluatorDefinition> {
+        #[cfg(not(feature = "wasm"))]
+        let evaluators: Vec<_> = self.evaluators.read().await.iter().cloned().collect();
+        #[cfg(feature = "wasm")]
+        let evaluators: Vec<_> = self.evaluators.read().unwrap().iter().cloned().collect();
+
+        evaluators.into_iter().map(|e| e.definition()).collect()
     }
 
     /// Process actions for a message
@@ -1267,6 +1408,18 @@ fn chrono_timestamp() -> i64 {
         .as_millis() as i64
 }
 
+fn parse_truthy_setting(v: Option<SettingValue>) -> bool {
+    match v {
+        Some(SettingValue::Bool(b)) => b,
+        Some(SettingValue::String(s)) => {
+            let t = s.trim().to_lowercase();
+            matches!(t.as_str(), "true" | "1" | "yes" | "on")
+        }
+        Some(SettingValue::Number(n)) => n != 0.0,
+        Some(SettingValue::Null) | None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1369,6 +1522,37 @@ mod tests {
     async fn test_default_log_level_is_error() {
         let runtime = AgentRuntime::new(RuntimeOptions::default()).await.unwrap();
         assert_eq!(runtime.log_level(), LogLevel::Error);
+    }
+
+    #[tokio::test]
+    async fn test_advanced_planning_service_gated_on_character_flag() {
+        let runtime_enabled = AgentRuntime::new(RuntimeOptions {
+            character: Some(Character {
+                name: "AdvPlanningOn".to_string(),
+                advanced_planning: Some(true),
+                bio: Bio::Single("Test".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        runtime_enabled.initialize().await.unwrap();
+        assert!(runtime_enabled.get_service("planning").await.is_some());
+
+        let runtime_disabled = AgentRuntime::new(RuntimeOptions {
+            character: Some(Character {
+                name: "AdvPlanningOff".to_string(),
+                advanced_planning: Some(false),
+                bio: Bio::Single("Test".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        runtime_disabled.initialize().await.unwrap();
+        assert!(runtime_disabled.get_service("planning").await.is_none());
     }
 
     #[tokio::test]

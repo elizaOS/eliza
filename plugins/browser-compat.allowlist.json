@@ -1,1 +1,5 @@
-{}
+{
+  "plugin-computeruse": {
+    "reason": "Node-only: interacts with local machine/MCP and uses process.env."
+  }
+}

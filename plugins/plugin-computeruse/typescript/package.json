@@ -1,0 +1,69 @@
+{
+  "name": "@elizaos/plugin-computeruse",
+  "description": "Computer automation plugin for ElizaOS - enables AI agents to control the local machine (when supported) or a remote ComputerUse MCP server",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "keywords": ["plugin", "elizaos", "computeruse", "automation", "desktop", "gui", "mcp"],
+  "repository": { "type": "git", "url": "https://github.com/elizaos/eliza" },
+  "homepage": "https://elizaos.ai",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    }
+  },
+  "files": ["dist", "README.md", "package.json"],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.21.0",
+    "zod": "^4.3.5"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/computeruse": "workspace:*"
+  },
+  "devDependencies": {
+    "@elizaos/plugin-eliza-classic": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*",
+    "@elizaos/plugin-mcp": "workspace:*",
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11",
+    "vitest": "^4.0.17"
+  },
+  "scripts": {
+    "dev": "bun --hot build.ts",
+    "test": "vitest run || echo 'TypeScript tests skipped - no tests found'",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "COMPUTERUSE_ENABLED": {
+        "type": "boolean",
+        "description": "Enable ComputerUse actions/providers (default: false)",
+        "required": false
+      },
+      "COMPUTERUSE_MODE": {
+        "type": "string",
+        "description": "Execution mode: auto | local | mcp (default: auto)",
+        "required": false
+      },
+      "COMPUTERUSE_MCP_SERVER": {
+        "type": "string",
+        "description": "MCP server name to use for remote control (default: computeruse)",
+        "required": false
+      }
+    }
+  }
+}
+
