@@ -1,8 +1,27 @@
 import { defineConfig } from "tsup";
 import path from "path";
 
-// Resolve to the monorepo root node_modules
-const rootNodeModules = path.resolve(__dirname, "../../../node_modules");
+// Monorepo paths
+const monorepoRoot = path.resolve(__dirname, "../../..");
+const packagesDir = path.join(monorepoRoot, "packages");
+const pluginsDir = path.join(monorepoRoot, "plugins");
+
+// Helper to resolve @elizaos packages from monorepo
+function resolvePackage(pkg: string, browserPath?: string): string {
+  const pkgName = pkg.replace("@elizaos/", "");
+  
+  // Check if it's a core package or a plugin
+  let basePath: string;
+  if (pkgName === "core") {
+    // Core package is at packages/typescript
+    basePath = path.join(packagesDir, "typescript");
+  } else {
+    // Plugins have a typescript/ subdirectory
+    basePath = path.join(pluginsDir, pkgName, "typescript");
+  }
+  
+  return browserPath ? path.join(basePath, browserPath) : basePath;
+}
 
 // Node.js packages that should not be bundled for browser
 const nodeExternals = [
@@ -42,13 +61,13 @@ export default defineConfig([
         "process.env.NODE_ENV": '"production"',
       };
       options.alias = {
-        "@elizaos/core": path.join(rootNodeModules, "@elizaos/core"),
-        "@elizaos/plugin-openai": path.join(rootNodeModules, "@elizaos/plugin-openai"),
-        "@elizaos/plugin-anthropic": path.join(rootNodeModules, "@elizaos/plugin-anthropic"),
-        "@elizaos/plugin-groq": path.join(rootNodeModules, "@elizaos/plugin-groq"),
-        "@elizaos/plugin-google-genai": path.join(rootNodeModules, "@elizaos/plugin-google-genai"),
-        "@elizaos/plugin-eliza-classic": path.join(rootNodeModules, "@elizaos/plugin-eliza-classic"),
-        "@elizaos/plugin-localdb": path.join(rootNodeModules, "@elizaos/plugin-localdb"),
+        "@elizaos/core": resolvePackage("@elizaos/core"),
+        "@elizaos/plugin-openai": resolvePackage("@elizaos/plugin-openai"),
+        "@elizaos/plugin-anthropic": resolvePackage("@elizaos/plugin-anthropic"),
+        "@elizaos/plugin-groq": resolvePackage("@elizaos/plugin-groq"),
+        "@elizaos/plugin-google-genai": resolvePackage("@elizaos/plugin-google-genai"),
+        "@elizaos/plugin-eliza-classic": resolvePackage("@elizaos/plugin-eliza-classic"),
+        "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb"),
       };
     },
   },
@@ -80,13 +99,13 @@ console.log("[ElizaOS] Offscreen bundle starting...");`,
         global: "globalThis",
       };
       options.alias = {
-        "@elizaos/core": path.join(rootNodeModules, "@elizaos/core/dist/browser/index.browser.js"),
-        "@elizaos/plugin-openai": path.join(rootNodeModules, "@elizaos/plugin-openai/dist/browser/index.browser.js"),
-        "@elizaos/plugin-anthropic": path.join(rootNodeModules, "@elizaos/plugin-anthropic/dist/browser/index.browser.js"),
-        "@elizaos/plugin-groq": path.join(rootNodeModules, "@elizaos/plugin-groq/dist/browser/index.browser.js"),
-        "@elizaos/plugin-google-genai": path.join(rootNodeModules, "@elizaos/plugin-google-genai/dist/browser/index.browser.js"),
-        "@elizaos/plugin-eliza-classic": path.join(rootNodeModules, "@elizaos/plugin-eliza-classic/dist/browser/index.browser.js"),
-        "@elizaos/plugin-localdb": path.join(rootNodeModules, "@elizaos/plugin-localdb/dist/browser/index.browser.js"),
+        "@elizaos/core": resolvePackage("@elizaos/core", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-openai": resolvePackage("@elizaos/plugin-openai", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-anthropic": resolvePackage("@elizaos/plugin-anthropic", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-groq": resolvePackage("@elizaos/plugin-groq", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-google-genai": resolvePackage("@elizaos/plugin-google-genai", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-eliza-classic": resolvePackage("@elizaos/plugin-eliza-classic", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb", "dist/browser/index.browser.js"),
         "@vercel/oidc": path.join(__dirname, "src/stubs/empty.js"),
         dotenv: path.join(__dirname, "src/stubs/empty.js"),
         "fast-redact": path.join(__dirname, "src/stubs/fast-redact.js"),
@@ -135,13 +154,13 @@ console.log("[ElizaOS] Bundle starting...");`,
       };
       // Use browser builds of @elizaos packages
       options.alias = {
-        "@elizaos/core": path.join(rootNodeModules, "@elizaos/core/dist/browser/index.browser.js"),
-        "@elizaos/plugin-openai": path.join(rootNodeModules, "@elizaos/plugin-openai/dist/browser/index.browser.js"),
-        "@elizaos/plugin-anthropic": path.join(rootNodeModules, "@elizaos/plugin-anthropic/dist/browser/index.browser.js"),
-        "@elizaos/plugin-groq": path.join(rootNodeModules, "@elizaos/plugin-groq/dist/browser/index.browser.js"),
-        "@elizaos/plugin-google-genai": path.join(rootNodeModules, "@elizaos/plugin-google-genai/dist/browser/index.browser.js"),
-        "@elizaos/plugin-eliza-classic": path.join(rootNodeModules, "@elizaos/plugin-eliza-classic/dist/browser/index.browser.js"),
-        "@elizaos/plugin-localdb": path.join(rootNodeModules, "@elizaos/plugin-localdb/dist/browser/index.browser.js"),
+        "@elizaos/core": resolvePackage("@elizaos/core", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-openai": resolvePackage("@elizaos/plugin-openai", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-anthropic": resolvePackage("@elizaos/plugin-anthropic", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-groq": resolvePackage("@elizaos/plugin-groq", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-google-genai": resolvePackage("@elizaos/plugin-google-genai", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-eliza-classic": resolvePackage("@elizaos/plugin-eliza-classic", "dist/browser/index.browser.js"),
+        "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb", "dist/browser/index.browser.js"),
         // Stub Node.js packages
         "@vercel/oidc": path.join(__dirname, "src/stubs/empty.js"),
         "dotenv": path.join(__dirname, "src/stubs/empty.js"),
