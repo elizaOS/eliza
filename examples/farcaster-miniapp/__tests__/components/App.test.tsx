@@ -14,11 +14,13 @@ describe('App Component', () => {
     })
 
     it('should render loading screen initially', () => {
-        render(<App />)
+        const { unmount } = render(<App />)
         expect(screen.getByText(/Initializing/i)).toBeInTheDocument()
+        // Avoid async state updates after the assertion (React act warning)
+        unmount()
     })
 
-    it('should authenticate and show main app', async () => {
+    it('should show main app', async () => {
         render(<App />)
 
         await waitFor(() => {
@@ -26,55 +28,21 @@ describe('App Component', () => {
         }, { timeout: 3000 })
     })
 
-    it('should display navigation tabs', async () => {
-        render(<App />)
-
-        await waitFor(() => {
-            expect(screen.getByText(/Portfolio/i)).toBeInTheDocument()
-            expect(screen.getByText(/Swap/i)).toBeInTheDocument()
-            expect(screen.getByText(/Bridge/i)).toBeInTheDocument()
-            expect(screen.getByText(/Social/i)).toBeInTheDocument()
-            expect(screen.getByText(/AI Chat/i)).toBeInTheDocument()
-        })
-    })
-
-    it('should switch between tabs', async () => {
+    it('should send a chat message', async () => {
         const user = userEvent.setup()
         render(<App />)
 
         await waitFor(() => {
-            expect(screen.getByText(/Portfolio/i)).toBeInTheDocument()
+            expect(screen.getByText(/in-memory sessions/i)).toBeInTheDocument()
         })
 
-        // Click Swap tab
-        const swapTab = screen.getByText(/Swap/i)
-        await user.click(swapTab)
+        const textarea = screen.getByPlaceholderText(/Type a message/i)
+        await user.type(textarea, 'Hello there')
+        await user.keyboard('{Enter}')
 
-        // Should show swap component
         await waitFor(() => {
-            expect(screen.getByText(/Token Swap/i)).toBeInTheDocument()
+            expect(screen.getByText(/Hello there/i)).toBeInTheDocument()
         })
-    })
-
-    it('should handle authentication errors', async () => {
-        if (!global.testUtils.useMocks) {
-            // Skip mock-specific test for real API
-            return
-        }
-
-        // Mock auth failure
-        const originalFetch = global.fetch;
-        (global.fetch as any).mockImplementationOnce(() =>
-            Promise.reject(new Error('Auth failed'))
-        )
-
-        render(<App />)
-
-        await waitFor(() => {
-            expect(screen.getByText(/failed to initialize/i)).toBeInTheDocument()
-        }, { timeout: 5000 })
-
-        global.fetch = originalFetch
     })
 })
 

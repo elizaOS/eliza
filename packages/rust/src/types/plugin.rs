@@ -210,6 +210,18 @@ impl Plugin {
         self.provider_handlers.push(handler);
         self
     }
+
+    /// Add an evaluator handler
+    pub fn with_evaluator(mut self, handler: Arc<dyn EvaluatorHandler>) -> Self {
+        let def = handler.definition();
+        if let Some(ref mut evaluators) = self.definition.evaluators {
+            evaluators.push(def);
+        } else {
+            self.definition.evaluators = Some(vec![def]);
+        }
+        self.evaluator_handlers.push(handler);
+        self
+    }
 }
 
 /// Project agent configuration

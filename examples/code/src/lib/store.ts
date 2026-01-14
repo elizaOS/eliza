@@ -1,12 +1,13 @@
 import { stringToUuid } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
-import { getCwd, setCwd } from "../plugin/providers/cwd.js";
+import { getCwd, setCwd } from "./cwd.js";
 import type {
   ChatRoom,
   CodeTask,
   Message,
   PaneFocus,
+  SubAgentType,
   TaskPaneVisibility,
   TaskUserStatus,
 } from "../types.js";
@@ -64,6 +65,8 @@ interface ElizaCodeState {
   // Tasks (synced from CodeTaskService)
   tasks: CodeTask[];
   currentTaskId: string | null;
+  /** Selected worker type for new tasks (/agent). */
+  selectedSubAgentType: SubAgentType | null;
 
   // UI State
   focusedPane: PaneFocus;
@@ -105,6 +108,7 @@ interface ElizaCodeState {
   setTasks: (tasks: CodeTask[]) => void;
   updateTaskInStore: (taskId: string, updates: Partial<CodeTask>) => void;
   setCurrentTaskId: (taskId: string | null) => void;
+  setSelectedSubAgentType: (type: SubAgentType | null) => void;
 
   // UI Actions
   setFocusedPane: (pane: PaneFocus) => void;
@@ -179,6 +183,7 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
   currentRoomId: initialRoom.id,
   tasks: [],
   currentTaskId: null,
+  selectedSubAgentType: null,
   focusedPane: "chat",
   showFinishedTasks: false,
   taskPaneVisibility: "auto",
@@ -328,6 +333,11 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
     debouncedSave(get());
   },
 
+  setSelectedSubAgentType: (type: SubAgentType | null) => {
+    set({ selectedSubAgentType: type });
+    debouncedSave(get());
+  },
+
   // UI Actions
   setFocusedPane: (pane: PaneFocus) => {
     set((state) => {
@@ -441,6 +451,7 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
       currentTaskId: state.currentTaskId,
       cwd: getCwd(),
       identity: state.identity,
+      selectedSubAgentType: state.selectedSubAgentType,
       focusedPane: state.focusedPane,
       taskPaneVisibility: state.taskPaneVisibility,
       taskPaneWidthFraction: state.taskPaneWidthFraction,
@@ -476,6 +487,20 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
         ? Math.max(0.2, Math.min(0.75, session.taskPaneWidthFraction))
         : 0.4;
     const showFinishedTasks = session.showFinishedTasks === true;
+    const selectedSubAgentType =
+      session.selectedSubAgentType === null ||
+      session.selectedSubAgentType === undefined ||
+      typeof session.selectedSubAgentType === "string"
+        ? (session.selectedSubAgentType ?? null)
+        : null;
+
+    // Restore the currently-selected worker into process env so runtime actions
+    // (e.g., CREATE_TASK) can read it.
+    if (selectedSubAgentType) {
+      process.env.ELIZA_CODE_ACTIVE_SUB_AGENT = selectedSubAgentType;
+    } else {
+      delete process.env.ELIZA_CODE_ACTIVE_SUB_AGENT;
+    }
 
     // Validate and restore rooms
     if (
@@ -522,6 +547,7 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
           rooms: validRooms,
           currentRoomId: validCurrentRoomId,
           currentTaskId: session.currentTaskId,
+          selectedSubAgentType,
           focusedPane:
             taskPaneVisibility === "hidden" && focusedPane === "tasks"
               ? "chat"
@@ -535,6 +561,7 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
       // Still update identity even if rooms are invalid, so we can persist stable IDs.
       set({
         identity,
+        selectedSubAgentType,
         focusedPane:
           taskPaneVisibility === "hidden" && focusedPane === "tasks"
             ? "chat"

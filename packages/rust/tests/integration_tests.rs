@@ -1539,8 +1539,28 @@ mod end_to_end_tests {
             .await
             .unwrap();
 
-        // Should have both RESPOND and SEARCH results
-        assert_eq!(results_2.len(), 2);
+        // Should include both RESPOND and SEARCH results (bootstrap adds additional actions).
+        let mut has_respond = false;
+        let mut has_search = false;
+        for r in &results_2 {
+            if let Some(t) = &r.text {
+                if t.contains("[User said:") {
+                    has_respond = true;
+                }
+                if t.starts_with("Search results for:") {
+                    has_search = true;
+                }
+            }
+            if let Some(data) = &r.data {
+                if let Some(serde_json::Value::Number(n)) = data.get("results_count") {
+                    if n.as_u64() == Some(5) {
+                        has_search = true;
+                    }
+                }
+            }
+        }
+        assert!(has_respond, "RESPOND action should have run");
+        assert!(has_search, "SEARCH action should have run");
 
         // End the run
         runtime.end_run();
@@ -1594,8 +1614,28 @@ mod end_to_end_tests {
             .await
             .unwrap();
 
-        // Verify both actions executed
-        assert_eq!(results.len(), 2);
+        // Verify both actions executed (bootstrap adds additional actions).
+        let mut has_respond = false;
+        let mut has_search = false;
+        for r in &results {
+            if let Some(t) = &r.text {
+                if t.contains("[User said:") {
+                    has_respond = true;
+                }
+                if t.starts_with("Search results for:") {
+                    has_search = true;
+                }
+            }
+            if let Some(data) = &r.data {
+                if let Some(serde_json::Value::Number(n)) = data.get("results_count") {
+                    if n.as_u64() == Some(5) {
+                        has_search = true;
+                    }
+                }
+            }
+        }
+        assert!(has_respond, "RESPOND action should have run");
+        assert!(has_search, "SEARCH action should have run");
 
         // All results should be successful
         for result in &results {

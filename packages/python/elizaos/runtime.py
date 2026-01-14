@@ -221,6 +221,25 @@ class AgentRuntime(IAgentRuntime):
 
             self._initial_plugins.insert(0, bootstrap_plugin)
 
+        # Advanced planning is built into core, but only loaded when enabled on the character.
+        if getattr(self._character, "advanced_planning", None) is True:
+            has_adv = any(p.name == "advanced-planning" for p in self._initial_plugins)
+            if not has_adv:
+                from elizaos.advanced_planning import advanced_planning_plugin
+
+                # Register after bootstrap so core providers/actions are available.
+                insert_at = 1 if self._initial_plugins and self._initial_plugins[0].name == "bootstrap" else 0
+                self._initial_plugins.insert(insert_at, advanced_planning_plugin)
+
+        # Advanced memory is built into core, but only loaded when enabled on the character.
+        if getattr(self._character, "advanced_memory", None) is True:
+            has_adv = any(p.name == "memory" for p in self._initial_plugins)
+            if not has_adv:
+                from elizaos.advanced_memory import advanced_memory_plugin
+
+                insert_at = 1 if self._initial_plugins and self._initial_plugins[0].name == "bootstrap" else 0
+                self._initial_plugins.insert(insert_at, advanced_memory_plugin)
+
         for plugin in self._initial_plugins:
             await self.register_plugin(plugin)
 

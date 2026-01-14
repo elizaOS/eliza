@@ -1,7 +1,7 @@
 import { Box, Text, useStdout } from "ink";
 import { useEffect, useMemo, useState } from "react";
+import { getCwd } from "../lib/cwd.js";
 import { useStore } from "../lib/store.js";
-import { getCwd } from "../plugin/providers/cwd.js";
 
 export function StatusBar() {
   const { stdout } = useStdout();

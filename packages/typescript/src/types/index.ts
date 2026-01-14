@@ -26,3 +26,8 @@ export * from "./streaming";
 export * from "./task";
 export * from "./tee";
 export * from "./testing";
+
+// Utilities that are part of the public API.
+export { composePromptFromState, parseKeyValueXml } from "../utils";
+export { addHeader } from "../utils";
+export { logger } from "../logger";

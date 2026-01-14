@@ -21,7 +21,7 @@ import { ensureSessionIdentity, getMainRoomElizaId } from "./lib/identity.js";
 import { loadEnv } from "./lib/load-env.js";
 import { resolveModelProvider } from "./lib/model-provider.js";
 import { loadSession, type SessionState, saveSession } from "./lib/session.js";
-import { getCwd, setCwd } from "./plugin/providers/cwd.js";
+import { getCwd, setCwd } from "./lib/cwd.js";
 import type { ChatRoom, Message, MessageRole } from "./types.js";
 
 // ============================================================================

@@ -82,18 +82,6 @@ export function calculatePriceImpact(inputAmount: string, outputAmount: string, 
     }
 }
 
-export function debounce<T extends (...args: any[]) => any>(
-    func: T,
-    wait: number
-): (...args: Parameters<T>) => void {
-    let timeout: NodeJS.Timeout | null = null
-
-    return (...args: Parameters<T>) => {
-        if (timeout) clearTimeout(timeout)
-        timeout = setTimeout(() => func(...args), wait)
-    }
-}
-
 export function copyToClipboard(text: string): Promise<void> {
     if (navigator.clipboard) {
         return navigator.clipboard.writeText(text)

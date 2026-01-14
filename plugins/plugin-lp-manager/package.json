@@ -1,0 +1,54 @@
+{
+  "name": "@elizaos/plugin-lp-manager",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "A unified plugin for managing liquidity positions on Solana DEXs (Raydium, Orca, Meteora) and EVM DEXs (Uniswap, PancakeSwap, Aerodrome).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "test": "tsup && elizaos test"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-bootstrap": "1.0.5",
+    "@elizaos/plugin-discord": "1.0.6",
+    "@elizaos/plugin-telegram": "1.0.0",
+
+    "@solana/web3.js": "^1.91.7",
+    "@solana/spl-token": "^0.4.6",
+    "@coral-xyz/anchor": "^0.30.1",
+    "@raydium-io/raydium-sdk": "^1.3.1-beta.58",
+    "@orca-so/whirlpools-sdk": "^0.13.0",
+    "@orca-so/whirlpools-client": "^0.3.0",
+    "@orca-so/whirlpools-core": "^0.3.0",
+    "@orca-so/whirlpools": "^0.3.0",
+    "@meteora-ag/dlmm": "^1.0.0",
+
+    "viem": "^2.21.0",
+    "@uniswap/v3-sdk": "^3.13.1",
+    "@uniswap/sdk-core": "^5.8.2",
+    "@uniswap/smart-order-router": "^3.49.0",
+    "@pancakeswap/v3-sdk": "^3.9.7",
+    "@pancakeswap/sdk": "^5.8.0",
+
+    "decimal.js": "^10.4.3",
+    "bs58": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/decimal.js": "^7.4.0",
+    "tsup": "8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "3.1.3"
+  },
+  "peerDependencies": {
+    "@elizaos/plugin-evm": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@elizaos/plugin-evm": {
+      "optional": true
+    }
+  }
+}

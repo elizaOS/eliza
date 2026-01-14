@@ -21,8 +21,9 @@ from uuid6 import uuid7
 
 from elizaos import Character, ChannelType, Content, Memory
 from elizaos.runtime import AgentRuntime
+from elizaos.types.primitives import string_to_uuid
 from elizaos_plugin_eliza_classic.plugin import get_eliza_classic_plugin
-from elizaos_plugin_localdb import localdb_plugin
+from elizaos_plugin_inmemorydb import InMemoryDatabaseAdapter, MemoryStorage
 from elizaos_plugin_openai import get_openai_plugin
 from elizaos_plugin_inmemorydb import plugin as inmemorydb_plugin
 
@@ -53,6 +54,7 @@ class Session:
 
 
 _sessions: dict[str, Session] = {}
+_storage: MemoryStorage | None = None
 
 
 def _should_use_openai() -> bool:
@@ -62,14 +64,20 @@ def _should_use_openai() -> bool:
 
 async def get_runtime() -> AgentRuntime:
     """Get or initialize the agent runtime."""
-    global _runtime
+    global _runtime, _storage
 
     if _runtime is not None:
         return _runtime
 
     print("🚀 Initializing elizaOS runtime...")
 
-    plugins = [localdb_plugin]
+    if _storage is None:
+        _storage = MemoryStorage()
+
+    agent_id = CHARACTER.id or string_to_uuid(CHARACTER.name)
+    adapter = InMemoryDatabaseAdapter(_storage, agent_id)
+
+    plugins: list[object] = []
     if _should_use_openai():
         plugins.append(get_openai_plugin())
     else:
@@ -77,6 +85,7 @@ async def get_runtime() -> AgentRuntime:
 
     _runtime = AgentRuntime(
         character=CHARACTER,
+        adapter=adapter,
         plugins=plugins,
         log_level="INFO",
     )

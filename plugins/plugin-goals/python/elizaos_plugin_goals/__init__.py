@@ -27,6 +27,7 @@ from elizaos_plugin_goals.prompts import (
 )
 from elizaos_plugin_goals.providers import GoalsProvider
 from elizaos_plugin_goals.service import GoalDataService, GoalDataServiceWrapper
+from elizaos_plugin_goals.plugin import goals_plugin
 from elizaos_plugin_goals.types import (
     ConfirmationResult,
     CreateGoalParams,
@@ -50,6 +51,8 @@ __all__ = [
     "CancelGoalAction",
     # Providers
     "GoalsProvider",
+    # Plugin (python runtime)
+    "goals_plugin",
     # Types
     "Goal",
     "GoalTag",

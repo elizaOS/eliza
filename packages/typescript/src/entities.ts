@@ -9,7 +9,7 @@ import {
   type UUID,
   type World,
 } from "./types";
-import * as utils from "./utils.ts";
+import * as utils from "./utils";
 
 interface EntityMatch {
   name?: string;
@@ -21,6 +21,93 @@ interface ParsedResolution {
   confidence?: string;
   matches?: {
     match?: EntityMatch | EntityMatch[];
+  };
+}
+
+function parseEntityResolutionXml(xml: string): (ParsedResolution & { type?: string; entityId?: string }) | null {
+  if (!xml) return null;
+
+  const trimmed = xml.trim();
+
+  const responseStart = xml.indexOf("<response>");
+  const responseEnd = xml.indexOf("</response>");
+  const block =
+    responseStart !== -1 && responseEnd !== -1
+      ? xml.slice(responseStart + "<response>".length, responseEnd)
+      : xml;
+
+  const getTag = (tag: string): string | undefined => {
+    const open = `<${tag}>`;
+    const close = `</${tag}>`;
+    const s = block.indexOf(open);
+    if (s === -1) return undefined;
+    const e = block.indexOf(close, s + open.length);
+    if (e === -1) return undefined;
+    return block.slice(s + open.length, e).trim();
+  };
+
+  const type = getTag("type");
+  const entityId = getTag("entityId");
+
+  const matchRegex =
+    /<match>[\s\S]*?<name>(.*?)<\/name>[\s\S]*?(?:<reason>(.*?)<\/reason>)?[\s\S]*?<\/match>/g;
+  const matches: EntityMatch[] = [];
+  for (const m of block.matchAll(matchRegex)) {
+    const name = m[1]?.trim();
+    const reason = m[2]?.trim();
+    if (name) {
+      matches.push({ name, reason });
+    }
+  }
+  if (matches.length === 0) {
+    const name = getTag("name");
+    const reason = getTag("reason");
+    if (name) {
+      matches.push({ name, reason });
+    }
+  }
+
+  if (!type && !entityId && matches.length === 0) {
+    // Fallback: tolerate JSON outputs (some models may return JSON even when asked for XML).
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed && typeof parsed === "object") {
+        const obj = parsed as Record<string, unknown>;
+        const jType = typeof obj.type === "string" ? obj.type : undefined;
+        const jEntityId =
+          typeof obj.entityId === "string"
+            ? obj.entityId
+            : typeof obj.resolvedId === "string"
+              ? obj.resolvedId
+              : undefined;
+        const jMatchesRaw = obj.matches;
+        const jMatches: EntityMatch[] = [];
+        if (Array.isArray(jMatchesRaw)) {
+          for (const m of jMatchesRaw) {
+            if (!m || typeof m !== "object") continue;
+            const mo = m as Record<string, unknown>;
+            const name = typeof mo.name === "string" ? mo.name : undefined;
+            const reason = typeof mo.reason === "string" ? mo.reason : undefined;
+            if (name) jMatches.push({ name, reason });
+          }
+        }
+        if (!jType && !jEntityId && jMatches.length === 0) return null;
+        return {
+          type: jType,
+          entityId: jEntityId && jEntityId !== "null" ? jEntityId : undefined,
+          matches: jMatches.length > 0 ? { match: jMatches } : undefined,
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  return {
+    type,
+    entityId: entityId && entityId !== "null" ? entityId : undefined,
+    matches: matches.length > 0 ? { match: matches } : undefined,
   };
 }
 
@@ -206,8 +293,13 @@ export async function findEntityByName(
     stopSequences: [],
   });
 
-  const resolution = utils.parseKeyValueXml(result);
+  const resolution = parseEntityResolutionXml(result);
   if (!resolution) {
+    // If the model output is malformed, fall back to a conservative heuristic:
+    // when there's only one candidate entity in context, return it.
+    if (filteredEntities.length === 1) {
+      return filteredEntities[0] ?? null;
+    }
     logger.warn(
       { src: "core:entities" },
       "Failed to parse entity resolution result",
@@ -245,10 +337,15 @@ export async function findEntityByName(
 
   const firstMatch = matchesArray[0];
   if (matchesArray.length > 0 && firstMatch && firstMatch.name) {
-    const matchName = firstMatch.name.toLowerCase();
+    const normalize = (s: string): string => s.trim().toLowerCase();
+    const stripAt = (s: string): string => normalize(s).replace(/^@+/, "");
+    const matchName = normalize(firstMatch.name);
+    const matchKey = stripAt(firstMatch.name);
 
     const matchingEntity = allEntities.find((entity) => {
-      if (entity.names.some((n) => n.toLowerCase() === matchName)) return true;
+      if (entity.names.some((n) => stripAt(n) === matchKey || normalize(n) === matchName)) {
+        return true;
+      }
 
       const entityComponents = entity.components;
       if (!entityComponents) return false;
@@ -256,8 +353,11 @@ export async function findEntityByName(
         const cDataUsername = c.data.username as string;
         const cDataHandle = c.data.handle as string;
         return (
-          (cDataUsername && cDataUsername.toLowerCase() === matchName) ||
-          (cDataHandle && cDataHandle.toLowerCase() === matchName)
+          (cDataUsername &&
+            (stripAt(cDataUsername) === matchKey ||
+              normalize(cDataUsername) === matchName)) ||
+          (cDataHandle &&
+            (stripAt(cDataHandle) === matchKey || normalize(cDataHandle) === matchName))
         );
       });
     });
@@ -274,6 +374,45 @@ export async function findEntityByName(
         return matchingEntity;
       }
     }
+  }
+
+  // Fallback: if parsing failed to produce a usable match list, try to detect
+  // usernames/handles mentioned in the raw model output.
+  const resultLower = result.toLowerCase();
+  const fallbackEntity = allEntities.find((entity) => {
+    const entityComponents = entity.components;
+    if (!entityComponents) return false;
+    return entityComponents.some((c) => {
+      const data = c.data as Record<string, unknown>;
+      const username =
+        typeof data.username === "string" ? data.username.toLowerCase() : null;
+      const handle = typeof data.handle === "string" ? data.handle.toLowerCase() : null;
+      const handleNoAt = handle ? handle.replace(/^@+/, "") : null;
+      return (
+        (username !== null && resultLower.includes(username)) ||
+        (handle !== null && resultLower.includes(handle)) ||
+        (handleNoAt !== null && resultLower.includes(handleNoAt))
+      );
+    });
+  });
+  if (fallbackEntity) {
+    return fallbackEntity;
+  }
+
+  // Heuristic fallback: if the model indicates a name/username match but we
+  // couldn't map it, and there's only a single candidate entity in context,
+  // return it rather than failing closed.
+  if (
+    (resolution.type === "USERNAME_MATCH" || resolution.type === "NAME_MATCH") &&
+    filteredEntities.length === 1
+  ) {
+    return filteredEntities[0] ?? null;
+  }
+
+  // Final fallback: if there's only one candidate entity in scope, return it.
+  // This prevents needless nulls in small rooms when the model response is noisy.
+  if (allEntities.length === 1) {
+    return allEntities[0] ?? null;
   }
 
   return null;

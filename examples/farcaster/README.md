@@ -73,16 +73,43 @@ Copy `env.example` to `.env` and fill in the required values:
 
 ## How It Works
 
-1. **Startup**: The agent initializes with the character configuration, SQL plugin (persistence), and OpenAI plugin (text generation)
-2. **World/Room Setup**: Creates elizaOS world and room structures to track conversations
-3. **Polling**: Polls Farcaster for mentions at the configured interval
-4. **Message Pipeline**: Each mention is processed through the **full elizaOS message pipeline**:
-   - Creates a `Memory` object for the incoming cast
-   - Routes through `runtime.message_service.handle_message()` (Python/Rust) or plugin service (TypeScript)
-   - Providers compose state (character, recent messages, knowledge, etc.)
-   - Model handler generates a response using OpenAI
-   - Callback posts the reply to Farcaster
-5. **Persistence**: All messages and responses are persisted to the database for conversation continuity
+For each incoming mention, the examples route the event through the elizaOS "message service" for consistent state composition and response generation.
+
+### TypeScript (Plugin-Driven)
+
+- Uses `@elizaos/plugin-farcaster` which registers:
+  - **Services**: `FarcasterService` (handles polling, client lifecycle)
+  - **Actions**: `SEND_CAST`, `REPLY_TO_CAST`
+  - **Providers**: `farcasterProfile`, `farcasterTimeline`, `farcasterThread`
+- Mentions/replies are handled by the plugin's `FarcasterService` background clients
+- Incoming mentions are routed into the runtime via `runtime.messageService.handleMessage()` inside the plugin
+
+### Python (Pipeline-Driven)
+
+- Explicitly polls mentions using `FarcasterClient` and calls `runtime.message_service.handle_message()`
+- The Python `DefaultMessageService` implements the canonical flow:
+  - State composition (providers)
+  - Model invocation (OpenAI)
+  - Response generation
+  - Memory persistence
+- Uses callback pattern to post replies to Farcaster
+
+### Rust (Pipeline-Driven)
+
+- Explicitly polls mentions using `FarcasterService` and calls `runtime.message_service().handle_message()`
+- Similar to Python, runs an explicit polling loop in the example
+- **Note**: Rust `DefaultMessageService` is response-focused (saves message, composes state, calls model, returns response)
+
+### Pipeline Steps
+
+For each incoming mention:
+
+1. **Create a `Memory`** for the Farcaster cast (stable IDs per cast/thread)
+2. **Ensure connection/room** exists in elizaOS (world + room + entity)
+3. Call the language runtime's **message service**
+4. **Post reply** to Farcaster (unless `FARCASTER_DRY_RUN=true`)
+
+TypeScript relies on the `plugin-farcaster` service for polling and posting; Python/Rust run explicit polling loops.
 
 ## Character
 
@@ -101,6 +128,28 @@ The default character (`FarcasterBot`) is configured as a helpful AI agent on Fa
 - **Thread awareness**: Understand conversation context when replying
 - **Dry run mode**: Test without actually posting to Farcaster (default: enabled)
 - **Rate limiting**: Built-in handling for API rate limits with backoff
+
+## Plugin Components
+
+The `@elizaos/plugin-farcaster` plugin provides these components (auto-registered in TypeScript, available for manual use in Python/Rust):
+
+### Actions
+| Action | Description | Trigger Keywords |
+|--------|-------------|-----------------|
+| `SEND_CAST` | Post a new cast to Farcaster | "post", "cast", "share", "announce" |
+| `REPLY_TO_CAST` | Reply to an existing cast | "reply", "respond", "answer", "comment" |
+
+### Providers
+| Provider | Description |
+|----------|-------------|
+| `farcasterProfile` | Agent's Farcaster profile (username, FID, bio) |
+| `farcasterTimeline` | Recent casts from agent's timeline |
+| `farcasterThread` | Thread context for ongoing conversations |
+
+### Services
+| Service | Description |
+|---------|-------------|
+| `FarcasterService` | Main service managing client lifecycle, polling, and cast operations |
 
 ## Project Structure
 

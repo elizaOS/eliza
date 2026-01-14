@@ -1,6 +1,6 @@
 import { initializeAgent, shutdownAgent } from "../lib/agent.js";
-import type { CodeTaskService } from "../plugin/services/code-task.js";
-import { setCwd } from "../plugin/providers/cwd.js";
+import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
+import { setCwd } from "../lib/cwd.js";
 import type { SubAgentType } from "../types.js";
 import * as path from "node:path";
 import * as crypto from "node:crypto";

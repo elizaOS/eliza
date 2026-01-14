@@ -813,6 +813,16 @@ class BaseSQLAdapter(IDatabaseAdapter):
     async def update_task(self, id: UUID, task: dict[str, Any]) -> None:
         async with self._get_session() as session:
             update_values: dict[str, Any] = {}
+            if "name" in task:
+                update_values["name"] = task["name"]
+            if "description" in task:
+                update_values["description"] = task["description"]
+            if "roomId" in task:
+                update_values["room_id"] = task["roomId"]
+            if "entityId" in task:
+                update_values["entity_id"] = task["entityId"]
+            if "worldId" in task:
+                update_values["world_id"] = task["worldId"]
             if "status" in task:
                 update_values["status"] = task["status"]
             if "metadata" in task:

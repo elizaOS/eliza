@@ -41,6 +41,60 @@ export class AutonomyService extends Service {
   protected autonomousRoomId: UUID;
   protected autonomousWorldId: UUID;
 
+  private getAutonomyMode(): "monologue" | "task" {
+    const raw = this.runtime.getSetting("AUTONOMY_MODE");
+    if (raw === "task") return "task";
+    return "monologue";
+  }
+
+  private getTargetRoomId(): UUID | null {
+    const raw = this.runtime.getSetting("AUTONOMY_TARGET_ROOM_ID");
+    if (typeof raw !== "string" || raw.trim().length === 0) return null;
+    try {
+      return stringToUuid(raw.trim());
+    } catch {
+      return null;
+    }
+  }
+
+  private async getTargetRoomContextText(): Promise<string> {
+    const targetRoomId = this.getTargetRoomId();
+    if (!targetRoomId) return "(no target room configured)";
+
+    const [memoriesTable, messagesTable] = await Promise.all([
+      this.runtime.getMemories({
+        roomId: targetRoomId,
+        count: 15,
+        tableName: "memories",
+      }),
+      this.runtime.getMemories({
+        roomId: targetRoomId,
+        count: 15,
+        tableName: "messages",
+      }),
+    ]);
+    const recent = [...memoriesTable, ...messagesTable];
+    const seen = new Set<string>();
+
+    const lines = recent
+      .slice()
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+      .filter((m) => {
+        const id = m.id ?? "";
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      })
+      .map((m) => {
+        const role = m.entityId === this.runtime.agentId ? "Agent" : "User";
+        const text = typeof m.content.text === "string" ? m.content.text : "";
+        return `${role}: ${text}`;
+      })
+      .filter((l) => l.trim().length > 0);
+
+    return lines.length > 0 ? lines.join("\n") : "(no recent messages)";
+  }
+
   constructor() {
     super();
     // Default interval of 30 seconds
@@ -315,8 +369,8 @@ export class AutonomyService extends Service {
           m.entityId === agentEntity.id &&
           m.content?.text &&
           m.content?.metadata &&
-          (m.content.metadata as Record<string, unknown>)?.isAutonomous ===
-            true,
+          (m.content.metadata as Record<string, unknown>)?.isAutonomous === true &&
+          (m.content.metadata as Record<string, unknown>)?.type === "autonomous-response",
       )
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
 
@@ -327,10 +381,15 @@ export class AutonomyService extends Service {
     }
 
     // Create monologue prompt
-    const monologuePrompt = this.createMonologuePrompt(
-      lastThought,
-      isFirstThought,
-    );
+    const mode = this.getAutonomyMode();
+    const monologuePrompt =
+      mode === "task"
+        ? this.createTaskPrompt({
+            lastThought,
+            isFirstThought,
+            targetRoomContext: await this.getTargetRoomContextText(),
+          })
+        : this.createMonologuePrompt(lastThought, isFirstThought);
 
     // Create the autonomous message for the full agent pipeline
     const autonomousMessage: Memory = {
@@ -355,12 +414,54 @@ export class AutonomyService extends Service {
       createdAt: Date.now(),
     };
 
+    // Persist the autonomous prompt so UIs can show "autonomy logs" even if the agent doesn't respond.
+    // This is intentionally lightweight and scoped to the autonomous room.
+    try {
+      await this.runtime.createMemory(autonomousMessage, "memories");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.runtime.logger.warn(
+        { src: "autonomy", agentId: this.runtime.agentId, error: msg },
+        "Failed to persist autonomous prompt memory",
+      );
+    }
+
     // Response callback - the message service handles memory creation
     const callback = async (content: Content): Promise<Memory[]> => {
       this.runtime.logger.debug(
         { src: "autonomy", agentId: this.runtime.agentId },
         `Response generated: ${content.text?.substring(0, 100)}...`,
       );
+      // Persist response text for UI log views.
+      if (typeof content.text === "string" && content.text.trim().length > 0) {
+        const responseMemory: Memory = {
+          id: stringToUuid(uuidv4()),
+          entityId: this.runtime.agentId,
+          agentId: this.runtime.agentId,
+          roomId: this.autonomousRoomId,
+          createdAt: Date.now(),
+          content: {
+            text: content.text,
+            source: "autonomy-service",
+            metadata: {
+              type: "autonomous-response",
+              isAutonomous: true,
+              isInternalThought: true,
+              channelId: "autonomous",
+              timestamp: Date.now(),
+            },
+          },
+        };
+        try {
+          await this.runtime.createMemory(responseMemory, "memories");
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.runtime.logger.warn(
+            { src: "autonomy", agentId: this.runtime.agentId, error: msg },
+            "Failed to persist autonomous response memory",
+          );
+        }
+      }
       // Return empty - the message service handles memory storage
       return [];
     };
@@ -431,6 +532,38 @@ Generate a thoughtful, introspective response (1-2 sentences):`;
 What naturally follows from this thought? What does it make you think about next? Continue your stream of consciousness without addressing anyone - this is your private internal reflection.
 
 Generate your next thought (1-2 sentences):`;
+  }
+
+  private createTaskPrompt(params: {
+    lastThought: string | undefined;
+    isFirstThought: boolean;
+    targetRoomContext: string;
+  }): string {
+    const header = `You are running in AUTONOMOUS TASK MODE.
+
+Your job: continue helping the user by controlling a computer when needed.
+- You may use ComputerUse actions to interact with the UI.
+- In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
+- Prefer safe, incremental steps; if unsure, gather more UI context (e.g. get window tree) before clicking/typing.`;
+
+    const context = `USER CHAT CONTEXT (most recent last):
+${params.targetRoomContext}`;
+
+    if (params.isFirstThought) {
+      return `${header}
+
+${context}
+
+Decide what to do next. Think briefly, then act.`;
+    }
+
+    return `${header}
+
+${context}
+
+Your last autonomous note: "${params.lastThought ?? ""}"
+
+Continue the task. Think briefly, then act.`;
   }
 
   // Public API methods

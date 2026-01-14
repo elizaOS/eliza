@@ -1,7 +1,8 @@
 import { beforeAll, afterEach, vi } from 'vitest'
+import type { Mock } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import type { WalletAddresses } from '../src/types'
+type WalletAddresses = { solana: string; evm: string }
 
 // Extend global namespace for test utilities
 declare global {
@@ -10,6 +11,7 @@ declare global {
         getMockAddresses: () => WalletAddresses
         wait: (ms: number) => Promise<void>
         useMocks: boolean
+        fetchMock?: Mock<Parameters<typeof fetch>, ReturnType<typeof fetch>>
     }
 }
 
@@ -27,9 +29,7 @@ beforeAll(() => {
 // Cleanup after each test
 afterEach(() => {
     cleanup()
-    if (useMocks && global.fetch && typeof (global.fetch as any).mockClear === 'function') {
-        (global.fetch as any).mockClear()
-    }
+    global.testUtils.fetchMock?.mockClear()
 })
 
 // Global test utilities
@@ -57,11 +57,6 @@ if (useMocks) {
     // Mock Farcaster SDK
     vi.mock('@farcaster/miniapp-sdk', () => ({
         sdk: {
-            quickAuth: {
-                getToken: vi.fn(() => Promise.resolve({
-                    token: global.testUtils.getMockToken()
-                }))
-            },
             actions: {
                 ready: vi.fn(() => Promise.resolve())
             }
@@ -69,6 +64,8 @@ if (useMocks) {
     }))
 
     // Mock fetch globally
-    global.fetch = vi.fn() as any
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    globalThis.fetch = fetchMock
+    global.testUtils.fetchMock = fetchMock
 }
 

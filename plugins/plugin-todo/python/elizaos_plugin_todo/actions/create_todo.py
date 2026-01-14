@@ -71,7 +71,14 @@ async def handle_create_todo(
             )
         return CreateTodoResult(success=False, text=error_msg, error=error_msg)
 
-    data_service = create_todo_data_service(runtime.db if hasattr(runtime, "db") else None)
+    # Prefer the runtime (task-backed persistence) when available, otherwise fall back to
+    # a pre-injected in-memory TodoDataService on `runtime.db` (used by tests/mocks).
+    runtime_or_db = (
+        runtime
+        if hasattr(runtime, "create_task") and hasattr(runtime, "get_tasks")
+        else (runtime.db if hasattr(runtime, "db") else None)
+    )
+    data_service = create_todo_data_service(runtime_or_db)
 
     existing_todos = await data_service.get_todos(
         {

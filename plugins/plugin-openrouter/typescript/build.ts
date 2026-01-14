@@ -58,4 +58,26 @@ await build({
   },
 });
 
+console.log("Writing minimal TypeScript declarations...");
+const { mkdir, writeFile } = await import("node:fs/promises");
+await mkdir("dist/node", { recursive: true });
+await mkdir("dist/browser", { recursive: true });
+await mkdir("dist/cjs", { recursive: true });
+
+const rootDeclaration = `import type { Plugin } from "@elizaos/core";
+
+export declare const openrouterPlugin: Plugin;
+declare const _default: Plugin;
+export default _default;
+`;
+
+const reexportDeclaration = `export * from '../index';
+export { default } from '../index';
+`;
+
+await writeFile("dist/index.d.ts", rootDeclaration);
+await writeFile("dist/node/index.d.ts", reexportDeclaration);
+await writeFile("dist/browser/index.d.ts", reexportDeclaration);
+await writeFile("dist/cjs/index.d.ts", reexportDeclaration);
+
 console.log("Build complete!");
