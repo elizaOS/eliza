@@ -1,6 +1,6 @@
 /**
  * Auto-generated prompt templates
- * DO NOT EDIT - Generated from ../../../../prompts/*.txt
+ * DO NOT EDIT - Generated from ../../../../../prompts/*.txt
  *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
@@ -47,3 +47,4 @@ DEPENDENCIES: [comma-separated list]
 CONFIDENCE: [0.0-1.0]`;
 
 export const MESSAGE_CLASSIFIER_TEMPLATE = messageClassifierTemplate;
+
