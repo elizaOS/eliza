@@ -1,19 +1,53 @@
 /**
  * Streaming utilities for filtering and extracting streamable content.
  *
- * This module provides implementations of {@link IStreamExtractor}:
- * - PassthroughExtractor - Simple passthrough (no filtering)
- * - XmlTagExtractor - Extract content from a specific XML tag
- * - ResponseStreamExtractor - Action-aware XML (for DefaultMessageService)
- * - ActionStreamFilter - Content-type aware filter (for action handlers)
+ * WHY THIS MODULE EXISTS:
+ * -----------------------
+ * LLM outputs are streamed in chunks for better UX (users see responses as they're
+ * generated, not after a long wait). But raw LLM output often contains structure
+ * (XML tags, JSON) that users shouldn't see. This module provides extractors that
+ * filter and validate streaming content before it reaches the user.
  *
- * For the interface definition, see types/streaming.ts.
- * Implementations can use these or create their own extractors.
+ * ARCHITECTURE:
+ * -------------
+ * All extractors implement {@link IStreamExtractor} interface:
+ * - push(chunk) - Process incoming chunk, return content safe to display
+ * - flush() - Get any buffered content when stream ends
+ * - reset() - Clear state for reuse
+ * - done - Whether extractor has finished
+ *
+ * EXTRACTOR TYPES:
+ * ----------------
+ * - PassthroughExtractor: No filtering (for trusted/raw output)
+ * - XmlTagExtractor: Extract content from a specific XML tag
+ * - ResponseStreamExtractor: Action-aware XML (knows REPLY vs delegated actions)
+ * - ActionStreamFilter: Content-type aware (JSON/XML/plain text detection)
+ * - ValidationStreamExtractor: Validation-aware streaming with retry support
+ *
+ * VALIDATION-AWARE STREAMING (ValidationStreamExtractor):
+ * -------------------------------------------------------
+ * The key innovation is handling validation DURING streaming, not just after.
+ *
+ * Problem: LLMs can truncate output mid-response (context window exhausted).
+ * If we stream everything and then validate, user sees invalid partial content.
+ *
+ * Solution: Validation codes - short UUID snippets around fields. If the code
+ * before and after a field match, we know it wasn't truncated.
+ *
+ * Validation Levels:
+ * - Level 0 (Trusted): No codes, stream immediately. Fast but no safety.
+ * - Level 1 (Progressive): Per-field codes, stream as each field validates.
+ * - Level 2 (First Checkpoint): Single code at start, buffer until validated.
+ * - Level 3 (Full): Codes at start AND end, maximum safety.
+ *
+ * For interface definition, see types/streaming.ts.
+ *
+ * @module streaming
  */
 
 import type { IStreamExtractor, IStreamingRetryState } from '../types/streaming';
 import type { StreamingContext } from '../streaming-context';
-import type { UUID } from '../types';
+import type { UUID, SchemaRow, StreamEvent, StreamEventType } from '../types';
 
 // Re-export interfaces for convenience
 export type { IStreamExtractor, IStreamingRetryState } from '../types/streaming';
@@ -129,13 +163,13 @@ export function createStreamingRetryState(
  */
 export function createStreamingContext(
   extractor: IStreamExtractor,
-  onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>,
-  messageId?: UUID
+  onStreamChunk: (chunk: string, messageId?: string) => Promise<void>,
+  messageId?: string
 ): StreamingContext {
   const retryState = createStreamingRetryState(extractor);
 
   return {
-    onStreamChunk: async (chunk: string, msgId?: UUID) => {
+    onStreamChunk: async (chunk: string, msgId?: string) => {
       if (extractor.done) return;
       const textToStream = extractor.push(chunk);
       if (textToStream) {
@@ -631,5 +665,688 @@ export class ActionStreamFilter implements IStreamExtractor {
     }
 
     return result.content;
+  }
+}
+
+// ============================================================================
+// ValidationStreamExtractor - Validation-aware streaming for dynamicPromptExecFromState
+// ============================================================================
+
+/**
+ * Extractor state machine for validation-aware streaming.
+ *
+ * WHY: The extractor needs to track complex state across multiple concerns:
+ * - Receiving chunks from the LLM
+ * - Validating codes to ensure context wasn't truncated
+ * - Managing retry flow when validation fails
+ * - Signaling completion or failure to consumers
+ *
+ * The state machine ensures these transitions are explicit and debuggable.
+ */
+export type ExtractorState =
+  | 'streaming' // Normal operation - actively receiving chunks from LLM
+  | 'validating' // Stream ended, checking validation codes
+  | 'retrying' // Validation failed, preparing context for retry
+  | 'complete' // Successfully finished - all validation passed
+  | 'failed'; // Unrecoverable error (max retries, abort, etc.)
+
+/**
+ * Per-field state tracking for progressive validation.
+ *
+ * WHY: For level 1 (progressive), we need to track each field independently.
+ * This allows us to:
+ * - Emit validated fields early (better UX)
+ * - Include only validated fields in retry context (smarter retries)
+ * - Diagnose exactly what went wrong (better error messages)
+ */
+export type FieldState =
+  | 'pending' // Haven't seen this field yet
+  | 'partial' // Found opening tag but no closing tag (might be streaming)
+  | 'complete' // Found both tags, content extracted
+  | 'invalid'; // Validation codes didn't match
+
+/**
+ * Configuration for ValidationStreamExtractor.
+ *
+ * WHY: This is a complex component with many knobs. Explicit config makes it
+ * testable and reusable. The config is immutable after construction.
+ */
+export interface ValidationStreamExtractorConfig {
+  /**
+   * Validation level (0-3).
+   * WHY: Different use cases need different tradeoffs:
+   * - Level 0: Maximum speed, trust the model
+   * - Level 1: Per-field validation, good balance
+   * - Level 2-3: Maximum correctness, may be slower
+   */
+  level: 0 | 1 | 2 | 3;
+
+  /** Schema rows with field definitions and validateField hints */
+  schema: SchemaRow[];
+
+  /**
+   * Which fields to stream to the consumer.
+   * WHY: Not all fields are user-visible. 'thought' is internal reasoning,
+   * 'actions' is for the runtime. Usually only 'text' is streamed.
+   */
+  streamFields: string[];
+
+  /**
+   * Expected validation codes per field.
+   * WHY: We generate random codes and tell the LLM to echo them.
+   * If the echoed code matches, we know that part wasn't truncated.
+   */
+  expectedCodes: Map<string, string>;
+
+  /**
+   * Callback for streaming chunks to the consumer.
+   * WHY: We need to push content out as it's validated, not return it.
+   * The field parameter lets consumers know which field the chunk is from.
+   */
+  onChunk: (chunk: string, field?: string) => void;
+
+  /**
+   * Rich event callback for sophisticated consumers.
+   * WHY: Simple consumers just want text. Advanced UIs want to know
+   * about retries, validation progress, and errors to show appropriate UI.
+   */
+  onEvent?: (event: StreamEvent) => void;
+
+  /**
+   * Abort signal for user-initiated cancellation.
+   * WHY: Long-running LLM calls should be cancellable. Users might navigate
+   * away, click "stop", or timeout. This integrates with standard AbortController.
+   */
+  abortSignal?: AbortSignal;
+
+  /**
+   * Whether the consumer has an onEvent handler.
+   * WHY: Simple consumers (just onStreamChunk) get an auto-generated separator
+   * on retry: "-- that's not right, let me start again:". This prevents
+   * confusing concatenated output. Rich consumers handle retries themselves.
+   */
+  hasRichConsumer?: boolean;
+}
+
+/**
+ * Diagnosis result for error analysis.
+ *
+ * WHY: When validation fails, we need to know WHY to:
+ * - Log useful debug info
+ * - Build smarter retry prompts (include what we do have)
+ * - Surface meaningful error messages to users
+ */
+export interface ValidationDiagnosis {
+  /** Fields that were never started - LLM didn't output them at all */
+  missingFields: string[];
+  /** Fields with wrong validation codes - context was truncated */
+  invalidFields: string[];
+  /** Fields that started but didn't complete - stream cut mid-field */
+  incompleteFields: string[];
+}
+
+/**
+ * Validation-aware stream extractor for dynamicPromptExecFromState.
+ *
+ * WHY THIS EXISTS:
+ * ------------------
+ * LLMs can silently truncate output when they hit token limits or context windows.
+ * This is catastrophic for structured outputs - you might get half a JSON object
+ * or a response with missing fields. The user sees broken content.
+ *
+ * Traditional approach: Wait for complete response, validate, retry if invalid.
+ * Problem: No streaming UX. Users stare at a blank screen.
+ *
+ * This extractor bridges the gap: it enables streaming while detecting truncation.
+ * It uses "validation codes" - random UUIDs that the LLM must echo. If the echoed
+ * code matches what we sent, we know that part wasn't truncated.
+ *
+ * VALIDATION LEVELS:
+ * ------------------
+ * Level 0 (Trusted): No validation codes. Stream immediately.
+ *   WHY: Fast models (GPT-4, Claude) rarely truncate. Skip overhead.
+ *   Use case: Chat responses, non-critical content.
+ *
+ * Level 1 (Progressive): Per-field validation codes. Emit as each field validates.
+ *   WHY: Best balance of safety and UX. User sees content as it's confirmed safe.
+ *   Use case: Important responses where you want both speed AND safety.
+ *
+ * Level 2 (First Checkpoint): Codes at response start only. Buffer until validated.
+ *   WHY: Catches truncation at the beginning (e.g., model didn't read the prompt).
+ *   Use case: Default behavior, good for most use cases.
+ *
+ * Level 3 (Full): Codes at start AND end. Buffer until both validate.
+ *   WHY: Maximum safety. Catches truncation anywhere in the response.
+ *   Use case: Critical operations, unreliable models, high-stakes content.
+ *
+ * CONSUMER PATTERNS:
+ * ------------------
+ * Simple consumer (just onStreamChunk):
+ *   - Gets text chunks as they're validated
+ *   - On retry, sees "-- that's not right, let me start again:" separator
+ *   - Works without any special handling
+ *
+ * Rich consumer (onStreamChunk + onStreamEvent):
+ *   - Gets typed events for validation, retry, error states
+ *   - Can show spinners, clear partial content, display errors
+ *   - Full control over UX
+ *
+ * @example Simple consumer
+ * ```ts
+ * const result = await runtime.dynamicPromptExecFromState({
+ *   state,
+ *   params: { prompt },
+ *   schema: [{ field: 'text', description: 'Response', required: true }],
+ *   options: {
+ *     contextCheckLevel: 1,
+ *     onStreamChunk: (chunk) => process.stdout.write(chunk),
+ *   },
+ * });
+ * ```
+ *
+ * @example Rich consumer
+ * ```ts
+ * const result = await runtime.dynamicPromptExecFromState({
+ *   state,
+ *   params: { prompt },
+ *   schema: [{ field: 'text', description: 'Response', required: true }],
+ *   options: {
+ *     contextCheckLevel: 1,
+ *     onStreamChunk: (chunk) => appendToUI(chunk),
+ *     onStreamEvent: (event) => {
+ *       if (event.type === 'retry_start') {
+ *         showSpinner('Retrying...');
+ *         clearPartialContent();
+ *       } else if (event.type === 'error') {
+ *         showError(event.error);
+ *       }
+ *     },
+ *   },
+ * });
+ * ```
+ */
+export class ValidationStreamExtractor implements IStreamExtractor {
+  // Buffer accumulates raw LLM output until we can parse it
+  private buffer = '';
+
+  // Extracted content from each field (may be partial or complete)
+  private fieldContents: Map<string, string> = new Map();
+
+  // Fields that have passed validation - safe to emit and include in retry context
+  private validatedFields: Set<string> = new Set();
+
+  // What we've already emitted per field - for delta calculation
+  // WHY: When streaming incrementally, we only emit the NEW content, not the whole field
+  private emittedContent: Map<string, string> = new Map();
+
+  // Per-field state tracking for diagnosis
+  private fieldStates: Map<string, FieldState> = new Map();
+
+  // Overall extractor state machine
+  private state: ExtractorState = 'streaming';
+
+  constructor(private readonly config: ValidationStreamExtractorConfig) {
+    // Initialize all tracked fields to 'pending'
+    // WHY: We need to know which fields we're expecting so we can diagnose missing ones
+    for (const field of config.streamFields) {
+      this.fieldStates.set(field, 'pending');
+    }
+  }
+
+  // ============================================================================
+  // IStreamExtractor interface
+  // ============================================================================
+
+  /**
+   * Whether the extractor has finished (successfully or with error).
+   * WHY: Callers need to know when to stop pushing chunks and read results.
+   */
+  get done(): boolean {
+    return this.state === 'complete' || this.state === 'failed';
+  }
+
+  /**
+   * Process an incoming chunk from the LLM.
+   *
+   * WHY: This is the hot path - called for every chunk from the LLM stream.
+   * It needs to be efficient while also handling complex validation logic.
+   *
+   * The method:
+   * 1. Checks for cancellation (user might have aborted)
+   * 2. Accumulates chunk into buffer
+   * 3. Extracts field contents from buffer
+   * 4. For levels 0-1, checks if we can emit validated content
+   *
+   * Note: Returns empty string because we emit via callbacks, not return value.
+   * WHY: IStreamExtractor interface expects string return, but our emission is
+   * more complex (per-field, with events). We use callbacks instead.
+   */
+  push(chunk: string): string {
+    // Check for cancellation FIRST - abort signal might have fired
+    // WHY: User clicked "stop" or navigated away. Respect their intent immediately.
+    if (this.config.abortSignal?.aborted) {
+      if (this.state === 'streaming') {
+        this.state = 'failed';
+        this.emitEvent({ type: 'error', error: 'Cancelled by user' });
+      }
+      return '';
+    }
+
+    // Only accept chunks when actively streaming
+    // WHY: After retry/complete/failed, we shouldn't process more chunks
+    if (this.state !== 'streaming') return '';
+
+    // Validate chunk size to prevent DoS
+    // WHY: Malicious or buggy LLM could send huge chunks
+    validateChunkSize(chunk);
+    this.buffer += chunk;
+
+    // Extract field contents from accumulated buffer
+    // WHY: We need to see full field content to validate codes
+    this.extractAllFields();
+
+    // For levels 0-1, try to emit validated content immediately
+    // WHY: Better UX - user sees content as soon as it's safe
+    if (this.config.level <= 1) {
+      this.checkPerFieldEmission();
+    }
+    // Levels 2-3: buffer only, emit on flush()
+    // WHY: These levels need checkpoint validation before ANY emission
+
+    return ''; // We handle emission via callback, not return value
+  }
+
+  // ============================================================================
+  // Field extraction
+  // ============================================================================
+
+  /**
+   * Extract all field contents from the accumulated buffer.
+   *
+   * WHY: As chunks arrive, we need to continuously scan for field boundaries.
+   * This is called on every push() to detect when fields complete.
+   *
+   * Note: Uses simple indexOf() instead of regex for ReDoS safety.
+   */
+  private extractAllFields(): void {
+    for (const field of this.config.streamFields) {
+      const openTag = `<${field}>`;
+      const closeTag = `</${field}>`;
+
+      const startIdx = this.buffer.indexOf(openTag);
+      if (startIdx === -1) continue;
+
+      const contentStart = startIdx + openTag.length;
+      const endIdx = this.buffer.indexOf(closeTag, contentStart);
+
+      if (endIdx !== -1) {
+        // Complete field found - both tags present
+        const content = this.buffer.substring(contentStart, endIdx);
+        this.fieldContents.set(field, content);
+        // Update state only if we haven't already marked it invalid
+        if (this.fieldStates.get(field) === 'pending' || this.fieldStates.get(field) === 'partial') {
+          this.fieldStates.set(field, 'complete');
+        }
+      } else if (startIdx !== -1) {
+        // Partial field - opened but not closed (might still be streaming)
+        const content = this.buffer.substring(contentStart);
+        this.fieldContents.set(field, content);
+        if (this.fieldStates.get(field) === 'pending') {
+          this.fieldStates.set(field, 'partial');
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Level 0-1: Per-field emission
+  // ============================================================================
+
+  /**
+   * Check each field and emit if validation passes.
+   *
+   * WHY: For levels 0-1, we want to emit content as soon as it's validated.
+   * This gives the best streaming UX while maintaining safety.
+   *
+   * The logic respects validateField hints:
+   * - Level 0 default: no validation (opt-in via validateField: true)
+   * - Level 1 default: validation required (opt-out via validateField: false)
+   */
+  private checkPerFieldEmission(): void {
+    for (const field of this.config.streamFields) {
+      // Skip already validated fields
+      if (this.validatedFields.has(field)) continue;
+
+      // Find schema row to check validateField hint
+      const schemaField = this.config.schema.find((s) => s.field === field);
+
+      // Determine if this field needs validation codes
+      // WHY: Level 0 is "trusted" so default is no codes (opt-in)
+      //      Level 1 is "progressive" so default is codes (opt-out)
+      const defaultValidate = this.config.level === 1;
+      const needsValidation = schemaField?.validateField ?? defaultValidate;
+
+      const content = this.fieldContents.get(field);
+      if (!content) continue;
+
+      if (needsValidation) {
+        // Check for validation codes around this field
+        const startCodeValid = this.checkValidationCode(field, 'start');
+        const endCodeValid = this.checkValidationCode(field, 'end');
+
+        if (startCodeValid === false) {
+          // Start code present but WRONG - context was definitely truncated
+          // WHY: If the code is present but doesn't match, something is very wrong
+          this.fieldStates.set(field, 'invalid');
+          this.emitEvent({ type: 'error', field, error: `Invalid start code for ${field}` });
+          continue;
+        }
+
+        if (startCodeValid && endCodeValid) {
+          // Both codes valid! This field is safe to emit
+          this.validatedFields.add(field);
+          this.emitEvent({ type: 'field_validated', field });
+          this.emitFieldContent(field, content);
+        }
+        // If we have start but not end, keep waiting
+        // WHY: Field might still be streaming, closing tag not arrived yet
+      } else {
+        // No validation needed - emit incrementally as content arrives
+        // WHY: For trusted fields, show content immediately (best UX)
+        this.emitFieldContent(field, content);
+      }
+    }
+  }
+
+  /**
+   * Check if a validation code matches expectations.
+   *
+   * WHY: Validation codes are short UUID snippets that the LLM must echo.
+   * If the echoed code matches what we sent, we know that part of the response
+   * wasn't truncated or corrupted.
+   *
+   * @returns true if code matches, false if code present but wrong, null if code not found
+   */
+  private checkValidationCode(field: string, position: 'start' | 'end'): boolean | null {
+    const codeTag = `code_${field}_${position}`;
+    const openTag = `<${codeTag}>`;
+    const closeTag = `</${codeTag}>`;
+
+    const startIdx = this.buffer.indexOf(openTag);
+    if (startIdx === -1) return null;
+
+    const contentStart = startIdx + openTag.length;
+    const endIdx = this.buffer.indexOf(closeTag, contentStart);
+    if (endIdx === -1) return null;
+
+    const codeValue = this.buffer.substring(contentStart, endIdx).trim();
+    const expected = this.config.expectedCodes.get(field);
+
+    return codeValue === expected;
+  }
+
+  // ============================================================================
+  // Content emission
+  // ============================================================================
+
+  /**
+   * Emit field content incrementally using delta calculation.
+   *
+   * WHY: When streaming level 0-1, we call this repeatedly as content grows.
+   * We need to emit only NEW content, not re-emit what was already sent.
+   *
+   * Example: Field content grows "Hello" → "Hello world"
+   *   - First call: emits "Hello"
+   *   - Second call: emits " world" (only the delta)
+   *
+   * This ensures smooth streaming without duplicate text.
+   */
+  private emitFieldContent(field: string, fullContent: string): void {
+    const previouslyEmitted = this.emittedContent.get(field) || '';
+    if (fullContent.length > previouslyEmitted.length) {
+      // Calculate delta - only the NEW content
+      const delta = fullContent.slice(previouslyEmitted.length);
+      this.emittedContent.set(field, fullContent);
+
+      // Emit via chunk callback (for simple consumers)
+      this.config.onChunk(delta, field);
+
+      // Also emit as event (for rich consumers)
+      this.emitEvent({ type: 'chunk', content: delta, field });
+    }
+  }
+
+  /**
+   * Emit a stream event to rich consumers.
+   *
+   * WHY: Rich consumers want typed events, not just text.
+   * This is a no-op if onEvent wasn't provided (simple consumer pattern).
+   */
+  private emitEvent(event: StreamEvent): void {
+    this.config.onEvent?.(event);
+  }
+
+  // ============================================================================
+  // Lifecycle methods
+  // ============================================================================
+
+  /**
+   * Called when the LLM stream ends successfully.
+   * For levels 2-3, this is when we finally emit buffered content.
+   *
+   * WHY: Levels 2-3 buffer ALL content until validation passes.
+   * flush() is called after checkpoint codes are verified, signaling it's safe
+   * to release the buffered content to the consumer.
+   *
+   * @returns Empty string (IStreamExtractor interface compatibility)
+   */
+  flush(): string {
+    this.state = 'complete';
+
+    // For levels 2-3, emit everything now that validation passed
+    // WHY: We buffered content waiting for checkpoint validation
+    if (this.config.level >= 2) {
+      for (const field of this.config.streamFields) {
+        const content = this.fieldContents.get(field);
+        if (content) {
+          this.config.onChunk(content, field);
+          this.emitEvent({ type: 'chunk', content, field });
+        }
+      }
+    }
+
+    this.emitEvent({ type: 'complete' });
+    return '';
+  }
+
+  /**
+   * Signal to consumer that a retry is starting.
+   *
+   * WHY: When validation fails, dynamicPromptExecFromState retries the LLM call.
+   * The consumer needs to know so they can:
+   * - Clear any partial/invalid content shown to user
+   * - Show a retry indicator (spinner, message)
+   * - NOT concatenate the retry output with the invalid output
+   *
+   * For SIMPLE consumers (no onStreamEvent):
+   *   We emit a separator: "-- that's not right, let me start again:"
+   *   WHY: Without this, the user would see invalid text followed by retry text,
+   *   which looks like concatenated gibberish.
+   *
+   * For RICH consumers (has onStreamEvent):
+   *   They receive retry_start event and handle it themselves.
+   *   WHY: They might want custom UX (clear content, show spinner, etc.)
+   *
+   * @param retryCount Current retry attempt (1-indexed)
+   * @returns Info about emission state for retry prompt building
+   */
+  signalRetry(retryCount: number): { hasPartialEmission: boolean; validatedFields: string[] } {
+    this.state = 'retrying';
+    const validated = Array.from(this.validatedFields);
+    const hasPartialEmission = this.emittedContent.size > 0;
+
+    // For simple consumers, emit separator to prevent confusing concatenation
+    // WHY: Without this, they'd see "partial invalid text" + "retry text" = gibberish
+    if (!this.config.hasRichConsumer && hasPartialEmission) {
+      this.config.onChunk("\n\n-- that's not right, let me start again:\n\n");
+    }
+
+    // Emit retry event for rich consumers
+    this.emitEvent({
+      type: 'retry_start',
+      retryCount,
+      validatedFields: validated,
+    });
+
+    // If we have validated fields, inform consumer for potential context reuse
+    // WHY: Level 1 can include validated fields in retry prompt for smarter retries
+    if (validated.length > 0) {
+      this.emitEvent({
+        type: 'retry_context',
+        validatedFields: validated,
+        content: `Keeping validated fields: ${validated.join(', ')}`,
+      });
+    }
+
+    return { hasPartialEmission, validatedFields: validated };
+  }
+
+  /**
+   * Signal unrecoverable error (e.g., max retries exceeded, abort).
+   *
+   * WHY: After max retries, we need to inform the consumer that we've given up.
+   * This transitions the state machine to 'failed' and emits error event.
+   * The consumer can then display an appropriate error message to the user.
+   *
+   * @param error Human-readable error message
+   */
+  signalError(error: string): void {
+    this.state = 'failed';
+    this.emitEvent({ type: 'error', error });
+  }
+
+  /**
+   * Get validated field contents for building smarter retry prompts.
+   *
+   * WHY: For level 1 (progressive), some fields might have validated while
+   * others failed. Instead of starting from scratch, we can include the
+   * validated content in the retry prompt:
+   *   "You already correctly produced these fields: {thought: 'xxx'}
+   *    Please continue with the remaining fields."
+   *
+   * This makes retries faster and more likely to succeed.
+   *
+   * @returns Map of field name → validated content
+   */
+  getValidatedFields(): Map<string, string> {
+    const result = new Map<string, string>();
+    for (const field of this.validatedFields) {
+      const content = this.fieldContents.get(field);
+      if (content) result.set(field, content);
+    }
+    return result;
+  }
+
+  /**
+   * Diagnose what went wrong for error messaging and debugging.
+   *
+   * WHY: When validation fails, we need to know WHY to:
+   * - Log useful debug info for developers
+   * - Build informative error messages for users
+   * - Potentially build smarter retry prompts
+   *
+   * The diagnosis categorizes fields into three buckets:
+   * - missing: LLM never started outputting this field
+   * - invalid: Field was output but validation codes didn't match
+   * - incomplete: Field started but never finished (truncated mid-field)
+   *
+   * @returns Diagnosis object with categorized field lists
+   */
+  diagnose(): ValidationDiagnosis {
+    const missingFields: string[] = [];
+    const invalidFields: string[] = [];
+    const incompleteFields: string[] = [];
+
+    for (const [field, state] of this.fieldStates) {
+      switch (state) {
+        case 'pending':
+          // Never saw opening tag
+          missingFields.push(field);
+          break;
+        case 'invalid':
+          // Validation codes didn't match
+          invalidFields.push(field);
+          break;
+        case 'partial':
+          // Opened but never closed (truncated)
+          incompleteFields.push(field);
+          break;
+        // 'complete' fields are fine, not included in diagnosis
+      }
+    }
+
+    return { missingFields, invalidFields, incompleteFields };
+  }
+
+  // ============================================================================
+  // State management
+  // ============================================================================
+
+  /**
+   * Full reset for retry - clears all accumulated state.
+   *
+   * WHY: When retrying, we need a fresh start. The extractor is reused
+   * (not recreated) so it can track validated fields across retries.
+   * But the buffer, emission tracking, and field states must be cleared.
+   *
+   * Called by dynamicPromptExecFromState before each retry attempt.
+   */
+  reset(): void {
+    this.buffer = '';
+    this.fieldContents.clear();
+    this.validatedFields.clear();
+    this.emittedContent.clear();
+    this.state = 'streaming';
+    for (const field of this.config.streamFields) {
+      this.fieldStates.set(field, 'pending');
+    }
+  }
+
+  /**
+   * Get current state machine state.
+   * WHY: Useful for debugging and testing state transitions.
+   */
+  getState(): ExtractorState {
+    return this.state;
+  }
+
+  /**
+   * Check if any content has been emitted to the consumer.
+   *
+   * WHY: signalRetry needs to know whether to emit the separator.
+   * If nothing was emitted, no separator is needed.
+   */
+  hasEmittedContent(): boolean {
+    return this.emittedContent.size > 0;
+  }
+
+  // ============================================================================
+  // Debug accessors (useful for testing and troubleshooting)
+  // ============================================================================
+
+  /**
+   * Get raw accumulated buffer.
+   * WHY: Useful for debugging - see exactly what the LLM output.
+   */
+  getBuffer(): string {
+    return this.buffer;
+  }
+
+  /**
+   * Get all extracted field contents (copy to avoid mutation).
+   * WHY: Useful for debugging - see what we extracted from each field.
+   */
+  getFieldContents(): Map<string, string> {
+    return new Map(this.fieldContents);
   }
 }

@@ -10,7 +10,7 @@ import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
 import { isPlainObject } from './utils/type-guards';
 import { decryptSecret, getSalt } from './index';
-import { ActionStreamFilter } from './utils/streaming';
+import { ActionStreamFilter, ValidationStreamExtractor, type ValidationDiagnosis } from './utils/streaming';
 import { getStreamingContext, runWithStreamingContext } from './streaming-context';
 import { createLogger } from './logger';
 import { DefaultMessageService } from './services/default-message-service';
@@ -48,6 +48,8 @@ import {
   type ServiceTypeName,
   type State,
   type SchemaRow,
+  type StreamEvent,
+  type RetryBackoffConfig,
   type TaskWorker,
   type Agent,
   type Log,
@@ -111,7 +113,11 @@ interface DynamicPromptMetrics {
  *
  * Environment Variables:
  *   DYNAMIC_PROMPT_MAX_ENTRIES - Maximum entries before LRU eviction (default: unbounded)
- *   VALIDATION_LEVEL - Controls retry behavior (strict/safe/fast/trusted, default: 1 retry)
+ *   VALIDATION_LEVEL - Controls validation level and retry behavior:
+ *     - "trusted"/"fast": Level 0, 0 retries (no validation codes)
+ *     - "progressive": Level 1, 2 retries (per-field validation codes)
+ *     - (default): Level 2, 1 retry (checkpoint codes at start)
+ *     - "strict"/"safe": Level 3, 3 retries (checkpoint codes at start + end)
  */
 const modelSchemaMetrics = new Map<string, DynamicPromptMetrics>();
 const modelMetrics = new Map<string, DynamicPromptMetrics>();
@@ -826,7 +832,7 @@ export class AgentRuntime implements IAgentRuntime {
     responses: Memory[],
     state?: State,
     callback?: HandlerCallback,
-    processOptions?: { onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void> }
+    processOptions?: { onStreamChunk?: (chunk: string, messageId?: string) => Promise<void> }
   ): Promise<void> {
     // Determine if we have multiple actions to execute
     const allActions: string[] = [];
@@ -1095,8 +1101,8 @@ export class AgentRuntime implements IAgentRuntime {
         // the filter so content type detection from one call doesn't affect the next.
         let actionStreamingContext:
           | {
-            messageId: UUID;
-            onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>;
+            messageId: string;
+            onStreamChunk: (chunk: string, messageId?: string) => Promise<void>;
             onStreamEnd: () => void;
           }
           | undefined;
@@ -1105,7 +1111,7 @@ export class AgentRuntime implements IAgentRuntime {
 
           actionStreamingContext = {
             messageId: responseMessageId,
-            onStreamChunk: async (chunk: string, msgId?: UUID) => {
+            onStreamChunk: async (chunk: string, msgId?: string) => {
               if (!currentFilter) {
                 currentFilter = new ActionStreamFilter();
               }
@@ -2521,15 +2527,64 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   /**
-   * Dynamic prompt execution with state injection, schema-based parsing, and validation
+   * Dynamic prompt execution with state injection, schema-based parsing, validation-aware streaming.
    *
-   * Executes an LLM prompt with structured output requirements, automatic validation,
-   * retry logic, and performance tracking. Injects UUID validation codes to ensure
-   * the model reads and follows the entire prompt.
+   * WHY THIS EXISTS:
+   * ----------------
+   * LLMs are powerful but unreliable for structured outputs. They can:
+   * - Silently truncate output when hitting token limits
+   * - Skip fields or produce malformed structures
+   * - Hallucinate or ignore parts of the prompt
    *
-   * @param state - State object to inject into the prompt template
+   * This method addresses these issues by:
+   * 1. **Validation codes**: Injects UUID codes the LLM must echo back. If codes match,
+   *    we know the LLM actually read and followed the prompt. If they don't, we retry.
+   *
+   * 2. **Streaming with safety**: Traditional streaming has no validation - you might stream
+   *    half a broken response. This method enables streaming while detecting truncation
+   *    via ValidationStreamExtractor.
+   *
+   * 3. **Performance tracking**: Tracks success/failure rates per model+schema combination.
+   *    Future: Will use this data for adaptive prompt decomposition.
+   *
+   * VALIDATION LEVELS:
+   * ------------------
+   * Level 0 (Trusted): No validation codes. Maximum speed. Best for:
+   *   - Fast models (GPT-4, Claude-3.5) that rarely fail
+   *   - Non-critical responses where occasional failures are acceptable
+   *   - Real-time streaming UX is critical
+   *
+   * Level 1 (Progressive): Per-field validation codes. Balance of safety + speed. Best for:
+   *   - Important but not critical operations
+   *   - When you want streaming AND safety
+   *   - Use validateField: false on non-critical fields to reduce overhead
+   *
+   * Level 2 (First Checkpoint): Codes at response start. Default. Best for:
+   *   - General use cases
+   *   - Catches "LLM ignored the prompt entirely" failures
+   *   - Reasonable tradeoff of safety vs. speed
+   *
+   * Level 3 (Full): Codes at start AND end. Maximum correctness. Best for:
+   *   - Critical operations (payments, state changes)
+   *   - Unreliable or unfamiliar models
+   *   - When correctness matters more than speed
+   *
+   * STREAMING BEHAVIOR:
+   * -------------------
+   * - Level 0-1: Real-time streaming (respecting validateField hints)
+   * - Level 2-3: Buffered until validation passes
+   *
+   * Simple consumers (just onStreamChunk):
+   *   - Receive text chunks as validated
+   *   - On retry, see "-- that's not right, let me start again:" separator
+   *
+   * Rich consumers (onStreamChunk + onStreamEvent):
+   *   - Receive typed events: chunk, field_validated, retry_start, error, complete
+   *   - Can implement custom UX for retries (spinner, clear content, etc.)
+   *
+   * @param state - State object to inject into the prompt template via Handlebars
    * @param params - LLM parameters (temperature, maxTokens, etc.) with a prompt template
-   * @param schema - Array of field definitions for structured output
+   * @param schema - Array of field definitions for structured output (see SchemaRow)
    * @param options - Configuration options:
    *   - key: Custom cache key (default: generated from state)
    *   - modelSize: 'small' or 'large' (default: 'large')
@@ -2537,35 +2592,67 @@ export class AgentRuntime implements IAgentRuntime {
    *   - preferredEncapsulation: 'json' or 'xml' (default: 'xml')
    *   - forceFormat: Force 'json' or 'xml' (overrides preferredEncapsulation)
    *   - requiredFields: Array of field names that must be present in response
-   *   - contextCheckLevel: Validation code placement (0: none, 1: first only, 2: both first+last)
+   *   - contextCheckLevel: Validation level 0-3 (default: from VALIDATION_LEVEL env or 2)
    *   - maxRetries: Number of retries on failure (default: from VALIDATION_LEVEL env var)
-   *   - disableCache: Disable prompt disk caching (default: false, cache enabled)
+   *   - disableCache: Disable prompt disk caching (default: false)
    *   - cacheTTL: Cache time-to-live in ms (default: 5 minutes)
+   *   - onStreamChunk: Simple streaming callback - receives text chunks
+   *   - onStreamEvent: Rich streaming callback - receives typed events (retry, validation, etc.)
+   *   - abortSignal: AbortSignal for user-initiated cancellation
    *
    * @returns Parsed structured response object, or null on failure
    *
    * Environment Variables:
-   *   - VALIDATION_LEVEL: Controls default retry behavior
-   *     - "strict" or "safe": 3 retries (ensures correctness)
-   *     - (default): 1 retry (balanced)
-   *     - "fast" or "trusted": 0 retries (trusts model)
+   *   - VALIDATION_LEVEL: Controls validation level and default retry behavior
+   *     - "trusted" or "fast": Level 0, 0 retries (no validation codes, fastest)
+   *     - "progressive": Level 1, 2 retries (per-field validation codes)
+   *     - (default): Level 2, 1 retry (checkpoint codes at start)
+   *     - "strict" or "safe": Level 3, 3 retries (checkpoint codes at start + end)
    *   - DYNAMIC_PROMPT_MAX_ENTRIES: Cap metrics memory usage (default: unbounded)
    *
-   * @example
+   * @example Basic usage
    * ```typescript
    * const result = await runtime.dynamicPromptExecFromState({
    *   state: { userName: 'Alice', context: 'greeting' },
-   *   params: {
-   *     prompt: 'Generate a greeting for {{userName}}',
-   *     temperature: 0.7
-   *   },
+   *   params: { prompt: 'Generate a greeting for {{userName}}', temperature: 0.7 },
    *   schema: [
    *     { field: 'greeting', description: 'The greeting text', required: true },
    *     { field: 'tone', description: 'The tone of the greeting' }
    *   ],
+   *   options: { requiredFields: ['greeting'] }
+   * });
+   * ```
+   *
+   * @example Simple streaming (level 0 for speed)
+   * ```typescript
+   * const result = await runtime.dynamicPromptExecFromState({
+   *   state,
+   *   params: { prompt: 'Generate a response' },
+   *   schema: [{ field: 'text', description: 'Response text' }],
    *   options: {
-   *     requiredFields: ['greeting'],
-   *     preferredEncapsulation: 'json'
+   *     contextCheckLevel: 0, // Fastest, no validation
+   *     onStreamChunk: (chunk) => process.stdout.write(chunk)
+   *   }
+   * });
+   * ```
+   *
+   * @example Rich streaming with retry handling
+   * ```typescript
+   * const result = await runtime.dynamicPromptExecFromState({
+   *   state,
+   *   params: { prompt: 'Generate a critical response' },
+   *   schema: [{ field: 'text', description: 'Response', validateField: true }],
+   *   options: {
+   *     contextCheckLevel: 1, // Per-field validation
+   *     onStreamChunk: (chunk) => appendToUI(chunk),
+   *     onStreamEvent: (event) => {
+   *       if (event.type === 'retry_start') {
+   *         showSpinner('Validating...');
+   *         clearPartialContent();
+   *       } else if (event.type === 'error') {
+   *         showError(event.error);
+   *       }
+   *     }
    *   }
    * });
    * ```
@@ -2589,11 +2676,25 @@ export class AgentRuntime implements IAgentRuntime {
       forceFormat?: 'json' | 'xml'; // force format (overrides preferredEncapsulation)
       // or should this be inside schema?
       requiredFields?: string[];
-      contextCheckLevel?: 0 | 1; // default (undefined => 2)
+      /**
+       * Validation level for context checking:
+       * - 0: Trusted - no codes, real-time streaming
+       * - 1: Progressive - per-field codes, emit per validated field
+       * - 2: First checkpoint - start codes only, buffered
+       * - 3: Full - start + end codes, buffered
+       */
+      contextCheckLevel?: 0 | 1 | 2 | 3; // default from VALIDATION_LEVEL env or 2
       maxRetries?: number; // default 1
+      /** Backoff config for retries: number (fixed ms) or { initialMs, multiplier, maxMs } */
+      retryBackoff?: number | RetryBackoffConfig;
       disableCache?: boolean; // disable prompt disk caching (default false, cache enabled)
       cacheTTL?: number; // cache time-to-live in ms (default 5 minutes)
-      // ideal time
+      /** Callback for streaming chunks - enables real-time output during generation */
+      onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
+      /** Rich event callback for UIs that want retry state, validation progress, errors */
+      onStreamEvent?: (event: StreamEvent, messageId?: string) => void | Promise<void>;
+      /** Cancel mid-stream */
+      abortSignal?: AbortSignal;
     };
   }): Promise<Record<string, any> | null> {
     // Generate keys
@@ -2613,22 +2714,33 @@ export class AgentRuntime implements IAgentRuntime {
     // }
 
     // Environment Variable: VALIDATION_LEVEL
-    // Controls retry strategy for structured LLM outputs
+    // Controls validation strategy and retry behavior for structured LLM outputs
     // Options:
-    //   - "strict" or "safe": 3 retries (slower, ensures correctness, validates context codes)
-    //   - (default/unset): 1 retry (balanced approach)
-    //   - "fast" or "trusted": 0 retries (faster, trusts model more, skips validation retries)
+    //   - "trusted" or "fast": Level 0 - no validation codes, 0 retries (fastest, trusts model)
+    //   - "progressive": Level 1 - per-field validation codes, 2 retries (balanced speed + safety)
+    //   - (default/unset): Level 2 - checkpoint codes at start, 1 retry (balanced)
+    //   - "strict" or "safe": Level 3 - checkpoint codes at start + end, 3 retries (maximum correctness)
     // Why: Some models are more reliable with structured outputs. Use "strict" for critical
-    //      operations or unreliable models, "fast" for trusted models or non-critical operations.
+    //      operations or unreliable models, "trusted" for reliable models or non-critical operations.
     const validationLevelRaw = this.getSetting('VALIDATION_LEVEL');
-    const validationLevel = typeof validationLevelRaw === 'string' ? validationLevelRaw.toLowerCase() : undefined;
+    const validationLevel =
+      typeof validationLevelRaw === 'string' ? validationLevelRaw.toLowerCase() : undefined;
 
+    // Map VALIDATION_LEVEL to contextCheckLevel and default retries
+    let defaultContextCheckLevel: 0 | 1 | 2 | 3 = 2;
     let defaultRetries = 1;
-    if (validationLevel === 'strict' || validationLevel === 'safe') {
-      defaultRetries = 3; // more retries for correctness
-    } else if (validationLevel === 'fast' || validationLevel === 'trusted') {
+
+    if (validationLevel === 'trusted' || validationLevel === 'fast') {
+      defaultContextCheckLevel = 0;
       defaultRetries = 0; // trust the model
+    } else if (validationLevel === 'progressive') {
+      defaultContextCheckLevel = 1;
+      defaultRetries = 2; // moderate retries for progressive validation
+    } else if (validationLevel === 'strict' || validationLevel === 'safe') {
+      defaultContextCheckLevel = 3;
+      defaultRetries = 3; // more retries for correctness
     }
+    // else: default is level 2, 1 retry
 
     const maxRetries = options.maxRetries ?? defaultRetries;
 
@@ -2681,6 +2793,12 @@ export class AgentRuntime implements IAgentRuntime {
     let currentRetry = 0;
     let lowestFailedTokenCount: number | null = modelSchemaMetric.lowestFailedTokenCount;
     let highestSuccessTokenCount: number | null = modelSchemaMetric.highestSuccessTokenCount;
+
+    // Extractor is created once and persists across retries (tracks validated fields)
+    let extractor: ValidationStreamExtractor | undefined;
+    // These are set on first iteration
+    let contextLevel: 0 | 1 | 2 | 3 = defaultContextCheckLevel;
+    let perFieldCodes = new Map<string, string>();
 
     // retries?
     while (currentRetry <= maxRetries) {
@@ -2746,18 +2864,64 @@ export class AgentRuntime implements IAgentRuntime {
       };
 
       // contextCheckLevel controls validation code placement:
-      // undefined/2 (default): both first and last codes
-      // 1: only first codes
-      // 0: no validation codes
-      const contextLevel = options.contextCheckLevel ?? 2;
-      const first = contextLevel > 0;
-      const last = contextLevel > 1;
+      // 0: Trusted - no validation codes by default (opt-in via validateField: true)
+      // 1: Progressive - per-field codes by default (opt-out via validateField: false)
+      // 2: First checkpoint - start codes only (buffered)
+      // 3: Full - start + end codes (buffered)
 
-      const extSchema = [
-        ...(first ? codesSchema('one_') : []),
-        ...schema,
-        ...(last ? codesSchema('two_') : []),
-      ].filter((b) => !!b);
+      // Set context level and generate codes on first iteration only
+      if (currentRetry === 0) {
+        contextLevel = options.contextCheckLevel ?? defaultContextCheckLevel;
+
+        // Generate per-field validation codes for levels 0-1
+        if (contextLevel <= 1) {
+          for (const row of schema) {
+            // Level 0: default false (opt-in), Level 1: default true (opt-out)
+            const defaultValidate = contextLevel === 1;
+            const needsValidation = row.validateField ?? defaultValidate;
+            if (needsValidation) {
+              perFieldCodes.set(row.field, uuidv4().slice(0, 8));
+            }
+          }
+        }
+      }
+
+      // Checkpoint codes: level 2+ gets first codes, level 3 gets both
+      const first = contextLevel >= 2;
+      const last = contextLevel >= 3;
+
+      // Build extended schema with validation codes
+      const extSchema: Array<{ field: string; description: string; required?: boolean }> = [];
+
+      // Add checkpoint codes at start for levels 2-3
+      if (first) {
+        extSchema.push(...codesSchema('one_'));
+      }
+
+      // Add schema fields with per-field codes for levels 0-1
+      for (const row of schema) {
+        const fieldCode = perFieldCodes.get(row.field);
+        if (fieldCode) {
+          // Add start code before field
+          extSchema.push({
+            field: `code_${row.field}_start`,
+            description: `please output exactly: ${fieldCode}`,
+          });
+        }
+        extSchema.push(row);
+        if (fieldCode) {
+          // Add end code after field
+          extSchema.push({
+            field: `code_${row.field}_end`,
+            description: `please output exactly: ${fieldCode}`,
+          });
+        }
+      }
+
+      // Add checkpoint codes at end for level 3
+      if (last) {
+        extSchema.push(...codesSchema('two_'));
+      }
 
       // generate prompt
 
@@ -2822,11 +2986,21 @@ export class AgentRuntime implements IAgentRuntime {
       const initCode = uuidv4();
       const midCode = uuidv4();
       const finalCode = uuidv4();
+
+      // Check for smart retry context from previous failed attempt
+      // WHY: For level 1 retries, we include validated fields to help the LLM succeed
+      const smartRetryContext = (state as any)._smartRetryContext || '';
+      if (smartRetryContext) {
+        // Clear it after use so next retry (if any) builds fresh context
+        delete (state as any)._smartRetryContext;
+      }
+
       const prompt =
         'initial code: ' +
         initCode +
         '\n' +
         output +
+        smartRetryContext +
         'middle code: ' +
         midCode +
         '\n' +
@@ -2842,13 +3016,70 @@ export class AgentRuntime implements IAgentRuntime {
 
       // call useModel
       const modelType = options.modelSize === 'small' ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
+
+      // Create ValidationStreamExtractor on first iteration if streaming is enabled
+      if (currentRetry === 0 && options.onStreamChunk && !extractor) {
+        const hasRichConsumer = !!options.onStreamEvent;
+
+        // Determine which fields to stream based on schema hints
+        // WHY: Not all fields should be shown to users:
+        //   - 'text' is typically the response (stream by default)
+        //   - 'thought' is internal reasoning (don't stream by default)
+        //   - 'actions' is system field (don't stream by default)
+        // Users can override with streamField: true/false on each SchemaRow
+        const streamFields = schema
+          .filter((row) => {
+            if (row.streamField !== undefined) {
+              // Explicit override - respect it
+              return row.streamField;
+            }
+            // Default: only stream 'text' field
+            return row.field === 'text';
+          })
+          .map((row) => row.field);
+
+        // If no fields to stream, fall back to 'text' if present
+        const finalStreamFields =
+          streamFields.length > 0 ? streamFields : schema.some((r) => r.field === 'text') ? ['text'] : [];
+
+        extractor = new ValidationStreamExtractor({
+          level: contextLevel,
+          schema,
+          streamFields: finalStreamFields,
+          expectedCodes: perFieldCodes,
+          onChunk: (chunk, field) => {
+            options.onStreamChunk!(chunk);
+          },
+          onEvent: options.onStreamEvent,
+          abortSignal: options.abortSignal,
+          hasRichConsumer,
+        });
+      }
+
       const modelParams = {
         ...params,
         prompt, // Use the constructed prompt without mutating params
         providerOptions: {
           agentName: this.character.name,
         },
+        // Wire extractor into streaming, or pass through directly
+        ...(extractor
+          ? {
+            onStreamChunk: (chunk: string) => {
+              extractor!.push(chunk);
+            },
+          }
+          : options.onStreamChunk
+            ? { onStreamChunk: options.onStreamChunk }
+            : {}),
       };
+
+      // Check for cancellation before making request
+      if (options.abortSignal?.aborted) {
+        extractor?.signalError('Cancelled by user');
+        return null;
+      }
+
       const response = await this.useModel<typeof modelType, string>(
         modelType,
         modelParams,
@@ -2887,47 +3118,67 @@ export class AgentRuntime implements IAgentRuntime {
         allGood = false;
         // could try inverse format...
       } else {
-        // Validate only the codes that were actually added to the schema
-        // Why: These UUID codes ensure the model actually read and followed the entire prompt
-        // If they fail, it indicates the model ignored instructions or hit token limits
-        // Note: contextLevel determines which codes were added:
-        //   - 0: no codes (skip validation)
-        //   - 1: only 'one_' codes (first checkpoint)
-        //   - 2: both 'one_' and 'two_' codes (first + last checkpoints)
-        const validationCodes: [string, string][] = [
-          ...(first
-            ? [
-              ['one_initial_code', initCode] as [string, string],
-              ['one_middle_code', midCode] as [string, string],
-              ['one_end_code', finalCode] as [string, string],
-            ]
-            : []),
-          ...(last
-            ? [
-              ['two_initial_code', initCode] as [string, string],
-              ['two_middle_code', midCode] as [string, string],
-              ['two_end_code', finalCode] as [string, string],
-            ]
-            : []),
-        ];
+        // Validate codes based on context level:
+        // - Levels 0-1: per-field codes (if validateField is set)
+        // - Levels 2-3: checkpoint codes
 
-        for (const [field, expected] of validationCodes) {
-          if (responseContent[field] !== expected) {
-            this.logger.warn(`${field} failure`, expected);
-            allGood = false;
+        if (contextLevel <= 1) {
+          // Validate per-field codes
+          for (const [field, expectedCode] of perFieldCodes) {
+            const startCodeField = `code_${field}_start`;
+            const endCodeField = `code_${field}_end`;
+
+            const startCode = responseContent[startCodeField];
+            const endCode = responseContent[endCodeField];
+
+            if (startCode !== expectedCode || endCode !== expectedCode) {
+              this.logger.warn(
+                `Per-field validation failed for ${field}: expected=${expectedCode}, start=${startCode}, end=${endCode}`
+              );
+              allGood = false;
+            }
+
+            // Strip per-field codes from response
+            delete responseContent[startCodeField];
+            delete responseContent[endCodeField];
           }
-        }
+        } else {
+          // Validate checkpoint codes (levels 2-3)
+          const validationCodes: [string, string][] = [
+            ...(first
+              ? [
+                ['one_initial_code', initCode] as [string, string],
+                ['one_middle_code', midCode] as [string, string],
+                ['one_end_code', finalCode] as [string, string],
+              ]
+              : []),
+            ...(last
+              ? [
+                ['two_initial_code', initCode] as [string, string],
+                ['two_middle_code', midCode] as [string, string],
+                ['two_end_code', finalCode] as [string, string],
+              ]
+              : []),
+          ];
 
-        // Strip injected validation codes from response
-        if (first) {
-          delete responseContent.one_initial_code;
-          delete responseContent.one_middle_code;
-          delete responseContent.one_end_code;
-        }
-        if (last) {
-          delete responseContent.two_initial_code;
-          delete responseContent.two_middle_code;
-          delete responseContent.two_end_code;
+          for (const [field, expected] of validationCodes) {
+            if (responseContent[field] !== expected) {
+              this.logger.warn(`${field} failure`, expected);
+              allGood = false;
+            }
+          }
+
+          // Strip checkpoint codes from response
+          if (first) {
+            delete responseContent.one_initial_code;
+            delete responseContent.one_middle_code;
+            delete responseContent.one_end_code;
+          }
+          if (last) {
+            delete responseContent.two_initial_code;
+            delete responseContent.two_middle_code;
+            delete responseContent.two_end_code;
+          }
         }
 
         // Validate required fields if specified
@@ -2970,7 +3221,11 @@ export class AgentRuntime implements IAgentRuntime {
       modelMetric.totalAttempts++;
 
       if (allGood && responseContent) {
-        // Success!
+        // Success! Flush buffered content for levels 2-3
+        if (extractor) {
+          extractor.flush();
+        }
+
         highestSuccessTokenCount = this._updateMetricSuccess(
           modelSchemaMetric,
           outputTokenEst,
@@ -3010,16 +3265,71 @@ export class AgentRuntime implements IAgentRuntime {
 
       currentRetry++;
 
-      if (currentRetry <= maxRetries) {
-        this.logger.warn(
-          `dynamicPromptExecFromState retry ${currentRetry}/${maxRetries} after failure [${modelSchemaKey}]`,
-          allGood ? 'Parse failure' : 'Validation codes failed or missing required fields'
-        );
+      // Check for cancellation before retrying
+      if (options.abortSignal?.aborted) {
+        extractor?.signalError('Cancelled by user');
+        return null;
+      }
 
-        // what's the lowest token count that failed
-        // threshold for removing 2nd check
-        // threshold for chunking output?
-        // need a minimum watermark
+      if (currentRetry <= maxRetries) {
+        // Apply retry backoff delay
+        // WHY: Prevents hammering rate-limited APIs and gives transient failures time to resolve
+        if (options.retryBackoff) {
+          const delayMs = this._calculateBackoffDelay(options.retryBackoff, currentRetry);
+          this.logger.debug(`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+          // Check cancellation again after delay
+          if (options.abortSignal?.aborted) {
+            extractor?.signalError('Cancelled by user');
+            return null;
+          }
+        }
+
+        // Signal retry to extractor (emits events and separator for simple consumers)
+        let smartRetryContext: string | undefined;
+        if (extractor) {
+          const { validatedFields } = extractor.signalRetry(currentRetry);
+          const diagnosis = extractor.diagnose();
+
+          this.logger.warn(
+            `dynamicPromptExecFromState retry ${currentRetry}/${maxRetries} [${modelSchemaKey}]`,
+            `validated=${validatedFields.join(',') || 'none'}`,
+            `missing=${diagnosis.missingFields.join(',') || 'none'}`,
+            `invalid=${diagnosis.invalidFields.join(',') || 'none'}`,
+            `incomplete=${diagnosis.incompleteFields.join(',') || 'none'}`
+          );
+
+          // For level 1, build smart retry context with validated fields
+          // WHY: If some fields validated, we can include them in retry to help the LLM
+          if (contextLevel === 1 && validatedFields.length > 0) {
+            const validatedContent = extractor.getValidatedFields();
+            const validatedParts: string[] = [];
+            for (const [field, content] of validatedContent) {
+              // Truncate long content to avoid bloating the prompt
+              const truncated = content.length > 500 ? content.slice(0, 500) + '...' : content;
+              validatedParts.push(`<${field}>${truncated}</${field}>`);
+            }
+            if (validatedParts.length > 0) {
+              smartRetryContext = `\n\n[RETRY CONTEXT]\nYou previously produced these valid fields that you should keep:\n${validatedParts.join('\n')}\n\nPlease complete the remaining fields: ${diagnosis.missingFields.concat(diagnosis.invalidFields, diagnosis.incompleteFields).join(', ') || 'all fields'}`;
+            }
+          }
+
+          extractor.reset();
+        } else {
+          this.logger.warn(
+            `dynamicPromptExecFromState retry ${currentRetry}/${maxRetries} after failure [${modelSchemaKey}]`,
+            allGood ? 'Parse failure' : 'Validation codes failed or missing required fields'
+          );
+        }
+
+        // Inject smart retry context into next iteration's prompt if available
+        // WHY: Helps LLM understand what it got right and focus on what it missed
+        if (smartRetryContext) {
+          // We'll append this to the prompt in the next iteration
+          // Store in a variable that persists across loop iterations
+          (state as any)._smartRetryContext = smartRetryContext;
+        }
 
         // TODO: Implement adaptive decomposition
         // if (outputTokenEst > lowestFailedTokenCount) {
@@ -3032,7 +3342,16 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    // max that worked
+    // Max retries exceeded - signal error
+    if (extractor) {
+      const diagnosis = extractor.diagnose();
+      extractor.signalError(
+        `Failed after ${maxRetries} retries. Missing: ${diagnosis.missingFields.join(', ') || 'none'}, ` +
+        `Invalid: ${diagnosis.invalidFields.join(', ') || 'none'}, ` +
+        `Incomplete: ${diagnosis.incompleteFields.join(', ') || 'none'}`
+      );
+    }
+
     this.logger.error(
       `dynamicPromptExecFromState failed after ${maxRetries} retries`,
       `model+schema [${modelSchemaKey}]: ${modelSchemaMetric.successfulAttempts}/${modelSchemaMetric.totalAttempts} successful`,
@@ -3057,6 +3376,63 @@ export class AgentRuntime implements IAgentRuntime {
       metricsMap.delete(oldestKey);
       this.logger.debug(`Evicted old metric: ${oldestKey}`);
     }
+  }
+
+  /**
+   * Calculate backoff delay for retry attempts.
+   *
+   * WHY: Immediate retries can overwhelm rate-limited APIs and hit transient failures
+   * repeatedly. Backoff gives the system time to recover between attempts.
+   *
+   * Supports two modes:
+   * - Fixed delay: number (same delay every time)
+   * - Exponential backoff: { initialMs, multiplier, maxMs }
+   *
+   * @param config - Backoff configuration (number or RetryBackoffConfig)
+   * @param retryCount - Current retry attempt (1-indexed)
+   * @returns Delay in milliseconds to wait before retry
+   */
+  /**
+   * Calculate retry backoff delay.
+   *
+   * WHY: When retries happen, immediate retries often fail again. Backoff gives:
+   * - Rate-limited APIs time to reset their counters
+   * - Transient network issues time to resolve
+   * - Overloaded services time to recover
+   *
+   * Supports two modes:
+   * - Fixed delay: `retryBackoff: 1000` → always 1s between retries
+   * - Exponential: `retryBackoff: { initialMs: 1000, multiplier: 2, maxMs: 30000 }`
+   *   → 1s, 2s, 4s, 8s, ... capped at 30s
+   *
+   * @param config - Fixed delay (number) or exponential config
+   * @param retryCount - Current retry attempt (1-indexed)
+   * @returns Delay in milliseconds
+   */
+  private _calculateBackoffDelay(
+    config: number | RetryBackoffConfig,
+    retryCount: number
+  ): number {
+    // Simple fixed delay - same wait every time
+    // WHY: Sometimes you just want a consistent pause, e.g., 500ms between retries
+    if (typeof config === 'number') {
+      return config;
+    }
+
+    // Exponential backoff: initial * multiplier^(retry-1), capped at max
+    // WHY: Exponential backoff is the gold standard for distributed systems.
+    // Early retries are fast (catch transient glitches), later retries are slower
+    // (respect persistently failing services).
+    //
+    // Example with defaults (1000, 2, 30000):
+    //   Retry 1: 1000ms (1s)
+    //   Retry 2: 2000ms (2s)
+    //   Retry 3: 4000ms (4s)
+    //   Retry 4: 8000ms (8s)
+    //   Retry 5+: capped at 30000ms (30s) - don't wait forever
+    const { initialMs = 1000, multiplier = 2, maxMs = 30000 } = config;
+    const delay = initialMs * Math.pow(multiplier, retryCount - 1);
+    return Math.min(delay, maxMs);
   }
 
   private _updateMetricSuccess(

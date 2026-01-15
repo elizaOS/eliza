@@ -40,9 +40,9 @@ export interface MessageProcessingOptions {
    * The first chunk indicates streaming has started (useful for typing indicators).
    *
    * @param chunk - The text chunk being streamed
-   * @param messageId - ID of the message being generated
+   * @param messageId - ID of the message being generated (string for model compatibility)
    */
-  onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void>;
+  onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
 }
 
 /**

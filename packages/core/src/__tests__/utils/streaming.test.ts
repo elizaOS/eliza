@@ -4,8 +4,10 @@ import {
   XmlTagExtractor,
   ResponseStreamExtractor,
   ActionStreamFilter,
+  ValidationStreamExtractor,
   type IStreamExtractor,
 } from '../../utils/streaming';
+import type { SchemaRow, StreamEvent } from '../../types';
 
 // ============================================================================
 // IStreamExtractor interface conformance
@@ -548,6 +550,451 @@ describe('ActionStreamFilter', () => {
       const result = filter.push(largeXml);
 
       expect(result).toBe(''); // No text tag, nothing streamed
+    });
+  });
+});
+
+// ============================================================================
+// ValidationStreamExtractor - Validation-aware streaming
+// ============================================================================
+
+describe('ValidationStreamExtractor', () => {
+  const createSchema = (): SchemaRow[] => [
+    { field: 'thought', description: 'Internal reasoning' },
+    { field: 'text', description: 'Response text', required: true },
+    { field: 'actions', description: 'Actions to take' },
+  ];
+
+  describe('interface conformance', () => {
+    it('implements IStreamExtractor', () => {
+      const extractor: IStreamExtractor = new ValidationStreamExtractor({
+        level: 0,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: () => {},
+      });
+      expect(extractor.done).toBe(false);
+      expect(typeof extractor.push).toBe('function');
+    });
+  });
+
+  describe('level 0 - trusted (no validation codes)', () => {
+    it('should emit text immediately without validation codes', () => {
+      const chunks: string[] = [];
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: (chunk) => chunks.push(chunk),
+      });
+
+      extractor.push('<response><text>Hello world!</text></response>');
+      expect(chunks.join('')).toBe('Hello world!');
+    });
+
+    it('should stream incrementally', () => {
+      const chunks: string[] = [];
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: (chunk) => chunks.push(chunk),
+      });
+
+      extractor.push('<response><text>Hello ');
+      extractor.push('beautiful ');
+      extractor.push('world!</text></response>');
+
+      expect(chunks.length).toBeGreaterThan(1);
+      expect(chunks.join('')).toBe('Hello beautiful world!');
+    });
+
+    it('should respect validateField opt-in', () => {
+      const chunks: string[] = [];
+      const schema: SchemaRow[] = [
+        { field: 'text', description: 'Response', validateField: true },
+      ];
+      const expectedCodes = new Map([['text', 'abc123']]);
+
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema,
+        streamFields: ['text'],
+        expectedCodes,
+        onChunk: (chunk) => chunks.push(chunk),
+      });
+
+      // Without codes - should not emit
+      extractor.push('<response><text>Hello</text></response>');
+      expect(chunks.length).toBe(0);
+
+      // With valid codes - should emit
+      extractor.reset();
+      extractor.push('<response><code_text_start>abc123</code_text_start><text>Hello</text><code_text_end>abc123</code_text_end></response>');
+      expect(chunks.join('')).toBe('Hello');
+    });
+  });
+
+  describe('level 1 - progressive (per-field codes)', () => {
+    it('should wait for validation codes before emitting', () => {
+      const chunks: string[] = [];
+      const events: StreamEvent[] = [];
+      const expectedCodes = new Map([['text', 'abc123']]);
+
+      const extractor = new ValidationStreamExtractor({
+        level: 1,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes,
+        onChunk: (chunk) => chunks.push(chunk),
+        onEvent: (event) => events.push(event),
+      });
+
+      // Without codes - should not emit
+      extractor.push('<response><text>Hello world!</text></response>');
+      expect(chunks.length).toBe(0);
+    });
+
+    it('should emit after valid codes are found', () => {
+      const chunks: string[] = [];
+      const events: StreamEvent[] = [];
+      const expectedCodes = new Map([['text', 'abc123']]);
+
+      const extractor = new ValidationStreamExtractor({
+        level: 1,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes,
+        onChunk: (chunk) => chunks.push(chunk),
+        onEvent: (event) => events.push(event),
+      });
+
+      extractor.push(
+        '<response>' +
+        '<code_text_start>abc123</code_text_start>' +
+        '<text>Hello world!</text>' +
+        '<code_text_end>abc123</code_text_end>' +
+        '</response>'
+      );
+
+      expect(chunks.join('')).toBe('Hello world!');
+      expect(events.some(e => e.type === 'field_validated')).toBe(true);
+    });
+
+    it('should respect validateField opt-out', () => {
+      const chunks: string[] = [];
+      const schema: SchemaRow[] = [
+        { field: 'text', description: 'Response', validateField: false },
+      ];
+      const expectedCodes = new Map<string, string>();
+
+      const extractor = new ValidationStreamExtractor({
+        level: 1,
+        schema,
+        streamFields: ['text'],
+        expectedCodes,
+        onChunk: (chunk) => chunks.push(chunk),
+      });
+
+      // With validateField: false, should emit immediately even at level 1
+      extractor.push('<response><text>Hello world!</text></response>');
+      expect(chunks.join('')).toBe('Hello world!');
+    });
+
+    it('should emit error event on invalid code', () => {
+      const chunks: string[] = [];
+      const events: StreamEvent[] = [];
+      const expectedCodes = new Map([['text', 'abc123']]);
+
+      const extractor = new ValidationStreamExtractor({
+        level: 1,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes,
+        onChunk: (chunk) => chunks.push(chunk),
+        onEvent: (event) => events.push(event),
+      });
+
+      extractor.push(
+        '<response>' +
+        '<code_text_start>wrong_code</code_text_start>' +
+        '<text>Hello</text>' +
+        '<code_text_end>abc123</code_text_end>' +
+        '</response>'
+      );
+
+      expect(chunks.length).toBe(0);
+      expect(events.some(e => e.type === 'error')).toBe(true);
+    });
+  });
+
+  describe('level 2-3 - buffered (checkpoint codes)', () => {
+    it('should buffer content until flush is called', () => {
+      const chunks: string[] = [];
+      const extractor = new ValidationStreamExtractor({
+        level: 2,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: (chunk) => chunks.push(chunk),
+      });
+
+      extractor.push('<response><text>Hello world!</text></response>');
+      expect(chunks.length).toBe(0);
+
+      extractor.flush();
+      expect(chunks.join('')).toBe('Hello world!');
+    });
+
+    it('should emit complete event on flush', () => {
+      const events: StreamEvent[] = [];
+      const extractor = new ValidationStreamExtractor({
+        level: 3,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: () => {},
+        onEvent: (event) => events.push(event),
+      });
+
+      extractor.push('<response><text>Hello</text></response>');
+      extractor.flush();
+
+      expect(events.some(e => e.type === 'complete')).toBe(true);
+    });
+  });
+
+  describe('signalRetry', () => {
+    it('should emit retry_start event', () => {
+      const events: StreamEvent[] = [];
+      const extractor = new ValidationStreamExtractor({
+        level: 1,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map([['text', 'abc']]),
+        onChunk: () => {},
+        onEvent: (event) => events.push(event),
+        hasRichConsumer: true,
+      });
+
+      extractor.push('<response><text>Partial</text></response>');
+      extractor.signalRetry(1);
+
+      expect(events.some(e => e.type === 'retry_start' && e.retryCount === 1)).toBe(true);
+    });
+
+    it('should emit separator for simple consumers', () => {
+      const chunks: string[] = [];
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: (chunk) => chunks.push(chunk),
+        hasRichConsumer: false,
+      });
+
+      extractor.push('<response><text>Hello</text></response>');
+      extractor.signalRetry(1);
+
+      expect(chunks.some(c => c.includes("that's not right"))).toBe(true);
+    });
+
+    it('should NOT emit separator for rich consumers', () => {
+      const chunks: string[] = [];
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: (chunk) => chunks.push(chunk),
+        hasRichConsumer: true,
+      });
+
+      extractor.push('<response><text>Hello</text></response>');
+      extractor.signalRetry(1);
+
+      expect(chunks.every(c => !c.includes("that's not right"))).toBe(true);
+    });
+  });
+
+  describe('signalError', () => {
+    it('should emit error event', () => {
+      const events: StreamEvent[] = [];
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: () => {},
+        onEvent: (event) => events.push(event),
+      });
+
+      extractor.signalError('Max retries exceeded');
+
+      expect(events.some(e => e.type === 'error' && e.error === 'Max retries exceeded')).toBe(true);
+      expect(extractor.getState()).toBe('failed');
+    });
+  });
+
+  describe('diagnose', () => {
+    it('should identify missing fields', () => {
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema: createSchema(),
+        streamFields: ['text', 'actions'],
+        expectedCodes: new Map(),
+        onChunk: () => {},
+      });
+
+      extractor.push('<response><thought>Thinking</thought></response>');
+      const diagnosis = extractor.diagnose();
+
+      expect(diagnosis.missingFields).toContain('text');
+      expect(diagnosis.missingFields).toContain('actions');
+    });
+
+    it('should identify incomplete fields', () => {
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: () => {},
+      });
+
+      // Partial text tag (not closed)
+      extractor.push('<response><text>Hello ');
+      const diagnosis = extractor.diagnose();
+
+      expect(diagnosis.incompleteFields).toContain('text');
+    });
+  });
+
+  describe('cancellation', () => {
+    it('should stop processing when aborted', () => {
+      const chunks: string[] = [];
+      const events: StreamEvent[] = [];
+      const abortController = new AbortController();
+
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: (chunk) => chunks.push(chunk),
+        onEvent: (event) => events.push(event),
+        abortSignal: abortController.signal,
+      });
+
+      extractor.push('<response><text>Hello</text></response>');
+      abortController.abort();
+      extractor.push('<response><text>World</text></response>');
+
+      // Should have stopped after abort
+      expect(events.some(e => e.type === 'error' && e.error?.includes('Cancelled'))).toBe(true);
+      expect(extractor.getState()).toBe('failed');
+    });
+  });
+
+  describe('reset', () => {
+    it('should reset all state', () => {
+      const chunks: string[] = [];
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes: new Map(),
+        onChunk: (chunk) => chunks.push(chunk),
+      });
+
+      extractor.push('<response><text>First</text></response>');
+      expect(extractor.hasEmittedContent()).toBe(true);
+
+      extractor.reset();
+      expect(extractor.hasEmittedContent()).toBe(false);
+      expect(extractor.getState()).toBe('streaming');
+
+      extractor.push('<response><text>Second</text></response>');
+      expect(chunks.join('')).toContain('Second');
+    });
+  });
+
+  describe('getValidatedFields', () => {
+    it('should return validated field contents for level 1', () => {
+      const expectedCodes = new Map([['text', 'abc123']]);
+
+      const extractor = new ValidationStreamExtractor({
+        level: 1,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes,
+        onChunk: () => {},
+      });
+
+      extractor.push(
+        '<response>' +
+        '<code_text_start>abc123</code_text_start>' +
+        '<text>Hello world!</text>' +
+        '<code_text_end>abc123</code_text_end>' +
+        '</response>'
+      );
+
+      const validated = extractor.getValidatedFields();
+      expect(validated.get('text')).toBe('Hello world!');
+    });
+  });
+
+  describe('streamField hints', () => {
+    it('should only stream fields with streamField: true', () => {
+      const chunks: string[] = [];
+      const schema: SchemaRow[] = [
+        { field: 'thought', description: 'Internal reasoning', streamField: false },
+        { field: 'text', description: 'Response', streamField: true },
+        { field: 'actions', description: 'Actions to take' }, // default: false (not 'text')
+      ];
+
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema,
+        streamFields: ['text'], // Only stream text
+        expectedCodes: new Map(),
+        onChunk: (chunk) => chunks.push(chunk),
+      });
+
+      extractor.push('<response><thought>Thinking...</thought><text>Hello!</text><actions>REPLY</actions></response>');
+
+      // Only text should be streamed
+      expect(chunks.join('')).toBe('Hello!');
+      expect(chunks.join('')).not.toContain('Thinking');
+      expect(chunks.join('')).not.toContain('REPLY');
+    });
+
+    it('should stream multiple fields when specified', () => {
+      const chunks: { content: string; field?: string }[] = [];
+      const schema: SchemaRow[] = [
+        { field: 'summary', description: 'Summary', streamField: true },
+        { field: 'details', description: 'Details', streamField: true },
+        { field: 'metadata', description: 'Metadata', streamField: false },
+      ];
+
+      const extractor = new ValidationStreamExtractor({
+        level: 0,
+        schema,
+        streamFields: ['summary', 'details'],
+        expectedCodes: new Map(),
+        onChunk: (chunk, field) => chunks.push({ content: chunk, field }),
+      });
+
+      extractor.push('<response><summary>TL;DR</summary><details>Full details here</details><metadata>hidden</metadata></response>');
+
+      const streamed = chunks.map((c) => c.content).join('');
+      expect(streamed).toContain('TL;DR');
+      expect(streamed).toContain('Full details here');
+      expect(streamed).not.toContain('hidden');
     });
   });
 });
