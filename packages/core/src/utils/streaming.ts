@@ -311,6 +311,61 @@ export class PassthroughExtractor implements IStreamExtractor {
   }
 }
 
+/**
+ * Passthrough extractor that can be marked complete externally.
+ *
+ * WHY: When using ValidationStreamExtractor inside dynamicPromptExecFromState,
+ * extraction/completion is handled internally. But the outer streaming context
+ * still needs to know when streaming is complete for retry/fallback logic.
+ *
+ * This extractor passes through all content and provides a markComplete() method
+ * that the caller can invoke when the underlying operation completes successfully.
+ *
+ * @example
+ * ```ts
+ * const extractor = new MarkableExtractor();
+ * const ctx = createStreamingContext(extractor, callback);
+ *
+ * const result = await dynamicPromptExecFromState({ ... });
+ * if (result) {
+ *   extractor.markComplete(); // Signal success
+ * }
+ *
+ * if (ctx.isComplete()) {
+ *   // Now returns true after markComplete()
+ * }
+ * ```
+ */
+export class MarkableExtractor implements IStreamExtractor {
+  private _done = false;
+
+  get done(): boolean {
+    return this._done;
+  }
+
+  push(chunk: string): string {
+    validateChunkSize(chunk);
+    return chunk; // Pass through everything
+  }
+
+  flush(): string {
+    return '';
+  }
+
+  reset(): void {
+    this._done = false;
+  }
+
+  /**
+   * Mark the extractor as complete.
+   * WHY: Called by the outer code when the underlying operation (e.g., dynamicPromptExecFromState)
+   * completes successfully. This allows isComplete() to return true for retry/fallback logic.
+   */
+  markComplete(): void {
+    this._done = true;
+  }
+}
+
 // ============================================================================
 // XmlTagExtractor - Simple XML tag content extraction
 // ============================================================================

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   PassthroughExtractor,
+  MarkableExtractor,
   XmlTagExtractor,
   ResponseStreamExtractor,
   ActionStreamFilter,
@@ -59,6 +60,44 @@ describe('PassthroughExtractor', () => {
   it('should handle empty strings', () => {
     const extractor = new PassthroughExtractor();
     expect(extractor.push('')).toBe('');
+  });
+});
+
+// ============================================================================
+// MarkableExtractor
+// ============================================================================
+
+describe('MarkableExtractor', () => {
+  it('should pass through all content immediately', () => {
+    const extractor = new MarkableExtractor();
+    expect(extractor.push('Hello')).toBe('Hello');
+    expect(extractor.push(' world!')).toBe(' world!');
+  });
+
+  it('should start with done = false', () => {
+    const extractor = new MarkableExtractor();
+    expect(extractor.done).toBe(false);
+  });
+
+  it('should set done = true after markComplete()', () => {
+    const extractor = new MarkableExtractor();
+    expect(extractor.done).toBe(false);
+    extractor.markComplete();
+    expect(extractor.done).toBe(true);
+  });
+
+  it('should reset done to false after reset()', () => {
+    const extractor = new MarkableExtractor();
+    extractor.markComplete();
+    expect(extractor.done).toBe(true);
+    extractor.reset();
+    expect(extractor.done).toBe(false);
+  });
+
+  it('should implement IStreamExtractor', () => {
+    const extractor: IStreamExtractor = new MarkableExtractor();
+    expect(typeof extractor.push).toBe('function');
+    expect(typeof extractor.reset).toBe('function');
   });
 });
 

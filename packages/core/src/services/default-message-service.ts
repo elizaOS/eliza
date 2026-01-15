@@ -65,7 +65,7 @@ import {
   logger,
 } from '../index';
 import {
-  PassthroughExtractor,
+  MarkableExtractor,
   createStreamingContext,
 } from '../utils/streaming';
 // Streaming context import removed - using onStreamChunk directly in dynamicPromptExecFromState
@@ -91,6 +91,8 @@ type ResolvedMessageOptions = {
   onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
   /** Streaming context with retry state methods (used by single-shot mode) */
   streamingContext?: import('../streaming-context').StreamingContext;
+  /** Streaming extractor for marking completion (used by single-shot mode) */
+  streamingExtractor?: import('../utils/streaming').MarkableExtractor;
 };
 
 /**
@@ -246,17 +248,19 @@ export class DefaultMessageService implements IMessageService {
       // Old flow: LLM XML → ResponseStreamExtractor → User (BROKEN with new architecture)
       // New flow: LLM XML → ValidationStreamExtractor (in dynamicPrompt) → User callback
       //
-      // We still create a StreamingContext for tracking retry state (getStreamedText, isComplete)
-      // but use PassthroughExtractor since dynamicPromptExecFromState handles extraction.
-      const streamingContext =
-        opts.onStreamChunk && !useMultiStep
-          ? createStreamingContext(new PassthroughExtractor(), opts.onStreamChunk, responseId)
-          : undefined;
+      // We use MarkableExtractor for tracking retry state (getStreamedText, isComplete).
+      // WHY MarkableExtractor: We need isComplete() to work for retry/fallback logic.
+      // The extractor is marked complete when dynamicPromptExecFromState succeeds.
+      const streamingExtractor = opts.onStreamChunk && !useMultiStep ? new MarkableExtractor() : undefined;
+      const streamingContext = streamingExtractor
+        ? createStreamingContext(streamingExtractor, opts.onStreamChunk!, responseId)
+        : undefined;
       // Multi-step mode: streaming is handled per-phase in runMultiStepCore
       // (action execution and summary generation each get their own streaming context)
 
-      // Pass streaming context through opts for direct use in dynamicPromptExecFromState
-      const optsWithStreaming = { ...opts, streamingContext };
+      // Pass streaming context and extractor through opts
+      // WHY extractor: So runSingleShotCore can mark it complete on success
+      const optsWithStreaming = { ...opts, streamingContext, streamingExtractor };
 
       const processingPromise = this.processMessage(
         runtime,
@@ -1005,6 +1009,8 @@ export class DefaultMessageService implements IMessageService {
 
     // Use streaming context from opts for retry state and streaming callback
     const streamingCtx = opts.streamingContext;
+    // Extractor to mark complete on success (for isComplete() to work)
+    const streamingExtractor = opts.streamingExtractor;
 
     while (retries < opts.maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
       // Check if text extraction is already complete - no point in retrying
@@ -1088,6 +1094,9 @@ export class DefaultMessageService implements IMessageService {
       runtime.logger.debug({ src: 'service:message', parsedXml }, 'Parsed response content');
 
       if (parsedXml) {
+        // Mark streaming as complete now that we have a valid response
+        // WHY: This enables isComplete() to return true for retry/fallback logic
+        streamingExtractor?.markComplete();
         const normalizedActions = (() => {
           if (Array.isArray(parsedXml.actions)) {
             return parsedXml.actions;
@@ -1846,10 +1855,11 @@ Output ONLY the continuation, starting immediately after the last character abov
     let summary: Record<string, unknown> | null = null;
 
     // Set up streaming context for summary
-    // WHY PassthroughExtractor: dynamicPromptExecFromState handles XML extraction via
-    // ValidationStreamExtractor. We just need to track retry state (getStreamedText, isComplete).
-    const summaryStreamingContext = opts.onStreamChunk
-      ? createStreamingContext(new PassthroughExtractor(), opts.onStreamChunk, responseId)
+    // WHY MarkableExtractor: dynamicPromptExecFromState handles XML extraction.
+    // We need isComplete() to work for retry/fallback logic, so use MarkableExtractor.
+    const summaryExtractor = opts.onStreamChunk ? new MarkableExtractor() : undefined;
+    const summaryStreamingContext = summaryExtractor
+      ? createStreamingContext(summaryExtractor, opts.onStreamChunk!, responseId)
       : undefined;
 
     for (let summaryAttempt = 1; summaryAttempt <= maxSummaryRetries; summaryAttempt++) {
@@ -1919,6 +1929,8 @@ Output ONLY the continuation, starting immediately after the last character abov
         });
 
         if (summary?.text) {
+          // Mark streaming as complete now that we have a valid summary
+          summaryExtractor?.markComplete();
           runtime.logger.debug(
             { src: 'service:message', attempt: summaryAttempt },
             'Successfully parsed summary'
