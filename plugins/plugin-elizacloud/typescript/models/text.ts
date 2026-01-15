@@ -4,6 +4,7 @@ import type {
   TextStreamResult,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
+import type { LanguageModel } from "ai";
 import { generateText, streamText } from "ai";
 import { createOpenAIClient } from "../providers/openai";
 import {
@@ -33,8 +34,9 @@ function buildGenerateParams(
     modelType === ModelType.TEXT_SMALL ? "TEXT_SMALL" : "TEXT_LARGE";
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
 
+  const model = openai.languageModel(modelName) as LanguageModel;
   const generateParams = {
-    model: openai.languageModel(modelName),
+    model,
     prompt: prompt,
     system: runtime.character.system ?? undefined,
     temperature: temperature,

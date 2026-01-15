@@ -20,6 +20,7 @@ pub struct SendToAdminAction {
 }
 
 impl SendToAdminAction {
+    /// Create a new send-to-admin action handler.
     pub fn new(runtime: Weak<AgentRuntime>, service: Arc<AutonomyService>) -> Self {
         Self { runtime, service }
     }

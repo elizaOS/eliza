@@ -5,7 +5,8 @@
 
 use elizaos_plugin_openai::{
     count_tokens, detokenize, tokenize, truncate_to_token_limit, EmbeddingParams,
-    ImageDescriptionParams, OpenAIClient, OpenAIConfig, TextGenerationParams, TextToSpeechParams,
+    ImageDescriptionParams, OpenAIClient, OpenAIConfig, ResearchParams, TextGenerationParams,
+    TextToSpeechParams,
 };
 
 /// Create a test client from environment.
@@ -259,6 +260,40 @@ mod audio {
             lower.contains("hello") || lower.contains("test") || lower.contains("transcription"),
             "Transcription should contain expected words: {}",
             transcription
+        );
+    }
+}
+
+mod deep_research {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY"]
+    async fn test_deep_research() {
+        let client = create_test_client();
+
+        let params = ResearchParams::new(
+            "What is the current date and time? Provide a short answer with sources.",
+        )
+        .tools(vec![serde_json::json!({ "type": "web_search_preview" })])
+        .max_tool_calls(3);
+
+        let result = match client.deep_research(&params).await {
+            Ok(result) => result,
+            Err(err) => {
+                let err_text = format!("{:?}", err);
+                if err_text.contains("must be verified") || err_text.contains("o3-deep-research") {
+                    eprintln!("Skipping deep research test: {}", err_text);
+                    return;
+                }
+                panic!("Failed to run deep research: {:?}", err);
+            }
+        };
+
+        assert!(!result.text.is_empty());
+        assert!(
+            !result.annotations.is_empty(),
+            "Research should return citations"
         );
     }
 }

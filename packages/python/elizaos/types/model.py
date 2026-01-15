@@ -50,6 +50,9 @@ class ModelType(str, Enum):
     OBJECT_SMALL = "OBJECT_SMALL"
     OBJECT_LARGE = "OBJECT_LARGE"
 
+    # Research models (deep research)
+    RESEARCH = "RESEARCH"
+
 
 # Type for model type names - allows string for extensibility
 ModelTypeName = str
@@ -266,6 +269,116 @@ class ObjectGenerationParams(BaseModel):
     )
 
     model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+# ============================================================================
+# Research Model Types (Deep Research)
+# ============================================================================
+
+
+class ResearchWebSearchTool(BaseModel):
+    """Research tool configuration for web search."""
+
+    type: str = Field(default="web_search_preview", description="Tool type")
+
+    model_config = {"populate_by_name": True}
+
+
+class ResearchFileSearchTool(BaseModel):
+    """Research tool configuration for file search over vector stores."""
+
+    type: str = Field(default="file_search", description="Tool type")
+    vector_store_ids: list[str] = Field(
+        ..., alias="vectorStoreIds", description="Vector store IDs (max 2)"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class ResearchCodeInterpreterTool(BaseModel):
+    """Research tool configuration for code interpreter."""
+
+    type: str = Field(default="code_interpreter", description="Tool type")
+    container: dict[str, str] | None = Field(default=None, description="Container configuration")
+
+    model_config = {"populate_by_name": True}
+
+
+class ResearchMcpTool(BaseModel):
+    """Research tool configuration for remote MCP servers."""
+
+    type: str = Field(default="mcp", description="Tool type")
+    server_label: str = Field(..., alias="serverLabel", description="MCP server label")
+    server_url: str = Field(..., alias="serverUrl", description="MCP server URL")
+    require_approval: str | None = Field(
+        default="never", alias="requireApproval", description="Approval mode"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+# Union type for research tools
+ResearchTool = ResearchWebSearchTool | ResearchFileSearchTool | ResearchCodeInterpreterTool | ResearchMcpTool
+
+
+class ResearchParams(BaseModel):
+    """
+    Parameters for deep research models (o3-deep-research, o4-mini-deep-research).
+
+    Deep research models can find, analyze, and synthesize hundreds of sources
+    to create comprehensive reports.
+    """
+
+    input: str = Field(..., description="The research input/question")
+    instructions: str | None = Field(
+        default=None, description="Optional instructions to guide research"
+    )
+    background: bool | None = Field(
+        default=None, description="Run in background mode for long tasks"
+    )
+    tools: list[ResearchTool] | None = Field(
+        default=None, description="Research tools (web_search_preview, file_search, mcp, code_interpreter)"
+    )
+    max_tool_calls: int | None = Field(
+        default=None, alias="maxToolCalls", description="Maximum number of tool calls"
+    )
+    reasoning_summary: str | None = Field(
+        default=None, alias="reasoningSummary", description="Include reasoning summary ('auto' or 'none')"
+    )
+    model: str | None = Field(
+        default=None, description="Model variant (o3-deep-research or o4-mini-deep-research)"
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class ResearchAnnotation(BaseModel):
+    """Annotation in research results, linking text to sources."""
+
+    url: str = Field(..., description="URL of the source")
+    title: str = Field(..., description="Title of the source")
+    start_index: int = Field(..., alias="startIndex", description="Start index in text")
+    end_index: int = Field(..., alias="endIndex", description="End index in text")
+
+    model_config = {"populate_by_name": True}
+
+
+class ResearchResult(BaseModel):
+    """Result from a deep research model request."""
+
+    id: str = Field(..., description="Unique response identifier")
+    text: str = Field(..., description="Final research report with inline citations")
+    annotations: list[ResearchAnnotation] = Field(
+        default_factory=list, description="Annotations linking text to sources"
+    )
+    output_items: list[dict[str, Any]] = Field(
+        default_factory=list, alias="outputItems", description="Output items showing research process"
+    )
+    status: str | None = Field(
+        default=None, description="Status for background requests"
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class ModelHandler(BaseModel):

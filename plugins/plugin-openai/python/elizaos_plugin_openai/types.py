@@ -246,6 +246,8 @@ class OpenAIConfig(BaseModel):
     tts_voice: TTSVoice = Field(default=TTSVoice.NOVA, description="TTS voice")
     transcription_model: str = Field(default="whisper-1", description="Transcription model")
     image_model: str = Field(default="dall-e-3", description="Image generation model")
+    research_model: str = Field(default="o3-deep-research", description="Deep research model")
+    research_timeout: float = Field(default=3600.0, ge=1.0, description="Research request timeout")
     timeout: float = Field(default=60.0, ge=1.0, description="Request timeout in seconds")
 
     @field_validator("api_key")
@@ -254,3 +256,47 @@ class OpenAIConfig(BaseModel):
         if not v.startswith("sk-"):
             raise ValueError("API key must start with 'sk-'")
         return v
+
+
+# ============================================================================
+# Research Types (Deep Research)
+# ============================================================================
+
+
+class ResearchParams(BaseModel):
+    """Parameters for deep research requests."""
+
+    input: str = Field(..., min_length=1, description="Research input/question")
+    instructions: str | None = Field(default=None, description="Instructions to guide research")
+    background: bool = Field(default=False, description="Run in background mode")
+    tools: list[dict[str, object]] | None = Field(
+        default=None, description="Research tools configuration"
+    )
+    max_tool_calls: int | None = Field(default=None, description="Maximum tool calls")
+    reasoning_summary: Literal["auto", "none"] | None = Field(
+        default=None, description="Reasoning summary mode"
+    )
+    model: str | None = Field(default=None, description="Model variant to use")
+
+
+class ResearchAnnotation(BaseModel):
+    """Annotation linking text to a source."""
+
+    url: str = Field(..., description="Source URL")
+    title: str = Field(..., description="Source title")
+    start_index: int = Field(..., description="Start index in text")
+    end_index: int = Field(..., description="End index in text")
+
+
+class ResearchResult(BaseModel):
+    """Result from a deep research request."""
+
+    id: str = Field(..., description="Response ID")
+    text: str = Field(..., description="Research report text with inline citations")
+    annotations: list[ResearchAnnotation] = Field(
+        default_factory=list, description="Source annotations"
+    )
+    output_items: list[dict[str, object]] = Field(
+        default_factory=list, description="Research process output items"
+    )
+    status: str | None = Field(default=None, description="Background request status")

@@ -240,8 +240,6 @@ Enable with `ENABLE_OBJECT_DETECTION=true` and/or `ENABLE_POSE_DETECTION=true`
 
 ## Integration with Autonomy
 
-When used with `@elizaos/plugin-autonomy`, the vision plugin enables:
-
 - Continuous environmental monitoring
 - Autonomous responses to visual changes
 - Visual memory persistence

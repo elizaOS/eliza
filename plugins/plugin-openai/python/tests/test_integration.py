@@ -23,17 +23,27 @@ class TestOpenAIPluginStructure:
 
         assert OpenAIClient is not None
 
+    def test_plugin_has_research_method(self) -> None:
+        """Test that plugin exposes deep research method."""
+        from elizaos_plugin_openai import OpenAIPlugin
+
+        assert hasattr(OpenAIPlugin, "deep_research")
+
     def test_import_types(self) -> None:
         """Test that types can be imported."""
         from elizaos_plugin_openai import (
             EmbeddingParams,
             OpenAIConfig,
+            ResearchParams,
+            ResearchResult,
             TextGenerationParams,
         )
 
         assert OpenAIConfig is not None
         assert TextGenerationParams is not None
         assert EmbeddingParams is not None
+        assert ResearchParams is not None
+        assert ResearchResult is not None
 
 
 class TestOpenAITokenization:

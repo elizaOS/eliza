@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to extract token identification parameters for retrieving order book depth data.
+extract token identification parameters for retrieving order book depth data.
 
 Review the recent messages:
 <recent_messages>

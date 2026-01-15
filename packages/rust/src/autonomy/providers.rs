@@ -11,9 +11,9 @@ use crate::runtime::AgentRuntime;
 use crate::types::components::{ProviderDefinition, ProviderHandler, ProviderResult};
 use crate::types::database::GetMemoriesParams;
 use crate::types::memory::Memory;
+use crate::types::primitives::UUID;
 use crate::types::settings::SettingValue;
 use crate::types::state::State;
-use crate::types::primitives::UUID;
 
 /// ADMIN_CHAT_HISTORY provider.
 ///
@@ -24,6 +24,7 @@ pub struct AdminChatHistoryProvider {
 }
 
 impl AdminChatHistoryProvider {
+    /// Create a provider for admin chat history in autonomy mode.
     pub fn new(runtime: Weak<AgentRuntime>, service: Arc<AutonomyService>) -> Self {
         Self { runtime, service }
     }
@@ -147,6 +148,7 @@ pub struct AutonomyStatusProvider {
 }
 
 impl AutonomyStatusProvider {
+    /// Create a provider for reporting autonomy status.
     pub fn new(runtime: Weak<AgentRuntime>, service: Arc<AutonomyService>) -> Self {
         Self { runtime, service }
     }
@@ -170,16 +172,11 @@ impl ProviderHandler for AutonomyStatusProvider {
             return Ok(ProviderResult::default());
         }
 
-        let enabled = if let Some(rt) = self.runtime.upgrade() {
-            match rt.get_setting("AUTONOMY_ENABLED").await {
-                Some(SettingValue::Bool(b)) => b,
-                Some(SettingValue::String(s)) => s.trim().eq_ignore_ascii_case("true"),
-                Some(SettingValue::Number(n)) => n != 0.0,
-                _ => false,
-            }
-        } else {
-            false
-        };
+        let enabled = self
+            .runtime
+            .upgrade()
+            .map(|rt| rt.enable_autonomy())
+            .unwrap_or(false);
 
         let running = self.service.is_loop_running();
         let interval = self.service.get_loop_interval();

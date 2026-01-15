@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to extract parameters for retrieving active orders for a specific market.
+extract parameters for retrieving active orders for a specific market.
 
 Review the recent messages:
 <recent_messages>

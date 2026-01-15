@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import pathlib
 import os
 import re
 import sys
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 
 HERE = pathlib.Path(__file__).resolve()
@@ -23,6 +26,7 @@ from elizaos_plugin_polymarket.providers.clob import ClobClientProvider  # noqa:
 
 
 _PRIVATE_KEY_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
+GAMMA_PAGE_LIMIT = 100
 
 
 @dataclass(frozen=True)
@@ -66,6 +70,10 @@ def _has_creds() -> bool:
     return bool(key and secret and passphrase)
 
 
+def _load_gamma_api_url() -> str:
+    return os.getenv("GAMMA_API_URL") or "https://gamma-api.polymarket.com"
+
+
 def _parse_args() -> Options:
     parser = argparse.ArgumentParser(prog="polymarket_demo.py", add_help=True)
     parser.add_argument("command", choices=["verify", "once", "run"])
@@ -102,6 +110,126 @@ def _parse_args() -> Options:
     )
 
 
+def _get_field(obj: object, name: str, default: object | None = None) -> object | None:
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _read_optional_bool(obj: object, name: str) -> bool | None:
+    if isinstance(obj, dict) and name in obj:
+        value = obj[name]
+    else:
+        value = getattr(obj, name, None)
+    if isinstance(value, bool):
+        return value
+    return None
+
+
+def _is_tradable_market(market: object) -> bool:
+    if _read_optional_bool(market, "archived") is True:
+        return False
+    if _read_optional_bool(market, "enable_order_book") is False:
+        return False
+    accepting = _read_optional_bool(market, "accepting_orders")
+    if accepting is not None:
+        return accepting
+    active = _read_optional_bool(market, "active")
+    closed = _read_optional_bool(market, "closed")
+    return bool(active) and not bool(closed)
+
+
+def _order_book_has_quotes(book: object) -> bool:
+    bids = _get_field(book, "bids")
+    asks = _get_field(book, "asks")
+    return isinstance(bids, list) and len(bids) > 0 and isinstance(asks, list) and len(asks) > 0
+
+
+def _read_price(entry: object) -> float | None:
+    price_raw = _get_field(entry, "price")
+    try:
+        price = float(price_raw)
+    except (TypeError, ValueError):
+        return None
+    return price
+
+
+def _gamma_market_label(market: dict) -> str:
+    question = market.get("question")
+    if isinstance(question, str) and question.strip():
+        return question
+    slug = market.get("slug")
+    if isinstance(slug, str) and slug.strip():
+        return slug
+    condition_id = market.get("conditionId")
+    if isinstance(condition_id, str) and condition_id.strip():
+        return condition_id
+    return str(market.get("id", ""))
+
+
+def _gamma_tick_size(raw: object) -> float:
+    try:
+        tick = float(raw)
+    except (TypeError, ValueError):
+        return 0.001
+    return tick if tick > 0 else 0.001
+
+
+def _gamma_token_ids(raw: object) -> list[str]:
+    if isinstance(raw, list):
+        return [str(v) for v in raw if isinstance(v, str)]
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(parsed, list):
+            return [str(v) for v in parsed if isinstance(v, str)]
+    return []
+
+
+def _pick_from_gamma_markets(
+    client: object,
+    gamma_api_url: str,
+    max_pages: int,
+) -> tuple[str, str, float, object] | None:
+    for page in range(max_pages):
+        offset = page * GAMMA_PAGE_LIMIT
+        url = f"{gamma_api_url.rstrip('/')}/markets?active=true&closed=false&enableOrderBook=true&acceptingOrders=true&limit={GAMMA_PAGE_LIMIT}&offset={offset}"
+        try:
+            with urllib.request.urlopen(url, timeout=15) as response:
+                payload = response.read().decode("utf-8")
+        except (urllib.error.URLError, TimeoutError):
+            continue
+        try:
+            markets = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(markets, list):
+            return None
+        if len(markets) == 0:
+            return None
+
+        for market in markets:
+            if not isinstance(market, dict):
+                continue
+            label = _gamma_market_label(market)
+            tick = _gamma_tick_size(market.get("orderPriceMinTickSize"))
+            for token_id in _gamma_token_ids(market.get("clobTokenIds")):
+                if not token_id.strip():
+                    continue
+                try:
+                    book = getattr(client, "get_order_book")(token_id)
+                except Exception:
+                    continue
+                if _order_book_has_quotes(book):
+                    return token_id, label, tick, book
+
+        if len(markets) < GAMMA_PAGE_LIMIT:
+            return None
+    return None
+
+
 def verify(opts: Options) -> None:
     private_key = _normalize_private_key(opts.private_key) if opts.private_key else _load_private_key()
     os.environ["EVM_PRIVATE_KEY"] = private_key
@@ -120,6 +248,7 @@ def verify(opts: Options) -> None:
     print("✅ wallet address (plugin-evm):       ", evm.address)
     print("✅ wallet address (plugin-polymarket):", addr_poly)
     print("✅ clob api url:", os.getenv("CLOB_API_URL") or "https://clob.polymarket.com")
+    print("✅ gamma api url:", _load_gamma_api_url())
     print("✅ execute enabled:", str(opts.execute))
     print("✅ creds present:", str(_has_creds()))
 
@@ -132,37 +261,51 @@ def verify(opts: Options) -> None:
         print("🌐 network ok: fetched markets =", str(count))
 
 
-def _pick_first_active_market(client: object, max_pages: int) -> tuple[str, str, float]:
+def _pick_first_tradable_market_with_order_book(
+    client: object,
+    gamma_api_url: str,
+    max_pages: int,
+) -> tuple[str, str, float, object]:
     cursor: str | None = None
     for _ in range(max_pages):
         resp = getattr(client, "get_markets")(cursor)
-        markets = getattr(resp, "data", None)
+        markets = _get_field(resp, "data")
         if not isinstance(markets, list):
             continue
-        for m in markets:
-            active = bool(getattr(m, "active", False))
-            closed = bool(getattr(m, "closed", False))
-            if not active or closed:
+        for market in markets:
+            if not _is_tradable_market(market):
                 continue
-            tokens = getattr(m, "tokens", None)
-            if not isinstance(tokens, list) or len(tokens) < 1:
+            tokens = _get_field(market, "tokens")
+            if not isinstance(tokens, list) or len(tokens) == 0:
                 continue
-            tok0 = tokens[0]
-            token_id = str(getattr(tok0, "token_id", "")).strip()
-            if not token_id:
-                continue
-            question = str(getattr(m, "question", "")).strip()
-            condition_id = str(getattr(m, "condition_id", "")).strip()
+            question = str(_get_field(market, "question") or "").strip()
+            condition_id = str(_get_field(market, "condition_id") or "").strip()
             label = question if question else condition_id
-            tick_raw = getattr(m, "minimum_tick_size", None)
+            tick_raw = _get_field(market, "minimum_tick_size")
             try:
                 tick = float(tick_raw) if tick_raw is not None else 0.001
             except (TypeError, ValueError):
                 tick = 0.001
-            return token_id, label, tick if tick > 0 else 0.001
-        cursor_val = getattr(resp, "next_cursor", None)
+            tick = tick if tick > 0 else 0.001
+
+            for tok in tokens:
+                token_id = str(_get_field(tok, "token_id") or "").strip()
+                if not token_id:
+                    continue
+                try:
+                    book = getattr(client, "get_order_book")(token_id)
+                except Exception:
+                    continue
+                if _order_book_has_quotes(book):
+                    return token_id, label, tick, book
+
+        cursor_val = _get_field(resp, "next_cursor")
         cursor = str(cursor_val) if cursor_val else None
-    raise RuntimeError("No active market found")
+
+    fallback = _pick_from_gamma_markets(client, gamma_api_url, max_pages)
+    if fallback is not None:
+        return fallback
+    raise RuntimeError("No tradable market with order book found (try increasing --max-pages or check API).")
 
 
 def once(opts: Options) -> None:
@@ -177,14 +320,18 @@ def once(opts: Options) -> None:
 
     provider = ClobClientProvider()
     public_client = provider.get_client()
+    gamma_api_url = _load_gamma_api_url()
 
-    token_id, label, tick = _pick_first_active_market(public_client, opts.max_pages)
-    book = getattr(public_client, "get_order_book")(token_id)
-    bids = getattr(book, "bids", [])
-    asks = getattr(book, "asks", [])
+    token_id, label, tick, book = _pick_first_tradable_market_with_order_book(
+        public_client,
+        gamma_api_url,
+        opts.max_pages,
+    )
+    bids = _get_field(book, "bids") or []
+    asks = _get_field(book, "asks") or []
 
-    best_bid = float(getattr(bids[0], "price")) if isinstance(bids, list) and bids else None
-    best_ask = float(getattr(asks[0], "price")) if isinstance(asks, list) and asks else None
+    best_bid = _read_price(bids[0]) if isinstance(bids, list) and bids else None
+    best_ask = _read_price(asks[0]) if isinstance(asks, list) and asks else None
     if best_bid is None or best_ask is None:
         print("No usable bid/ask; skipping:", token_id)
         return

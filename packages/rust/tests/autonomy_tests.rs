@@ -1,8 +1,7 @@
 use anyhow::Result;
 use elizaos::runtime::RuntimeOptions;
 use elizaos::types::agent::{Bio, Character, CharacterSettings};
-use elizaos::types::settings::SettingValue;
-use elizaos::{AgentRuntime};
+use elizaos::AgentRuntime;
 use std::collections::HashMap;
 
 #[tokio::test]
@@ -20,7 +19,7 @@ async fn autonomy_can_be_enabled_via_constructor_flag() -> Result<()> {
 
     runtime.initialize().await?;
 
-    // Service should be registered (even if AUTONOMY_ENABLED is false by default).
+    // Service should be registered (even if autonomy is disabled by default).
     assert!(runtime.get_service("AUTONOMY").await.is_some());
 
     // Provider should contribute status in normal rooms.
@@ -51,15 +50,9 @@ async fn autonomy_can_be_enabled_via_character_settings() -> Result<()> {
     runtime.initialize().await?;
     assert!(runtime.get_service("AUTONOMY").await.is_some());
 
-    // Turn on the loop via AUTONOMY_ENABLED.
-    runtime
-        .set_setting("AUTONOMY_ENABLED", SettingValue::Bool(true), false)
-        .await;
-    // Loop runs asynchronously; we just verify that the setting can be read.
-    assert_eq!(
-        runtime.get_setting("AUTONOMY_ENABLED").await,
-        Some(SettingValue::Bool(true))
-    );
+    // Turn on the loop via runtime flag.
+    runtime.set_enable_autonomy(true);
+    assert!(runtime.enable_autonomy());
 
     Ok(())
 }

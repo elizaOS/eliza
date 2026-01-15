@@ -90,23 +90,8 @@ describe("AutonomyService", () => {
       expect(autonomyService.getAutonomousRoomId()).toBeDefined();
     });
 
-    it("should auto-start loop when AUTONOMY_ENABLED is true", async () => {
-      runtime.getSetting = vi.fn().mockImplementation((key: string) => {
-        if (key === "AUTONOMY_ENABLED") return true;
-        return null;
-      });
-
-      autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
-
-      expect(autonomyService.isLoopRunning()).toBe(true);
-      expect(runtime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", true);
-    });
-
-    it("should auto-start loop when AUTONOMY_ENABLED is 'true' string", async () => {
-      runtime.getSetting = vi.fn().mockImplementation((key: string) => {
-        if (key === "AUTONOMY_ENABLED") return "true";
-        return null;
-      });
+    it("should auto-start loop when enableAutonomy is true", async () => {
+      runtime.enableAutonomy = true;
 
       autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
 
@@ -144,7 +129,7 @@ describe("AutonomyService", () => {
       await autonomyService.startLoop();
 
       expect(autonomyService.isLoopRunning()).toBe(true);
-      expect(runtime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", true);
+      expect(runtime.enableAutonomy).toBe(true);
     });
 
     it("should not start loop if already running", async () => {
@@ -164,10 +149,7 @@ describe("AutonomyService", () => {
       await autonomyService.stopLoop();
 
       expect(autonomyService.isLoopRunning()).toBe(false);
-      expect(runtime.setSetting).toHaveBeenCalledWith(
-        "AUTONOMY_ENABLED",
-        false,
-      );
+      expect(runtime.enableAutonomy).toBe(false);
     });
 
     it("should not attempt to stop if loop is not running", async () => {
@@ -226,7 +208,7 @@ describe("AutonomyService", () => {
     it("should enable autonomy via enableAutonomy()", async () => {
       await autonomyService.enableAutonomy();
 
-      expect(runtime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", true);
+      expect(runtime.enableAutonomy).toBe(true);
       expect(autonomyService.isLoopRunning()).toBe(true);
     });
 
@@ -234,15 +216,11 @@ describe("AutonomyService", () => {
       await autonomyService.enableAutonomy();
       await autonomyService.disableAutonomy();
 
-      expect(runtime.setSetting).toHaveBeenCalledWith(
-        "AUTONOMY_ENABLED",
-        false,
-      );
+      expect(runtime.enableAutonomy).toBe(false);
       expect(autonomyService.isLoopRunning()).toBe(false);
     });
 
     it("should return correct status via getStatus()", async () => {
-      runtime.getSetting = vi.fn().mockReturnValue(true);
       await autonomyService.startLoop();
 
       const status = autonomyService.getStatus();
@@ -503,7 +481,7 @@ describe("autonomyStatusProvider", () => {
   beforeEach(async () => {
     runtime = await createTestRuntime();
 
-    vi.spyOn(runtime, "getSetting").mockReturnValue(true);
+    runtime.enableAutonomy = true;
     vi.spyOn(runtime, "getService").mockReturnValue({
       getAutonomousRoomId: () => "autonomous-room-id" as UUID,
       isLoopRunning: () => true,
@@ -564,7 +542,7 @@ describe("autonomyStatusProvider", () => {
   });
 
   it("should show disabled status correctly", async () => {
-    runtime.getSetting = vi.fn().mockReturnValue(false);
+    runtime.enableAutonomy = false;
     runtime.getService = vi.fn().mockReturnValue({
       getAutonomousRoomId: () => "autonomous-room-id" as UUID,
       isLoopRunning: () => false,

@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to extract token identification parameters for retrieving midpoint price data.
+extract token identification parameters for retrieving midpoint price data.
 
 Review the recent messages:
 <recent_messages>

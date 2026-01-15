@@ -64,7 +64,6 @@
   "plugins": [
     "@elizaos/plugin-message-handling",
     "@elizaos/plugin-vision",
-    "@elizaos/plugin-autonomy"
   ],
   "settings": {
     "voice": {

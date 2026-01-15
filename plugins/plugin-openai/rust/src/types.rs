@@ -81,6 +81,8 @@ pub struct OpenAIConfig {
     pub tts_model: String,
     pub tts_voice: TTSVoice,
     pub timeout_secs: u64,
+    pub research_model: String,
+    pub research_timeout_secs: u64,
 }
 
 impl OpenAIConfig {
@@ -97,7 +99,21 @@ impl OpenAIConfig {
             tts_model: "tts-1".to_string(),
             tts_voice: TTSVoice::default(),
             timeout_secs: 120,
+            research_model: "o3-deep-research".to_string(),
+            research_timeout_secs: 3600, // 1 hour for research
         }
+    }
+
+    /// Set the research model.
+    pub fn research_model(mut self, model: &str) -> Self {
+        self.research_model = model.to_string();
+        self
+    }
+
+    /// Set the research timeout.
+    pub fn research_timeout_secs(mut self, secs: u64) -> Self {
+        self.research_timeout_secs = secs;
+        self
     }
 
     pub fn base_url(mut self, url: &str) -> Self {
@@ -328,4 +344,117 @@ pub struct ModelInfo {
 pub struct ModelsResponse {
     pub object: String,
     pub data: Vec<ModelInfo>,
+}
+
+// ============================================================================
+// Research Types (Deep Research)
+// ============================================================================
+
+/// Parameters for deep research requests
+#[derive(Debug, Clone, Serialize)]
+pub struct ResearchParams {
+    /// Research input/question
+    pub input: String,
+    /// Optional instructions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    /// Run in background mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background: Option<bool>,
+    /// Research tools
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<serde_json::Value>>,
+    /// Maximum tool calls
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tool_calls: Option<i32>,
+    /// Reasoning summary mode ("auto" or "none")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_summary: Option<String>,
+    /// Model variant
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+impl ResearchParams {
+    pub fn new(input: impl Into<String>) -> Self {
+        Self {
+            input: input.into(),
+            instructions: None,
+            background: None,
+            tools: None,
+            max_tool_calls: None,
+            reasoning_summary: None,
+            model: None,
+        }
+    }
+
+    pub fn instructions(mut self, instructions: impl Into<String>) -> Self {
+        self.instructions = Some(instructions.into());
+        self
+    }
+
+    pub fn background(mut self, background: bool) -> Self {
+        self.background = Some(background);
+        self
+    }
+
+    pub fn tools(mut self, tools: Vec<serde_json::Value>) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+
+    pub fn max_tool_calls(mut self, max: i32) -> Self {
+        self.max_tool_calls = Some(max);
+        self
+    }
+
+    pub fn reasoning_summary(mut self, summary: impl Into<String>) -> Self {
+        self.reasoning_summary = Some(summary.into());
+        self
+    }
+
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+}
+
+/// Annotation linking text to a source
+#[derive(Debug, Clone, Deserialize)]
+pub struct ResearchAnnotation {
+    pub url: String,
+    pub title: String,
+    pub start_index: i32,
+    pub end_index: i32,
+}
+
+/// Result from a deep research request
+#[derive(Debug, Clone)]
+pub struct ResearchResult {
+    pub id: String,
+    pub text: String,
+    pub annotations: Vec<ResearchAnnotation>,
+    pub output_items: Vec<serde_json::Value>,
+    pub status: Option<String>,
+}
+
+/// Raw response from Responses API
+#[derive(Debug, Clone, Deserialize)]
+pub struct ResponsesApiResponse {
+    pub id: String,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub output: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub output_text: Option<String>,
+    #[serde(default)]
+    pub error: Option<ResponsesApiError>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ResponsesApiError {
+    pub message: String,
+    #[serde(default)]
+    pub code: Option<String>,
 }

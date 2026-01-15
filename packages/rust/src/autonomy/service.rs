@@ -18,6 +18,7 @@ use crate::runtime::{AgentRuntime, Service};
 use crate::services::IMessageService;
 use crate::types::database::GetMemoriesParams;
 use crate::types::environment::{ChannelType, Room, World};
+use crate::types::memory::Memory;
 use crate::types::primitives::{Content, UUID};
 use crate::types::settings::SettingValue;
 
@@ -43,6 +44,12 @@ pub struct AutonomyService {
     task: Mutex<Option<AutonomyTaskHandle>>,
 }
 
+#[derive(Clone, Copy)]
+enum AutonomyMode {
+    Monologue,
+    Task,
+}
+
 #[cfg(feature = "native")]
 type AutonomyTaskHandle = JoinHandle<()>;
 #[cfg(not(feature = "native"))]
@@ -65,52 +72,59 @@ impl AutonomyService {
 
         svc.ensure_autonomous_context().await?;
 
-        // Always spawn the background loop (it is gated by AUTONOMY_ENABLED).
+        // Always spawn the background loop (it is gated by runtime.enableAutonomy).
         svc.spawn_loop().await;
 
         Ok(svc)
     }
 
+    /// Return the autonomous room identifier.
     pub fn autonomous_room_id(&self) -> UUID {
         self.autonomous_room_id.clone()
     }
 
+    /// Whether the autonomy loop is currently running.
     pub fn is_loop_running(&self) -> bool {
         self.is_running.load(Ordering::SeqCst)
     }
 
+    /// Whether the agent is actively thinking in the autonomy loop.
     pub fn is_thinking_in_progress(&self) -> bool {
         self.is_thinking.load(Ordering::SeqCst)
     }
 
+    /// Get the current loop interval in milliseconds.
     pub fn get_loop_interval(&self) -> u64 {
         self.interval_ms.load(Ordering::SeqCst)
     }
 
+    /// Update the loop interval (clamped to a safe range).
     pub fn set_loop_interval(&self, ms: u64) {
         const MIN: u64 = 5_000;
         const MAX: u64 = 600_000;
         self.interval_ms.store(ms.clamp(MIN, MAX), Ordering::SeqCst);
     }
 
+    /// Enable autonomy by setting the runtime flag.
     pub async fn enable_autonomy(&self) {
         if let Some(rt) = self.runtime.upgrade() {
-            rt.set_setting("AUTONOMY_ENABLED", SettingValue::Bool(true), false)
-                .await;
+            rt.set_enable_autonomy(true);
         }
     }
 
+    /// Disable autonomy and stop the loop.
     pub async fn disable_autonomy(&self) {
         if let Some(rt) = self.runtime.upgrade() {
-            rt.set_setting("AUTONOMY_ENABLED", SettingValue::Bool(false), false)
-                .await;
+            rt.set_enable_autonomy(false);
         }
         self.stop_loop().await;
     }
 
+    /// Get a snapshot of the current autonomy status.
     pub fn get_status(&self) -> AutonomyStatus {
+        let enabled = self.runtime_enable_autonomy();
         AutonomyStatus {
-            enabled: self.is_running.load(Ordering::SeqCst),
+            enabled,
             running: self.is_running.load(Ordering::SeqCst),
             thinking: self.is_thinking.load(Ordering::SeqCst),
             interval: self.interval_ms.load(Ordering::SeqCst),
@@ -139,8 +153,8 @@ impl AutonomyService {
         let handle: JoinHandle<()> = tokio::spawn(async move {
             let mut last_think = Instant::now() - Duration::from_millis(svc.get_loop_interval());
             while !svc.stop_flag.load(Ordering::SeqCst) {
-                // Settings-based enable/disable (parity with TS monitoring)
-                let enabled = svc.get_setting_truthy("AUTONOMY_ENABLED").await;
+                // Runtime-based enable/disable (parity with TS monitoring)
+                let enabled = svc.runtime_enable_autonomy();
                 if !enabled {
                     svc.is_running.store(false, Ordering::SeqCst);
                     sleep(Duration::from_secs(10)).await;
@@ -175,20 +189,11 @@ impl AutonomyService {
         self.is_running.store(false, Ordering::SeqCst);
     }
 
-    async fn get_setting_truthy(&self, key: &str) -> bool {
-        let Some(rt) = self.runtime.upgrade() else {
-            return false;
-        };
-        let v = rt.get_setting(key).await;
-        match v {
-            Some(SettingValue::Bool(b)) => b,
-            Some(SettingValue::String(s)) => {
-                let t = s.trim().to_lowercase();
-                matches!(t.as_str(), "true" | "1" | "yes" | "on")
-            }
-            Some(SettingValue::Number(n)) => n != 0.0,
-            _ => false,
-        }
+    fn runtime_enable_autonomy(&self) -> bool {
+        self.runtime
+            .upgrade()
+            .map(|rt| rt.enable_autonomy())
+            .unwrap_or(false)
     }
 
     async fn ensure_autonomous_context(&self) -> Result<()> {
@@ -245,18 +250,128 @@ impl AutonomyService {
         Ok(())
     }
 
-    fn create_monologue_prompt(&self, last_thought: Option<&str>, is_first: bool) -> String {
-        if is_first {
-            return "As an AI agent, reflect on your current state and experiences. What are you thinking about right now? What interests you or concerns you? Share your internal thoughts as a stream of consciousness. Don't address anyone - this is your private monologue.\n\nGenerate a thoughtful, introspective response (1-2 sentences):".to_string();
+    async fn get_autonomy_mode(&self, rt: &AgentRuntime) -> AutonomyMode {
+        match rt.get_setting("AUTONOMY_MODE").await {
+            Some(SettingValue::String(s)) if s.trim().eq_ignore_ascii_case("task") => {
+                AutonomyMode::Task
+            }
+            _ => AutonomyMode::Monologue,
+        }
+    }
+
+    async fn get_target_room_id(&self, rt: &AgentRuntime) -> Option<UUID> {
+        match rt.get_setting("AUTONOMY_TARGET_ROOM_ID").await {
+            Some(SettingValue::String(s)) if !s.trim().is_empty() => UUID::new(s.trim()).ok(),
+            _ => None,
+        }
+    }
+
+    async fn get_target_room_context_text(&self, rt: &AgentRuntime) -> String {
+        let Some(adapter) = rt.get_adapter() else {
+            return "(no target room configured)".to_string();
+        };
+        let Some(target_room_id) = self.get_target_room_id(rt).await else {
+            return "(no target room configured)".to_string();
+        };
+
+        let memories = adapter
+            .get_memories(GetMemoriesParams {
+                room_id: Some(target_room_id.clone()),
+                count: Some(15),
+                table_name: "memories".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap_or_default();
+        let messages = adapter
+            .get_memories(GetMemoriesParams {
+                room_id: Some(target_room_id.clone()),
+                count: Some(15),
+                table_name: "messages".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap_or_default();
+
+        let mut combined: Vec<Memory> = Vec::with_capacity(memories.len() + messages.len());
+        combined.extend(memories);
+        combined.extend(messages);
+        combined.sort_by_key(|m| m.created_at.unwrap_or(0));
+
+        let mut seen: std::collections::HashSet<UUID> = std::collections::HashSet::new();
+        let mut lines: Vec<String> = Vec::new();
+        for m in combined {
+            let Some(id) = m.id.clone() else {
+                continue;
+            };
+            if seen.contains(&id) {
+                continue;
+            }
+            seen.insert(id);
+            let role = if m.entity_id == rt.agent_id {
+                "Agent"
+            } else {
+                "User"
+            };
+            let text = m.content.text.as_deref().unwrap_or("");
+            if !text.trim().is_empty() {
+                lines.push(format!("{}: {}", role, text));
+            }
         }
 
-        match last_thought {
-            Some(t) => format!(
-                "Continuing your internal monologue from your last thought: \"{}\"\n\nWhat naturally follows from this thought? What does it make you think about next? Continue your stream of consciousness without addressing anyone - this is your private internal reflection.\n\nGenerate your next thought (1-2 sentences):",
-                t
-            ),
-            None => "As an AI agent, reflect on your current state and experiences. What are you thinking about right now? What interests you or concerns you? Share your internal thoughts as a stream of consciousness. Don't address anyone - this is your private monologue.\n\nGenerate a thoughtful, introspective response (1-2 sentences):".to_string(),
+        if lines.is_empty() {
+            "(no recent messages)".to_string()
+        } else {
+            lines.join("\n")
         }
+    }
+
+    fn create_monologue_prompt(
+        &self,
+        last_thought: Option<&str>,
+        is_first: bool,
+        target_context: &str,
+    ) -> String {
+        let header = "You are running in AUTONOMOUS REFLECTION MODE.\n\nYour job: reflect on context, decide what you want to do next, and act if appropriate.\n- Use available actions/tools when they can advance the goal.\n- If you cannot act, state the missing info and the safest next step to obtain it.\n- Keep the response concise, focused on the next action.";
+        let context = format!("USER CONTEXT (most recent last):\n{}", target_context);
+
+        if is_first {
+            return format!(
+                "{}\n\n{}\n\nThink briefly, then state what you want to do next and take action if needed.",
+                header, context
+            );
+        }
+
+        format!(
+            "{}\n\n{}\n\nYour last autonomous note: \"{}\"\n\nContinue from that note. Decide the next step and act if needed.",
+            header,
+            context,
+            last_thought.unwrap_or("")
+        )
+    }
+
+    fn create_task_prompt(
+        &self,
+        last_thought: Option<&str>,
+        is_first: bool,
+        target_context: &str,
+    ) -> String {
+        let header = "You are running in AUTONOMOUS TASK MODE.\n\nYour job: continue helping the user and make progress toward the task.\n- Use available actions/tools to gather information or execute steps.\n- Prefer safe, incremental steps; if unsure, gather more context before acting.";
+        let context = format!("USER CHAT CONTEXT (most recent last):\n{}", target_context);
+
+        if is_first {
+            return format!(
+                "{}\n\n{}\n\nDecide what to do next. Think briefly, then take the most useful action.",
+                header, context
+            );
+        }
+
+        format!(
+            "{}\n\n{}\n\nYour last autonomous note: \"{}\"\n\nContinue the task. Decide the next step and take action now.",
+            header,
+            context,
+            last_thought.unwrap_or("")
+        )
     }
 
     async fn perform_autonomous_think(&self) -> Result<()> {
@@ -266,7 +381,16 @@ impl AutonomyService {
 
         let last_thought = self.get_last_autonomous_thought(&rt).await;
         let is_first = last_thought.as_deref().unwrap_or("").is_empty();
-        let prompt = self.create_monologue_prompt(last_thought.as_deref(), is_first);
+        let mode = self.get_autonomy_mode(&rt).await;
+        let target_context = self.get_target_room_context_text(&rt).await;
+        let prompt = match mode {
+            AutonomyMode::Task => {
+                self.create_task_prompt(last_thought.as_deref(), is_first, &target_context)
+            }
+            AutonomyMode::Monologue => {
+                self.create_monologue_prompt(last_thought.as_deref(), is_first, &target_context)
+            }
+        };
 
         let mut content = Content::default();
         content.text = Some(prompt);
@@ -278,6 +402,13 @@ impl AutonomyService {
         content
             .extra
             .insert("isInternalThought".to_string(), Value::Bool(true));
+        let mode_str = match mode {
+            AutonomyMode::Task => "task",
+            AutonomyMode::Monologue => "monologue",
+        };
+        content
+            .extra
+            .insert("autonomyMode".to_string(), Value::String(mode_str.to_string()));
         let ts_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

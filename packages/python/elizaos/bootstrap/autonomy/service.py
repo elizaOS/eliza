@@ -58,17 +58,22 @@ class AutonomyService(Service):
 
         self._log("info", f"Using autonomous room ID: {self._autonomous_room_id}")
 
-        autonomy_enabled = self._runtime.get_setting("AUTONOMY_ENABLED")
+        autonomy_enabled = self._runtime.enable_autonomy
+
+        self._log("debug", f"Runtime enable_autonomy value: {autonomy_enabled}")
 
         await self._ensure_autonomous_context()
 
-        self._log("info", f"Settings check - AUTONOMY_ENABLED: {autonomy_enabled}")
-
-        if autonomy_enabled is True or autonomy_enabled == "true":
-            self._log("info", "Autonomy is enabled in settings, starting...")
+        # Check if autonomy should auto-start based on runtime configuration
+        if autonomy_enabled:
+            self._log("info", "Autonomy enabled (enable_autonomy: True), starting autonomous loop...")
             await self.start_loop()
         else:
-            self._log("info", "Autonomy disabled by default - will wait for explicit activation")
+            self._log(
+                "info",
+                "Autonomy not enabled (enable_autonomy: False or not set). "
+                "Set enable_autonomy=True in runtime options to auto-start, or call enable_autonomy() to start manually.",
+            )
 
         self._settings_monitor_task = asyncio.create_task(self._settings_monitoring())
 
@@ -112,6 +117,52 @@ class AutonomyService(Service):
             self._log("error", f"Failed to ensure autonomous context: {e}")
             raise
 
+    def _get_autonomy_mode(self) -> str:
+        if not self._runtime:
+            return "monologue"
+        raw = self._runtime.get_setting("AUTONOMY_MODE")
+        if isinstance(raw, str) and raw.strip().lower() == "task":
+            return "task"
+        return "monologue"
+
+    def _get_target_room_id(self) -> UUID | None:
+        if not self._runtime:
+            return None
+        raw = self._runtime.get_setting("AUTONOMY_TARGET_ROOM_ID")
+        if not isinstance(raw, str) or raw.strip() == "":
+            return None
+        try:
+            return as_uuid(raw.strip())
+        except Exception:
+            return None
+
+    async def _get_target_room_context_text(self) -> str:
+        if not self._runtime:
+            return "(no target room configured)"
+        target_room_id = self._get_target_room_id()
+        if not target_room_id:
+            return "(no target room configured)"
+        memories_table = await self._runtime.get_memories(
+            {"roomId": target_room_id, "count": 15, "tableName": "memories"}
+        )
+        messages_table = await self._runtime.get_memories(
+            {"roomId": target_room_id, "count": 15, "tableName": "messages"}
+        )
+        recent = [*memories_table, *messages_table]
+        seen: set[str] = set()
+        ordered = sorted(recent, key=lambda m: m.created_at or 0)
+        lines: list[str] = []
+        for m in ordered:
+            mem_id = m.id or ""
+            if not mem_id or mem_id in seen:
+                continue
+            seen.add(mem_id)
+            role = "Agent" if m.entityId == self._runtime.agent_id else "User"
+            text = m.content.text if m.content and isinstance(m.content.text, str) else ""
+            if text.strip():
+                lines.append(f"{role}: {text}")
+        return "\n".join(lines) if lines else "(no recent messages)"
+
     async def _settings_monitoring(self) -> None:
         while not self._is_stopped:
             await asyncio.sleep(10)
@@ -120,14 +171,13 @@ class AutonomyService(Service):
                 break
 
             try:
-                autonomy_enabled = self._runtime.get_setting("AUTONOMY_ENABLED")
-                should_be_running = autonomy_enabled is True or autonomy_enabled == "true"
+                should_be_running = self._runtime.enable_autonomy
 
                 if should_be_running and not self._is_running:
-                    self._log("info", "Settings indicate autonomy should be enabled, starting...")
+                    self._log("info", "Runtime indicates autonomy should be enabled, starting...")
                     await self.start_loop()
                 elif not should_be_running and self._is_running:
-                    self._log("info", "Settings indicate autonomy should be disabled, stopping...")
+                    self._log("info", "Runtime indicates autonomy should be disabled, stopping...")
                     await self.stop_loop()
             except Exception as e:
                 self._log("error", f"Error in settings monitoring: {e}")
@@ -139,7 +189,7 @@ class AutonomyService(Service):
         self._is_running = True
 
         if self._runtime:
-            self._runtime.set_setting("AUTONOMY_ENABLED", True)
+            self._runtime.enable_autonomy = True
             self._log("info", f"Starting autonomous loop ({self._interval_ms}ms interval)")
 
         self._loop_task = asyncio.create_task(self._run_loop())
@@ -157,7 +207,7 @@ class AutonomyService(Service):
             self._loop_task = None
 
         if self._runtime:
-            self._runtime.set_setting("AUTONOMY_ENABLED", False)
+            self._runtime.enable_autonomy = False
             self._log("info", "Stopped autonomous loop")
 
     async def _run_loop(self) -> None:
@@ -237,7 +287,13 @@ class AutonomyService(Service):
         else:
             is_first_thought = True
 
-        monologue_prompt = self._create_monologue_prompt(last_thought, is_first_thought)
+        mode = self._get_autonomy_mode()
+        target_context = await self._get_target_room_context_text()
+        monologue_prompt = (
+            self._create_task_prompt(last_thought, is_first_thought, target_context)
+            if mode == "task"
+            else self._create_monologue_prompt(last_thought, is_first_thought, target_context)
+        )
 
         entity_id = agent_entity.id if agent_entity.id else self._runtime.agent_id
         current_time_ms = int(time.time() * 1000)
@@ -251,6 +307,7 @@ class AutonomyService(Service):
                     "type": "autonomous-prompt",
                     "isAutonomous": True,
                     "isInternalThought": True,
+                    "autonomyMode": mode,
                     "channelId": "autonomous",
                     "timestamp": current_time_ms,
                     "isContinuation": not is_first_thought,
@@ -286,17 +343,56 @@ class AutonomyService(Service):
 
         self._log("debug", "Autonomous message event emitted to agent pipeline")
 
-    def _create_monologue_prompt(self, last_thought: str | None, is_first_thought: bool) -> str:
+    def _create_monologue_prompt(
+        self, last_thought: str | None, is_first_thought: bool, target_context: str
+    ) -> str:
+        header = """You are running in AUTONOMOUS REFLECTION MODE.
+
+Your job: reflect on context, decide what you want to do next, and act if appropriate.
+- Use available actions/tools when they can advance the goal.
+- If you cannot act, state the missing info and the safest next step to obtain it.
+- Keep the response concise, focused on the next action."""
+        context = f"""USER CONTEXT (most recent last):
+{target_context}"""
         if is_first_thought:
-            return """As an AI agent, reflect on your current state and experiences. What are you thinking about right now? What interests you or concerns you? Share your internal thoughts as a stream of consciousness. Don't address anyone - this is your private monologue.
+            return f"""{header}
 
-Generate a thoughtful, introspective response (1-2 sentences):"""
+{context}
 
-        return f"""Continuing your internal monologue from your last thought: "{last_thought}"
+Think briefly, then state what you want to do next and take action if needed."""
 
-What naturally follows from this thought? What does it make you think about next? Continue your stream of consciousness without addressing anyone - this is your private internal reflection.
+        return f"""{header}
 
-Generate your next thought (1-2 sentences):"""
+{context}
+
+Your last autonomous note: "{last_thought or ''}"
+
+Continue from that note. Decide the next step and act if needed."""
+
+    def _create_task_prompt(
+        self, last_thought: str | None, is_first_thought: bool, target_context: str
+    ) -> str:
+        header = """You are running in AUTONOMOUS TASK MODE.
+
+Your job: continue helping the user and make progress toward the task.
+- Use available actions/tools to gather information or execute steps.
+- Prefer safe, incremental steps; if unsure, gather more context before acting."""
+        context = f"""USER CHAT CONTEXT (most recent last):
+{target_context}"""
+        if is_first_thought:
+            return f"""{header}
+
+{context}
+
+Decide what to do next. Think briefly, then take the most useful action."""
+
+        return f"""{header}
+
+{context}
+
+Your last autonomous note: "{last_thought or ''}"
+
+Continue the task. Decide the next step and take action now."""
 
     def is_loop_running(self) -> bool:
         return self._is_running
@@ -323,21 +419,20 @@ Generate your next thought (1-2 sentences):"""
 
     async def enable_autonomy(self) -> None:
         if self._runtime:
-            self._runtime.set_setting("AUTONOMY_ENABLED", True)
+            self._runtime.enable_autonomy = True
         if not self._is_running:
             await self.start_loop()
 
     async def disable_autonomy(self) -> None:
         if self._runtime:
-            self._runtime.set_setting("AUTONOMY_ENABLED", False)
+            self._runtime.enable_autonomy = False
         if self._is_running:
             await self.stop_loop()
 
     def get_status(self) -> AutonomyStatus:
         enabled = False
         if self._runtime:
-            setting = self._runtime.get_setting("AUTONOMY_ENABLED")
-            enabled = setting is True or setting == "true"
+            enabled = self._runtime.enable_autonomy
 
         return AutonomyStatus(
             enabled=enabled,

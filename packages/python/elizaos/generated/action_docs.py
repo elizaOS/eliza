@@ -2683,17 +2683,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "POLYMARKET_CREATE_API_KEY",
-      "description": "Create API key credentials for Polymarket CLOB authentication",
-      "parameters": [],
-      "similes": [
-        "CREATE_POLYMARKET_API_KEY",
-        "GENERATE_API_CREDENTIALS",
-        "CREATE_CLOB_CREDENTIALS",
-        "SETUP_API_ACCESS"
-      ]
-    },
-    {
       "name": "POLYMARKET_GET_ACCOUNT_ACCESS_STATUS",
       "description": "Retrieves account access status from Polymarket, including U.S. certification requirements and API key details.",
       "parameters": [],
@@ -2715,38 +2704,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "LIST_PENDING_ORDERS",
         "SHOW_UNFILLED_ORDERS",
         "ORDERS_IN_BOOK"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_ALL_API_KEYS",
-      "description": "Retrieves all API keys associated with the authenticated user Polymarket account.",
-      "parameters": [],
-      "similes": [
-        "LIST_MY_API_KEYS",
-        "VIEW_API_CREDENTIALS",
-        "SHOW_ALL_KEYS",
-        "MY_CLOB_KEYS"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_BEST_PRICE",
-      "description": "Gets the current best price (top of book) for a specified token ID and side (BUY/SELL) on Polymarket.",
-      "parameters": [],
-      "similes": [
-        "GET_TOP_OF_BOOK",
-        "BEST_BID",
-        "BEST_ASK",
-        "SHOW_BEST_PRICE"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_CLOB_MARKETS",
-      "description": "Retrieves a paginated list of markets directly from the Polymarket CLOB API, including pagination support.",
-      "parameters": [],
-      "similes": [
-        "FETCH_CLOB_MARKETS",
-        "LIST_CLOB_MARKETS",
-        "CLOB_MARKET_DATA"
       ]
     },
     {
@@ -2776,38 +2733,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "POLYMARKET_GET_MIDPOINT",
-      "description": "Get the midpoint price between best bid and ask",
-      "parameters": [],
-      "similes": [
-        "MIDPOINT",
-        "MID_PRICE",
-        "MIDDLE_PRICE"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_MIDPOINT_PRICE",
-      "description": "Gets the midpoint price (average of best bid and best ask) for a specified token ID on Polymarket.",
-      "parameters": [],
-      "similes": [
-        "GET_MID_PRICE",
-        "MIDPOINT",
-        "MID_MARKET",
-        "FAIR_VALUE_PRICE"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_OPEN_MARKETS",
-      "description": "Retrieves a list of currently open (active and not closed) markets from Polymarket.",
-      "parameters": [],
-      "similes": [
-        "LIST_ACTIVE_MARKETS",
-        "SHOW_OPEN_MARKETS",
-        "TRADABLE_MARKETS",
-        "CURRENT_MARKETS"
-      ]
-    },
-    {
       "name": "POLYMARKET_GET_ORDER_BOOK",
       "description": "Retrieve order book summary for a specific token",
       "parameters": [],
@@ -2831,16 +2756,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "POLYMARKET_GET_ORDER_BOOK_SUMMARY",
-      "description": "Retrieves a summary of the order book for a specific token ID on Polymarket, including best bid/ask and spread.",
-      "parameters": [],
-      "similes": [
-        "ORDER_BOOK_OVERVIEW",
-        "BOOK_SUMMARY",
-        "MARKET_DEPTH_SUMMARY"
-      ]
-    },
-    {
       "name": "POLYMARKET_GET_ORDER_DETAILS",
       "description": "Retrieves detailed information about a specific order by its ID on Polymarket.",
       "parameters": [],
@@ -2860,38 +2775,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "PRICE_CHART",
         "TOKEN_PRICE_HISTORY",
         "PRICE_DATA"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_SAMPLING_MARKETS",
-      "description": "Retrieve markets with rewards/incentives enabled for sampling",
-      "parameters": [],
-      "similes": [
-        "SAMPLING_MARKETS",
-        "REWARDS_MARKETS",
-        "INCENTIVE_MARKETS"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_SIMPLIFIED_MARKETS",
-      "description": "Retrieve simplified market data with minimal fields for quick overview",
-      "parameters": [],
-      "similes": [
-        "SIMPLE_MARKETS",
-        "QUICK_MARKETS",
-        "MARKETS_SUMMARY",
-        "BASIC_MARKETS"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_SPREAD",
-      "description": "Gets the bid-ask spread for a specified token ID on Polymarket.",
-      "parameters": [],
-      "similes": [
-        "BID_ASK_SPREAD",
-        "MARKET_SPREAD",
-        "SPREAD_INFO",
-        "TOKEN_SPREAD"
       ]
     },
     {
@@ -2951,17 +2834,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "POLYMARKET_RETRIEVE_ALL_MARKETS",
-      "description": "Retrieves all available markets from Polymarket by paginating through the entire catalog.",
-      "parameters": [],
-      "similes": [
-        "FETCH_ALL_MARKETS",
-        "DOWNLOAD_MARKETS",
-        "FULL_MARKET_LIST",
-        "COMPLETE_MARKETS"
-      ]
-    },
-    {
       "name": "POLYMARKET_REVOKE_API_KEY",
       "description": "Revokes an existing API key from your Polymarket account.",
       "parameters": [],
@@ -2970,17 +2842,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "REMOVE_API_KEY",
         "DISABLE_API_KEY",
         "CANCEL_API_KEY"
-      ]
-    },
-    {
-      "name": "POLYMARKET_SETUP_WEBSOCKET",
-      "description": "Sets up and configures WebSocket connections for real-time Polymarket data streaming.",
-      "parameters": [],
-      "similes": [
-        "CONNECT_WEBSOCKET",
-        "INIT_WS",
-        "START_STREAM",
-        "ENABLE_REALTIME"
       ]
     },
     {

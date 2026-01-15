@@ -56,9 +56,7 @@ const CHARACTER: Character = {
         },
       },
     },
-    // Enable AutonomyService (bootstrap capability) for this example runtime.
-    ENABLE_AUTONOMY: "true",
-    AUTONOMY_ENABLED: process.env.AUTONOMY_ENABLED ?? "false",
+    // Autonomy is controlled via runtime.enableAutonomy
     AUTONOMY_MODE: process.env.AUTONOMY_MODE ?? "task",
   },
 };

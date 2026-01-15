@@ -1,188 +1,327 @@
-import { AgentRuntime, type Character } from "@elizaos/core";
-import { initWalletProvider } from "@elizaos/plugin-evm";
 import {
-  type MarketsResponse,
-  type OrderBook,
-  getWalletAddress,
-  initializeClobClient,
-  initializeClobClientWithCreds,
-} from "@elizaos/plugin-polymarket";
+  AgentRuntime,
+  ChannelType,
+  type Character,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import type { AutonomyService } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
-import { Side } from "@polymarket/clob-client";
-
+import polymarketPlugin from "@elizaos/plugin-polymarket";
+import { Wallet } from "@ethersproject/wallet";
+import { ClobClient } from "@polymarket/clob-client";
 import { loadEnvConfig, type CliOptions, type EnvConfig } from "./lib";
+import { runPolymarketTui } from "./tui";
 
-export type MarketPick = {
-  readonly tokenId: string;
-  readonly marketLabel: string;
-  readonly tickSize: number;
+type RuntimeSession = {
+  readonly runtime: AgentRuntime;
+  readonly roomId: UUID;
+  readonly worldId: UUID;
+  readonly userId: UUID;
+  readonly agentId: UUID;
+  readonly options: CliOptions;
+  readonly config: EnvConfig;
 };
 
-export function bestPrice(orderBook: Pick<OrderBook, "bids" | "asks">): {
-  readonly bestBid: number | null;
-  readonly bestAsk: number | null;
-} {
-  const bestBidRaw = orderBook.bids[0]?.price;
-  const bestAskRaw = orderBook.asks[0]?.price;
-  const bestBid = typeof bestBidRaw === "string" ? Number(bestBidRaw) : NaN;
-  const bestAsk = typeof bestAskRaw === "string" ? Number(bestAskRaw) : NaN;
-  return {
-    bestBid: Number.isFinite(bestBid) ? bestBid : null,
-    bestAsk: Number.isFinite(bestAsk) ? bestAsk : null,
+type CharacterSettings = NonNullable<Character["settings"]>;
+
+const DEFAULT_ROOM_ID = stringToUuid("polymarket-runtime-room");
+const DEFAULT_WORLD_ID = stringToUuid("polymarket-runtime-world");
+const DEFAULT_USER_ID = stringToUuid("polymarket-operator");
+const POLYGON_CHAIN_ID = 137;
+
+type DerivedApiCreds = {
+  readonly key?: string;
+  readonly apiKey?: string;
+  readonly secret: string;
+  readonly passphrase: string;
+};
+
+type WriteCallback = (err?: Error | null) => void;
+type WriteArgs = {
+  encoding: BufferEncoding | undefined;
+  callback: WriteCallback | undefined;
+};
+
+function normalizeWriteArgs(
+  encoding: BufferEncoding | WriteCallback | undefined,
+  callback?: WriteCallback
+): WriteArgs {
+  if (typeof encoding === "function") {
+    return { encoding: undefined, callback: encoding };
+  }
+  return { encoding, callback };
+}
+
+function shouldFilterLogs(level: string): boolean {
+  return ["warn", "error", "fatal"].includes(level);
+}
+
+function shouldDropLine(line: string): boolean {
+  const trimmed = line.trimStart();
+  return /^(info|debug|trace)\b/i.test(trimmed);
+}
+
+function filterLines(text: string, pending: { value: string }): string {
+  const combined = pending.value + text;
+  const lines = combined.split("\n");
+  const hasTrailingNewline = combined.endsWith("\n");
+  pending.value = hasTrailingNewline ? "" : lines.pop() ?? "";
+
+  const kept = lines.filter((line) => !shouldDropLine(line));
+  if (kept.length === 0) {
+    return "";
+  }
+  return kept.join("\n") + "\n";
+}
+
+function wrapWriteStream(stream: NodeJS.WriteStream): void {
+  const originalWrite = stream.write.bind(stream) as typeof stream.write;
+  const pending = { value: "" };
+
+  stream.write = (
+    chunk: string | Uint8Array,
+    encoding?: BufferEncoding | WriteCallback,
+    callback?: WriteCallback
+  ): boolean => {
+    const args = normalizeWriteArgs(encoding, callback);
+    const text =
+      typeof chunk === "string"
+        ? chunk
+        : Buffer.from(chunk).toString(args.encoding ?? "utf8");
+    const filtered = filterLines(text, pending);
+    if (filtered.length === 0) {
+      if (args.callback) {
+        args.callback();
+      }
+      return true;
+    }
+    return originalWrite(filtered, args.encoding, args.callback);
   };
 }
 
-export async function createRuntime(options: CliOptions, config: EnvConfig): Promise<AgentRuntime> {
-  const character: Character = {
-    name: "PolymarketDemoAgent",
-    bio: "Autonomous Polymarket demo agent (CLI).",
-    settings: {
-      chains: {
-        evm: [options.chain],
-      },
-      secrets: {
-        EVM_PRIVATE_KEY: config.privateKey,
-        POLYMARKET_PRIVATE_KEY: config.privateKey,
-        CLOB_API_URL: config.clobApiUrl,
-        ...(options.rpcUrl
-          ? {
-              [`ETHEREUM_PROVIDER_${options.chain.toUpperCase()}`]: options.rpcUrl,
-              [`EVM_PROVIDER_${options.chain.toUpperCase()}`]: options.rpcUrl,
-            }
-          : {}),
-      },
+function createCharacter(settings: CharacterSettings): Character {
+  return {
+    name: "Eliza",
+    username: "eliza",
+    bio: [
+      "An autonomous agent that explores Polymarket opportunities.",
+      "Uses available tools to scan markets and place orders responsibly.",
+    ],
+    adjectives: ["focused", "pragmatic", "direct"],
+    style: {
+      all: [
+        "Use available tools to inspect markets before acting",
+        "Keep responses short and operational",
+      ],
+      chat: ["Be concise", "Log actions clearly"],
+    },
+    settings,
+  };
+}
+
+function buildCharacterSettings(
+  options: CliOptions,
+  config: EnvConfig
+): CharacterSettings {
+  const signatureTypeSecret =
+    typeof config.signatureType === "number" ? String(config.signatureType) : undefined;
+
+  return {
+    chains: {
+      evm: [options.chain],
+    },
+    secrets: {
+      EVM_PRIVATE_KEY: config.privateKey,
+      POLYMARKET_PRIVATE_KEY: config.privateKey,
+      CLOB_API_URL: config.clobApiUrl,
+      ...(signatureTypeSecret
+        ? {
+            POLYMARKET_SIGNATURE_TYPE: signatureTypeSecret,
+          }
+        : {}),
+      ...(config.funderAddress
+        ? {
+            POLYMARKET_FUNDER_ADDRESS: config.funderAddress,
+          }
+        : {}),
+      ...(config.creds
+        ? {
+            CLOB_API_KEY: config.creds.key,
+            CLOB_API_SECRET: config.creds.secret,
+            CLOB_API_PASSPHRASE: config.creds.passphrase,
+          }
+        : {}),
+      ...(options.rpcUrl
+        ? {
+            [`ETHEREUM_PROVIDER_${options.chain.toUpperCase()}`]: options.rpcUrl,
+            [`EVM_PROVIDER_${options.chain.toUpperCase()}`]: options.rpcUrl,
+          }
+        : {}),
     },
   };
+}
+
+async function createRuntimeSession(
+  options: CliOptions,
+  config: EnvConfig
+): Promise<RuntimeSession> {
+  const settings = buildCharacterSettings(options, config);
+  const character = createCharacter(settings);
+  const agentId = stringToUuid(character.name);
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin],
-    logLevel: "info",
+    plugins: [sqlPlugin, polymarketPlugin, openaiPlugin],
+    settings: {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      POSTGRES_URL: process.env.POSTGRES_URL || undefined,
+      PGLITE_DATA_DIR: process.env.PGLITE_DATA_DIR || "memory://",
+    },
+    logLevel: "info", // Changed from "error" to debug action selection
+    enableAutonomy: true,
+    actionPlanning: true,
+    checkShouldRespond: false,
   });
+
+  // Enable autonomy for action execution (user can toggle with /autonomy command)
+  // Don't disable by default - actions need autonomy service to execute
+  
   await runtime.initialize();
-  return runtime;
+
+  await runtime.ensureConnection({
+    entityId: DEFAULT_USER_ID,
+    roomId: DEFAULT_ROOM_ID,
+    worldId: DEFAULT_WORLD_ID,
+    userName: "Operator",
+    source: "polymarket-demo",
+    channelId: "polymarket",
+    serverId: "polymarket-server",
+    type: ChannelType.DM,
+  } as Parameters<typeof runtime.ensureConnection>[0]);
+
+  return {
+    runtime,
+    roomId: DEFAULT_ROOM_ID,
+    worldId: DEFAULT_WORLD_ID,
+    userId: DEFAULT_USER_ID,
+    agentId,
+    options,
+    config,
+  };
 }
 
-export async function assertWalletParity(runtime: AgentRuntime): Promise<string> {
-  const walletFromPolymarket = getWalletAddress(runtime);
-  const evmWallet = await initWalletProvider(runtime);
-  const walletFromEvm = evmWallet.getAddress();
+async function startChat(session: RuntimeSession): Promise<void> {
+  const { runtime, roomId, worldId, userId } = session;
+  runtime.setSetting("AUTONOMY_TARGET_ROOM_ID", String(roomId));
+  runtime.setSetting("AUTONOMY_MODE", "task");
 
-  if (walletFromPolymarket.toLowerCase() !== walletFromEvm.toLowerCase()) {
-    throw new Error(`Wallet mismatch: plugin-polymarket=${walletFromPolymarket} plugin-evm=${walletFromEvm}`);
+  await runtime.ensureConnection({
+    entityId: userId,
+    roomId,
+    worldId,
+    userName: "Operator",
+    source: "polymarket-demo",
+    channelId: "polymarket-chat",
+    serverId: "polymarket-server",
+    type: ChannelType.DM,
+  } as Parameters<typeof runtime.ensureConnection>[0]);
+
+  const messageService = runtime.messageService;
+  if (!messageService) {
+    throw new Error("Message service not initialized - ensure OpenAI plugin is loaded.");
   }
-  return walletFromEvm;
+  await runPolymarketTui({
+    runtime,
+    roomId,
+    worldId,
+    userId,
+    messageService,
+  });
 }
 
-export async function pickFirstActiveMarket(
-  client: { getMarkets: (cursor?: string) => Promise<MarketsResponse> },
-  maxPages: number
-): Promise<MarketPick> {
-  let cursor: string | undefined;
-  for (let page = 0; page < maxPages; page += 1) {
-    const resp = await client.getMarkets(cursor);
-    for (const m of resp.data) {
-      if (!m.active || m.closed) continue;
-      const tok = m.tokens[0];
-      if (!tok?.token_id) continue;
-      const label = m.question && m.question.trim().length > 0 ? m.question : m.condition_id;
-      const tick = m.minimum_tick_size ? Number(m.minimum_tick_size) : NaN;
-      const tickSize = Number.isFinite(tick) && tick > 0 ? tick : 0.001;
-      return { tokenId: tok.token_id, marketLabel: label, tickSize };
+async function resolveApiCredentials(
+  options: CliOptions,
+  config: EnvConfig
+): Promise<EnvConfig> {
+  if (!options.network) {
+    return config;
+  }
+
+  const signer = new Wallet(config.privateKey);
+  const client = new ClobClient(config.clobApiUrl, POLYGON_CHAIN_ID, signer);
+  let derived: DerivedApiCreds | null = null;
+  try {
+    derived = await client.deriveApiKey();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (config.creds) {
+      console.warn(
+        `⚠️ Failed to derive API key (${message}); using .env credentials for this run.`
+      );
+      return config;
     }
-    cursor = resp.next_cursor && resp.next_cursor.length > 0 ? resp.next_cursor : undefined;
+    throw new Error(
+      `Unable to derive API key (${message}). ` +
+        "Create API credentials once in Polymarket and set CLOB_API_KEY, CLOB_API_SECRET, " +
+        "CLOB_API_PASSPHRASE, or enable creation explicitly."
+    );
   }
-  throw new Error("No active market found (try increasing --max-pages or check API).");
+
+  const derivedKey = derived.key ?? derived.apiKey;
+  if (!derivedKey) {
+    throw new Error("Failed to derive API key: missing key in response.");
+  }
+
+  if (config.creds && config.creds.key !== derivedKey) {
+    console.warn(
+      "⚠️ CLOB_API_KEY does not match derived key; using derived credentials for this run."
+    );
+  }
+
+  return {
+    ...config,
+    creds: {
+      key: derivedKey,
+      secret: derived.secret,
+      passphrase: derived.passphrase,
+    },
+  };
+}
+
+function logSessionStart(options: CliOptions): void {
+  console.log("✅ runtime initialized");
+  console.log(`🔧 chain: ${options.chain}`);
+  console.log(`🔧 execute: ${options.execute ? "enabled" : "disabled"}`);
+  console.log(`🔧 network: ${options.network ? "enabled" : "disabled"}`);
+}
+
+async function runWithSession(
+  options: CliOptions,
+  handler: (session: RuntimeSession) => Promise<void>
+): Promise<void> {
+  const rawConfig = loadEnvConfig(options);
+  const config = await resolveApiCredentials(options, rawConfig);
+  const session = await createRuntimeSession(options, config);
+
+  logSessionStart(options);
+  try {
+    await handler(session);
+  } finally {
+    await session.runtime.stop();
+  }
 }
 
 export async function verify(options: CliOptions): Promise<void> {
-  const config = loadEnvConfig(options);
-  const runtime = await createRuntime(options, config);
-  try {
-    const address = await assertWalletParity(runtime);
-    console.log("✅ wallet address:", address);
-    console.log("✅ clob api url:", config.clobApiUrl);
-    console.log("✅ execute enabled:", String(options.execute));
-    console.log("✅ creds present:", String(config.creds !== null));
-
-    if (options.network) {
-      const client = await initializeClobClient(runtime);
-      const marketsResp = await client.getMarkets(undefined);
-      console.log("🌐 network ok: fetched markets =", String(marketsResp.data.length));
-    }
-  } finally {
-    await runtime.stop();
-  }
+  await runWithSession(options, async (session) => {
+    console.log("✅ clob api url:", session.config.clobApiUrl);
+    console.log("✅ creds present:", String(session.config.creds !== null));
+  });
 }
 
-export async function once(options: CliOptions): Promise<void> {
-  if (!options.network) {
-    throw new Error("The 'once' command requires --network (it fetches markets + order book).");
-  }
-
-  const config = loadEnvConfig(options);
-  const runtime = await createRuntime(options, config);
-
-  try {
-    await assertWalletParity(runtime);
-
-    const publicClient = await initializeClobClient(runtime);
-    const { tokenId, marketLabel, tickSize } = await pickFirstActiveMarket(publicClient, options.maxPages);
-    const orderBook = await publicClient.getOrderBook(tokenId);
-
-    const { bestBid, bestAsk } = bestPrice(orderBook);
-    if (bestBid === null || bestAsk === null) {
-      console.log("No usable bid/ask; skipping:", tokenId);
-      return;
-    }
-
-    const spread = bestAsk - bestBid;
-    const midpoint = (bestAsk + bestBid) / 2;
-    const price = Math.max(0.01, Math.min(0.99, midpoint - tickSize));
-
-    console.log("🎯 market:", marketLabel);
-    console.log("🔑 token:", tokenId);
-    console.log("📈 bestBid:", bestBid.toFixed(4), "bestAsk:", bestAsk.toFixed(4));
-    console.log("📏 spread:", spread.toFixed(4), "midpoint:", midpoint.toFixed(4));
-    console.log("🧪 decision: BUY", String(options.orderSize), "at", price.toFixed(4));
-
-    if (!options.execute) {
-      console.log("🧊 dry-run: not placing order (pass --execute to place)");
-      return;
-    }
-
-    if (config.creds === null) {
-      throw new Error("Internal error: execute=true but creds missing");
-    }
-
-    const authed = await initializeClobClientWithCreds(runtime);
-    const res = await authed.createAndPostOrder(
-      {
-        tokenID: tokenId,
-        price,
-        side: Side.BUY,
-        size: options.orderSize,
-        feeRateBps: 0,
-      },
-      undefined,
-      "GTC"
-    );
-
-    console.log("✅ order response:", JSON.stringify(res));
-  } finally {
-    await runtime.stop();
-  }
+export async function chat(options: CliOptions): Promise<void> {
+  await runWithSession(options, async (session) => {
+    await startChat(session);
+  });
 }
-
-export async function run(options: CliOptions): Promise<void> {
-  if (!options.network) {
-    throw new Error("The 'run' command requires --network (it fetches markets + order book).");
-  }
-  for (let i = 0; i < options.iterations; i += 1) {
-    await once(options);
-    if (i + 1 < options.iterations) {
-      await new Promise<void>((resolve) => setTimeout(resolve, options.intervalMs));
-    }
-  }
-}
-

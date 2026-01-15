@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to extract token ID and side parameters for retrieving the best price for a market.
+extract token ID and side parameters for retrieving the best price for a market.
 
 Review the recent messages:
 <recent_messages>
