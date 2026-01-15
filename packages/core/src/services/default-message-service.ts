@@ -1376,6 +1376,15 @@ Output ONLY the continuation, starting immediately after the last character abov
                 validateField: false,
                 streamField: false,
               },
+              // WHY parameters: Actions need input data. Without this field in the schema,
+              // the LLM won't be instructed to output parameters, breaking action execution.
+              {
+                field: 'parameters',
+                description:
+                  'JSON object with parameter names and values for the action (use {} if no parameters needed)',
+                validateField: false,
+                streamField: false,
+              },
               {
                 field: 'isFinish',
                 description:
