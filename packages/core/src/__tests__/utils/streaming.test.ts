@@ -704,7 +704,7 @@ describe('ValidationStreamExtractor', () => {
       expect(chunks.join('')).toBe('Hello world!');
     });
 
-    it('should emit error event on invalid code', () => {
+    it('should emit error event on invalid start code', () => {
       const chunks: string[] = [];
       const events: StreamEvent[] = [];
       const expectedCodes = new Map([['text', 'abc123']]);
@@ -727,7 +727,36 @@ describe('ValidationStreamExtractor', () => {
       );
 
       expect(chunks.length).toBe(0);
-      expect(events.some(e => e.type === 'error')).toBe(true);
+      expect(events.some(e => e.type === 'error' && e.error?.includes('start code'))).toBe(true);
+    });
+
+    it('should emit error event on invalid end code', () => {
+      const chunks: string[] = [];
+      const events: StreamEvent[] = [];
+      const expectedCodes = new Map([['text', 'abc123']]);
+
+      const extractor = new ValidationStreamExtractor({
+        level: 1,
+        schema: createSchema(),
+        streamFields: ['text'],
+        expectedCodes,
+        onChunk: (chunk) => chunks.push(chunk),
+        onEvent: (event) => events.push(event),
+      });
+
+      // Start code is correct, but end code is wrong
+      extractor.push(
+        '<response>' +
+        '<code_text_start>abc123</code_text_start>' +
+        '<text>Hello</text>' +
+        '<code_text_end>wrong_code</code_text_end>' +
+        '</response>'
+      );
+
+      // Should NOT emit text since end code is invalid
+      expect(chunks.length).toBe(0);
+      // Should emit error event for invalid end code
+      expect(events.some(e => e.type === 'error' && e.error?.includes('end code'))).toBe(true);
     });
   });
 

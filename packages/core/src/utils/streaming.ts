@@ -1042,13 +1042,21 @@ export class ValidationStreamExtractor implements IStreamExtractor {
           continue;
         }
 
+        if (endCodeValid === false) {
+          // End code present but WRONG - truncated at the end of this field
+          // WHY: Start was valid but end isn't - field content was corrupted
+          this.fieldStates.set(field, 'invalid');
+          this.emitEvent({ type: 'error', field, error: `Invalid end code for ${field}` });
+          continue;
+        }
+
         if (startCodeValid && endCodeValid) {
           // Both codes valid! This field is safe to emit
           this.validatedFields.add(field);
           this.emitEvent({ type: 'field_validated', field });
           this.emitFieldContent(field, content);
         }
-        // If we have start but not end, keep waiting
+        // If we have start but not end (endCodeValid === undefined), keep waiting
         // WHY: Field might still be streaming, closing tag not arrived yet
       } else {
         // No validation needed - emit incrementally as content arrives

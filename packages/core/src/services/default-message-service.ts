@@ -65,8 +65,7 @@ import {
   logger,
 } from '../index';
 import {
-  ResponseStreamExtractor,
-  XmlTagExtractor,
+  PassthroughExtractor,
   createStreamingContext,
 } from '../utils/streaming';
 // Streaming context import removed - using onStreamChunk directly in dynamicPromptExecFromState
@@ -238,15 +237,20 @@ export class DefaultMessageService implements IMessageService {
       });
 
       // Set up streaming context for single-shot mode (multi-step handles its own per-phase)
-      // Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
       const useMultiStep =
         opts.useMultiStep ??
         parseBooleanFromText(String(runtime.getSetting('USE_MULTI_STEP') || ''));
 
-      // Single-shot mode: create streaming context with extractor filtering
+      // WHY: dynamicPromptExecFromState now has ValidationStreamExtractor which handles
+      // XML extraction internally. We pass the user's callback directly - no double extraction.
+      // Old flow: LLM XML → ResponseStreamExtractor → User (BROKEN with new architecture)
+      // New flow: LLM XML → ValidationStreamExtractor (in dynamicPrompt) → User callback
+      //
+      // We still create a StreamingContext for tracking retry state (getStreamedText, isComplete)
+      // but use PassthroughExtractor since dynamicPromptExecFromState handles extraction.
       const streamingContext =
         opts.onStreamChunk && !useMultiStep
-          ? createStreamingContext(new ResponseStreamExtractor(), opts.onStreamChunk, responseId)
+          ? createStreamingContext(new PassthroughExtractor(), opts.onStreamChunk, responseId)
           : undefined;
       // Multi-step mode: streaming is handled per-phase in runMultiStepCore
       // (action execution and summary generation each get their own streaming context)
@@ -1841,9 +1845,11 @@ Output ONLY the continuation, starting immediately after the last character abov
     );
     let summary: Record<string, unknown> | null = null;
 
-    // Set up streaming context for summary (uses XmlTagExtractor for <text> extraction)
+    // Set up streaming context for summary
+    // WHY PassthroughExtractor: dynamicPromptExecFromState handles XML extraction via
+    // ValidationStreamExtractor. We just need to track retry state (getStreamedText, isComplete).
     const summaryStreamingContext = opts.onStreamChunk
-      ? createStreamingContext(new XmlTagExtractor('text'), opts.onStreamChunk, responseId)
+      ? createStreamingContext(new PassthroughExtractor(), opts.onStreamChunk, responseId)
       : undefined;
 
     for (let summaryAttempt = 1; summaryAttempt <= maxSummaryRetries; summaryAttempt++) {
