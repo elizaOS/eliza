@@ -11,7 +11,7 @@ export class MeteoraLpService extends Service {
   private connection: Connection;
   private readonly METEORA_API_URL = 'https://dlmm-api.meteora.ag/pair/all';
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
     const rpcUrl = runtime.getSetting('SOLANA_RPC_URL') || 'https://api.mainnet-beta.solana.com';
     this.connection = new Connection(rpcUrl, 'confirmed');

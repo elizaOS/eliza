@@ -3,7 +3,7 @@ import { google } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateText as aiGenerateText, type CoreMessage, embed } from "ai";
+import { generateText as aiGenerateText, type ModelMessage, embed } from "ai";
 
 type AIModel = Parameters<typeof aiGenerateText>[0]["model"];
 
@@ -420,7 +420,7 @@ async function generateClaudeWithCaching(
 
   const result = await aiGenerateText({
     model: modelInstance,
-    messages: messages as CoreMessage[],
+    messages: messages as ModelMessage[],
     temperature: 0.3,
     maxOutputTokens: maxTokens,
     providerOptions: {

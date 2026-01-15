@@ -17,11 +17,11 @@ export const raydiumPlugin: Plugin = {
     // Try to register with Solana service if available
     const serviceType = "solana";
     const solanaService = runtime.getService(serviceType);
-    if (solanaService && typeof (solanaService as Record<string, unknown>).registerExchange === 'function') {
+    if (solanaService && typeof (solanaService as unknown as Record<string, unknown>).registerExchange === 'function') {
       const me = {
         name: "Raydium DEX services",
       };
-      (solanaService as { registerExchange: (exchange: { name: string }) => void }).registerExchange(me);
+      (solanaService as unknown as { registerExchange: (exchange: { name: string }) => void }).registerExchange(me);
       console.info("Raydium registered with Solana service");
     }
   },

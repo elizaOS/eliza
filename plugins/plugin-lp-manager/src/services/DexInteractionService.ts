@@ -79,7 +79,7 @@ export class DexInteractionService extends Service implements IDexInteractionSer
   private vaultService!: IVaultService;
   private userLpProfileService!: IUserLpProfileService;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
   }
 

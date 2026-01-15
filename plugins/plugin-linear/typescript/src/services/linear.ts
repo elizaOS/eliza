@@ -48,11 +48,6 @@ export class LinearService extends Service {
 
     this.workspaceId = workspaceId;
 
-    this.config = {
-      LINEAR_API_KEY: apiKey,
-      LINEAR_WORKSPACE_ID: workspaceId,
-    };
-
     this.client = new LinearClient({
       apiKey: this.linearConfig.LINEAR_API_KEY,
     });
