@@ -2342,50 +2342,13 @@ export const allActionsSpec = {
     {
       "name": "lp_management",
       "description": "Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions, concentrated liquidity positions with custom price ranges, checking APR/yield, setting auto-rebalance preferences, and finding best pools. Use this action when users mention: liquidity, LP, pools, APR, yield, deposit, withdraw, concentrated, price range, narrow range, degenai, ai16z, SOL pairs, or want help getting started with LP management.",
-      "parameters": [
-        {
-          "name": "action",
-          "description": "The action to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        },
-        {
-          "name": "context",
-          "description": "The context to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
+      "parameters": [],
       "similes": [
         "LP_MANAGEMENT",
         "LIQUIDITY_POOL_MANAGEMENT",
         "LP_MANAGER",
         "MANAGE_LP",
         "MANAGE_LIQUIDITY"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use lp_management with the provided parameters.",
-          "actions": [
-            "lp_management"
-          ],
-          "params": {
-            "lp_management": {
-              "action": "example",
-              "context": "example"
-            }
-          }
-        }
       ]
     },
     {
@@ -2665,7 +2628,7 @@ export const allActionsSpec = {
     },
     {
       "name": "POLYMARKET_CHECK_ORDER_SCORING",
-      "description": "Checks if any of the authenticated user orders are eligible for rewards (scoring).",
+      "description": "Checks whether specific Polymarket order IDs are scoring (eligible for liquidity rewards). Use when user provides order ID(s) and asks about scoring/rewards status. Requires CLOB API credentials. Parameters: orderIds (array of order ID strings, required).",
       "parameters": [],
       "similes": [
         "ORDERS_ELIGIBLE_FOR_REWARDS",
@@ -2674,43 +2637,8 @@ export const allActionsSpec = {
       ]
     },
     {
-      "name": "POLYMARKET_GET_ACCOUNT_ACCESS_STATUS",
-      "description": "Retrieves account access status from Polymarket, including U.S. certification requirements and API key details.",
-      "parameters": [],
-      "similes": [
-        "ACCOUNT_CERTIFICATION_STATUS",
-        "CHECK_MY_POLYMARKET_ACCESS",
-        "POLYMARKET_CERT_REQUIRED",
-        "MY_API_KEYS_STATUS",
-        "USER_ACCESS_INFO"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_ACTIVE_ORDERS",
-      "description": "Fetches open/active orders for the authenticated user from Polymarket, optionally filtered by market or asset.",
-      "parameters": [],
-      "similes": [
-        "GET_OPEN_ORDERS",
-        "VIEW_MY_ORDERS",
-        "LIST_PENDING_ORDERS",
-        "SHOW_UNFILLED_ORDERS",
-        "ORDERS_IN_BOOK"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_MARKET_DETAILS",
-      "description": "Retrieves detailed information about a specific Polymarket market by its condition ID.",
-      "parameters": [],
-      "similes": [
-        "MARKET_INFO",
-        "MARKET_DATA",
-        "SHOW_MARKET",
-        "VIEW_MARKET"
-      ]
-    },
-    {
       "name": "POLYMARKET_GET_MARKETS",
-      "description": "Retrieve available prediction markets from Polymarket with optional filters",
+      "description": "Find or browse Polymarket prediction markets. Use for keyword searches ('find miami heat markets'), ",
       "parameters": [],
       "similes": [
         "GET_MARKETS",
@@ -2720,35 +2648,30 @@ export const allActionsSpec = {
         "POLYMARKET_MARKETS",
         "ALL_MARKETS",
         "BROWSE_MARKETS",
-        "VIEW_MARKETS"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_ORDER_BOOK",
-      "description": "Retrieve order book summary for a specific token",
-      "parameters": [],
-      "similes": [
-        "ORDER_BOOK",
-        "GET_ORDER_BOOK",
-        "SHOW_ORDER_BOOK",
-        "BOOK",
-        "ORDERS"
+        "VIEW_MARKETS",
+        "SEARCH_MARKETS",
+        "FIND_MARKETS",
+        "SEARCH_POLYMARKET",
+        "LOOKUP_MARKETS",
+        "QUERY_MARKETS",
+        "MARKET_SEARCH"
       ]
     },
     {
       "name": "POLYMARKET_GET_ORDER_BOOK_DEPTH",
-      "description": "Retrieves the full order book depth (all bids and asks) for a specific token ID on Polymarket.",
+      "description": "Retrieves order book depth (number of bid/ask levels) for multiple tokens to compare liquidity across markets. Use when comparing depth across multiple markets or finding markets with sufficient liquidity for large trades. Parameters: tokenIds (array of condition token IDs, required).",
       "parameters": [],
       "similes": [
-        "FULL_ORDER_BOOK",
-        "ORDER_DEPTH",
-        "ALL_ORDERS",
-        "DEPTH_OF_MARKET"
+        "ORDER_BOOK_DEPTH",
+        "DEPTH",
+        "MARKET_DEPTH",
+        "LIQUIDITY",
+        "COMPARE_DEPTH"
       ]
     },
     {
       "name": "POLYMARKET_GET_ORDER_DETAILS",
-      "description": "Retrieves detailed information about a specific order by its ID on Polymarket.",
+      "description": "Retrieves detailed information about a specific order by order ID. Use when the user asks about a particular order’s status, size, or fills. Do not use for listing all open orders or trade history; use getActiveOrdersAction or getTradeHistoryAction. Parameters: orderId (required). Requires full CLOB credentials.",
       "parameters": [],
       "similes": [
         "ORDER_INFO",
@@ -2758,19 +2681,23 @@ export const allActionsSpec = {
       ]
     },
     {
-      "name": "POLYMARKET_GET_PRICE_HISTORY",
-      "description": "Retrieves historical prices for a specific token ID on Polymarket over a specified time range.",
+      "name": "POLYMARKET_GET_TOKEN_INFO",
+      "description": "Retrieves comprehensive information about a single Polymarket token including market details (question, status, end date), current pricing (bid/ask, spread, midpoint), 24h price history (OHLC, change %), and user's position and active orders for that token. Parameters: tokenId (condition token ID) or conditionId (market condition ID).",
       "parameters": [],
       "similes": [
-        "HISTORICAL_PRICES",
-        "PRICE_CHART",
-        "TOKEN_PRICE_HISTORY",
-        "PRICE_DATA"
+        "TOKEN_INFO",
+        "TOKEN_DETAILS",
+        "MARKET_INFO",
+        "SHOW_TOKEN",
+        "ABOUT_TOKEN",
+        "TOKEN_SUMMARY",
+        "PRICE_INFO",
+        "MARKET_SUMMARY"
       ]
     },
     {
       "name": "POLYMARKET_GET_TRADE_HISTORY",
-      "description": "Retrieves the authenticated user trade history from Polymarket, optionally filtered by market or asset.",
+      "description": "Retrieves the authenticated user's filled trade history, optionally filtered by market or asset. Use when the user asks for past trades or fills. Do not use for open orders or a specific order status; use getActiveOrdersAction or getOrderDetailsAction. Parameters: market (optional slug), assetId (optional token ID), limit (optional). Requires full CLOB credentials.",
       "parameters": [],
       "similes": [
         "MY_TRADES",
@@ -2781,32 +2708,8 @@ export const allActionsSpec = {
       ]
     },
     {
-      "name": "POLYMARKET_HANDLE_AUTHENTICATION",
-      "description": "Checks and displays the current authentication status for Polymarket CLOB operations.",
-      "parameters": [],
-      "similes": [
-        "CHECK_AUTH",
-        "AUTH_STATUS",
-        "VERIFY_CREDENTIALS",
-        "WALLET_STATUS",
-        "LOGIN_STATUS"
-      ]
-    },
-    {
-      "name": "POLYMARKET_HANDLE_REALTIME_UPDATES",
-      "description": "Manages WebSocket subscriptions for real-time Polymarket data updates including order books and trades.",
-      "parameters": [],
-      "similes": [
-        "SUBSCRIBE_UPDATES",
-        "LIVE_UPDATES",
-        "REALTIME_DATA",
-        "MARKET_STREAM",
-        "WEBSOCKET_STATUS"
-      ]
-    },
-    {
       "name": "POLYMARKET_PLACE_ORDER",
-      "description": "Create and place limit or market orders on Polymarket",
+      "description": "Places a buy/sell order (bet) on Polymarket. Use when user says buy, sell, bet, wager, put money on, or confirms a trade. Will search for market by name if tokenId not provided. Executes immediately without asking for confirmation. Parameters: tokenId or marketName (required), outcome (yes/no), side (buy/sell, default buy), price (0.01-0.99, uses best available if omitted), size (dollar amount or shares, required), orderType (GTC/FOK/FAK, default GTC). Requires CLOB API credentials and private key.",
       "parameters": [],
       "similes": [
         "PLACE_ORDER",
@@ -2821,18 +2724,37 @@ export const allActionsSpec = {
         "SELL",
         "PURCHASE",
         "SUBMIT_ORDER",
-        "EXECUTE_ORDER"
+        "EXECUTE_ORDER",
+        "BET",
+        "WAGER",
+        "PUT_MONEY",
+        "PLACE_BET",
+        "MAKE_BET",
+        "CONFIRM",
+        "CONFIRM_ORDER",
+        "CONFIRM_BET",
+        "CONFIRM_TRADE",
+        "YES_EXECUTE",
+        "EXECUTE",
+        "DO_IT",
+        "GO_AHEAD",
+        "PROCEED"
       ]
     },
     {
-      "name": "POLYMARKET_REVOKE_API_KEY",
-      "description": "Revokes an existing API key from your Polymarket account.",
+      "name": "POLYMARKET_RESEARCH_MARKET",
+      "description": "Initiates or retrieves deep research on a Polymarket prediction market using OpenAI's deep research capabilities. Takes 20-40 minutes. Returns cached results if available, status if in progress, or starts new research. Use forceRefresh=true to force new research. Parameters: marketId (condition_id), marketQuestion (the prediction question), forceRefresh (optional boolean), callbackAction (optional: EVALUATE_TRADE or NOTIFY_ONLY).",
       "parameters": [],
       "similes": [
-        "DELETE_API_KEY",
-        "REMOVE_API_KEY",
-        "DISABLE_API_KEY",
-        "CANCEL_API_KEY"
+        "RESEARCH_MARKET",
+        "ANALYZE_MARKET",
+        "DEEP_RESEARCH",
+        "INVESTIGATE_MARKET",
+        "MARKET_RESEARCH",
+        "RESEARCH_PREDICTION",
+        "STUDY_MARKET",
+        "GET_RESEARCH",
+        "CHECK_RESEARCH"
       ]
     },
     {
