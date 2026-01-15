@@ -13,6 +13,7 @@
     "src/stores/**/*.ts",
     "src/base.ts",
     "src/types.ts",
+    "src/utils.ts",
     "src/utils.browser.ts",
     "src/migration-service.ts",
     "src/migrations.ts",

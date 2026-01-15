@@ -1,6 +1,3 @@
-// Re-export node utils for backwards compatibility
-export { expandTildePath, resolveEnvFile, resolvePgliteDir, isNeonDatabase } from './utils.node';
-
 /**
  * Sanitizes a JSON object by replacing problematic Unicode escape sequences
  * that could cause errors during JSON serialization/storage

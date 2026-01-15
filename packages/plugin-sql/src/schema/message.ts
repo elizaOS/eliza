@@ -1,5 +1,6 @@
 import { pgTable, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { Metadata } from '@elizaos/core';
 import { channelTable } from './channel';
 
 export const messageTable = pgTable('central_messages', {
@@ -15,7 +16,7 @@ export const messageTable = pgTable('central_messages', {
   }),
   sourceType: text('source_type'),
   sourceId: text('source_id'),
-  metadata: jsonb('metadata'),
+  metadata: jsonb('metadata').$type<Metadata>(),
   createdAt: timestamp('created_at', { mode: 'date' })
     .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),
