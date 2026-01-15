@@ -1,5 +1,6 @@
 import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { Metadata } from '@elizaos/core';
 import { agentTable } from './agent';
 
 /**
@@ -20,7 +21,9 @@ export const taskTable = pgTable('tasks', {
   tags: text('tags')
     .array()
     .default(sql`'{}'::text[]`),
-  metadata: jsonb('metadata').default(sql`'{}'::jsonb`),
+  metadata: jsonb('metadata')
+    .$type<Metadata>()
+    .default(sql`'{}'::jsonb`),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

@@ -22,6 +22,17 @@ export type MessageServer = {
   updatedAt: Date;
 };
 
+// Raw SQL row type (snake_case columns from database)
+type RawMessageServerRow = {
+  id: string;
+  name: string;
+  source_type: string;
+  source_id: string | null;
+  metadata: Metadata | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Channel = {
   id: UUID;
   messageServerId: UUID;
@@ -146,7 +157,7 @@ export class MessagingStore implements Store {
   async getMessageServerByRlsServerId(rlsServerId: UUID): Promise<MessageServer | null> {
     return this.ctx.withRetry(async () => {
       // Use raw SQL since server_id column is dynamically added by RLS and not in Drizzle schema
-      const results = await this.db.execute(sql`
+      const results = await this.db.execute<RawMessageServerRow>(sql`
         SELECT id, name, source_type, source_id, metadata, created_at, updated_at
         FROM message_servers
         WHERE server_id = ${rlsServerId}
@@ -154,17 +165,18 @@ export class MessagingStore implements Store {
       `);
 
       const rows = results.rows || results;
-      return rows.length > 0
-        ? {
-            id: rows[0].id as UUID,
-            name: rows[0].name,
-            sourceType: rows[0].source_type,
-            sourceId: rows[0].source_id || undefined,
-            metadata: rows[0].metadata || undefined,
-            createdAt: new Date(rows[0].created_at),
-            updatedAt: new Date(rows[0].updated_at),
-          }
-        : null;
+      if (rows.length === 0) return null;
+
+      const row = rows[0];
+      return {
+        id: row.id as UUID,
+        name: row.name,
+        sourceType: row.source_type,
+        sourceId: row.source_id || undefined,
+        metadata: row.metadata || undefined,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
+      };
     }, 'MessagingStore.getMessageServerByRlsServerId');
   }
 

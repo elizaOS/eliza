@@ -1,5 +1,6 @@
 import { pgTable, text, jsonb, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { Metadata } from '@elizaos/core';
 import { messageServerTable } from './messageServer';
 
 export const channelTable = pgTable('channels', {
@@ -12,7 +13,7 @@ export const channelTable = pgTable('channels', {
   sourceType: text('source_type'),
   sourceId: text('source_id'),
   topic: text('topic'),
-  metadata: jsonb('metadata'),
+  metadata: jsonb('metadata').$type<Metadata>(),
   // Note: server_id is added dynamically by RLS setup, not defined in schema
   createdAt: timestamp('created_at', { mode: 'date' })
     .default(sql`CURRENT_TIMESTAMP`)

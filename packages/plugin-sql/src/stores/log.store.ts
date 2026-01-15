@@ -13,6 +13,25 @@ import { logTable, roomTable } from '../schema';
 import type { Store, StoreContext } from './types';
 import { sanitizeJsonObject } from '../utils';
 
+// Raw SQL row types for aggregate queries
+type ActionSummaryRow = {
+  runId: string;
+  actions: number | string;
+  errors: number | string;
+  modelCalls: number | string;
+};
+
+type EvaluatorSummaryRow = {
+  runId: string;
+  evaluators: number | string;
+};
+
+type GenericSummaryRow = {
+  runId: string;
+  modelLogs: number | string;
+  embeddingErrors: number | string;
+};
+
 export class LogStore implements Store {
   constructor(public readonly ctx: StoreContext) {}
 
@@ -228,7 +247,7 @@ export class LogStore implements Store {
           sql`, `
         )}]::text[]`;
 
-        const actionSummary = await db.execute(sql`
+        const actionSummary = await db.execute<ActionSummaryRow>(sql`
           SELECT
             body->>'runId' as "runId",
             COUNT(*)::int as "actions",
@@ -240,13 +259,7 @@ export class LogStore implements Store {
           GROUP BY body->>'runId'
         `);
 
-        const actionRows = (actionSummary.rows ?? []) as Array<{
-          runId: string;
-          actions: number | string;
-          errors: number | string;
-          modelCalls: number | string;
-        }>;
-
+        const actionRows = actionSummary.rows ?? [];
         for (const row of actionRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
@@ -255,7 +268,7 @@ export class LogStore implements Store {
           counts.modelCalls += Number(row.modelCalls ?? 0);
         }
 
-        const evaluatorSummary = await db.execute(sql`
+        const evaluatorSummary = await db.execute<EvaluatorSummaryRow>(sql`
           SELECT
             body->>'runId' as "runId",
             COUNT(*)::int as "evaluators"
@@ -265,18 +278,14 @@ export class LogStore implements Store {
           GROUP BY body->>'runId'
         `);
 
-        const evaluatorRows = (evaluatorSummary.rows ?? []) as Array<{
-          runId: string;
-          evaluators: number | string;
-        }>;
-
+        const evaluatorRows = evaluatorSummary.rows ?? [];
         for (const row of evaluatorRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
           counts.evaluators += Number(row.evaluators ?? 0);
         }
 
-        const genericSummary = await db.execute(sql`
+        const genericSummary = await db.execute<GenericSummaryRow>(sql`
           SELECT
             body->>'runId' as "runId",
             COUNT(*) FILTER (WHERE type LIKE 'useModel:%')::int as "modelLogs",
@@ -287,12 +296,7 @@ export class LogStore implements Store {
           GROUP BY body->>'runId'
         `);
 
-        const genericRows = (genericSummary.rows ?? []) as Array<{
-          runId: string;
-          modelLogs: number | string;
-          embeddingErrors: number | string;
-        }>;
-
+        const genericRows = genericSummary.rows ?? [];
         for (const row of genericRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
