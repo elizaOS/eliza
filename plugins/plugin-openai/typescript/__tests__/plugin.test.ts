@@ -2,34 +2,7 @@
  * Unit tests for the OpenAI plugin.
  */
 
-import { describe, expect, it, vi } from "vitest";
-
-// Mock @elizaos/core
-vi.mock("@elizaos/core", () => ({
-  logger: {
-    log: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-  ModelType: {
-    TEXT_SMALL: "TEXT_SMALL",
-    TEXT_LARGE: "TEXT_LARGE",
-    TEXT_EMBEDDING: "TEXT_EMBEDDING",
-    TEXT_TOKENIZER_ENCODE: "TEXT_TOKENIZER_ENCODE",
-    TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
-    IMAGE: "IMAGE",
-    IMAGE_DESCRIPTION: "IMAGE_DESCRIPTION",
-    TRANSCRIPTION: "TRANSCRIPTION",
-    TEXT_TO_SPEECH: "TEXT_TO_SPEECH",
-    OBJECT_SMALL: "OBJECT_SMALL",
-    OBJECT_LARGE: "OBJECT_LARGE",
-  },
-  EventType: {
-    MODEL_USED: "MODEL_USED",
-  },
-}));
+import { describe, expect, it } from "vitest";
 
 describe("OpenAI Plugin", () => {
   describe("Plugin Definition", () => {
@@ -72,6 +45,8 @@ describe("OpenAI Plugin", () => {
       expect(config).toHaveProperty("OPENAI_SMALL_MODEL");
       expect(config).toHaveProperty("OPENAI_LARGE_MODEL");
       expect(config).toHaveProperty("OPENAI_EMBEDDING_MODEL");
+      expect(config).toHaveProperty("OPENAI_RESEARCH_MODEL");
+      expect(config).toHaveProperty("OPENAI_RESEARCH_TIMEOUT");
     });
   });
 
@@ -128,6 +103,12 @@ describe("OpenAI Plugin", () => {
       const { openaiPlugin } = await import("../index");
       expect(openaiPlugin.models?.OBJECT_LARGE).toBeDefined();
       expect(typeof openaiPlugin.models?.OBJECT_LARGE).toBe("function");
+    });
+
+    it("should have RESEARCH model handler", async () => {
+      const { openaiPlugin } = await import("../index");
+      expect(openaiPlugin.models?.RESEARCH).toBeDefined();
+      expect(typeof openaiPlugin.models?.RESEARCH).toBe("function");
     });
 
     it("should have TEXT_TOKENIZER_ENCODE model handler", async () => {

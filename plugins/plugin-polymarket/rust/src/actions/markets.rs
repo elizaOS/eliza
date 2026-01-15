@@ -82,6 +82,77 @@ pub async fn get_clob_markets(
     client.get_markets(next_cursor).await
 }
 
+/// Summary of retrieved markets
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RetrieveAllMarketsSummary {
+    /// Total number of markets retrieved
+    pub total_markets: usize,
+    /// Number of active markets
+    pub active_count: usize,
+    /// Number of closed markets
+    pub closed_count: usize,
+    /// Number of pages fetched
+    pub pages_fetched: u32,
+    /// All markets
+    pub markets: Vec<Market>,
+}
+
+/// Retrieve all markets by paginating through the API
+///
+/// This function fetches all available markets by following pagination cursors.
+///
+/// # Arguments
+///
+/// * `client` - The CLOB client
+/// * `max_pages` - Maximum number of pages to fetch (default: 10)
+///
+/// # Returns
+///
+/// Summary with all markets and statistics
+///
+/// # Errors
+///
+/// Returns an error if any API request fails
+pub async fn retrieve_all_markets(
+    client: &ClobClient,
+    max_pages: Option<u32>,
+) -> Result<RetrieveAllMarketsSummary> {
+    use crate::constants::END_CURSOR;
+
+    let max_pages = max_pages.unwrap_or(10);
+    let mut all_markets: Vec<Market> = Vec::new();
+    let mut cursor: Option<String> = None;
+    let mut pages_fetched = 0u32;
+
+    loop {
+        if pages_fetched >= max_pages {
+            break;
+        }
+
+        let response = client.get_markets(cursor.as_deref()).await?;
+        all_markets.extend(response.data);
+        pages_fetched += 1;
+
+        // Check if we've reached the end
+        if response.next_cursor.is_empty() || response.next_cursor == END_CURSOR {
+            break;
+        }
+
+        cursor = Some(response.next_cursor);
+    }
+
+    let active_count = all_markets.iter().filter(|m| m.active && !m.closed).count();
+    let closed_count = all_markets.iter().filter(|m| m.closed).count();
+
+    Ok(RetrieveAllMarketsSummary {
+        total_markets: all_markets.len(),
+        active_count,
+        closed_count,
+        pages_fetched,
+        markets: all_markets,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

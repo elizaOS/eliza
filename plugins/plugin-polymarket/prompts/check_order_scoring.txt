@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to extract one or more order IDs for checking their scoring status.
+extract one or more order IDs for checking their scoring status.
 
 Review the recent messages:
 <recent_messages>

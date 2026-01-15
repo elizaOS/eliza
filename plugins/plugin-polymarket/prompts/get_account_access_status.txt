@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to confirm if the user wants to check their Polymarket account access status, such as U.S. certification requirements.
+confirm if the user wants to check their Polymarket account access status, such as U.S. certification requirements.
 
 Review the recent messages:
 <recent_messages>

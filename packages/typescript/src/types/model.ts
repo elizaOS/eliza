@@ -61,6 +61,7 @@ export const ModelType = {
   VIDEO: "VIDEO",
   OBJECT_SMALL: "OBJECT_SMALL",
   OBJECT_LARGE: "OBJECT_LARGE",
+  RESEARCH: "RESEARCH",
 } as const;
 
 /**
@@ -465,6 +466,238 @@ export interface VideoProcessingParams {
   processingType: string;
 }
 
+// ============================================================================
+// Research Model Types (Deep Research)
+// ============================================================================
+
+/**
+ * Research tool configuration for web search
+ */
+export interface ResearchWebSearchTool {
+  type: "web_search_preview";
+}
+
+/**
+ * Research tool configuration for file search over vector stores
+ */
+export interface ResearchFileSearchTool {
+  type: "file_search";
+  /** Array of vector store IDs to search (max 2) */
+  vectorStoreIds: string[];
+}
+
+/**
+ * Research tool configuration for code interpreter
+ */
+export interface ResearchCodeInterpreterTool {
+  type: "code_interpreter";
+  /** Container configuration */
+  container?: { type: "auto" };
+}
+
+/**
+ * Research tool configuration for remote MCP servers.
+ * MCP servers must implement a search/fetch interface for deep research compatibility.
+ */
+export interface ResearchMcpTool {
+  type: "mcp";
+  /** Label to identify the MCP server */
+  serverLabel: string;
+  /** URL of the remote MCP server */
+  serverUrl: string;
+  /** Approval mode - must be "never" for deep research */
+  requireApproval?: "never";
+}
+
+/**
+ * Union type for all supported research tools
+ */
+export type ResearchTool =
+  | ResearchWebSearchTool
+  | ResearchFileSearchTool
+  | ResearchCodeInterpreterTool
+  | ResearchMcpTool;
+
+/**
+ * Parameters for deep research models (o3-deep-research, o4-mini-deep-research).
+ *
+ * Deep research models can find, analyze, and synthesize hundreds of sources
+ * to create comprehensive reports. They support web search, file search over
+ * vector stores, and remote MCP servers as data sources.
+ *
+ * @example
+ * ```typescript
+ * const result = await runtime.useModel(ModelType.RESEARCH, {
+ *   input: "Research the economic impact of AI on global labor markets",
+ *   tools: [
+ *     { type: "web_search_preview" },
+ *     { type: "code_interpreter", container: { type: "auto" } }
+ *   ],
+ *   background: true,
+ * });
+ * ```
+ */
+export interface ResearchParams {
+  /**
+   * The research input/question.
+   * Should be a detailed, specific question for best results.
+   */
+  input: string;
+
+  /**
+   * Optional instructions to guide the research process.
+   * Can include formatting requirements, source preferences, etc.
+   */
+  instructions?: string;
+
+  /**
+   * Whether to run the request in background mode.
+   * Recommended for long-running research tasks (can take tens of minutes).
+   * When true, the request returns immediately and results can be polled.
+   * @default false
+   */
+  background?: boolean;
+
+  /**
+   * Array of tools/data sources for the research model.
+   * Must include at least one data source: web_search_preview, file_search, or mcp.
+   * Can also include code_interpreter for data analysis.
+   */
+  tools?: ResearchTool[];
+
+  /**
+   * Maximum number of tool calls the model can make.
+   * Use this to control cost and latency.
+   */
+  maxToolCalls?: number;
+
+  /**
+   * Whether to include reasoning summary in the response.
+   * @default "auto"
+   */
+  reasoningSummary?: "auto" | "none";
+
+  /**
+   * Model variant to use.
+   * @default "o3-deep-research"
+   */
+  model?: "o3-deep-research" | "o4-mini-deep-research";
+}
+
+/**
+ * Annotation in research results, linking text to sources
+ */
+export interface ResearchAnnotation {
+  /** URL of the source */
+  url: string;
+  /** Title of the source */
+  title: string;
+  /** Start index in the text where this citation appears */
+  startIndex: number;
+  /** End index in the text where this citation ends */
+  endIndex: number;
+}
+
+/**
+ * Web search action taken by the research model
+ */
+export interface ResearchWebSearchCall {
+  id: string;
+  type: "web_search_call";
+  status: "completed" | "failed";
+  action: {
+    type: "search" | "open_page" | "find_in_page";
+    query?: string;
+    url?: string;
+  };
+}
+
+/**
+ * File search action taken over vector stores
+ */
+export interface ResearchFileSearchCall {
+  id: string;
+  type: "file_search_call";
+  status: "completed" | "failed";
+  query: string;
+  results?: Array<{
+    fileId: string;
+    fileName: string;
+    score: number;
+  }>;
+}
+
+/**
+ * Code interpreter action for data analysis
+ */
+export interface ResearchCodeInterpreterCall {
+  id: string;
+  type: "code_interpreter_call";
+  status: "completed" | "failed";
+  code: string;
+  output?: string;
+}
+
+/**
+ * MCP tool call made to a remote server
+ */
+export interface ResearchMcpToolCall {
+  id: string;
+  type: "mcp_tool_call";
+  status: "completed" | "failed";
+  serverLabel: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+  result?: unknown;
+}
+
+/**
+ * Final message output from research
+ */
+export interface ResearchMessageOutput {
+  type: "message";
+  content: Array<{
+    type: "output_text";
+    text: string;
+    annotations: ResearchAnnotation[];
+  }>;
+}
+
+/**
+ * Union type for all research output items
+ */
+export type ResearchOutputItem =
+  | ResearchWebSearchCall
+  | ResearchFileSearchCall
+  | ResearchCodeInterpreterCall
+  | ResearchMcpToolCall
+  | ResearchMessageOutput;
+
+/**
+ * Result from a deep research model request
+ */
+export interface ResearchResult {
+  /** Unique identifier for the response */
+  id: string;
+
+  /** The final research report text with inline citations */
+  text: string;
+
+  /** Annotations linking text to sources - should be displayed as clickable links */
+  annotations: ResearchAnnotation[];
+
+  /**
+   * Output items showing the research process.
+   * Includes web searches, file searches, code execution, and MCP calls.
+   */
+  outputItems: ResearchOutputItem[];
+
+  /**
+   * For background requests, the current status
+   */
+  status?: "queued" | "in_progress" | "completed" | "failed";
+}
+
 /**
  * Optional JSON schema for validating generated objects
  */
@@ -519,6 +752,7 @@ export interface ModelParamsMap {
   [ModelType.OBJECT_SMALL]: ObjectGenerationParams;
   [ModelType.OBJECT_LARGE]: ObjectGenerationParams;
   [ModelType.TEXT_COMPLETION]: GenerateTextParams;
+  [ModelType.RESEARCH]: ResearchParams;
   // Custom model types should be registered via runtime.registerModel() in plugin init()
 }
 
@@ -557,6 +791,7 @@ export interface ModelResultMap {
   [ModelType.OBJECT_SMALL]: Record<string, unknown>;
   [ModelType.OBJECT_LARGE]: Record<string, unknown>;
   [ModelType.TEXT_COMPLETION]: string;
+  [ModelType.RESEARCH]: ResearchResult;
   // Custom model types should be registered via runtime.registerModel() in plugin init()
 }
 

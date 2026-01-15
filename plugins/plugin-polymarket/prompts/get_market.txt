@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to extract market identification parameters from the user's message.
+extract market identification parameters from the user's message.
 
 Review the recent messages:
 <recent_messages>

@@ -144,6 +144,75 @@ pub async fn get_order_book_summary(
     ))
 }
 
+/// Order book depth information
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OrderBookDepth {
+    /// Number of bid levels
+    pub bid_levels: usize,
+    /// Number of ask levels
+    pub ask_levels: usize,
+    /// Total bid size
+    pub total_bid_size: f64,
+    /// Total ask size
+    pub total_ask_size: f64,
+}
+
+/// Get order book depth for multiple tokens
+///
+/// # Arguments
+///
+/// * `client` - The CLOB client
+/// * `token_ids` - List of token IDs to get depth for
+///
+/// # Returns
+///
+/// Map of token ID to depth information
+///
+/// # Errors
+///
+/// Returns an error if any API request fails
+pub async fn get_order_book_depth(
+    client: &ClobClient,
+    token_ids: &[String],
+) -> Result<std::collections::HashMap<String, OrderBookDepth>> {
+    use std::collections::HashMap;
+
+    let mut result = HashMap::new();
+
+    for token_id in token_ids {
+        match client.get_order_book(token_id).await {
+            Ok(order_book) => {
+                let total_bid_size: f64 = order_book
+                    .bids
+                    .iter()
+                    .filter_map(|e| e.size.parse::<f64>().ok())
+                    .sum();
+                let total_ask_size: f64 = order_book
+                    .asks
+                    .iter()
+                    .filter_map(|e| e.size.parse::<f64>().ok())
+                    .sum();
+
+                result.insert(
+                    token_id.clone(),
+                    OrderBookDepth {
+                        bid_levels: order_book.bids.len(),
+                        ask_levels: order_book.asks.len(),
+                        total_bid_size,
+                        total_ask_size,
+                    },
+                );
+            }
+            Err(e) => {
+                // Log error but continue with other tokens
+                eprintln!("Failed to get order book for {}: {}", token_id, e);
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

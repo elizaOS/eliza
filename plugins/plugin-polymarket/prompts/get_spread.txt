@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to extract token identification parameters for retrieving spread data for a market.
+extract token identification parameters for retrieving spread data for a market.
 
 Review the recent messages:
 <recent_messages>

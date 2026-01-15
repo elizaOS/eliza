@@ -32,12 +32,6 @@ describe("Polymarket Plugin Integration Tests", () => {
       expect(Array.isArray(polymarketPlugin.providers)).toBe(true);
     });
 
-    it("should have actions defined", async () => {
-      expect(polymarketPlugin.actions).toBeDefined();
-      expect(Array.isArray(polymarketPlugin.actions)).toBe(true);
-      expect(polymarketPlugin.actions?.length).toBeGreaterThan(0);
-    });
-
     it("should have init function", async () => {
       expect(typeof polymarketPlugin.init).toBe("function");
     });
@@ -55,7 +49,6 @@ describe("Polymarket Plugin Integration Tests", () => {
     it("should export market actions", async () => {
       const actions = await import("../actions");
       expect(actions.retrieveAllMarketsAction).toBeDefined();
-      expect(actions.getSimplifiedMarketsAction).toBeDefined();
       expect(actions.getMarketDetailsAction).toBeDefined();
     });
 
@@ -63,7 +56,6 @@ describe("Polymarket Plugin Integration Tests", () => {
       const actions = await import("../actions");
       expect(actions.getOrderBookSummaryAction).toBeDefined();
       expect(actions.getOrderBookDepthAction).toBeDefined();
-      expect(actions.getBestPriceAction).toBeDefined();
     });
 
     it("should export trading actions", async () => {

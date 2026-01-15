@@ -102,6 +102,8 @@ pub mod model_type {
     pub const OBJECT_SMALL: &str = "OBJECT_SMALL";
     /// Large object generation model
     pub const OBJECT_LARGE: &str = "OBJECT_LARGE";
+    /// Deep research model (o3-deep-research, o4-mini-deep-research)
+    pub const RESEARCH: &str = "RESEARCH";
 }
 
 /// Model settings keys
@@ -388,6 +390,98 @@ pub enum ObjectOutputType {
     Array,
     /// Enum output
     Enum,
+}
+
+// ============================================================================
+// Research Model Types (Deep Research)
+// ============================================================================
+
+/// Research tool configuration
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResearchTool {
+    /// Web search tool
+    WebSearchPreview,
+    /// File search over vector stores
+    FileSearch {
+        /// Vector store IDs (max 2)
+        vector_store_ids: Vec<String>,
+    },
+    /// Code interpreter for data analysis
+    CodeInterpreter {
+        /// Container configuration
+        #[serde(skip_serializing_if = "Option::is_none")]
+        container: Option<serde_json::Value>,
+    },
+    /// Remote MCP server
+    Mcp {
+        /// MCP server label
+        server_label: String,
+        /// MCP server URL
+        server_url: String,
+        /// Approval mode (must be "never" for deep research)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        require_approval: Option<String>,
+    },
+}
+
+/// Parameters for deep research models (o3-deep-research, o4-mini-deep-research)
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResearchParams {
+    /// The research input/question
+    pub input: String,
+    /// Optional instructions to guide research
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    /// Run in background mode for long tasks
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background: Option<bool>,
+    /// Research tools (web_search_preview, file_search, mcp, code_interpreter)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<ResearchTool>>,
+    /// Maximum number of tool calls
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tool_calls: Option<i32>,
+    /// Include reasoning summary ("auto" or "none")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_summary: Option<String>,
+    /// Model variant (o3-deep-research or o4-mini-deep-research)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+/// Annotation linking text to a source
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResearchAnnotation {
+    /// Source URL
+    pub url: String,
+    /// Source title
+    pub title: String,
+    /// Start index in text
+    pub start_index: i32,
+    /// End index in text
+    pub end_index: i32,
+}
+
+/// Result from a deep research request
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResearchResult {
+    /// Response ID
+    pub id: String,
+    /// Research report text with inline citations
+    pub text: String,
+    /// Source annotations
+    #[serde(default)]
+    pub annotations: Vec<ResearchAnnotation>,
+    /// Research process output items
+    #[serde(default)]
+    pub output_items: Vec<serde_json::Value>,
+    /// Background request status
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
 }
 
 /// Model handler registration

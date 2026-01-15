@@ -383,6 +383,12 @@ export interface OpenAIPluginConfig {
 
   /** Image generation model */
   OPENAI_IMAGE_MODEL?: string;
+
+  /** Deep research model (o3-deep-research or o4-mini-deep-research) */
+  OPENAI_RESEARCH_MODEL?: string;
+
+  /** Timeout for deep research requests in milliseconds (default: 3600000 = 1 hour) */
+  OPENAI_RESEARCH_TIMEOUT?: string;
 }
 
 /**

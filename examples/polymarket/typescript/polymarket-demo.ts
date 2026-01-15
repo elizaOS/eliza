@@ -1,70 +1,101 @@
+/**
+ * elizaOS Polymarket Trading Agent Demo
+ *
+ * Entry point for the AI-powered Polymarket trading agent.
+ * This demo showcases elizaOS capabilities:
+ * - AgentRuntime with plugins (SQL, OpenAI, EVM, Polymarket)
+ * - Message service pipeline for AI decision making
+ * - Memory persistence for trading history
+ *
+ * Usage:
+ *   OPENAI_API_KEY=key EVM_PRIVATE_KEY=key bun run polymarket-demo.ts once --network
+ *
+ * For live trading (requires CLOB API credentials):
+ *   OPENAI_API_KEY=key EVM_PRIVATE_KEY=key CLOB_API_KEY=key CLOB_API_SECRET=secret CLOB_API_PASSPHRASE=pass \
+ *   bun run polymarket-demo.ts once --network --execute
+ */
+
+// Suppress verbose logging
+process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
+
+import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+import dotenv from "dotenv";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, ".env") });
 
 import { parseArgs } from "./lib";
-import { once, run, verify } from "./runner";
+import { chat, verify } from "./runner";
 
-type Command = "help" | "verify" | "once" | "run";
+type Command = "help" | "verify" | "chat";
 
 function usage(): void {
   const text = [
-    "Polymarket demo agent (TypeScript)",
+    "elizaOS Polymarket Trading Agent",
+    "",
+    "An AI agent that analyzes prediction markets and makes trading decisions.",
     "",
     "Commands:",
+    "  chat                   Start a chat session (default)",
     "  verify                 Validate config and wallet derivation (offline unless --network)",
-    "  once --network         One market tick (dry-run unless --execute)",
-    "  run --network          Loop market ticks",
+    "",
+    "Required Environment:",
+    "  OPENAI_API_KEY         For AI decision making",
+    "  EVM_PRIVATE_KEY        Wallet for Polymarket (or POLYMARKET_PRIVATE_KEY)",
+    "",
+    "Optional Environment:",
+    "  CLOB_API_URL           CLOB API URL (default: https://clob.polymarket.com)",
+    "  CLOB_API_KEY           Required for --execute (live trading)",
+    "  CLOB_API_SECRET        Required for --execute",
+    "  CLOB_API_PASSPHRASE    Required for --execute",
+    "  PGLITE_DATA_DIR        Persistent database path (default: memory://)",
     "",
     "Flags:",
     "  --network              Perform network calls (CLOB API)",
-    "  --execute              Place orders (requires CLOB_API_KEY/CLOB_API_SECRET/CLOB_API_PASSPHRASE)",
+    "  --execute              Place real orders (requires CLOB credentials)",
     "  --interval-ms <n>      Loop delay for `run` (default 30000)",
     "  --iterations <n>       Loop count for `run` (default 10)",
     "  --order-size <n>       Order size in shares (default 1)",
-    "  --max-pages <n>        Pages to scan for an active market (default 1)",
-    "  --chain <name>         EVM chain name for wallet provider (default polygon)",
+    "  --max-pages <n>        Pages to scan for active markets (default 1)",
+    "  --chain <name>         EVM chain name (default polygon)",
     "  --rpc-url <url>        Custom RPC URL for the chain",
-    "  --private-key <hex>    Private key (overrides env vars; accepts with/without 0x)",
+    "  --private-key <hex>    Private key (overrides env vars)",
     "  --clob-api-url <url>   CLOB API URL (overrides env var)",
     "",
-    "Env:",
-    "  EVM_PRIVATE_KEY (or POLYMARKET_PRIVATE_KEY)",
-    "  CLOB_API_URL (optional; default https://clob.polymarket.com)",
-    "  CLOB_API_KEY/CLOB_API_SECRET/CLOB_API_PASSPHRASE (required for --execute)",
+    "Examples:",
+    "  # Interactive chat (with /autonomy true|false)",
+    "  bun run polymarket-demo.ts chat --network",
   ].join("\n");
-  // eslint-disable-next-line no-console
   console.log(text);
 }
 
 async function main(): Promise<void> {
   const { command, options } = parseArgs(process.argv.slice(2));
 
-  if (command === "help") {
-    usage();
-    return;
+  switch (command as Command) {
+    case "help":
+      usage();
+      break;
+    case "chat":
+      await chat(options);
+      break;
+    case "verify":
+      await verify(options);
+      break;
+    default:
+      usage();
   }
-
-  if (command === "verify") {
-    await verify(options);
-    return;
-  }
-
-  if (command === "once") {
-    await once(options);
-    return;
-  }
-
-  if (command === "run") {
-    await run(options);
-    return;
-  }
-
-  usage();
 }
 
-await main().catch((err) => {
-  const message = err instanceof Error ? err.message : String(err);
-  // eslint-disable-next-line no-console
-  console.error(message);
-  process.exitCode = 1;
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("❌ Error:", message);
+    process.exit(1);
+  });
+}
 

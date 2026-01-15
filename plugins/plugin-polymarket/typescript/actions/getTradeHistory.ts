@@ -4,13 +4,14 @@ import {
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
-  logger,
   type Memory,
   type State,
 } from "@elizaos/core";
 import type { ClobClient } from "@polymarket/clob-client";
+import { POLYMARKET_SERVICE_NAME } from "../constants";
+import type { PolymarketService } from "../services/polymarket";
 import { getTradeHistoryTemplate } from "../templates";
-import type { GetTradesParams, TradeEntry } from "../types";
+import type { GetTradesParams, TradeEntry, TradeHistoryActivityData } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
@@ -39,10 +40,12 @@ export const getTradeHistoryAction: Action = {
     (s) => `POLYMARKET_${s}`
   ),
   description:
-    "Retrieves the authenticated user trade history from Polymarket, optionally filtered by market or asset.",
+    "Retrieves the authenticated user's filled trade history, optionally filtered by market or asset. Use when the user asks for past trades or fills. Do not use for open orders or a specific order status; use getActiveOrdersAction or getOrderDetailsAction. Parameters: market (optional slug), assetId (optional token ID), limit (optional). Requires full CLOB credentials.",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
-    logger.info(`[getTradeHistoryAction] Validate called for message: "${message.content?.text}"`);
+    runtime.logger.info(
+      `[getTradeHistoryAction] Validate called for message: "${message.content?.text}"`
+    );
     const clobApiUrl = runtime.getSetting("CLOB_API_URL");
     const clobApiKey = runtime.getSetting("CLOB_API_KEY");
     const clobApiSecret =
@@ -55,11 +58,11 @@ export const getTradeHistoryAction: Action = {
       runtime.getSetting("POLYMARKET_PRIVATE_KEY");
 
     if (!clobApiUrl) {
-      logger.warn("[getTradeHistoryAction] CLOB_API_URL is required.");
+      runtime.logger.warn("[getTradeHistoryAction] CLOB_API_URL is required.");
       return false;
     }
     if (!privateKey) {
-      logger.warn(
+      runtime.logger.warn(
         "[getTradeHistoryAction] A private key (WALLET_PRIVATE_KEY, PRIVATE_KEY, or POLYMARKET_PRIVATE_KEY) is required."
       );
       return false;
@@ -69,12 +72,12 @@ export const getTradeHistoryAction: Action = {
       if (!clobApiKey) missing.push("CLOB_API_KEY");
       if (!clobApiSecret) missing.push("CLOB_API_SECRET or CLOB_SECRET");
       if (!clobApiPassphrase) missing.push("CLOB_API_PASSPHRASE or CLOB_PASS_PHRASE");
-      logger.warn(
+      runtime.logger.warn(
         `[getTradeHistoryAction] Missing required API credentials for L2 authentication: ${missing.join(", ")}.`
       );
       return false;
     }
-    logger.info("[getTradeHistoryAction] Validation passed");
+    runtime.logger.info("[getTradeHistoryAction] Validation passed");
     return true;
   },
 
@@ -85,7 +88,7 @@ export const getTradeHistoryAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    logger.info("[getTradeHistoryAction] Handler called!");
+    runtime.logger.info("[getTradeHistoryAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMTradeHistoryResult>(
       runtime,
@@ -97,7 +100,7 @@ export const getTradeHistoryAction: Action = {
     if (result && !isLLMError(result)) {
       llmResult = result;
     }
-    logger.info(`[getTradeHistoryAction] LLM result: ${JSON.stringify(llmResult)}`);
+    runtime.logger.info(`[getTradeHistoryAction] LLM result: ${JSON.stringify(llmResult)}`);
 
     const market = llmResult.market;
     const assetId = llmResult.assetId;
@@ -107,7 +110,7 @@ export const getTradeHistoryAction: Action = {
     if (market) apiParams.market = market;
     if (assetId) apiParams.asset_id = assetId;
 
-    logger.info(
+    runtime.logger.info(
       `[getTradeHistoryAction] Fetching trade history with params: ${JSON.stringify(apiParams)}`
     );
 
@@ -153,6 +156,27 @@ export const getTradeHistoryAction: Action = {
     };
 
     if (callback) await callback(responseContent);
+
+    // Record activity
+    const service = runtime.getService(POLYMARKET_SERVICE_NAME) as PolymarketService | undefined;
+    if (service) {
+      const activityData: TradeHistoryActivityData = {
+        type: "trade_history",
+        totalTrades: trades.length,
+        recentTrades: trades.slice(0, 5).map((t: TradeEntry) => ({
+          tradeId: t.id,
+          side: t.side,
+          price: t.price,
+          size: t.size,
+          market: t.market,
+        })),
+        filterMarket: market,
+        filterAssetId: assetId,
+        nextCursor: tradesResponse?.next_cursor,
+      };
+      await service.recordActivity(activityData);
+    }
+
     return {
       success: true,
       text: responseText,
@@ -188,6 +212,18 @@ export const getTradeHistoryAction: Action = {
         content: {
           text: "Looking up your past trades on Polymarket...",
           action: "POLYMARKET_GET_TRADE_HISTORY",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: { text: "Is my order 0xabc still open?" },
+      },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "That’s an order-status check rather than trade history. I can look up the order details if you want.",
         },
       },
     ],

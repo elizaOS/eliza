@@ -192,6 +192,13 @@ class Position(BaseModel):
     unrealized_pnl: str
 
 
+class BalanceAllowance(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    balance: str
+    allowance: str
+
+
 class Balance(BaseModel):
     model_config = ConfigDict(frozen=True)
 

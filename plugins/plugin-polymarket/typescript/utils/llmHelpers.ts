@@ -1,5 +1,72 @@
-import { composePromptFromState, type IAgentRuntime, ModelType, type State } from "@elizaos/core";
+import {
+  composePromptFromState,
+  type Content,
+  type HandlerCallback,
+  type IAgentRuntime,
+  ModelType,
+  type State,
+} from "@elizaos/core";
 import { LLM_CALL_TIMEOUT_MS } from "../constants";
+
+// =============================================================================
+// Streaming Action Helpers
+// =============================================================================
+
+/**
+ * Send an acknowledgement message before making an API call.
+ * This provides immediate feedback to the user about what's being done.
+ */
+export async function sendAcknowledgement(
+  callback: HandlerCallback | undefined,
+  message: string,
+  params?: Record<string, string | number | boolean | undefined>
+): Promise<void> {
+  if (!callback) return;
+
+  let text = `⏳ ${message}`;
+  if (params && Object.keys(params).length > 0) {
+    const paramStr = Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== "")
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(", ");
+    if (paramStr) {
+      text += `\n📋 Parameters: ${paramStr}`;
+    }
+  }
+
+  const content: Content = { text };
+  await callback(content);
+}
+
+/**
+ * Send an error message via callback.
+ */
+export async function sendError(
+  callback: HandlerCallback | undefined,
+  errorMessage: string,
+  context?: string
+): Promise<void> {
+  if (!callback) return;
+
+  let text = `❌ **Error**: ${errorMessage}`;
+  if (context) {
+    text += `\n📍 Context: ${context}`;
+  }
+
+  const content: Content = { text };
+  await callback(content);
+}
+
+/**
+ * Send a streaming update message.
+ */
+export async function sendUpdate(
+  callback: HandlerCallback | undefined,
+  message: string
+): Promise<void> {
+  if (!callback) return;
+  await callback({ text: message });
+}
 
 export async function callLLMWithTimeout<T>(
   runtime: IAgentRuntime,

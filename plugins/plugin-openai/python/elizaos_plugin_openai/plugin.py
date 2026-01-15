@@ -24,6 +24,8 @@ from elizaos_plugin_openai.types import (
     ImageSize,
     ImageStyle,
     OpenAIConfig,
+    ResearchParams,
+    ResearchResult,
     TextGenerationParams,
     TextToSpeechParams,
     TranscriptionParams,
@@ -41,6 +43,8 @@ class OpenAIPlugin:
         large_model: str = "gpt-5",
         embedding_model: str = "text-embedding-3-small",
         embedding_dimensions: int = 1536,
+        research_model: str | None = None,
+        research_timeout: float | None = None,
     ) -> None:
         key = api_key or os.environ.get("OPENAI_API_KEY")
         if not key:
@@ -58,6 +62,14 @@ class OpenAIPlugin:
             except ValueError:
                 timeout = 60.0
 
+        research_timeout_raw = os.environ.get("OPENAI_RESEARCH_TIMEOUT")
+        research_timeout_value = research_timeout
+        if research_timeout_value is None and research_timeout_raw:
+            try:
+                research_timeout_value = float(research_timeout_raw)
+            except ValueError:
+                research_timeout_value = None
+
         self._config = OpenAIConfig(
             api_key=key,
             base_url=base_url,
@@ -65,6 +77,10 @@ class OpenAIPlugin:
             large_model=large_model,
             embedding_model=embedding_model,
             embedding_dimensions=embedding_dimensions,
+            research_model=research_model
+            or os.environ.get("OPENAI_RESEARCH_MODEL")
+            or "o3-deep-research",
+            research_timeout=research_timeout_value or 3600.0,
             timeout=timeout,
         )
         self._client = OpenAIClient(self._config)
@@ -318,6 +334,51 @@ class OpenAIPlugin:
 
         return json.loads(cleaned.strip())  # type: ignore[no-any-return]
 
+    async def deep_research(
+        self,
+        input_text: str,
+        *,
+        instructions: str | None = None,
+        background: bool = False,
+        tools: list[dict[str, object]] | None = None,
+        max_tool_calls: int | None = None,
+        model: str | None = None,
+    ) -> ResearchResult:
+        """
+        Perform deep research using OpenAI's deep research models.
+
+        Deep research models can find, analyze, and synthesize hundreds of sources
+        to create comprehensive reports. They can take tens of minutes to complete.
+
+        Args:
+            input_text: The research question or topic.
+            instructions: Optional instructions to guide the research.
+            background: Run in background mode for long tasks.
+            tools: List of tool configurations (web_search_preview, file_search, code_interpreter, mcp).
+            max_tool_calls: Maximum number of tool calls to limit cost/latency.
+            model: Model variant (o3-deep-research or o4-mini-deep-research).
+
+        Returns:
+            ResearchResult with text, annotations, and research process details.
+
+        Example:
+            >>> result = await plugin.deep_research(
+            ...     "What is the economic impact of AI on global labor markets?",
+            ...     tools=[{"type": "web_search_preview"}],
+            ...     max_tool_calls=50,
+            ... )
+            >>> print(result.text)
+        """
+        params = ResearchParams(
+            input=input_text,
+            instructions=instructions,
+            background=background,
+            tools=tools or [{"type": "web_search_preview"}],
+            max_tool_calls=max_tool_calls,
+            model=model,
+        )
+        return await self._client.deep_research(params)
+
 
 def create_plugin(
     api_key: str | None = None,
@@ -339,11 +400,19 @@ def create_openai_elizaos_plugin() -> Plugin:
     def _get_client() -> OpenAIPlugin:
         nonlocal _client
         if _client is None:
+            research_timeout_env = os.environ.get("OPENAI_RESEARCH_TIMEOUT", "3600")
+            try:
+                research_timeout_value = float(research_timeout_env)
+            except ValueError:
+                research_timeout_value = 3600.0
+
             _client = OpenAIPlugin(
                 api_key=os.environ.get("OPENAI_API_KEY"),
                 base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
                 small_model=os.environ.get("OPENAI_SMALL_MODEL", "gpt-5-mini"),
                 large_model=os.environ.get("OPENAI_LARGE_MODEL", "gpt-5"),
+                research_model=os.environ.get("OPENAI_RESEARCH_MODEL"),
+                research_timeout=research_timeout_value,
             )
         return _client
 
@@ -398,6 +467,32 @@ def create_openai_elizaos_plugin() -> Plugin:
         ):
             yield chunk
 
+    async def research_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> dict[str, Any]:
+        client = _get_client()
+        result = await client.deep_research(
+            params.get("input", ""),
+            instructions=params.get("instructions"),
+            background=params.get("background", False),
+            tools=params.get("tools"),
+            max_tool_calls=params.get("maxToolCalls"),
+            model=params.get("model"),
+        )
+        return {
+            "id": result.id,
+            "text": result.text,
+            "annotations": [
+                {
+                    "url": ann.url,
+                    "title": ann.title,
+                    "startIndex": ann.start_index,
+                    "endIndex": ann.end_index,
+                }
+                for ann in result.annotations
+            ],
+            "outputItems": result.output_items,
+            "status": result.status,
+        }
+
     return Plugin(
         name="openai",
         description="OpenAI model provider for elizaOS",
@@ -405,6 +500,7 @@ def create_openai_elizaos_plugin() -> Plugin:
             ModelType.TEXT_LARGE.value: text_large_handler,
             ModelType.TEXT_SMALL.value: text_small_handler,
             ModelType.TEXT_EMBEDDING.value: embedding_handler,
+            ModelType.RESEARCH.value: research_handler,
         },
         streaming_models={
             ModelType.TEXT_LARGE_STREAM.value: text_large_stream_handler,

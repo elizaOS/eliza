@@ -22,6 +22,7 @@ use crate::advanced_memory;
 use anyhow::{Context, Result};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
 use std::any::Any;
@@ -363,6 +364,8 @@ pub struct AgentRuntime {
     check_should_respond_option: Option<bool>,
     /// Capability options captured at construction time (tri-state; `None` means defer to settings).
     capability_options: CapabilityOptions,
+    /// Runtime flag that toggles autonomy execution.
+    enable_autonomy: AtomicBool,
 }
 
 /// Tri-state capability options (mirrors TypeScript bootstrap capability config behavior).
@@ -446,6 +449,7 @@ impl AgentRuntime {
                 enable_autonomy: opts.enable_autonomy,
                 skip_character_provider: is_anonymous,
             },
+            enable_autonomy: AtomicBool::new(opts.enable_autonomy.unwrap_or(false)),
         };
 
         Ok(Arc::new(runtime))
@@ -539,6 +543,7 @@ impl AgentRuntime {
         let enable_autonomy = self.capability_options.enable_autonomy.unwrap_or(
             parse_truthy_setting(self.get_setting("ENABLE_AUTONOMY").await),
         );
+        self.set_enable_autonomy(enable_autonomy);
 
         // Bootstrap plugin parity: always register built-in bootstrap capabilities first.
         // Capability config precedence matches TS: constructor options > character settings > defaults.
@@ -814,6 +819,16 @@ impl AgentRuntime {
                 .cloned()
                 .map(normalize_setting_value)
         }
+    }
+
+    /// Get the runtime autonomy flag.
+    pub fn enable_autonomy(&self) -> bool {
+        self.enable_autonomy.load(Ordering::SeqCst)
+    }
+
+    /// Update the runtime autonomy flag.
+    pub fn set_enable_autonomy(&self, enabled: bool) {
+        self.enable_autonomy.store(enabled, Ordering::SeqCst);
     }
 
     /// Set a setting value (TypeScript-compatible semantics).

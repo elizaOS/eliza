@@ -4,13 +4,14 @@ import {
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
-  logger,
   type Memory,
   type State,
 } from "@elizaos/core";
 import type { ClobClient } from "@polymarket/clob-client";
+import { POLYMARKET_SERVICE_NAME } from "../constants";
+import type { PolymarketService } from "../services/polymarket";
 import { getOrderDetailsTemplate } from "../templates";
-import type { DetailedOrder } from "../types";
+import type { DetailedOrder, OrderDetailsActivityData } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
@@ -26,10 +27,13 @@ interface LLMOrderDetailsResult {
 export const getOrderDetailsAction: Action = {
   name: "POLYMARKET_GET_ORDER_DETAILS",
   similes: ["ORDER_INFO", "VIEW_ORDER", "SHOW_ORDER", "ORDER_STATUS"].map((s) => `POLYMARKET_${s}`),
-  description: "Retrieves detailed information about a specific order by its ID on Polymarket.",
+  description:
+    "Retrieves detailed information about a specific order by order ID. Use when the user asks about a particular order’s status, size, or fills. Do not use for listing all open orders or trade history; use getActiveOrdersAction or getTradeHistoryAction. Parameters: orderId (required). Requires full CLOB credentials.",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
-    logger.info(`[getOrderDetailsAction] Validate called for message: "${message.content?.text}"`);
+    runtime.logger.info(
+      `[getOrderDetailsAction] Validate called for message: "${message.content?.text}"`
+    );
     const clobApiUrl = runtime.getSetting("CLOB_API_URL");
     const clobApiKey = runtime.getSetting("CLOB_API_KEY");
     const clobApiSecret =
@@ -42,11 +46,11 @@ export const getOrderDetailsAction: Action = {
       runtime.getSetting("POLYMARKET_PRIVATE_KEY");
 
     if (!clobApiUrl) {
-      logger.warn("[getOrderDetailsAction] CLOB_API_URL is required.");
+      runtime.logger.warn("[getOrderDetailsAction] CLOB_API_URL is required.");
       return false;
     }
     if (!privateKey) {
-      logger.warn(
+      runtime.logger.warn(
         "[getOrderDetailsAction] A private key (WALLET_PRIVATE_KEY, PRIVATE_KEY, or POLYMARKET_PRIVATE_KEY) is required."
       );
       return false;
@@ -56,12 +60,12 @@ export const getOrderDetailsAction: Action = {
       if (!clobApiKey) missing.push("CLOB_API_KEY");
       if (!clobApiSecret) missing.push("CLOB_API_SECRET or CLOB_SECRET");
       if (!clobApiPassphrase) missing.push("CLOB_API_PASSPHRASE or CLOB_PASS_PHRASE");
-      logger.warn(
+      runtime.logger.warn(
         `[getOrderDetailsAction] Missing required API credentials for L2 authentication: ${missing.join(", ")}.`
       );
       return false;
     }
-    logger.info("[getOrderDetailsAction] Validation passed");
+    runtime.logger.info("[getOrderDetailsAction] Validation passed");
     return true;
   },
 
@@ -72,7 +76,7 @@ export const getOrderDetailsAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    logger.info("[getOrderDetailsAction] Handler called!");
+    runtime.logger.info("[getOrderDetailsAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMOrderDetailsResult>(
       runtime,
@@ -84,7 +88,7 @@ export const getOrderDetailsAction: Action = {
     if (result && !isLLMError(result)) {
       llmResult = result;
     }
-    logger.info(`[getOrderDetailsAction] LLM result: ${JSON.stringify(llmResult)}`);
+    runtime.logger.info(`[getOrderDetailsAction] LLM result: ${JSON.stringify(llmResult)}`);
 
     if (llmResult.error || !llmResult.orderId) {
       throw new Error(llmResult.error || "Order ID not found in LLM result.");
@@ -92,7 +96,7 @@ export const getOrderDetailsAction: Action = {
 
     const orderId = llmResult.orderId;
 
-    logger.info(`[getOrderDetailsAction] Fetching details for order: ${orderId}`);
+    runtime.logger.info(`[getOrderDetailsAction] Fetching details for order: ${orderId}`);
 
     const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
     const order: DetailedOrder = await client.getOrder(orderId);
@@ -132,6 +136,24 @@ export const getOrderDetailsAction: Action = {
     };
 
     if (callback) await callback(responseContent);
+
+    // Record activity
+    const service = runtime.getService(POLYMARKET_SERVICE_NAME) as PolymarketService | undefined;
+    if (service && order) {
+      const activityData: OrderDetailsActivityData = {
+        type: "order_details",
+        orderId: order.id,
+        status: order.status,
+        side: order.side,
+        price: order.price,
+        originalSize: order.original_size,
+        sizeMatched: order.size_matched,
+        market: order.market,
+        assetId: order.asset_id,
+      };
+      await service.recordActivity(activityData);
+    }
+
     return {
       success: true,
       text: responseText,
@@ -175,6 +197,18 @@ export const getOrderDetailsAction: Action = {
         content: {
           text: "Looking up order 0xdef456 on Polymarket...",
           action: "POLYMARKET_GET_ORDER_DETAILS",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: { text: "Show me all my open orders." },
+      },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "That’s a list of open orders rather than a specific order ID. I can fetch your active orders.",
         },
       },
     ],

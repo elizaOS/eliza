@@ -25,7 +25,6 @@ bun install
 export OPENAI_API_KEY="..."
 
 # Optional: tweak autonomy behavior
-export AUTONOMY_ENABLED=false
 export AUTONOMY_MODE=task
 
 bun run start

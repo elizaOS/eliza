@@ -3,12 +3,14 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
     "strict": true,
     "noImplicitAny": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
-    "types": ["bun-types"]
+    "types": ["bun-types", "node", "react"]
   }
 }
 

@@ -156,6 +156,7 @@ export class AgentRuntime implements IAgentRuntime {
   private isAnonymousCharacter = false;
 
   public logger;
+  public enableAutonomy: boolean;
   private settings: RuntimeSettings;
   private servicePromiseHandlers = new Map<string, ServicePromiseHandler>(); // Combined handlers for resolve/reject
   private servicePromises = new Map<string, Promise<Service>>(); // read
@@ -279,6 +280,10 @@ export class AgentRuntime implements IAgentRuntime {
     }
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
     this.settings = opts.settings ?? environmentSettings;
+    const enableAutonomyFromSettings =
+      this.character.settings?.ENABLE_AUTONOMY === true ||
+      this.character.settings?.ENABLE_AUTONOMY === "true";
+    this.enableAutonomy = opts.enableAutonomy ?? enableAutonomyFromSettings;
 
     this.plugins = []; // Initialize plugins as an empty array
     this.characterPlugins = opts.plugins ?? []; // Store the original character plugins

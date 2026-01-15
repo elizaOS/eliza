@@ -1,7 +1,5 @@
 import {
   checkOrderScoringTemplate,
-  getAccountAccessStatusTemplate,
-  getActiveOrdersTemplate,
   getBestPriceTemplate,
   getMarketTemplate,
   getMidpointPriceTemplate,
@@ -12,11 +10,11 @@ import {
   getSamplingMarketsTemplate,
   getSimplifiedMarketsTemplate,
   getSpreadTemplate,
-  getTradeHistoryTemplate,
   orderTemplate,
   retrieveAllMarketsTemplate,
   setupWebsocketTemplate,
-} from "./generated/prompts/typescript/prompts.js";
+  researchMarketTemplate,
+} from "./generated/prompts/typescript/prompts";
 
 export {
   retrieveAllMarketsTemplate,
@@ -32,8 +30,10 @@ export {
   getOrderDetailsTemplate,
   getPriceHistoryTemplate,
   checkOrderScoringTemplate,
-  getActiveOrdersTemplate,
-  getTradeHistoryTemplate,
-  getAccountAccessStatusTemplate,
   setupWebsocketTemplate,
+  researchMarketTemplate,
 };
+
+// Note: getActiveOrdersTemplate, getTradeHistoryTemplate, and getAccountAccessStatusTemplate
+// are no longer exported as these actions have been removed. Account state is now
+// automatically cached by the PolymarketService and provided via the provider.

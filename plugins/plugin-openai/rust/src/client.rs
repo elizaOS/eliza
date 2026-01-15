@@ -15,7 +15,8 @@ use crate::error::{OpenAIError, Result};
 use crate::types::{
     ChatCompletionResponse, ChatMessage, EmbeddingParams, EmbeddingResponse,
     ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams, ImageGenerationResponse,
-    ImageGenerationResult, ModelsResponse, OpenAIConfig, TextGenerationParams, TextToSpeechParams,
+    ImageGenerationResult, ModelsResponse, OpenAIConfig, ResearchAnnotation, ResearchParams,
+    ResearchResult, ResponsesApiResponse, TextGenerationParams, TextToSpeechParams,
     TranscriptionParams, TranscriptionResponse,
 };
 
@@ -298,7 +299,7 @@ impl OpenAIClient {
 
         debug!("Describing image with model: {}", model);
 
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "model": model,
             "messages": [{
                 "role": "user",
@@ -306,9 +307,13 @@ impl OpenAIClient {
                     {"type": "text", "text": prompt},
                     {"type": "image_url", "image_url": {"url": params.image_url}}
                 ]
-            }],
-            "max_tokens": max_tokens
+            }]
         });
+        if Self::model_supports_temperature(model) {
+            body["max_tokens"] = serde_json::json!(max_tokens);
+        } else {
+            body["max_completion_tokens"] = serde_json::json!(max_tokens);
+        }
 
         let response = self
             .client
@@ -457,5 +462,111 @@ impl OpenAIClient {
             .trim();
 
         serde_json::from_str(cleaned).map_err(|e| OpenAIError::ParseError(e.to_string()))
+    }
+
+    /// Perform deep research using the Responses API.
+    ///
+    /// Deep research models can take tens of minutes to complete.
+    /// Use background mode for long-running tasks.
+    pub async fn deep_research(&self, params: &ResearchParams) -> Result<ResearchResult> {
+        let model = params
+            .model
+            .as_deref()
+            .unwrap_or(&self.config.research_model);
+        debug!("Deep research with model: {}", model);
+
+        let mut body = serde_json::json!({
+            "model": model,
+            "input": params.input,
+        });
+
+        if let Some(instructions) = &params.instructions {
+            body["instructions"] = serde_json::json!(instructions);
+        }
+
+        if let Some(background) = params.background {
+            body["background"] = serde_json::json!(background);
+        }
+
+        if let Some(tools) = &params.tools {
+            body["tools"] = serde_json::json!(tools);
+        } else {
+            // Default to web search if no tools specified
+            body["tools"] = serde_json::json!([{"type": "web_search_preview"}]);
+        }
+
+        if let Some(max_calls) = params.max_tool_calls {
+            body["max_tool_calls"] = serde_json::json!(max_calls);
+        }
+
+        if let Some(summary) = &params.reasoning_summary {
+            body["reasoning"] = serde_json::json!({ "summary": summary });
+        }
+
+        // Use longer timeout for research
+        let research_client = Client::builder()
+            .default_headers({
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    AUTHORIZATION,
+                    HeaderValue::from_str(&format!("Bearer {}", self.config.api_key))
+                        .map_err(|e| OpenAIError::ConfigError(e.to_string()))?,
+                );
+                headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+                headers
+            })
+            .timeout(Duration::from_secs(self.config.research_timeout_secs))
+            .build()?;
+
+        let response = research_client
+            .post(format!("{}/responses", self.config.base_url))
+            .json(&body)
+            .send()
+            .await?;
+
+        let response = self.check_response(response).await?;
+        let api_response: ResponsesApiResponse = response.json().await?;
+
+        if let Some(error) = api_response.error {
+            return Err(OpenAIError::ApiError {
+                status: 400,
+                message: error.message,
+            });
+        }
+
+        // Extract text and annotations from response
+        let mut text = api_response.output_text.unwrap_or_default();
+        let mut annotations: Vec<ResearchAnnotation> = Vec::new();
+
+        for item in &api_response.output {
+            if item.get("type").and_then(|v| v.as_str()) == Some("message") {
+                if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
+                    for c in content {
+                        if text.is_empty() {
+                            if let Some(t) = c.get("text").and_then(|v| v.as_str()) {
+                                text = t.to_string();
+                            }
+                        }
+                        if let Some(anns) = c.get("annotations").and_then(|v| v.as_array()) {
+                            for ann in anns {
+                                if let Ok(annotation) =
+                                    serde_json::from_value::<ResearchAnnotation>(ann.clone())
+                                {
+                                    annotations.push(annotation);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(ResearchResult {
+            id: api_response.id,
+            text,
+            annotations,
+            output_items: api_response.output,
+            status: api_response.status,
+        })
     }
 }

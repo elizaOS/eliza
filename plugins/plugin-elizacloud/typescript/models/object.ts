@@ -1,5 +1,6 @@
 import type { IAgentRuntime, ObjectGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
+import type { LanguageModel } from "ai";
 import { generateObject, JSONParseError } from "ai";
 import { createOpenAIClient } from "../providers/openai";
 import { getLargeModel, getSmallModel } from "../utils/config";
@@ -18,8 +19,9 @@ async function generateObjectByModelType(
   const temperature = params.temperature ?? 0;
 
   try {
+    const model = openai.languageModel(modelName) as LanguageModel;
     const { object, usage } = await generateObject({
-      model: openai.languageModel(modelName),
+      model,
       output: "no-schema",
       prompt: params.prompt,
       temperature: temperature,

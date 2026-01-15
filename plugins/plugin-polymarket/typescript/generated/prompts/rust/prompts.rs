@@ -6,7 +6,7 @@
 //! - {{#each items}}...{{/each}} for iteration
 //! - {{#if condition}}...{{/if}} for conditionals
 
-pub const CHECK_ORDER_SCORING_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract one or more order IDs for checking their scoring status.
+pub const CHECK_ORDER_SCORING_TEMPLATE: &str = r#"extract one or more order IDs for checking their scoring status.
 
 Review the recent messages:
 <recent_messages>
@@ -40,7 +40,7 @@ If no valid order IDs are found, you MUST respond with the following JSON struct
     "error": "Order ID(s) not found. Please specify one or more order IDs."
 }"#;
 
-pub const GET_ACCOUNT_ACCESS_STATUS_TEMPLATE: &str = r#"You are an AI assistant. Your task is to confirm if the user wants to check their Polymarket account access status, such as U.S. certification requirements.
+pub const GET_ACCOUNT_ACCESS_STATUS_TEMPLATE: &str = r#"confirm if the user wants to check their Polymarket account access status, such as U.S. certification requirements.
 
 Review the recent messages:
 <recent_messages>
@@ -70,7 +70,7 @@ Examples:
 - "Show me the weather tomorrow"
   { "error": "The query does not seem to be about account access status..." }"#;
 
-pub const GET_ACTIVE_ORDERS_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract parameters for retrieving active orders for a specific market.
+pub const GET_ACTIVE_ORDERS_TEMPLATE: &str = r#"extract parameters for retrieving active orders for a specific market.
 
 Review the recent messages:
 <recent_messages>
@@ -108,7 +108,7 @@ If the marketId is not found, you MUST respond with the following JSON structure
 
 If marketId is found but assetId is ambiguous or missing and seems required, you can omit assetId or include an additional field like "clarification_needed": "assetId". For now, prioritize extracting what is available."#;
 
-pub const GET_BEST_PRICE_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract token ID and side parameters for retrieving the best price for a market.
+pub const GET_BEST_PRICE_TEMPLATE: &str = r#"extract token ID and side parameters for retrieving the best price for a market.
 
 Review the recent messages:
 <recent_messages>
@@ -143,7 +143,7 @@ If no valid parameters are found, you MUST respond with the following JSON struc
     "error": "Token ID or side not found. Please specify a token ID and side (buy/sell)."
 }"#;
 
-pub const GET_MARKET_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract market identification parameters from the user's message.
+pub const GET_MARKET_TEMPLATE: &str = r#"extract market identification parameters from the user's message.
 
 Review the recent messages:
 <recent_messages>
@@ -168,7 +168,7 @@ If no valid market identifier is found, you MUST respond with the following JSON
     "error": "Market identifier not found. Please specify a market ID, search terms, or token ID."
 }"#;
 
-pub const GET_MIDPOINT_PRICE_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract token identification parameters for retrieving midpoint price data.
+pub const GET_MIDPOINT_PRICE_TEMPLATE: &str = r#"extract token identification parameters for retrieving midpoint price data.
 
 Review the recent messages:
 <recent_messages>
@@ -204,7 +204,7 @@ If no valid token identifier is found, you MUST respond with the following JSON 
     "error": "Token identifier not found. Please specify a token ID for the midpoint price."
 }"#;
 
-pub const GET_ORDER_BOOK_DEPTH_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract token identification parameters for retrieving order book depth data.
+pub const GET_ORDER_BOOK_DEPTH_TEMPLATE: &str = r#"extract token identification parameters for retrieving order book depth data.
 
 Review the recent messages:
 <recent_messages>
@@ -240,7 +240,7 @@ If no valid token identifiers are found, you MUST respond with the following JSO
     "error": "Token identifiers not found. Please specify one or more token IDs for order book depth."
 }"#;
 
-pub const GET_ORDER_BOOK_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract token identification parameters for retrieving order book data.
+pub const GET_ORDER_BOOK_TEMPLATE: &str = r#"extract token identification parameters for retrieving order book data.
 
 Review the recent messages:
 <recent_messages>
@@ -274,7 +274,7 @@ If no valid token identifier is found, you MUST respond with the following JSON 
     "error": "Token identifier not found. Please specify a token ID for the order book."
 }"#;
 
-pub const GET_ORDER_DETAILS_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract the order ID for retrieving order details.
+pub const GET_ORDER_DETAILS_TEMPLATE: &str = r#"extract the order ID for retrieving order details.
 
 Review the recent messages:
 <recent_messages>
@@ -328,7 +328,7 @@ If tokenId is missing:
   "error": "Token ID is required for price history"
 }"#;
 
-pub const GET_SAMPLING_MARKETS_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract optional pagination parameters for retrieving Polymarket markets with rewards enabled (sampling markets).
+pub const GET_SAMPLING_MARKETS_TEMPLATE: &str = r#"extract optional pagination parameters for retrieving Polymarket markets with rewards enabled (sampling markets).
 
 Review the recent messages:
 <recent_messages>
@@ -349,7 +349,7 @@ If no pagination cursor is mentioned, you MUST respond with the following JSON s
     "error": "No pagination cursor requested. Fetching first page of sampling markets."
 }"#;
 
-pub const GET_SIMPLIFIED_MARKETS_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract optional pagination parameters for retrieving simplified Polymarket markets.
+pub const GET_SIMPLIFIED_MARKETS_TEMPLATE: &str = r#"extract optional pagination parameters for retrieving simplified Polymarket markets.
 
 Review the recent messages:
 <recent_messages>
@@ -370,7 +370,7 @@ If no pagination cursor is mentioned, you MUST respond with the following JSON s
     "error": "No pagination cursor requested. Fetching first page."
 }"#;
 
-pub const GET_SPREAD_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract token identification parameters for retrieving spread data for a market.
+pub const GET_SPREAD_TEMPLATE: &str = r#"extract token identification parameters for retrieving spread data for a market.
 
 Review the recent messages:
 <recent_messages>
@@ -407,7 +407,7 @@ If no valid token identifier is found, you MUST respond with the following JSON 
     "error": "Token identifier not found. Please specify a token ID for the spread."
 }"#;
 
-pub const GET_TRADE_HISTORY_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract parameters for retrieving a user's trade history.
+pub const GET_TRADE_HISTORY_TEMPLATE: &str = r#"extract parameters for retrieving a user's trade history.
 
 Review the recent messages:
 <recent_messages>
@@ -457,7 +457,72 @@ If no specific filters are mentioned that can be mapped to these parameters, you
     "info": "No specific trade history filters identified. Will attempt to fetch recent trades for the current user if identifiable, or all trades if no user context."
 }"#;
 
-pub const ORDER_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract order parameters from the user's message.
+pub const ORDER_TEMPLATE: &str = r#"extract order parameters from the user's message and conversation context.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+**CRITICAL - Confirmation Detection:**
+If the user's latest message is a confirmation like "confirm", "yes", "execute", "do it", "go ahead", "proceed", "yes execute", look back in the conversation for the order details that were previously proposed/discussed.
+
+Based on the conversation, identify:
+- tokenId: The token ID for the market position - can be explicit ID or extracted from market name
+- marketName: The market name to search for (e.g., "Miami Heat", "Bitcoin", "Trump")
+- outcome: Which outcome to bet on - "yes" or "no" (look for phrases like "bet on No", "put money on Yes")
+- side: "buy" or "sell" (default to "buy" for bets)
+- price: The price per share (0-1.0) - optional if using market price
+- dollarAmount: The dollar amount to spend (e.g., "$1", "$5", "$100") - extract the number
+- shares: If user explicitly says "X shares" instead of dollar amount
+- orderType: "limit", "market", "GTC", "FOK", or "FAK" (optional, defaults to "GTC")
+
+**Token ID Extraction Rules:**
+1. Look for explicit token IDs (long numeric strings)
+2. Look for market names like "Miami Heat Playoffs", "Bitcoin $100k", "Trump"
+3. If only market name is provided, set tokenId to "MARKET_NAME_LOOKUP" and include the market name
+4. Look for condition IDs starting with "0x"
+
+**Outcome Extraction Rules:**
+1. "bet on No", "put $X on No" → outcome: "no"
+2. "bet on Yes", "put $X on Yes" → outcome: "yes"
+3. Default to "yes" if not specified
+
+**Amount Extraction Rules:**
+1. "$1", "$5", "1 dollar", "5 bucks" → dollarAmount: 1, 5, etc.
+2. "10 shares", "50 shares" → shares: 10, 50
+3. If just a number like "put 5 on", assume dollar amount → dollarAmount: 5
+4. Default: Most users specify dollar amounts, not share quantities
+
+**Examples:**
+- "Put $1 on No for Miami Heat Playoffs" → tokenId: "MARKET_NAME_LOOKUP", marketName: "Miami Heat Playoffs", outcome: "no", side: "buy", dollarAmount: 1
+- "Bet $5 on Yes for Bitcoin" → tokenId: "MARKET_NAME_LOOKUP", marketName: "Bitcoin", outcome: "yes", side: "buy", dollarAmount: 5
+- "Buy 100 shares of token 0x123 at 0.50" → tokenId: "0x123", side: "buy", shares: 100, price: 0.5
+- "confirm" (after previous message proposed $1 on No) → Extract from context the dollarAmount and other details
+
+Respond with a JSON object containing the extracted values:
+{
+    "tokenId"?: string,
+    "marketName"?: string,
+    "outcome"?: "yes" | "no",
+    "side": "buy" | "sell",
+    "price"?: number,
+    "dollarAmount"?: number,
+    "shares"?: number,
+    "orderType"?: "limit" | "market" | "GTC" | "FOK" | "FAK"
+}
+
+If this is a confirmation but you cannot find order details in the conversation, respond with:
+{
+    "error": "Confirmation received but no order details found in conversation. Please specify what you want to trade."
+}
+
+If the user is NOT trying to place an order (just asking questions, browsing, etc.), respond with:
+{
+    "error": "No order intent detected. User appears to be asking a question or browsing."
+}"#;
+
+pub const RESEARCH_MARKET_TEMPLATE: &str = r#"extract parameters for researching a Polymarket prediction market.
 
 Review the recent messages:
 <recent_messages>
@@ -465,61 +530,91 @@ Review the recent messages:
 </recent_messages>
 
 Based on the conversation, identify:
-- tokenId: The token ID for the market position (required) - can be explicit ID or extracted from market name
-- side: "buy" or "sell" (required)
-- price: The price per share (0-1.0) (required)
-- size: The quantity/size of the order (required)
-- orderType: "limit" or "market" (optional, defaults to "limit")
+- marketId: The market condition ID (required if available)
+- marketQuestion: The prediction market question being researched (required)
+- forceRefresh: Whether to force new research even if cached results exist (optional, default false)
+- callbackAction: What to do after research completes - "EVALUATE_TRADE" to auto-evaluate trade, "NOTIFY_ONLY" to just notify (optional)
 
-**Token ID Extraction Rules:**
-1. Look for explicit token IDs (long numeric strings like "71321045679252212594626385532706912750332728571942532289631379312455583992563")
-2. Look for market names like "Nuggets NBA Champion", "Chiefs vs Raiders", "Ant-Man movie"
-3. If only market name is provided, set tokenId to "MARKET_NAME_LOOKUP" and include the market name in the response
-4. Accept shorter token IDs (like "123456") for testing purposes
+Look for:
+- Condition IDs (0x-prefixed hex strings or alphanumeric identifiers)
+- Market questions or descriptions like "Will X happen?", "What are the odds of Y?"
+- Keywords indicating refresh like "refresh", "update", "new research", "fresh"
+- Trade-related context suggesting they want to trade after research
 
-**Examples:**
-- "Buy 5 shares at $0.75 for the Nuggets NBA Champion market" → tokenId: "MARKET_NAME_LOOKUP", marketName: "Nuggets NBA Champion"
-- "Place buy order for token 71321045679252212594626385532706912750332728571942532289631379312455583992563" → tokenId: "71321045679252212594626385532706912750332728571942532289631379312455583992563"
-- "Buy tokens at 50 cents for Chiefs vs Raiders" → tokenId: "MARKET_NAME_LOOKUP", marketName: "Chiefs vs Raiders"
+Examples:
+- "Research the Bitcoin $100k market"
+  { "marketQuestion": "Will Bitcoin reach $100k by end of 2025?", "forceRefresh": false }
+- "Do deep research on market 0x123abc about the Fed rate decision"
+  { "marketId": "0x123abc", "marketQuestion": "Will the Fed raise interest rates in March?", "forceRefresh": false }
+- "Refresh the research for the election prediction market"
+  { "marketQuestion": "Who will win the 2024 US Presidential election?", "forceRefresh": true }
+- "Research this market before I trade: Will Company X acquire Company Y?"
+  { "marketQuestion": "Will Company X acquire Company Y?", "callbackAction": "EVALUATE_TRADE" }
+- "What's the research status for market 0xdef456?"
+  { "marketId": "0xdef456", "forceRefresh": false }
 
-Respond with a JSON object containing the extracted values:
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
 {
-    "tokenId": string,
-    "side": "buy" | "sell",
-    "price": number,
-    "size": number,
-    "orderType"?: "limit" | "market",
-    "marketName"?: string
+    "marketId"?: string,
+    "marketQuestion"?: string,
+    "forceRefresh"?: boolean,
+    "callbackAction"?: "EVALUATE_TRADE" | "NOTIFY_ONLY"
 }
 
-If any required parameters are missing, respond with:
+If no valid market information is found, you MUST respond with:
 {
-    "error": "Missing required order parameters. Please specify tokenId (or market name), side (buy/sell), price, and size."
+    "error": "Could not identify market to research. Please specify a market ID or market question."
 }"#;
 
-pub const RETRIEVE_ALL_MARKETS_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract optional filter parameters for retrieving Polymarket prediction markets.
+pub const RETRIEVE_ALL_MARKETS_TEMPLATE: &str = r#"extract search or filter parameters for finding Polymarket prediction markets.
 
 Review the recent messages:
 <recent_messages>
 {{recentMessages}}
 </recent_messages>
 
-Based on the conversation, identify any filters the user wants to apply:
-- category: Market category filter (e.g., "politics", "sports", "crypto") - optional
-- active: Whether to only show active markets (true/false) - optional  
+Based on the conversation, identify what the user wants to search or browse:
+
+- query: A specific search term or phrase (e.g., "miami heat", "bitcoin $100k", "trump trial", "epstein") - use this for specific topics, names, teams, or events
+- category: A general market category (e.g., "sports", "politics", "crypto", "entertainment") - use this ONLY for broad category browsing
+- active: Whether to only show active markets (true/false) - optional, defaults to true
 - limit: Maximum number of results to return - optional
+- simplified: Whether the user wants a simplified overview (true/false) - optional
+- sampling: Whether the user wants markets with liquidity rewards (true/false) - optional
+- sampling_mode: "random" or "rewards" if the user specifies a sampling type - optional
+
+IMPORTANT: 
+- If the user mentions a specific name, team, person, or topic (e.g., "miami heat", "bitcoin", "trump", "super bowl"), use "query" NOT "category"
+- Only use "category" for very general browsing like "show me sports markets" or "politics markets"
+- "miami heat" should be query="miami heat", NOT category="sports"
+- "bitcoin price" should be query="bitcoin price", NOT category="crypto"
+
+Examples:
+- "Search for miami heat markets" → { "query": "miami heat" }
+- "Find markets about bitcoin" → { "query": "bitcoin" }
+- "Show me sports markets" → { "category": "sports" }
+- "What markets are there for trump?" → { "query": "trump" }
+- "Browse crypto markets" → { "category": "crypto" }
+- "Find epstein markets" → { "query": "epstein" }
+- "Super bowl markets" → { "query": "super bowl" }
+- "Lakers vs Celtics" → { "query": "lakers celtics" }
 
 Respond with a JSON object containing only the extracted values.
 The JSON should have this structure:
 {
+    "query"?: string,
     "category"?: string,
     "active"?: boolean,
-    "limit"?: number
+    "limit"?: number,
+    "simplified"?: boolean,
+    "sampling"?: boolean,
+    "sampling_mode"?: "random" | "rewards"
 }
 
-If no specific filters are mentioned, you MUST respond with the following JSON structure:
+If no specific search or filters are mentioned, respond with:
 {
-    "error": "No specific filters requested. Fetching all available markets."
+    "error": "No specific search requested. Fetching top markets."
 }"#;
 
 pub const SETUP_WEBSOCKET_TEMPLATE: &str = r#"Your task is to extract parameters for subscribing to Polymarket WebSocket channels from the user query.

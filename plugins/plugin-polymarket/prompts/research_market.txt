@@ -1,0 +1,44 @@
+extract parameters for researching a Polymarket prediction market.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify:
+- marketId: The market condition ID (required if available)
+- marketQuestion: The prediction market question being researched (required)
+- forceRefresh: Whether to force new research even if cached results exist (optional, default false)
+- callbackAction: What to do after research completes - "EVALUATE_TRADE" to auto-evaluate trade, "NOTIFY_ONLY" to just notify (optional)
+
+Look for:
+- Condition IDs (0x-prefixed hex strings or alphanumeric identifiers)
+- Market questions or descriptions like "Will X happen?", "What are the odds of Y?"
+- Keywords indicating refresh like "refresh", "update", "new research", "fresh"
+- Trade-related context suggesting they want to trade after research
+
+Examples:
+- "Research the Bitcoin $100k market"
+  { "marketQuestion": "Will Bitcoin reach $100k by end of 2025?", "forceRefresh": false }
+- "Do deep research on market 0x123abc about the Fed rate decision"
+  { "marketId": "0x123abc", "marketQuestion": "Will the Fed raise interest rates in March?", "forceRefresh": false }
+- "Refresh the research for the election prediction market"
+  { "marketQuestion": "Who will win the 2024 US Presidential election?", "forceRefresh": true }
+- "Research this market before I trade: Will Company X acquire Company Y?"
+  { "marketQuestion": "Will Company X acquire Company Y?", "callbackAction": "EVALUATE_TRADE" }
+- "What's the research status for market 0xdef456?"
+  { "marketId": "0xdef456", "forceRefresh": false }
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "marketId"?: string,
+    "marketQuestion"?: string,
+    "forceRefresh"?: boolean,
+    "callbackAction"?: "EVALUATE_TRADE" | "NOTIFY_ONLY"
+}
+
+If no valid market information is found, you MUST respond with:
+{
+    "error": "Could not identify market to research. Please specify a market ID or market question."
+}

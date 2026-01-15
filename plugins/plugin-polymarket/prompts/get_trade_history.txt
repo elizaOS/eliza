@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to extract parameters for retrieving a user's trade history.
+extract parameters for retrieving a user's trade history.
 
 Review the recent messages:
 <recent_messages>

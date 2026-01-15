@@ -420,88 +420,104 @@ export class DefaultMessageService implements IMessageService {
       }
     }
 
-    // Check if shouldRespond evaluation is enabled
-    const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
-
-    // Determine if we should respond
-    const responseDecision = this.shouldRespond(
-      runtime,
-      message,
-      room ?? undefined,
-      mentionContext,
-    );
-
-    runtime.logger.debug(
-      { src: "service:message", responseDecision, checkShouldRespondEnabled },
-      "Response decision",
-    );
-
     let shouldRespondToMessage = true;
+    const metadata =
+      typeof message.content.metadata === "object" &&
+      message.content.metadata !== null
+        ? (message.content.metadata as Record<string, unknown>)
+        : null;
+    const isAutonomous = metadata?.isAutonomous === true;
+    const autonomyMode =
+      typeof metadata?.autonomyMode === "string" ? metadata.autonomyMode : null;
 
-    // If checkShouldRespond is disabled, always respond (ChatGPT mode)
-    if (!checkShouldRespondEnabled) {
+    if (isAutonomous) {
       runtime.logger.debug(
-        { src: "service:message" },
-        "checkShouldRespond disabled, always responding (ChatGPT mode)",
+        { src: "service:message", autonomyMode },
+        "Autonomy message bypassing shouldRespond checks",
       );
       shouldRespondToMessage = true;
-    } else if (responseDecision.skipEvaluation) {
-      // If we can skip the evaluation, use the decision directly
-      runtime.logger.debug(
-        {
-          src: "service:message",
-          agentName: runtime.character.name,
-          reason: responseDecision.reason,
-        },
-        "Skipping LLM evaluation",
-      );
-      shouldRespondToMessage = responseDecision.shouldRespond;
     } else {
-      // Need LLM evaluation for ambiguous case
-      const shouldRespondPrompt = composePromptFromState({
-        state,
-        template:
-          runtime.character.templates?.shouldRespondTemplate ||
-          shouldRespondTemplate,
-      });
+      // Check if shouldRespond evaluation is enabled
+      const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
 
-      // Select model based on configuration - "large" enables better context analysis and planning
-      const shouldRespondModelType =
-        opts.shouldRespondModel === "large"
-          ? ModelType.TEXT_LARGE
-          : ModelType.TEXT_SMALL;
-
-      runtime.logger.debug(
-        {
-          src: "service:message",
-          agentName: runtime.character.name,
-          reason: responseDecision.reason,
-          model: opts.shouldRespondModel,
-        },
-        "Using LLM evaluation",
+      // Determine if we should respond
+      const responseDecision = this.shouldRespond(
+        runtime,
+        message,
+        room ?? undefined,
+        mentionContext,
       );
 
-      const response = await runtime.useModel(shouldRespondModelType, {
-        prompt: shouldRespondPrompt,
-      });
-
       runtime.logger.debug(
-        { src: "service:message", response },
-        "LLM evaluation result",
+        { src: "service:message", responseDecision, checkShouldRespondEnabled },
+        "Response decision",
       );
 
-      const responseObject = parseKeyValueXml(response);
-      runtime.logger.debug(
-        { src: "service:message", responseObject },
-        "Parsed evaluation result",
-      );
+      // If checkShouldRespond is disabled, always respond (ChatGPT mode)
+      if (!checkShouldRespondEnabled) {
+        runtime.logger.debug(
+          { src: "service:message" },
+          "checkShouldRespond disabled, always responding (ChatGPT mode)",
+        );
+        shouldRespondToMessage = true;
+      } else if (responseDecision.skipEvaluation) {
+        // If we can skip the evaluation, use the decision directly
+        runtime.logger.debug(
+          {
+            src: "service:message",
+            agentName: runtime.character.name,
+            reason: responseDecision.reason,
+          },
+          "Skipping LLM evaluation",
+        );
+        shouldRespondToMessage = responseDecision.shouldRespond;
+      } else {
+        // Need LLM evaluation for ambiguous case
+        const shouldRespondPrompt = composePromptFromState({
+          state,
+          template:
+            runtime.character.templates?.shouldRespondTemplate ||
+            shouldRespondTemplate,
+        });
 
-      // If an action is provided, the agent intends to respond in some way
-      const nonResponseActions = ["IGNORE", "NONE"];
-      const actionValue = responseObject?.action;
-      shouldRespondToMessage =
-        typeof actionValue === "string" &&
-        !nonResponseActions.includes(actionValue.toUpperCase());
+        // Select model based on configuration - "large" enables better context analysis and planning
+        const shouldRespondModelType =
+          opts.shouldRespondModel === "large"
+            ? ModelType.TEXT_LARGE
+            : ModelType.TEXT_SMALL;
+
+        runtime.logger.debug(
+          {
+            src: "service:message",
+            agentName: runtime.character.name,
+            reason: responseDecision.reason,
+            model: opts.shouldRespondModel,
+          },
+          "Using LLM evaluation",
+        );
+
+        const response = await runtime.useModel(shouldRespondModelType, {
+          prompt: shouldRespondPrompt,
+        });
+
+        runtime.logger.debug(
+          { src: "service:message", response },
+          "LLM evaluation result",
+        );
+
+        const responseObject = parseKeyValueXml(response);
+        runtime.logger.debug(
+          { src: "service:message", responseObject },
+          "Parsed evaluation result",
+        );
+
+        // If an action is provided, the agent intends to respond in some way
+        const nonResponseActions = ["IGNORE", "NONE"];
+        const actionValue = responseObject?.action;
+        shouldRespondToMessage =
+          typeof actionValue === "string" &&
+          !nonResponseActions.includes(actionValue.toUpperCase());
+      }
     }
 
     let responseContent: Content | null = null;

@@ -3,6 +3,7 @@ use anyhow::Result;
 pub struct EnvConfig {
     pub private_key: String,
     pub clob_api_url: String,
+    pub gamma_api_url: String,
     pub creds: Option<ApiCreds>,
 }
 
@@ -46,6 +47,8 @@ pub fn load_env_config(execute: bool) -> Result<EnvConfig> {
     let private_key = normalize_private_key(&private_key_raw)?;
 
     let clob_api_url = std::env::var("CLOB_API_URL").unwrap_or_else(|_| "https://clob.polymarket.com".to_string());
+    let gamma_api_url =
+        std::env::var("GAMMA_API_URL").unwrap_or_else(|_| "https://gamma-api.polymarket.com".to_string());
 
     let key = std::env::var("CLOB_API_KEY").ok();
     let secret = std::env::var("CLOB_API_SECRET")
@@ -75,6 +78,7 @@ pub fn load_env_config(execute: bool) -> Result<EnvConfig> {
     Ok(EnvConfig {
         private_key,
         clob_api_url,
+        gamma_api_url,
         creds,
     })
 }
