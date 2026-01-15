@@ -122,8 +122,7 @@ Based on the conversation, identify:
 Look for:
 - Numbers following words like "token", "for token", "token ID", etc.
 - Standalone numbers that could be token IDs
-- Side indicators like "buy", "sell", "bid", "ask"
-- Note: "bid" maps to "sell" side, "ask" maps to "buy" side
+- Side indicators like "buy", "sell", "bid", "ask" ("bid" → "sell", "ask" → "buy")
 
 Examples:
 - "Get best price for token 123456 on buy side" → tokenId: "123456", side: "buy"

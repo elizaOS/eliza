@@ -59,9 +59,11 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
   private walletClients: Map<number, WalletClient> = new Map();
   private rpcUrls: Map<number, string> = new Map();
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.initializeRpcUrls();
+    if (runtime) {
+      this.initializeRpcUrls();
+    }
   }
 
   private initializeRpcUrls(): void {
@@ -184,7 +186,7 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
               pools.push(poolInfo);
             }
           }
-        } catch (error) {
+        } catch (error: unknown) {
           logger.debug(`[UniswapV3LpService] No pool found for ${tokenA}/${tokenB} at fee ${fee}`);
         }
       }
@@ -240,8 +242,8 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       };
 
       return poolInfo;
-    } catch (error) {
-      logger.error(`[UniswapV3LpService] Error fetching pool info for ${poolAddress}:`, error);
+    } catch (error: unknown) {
+      logger.error(`[UniswapV3LpService] Error fetching pool info for ${poolAddress}:`, error instanceof Error ? error.message : String(error));
       return null;
     }
   }
@@ -340,11 +342,12 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
           tickUpper: alignedTickUpper,
         },
       };
-    } catch (error) {
-      logger.error('[UniswapV3LpService] Error adding liquidity:', error);
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('[UniswapV3LpService] Error adding liquidity:', errorMsg);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error adding liquidity',
+        error: errorMsg || 'Unknown error adding liquidity',
       };
     }
   }
@@ -432,8 +435,8 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
             account: walletClient.account,
           });
           await walletClient.writeContract(burnRequest);
-        } catch (burnError) {
-          logger.debug('[UniswapV3LpService] Could not burn position NFT:', burnError);
+        } catch (burnError: unknown) {
+          logger.debug('[UniswapV3LpService] Could not burn position NFT:', burnError instanceof Error ? burnError.message : String(burnError));
         }
       }
 
@@ -445,11 +448,12 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
         blockNumber: receipt.blockNumber,
         gasUsed: receipt.gasUsed,
       };
-    } catch (error) {
-      logger.error('[UniswapV3LpService] Error removing liquidity:', error);
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('[UniswapV3LpService] Error removing liquidity:', errorMsg);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error removing liquidity',
+        error: errorMsg || 'Unknown error removing liquidity',
       };
     }
   }
@@ -483,8 +487,8 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
         tokensOwed0: result[10],
         tokensOwed1: result[11],
       };
-    } catch (error) {
-      logger.error(`[UniswapV3LpService] Error fetching position ${tokenId}:`, error);
+    } catch (error: unknown) {
+      logger.error(`[UniswapV3LpService] Error fetching position ${tokenId}:`, error instanceof Error ? error.message : String(error));
       return null;
     }
   }
@@ -598,8 +602,8 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
           }
         }
       }
-    } catch (error) {
-      logger.error('[UniswapV3LpService] Error fetching all positions:', error);
+    } catch (error: unknown) {
+      logger.error('[UniswapV3LpService] Error fetching all positions:', error instanceof Error ? error.message : String(error));
     }
 
     return positions;

@@ -82,7 +82,7 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
   private dexInteractionService!: IDexInteractionService;
   private userLpProfileService!: IUserLpProfileService;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
   }
 

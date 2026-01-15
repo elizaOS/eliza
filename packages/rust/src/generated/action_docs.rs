@@ -966,9 +966,15 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
-      "name": "ANALYZE_INPUT",
-      "description": "Analyzes user input and extracts key information",
-      "parameters": []
+      "name": "ANALYZE_PERFORMANCE",
+      "description": "Analyze trading performance and show metrics",
+      "parameters": [],
+      "similes": [
+        "PERFORMANCE_ANALYSIS",
+        "CHECK_PERFORMANCE",
+        "TRADING_RESULTS",
+        "SHOW_PERFORMANCE"
+      ]
     },
     {
       "name": "BROWSER_CLICK",
@@ -1108,6 +1114,16 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "CANCEL_TASK",
+      "description": "Cancel a task.",
+      "parameters": [],
+      "similes": [
+        "DELETE_TASK",
+        "REMOVE_TASK",
+        "ABORT_TASK"
+      ]
+    },
+    {
       "name": "CANCEL_TODO",
       "description": "Cancels and deletes a todo item from the user's task list immediately.",
       "parameters": [],
@@ -1126,6 +1142,15 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "stop plugin creation",
         "abort plugin creation",
         "cancel plugin"
+      ]
+    },
+    {
+      "name": "CHANGE_DIRECTORY",
+      "description": "Change the working directory (restricted to allowed directory).",
+      "parameters": [],
+      "similes": [
+        "CD",
+        "CWD"
       ]
     },
     {
@@ -1148,6 +1173,24 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SUMMARIZE_LINK",
         "ATTACHMENT_SUMMARY",
         "FILE_SUMMARY"
+      ]
+    },
+    {
+      "name": "CHECK_PORTFOLIO",
+      "description": "Check current portfolio status including holdings, positions, and trading performance",
+      "parameters": [],
+      "similes": [
+        "PORTFOLIO_CHECK",
+        "VIEW_PORTFOLIO",
+        "SHOW_HOLDINGS",
+        "LIST_POSITIONS",
+        "WALLET_BALANCE",
+        "CHECK_BALANCE",
+        "MY_PORTFOLIO",
+        "MY_HOLDINGS",
+        "MY_BALANCE",
+        "TRADING_STATUS",
+        "CHECK_TRADING"
       ]
     },
     {
@@ -1183,6 +1226,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "COMPARE_STRATEGIES",
+      "description": "Compare available trading strategies",
+      "parameters": [],
+      "similes": [
+        "STRATEGY_COMPARISON",
+        "LIST_STRATEGIES",
+        "WHICH_STRATEGY",
+        "BEST_STRATEGY"
+      ]
+    },
+    {
       "name": "COMPLETE_GOAL",
       "description": "Marks a goal as completed/achieved.",
       "parameters": [],
@@ -1203,6 +1257,67 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "DONE",
         "TASK_DONE",
         "TASK_COMPLETED"
+      ]
+    },
+    {
+      "name": "COMPUTERUSE_CLICK",
+      "description": "Clicks a UI element on the computer using a ComputerUse selector.",
+      "parameters": [],
+      "similes": [
+        "CLICK_UI",
+        "CLICK_ELEMENT",
+        "TAP_UI"
+      ]
+    },
+    {
+      "name": "COMPUTERUSE_GET_APPLICATIONS",
+      "description": "Lists currently running applications on the target machine.",
+      "parameters": [],
+      "similes": [
+        "LIST_APPS",
+        "LIST_APPLICATIONS",
+        "SHOW_RUNNING_APPS"
+      ]
+    },
+    {
+      "name": "COMPUTERUSE_GET_WINDOW_TREE",
+      "description": "Gets the UI tree for a running application (useful for understanding what is currently on screen).",
+      "parameters": [],
+      "similes": [
+        "GET_UI_TREE",
+        "WINDOW_TREE",
+        "DUMP_UI_TREE"
+      ]
+    },
+    {
+      "name": "COMPUTERUSE_OPEN_APPLICATION",
+      "description": "Opens an application on the target machine (local or MCP).",
+      "parameters": [],
+      "similes": [
+        "OPEN_APP",
+        "LAUNCH_APP",
+        "START_APPLICATION"
+      ]
+    },
+    {
+      "name": "COMPUTERUSE_TYPE",
+      "description": "Types text into a UI element on the computer using a ComputerUse selector (optionally clearing the field).",
+      "parameters": [],
+      "similes": [
+        "TYPE_UI",
+        "ENTER_TEXT",
+        "FILL_FIELD"
+      ]
+    },
+    {
+      "name": "CONFIGURE_STRATEGY",
+      "description": "Configure trading strategy parameters",
+      "parameters": [],
+      "similes": [
+        "CONFIG_STRATEGY",
+        "SET_STRATEGY",
+        "ADJUST_SETTINGS",
+        "CHANGE_PARAMS"
       ]
     },
     {
@@ -1699,17 +1814,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
-      "name": "CREATE_PLAN",
-      "description": "Creates a comprehensive project plan with multiple phases and tasks",
-      "parameters": [],
-      "similes": [
-        "PLAN_PROJECT",
-        "GENERATE_PLAN",
-        "MAKE_PLAN",
-        "PROJECT_PLAN"
-      ]
-    },
-    {
       "name": "CREATE_POLL",
       "description": "Create a poll in Discord with emoji reactions for voting.",
       "parameters": [],
@@ -1721,6 +1825,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "MAKE_VOTE",
         "START_VOTE",
         "CREATE_SURVEY"
+      ]
+    },
+    {
+      "name": "CREATE_TASK",
+      "description": "Create an orchestrated background task to be executed by a selected agent provider.",
+      "parameters": [],
+      "similes": [
+        "START_TASK",
+        "SPAWN_TASK",
+        "NEW_TASK",
+        "BEGIN_TASK"
       ]
     },
     {
@@ -1782,6 +1897,16 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "EDIT_FILE",
+      "description": "Replace a substring in a file (single replacement).",
+      "parameters": [],
+      "similes": [
+        "REPLACE_IN_FILE",
+        "PATCH_FILE",
+        "MODIFY_FILE"
+      ]
+    },
+    {
       "name": "EVM_TRANSFER_TOKENS",
       "description": "Transfer tokens between addresses on the same chain",
       "parameters": [],
@@ -1813,9 +1938,19 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
-      "name": "EXECUTE_FINAL",
-      "description": "Executes the final action based on processing results",
-      "parameters": []
+      "name": "EXECUTE_LIVE_TRADE",
+      "description": "Execute a live token swap on Solana using Jupiter DEX. Supports ANY Solana token.",
+      "parameters": [],
+      "similes": [
+        "LIVE_TRADE",
+        "REAL_TRADE",
+        "EXECUTE_TRADE",
+        "PLACE_ORDER",
+        "MAKE_TRADE",
+        "SWAP",
+        "BUY_TOKEN",
+        "SELL_TOKEN"
+      ]
     },
     {
       "name": "EXECUTE_ROBLOX_ACTION",
@@ -1852,6 +1987,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
+      ]
+    },
+    {
+      "name": "EXECUTE_SHELL",
+      "description": "Execute a shell command in the current working directory (restricted).",
+      "parameters": [],
+      "similes": [
+        "SHELL",
+        "RUN_COMMAND",
+        "EXEC",
+        "TERMINAL"
       ]
     },
     {
@@ -1910,6 +2056,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
+      ]
+    },
+    {
+      "name": "GET_MARKET_ANALYSIS",
+      "description": "Get market analysis and trending token information",
+      "parameters": [],
+      "similes": [
+        "MARKET_ANALYSIS",
+        "ANALYZE_MARKET",
+        "MARKET_OVERVIEW",
+        "TRENDING_TOKENS"
       ]
     },
     {
@@ -1974,6 +2131,15 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "GIT",
+      "description": "Run a git command (restricted).",
+      "parameters": [],
+      "similes": [
+        "GIT_COMMAND",
+        "GIT_RUN"
+      ]
+    },
+    {
       "name": "JOIN_CHANNEL",
       "description": "Join a Discord channel - either text (to monitor messages) or voice (to participate in voice chat). You have full voice capabilities!",
       "parameters": [],
@@ -2026,6 +2192,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "GET_CHANNELS",
         "WHICH_CHANNELS",
         "CHANNELS_LIST"
+      ]
+    },
+    {
+      "name": "LIST_FILES",
+      "description": "List files in a directory.",
+      "parameters": [],
+      "similes": [
+        "LS",
+        "LIST_DIR",
+        "LIST_DIRECTORY",
+        "DIR"
       ]
     },
     {
@@ -2083,6 +2260,222 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SHOW_RSS_FEEDS",
         "GET_RSS_FEEDS",
         "RSS_SUBSCRIPTIONS"
+      ]
+    },
+    {
+      "name": "LIST_TASKS",
+      "description": "List tasks managed by the orchestrator.",
+      "parameters": [],
+      "similes": [
+        "SHOW_TASKS",
+        "GET_TASKS",
+        "TASKS",
+        "VIEW_TASKS"
+      ]
+    },
+    {
+      "name": "lp_management",
+      "description": "Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions, concentrated liquidity positions with custom price ranges, checking APR/yield, setting auto-rebalance preferences, and finding best pools. Use this action when users mention: liquidity, LP, pools, APR, yield, deposit, withdraw, concentrated, price range, narrow range, degenai, ai16z, SOL pairs, or want help getting started with LP management.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "The action to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        },
+        {
+          "name": "context",
+          "description": "The context to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "LP_MANAGEMENT",
+        "LIQUIDITY_POOL_MANAGEMENT",
+        "LP_MANAGER",
+        "MANAGE_LP",
+        "MANAGE_LIQUIDITY"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use lp_management with the provided parameters.",
+          "actions": [
+            "lp_management"
+          ],
+          "params": {
+            "lp_management": {
+              "action": "example",
+              "context": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "manage_raydium_positions",
+      "description": "Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
+      "parameters": [],
+      "similes": [
+        "AUTOMATE_RAYDIUM_REBALANCING",
+        "AUTOMATE_RAYDIUM_POSITIONS",
+        "START_MANAGING_RAYDIUM_POSITIONS"
+      ]
+    },
+    {
+      "name": "MC_ATTACK",
+      "description": "Attack an entity by numeric entityId (from MC_WORLD_STATE.nearbyEntities).",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_ATTACK",
+        "HIT_ENTITY"
+      ]
+    },
+    {
+      "name": "MC_CHAT",
+      "description": "Send a chat message in Minecraft as the bot",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_CHAT",
+        "SAY_IN_MINECRAFT",
+        "CHAT"
+      ]
+    },
+    {
+      "name": "MC_CONNECT",
+      "description": "Connect the Mineflayer bot to a Minecraft server",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_CONNECT",
+        "JOIN_SERVER",
+        "CONNECT_TO_MINECRAFT"
+      ]
+    },
+    {
+      "name": "MC_CONTROL",
+      "description": "Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_CONTROL",
+        "SET_CONTROL_STATE"
+      ]
+    },
+    {
+      "name": "MC_DIG",
+      "description": "Dig/break the block at (x y z). Provide coordinates like '10 64 -20' or JSON {\"x\":10,\"y\":64,\"z\":-20}.",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_DIG",
+        "MINE_BLOCK",
+        "BREAK_BLOCK"
+      ]
+    },
+    {
+      "name": "MC_DISCONNECT",
+      "description": "Disconnect the Mineflayer bot from the Minecraft server",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_DISCONNECT",
+        "LEAVE_SERVER",
+        "QUIT_MINECRAFT"
+      ]
+    },
+    {
+      "name": "MC_GOTO",
+      "description": "Pathfind to a target (x y z). Provide coordinates like '10 64 -20' or JSON {\"x\":10,\"y\":64,\"z\":-20}.",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_GOTO",
+        "WALK_TO",
+        "MOVE_TO_COORDS"
+      ]
+    },
+    {
+      "name": "MC_LOOK",
+      "description": "Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_LOOK",
+        "TURN_HEAD"
+      ]
+    },
+    {
+      "name": "MC_PLACE",
+      "description": "Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_PLACE",
+        "PLACE_BLOCK"
+      ]
+    },
+    {
+      "name": "MC_SCAN",
+      "description": "Scan nearby blocks. Optional JSON input: {\"blocks\":[\"oak_log\"],\"radius\":16,\"maxResults\":32}. If omitted, scans for any non-air blocks.",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_SCAN",
+        "FIND_BLOCKS",
+        "SCAN_BLOCKS"
+      ]
+    },
+    {
+      "name": "MC_STOP",
+      "description": "Stop pathfinding / movement goals.",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_STOP",
+        "STOP_PATHFINDER",
+        "STOP_MOVING"
+      ]
+    },
+    {
+      "name": "MC_WAYPOINT_DELETE",
+      "description": "Delete a named waypoint (message text is the name).",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_WAYPOINT_DELETE",
+        "DELETE_WAYPOINT",
+        "REMOVE_WAYPOINT"
+      ]
+    },
+    {
+      "name": "MC_WAYPOINT_GOTO",
+      "description": "Pathfind to a named waypoint (message text is the name).",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_WAYPOINT_GOTO",
+        "GOTO_WAYPOINT",
+        "NAVIGATE_WAYPOINT"
+      ]
+    },
+    {
+      "name": "MC_WAYPOINT_LIST",
+      "description": "List saved waypoints.",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_WAYPOINT_LIST",
+        "LIST_WAYPOINTS",
+        "SHOW_WAYPOINTS"
+      ]
+    },
+    {
+      "name": "MC_WAYPOINT_SET",
+      "description": "Save the bot's current position as a named waypoint (message text is the name).",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_WAYPOINT_SET",
+        "SET_WAYPOINT",
+        "SAVE_WAYPOINT"
       ]
     },
     {
@@ -2180,6 +2573,15 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
+      ]
+    },
+    {
+      "name": "PAUSE_TASK",
+      "description": "Pause a running task.",
+      "parameters": [],
+      "similes": [
+        "STOP_TASK",
+        "HALT_TASK"
       ]
     },
     {
@@ -2566,11 +2968,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
-      "name": "PROCESS_ANALYSIS",
-      "description": "Processes the analysis results and makes decisions",
-      "parameters": []
-    },
-    {
       "name": "PROCESS_KNOWLEDGE",
       "description": "Process and store knowledge from a file path or text content into the knowledge base",
       "parameters": []
@@ -2712,6 +3109,18 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "READ_FILE",
+      "description": "Read and return a file's contents.",
+      "parameters": [],
+      "similes": [
+        "VIEW_FILE",
+        "OPEN_FILE",
+        "CAT_FILE",
+        "SHOW_FILE",
+        "GET_FILE"
+      ]
+    },
+    {
       "name": "READ_MCP_RESOURCE",
       "description": "Reads a resource from an MCP server",
       "parameters": [],
@@ -2814,6 +3223,16 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "RESUME_TASK",
+      "description": "Resume a paused task.",
+      "parameters": [],
+      "similes": [
+        "CONTINUE_TASK",
+        "RESTART_TASK",
+        "RUN_TASK"
+      ]
+    },
+    {
       "name": "REVIEW_GITHUB_PULL_REQUEST",
       "description": "Creates a review on a GitHub pull request. Can approve, request changes, or add comments.",
       "parameters": [
@@ -2900,6 +3319,27 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "RUN_BACKTEST",
+      "description": "Get information about backtesting strategies",
+      "parameters": [],
+      "similes": [
+        "BACKTEST",
+        "TEST_STRATEGY",
+        "SIMULATE_TRADING"
+      ]
+    },
+    {
+      "name": "SEARCH_FILES",
+      "description": "Search for text across files under a directory.",
+      "parameters": [],
+      "similes": [
+        "GREP",
+        "RG",
+        "FIND_IN_FILES",
+        "SEARCH"
+      ]
+    },
+    {
       "name": "SEARCH_KNOWLEDGE",
       "description": "Search the knowledge base for specific information",
       "parameters": [],
@@ -2960,6 +3400,15 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "FIND_IN_CHAT",
         "SEARCH_CHANNEL",
         "SEARCH_DISCORD"
+      ]
+    },
+    {
+      "name": "SEARCH_TASKS",
+      "description": "Search tasks by query.",
+      "parameters": [],
+      "similes": [
+        "FIND_TASK",
+        "LOOKUP_TASK"
       ]
     },
     {
@@ -3107,6 +3556,22 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "START_TRADING",
+      "description": "Start automated trading with a specified strategy. Supports ANY Solana token.",
+      "parameters": [],
+      "similes": [
+        "BEGIN_TRADING",
+        "START_AUTO_TRADING",
+        "ENABLE_TRADING",
+        "TURN_ON_TRADING"
+      ]
+    },
+    {
+      "name": "STOP_TRADING",
+      "description": "Stop automated trading",
+      "parameters": []
+    },
+    {
       "name": "SUBSCRIBE_RSS_FEED",
       "description": "Subscribe to an RSS/Atom feed for automatic monitoring",
       "parameters": [],
@@ -3139,6 +3604,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "TOKEN_SWAP_SOLANA",
         "TRADE_TOKENS_SOLANA",
         "EXCHANGE_TOKENS_SOLANA"
+      ]
+    },
+    {
+      "name": "SWITCH_TASK",
+      "description": "Switch the current task context to a different task.",
+      "parameters": [],
+      "similes": [
+        "SELECT_TASK",
+        "SET_TASK",
+        "CHANGE_TASK",
+        "GO_TO_TASK"
       ]
     },
     {
@@ -3245,6 +3721,16 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "CHANGE_TASK",
         "MODIFY_TODO",
         "EDIT_TASK"
+      ]
+    },
+    {
+      "name": "WRITE_FILE",
+      "description": "Create or overwrite a file with given content.",
+      "parameters": [],
+      "similes": [
+        "CREATE_FILE",
+        "SAVE_FILE",
+        "OUTPUT_FILE"
       ]
     }
   ]

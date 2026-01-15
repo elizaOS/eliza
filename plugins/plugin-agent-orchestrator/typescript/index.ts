@@ -13,7 +13,7 @@ import {
   getConfiguredAgentOrchestratorOptions,
 } from "./src/config.js";
 import { taskContextProvider } from "./src/providers/task-context.js";
-import { AgentOrchestratorService } from "./src/services/plugin-agent-orchestrator-service.js";
+import { AgentOrchestratorService } from "./src/services/agent-orchestrator-service.js";
 import type { AgentOrchestratorPluginOptions } from "./src/types.js";
 
 export { configureAgentOrchestratorPlugin, getConfiguredAgentOrchestratorOptions };
@@ -51,7 +51,7 @@ export type {
   TaskStep,
 } from "./src/types.js";
 
-export { AgentOrchestratorService } from "./src/services/plugin-agent-orchestrator-service.js";
+export { AgentOrchestratorService } from "./src/services/agent-orchestrator-service.js";
 export {
   cancelTaskAction,
   createTaskAction,

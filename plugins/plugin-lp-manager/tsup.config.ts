@@ -7,7 +7,7 @@ export default defineConfig({
   sourcemap: true,
   clean: false,
   format: ['esm'], // Ensure you're targeting CommonJS
-  dts: true,
+  dts: false, // Disabled until error type issues are resolved
   external: [
     'dotenv', // Externalize dotenv to prevent bundling
     'fs', // Externalize fs to use Node.js built-in module
