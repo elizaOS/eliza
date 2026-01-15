@@ -2641,8 +2641,8 @@ export class AgentRuntime implements IAgentRuntime {
     // Default: unbounded (no limit)
     // Recommended: 10000 for production servers
     const maxEntriesSetting = this.getSetting('DYNAMIC_PROMPT_MAX_ENTRIES');
-    const maxEntries = typeof maxEntriesSetting === 'string' ? parseInt(maxEntriesSetting) : 
-                       typeof maxEntriesSetting === 'number' ? maxEntriesSetting : null;
+    const maxEntries = typeof maxEntriesSetting === 'string' ? parseInt(maxEntriesSetting) :
+      typeof maxEntriesSetting === 'number' ? maxEntriesSetting : null;
 
     // Get or initialize model+schema metrics (PRIMARY - most useful)
     let modelSchemaMetric = modelSchemaMetrics.get(modelSchemaKey);
