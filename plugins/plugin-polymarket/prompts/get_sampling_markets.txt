@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to extract optional pagination parameters for retrieving Polymarket markets with rewards enabled (sampling markets).
+extract optional pagination parameters for retrieving Polymarket markets with rewards enabled (sampling markets).
 
 Review the recent messages:
 <recent_messages>

@@ -8,6 +8,8 @@ import type {
   ImageGenerationParams,
   ObjectGenerationParams,
   Plugin,
+  ResearchParams,
+  ResearchResult,
   TextEmbeddingParams,
   TokenizeTextParams,
 } from "@elizaos/core";
@@ -18,6 +20,7 @@ import {
   handleImageGeneration,
   handleObjectLarge,
   handleObjectSmall,
+  handleResearch,
   handleTextEmbedding,
   handleTextLarge,
   handleTextSmall,
@@ -58,6 +61,8 @@ export const openaiPlugin: Plugin = {
     OPENAI_IMAGE_DESCRIPTION_MODEL: env.OPENAI_IMAGE_DESCRIPTION_MODEL ?? null,
     OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS: env.OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS ?? null,
     OPENAI_EXPERIMENTAL_TELEMETRY: env.OPENAI_EXPERIMENTAL_TELEMETRY ?? null,
+    OPENAI_RESEARCH_MODEL: env.OPENAI_RESEARCH_MODEL ?? null,
+    OPENAI_RESEARCH_TIMEOUT: env.OPENAI_RESEARCH_TIMEOUT ?? null,
   },
 
   async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
@@ -140,6 +145,13 @@ export const openaiPlugin: Plugin = {
       params: ObjectGenerationParams
     ): Promise<Record<string, unknown>> => {
       return handleObjectLarge(runtime, params);
+    },
+
+    [ModelType.RESEARCH]: async (
+      runtime: IAgentRuntime,
+      params: ResearchParams
+    ): Promise<ResearchResult> => {
+      return handleResearch(runtime, params);
     },
   },
 
@@ -327,6 +339,30 @@ export const openaiPlugin: Plugin = {
 
             logger.info(
               `[OpenAI Test] Object generated: ${JSON.stringify(result).substring(0, 100)}`
+            );
+          },
+        },
+        {
+          name: "openai_test_research",
+          fn: async (runtime: IAgentRuntime): Promise<void> => {
+            // Note: Deep research can take a long time (minutes to hours)
+            // This test uses a simple query with maxToolCalls to limit execution time
+            const result = await runtime.useModel(ModelType.RESEARCH, {
+              input: "What is the current date and time?",
+              tools: [{ type: "web_search_preview" }],
+              maxToolCalls: 3, // Limit tool calls for faster test execution
+            });
+
+            if (!result || typeof result !== "object" || !("text" in result)) {
+              throw new Error("Research should return an object with text property");
+            }
+
+            if (typeof result.text !== "string" || result.text.length === 0) {
+              throw new Error("Research result text should be a non-empty string");
+            }
+
+            logger.info(
+              `[OpenAI Test] Research completed. Text length: ${result.text.length}, Annotations: ${result.annotations?.length ?? 0}`
             );
           },
         },

@@ -43,13 +43,13 @@
     "rust"
   ],
   "dependencies": {
-    "@ai-sdk/anthropic": "^2.0.17",
-    "@ai-sdk/google": "^2.0.14",
-    "@ai-sdk/openai": "^2.0.32",
+    "@ai-sdk/anthropic": "^3.0.13",
+    "@ai-sdk/google": "^3.0.8",
+    "@ai-sdk/openai": "^3.0.9",
     "@elizaos/core": "workspace:*",
     "@openrouter/ai-sdk-provider": "^1.2.0",
     "@tanstack/react-query": "^5.51.1",
-    "ai": "^5.0.48",
+    "ai": "^6.0.30",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "lucide-react": "^0.525.0",

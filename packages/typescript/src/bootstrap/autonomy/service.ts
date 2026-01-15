@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import {
   ChannelType,
   type Content,
+  type ContentValue,
   EventType,
   type IAgentRuntime,
   type Memory,
@@ -125,28 +126,28 @@ export class AutonomyService extends Service {
       `Using autonomous room ID: ${this.autonomousRoomId}`,
     );
 
-    // Check settings for auto-start
-    const autonomyEnabled = this.runtime.getSetting("AUTONOMY_ENABLED");
+    // Check runtime flag for auto-start
+    const autonomyEnabled = this.runtime.enableAutonomy;
+
+    this.runtime.logger.debug(
+      { src: "autonomy", agentId: this.runtime.agentId },
+      `Runtime enableAutonomy value: ${autonomyEnabled}`,
+    );
 
     // Ensure autonomous world and room exist
     await this.ensureAutonomousContext();
 
-    this.runtime.logger.info(
-      { src: "autonomy", agentId: this.runtime.agentId },
-      `Settings check - AUTONOMY_ENABLED: ${autonomyEnabled}`,
-    );
-
-    // Start disabled by default - wait for explicit enablement
-    if (autonomyEnabled === true || autonomyEnabled === "true") {
+    // Check if autonomy should auto-start based on runtime configuration
+    if (autonomyEnabled) {
       this.runtime.logger.info(
         { src: "autonomy", agentId: this.runtime.agentId },
-        "Autonomy is enabled in settings, starting...",
+        "Autonomy enabled (enableAutonomy: true), starting autonomous loop...",
       );
       await this.startLoop();
     } else {
       this.runtime.logger.info(
         { src: "autonomy", agentId: this.runtime.agentId },
-        "Autonomy disabled by default - will wait for explicit activation",
+        "Autonomy not enabled (enableAutonomy: false or not set). Set enableAutonomy: true in runtime options to auto-start, or call enableAutonomy() to start manually.",
       );
     }
 
@@ -212,20 +213,18 @@ export class AutonomyService extends Service {
    */
   private setupSettingsMonitoring(): void {
     this.settingsMonitorInterval = setInterval(async () => {
-      const autonomyEnabled = this.runtime.getSetting("AUTONOMY_ENABLED");
-      const shouldBeRunning =
-        autonomyEnabled === true || autonomyEnabled === "true";
+      const shouldBeRunning = this.runtime.enableAutonomy;
 
       if (shouldBeRunning && !this.isRunning) {
         this.runtime.logger.info(
           { src: "autonomy", agentId: this.runtime.agentId },
-          "Settings indicate autonomy should be enabled, starting...",
+          "Runtime indicates autonomy should be enabled, starting...",
         );
         await this.startLoop();
       } else if (!shouldBeRunning && this.isRunning) {
         this.runtime.logger.info(
           { src: "autonomy", agentId: this.runtime.agentId },
-          "Settings indicate autonomy should be disabled, stopping...",
+          "Runtime indicates autonomy should be disabled, stopping...",
         );
         await this.stopLoop();
       }
@@ -245,7 +244,7 @@ export class AutonomyService extends Service {
     }
 
     this.isRunning = true;
-    this.runtime.setSetting("AUTONOMY_ENABLED", true);
+    this.runtime.enableAutonomy = true;
 
     this.runtime.logger.info(
       { src: "autonomy", agentId: this.runtime.agentId },
@@ -274,7 +273,7 @@ export class AutonomyService extends Service {
       this.loopInterval = undefined;
     }
 
-    this.runtime.setSetting("AUTONOMY_ENABLED", false);
+    this.runtime.enableAutonomy = false;
     this.runtime.logger.info(
       { src: "autonomy", agentId: this.runtime.agentId },
       "Stopped autonomous loop",
@@ -380,16 +379,21 @@ export class AutonomyService extends Service {
       isFirstThought = true;
     }
 
-    // Create monologue prompt
+    // Create prompt with user context + next-step focus
     const mode = this.getAutonomyMode();
+    const targetRoomContext = await this.getTargetRoomContextText();
     const monologuePrompt =
       mode === "task"
         ? this.createTaskPrompt({
             lastThought,
             isFirstThought,
-            targetRoomContext: await this.getTargetRoomContextText(),
+            targetRoomContext,
           })
-        : this.createMonologuePrompt(lastThought, isFirstThought);
+        : this.createMonologuePrompt({
+            lastThought,
+            isFirstThought,
+            targetRoomContext,
+          });
 
     // Create the autonomous message for the full agent pipeline
     const autonomousMessage: Memory = {
@@ -404,6 +408,7 @@ export class AutonomyService extends Service {
           type: "autonomous-prompt",
           isAutonomous: true,
           isInternalThought: true,
+          autonomyMode: mode,
           channelId: "autonomous",
           timestamp: Date.now(),
           isContinuation: !isFirstThought,
@@ -415,9 +420,26 @@ export class AutonomyService extends Service {
     };
 
     // Persist the autonomous prompt so UIs can show "autonomy logs" even if the agent doesn't respond.
-    // This is intentionally lightweight and scoped to the autonomous room.
+    // Use a distinct ID to avoid clashing with messageService's message memory creation.
+    const baseMetadata =
+      typeof autonomousMessage.content.metadata === "object" &&
+      autonomousMessage.content.metadata !== null &&
+      !Array.isArray(autonomousMessage.content.metadata)
+        ? (autonomousMessage.content.metadata as Record<string, ContentValue>)
+        : {};
+    const autonomyLogMemory: Memory = {
+      ...autonomousMessage,
+      id: stringToUuid(uuidv4()),
+      content: {
+        ...autonomousMessage.content,
+        metadata: {
+          ...baseMetadata,
+          originalMessageId: autonomousMessage.id,
+        },
+      },
+    };
     try {
-      await this.runtime.createMemory(autonomousMessage, "memories");
+      await this.runtime.createMemory(autonomyLogMemory, "memories");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.runtime.logger.warn(
@@ -447,6 +469,7 @@ export class AutonomyService extends Service {
               type: "autonomous-response",
               isAutonomous: true,
               isInternalThought: true,
+              autonomyMode: mode,
               channelId: "autonomous",
               timestamp: Date.now(),
             },
@@ -517,21 +540,36 @@ export class AutonomyService extends Service {
   /**
    * Create an introspective monologue prompt
    */
-  private createMonologuePrompt(
-    lastThought: string | undefined,
-    isFirstThought: boolean,
-  ): string {
-    if (isFirstThought) {
-      return `As an AI agent, reflect on your current state and experiences. What are you thinking about right now? What interests you or concerns you? Share your internal thoughts as a stream of consciousness. Don't address anyone - this is your private monologue.
+  private createMonologuePrompt(params: {
+    lastThought: string | undefined;
+    isFirstThought: boolean;
+    targetRoomContext: string;
+  }): string {
+    const header = `You are running in AUTONOMOUS REFLECTION MODE.
 
-Generate a thoughtful, introspective response (1-2 sentences):`;
+Your job: reflect on context, decide what you want to do next, and act if appropriate.
+- Use available actions/tools when they can advance the goal.
+- If you cannot act, state the missing info and the safest next step to obtain it.
+- Keep the response concise, focused on the next action.`;
+
+    const context = `USER CONTEXT (most recent last):
+${params.targetRoomContext}`;
+
+    if (params.isFirstThought) {
+      return `${header}
+
+${context}
+
+Think briefly, then state what you want to do next and take action if needed.`;
     }
 
-    return `Continuing your internal monologue from your last thought: "${lastThought}"
+    return `${header}
 
-What naturally follows from this thought? What does it make you think about next? Continue your stream of consciousness without addressing anyone - this is your private internal reflection.
+${context}
 
-Generate your next thought (1-2 sentences):`;
+Your last autonomous note: "${params.lastThought ?? ""}"
+
+Continue from that note. Decide the next step and act if needed.`;
   }
 
   private createTaskPrompt(params: {
@@ -541,10 +579,11 @@ Generate your next thought (1-2 sentences):`;
   }): string {
     const header = `You are running in AUTONOMOUS TASK MODE.
 
-Your job: continue helping the user by controlling a computer when needed.
-- You may use ComputerUse actions to interact with the UI.
+Your job: continue helping the user and make progress toward the task.
+- Use available actions/tools to gather information or execute steps.
+- If you need UI control, use ComputerUse actions.
 - In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
-- Prefer safe, incremental steps; if unsure, gather more UI context (e.g. get window tree) before clicking/typing.`;
+- Prefer safe, incremental steps; if unsure, gather more UI context before acting.`;
 
     const context = `USER CHAT CONTEXT (most recent last):
 ${params.targetRoomContext}`;
@@ -554,7 +593,7 @@ ${params.targetRoomContext}`;
 
 ${context}
 
-Decide what to do next. Think briefly, then act.`;
+Decide what to do next. Think briefly, then take the most useful action.`;
     }
 
     return `${header}
@@ -563,7 +602,7 @@ ${context}
 
 Your last autonomous note: "${params.lastThought ?? ""}"
 
-Continue the task. Think briefly, then act.`;
+Continue the task. Decide the next step and take action now.`;
   }
 
   // Public API methods
@@ -622,7 +661,7 @@ Continue the task. Think briefly, then act.`;
    * Enable autonomy
    */
   async enableAutonomy(): Promise<void> {
-    this.runtime.setSetting("AUTONOMY_ENABLED", true);
+    this.runtime.enableAutonomy = true;
     if (!this.isRunning) {
       await this.startLoop();
     }
@@ -632,7 +671,7 @@ Continue the task. Think briefly, then act.`;
    * Disable autonomy
    */
   async disableAutonomy(): Promise<void> {
-    this.runtime.setSetting("AUTONOMY_ENABLED", false);
+    this.runtime.enableAutonomy = false;
     if (this.isRunning) {
       await this.stopLoop();
     }
@@ -642,9 +681,9 @@ Continue the task. Think briefly, then act.`;
    * Get current autonomy status
    */
   getStatus(): AutonomyStatus {
-    const enabled = this.runtime.getSetting("AUTONOMY_ENABLED");
+    const enabled = this.runtime.enableAutonomy;
     return {
-      enabled: enabled === true || enabled === "true",
+      enabled,
       running: this.isRunning,
       thinking: this.isThinking,
       interval: this.intervalMs,

@@ -383,7 +383,7 @@ class AdventureGame {
   private handleTake(itemName: string): string {
     const room = this.getCurrentRoom();
     const itemIndex = room.items.findIndex((i) =>
-      i.name.toLowerCase().includes(itemName.toLowerCase()),
+      i.name.toLowerCase().includes(itemName.toLowerCase())
     );
 
     if (itemIndex >= 0) {
@@ -445,7 +445,7 @@ class AdventureGame {
 
   private handleUse(itemName: string): string {
     const itemIndex = this.state.inventory.findIndex((i) =>
-      i.name.toLowerCase().includes(itemName.toLowerCase()),
+      i.name.toLowerCase().includes(itemName.toLowerCase())
     );
 
     if (itemIndex < 0) {
@@ -458,7 +458,7 @@ class AdventureGame {
       case "potion": {
         const healAmount = Math.min(
           50,
-          this.state.maxHealth - this.state.health,
+          this.state.maxHealth - this.state.health
         );
         this.state.health += healAmount;
         this.state.inventory.splice(itemIndex, 1);
@@ -676,27 +676,25 @@ Respond with ONLY the exact action text you want to take (e.g., "go north" or "a
     // This gives the agent access to recent messages, providers, etc.
     let chosenAction = "look around"; // Default fallback
 
-    if (runtime.messageService) {
-      const result = await runtime.messageService.handleMessage(
-        runtime,
-        message,
-        async (content) => {
-          if (content.text) {
-            chosenAction = content.text.trim();
-          }
-          return [];
-        },
-      );
-
-      // If the agent responded, extract the action from the response
-      if (result.responseContent?.text) {
-        chosenAction = result.responseContent.text.trim();
+    const result = await runtime.messageService?.handleMessage(
+      runtime,
+      message,
+      async (content) => {
+        if (content.text) {
+          chosenAction = content.text.trim();
+        }
+        return [];
       }
+    );
+
+    // If the agent responded, extract the action from the response
+    if (result?.responseContent?.text) {
+      chosenAction = result?.responseContent?.text.trim();
     }
 
     // Validate the action is in available actions (case-insensitive match)
     const matchedAction = actions.find(
-      (a) => a.toLowerCase() === chosenAction.toLowerCase(),
+      (a) => a.toLowerCase() === chosenAction.toLowerCase()
     );
 
     if (matchedAction) {
@@ -707,7 +705,7 @@ Respond with ONLY the exact action text you want to take (e.g., "go north" or "a
     const partialMatch = actions.find(
       (a) =>
         a.toLowerCase().includes(chosenAction.toLowerCase()) ||
-        chosenAction.toLowerCase().includes(a.toLowerCase()),
+        chosenAction.toLowerCase().includes(a.toLowerCase())
     );
 
     if (partialMatch) {
@@ -723,7 +721,7 @@ Respond with ONLY the exact action text you want to take (e.g., "go north" or "a
    */
   static async saveGameResult(
     session: GameSession,
-    result: string,
+    result: string
   ): Promise<void> {
     const { runtime, roomId, gameMasterId } = session;
 
@@ -836,7 +834,7 @@ async function runAdventureGame(): Promise<void> {
   GameDisplay.showGameOver(
     finalState.victory,
     finalState.score,
-    finalState.turnsPlayed,
+    finalState.turnsPlayed
   );
 
   await session.runtime.stop();
@@ -855,7 +853,7 @@ async function runInteractiveMode(): Promise<void> {
 
   console.log("\n📜 INTERACTIVE MODE: Guide Eliza through the dungeon!\n");
   console.log(
-    "You can type actions yourself, or type 'ai' to let Eliza decide.\n",
+    "You can type actions yourself, or type 'ai' to let Eliza decide.\n"
   );
   const initialDescription = game.describeRoom();
   console.log(initialDescription);
@@ -898,7 +896,7 @@ async function runInteractiveMode(): Promise<void> {
     GameDisplay.showGameOver(
       finalState.victory,
       finalState.score,
-      finalState.turnsPlayed,
+      finalState.turnsPlayed
     );
   }
 

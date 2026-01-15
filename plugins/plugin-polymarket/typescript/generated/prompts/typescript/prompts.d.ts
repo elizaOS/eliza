@@ -32,6 +32,8 @@ export declare const getTradeHistoryTemplate: string;
 export declare const GET_TRADE_HISTORY_TEMPLATE: string;
 export declare const orderTemplate: string;
 export declare const ORDER_TEMPLATE: string;
+export declare const researchMarketTemplate: string;
+export declare const RESEARCH_MARKET_TEMPLATE: string;
 export declare const retrieveAllMarketsTemplate: string;
 export declare const RETRIEVE_ALL_MARKETS_TEMPLATE: string;
 export declare const setupWebsocketTemplate: string;

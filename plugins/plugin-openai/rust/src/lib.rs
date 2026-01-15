@@ -21,7 +21,15 @@ pub use audio::{detect_audio_mime_type, get_filename_for_data, AudioMimeType};
 pub use client::OpenAIClient;
 pub use error::{OpenAIError, Result};
 pub use tokenization::{count_tokens, detokenize, tokenize, truncate_to_token_limit};
-pub use types::*;
+pub use types::{
+    ChatCompletionChoice, ChatCompletionResponse, ChatMessage, EmbeddingData, EmbeddingParams,
+    EmbeddingResponse, ImageData, ImageDescriptionParams, ImageDescriptionResult,
+    ImageGenerationParams, ImageGenerationResponse, ImageGenerationResult, ImageQuality, ImageSize,
+    ImageStyle, ModelInfo, ModelsResponse, OpenAIConfig, ResearchAnnotation, ResearchParams,
+    ResearchResult, ResponsesApiError, ResponsesApiResponse, TTSOutputFormat, TTSVoice,
+    TextGenerationParams, TextToSpeechParams, TranscriptionParams, TranscriptionResponse,
+    TranscriptionResponseFormat,
+};
 
 use anyhow::Result as AnyhowResult;
 use std::sync::Arc;
@@ -94,6 +102,16 @@ pub fn get_openai_plugin() -> AnyhowResult<OpenAIPlugin> {
         config = config.large_model(&model);
     }
 
+    if let Ok(model) = std::env::var("OPENAI_RESEARCH_MODEL") {
+        config = config.research_model(&model);
+    }
+
+    if let Ok(timeout) = std::env::var("OPENAI_RESEARCH_TIMEOUT") {
+        if let Ok(timeout_secs) = timeout.parse::<u64>() {
+            config = config.research_timeout_secs(timeout_secs);
+        }
+    }
+
     OpenAIPlugin::new(config).map_err(|e| anyhow::anyhow!("Failed to create OpenAI plugin: {}", e))
 }
 
@@ -156,6 +174,62 @@ pub fn create_openai_elizaos_plugin() -> AnyhowResult<elizaos::types::Plugin> {
                     .generate_text_with_params(&text_params)
                     .await
                     .map_err(|e| anyhow::anyhow!("OpenAI error: {}", e))
+            })
+        }),
+    );
+
+    let openai_research = openai.clone();
+    model_handlers.insert(
+        "RESEARCH".to_string(),
+        Box::new(move |params: serde_json::Value| {
+            let openai = openai_research.clone();
+            Box::pin(async move {
+                let input = params.get("input").and_then(|v| v.as_str()).unwrap_or("");
+                let instructions = params.get("instructions").and_then(|v| v.as_str());
+                let background = params.get("background").and_then(|v| v.as_bool());
+                let tools = params.get("tools").and_then(|v| v.as_array()).cloned();
+                let max_tool_calls = params.get("maxToolCalls").and_then(|v| v.as_i64()).map(|v| v as i32);
+                let model = params.get("model").and_then(|v| v.as_str());
+
+                let mut research_params = ResearchParams::new(input);
+
+                if let Some(inst) = instructions {
+                    research_params = research_params.instructions(inst);
+                }
+                if let Some(bg) = background {
+                    research_params = research_params.background(bg);
+                }
+                if let Some(t) = tools {
+                    research_params = research_params.tools(t);
+                }
+                if let Some(max) = max_tool_calls {
+                    research_params = research_params.max_tool_calls(max);
+                }
+                if let Some(m) = model {
+                    research_params = research_params.model(m);
+                }
+
+                let result = openai
+                    .client()
+                    .deep_research(&research_params)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("OpenAI error: {}", e))?;
+
+                // Convert result to JSON string
+                let result_json = serde_json::json!({
+                    "id": result.id,
+                    "text": result.text,
+                    "annotations": result.annotations.iter().map(|a| serde_json::json!({
+                        "url": a.url,
+                        "title": a.title,
+                        "startIndex": a.start_index,
+                        "endIndex": a.end_index,
+                    })).collect::<Vec<_>>(),
+                    "outputItems": result.output_items,
+                    "status": result.status,
+                });
+
+                Ok(serde_json::to_string(&result_json).unwrap_or_default())
             })
         }),
     );

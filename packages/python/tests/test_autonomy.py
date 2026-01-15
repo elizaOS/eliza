@@ -40,6 +40,7 @@ def test_runtime():
 
     runtime.get_setting = MagicMock(return_value=None)
     runtime.set_setting = MagicMock()
+    runtime.enable_autonomy = False
 
     runtime.logger = MagicMock()
     runtime.logger.info = MagicMock()
@@ -79,18 +80,7 @@ class TestAutonomyService:
 
     @pytest.mark.asyncio
     async def test_auto_start_when_enabled(self, test_runtime):
-        test_runtime.get_setting = MagicMock(return_value=True)
-
-        service = await AutonomyService.start(test_runtime)
-
-        assert service.is_loop_running() is True
-        test_runtime.set_setting.assert_called_with("AUTONOMY_ENABLED", True)
-
-        await service.stop_loop()
-
-    @pytest.mark.asyncio
-    async def test_auto_start_when_enabled_string(self, test_runtime):
-        test_runtime.get_setting = MagicMock(return_value="true")
+        test_runtime.enable_autonomy = True
 
         service = await AutonomyService.start(test_runtime)
 
@@ -123,11 +113,11 @@ class TestAutonomyService:
 
         await service.start_loop()
         assert service.is_loop_running() is True
-        test_runtime.set_setting.assert_called_with("AUTONOMY_ENABLED", True)
+        assert test_runtime.enable_autonomy is True
 
         await service.stop_loop()
         assert service.is_loop_running() is False
-        test_runtime.set_setting.assert_called_with("AUTONOMY_ENABLED", False)
+        assert test_runtime.enable_autonomy is False
 
     @pytest.mark.asyncio
     async def test_no_double_start(self, test_runtime):
@@ -176,7 +166,7 @@ class TestAutonomyService:
 
         await service.enable_autonomy()
 
-        test_runtime.set_setting.assert_called_with("AUTONOMY_ENABLED", True)
+        assert test_runtime.enable_autonomy is True
         assert service.is_loop_running() is True
 
         await service.stop_loop()
@@ -188,12 +178,12 @@ class TestAutonomyService:
         await service.enable_autonomy()
         await service.disable_autonomy()
 
-        test_runtime.set_setting.assert_called_with("AUTONOMY_ENABLED", False)
+        assert test_runtime.enable_autonomy is False
         assert service.is_loop_running() is False
 
     @pytest.mark.asyncio
     async def test_get_status(self, test_runtime):
-        test_runtime.get_setting = MagicMock(return_value=True)
+        test_runtime.enable_autonomy = True
         service = await AutonomyService.start(test_runtime)
 
         status = service.get_status()

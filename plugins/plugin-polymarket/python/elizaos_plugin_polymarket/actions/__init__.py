@@ -2,6 +2,7 @@ from elizaos_plugin_polymarket.actions.account import (
     get_account_access_status,
     handle_authentication,
 )
+from elizaos_plugin_polymarket.actions.balances import get_balances
 from elizaos_plugin_polymarket.actions.api_keys import (
     create_api_key,
     get_all_api_keys,
@@ -31,9 +32,27 @@ from elizaos_plugin_polymarket.actions.orders import (
     get_order_details,
     place_order,
 )
+from elizaos_plugin_polymarket.actions.positions import get_positions
 from elizaos_plugin_polymarket.actions.realtime import (
     handle_realtime_updates,
     setup_websocket,
+)
+from elizaos_plugin_polymarket.actions.research import (
+    research_market,
+    ResearchParams,
+    ResearchActionResult,
+    build_research_prompt,
+    format_research_results,
+    format_full_report,
+    format_research_action_result,
+)
+from elizaos_plugin_polymarket.actions.search import (
+    search_markets,
+    SearchResult,
+    GammaMarket,
+    GammaEvent,
+    GammaTag,
+    format_search_results,
 )
 from elizaos_plugin_polymarket.actions.trading import (
     check_order_scoring,
@@ -56,6 +75,8 @@ __all__ = [
     "get_best_price",
     "get_midpoint_price",
     "get_spread",
+    "get_balances",
+    "get_positions",
     "place_order",
     "cancel_order",
     "get_open_orders",
@@ -71,6 +92,21 @@ __all__ = [
     "handle_authentication",
     "setup_websocket",
     "handle_realtime_updates",
+    # Search markets (Gamma API)
+    "search_markets",
+    "SearchResult",
+    "GammaMarket",
+    "GammaEvent",
+    "GammaTag",
+    "format_search_results",
+    # Research market
+    "research_market",
+    "ResearchParams",
+    "ResearchActionResult",
+    "build_research_prompt",
+    "format_research_results",
+    "format_full_report",
+    "format_research_action_result",
     # TS parity constants
     "ALL_ACTION_NAMES",
 ]

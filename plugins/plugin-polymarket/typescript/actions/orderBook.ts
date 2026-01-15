@@ -1,7 +1,32 @@
 /**
  * @elizaos/plugin-polymarket Order Book Actions
  *
- * Actions for retrieving order book data, prices, and spreads.
+ * ## Overview
+ *
+ * This module provides the order book depth action for comparing liquidity
+ * across multiple Polymarket tokens.
+ *
+ * Note: The getOrderBookSummaryAction has been consolidated into getTokenInfoAction
+ * which now provides comprehensive single-token information including pricing.
+ *
+ * ## When to Use This Action
+ *
+ * ### POLYMARKET_GET_ORDER_BOOK_DEPTH
+ * **Use for:** Comparing liquidity depth across multiple tokens
+ * - Evaluating which markets have the most liquidity
+ * - Finding markets with adequate depth for large orders
+ * - Comparing market maturity across related markets
+ *
+ * **Example queries:**
+ * - "Compare depth for tokens A, B, and C"
+ * - "Which of these markets has more liquidity?"
+ *
+ * ## When NOT to Use This Action
+ *
+ * - **Single token info**: Use `getTokenInfoAction` for comprehensive single-token data
+ * - **Historical prices**: Use `getPriceHistoryAction` for past price data
+ * - **Market discovery**: Use `getMarketsAction` to find markets by topic
+ * - **Placing orders**: Use `placeOrderAction` to execute trades
  */
 
 import {
@@ -9,167 +34,22 @@ import {
   type ActionResult,
   type Content,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
-  logger,
   type Memory,
   type State,
 } from "@elizaos/core";
-import {
-  getBestPriceTemplate,
-  getMidpointPriceTemplate,
-  getOrderBookDepthTemplate,
-  getOrderBookTemplate,
-  getSpreadTemplate,
-} from "../templates";
+import { getOrderBookDepthTemplate } from "../templates";
 import type { OrderBook } from "../types";
-import { initializeClobClient } from "../utils/clobClient";
-import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
-
-// =============================================================================
-// Type Definitions
-// =============================================================================
-
-interface LLMTokenResult {
-  tokenId?: string;
-  error?: string;
-}
-
-interface LLMTokensResult {
-  tokenIds?: string[];
-  error?: string;
-}
-
-interface LLMPriceResult {
-  tokenId?: string;
-  side?: "buy" | "sell";
-  error?: string;
-}
-
-interface MidpointResponse {
-  mid: string;
-}
-
-interface SpreadResponse {
-  spread: string;
-}
-
-// =============================================================================
-// Get Order Book Summary Action
-// =============================================================================
-
-export const getOrderBookSummaryAction: Action = {
-  name: "POLYMARKET_GET_ORDER_BOOK",
-  similes: ["ORDER_BOOK", "GET_ORDER_BOOK", "SHOW_ORDER_BOOK", "BOOK", "ORDERS"],
-  description: "Retrieve order book summary for a specific token",
-
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    return Boolean(runtime.getSetting("CLOB_API_URL"));
-  },
-
-  handler: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    state?: State,
-    _options?: Record<string, unknown>,
-    callback?: HandlerCallback
-  ): Promise<ActionResult> => {
-    logger.info("[getOrderBookSummaryAction] Handler called");
-
-    let tokenId = "";
-
-    try {
-      const llmResult = await callLLMWithTimeout<LLMTokenResult>(
-        runtime,
-        state,
-        getOrderBookTemplate,
-        "getOrderBookSummaryAction"
-      );
-
-      if (isLLMError(llmResult) || !llmResult?.tokenId) {
-        throw new Error("Token ID not found. Please specify a token ID.");
-      }
-
-      tokenId = llmResult.tokenId;
-
-      const clobClient = await initializeClobClient(runtime);
-      const orderBook = (await clobClient.getOrderBook(tokenId)) as OrderBook;
-
-      // Calculate summary stats
-      const topBid = orderBook.bids[0];
-      const topAsk = orderBook.asks[0];
-      const spread =
-        topBid && topAsk ? (parseFloat(topAsk.price) - parseFloat(topBid.price)).toFixed(4) : "N/A";
-
-      let responseText = `📚 **Order Book for Token ${tokenId.slice(0, 16)}...**\n\n`;
-
-      responseText += `**Summary:**\n`;
-      responseText += `• Best Bid: ${topBid ? `$${topBid.price} (${topBid.size} shares)` : "None"}\n`;
-      responseText += `• Best Ask: ${topAsk ? `$${topAsk.price} (${topAsk.size} shares)` : "None"}\n`;
-      responseText += `• Spread: ${spread}\n\n`;
-
-      responseText += `**Top 5 Bids:**\n`;
-      orderBook.bids.slice(0, 5).forEach((bid, i) => {
-        responseText += `${i + 1}. $${bid.price} - ${bid.size} shares\n`;
-      });
-
-      responseText += `\n**Top 5 Asks:**\n`;
-      orderBook.asks.slice(0, 5).forEach((ask, i) => {
-        responseText += `${i + 1}. $${ask.price} - ${ask.size} shares\n`;
-      });
-
-      const responseContent: Content = {
-        text: responseText,
-        actions: ["POLYMARKET_GET_ORDER_BOOK"],
-      };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return {
-        success: true,
-        text: responseText,
-        data: {
-          tokenId,
-          bestBid: topBid?.price ?? "N/A",
-          bestAsk: topAsk?.price ?? "N/A",
-          spread,
-          timestamp: new Date().toISOString(),
-        },
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.error("[getOrderBookSummaryAction] Error:", error);
-
-      const errorContent: Content = {
-        text: `❌ **Error**: ${errorMessage}\n\n**Token ID**: \`${tokenId || "not provided"}\``,
-        actions: ["POLYMARKET_GET_ORDER_BOOK"],
-        data: { error: errorMessage, tokenId },
-      };
-
-      if (callback) {
-        await callback(errorContent);
-      }
-      throw error;
-    }
-  },
-
-  examples: [
-    [
-      {
-        name: "{{user1}}",
-        content: { text: "Show me the order book for token 123456" },
-      },
-      {
-        name: "{{user2}}",
-        content: {
-          text: "I'll fetch the order book for that token.",
-          action: "POLYMARKET_GET_ORDER_BOOK",
-        },
-      },
-    ],
-  ],
-};
+import {
+  initializeClobClient,
+  callLLMWithTimeout,
+  isLLMError,
+  parseOrderBookParameters,
+  sendAcknowledgement,
+  sendError,
+  type LLMTokensResult,
+} from "../utils";
 
 // =============================================================================
 // Get Order Book Depth Action
@@ -180,39 +60,90 @@ interface DepthData {
   asks: number;
 }
 
+/**
+ * Multi-token order book depth action for comparing liquidity.
+ *
+ * This action retrieves the number of bid and ask levels for multiple tokens,
+ * useful for comparing relative liquidity depth across markets.
+ *
+ * ## Usage Examples
+ *
+ * ```
+ * // Compare depth across three tokens
+ * { tokenIds: ["123...", "456...", "789..."] }
+ * ```
+ *
+ * ## When to Use
+ *
+ * - Comparing liquidity depth across multiple related markets
+ * - Finding which markets have enough depth for large orders
+ * - Evaluating market maturity (more levels = more active market)
+ *
+ * ## When NOT to Use
+ *
+ * - For single-token queries → use `getTokenInfoAction`
+ * - For actual prices → use `getTokenInfoAction`
+ * - For trading → use `placeOrderAction`
+ */
 export const getOrderBookDepthAction: Action = {
   name: "POLYMARKET_GET_ORDER_BOOK_DEPTH",
-  similes: ["ORDER_BOOK_DEPTH", "DEPTH", "MARKET_DEPTH", "LIQUIDITY"],
-  description: "Retrieve order book depth for multiple tokens",
+  similes: ["ORDER_BOOK_DEPTH", "DEPTH", "MARKET_DEPTH", "LIQUIDITY", "COMPARE_DEPTH"],
+  description: "Retrieves order book depth (number of bid/ask levels) for multiple tokens to compare liquidity across markets. Use when comparing depth across multiple markets or finding markets with sufficient liquidity for large trades. Parameters: tokenIds (array of condition token IDs, required).",
 
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    return Boolean(runtime.getSetting("CLOB_API_URL"));
+  parameters: [
+    {
+      name: "tokenIds",
+      description: "Array of Polymarket condition token IDs to fetch depth for",
+      required: false,
+      schema: {
+        type: "array",
+        items: { type: "string" },
+      },
+      examples: [["123", "456"]],
+    },
+  ],
+
+  validate: async (_runtime: IAgentRuntime): Promise<boolean> => {
+    // Always validate - CLOB API URL has a default fallback in initializeClobClient
+    return true;
   },
 
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
     state?: State,
-    _options?: Record<string, unknown>,
+    options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    logger.info("[getOrderBookDepthAction] Handler called");
+    runtime.logger.info("[getOrderBookDepthAction] Handler called");
 
     let tokenIds: string[] = [];
 
     try {
-      const llmResult = await callLLMWithTimeout<LLMTokensResult>(
-        runtime,
-        state,
-        getOrderBookDepthTemplate,
-        "getOrderBookDepthAction"
-      );
+      const parsedOptions = parseOrderBookParameters(options?.parameters);
+      if (parsedOptions.tokenIds?.length) {
+        tokenIds = parsedOptions.tokenIds;
+      } else {
+        const llmResult = await callLLMWithTimeout<LLMTokensResult>(
+          runtime,
+          state,
+          getOrderBookDepthTemplate,
+          "getOrderBookDepthAction"
+        );
 
-      if (isLLMError(llmResult) || !llmResult?.tokenIds?.length) {
-        throw new Error("Token IDs not found. Please specify token IDs.");
+        if (isLLMError(llmResult) || !llmResult?.tokenIds?.length) {
+          await sendError(callback, "Token IDs not found. Please specify token IDs to compare.");
+          return { success: false, text: "Token IDs required", error: "missing_tokens" };
+        }
+
+        tokenIds = llmResult.tokenIds;
       }
 
-      tokenIds = llmResult.tokenIds;
+      // Send acknowledgement before API calls
+      await sendAcknowledgement(callback, `Comparing order book depth for ${tokenIds.length} token(s)...`, {
+        tokenCount: tokenIds.length,
+        tokens: tokenIds.map((t) => t.slice(0, 12) + "...").join(", "),
+      });
 
       const clobClient = await initializeClobClient(runtime);
       // Use getOrderBooks and calculate depth from the result
@@ -235,12 +166,12 @@ export const getOrderBookDepthAction: Action = {
         };
       });
 
-      let responseText = `📊 **Order Book Depth**\n\n`;
+      let responseText = `📊 **Order Book Depth Comparison**\n\n`;
 
       Object.entries(depths).forEach(([tid, depth]) => {
         responseText += `**Token ${tid.slice(0, 12)}...**\n`;
-        responseText += `• Bid Depth: ${depth.bids}\n`;
-        responseText += `• Ask Depth: ${depth.asks}\n\n`;
+        responseText += `• Bid Levels: ${depth.bids}\n`;
+        responseText += `• Ask Levels: ${depth.asks}\n\n`;
       });
 
       const responseContent: Content = {
@@ -257,23 +188,15 @@ export const getOrderBookDepthAction: Action = {
         text: responseText,
         data: {
           tokenCount: String(tokenIds.length),
+          depths,
           timestamp: new Date().toISOString(),
         },
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.error("[getOrderBookDepthAction] Error:", error);
-
-      const errorContent: Content = {
-        text: `❌ **Error**: ${errorMessage}`,
-        actions: ["POLYMARKET_GET_ORDER_BOOK_DEPTH"],
-        data: { error: errorMessage, tokenIds },
-      };
-
-      if (callback) {
-        await callback(errorContent);
-      }
-      throw error;
+      runtime.logger.error("[getOrderBookDepthAction] Error:", error);
+      await sendError(callback, `Failed to fetch order book depth: ${errorMessage}`, `${tokenIds.length} token(s)`);
+      return { success: false, text: `Order book error: ${errorMessage}`, error: errorMessage };
     }
   },
 
@@ -281,328 +204,38 @@ export const getOrderBookDepthAction: Action = {
     [
       {
         name: "{{user1}}",
-        content: { text: "Get depth for tokens 123, 456, 789" },
+        content: { text: "Compare depth for tokens 123, 456, 789" },
       },
       {
         name: "{{user2}}",
         content: {
-          text: "I'll fetch the order book depth for those tokens.",
+          text: "I'll fetch the order book depth for those tokens to compare liquidity.",
           action: "POLYMARKET_GET_ORDER_BOOK_DEPTH",
         },
       },
     ],
-  ],
-};
-
-// =============================================================================
-// Get Best Price Action
-// =============================================================================
-
-export const getBestPriceAction: Action = {
-  name: "POLYMARKET_GET_BEST_PRICE",
-  similes: ["BEST_PRICE", "TOP_PRICE", "BID_PRICE", "ASK_PRICE"],
-  description: "Get the best bid or ask price for a token",
-
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    return Boolean(runtime.getSetting("CLOB_API_URL"));
-  },
-
-  handler: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    state?: State,
-    _options?: Record<string, unknown>,
-    callback?: HandlerCallback
-  ): Promise<ActionResult> => {
-    logger.info("[getBestPriceAction] Handler called");
-
-    let tokenId = "";
-    let side = "buy";
-
-    try {
-      const llmResult = await callLLMWithTimeout<LLMPriceResult>(
-        runtime,
-        state,
-        getBestPriceTemplate,
-        "getBestPriceAction"
-      );
-
-      if (isLLMError(llmResult) || !llmResult?.tokenId) {
-        throw new Error("Token ID not found. Please specify a token ID and side.");
-      }
-
-      tokenId = llmResult.tokenId;
-      side = llmResult.side ?? "buy";
-
-      const clobClient = await initializeClobClient(runtime);
-
-      // Get order book to find best price
-      const orderBook = (await clobClient.getOrderBook(tokenId)) as OrderBook;
-
-      let bestPrice: string;
-      let bestSize: string;
-
-      if (side === "buy") {
-        const topAsk = orderBook.asks[0];
-        bestPrice = topAsk?.price ?? "N/A";
-        bestSize = topAsk?.size ?? "N/A";
-      } else {
-        const topBid = orderBook.bids[0];
-        bestPrice = topBid?.price ?? "N/A";
-        bestSize = topBid?.size ?? "N/A";
-      }
-
-      const responseText =
-        `💰 **Best ${side.toUpperCase()} Price**\n\n` +
-        `• Token: \`${tokenId}\`\n` +
-        `• Side: ${side.toUpperCase()}\n` +
-        `• Best Price: $${bestPrice}\n` +
-        `• Available Size: ${bestSize} shares`;
-
-      const responseContent: Content = {
-        text: responseText,
-        actions: ["POLYMARKET_GET_BEST_PRICE"],
-      };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return {
-        success: true,
-        text: responseText,
-        data: {
-          tokenId,
-          side,
-          bestPrice,
-          bestSize,
-          timestamp: new Date().toISOString(),
-        },
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.error("[getBestPriceAction] Error:", error);
-
-      const errorContent: Content = {
-        text: `❌ **Error**: ${errorMessage}`,
-        actions: ["POLYMARKET_GET_BEST_PRICE"],
-        data: { error: errorMessage, tokenId, side },
-      };
-
-      if (callback) {
-        await callback(errorContent);
-      }
-      throw error;
-    }
-  },
-
-  examples: [
     [
       {
         name: "{{user1}}",
-        content: { text: "What's the best buy price for token 123456?" },
+        content: { text: "Which of these markets has more liquidity?" },
       },
       {
         name: "{{user2}}",
         content: {
-          text: "I'll get the best buy price for that token.",
-          action: "POLYMARKET_GET_BEST_PRICE",
+          text: "I'll compare the order book depth across those markets.",
+          action: "POLYMARKET_GET_ORDER_BOOK_DEPTH",
         },
       },
     ],
-  ],
-};
-
-// =============================================================================
-// Get Midpoint Price Action
-// =============================================================================
-
-export const getMidpointPriceAction: Action = {
-  name: "POLYMARKET_GET_MIDPOINT",
-  similes: ["MIDPOINT", "MID_PRICE", "MIDDLE_PRICE"],
-  description: "Get the midpoint price between best bid and ask",
-
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    return Boolean(runtime.getSetting("CLOB_API_URL"));
-  },
-
-  handler: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    state?: State,
-    _options?: Record<string, unknown>,
-    callback?: HandlerCallback
-  ): Promise<ActionResult> => {
-    logger.info("[getMidpointPriceAction] Handler called");
-
-    let tokenId = "";
-
-    try {
-      const llmResult = await callLLMWithTimeout<LLMTokenResult>(
-        runtime,
-        state,
-        getMidpointPriceTemplate,
-        "getMidpointPriceAction"
-      );
-
-      if (isLLMError(llmResult) || !llmResult?.tokenId) {
-        throw new Error("Token ID not found. Please specify a token ID.");
-      }
-
-      tokenId = llmResult.tokenId;
-
-      const clobClient = await initializeClobClient(runtime);
-      const midpointResponse = (await clobClient.getMidpoint(tokenId)) as MidpointResponse;
-
-      const responseText =
-        `📍 **Midpoint Price**\n\n` +
-        `• Token: \`${tokenId}\`\n` +
-        `• Midpoint: $${midpointResponse.mid}`;
-
-      const responseContent: Content = {
-        text: responseText,
-        actions: ["POLYMARKET_GET_MIDPOINT"],
-      };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return {
-        success: true,
-        text: responseText,
-        data: {
-          tokenId,
-          midpoint: midpointResponse.mid,
-          timestamp: new Date().toISOString(),
-        },
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.error("[getMidpointPriceAction] Error:", error);
-
-      const errorContent: Content = {
-        text: `❌ **Error**: ${errorMessage}`,
-        actions: ["POLYMARKET_GET_MIDPOINT"],
-        data: { error: errorMessage, tokenId },
-      };
-
-      if (callback) {
-        await callback(errorContent);
-      }
-      throw error;
-    }
-  },
-
-  examples: [
     [
       {
         name: "{{user1}}",
-        content: { text: "What's the midpoint price for token 123456?" },
+        content: { text: "What's the current price for token 123?" },
       },
       {
         name: "{{user2}}",
         content: {
-          text: "I'll calculate the midpoint price for that token.",
-          action: "POLYMARKET_GET_MIDPOINT",
-        },
-      },
-    ],
-  ],
-};
-
-// =============================================================================
-// Get Spread Action
-// =============================================================================
-
-export const getSpreadAction: Action = {
-  name: "POLYMARKET_GET_SPREAD",
-  similes: ["SPREAD", "BID_ASK_SPREAD", "MARKET_SPREAD"],
-  description: "Get the bid-ask spread for a token",
-
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    return Boolean(runtime.getSetting("CLOB_API_URL"));
-  },
-
-  handler: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    state?: State,
-    _options?: Record<string, unknown>,
-    callback?: HandlerCallback
-  ): Promise<ActionResult> => {
-    logger.info("[getSpreadAction] Handler called");
-
-    let tokenId = "";
-
-    try {
-      const llmResult = await callLLMWithTimeout<LLMTokenResult>(
-        runtime,
-        state,
-        getSpreadTemplate,
-        "getSpreadAction"
-      );
-
-      if (isLLMError(llmResult) || !llmResult?.tokenId) {
-        throw new Error("Token ID not found. Please specify a token ID.");
-      }
-
-      tokenId = llmResult.tokenId;
-
-      const clobClient = await initializeClobClient(runtime);
-      const spreadResponse = (await clobClient.getSpread(tokenId)) as SpreadResponse;
-
-      const responseText =
-        `📏 **Bid-Ask Spread**\n\n` +
-        `• Token: \`${tokenId}\`\n` +
-        `• Spread: ${spreadResponse.spread}`;
-
-      const responseContent: Content = {
-        text: responseText,
-        actions: ["POLYMARKET_GET_SPREAD"],
-      };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return {
-        success: true,
-        text: responseText,
-        data: {
-          tokenId,
-          spread: spreadResponse.spread,
-          timestamp: new Date().toISOString(),
-        },
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.error("[getSpreadAction] Error:", error);
-
-      const errorContent: Content = {
-        text: `❌ **Error**: ${errorMessage}`,
-        actions: ["POLYMARKET_GET_SPREAD"],
-        data: { error: errorMessage, tokenId },
-      };
-
-      if (callback) {
-        await callback(errorContent);
-      }
-      throw error;
-    }
-  },
-
-  examples: [
-    [
-      {
-        name: "{{user1}}",
-        content: { text: "What's the spread for token 123456?" },
-      },
-      {
-        name: "{{user2}}",
-        content: {
-          text: "I'll get the bid-ask spread for that token.",
-          action: "POLYMARKET_GET_SPREAD",
+          text: "That's a single-token question. I'll use the token info action to get comprehensive details including pricing.",
         },
       },
     ],

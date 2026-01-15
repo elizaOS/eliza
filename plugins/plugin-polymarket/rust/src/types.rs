@@ -296,6 +296,12 @@ pub struct Balance {
     pub decimals: u8,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BalanceAllowance {
+    pub balance: String,
+    pub allowance: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct ApiKeyCreds {
     pub key: String,

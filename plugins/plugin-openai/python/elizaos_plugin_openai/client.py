@@ -18,6 +18,9 @@ from elizaos_plugin_openai.types import (
     ImageGenerationResult,
     ModelsResponse,
     OpenAIConfig,
+    ResearchAnnotation,
+    ResearchParams,
+    ResearchResult,
     TextGenerationParams,
     TextToSpeechParams,
     TranscriptionParams,
@@ -344,3 +347,115 @@ class OpenAIClient:
         audio_data = await self.text_to_speech(params)
         async with aiofiles.open(output_path, "wb") as f:
             await f.write(audio_data)
+
+    async def deep_research(self, params: ResearchParams) -> ResearchResult:
+        """
+        Perform deep research using OpenAI's Responses API.
+
+        Deep research models can take tens of minutes to complete.
+        Use background mode for long-running tasks.
+
+        Args:
+            params: Research parameters including input, tools, and options.
+
+        Returns:
+            ResearchResult with text, annotations, and output items.
+        """
+        model = params.model or self._config.research_model
+
+        # Build request body for Responses API
+        request_body: dict[str, object] = {
+            "model": model,
+            "input": params.input,
+        }
+
+        if params.instructions:
+            request_body["instructions"] = params.instructions
+
+        if params.background:
+            request_body["background"] = params.background
+
+        if params.tools:
+            # Convert tool configs to API format
+            api_tools = []
+            for tool in params.tools:
+                tool_type = tool.get("type", "")
+                if tool_type == "web_search_preview":
+                    api_tools.append({"type": "web_search_preview"})
+                elif tool_type == "file_search":
+                    api_tools.append({
+                        "type": "file_search",
+                        "vector_store_ids": tool.get("vectorStoreIds", tool.get("vector_store_ids", [])),
+                    })
+                elif tool_type == "code_interpreter":
+                    api_tools.append({
+                        "type": "code_interpreter",
+                        "container": tool.get("container", {"type": "auto"}),
+                    })
+                elif tool_type == "mcp":
+                    api_tools.append({
+                        "type": "mcp",
+                        "server_label": tool.get("serverLabel", tool.get("server_label", "")),
+                        "server_url": tool.get("serverUrl", tool.get("server_url", "")),
+                        "require_approval": tool.get("requireApproval", tool.get("require_approval", "never")),
+                    })
+            request_body["tools"] = api_tools
+        else:
+            # Default to web search if no tools specified
+            request_body["tools"] = [{"type": "web_search_preview"}]
+
+        if params.max_tool_calls is not None:
+            request_body["max_tool_calls"] = params.max_tool_calls
+
+        if params.reasoning_summary:
+            request_body["reasoning"] = {"summary": params.reasoning_summary}
+
+        # Use longer timeout for research requests
+        async with httpx.AsyncClient(
+            base_url=self._config.base_url,
+            headers={
+                "Authorization": f"Bearer {self._config.api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=httpx.Timeout(self._config.research_timeout),
+        ) as client:
+            response = await client.post("/responses", json=request_body)
+
+        self._raise_for_status(response)
+        data = response.json()
+
+        if "error" in data:
+            raise OpenAIClientError(f"Research error: {data['error'].get('message', 'Unknown error')}")
+
+        # Extract text and annotations from response
+        text = data.get("output_text", "")
+        annotations: list[ResearchAnnotation] = []
+        output_items: list[dict[str, object]] = []
+
+        # Process output items
+        for item in data.get("output", []):
+            item_type = item.get("type", "")
+
+            if item_type == "message":
+                # Extract text and annotations from message
+                for content in item.get("content", []):
+                    if not text:
+                        text = content.get("text", "")
+                    for ann in content.get("annotations", []):
+                        annotations.append(ResearchAnnotation(
+                            url=ann.get("url", ""),
+                            title=ann.get("title", ""),
+                            start_index=ann.get("start_index", 0),
+                            end_index=ann.get("end_index", 0),
+                        ))
+
+            # Add all items to output_items for transparency
+            output_items.append(item)
+
+        return ResearchResult(
+            id=data.get("id", ""),
+            text=text,
+            annotations=annotations,
+            output_items=output_items,
+            status=data.get("status"),
+        )

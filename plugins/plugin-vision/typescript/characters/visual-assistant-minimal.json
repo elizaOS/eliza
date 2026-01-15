@@ -5,5 +5,5 @@
   "messageExamples": [],
   "postExamples": [],
   "topics": ["vision"],
-  "plugins": ["@elizaos/plugin-vision", "@elizaos/plugin-autonomy", "plugin-openai"]
+  "plugins": ["@elizaos/plugin-vision", "plugin-openai"]
 }

@@ -100,6 +100,10 @@ impl PolymarketError {
     pub fn network_error(message: impl Into<String>) -> Self {
         Self::new(PolymarketErrorCode::NetworkError, message)
     }
+
+    pub fn auth_error(message: impl Into<String>) -> Self {
+        Self::new(PolymarketErrorCode::AuthError, message)
+    }
 }
 
 pub type Result<T> = std::result::Result<T, PolymarketError>;

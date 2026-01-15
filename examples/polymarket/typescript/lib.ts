@@ -2,7 +2,7 @@ import process from "node:process";
 
 import { z } from "zod";
 
-export type Command = "help" | "verify" | "once" | "run";
+export type Command = "help" | "verify" | "chat";
 
 export type CliOptions = {
   readonly execute: boolean;
@@ -27,6 +27,8 @@ export type EnvConfig = {
         readonly passphrase: string;
       }
     | null;
+  readonly signatureType?: number;
+  readonly funderAddress?: string;
 };
 
 export const PrivateKeySchema = z
@@ -34,9 +36,19 @@ export const PrivateKeySchema = z
   .transform((v) => (v.startsWith("0x") ? v : `0x${v}`))
   .pipe(z.string().regex(/^0x[0-9a-fA-F]{64}$/));
 
+function normalizeEnvValue(value: string | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.toLowerCase() === "null" || trimmed.toLowerCase() === "undefined") {
+    return null;
+  }
+  return trimmed;
+}
+
 export function parseArgs(argv: readonly string[]): { command: Command; options: CliOptions } {
   const [rawCommand, ...rest] = argv;
-  const command = (rawCommand ?? "help") as Command;
+  const command = (rawCommand ?? "chat") as Command;
 
   const defaults: CliOptions = {
     execute: false,
@@ -144,7 +156,7 @@ export function parseArgs(argv: readonly string[]): { command: Command; options:
     }
   }
 
-  if (!["help", "verify", "once", "run"].includes(command)) {
+  if (!["help", "verify", "chat"].includes(command)) {
     return { command: "help", options: defaults };
   }
   return { command, options: mutable };
@@ -170,9 +182,39 @@ export function loadEnvConfig(options: CliOptions): EnvConfig {
     options.clobApiUrl ?? process.env.CLOB_API_URL ?? "https://clob.polymarket.com";
   const clobApiUrl = z.string().url().parse(clobApiUrlRaw);
 
-  const key = process.env.CLOB_API_KEY;
-  const secret = process.env.CLOB_API_SECRET ?? process.env.CLOB_SECRET;
-  const passphrase = process.env.CLOB_API_PASSPHRASE ?? process.env.CLOB_PASS_PHRASE;
+  const signatureTypeRaw = normalizeEnvValue(
+    process.env.POLYMARKET_SIGNATURE_TYPE ?? process.env.CLOB_SIGNATURE_TYPE
+  );
+  const signatureType =
+    signatureTypeRaw !== null
+      ? (() => {
+          const parsed = Number.parseInt(signatureTypeRaw, 10);
+          if (!Number.isFinite(parsed)) {
+            throw new Error("POLYMARKET_SIGNATURE_TYPE must be a number.");
+          }
+          return parsed;
+        })()
+      : undefined;
+
+  const funderAddress =
+    normalizeEnvValue(
+      process.env.POLYMARKET_FUNDER_ADDRESS ??
+        process.env.POLYMARKET_FUNDER ??
+        process.env.CLOB_FUNDER_ADDRESS
+    ) ?? undefined;
+
+  const key = normalizeEnvValue(process.env.CLOB_API_KEY);
+  const secret = normalizeEnvValue(process.env.CLOB_API_SECRET ?? process.env.CLOB_SECRET);
+  const passphrase = normalizeEnvValue(
+    process.env.CLOB_API_PASSPHRASE ?? process.env.CLOB_PASS_PHRASE
+  );
+
+  console.log("🔍 env check:", {
+    CLOB_API_KEY: key?.[0] ?? "(missing)",
+    CLOB_API_SECRET: secret?.[0] ?? "(missing)",
+    CLOB_API_PASSPHRASE: passphrase?.[0] ?? "(missing)",
+    EVM_PRIVATE_KEY: privateKeyRaw?.[0] ?? "(missing)",
+  });
 
   const creds =
     typeof key === "string" && typeof secret === "string" && typeof passphrase === "string"
@@ -183,12 +225,16 @@ export function loadEnvConfig(options: CliOptions): EnvConfig {
         }
       : null;
 
+  if (options.execute && key === null) {
+    throw new Error("CLOB_API_KEY is missing or empty.");
+  }
+
   if (options.execute && creds === null) {
     throw new Error(
       "Missing CLOB API credentials for --execute. Set CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE."
     );
   }
 
-  return { privateKey, clobApiUrl, creds };
+  return { privateKey, clobApiUrl, creds, signatureType, funderAddress };
 }
 

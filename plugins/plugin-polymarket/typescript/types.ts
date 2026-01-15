@@ -19,7 +19,8 @@ export interface Market {
   rewards: Rewards;
   minimum_order_size: string;
   minimum_tick_size: string;
-  category: string;
+  /** Tags/categories for the market (from CLOB API) */
+  tags: string[];
   end_date_iso: string;
   game_start_time: string;
   question: string;
@@ -28,6 +29,9 @@ export interface Market {
   max_incentive_spread: string;
   active: boolean;
   closed: boolean;
+  archived?: boolean;
+  accepting_orders?: boolean;
+  enable_order_book?: boolean;
   seconds_delay: number;
   icon: string;
   fpmm: string;
@@ -299,7 +303,303 @@ export interface PolymarketError extends Error {
   status?: number;
 }
 
+export interface AuthenticationStatus {
+  hasPrivateKey: boolean;
+  hasApiKey: boolean;
+  hasApiSecret: boolean;
+  hasApiPassphrase: boolean;
+  walletAddress?: string;
+  isFullyAuthenticated: boolean;
+  canReadMarkets: boolean;
+  canTrade: boolean;
+}
+
+// =============================================================================
+// Cached Account State Types
+// =============================================================================
+
+export interface BalanceAllowance {
+  balance: string;
+  allowance: string;
+}
+
+export interface AccountBalances {
+  collateral: BalanceAllowance | null;
+  conditionalTokens: Record<string, BalanceAllowance>;
+}
+
+export interface CachedAccountState {
+  walletAddress: string;
+  balances: AccountBalances;
+  activeOrders: OpenOrder[];
+  recentTrades: TradeEntry[];
+  positions: Position[];
+  /** Scoring status for active orders - true means order is eligible for rewards */
+  orderScoringStatus: Record<string, boolean>;
+  apiKeys: ApiKey[];
+  certRequired: boolean | null;
+  lastUpdatedAt: number;
+  expiresAt: number;
+}
+
 export interface BookParams {
   token_id: string;
   side?: "buy" | "sell";
+}
+
+// =============================================================================
+// Research Types for Async Deep Research Integration
+// =============================================================================
+
+/**
+ * Status of market research
+ */
+export enum ResearchStatus {
+  /** No research exists for this market */
+  NONE = "none",
+  /** Research task is currently running */
+  IN_PROGRESS = "in_progress",
+  /** Research completed, results available */
+  COMPLETED = "completed",
+  /** Research is stale and should be refreshed */
+  EXPIRED = "expired",
+  /** Research failed */
+  FAILED = "failed",
+}
+
+/**
+ * Trading recommendation from research analysis
+ */
+export interface ResearchRecommendation {
+  /** Whether the research suggests trading */
+  shouldTrade: boolean;
+  /** Recommended position direction */
+  direction?: "YES" | "NO";
+  /** Confidence level 0-100 */
+  confidence: number;
+  /** Brief reasoning for the recommendation */
+  reasoning: string;
+}
+
+/**
+ * Source citation from research
+ */
+export interface ResearchSource {
+  url: string;
+  title: string;
+}
+
+/**
+ * Complete research result for a market
+ */
+export interface ResearchResult {
+  /** Full research report text */
+  text: string;
+  /** AI-generated 2-3 sentence summary */
+  summary: string;
+  /** Trading recommendation */
+  recommendation?: ResearchRecommendation;
+  /** Cited sources from the research */
+  sources: ResearchSource[];
+  /** Number of sources analyzed */
+  sourcesCount: number;
+}
+
+/**
+ * Market research record for storage
+ */
+export interface MarketResearch {
+  /** Polymarket condition_id */
+  marketId: string;
+  /** The market question being researched */
+  marketQuestion: string;
+  /** Current status of the research */
+  status: ResearchStatus;
+  /** UUID of the running task (if IN_PROGRESS) */
+  taskId?: string;
+  /** OpenAI response ID */
+  researchId?: string;
+  /** Research results (if COMPLETED) */
+  result?: ResearchResult;
+  /** Timestamp when research started */
+  startedAt?: number;
+  /** Timestamp when research completed */
+  completedAt?: number;
+  /** Timestamp when research expires */
+  expiresAt?: number;
+  /** Error message if research failed */
+  errorMessage?: string;
+}
+
+/**
+ * Metadata for the research task
+ */
+export interface ResearchTaskMetadata {
+  marketId: string;
+  marketQuestion: string;
+  researchPrompt: string;
+  callbackAction?: "EVALUATE_TRADE" | "NOTIFY_ONLY";
+  tradeParams?: {
+    tokenId: string;
+    maxSize?: number;
+    roomId?: string;
+  };
+  updatedAt: number;
+  createdAt: number;
+}
+
+/**
+ * Parameters for starting market research
+ */
+export interface StartResearchParams {
+  marketId: string;
+  marketQuestion: string;
+  forceRefresh?: boolean;
+  callbackAction?: "EVALUATE_TRADE" | "NOTIFY_ONLY";
+  tradeParams?: ResearchTaskMetadata["tradeParams"];
+}
+
+// =============================================================================
+// Activity Cursor Types - Track last viewed items for context continuity
+// =============================================================================
+
+/**
+ * Activity type identifiers for tracking what the agent was doing
+ */
+export type ActivityType =
+  | "markets_list"
+  | "market_details"
+  | "order_details"
+  | "price_history"
+  | "trade_history"
+  | "order_scoring";
+
+/**
+ * Summary of markets that were viewed
+ */
+export interface MarketsActivityData {
+  type: "markets_list";
+  mode: "standard" | "simplified" | "sampling_random" | "sampling_rewards" | "search" | "browse";
+  count: number;
+  /** Category/tag filter that was applied */
+  tags?: string[];
+  activeOnly?: boolean;
+  /** First few market summaries for context */
+  markets: Array<{
+    conditionId: string;
+    question: string;
+    active: boolean;
+    closed: boolean;
+  }>;
+  nextCursor?: string;
+}
+
+/**
+ * Details of a specific market that was viewed
+ */
+export interface MarketDetailsActivityData {
+  type: "market_details";
+  conditionId: string;
+  question: string;
+  /** Tags/categories for the market */
+  tags: string[];
+  active: boolean;
+  closed: boolean;
+  tokens?: Array<{
+    tokenId: string;
+    outcome: string;
+  }>;
+}
+
+/**
+ * Order details that were viewed
+ */
+export interface OrderDetailsActivityData {
+  type: "order_details";
+  orderId: string;
+  status: string;
+  side: string;
+  price: string;
+  originalSize: string;
+  sizeMatched: string;
+  market?: string;
+  assetId?: string;
+}
+
+/**
+ * Price history that was viewed
+ */
+export interface PriceHistoryActivityData {
+  type: "price_history";
+  tokenId: string;
+  dataPoints: number;
+  startTs: number;
+  endTs: number;
+  startPrice?: string;
+  endPrice?: string;
+  priceChangePercent?: string;
+}
+
+/**
+ * Trade history that was viewed
+ */
+export interface TradeHistoryActivityData {
+  type: "trade_history";
+  totalTrades: number;
+  /** Most recent trades for context */
+  recentTrades: Array<{
+    tradeId: string;
+    side: string;
+    price: string;
+    size: string;
+    market?: string;
+  }>;
+  filterMarket?: string;
+  filterAssetId?: string;
+  nextCursor?: string;
+}
+
+/**
+ * Order scoring check results
+ */
+export interface OrderScoringActivityData {
+  type: "order_scoring";
+  orderIds: string[];
+  results: Record<string, boolean>;
+  scoringCount: number;
+  notScoringCount: number;
+}
+
+/**
+ * Union type for all activity data
+ */
+export type ActivityData =
+  | MarketsActivityData
+  | MarketDetailsActivityData
+  | OrderDetailsActivityData
+  | PriceHistoryActivityData
+  | TradeHistoryActivityData
+  | OrderScoringActivityData;
+
+/**
+ * Activity cursor entry - represents a single recorded activity
+ */
+export interface ActivityCursor {
+  /** Unix timestamp when this activity occurred */
+  timestamp: number;
+  /** The activity data */
+  data: ActivityData;
+}
+
+/**
+ * Collection of recent activities, organized by type
+ * Each type stores only the most recent activity of that type
+ */
+export interface ActivityContext {
+  /** Most recent activity of each type */
+  lastActivities: Partial<Record<ActivityType, ActivityCursor>>;
+  /** Ordered list of recent activities (most recent first, max 10) */
+  recentHistory: ActivityCursor[];
+  /** Last update timestamp */
+  lastUpdatedAt: number;
 }
