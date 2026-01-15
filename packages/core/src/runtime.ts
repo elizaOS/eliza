@@ -516,13 +516,13 @@ export class AgentRuntime implements IAgentRuntime {
       skipMigrations
         ? Promise.resolve()
         : (async () => {
-            this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Running plugin migrations');
-            await this.runPluginMigrations();
-            this.logger.debug(
-              { src: 'agent', agentId: this.agentId },
-              'Plugin migrations completed'
-            );
-          })(),
+          this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Running plugin migrations');
+          await this.runPluginMigrations();
+          this.logger.debug(
+            { src: 'agent', agentId: this.agentId },
+            'Plugin migrations completed'
+          );
+        })(),
     ]);
 
     const [agentEntity, existingRoom, participants] = await Promise.all([
@@ -719,10 +719,10 @@ export class AgentRuntime implements IAgentRuntime {
     const secrets = this.character.secrets;
     const nestedSecrets =
       typeof settings === 'object' &&
-      settings !== null &&
-      'secrets' in settings &&
-      typeof settings.secrets === 'object' &&
-      settings.secrets !== null
+        settings !== null &&
+        'secrets' in settings &&
+        typeof settings.secrets === 'object' &&
+        settings.secrets !== null
         ? (settings.secrets as Record<string, string | undefined>)
         : undefined;
 
@@ -843,18 +843,18 @@ export class AgentRuntime implements IAgentRuntime {
     // Create action plan if multiple actions
     let actionPlan:
       | {
-          runId: UUID;
-          totalSteps: number;
-          currentStep: number;
-          steps: Array<{
-            action: string;
-            status: 'pending' | 'completed' | 'failed';
-            result?: ActionResult;
-            error?: string;
-          }>;
-          thought: string;
-          startTime: number;
-        }
+        runId: UUID;
+        totalSteps: number;
+        currentStep: number;
+        steps: Array<{
+          action: string;
+          status: 'pending' | 'completed' | 'failed';
+          result?: ActionResult;
+          error?: string;
+        }>;
+        thought: string;
+        startTime: number;
+      }
       | undefined = undefined;
 
     const thought =
@@ -1095,10 +1095,10 @@ export class AgentRuntime implements IAgentRuntime {
         // the filter so content type detection from one call doesn't affect the next.
         let actionStreamingContext:
           | {
-              messageId: UUID;
-              onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>;
-              onStreamEnd: () => void;
-            }
+            messageId: UUID;
+            onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>;
+            onStreamEnd: () => void;
+          }
           | undefined;
         if (processOptions?.onStreamChunk) {
           let currentFilter: ActionStreamFilter | null = null;
@@ -2243,9 +2243,9 @@ export class AgentRuntime implements IAgentRuntime {
         provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
         actionContext: this.currentActionContext
           ? {
-              actionName: this.currentActionContext.actionName,
-              actionId: this.currentActionContext.actionId,
-            }
+            actionName: this.currentActionContext.actionName,
+            actionId: this.currentActionContext.actionId,
+          }
           : undefined,
         response:
           Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -2394,10 +2394,10 @@ export class AgentRuntime implements IAgentRuntime {
         fullText += chunk;
         try {
           if (paramsChunk) await paramsChunk(chunk, msgId);
-        } catch {}
+        } catch { }
         try {
           if (ctxChunk) await ctxChunk(chunk, msgId);
-        } catch {}
+        } catch { }
       }
 
       // Signal stream end to allow context to reset state between useModel calls
@@ -2620,7 +2620,8 @@ export class AgentRuntime implements IAgentRuntime {
     //   - "fast" or "trusted": 0 retries (faster, trusts model more, skips validation retries)
     // Why: Some models are more reliable with structured outputs. Use "strict" for critical
     //      operations or unreliable models, "fast" for trusted models or non-critical operations.
-    const validationLevel = this.getSetting('VALIDATION_LEVEL')?.toLowerCase();
+    const validationLevelRaw = this.getSetting('VALIDATION_LEVEL');
+    const validationLevel = typeof validationLevelRaw === 'string' ? validationLevelRaw.toLowerCase() : undefined;
 
     let defaultRetries = 1;
     if (validationLevel === 'strict' || validationLevel === 'safe') {
@@ -2640,7 +2641,8 @@ export class AgentRuntime implements IAgentRuntime {
     // Default: unbounded (no limit)
     // Recommended: 10000 for production servers
     const maxEntriesSetting = this.getSetting('DYNAMIC_PROMPT_MAX_ENTRIES');
-    const maxEntries = maxEntriesSetting ? parseInt(maxEntriesSetting) : null;
+    const maxEntries = typeof maxEntriesSetting === 'string' ? parseInt(maxEntriesSetting) : 
+                       typeof maxEntriesSetting === 'number' ? maxEntriesSetting : null;
 
     // Get or initialize model+schema metrics (PRIMARY - most useful)
     let modelSchemaMetric = modelSchemaMetrics.get(modelSchemaKey);
@@ -3348,13 +3350,13 @@ export class AgentRuntime implements IAgentRuntime {
       // Deep merge secrets to preserve runtime-generated secrets
       const mergedSecrets =
         typeof existingAgent.settings?.secrets === 'object' ||
-        typeof agent.settings?.secrets === 'object'
+          typeof agent.settings?.secrets === 'object'
           ? {
-              ...(typeof existingAgent.settings?.secrets === 'object'
-                ? existingAgent.settings.secrets
-                : {}),
-              ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
-            }
+            ...(typeof existingAgent.settings?.secrets === 'object'
+              ? existingAgent.settings.secrets
+              : {}),
+            ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
+          }
           : undefined;
 
       if (mergedSecrets) {

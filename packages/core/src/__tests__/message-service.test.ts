@@ -29,11 +29,11 @@ describe('DefaultMessageService', () => {
     mockRuntime = {
       agentId: '123e4567-e89b-12d3-a456-426614174001' as UUID,
       logger: {
-        debug: mock(() => {}),
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        success: mock(() => {}),
+        debug: mock(() => { }),
+        info: mock(() => { }),
+        warn: mock(() => { }),
+        error: mock(() => { }),
+        success: mock(() => { }),
       },
       character: {
         name: 'TestAgent',
@@ -132,9 +132,9 @@ describe('DefaultMessageService', () => {
         // Default fallback
         return {};
       }),
-      processActions: mock(async () => {}),
-      evaluate: mock(async () => {}),
-      emitEvent: mock(async () => {}),
+      processActions: mock(async () => { }),
+      evaluate: mock(async () => { }),
+      emitEvent: mock(async () => { }),
       getRoom: mock(async (roomId: UUID) => ({
         id: roomId,
         type: ChannelType.GROUP,
@@ -146,12 +146,12 @@ describe('DefaultMessageService', () => {
         name: 'Test World',
         agentId: '123e4567-e89b-12d3-a456-426614174001' as UUID,
       })),
-      ensureRoomExists: mock(async () => {}),
+      ensureRoomExists: mock(async () => { }),
       getActions: mock(() => []),
       startRun: mock(() => '123e4567-e89b-12d3-a456-426614174100' as UUID),
-      endRun: mock((runId: UUID) => {}),
-      queueEmbeddingGeneration: mock(async () => {}),
-      log: mock(async () => {}),
+      endRun: mock((runId: UUID) => { }),
+      queueEmbeddingGeneration: mock(async () => { }),
+      log: mock(async () => { }),
       getParticipantUserState: mock(async () => ({
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         userId: '123e4567-e89b-12d3-a456-426614174001' as UUID,
@@ -648,7 +648,7 @@ describe('DefaultMessageService', () => {
 
   describe('deleteMessage', () => {
     it('should delete a message memory by ID', async () => {
-      const mockDeleteMemory = mock(async () => {});
+      const mockDeleteMemory = mock(async () => { });
       mockRuntime.deleteMemory = mockDeleteMemory;
 
       const message: Memory = {
@@ -669,7 +669,7 @@ describe('DefaultMessageService', () => {
     });
 
     it('should handle missing message ID gracefully', async () => {
-      const mockDeleteMemory = mock(async () => {});
+      const mockDeleteMemory = mock(async () => { });
       mockRuntime.deleteMemory = mockDeleteMemory;
 
       const messageWithoutId: Memory = {
@@ -750,7 +750,7 @@ describe('DefaultMessageService', () => {
       ];
 
       const mockGetMemories = mock(async () => mockMemories);
-      const mockDeleteMemory = mock(async () => {});
+      const mockDeleteMemory = mock(async () => { });
 
       mockRuntime.getMemoriesByRoomIds = mockGetMemories;
       mockRuntime.deleteMemory = mockDeleteMemory;
@@ -772,7 +772,7 @@ describe('DefaultMessageService', () => {
       const channelId = 'empty-channel';
 
       const mockGetMemories = mock(async () => []);
-      const mockDeleteMemory = mock(async () => {});
+      const mockDeleteMemory = mock(async () => { });
 
       mockRuntime.getMemoriesByRoomIds = mockGetMemories;
       mockRuntime.deleteMemory = mockDeleteMemory;
@@ -844,7 +844,7 @@ describe('DefaultMessageService', () => {
       ];
 
       const mockGetMemories = mock(async () => mockMemories);
-      const mockDeleteMemory = mock(async () => {});
+      const mockDeleteMemory = mock(async () => { });
 
       mockRuntime.getMemoriesByRoomIds = mockGetMemories;
       mockRuntime.deleteMemory = mockDeleteMemory;
@@ -895,7 +895,7 @@ describe('DefaultMessageService', () => {
       ) as any;
 
       // Add required mocks for the message processing flow
-      mockRuntime.emitEvent = mock(async () => {});
+      mockRuntime.emitEvent = mock(async () => { });
       mockRuntime.getRoom = mock(async () => ({
         id: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         name: 'Test Room',
