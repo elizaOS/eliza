@@ -17,4 +17,7 @@ tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
 anyhow = "1.0"
 dotenvy = "0.15"
 rust_decimal = { version = "1.36", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 

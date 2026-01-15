@@ -2,10 +2,15 @@ use anyhow::Result;
 use elizaos_plugin_evm::providers::wallet::{WalletProvider, WalletProviderConfig};
 use elizaos_plugin_evm::types::SupportedChain;
 use elizaos_plugin_polymarket::client::ClobClient;
+use elizaos_plugin_polymarket::types::OrderBook;
 use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
+use serde::Deserialize;
+use serde_json::Value;
 
 use polymarket_demo::load_env_config;
+
+const GAMMA_PAGE_LIMIT: usize = 100;
 
 #[derive(Debug, Clone)]
 struct Options {
@@ -16,6 +21,8 @@ struct Options {
     interval_ms: u64,
     order_size: f64,
     max_pages: u64,
+    private_key: Option<String>,
+    clob_api_url: Option<String>,
 }
 
 fn parse_args() -> Options {
@@ -28,6 +35,8 @@ fn parse_args() -> Options {
     let mut interval_ms = 30_000u64;
     let mut order_size = 1.0f64;
     let mut max_pages = 1u64;
+    let mut private_key: Option<String> = None;
+    let mut clob_api_url: Option<String> = None;
 
     let rest: Vec<String> = args.collect();
     let mut i = 0usize;
@@ -61,6 +70,18 @@ fn parse_args() -> Options {
                     i += 1;
                 }
             }
+            "--private-key" => {
+                if let Some(v) = rest.get(i + 1).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    private_key = Some(v.to_string());
+                    i += 1;
+                }
+            }
+            "--clob-api-url" => {
+                if let Some(v) = rest.get(i + 1).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    clob_api_url = Some(v.to_string());
+                    i += 1;
+                }
+            }
             _ => {}
         }
         i += 1;
@@ -74,6 +95,18 @@ fn parse_args() -> Options {
         interval_ms,
         order_size,
         max_pages,
+        private_key,
+        clob_api_url,
+    }
+}
+
+fn apply_cli_overrides(opts: &Options) {
+    if let Some(key) = &opts.private_key {
+        std::env::set_var("EVM_PRIVATE_KEY", key);
+        std::env::set_var("POLYMARKET_PRIVATE_KEY", key);
+    }
+    if let Some(url) = &opts.clob_api_url {
+        std::env::set_var("CLOB_API_URL", url);
     }
 }
 
@@ -95,10 +128,13 @@ fn usage() {
             "  --iterations <n>       Loop count for `run` (default 10)",
             "  --order-size <n>       Order size in shares (default 1)",
             "  --max-pages <n>        Pages to scan for an active market (default 1)",
+            "  --private-key <hex>    Private key (overrides env vars; accepts with/without 0x)",
+            "  --clob-api-url <url>   CLOB API URL (overrides env var)",
             "",
             "Env:",
             "  EVM_PRIVATE_KEY (or POLYMARKET_PRIVATE_KEY)",
             "  CLOB_API_URL (optional; default https://clob.polymarket.com)",
+            "  GAMMA_API_URL (optional; default https://gamma-api.polymarket.com)",
             "  CLOB_API_KEY/CLOB_API_SECRET/CLOB_API_PASSPHRASE (required for --execute)",
         ]
         .join("\n")
@@ -106,6 +142,7 @@ fn usage() {
 }
 
 async fn verify(opts: &Options) -> Result<()> {
+    apply_cli_overrides(opts);
     let cfg = load_env_config(opts.execute)?;
     std::env::set_var("EVM_PRIVATE_KEY", &cfg.private_key);
     std::env::set_var("POLYMARKET_PRIVATE_KEY", &cfg.private_key);
@@ -121,6 +158,7 @@ async fn verify(opts: &Options) -> Result<()> {
     println!("✅ wallet address (plugin-evm):       {}", wallet.address());
     println!("✅ wallet address (plugin-polymarket): {}", poly_client.address());
     println!("✅ clob api url: {}", cfg.clob_api_url);
+    println!("✅ gamma api url: {}", cfg.gamma_api_url);
     println!("✅ execute enabled: {}", opts.execute);
     println!("✅ creds present: {}", cfg.creds.is_some());
 
@@ -132,24 +170,135 @@ async fn verify(opts: &Options) -> Result<()> {
     Ok(())
 }
 
-async fn pick_first_active_market(
+#[derive(Debug, Deserialize)]
+struct GammaMarket {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    question: Option<String>,
+    #[serde(default)]
+    slug: Option<String>,
+    #[serde(default, rename = "conditionId")]
+    condition_id: Option<String>,
+    #[serde(default, rename = "clobTokenIds")]
+    clob_token_ids: Option<Value>,
+    #[serde(default, rename = "orderPriceMinTickSize")]
+    order_price_min_tick_size: Option<Value>,
+}
+
+fn gamma_market_label(market: &GammaMarket) -> String {
+    if let Some(q) = market.question.as_deref().filter(|v| !v.trim().is_empty()) {
+        return q.to_string();
+    }
+    if let Some(slug) = market.slug.as_deref().filter(|v| !v.trim().is_empty()) {
+        return slug.to_string();
+    }
+    if let Some(condition_id) = market.condition_id.as_deref().filter(|v| !v.trim().is_empty()) {
+        return condition_id.to_string();
+    }
+    market.id.clone()
+}
+
+fn parse_gamma_tick(value: &Option<Value>) -> f64 {
+    let Some(value) = value else {
+        return 0.001;
+    };
+    let parsed = if let Some(v) = value.as_f64() {
+        Some(v)
+    } else if let Some(v) = value.as_str() {
+        v.parse::<f64>().ok()
+    } else {
+        None
+    };
+    parsed.filter(|v| *v > 0.0).unwrap_or(0.001)
+}
+
+fn normalize_gamma_token_ids(raw: &Option<Value>) -> Vec<String> {
+    let Some(raw) = raw else {
+        return Vec::new();
+    };
+    if let Some(items) = raw.as_array() {
+        return items.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+    }
+    if let Some(s) = raw.as_str() {
+        let parsed: Value = match serde_json::from_str(s) {
+            Ok(v) => v,
+            Err(_) => return Vec::new(),
+        };
+        if let Some(items) = parsed.as_array() {
+            return items
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect();
+        }
+    }
+    Vec::new()
+}
+
+async fn pick_from_gamma_markets(
     client: &ClobClient,
+    gamma_api_url: &str,
     max_pages: u64,
-) -> Result<(String, String, f64)> {
+) -> Result<Option<(String, String, f64, OrderBook)>> {
+    let http = reqwest::Client::new();
+    for page in 0..max_pages {
+        let offset = page.saturating_mul(GAMMA_PAGE_LIMIT as u64);
+        let url = format!(
+            "{}/markets?active=true&closed=false&enableOrderBook=true&acceptingOrders=true&limit={}&offset={}",
+            gamma_api_url.trim_end_matches('/'),
+            GAMMA_PAGE_LIMIT,
+            offset
+        );
+        let resp = match http.get(&url).send().await {
+            Ok(resp) => resp,
+            Err(_) => continue,
+        };
+        if !resp.status().is_success() {
+            continue;
+        }
+        let markets: Vec<GammaMarket> = match resp.json().await {
+            Ok(markets) => markets,
+            Err(_) => continue,
+        };
+        if markets.is_empty() {
+            return Ok(None);
+        }
+
+        for market in &markets {
+            let label = gamma_market_label(market);
+            let tick = parse_gamma_tick(&market.order_price_min_tick_size);
+            for token_id in normalize_gamma_token_ids(&market.clob_token_ids) {
+                if token_id.trim().is_empty() {
+                    continue;
+                }
+                let book = match client.get_order_book(&token_id).await {
+                    Ok(book) => book,
+                    Err(_) => continue,
+                };
+                if !book.bids.is_empty() && !book.asks.is_empty() {
+                    return Ok(Some((token_id, label, tick, book)));
+                }
+            }
+        }
+
+        if markets.len() < GAMMA_PAGE_LIMIT {
+            return Ok(None);
+        }
+    }
+    Ok(None)
+}
+
+async fn pick_first_tradable_market_with_order_book(
+    client: &ClobClient,
+    gamma_api_url: &str,
+    max_pages: u64,
+) -> Result<(String, String, f64, OrderBook)> {
     let mut cursor: Option<String> = None;
     for _ in 0..max_pages {
         let resp = client.get_markets(cursor.as_deref()).await?;
         let next_cursor = resp.next_cursor.clone();
         for m in resp.data {
             if !m.active || m.closed {
-                continue;
-            }
-            let token_id = m
-                .tokens
-                .get(0)
-                .map(|t| t.token_id.clone())
-                .unwrap_or_default();
-            if token_id.trim().is_empty() {
                 continue;
             }
             let label = if !m.question.trim().is_empty() {
@@ -163,7 +312,18 @@ async fn pick_first_active_market(
                 .ok()
                 .filter(|v| *v > 0.0)
                 .unwrap_or(0.001);
-            return Ok((token_id, label, tick));
+            for tok in m.tokens {
+                if tok.token_id.trim().is_empty() {
+                    continue;
+                }
+                let book = match client.get_order_book(&tok.token_id).await {
+                    Ok(book) => book,
+                    Err(_) => continue,
+                };
+                if !book.bids.is_empty() && !book.asks.is_empty() {
+                    return Ok((tok.token_id, label, tick, book));
+                }
+            }
         }
         cursor = if next_cursor.trim().is_empty() {
             None
@@ -171,7 +331,11 @@ async fn pick_first_active_market(
             Some(next_cursor)
         };
     }
-    anyhow::bail!("No active market found");
+
+    if let Some(result) = pick_from_gamma_markets(client, gamma_api_url, max_pages).await? {
+        return Ok(result);
+    }
+    anyhow::bail!("No tradable market with order book found (try increasing --max-pages or check API).");
 }
 
 async fn once(opts: &Options) -> Result<()> {
@@ -179,15 +343,15 @@ async fn once(opts: &Options) -> Result<()> {
         anyhow::bail!("The 'once' command requires --network (it fetches markets + order book).");
     }
 
+    apply_cli_overrides(opts);
     let cfg = load_env_config(opts.execute)?;
     std::env::set_var("EVM_PRIVATE_KEY", &cfg.private_key);
     std::env::set_var("POLYMARKET_PRIVATE_KEY", &cfg.private_key);
     std::env::set_var("CLOB_API_URL", &cfg.clob_api_url);
 
     let public = ClobClient::new(Some(&cfg.clob_api_url), &cfg.private_key).await?;
-    let (token_id, label, tick) = pick_first_active_market(&public, opts.max_pages).await?;
-
-    let book = public.get_order_book(&token_id).await?;
+    let (token_id, label, tick, book) =
+        pick_first_tradable_market_with_order_book(&public, &cfg.gamma_api_url, opts.max_pages).await?;
     let best_bid = book.bids.first().and_then(|b| b.price.parse::<f64>().ok());
     let best_ask = book.asks.first().and_then(|a| a.price.parse::<f64>().ok());
 

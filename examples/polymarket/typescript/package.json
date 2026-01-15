@@ -9,14 +9,22 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@clack/prompts": "^0.11.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-evm": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-polymarket": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@polymarket/clob-client": "^5.2.0",
+    "dotenv": "^16.6.1",
+    "ink": "^6.6.0",
+    "ink-text-input": "^6.0.0",
+    "react": "19.2.3",
+    "uuid": "^11.1.0",
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@types/react": "19.2.3",
     "@types/node": "^25.0.3",
     "typescript": "^5.9.3"
   },

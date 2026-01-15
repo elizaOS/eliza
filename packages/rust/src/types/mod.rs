@@ -81,9 +81,10 @@ pub use database::{
 pub use model::{
     model_settings, model_type, DetokenizeTextParams, GenerateTextOptions, GenerateTextParams,
     GenerateTextResult, ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams,
-    LLMMode, ModelHandlerInfo, ObjectGenerationParams, ObjectOutputType, ResponseFormat,
-    ResponseFormatType, TextEmbeddingParams, TextStreamChunk, TextToSpeechParams, TokenUsageInfo,
-    TokenizeTextParams, TranscriptionParams,
+    LLMMode, ModelHandlerInfo, ObjectGenerationParams, ObjectOutputType, ResearchAnnotation,
+    ResearchParams, ResearchResult, ResearchTool, ResponseFormat, ResponseFormatType,
+    TextEmbeddingParams, TextStreamChunk, TextToSpeechParams, TokenUsageInfo, TokenizeTextParams,
+    TranscriptionParams,
 };
 
 // Bootstrap compatibility: some built-in bootstrap modules reference `crate::types::ModelType`.

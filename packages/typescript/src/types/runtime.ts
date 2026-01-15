@@ -43,6 +43,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   // Properties
   agentId: UUID;
   character: Character;
+  enableAutonomy: boolean;
   initPromise: Promise<void>;
   messageService: IMessageService | null;
   providers: Provider[];

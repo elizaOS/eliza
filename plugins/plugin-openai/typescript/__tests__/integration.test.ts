@@ -47,6 +47,8 @@ describe("OpenAI Plugin Integration Tests", () => {
       expect(config).toHaveProperty("OPENAI_BASE_URL");
       expect(config).toHaveProperty("OPENAI_SMALL_MODEL");
       expect(config).toHaveProperty("OPENAI_LARGE_MODEL");
+      expect(config).toHaveProperty("OPENAI_RESEARCH_MODEL");
+      expect(config).toHaveProperty("OPENAI_RESEARCH_TIMEOUT");
     });
   });
 

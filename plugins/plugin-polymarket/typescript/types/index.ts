@@ -86,8 +86,8 @@ export interface Market {
   readonly minimum_order_size: string;
   /** Minimum tick size in units of implied probability */
   readonly minimum_tick_size: string;
-  /** Market category */
-  readonly category: string;
+  /** Tags/categories for the market */
+  readonly tags: readonly string[];
   /** ISO string of market end date */
   readonly end_date_iso: string;
   /** ISO string of game start time */
@@ -119,7 +119,7 @@ export const MarketSchema = z.object({
   rewards: RewardsSchema,
   minimum_order_size: z.string(),
   minimum_tick_size: z.string(),
-  category: z.string(),
+  tags: z.array(z.string()),
   end_date_iso: z.string(),
   game_start_time: z.string(),
   question: z.string(),

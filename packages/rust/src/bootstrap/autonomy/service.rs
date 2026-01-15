@@ -128,17 +128,24 @@ impl AutonomyService {
 
     /// Create the monologue prompt for autonomous thinking.
     pub fn create_monologue_prompt(&self, last_thought: Option<&str>, is_first_thought: bool) -> String {
+        let header = "You are running in AUTONOMOUS REFLECTION MODE.\n\nYour job: reflect on context, decide what you want to do next, and act if appropriate.\n- Use available actions/tools when they can advance the goal.\n- If you cannot act, state the missing info and the safest next step to obtain it.\n- Keep the response concise, focused on the next action.";
         if is_first_thought {
-            return "As an AI agent, reflect on your current state and experiences. What are you thinking about right now? What interests you or concerns you? Share your internal thoughts as a stream of consciousness. Don't address anyone - this is your private monologue.\n\nGenerate a thoughtful, introspective response (1-2 sentences):".to_string();
+            return format!(
+                "{}\n\nThink briefly, then state what you want to do next and take action if needed.",
+                header
+            );
         }
 
         if let Some(thought) = last_thought {
             format!(
-                "Continuing your internal monologue from your last thought: \"{}\"\n\nWhat naturally follows from this thought? What does it make you think about next? Continue your stream of consciousness without addressing anyone - this is your private internal reflection.\n\nGenerate your next thought (1-2 sentences):",
-                thought
+                "{}\n\nYour last autonomous note: \"{}\"\n\nContinue from that note. Decide the next step and act if needed.",
+                header, thought
             )
         } else {
-            "As an AI agent, reflect on your current state and experiences. What are you thinking about right now? What interests you or concerns you? Share your internal thoughts as a stream of consciousness. Don't address anyone - this is your private monologue.\n\nGenerate a thoughtful, introspective response (1-2 sentences):".to_string()
+            format!(
+                "{}\n\nThink briefly, then state what you want to do next and take action if needed.",
+                header
+            )
         }
     }
 
@@ -415,8 +422,8 @@ mod tests {
         
         let prompt = service.create_monologue_prompt(None, true);
         
-        assert!(prompt.contains("reflect on your current state"));
-        assert!(prompt.contains("private monologue"));
+        assert!(prompt.contains("AUTONOMOUS REFLECTION MODE"));
+        assert!(prompt.contains("decide what you want to do next"));
     }
 
     #[test]
@@ -425,7 +432,7 @@ mod tests {
         
         let prompt = service.create_monologue_prompt(Some("I was thinking about consciousness"), false);
         
-        assert!(prompt.contains("Continuing your internal monologue"));
+        assert!(prompt.contains("Your last autonomous note"));
         assert!(prompt.contains("I was thinking about consciousness"));
     }
 

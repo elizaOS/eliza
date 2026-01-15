@@ -104,6 +104,9 @@ class AgentRuntime(IAgentRuntime):
         self._adapter = adapter
         self._conversation_length = conversation_length
         self._settings: RuntimeSettings = settings or {}
+        self._enable_autonomy = enable_autonomy or (
+            self._settings.get("ENABLE_AUTONOMY") in (True, "true")
+        )
 
         self._providers: list[Provider] = []
         self._actions: list[Action] = []
@@ -135,6 +138,14 @@ class AgentRuntime(IAgentRuntime):
             service_class = _get_message_service_class()
             self._message_service = service_class()
         return self._message_service
+
+    @property
+    def enable_autonomy(self) -> bool:
+        return self._enable_autonomy
+
+    @enable_autonomy.setter
+    def enable_autonomy(self, value: bool) -> None:
+        self._enable_autonomy = value
 
     @property
     def agent_id(self) -> UUID:

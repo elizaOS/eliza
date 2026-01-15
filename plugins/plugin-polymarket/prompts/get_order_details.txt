@@ -1,4 +1,4 @@
-You are an AI assistant. Your task is to extract the order ID for retrieving order details.
+extract the order ID for retrieving order details.
 
 Review the recent messages:
 <recent_messages>

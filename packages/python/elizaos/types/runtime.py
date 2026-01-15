@@ -95,6 +95,14 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
     @abstractmethod
     def message_service(self) -> Any | None: ...
 
+    @property
+    @abstractmethod
+    def enable_autonomy(self) -> bool: ...
+
+    @enable_autonomy.setter
+    @abstractmethod
+    def enable_autonomy(self, value: bool) -> None: ...
+
     # Database adapter
     @abstractmethod
     def register_database_adapter(self, adapter: IDatabaseAdapter) -> None: ...

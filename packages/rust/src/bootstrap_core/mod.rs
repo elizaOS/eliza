@@ -24,9 +24,13 @@ use crate::types::state::State;
 /// Bootstrap capability configuration (mirrors TS `CapabilityConfig`).
 #[derive(Clone, Debug, Default)]
 pub struct CapabilityConfig {
+    /// Disable basic capabilities (reply/ignore/none + core providers).
     pub disable_basic: bool,
+    /// Enable extended capabilities (reserved for future parity).
     pub enable_extended: bool,
+    /// Skip the character provider (useful for anonymous agents).
     pub skip_character_provider: bool,
+    /// Enable autonomy capabilities (reserved for future parity).
     pub enable_autonomy: bool,
 }
 

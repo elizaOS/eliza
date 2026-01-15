@@ -19,6 +19,7 @@ pip install -r requirements.txt
 ```bash
 export EVM_PRIVATE_KEY="0x..."
 export CLOB_API_URL="https://clob.polymarket.com"
+export GAMMA_API_URL="https://gamma-api.polymarket.com"
 
 # Only required for placing orders:
 export CLOB_API_KEY="..."
