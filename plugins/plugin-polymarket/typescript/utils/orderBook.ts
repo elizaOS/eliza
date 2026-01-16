@@ -5,7 +5,7 @@
  * from the Polymarket CLOB API.
  */
 
-import { type IAgentRuntime, type State } from "@elizaos/core";
+import type { IAgentRuntime, State } from "@elizaos/core";
 import type { OrderBookSummary } from "@polymarket/clob-client";
 import { initializeClobClient } from "./clobClient";
 import { callLLMWithTimeout, isLLMError } from "./llmHelpers";
@@ -230,7 +230,7 @@ export async function resolveTokenIdFromLLM(
   runtime: IAgentRuntime,
   state: State | undefined,
   template: string,
-  actionName: string
+  actionName: string,
 ): Promise<LLMTokenResult> {
   const result = await callLLMWithTimeout<LLMTokenResult>(runtime, state, template, actionName);
   const llmResult = result && !isLLMError(result) ? result : {};
@@ -255,7 +255,7 @@ export async function resolveTokenIdFromLLM(
  */
 export async function fetchOrderBookSummary(
   runtime: IAgentRuntime,
-  tokenId: string
+  tokenId: string,
 ): Promise<OrderBookSummary> {
   const client = await initializeClobClient(runtime);
   return client.getOrderBook(tokenId);

@@ -9,7 +9,10 @@ import type {
   State,
 } from "@elizaos/core";
 import { z } from "zod";
-import { MinecraftService, MINECRAFT_SERVICE_TYPE } from "../services/minecraft-service.js";
+import {
+  MINECRAFT_SERVICE_TYPE,
+  type MinecraftService,
+} from "../services/minecraft-service.js";
 
 const placeSchema = z.object({
   x: z.number(),
@@ -18,11 +21,18 @@ const placeSchema = z.object({
   face: z.enum(["up", "down", "north", "south", "east", "west"]),
 });
 
-function parsePlace(text: string): { x: number; y: number; z: number; face: string } | null {
+function parsePlace(
+  text: string,
+): { x: number; y: number; z: number; face: string } | null {
   const trimmed = text.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     try {
-      const parsed = JSON.parse(trimmed) as { x?: number; y?: number; z?: number; face?: string };
+      const parsed = JSON.parse(trimmed) as {
+        x?: number;
+        y?: number;
+        z?: number;
+        face?: string;
+      };
       const v = placeSchema.parse(parsed);
       return v;
     } catch {
@@ -38,7 +48,8 @@ function parsePlace(text: string): { x: number; y: number; z: number; face: stri
   const y = Number(m[2]);
   const zVal = Number(m[3]);
   const face = m[4].toLowerCase();
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(zVal)) return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(zVal))
+    return null;
   return { x, y, z: zVal, face };
 }
 
@@ -47,8 +58,13 @@ export const minecraftPlaceAction: Action = {
   similes: ["MINECRAFT_PLACE", "PLACE_BLOCK"],
   description:
     "Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
     return Boolean(service) && Boolean(parsePlace(message.content.text ?? ""));
   },
   handler: async (
@@ -58,14 +74,23 @@ export const minecraftPlaceAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
-    if (!service) return { text: "Minecraft service is not available", success: false };
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
+    if (!service)
+      return { text: "Minecraft service is not available", success: false };
 
     const req = parsePlace(message.content.text ?? "");
-    if (!req) return { text: "Missing placement target (x y z face)", success: false };
+    if (!req)
+      return { text: "Missing placement target (x y z face)", success: false };
 
     try {
-      await service.request("place", { x: req.x, y: req.y, z: req.z, face: req.face });
+      await service.request("place", {
+        x: req.x,
+        y: req.y,
+        z: req.z,
+        face: req.face,
+      });
       const content: Content = {
         text: `Placed block at (${req.x}, ${req.y}, ${req.z}) face=${req.face}.`,
         actions: ["MC_PLACE"],
@@ -85,4 +110,3 @@ export const minecraftPlaceAction: Action = {
     }
   },
 };
-

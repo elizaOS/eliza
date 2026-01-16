@@ -2,6 +2,8 @@
 //!
 //! This module provides the core runtime for elizaOS agents.
 
+use crate::advanced_memory;
+use crate::advanced_planning;
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
 use crate::types::components::{
     ActionDefinition, ActionHandler, ActionResult, EvaluatorDefinition, EvaluatorHandler,
@@ -17,15 +19,13 @@ use crate::types::primitives::{string_to_uuid, UUID};
 use crate::types::settings::{RuntimeSettings, SettingValue};
 use crate::types::state::State;
 use crate::types::task::Task;
-use crate::advanced_planning;
-use crate::advanced_memory;
 use anyhow::{Context, Result};
 use serde_json::Value;
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
-use std::any::Any;
 
 // RwLock type - different for native (async) vs wasm (sync)
 #[cfg(not(feature = "wasm"))]
@@ -534,15 +534,24 @@ impl AgentRuntime {
         info!("Initializing AgentRuntime for agent: {}", self.agent_id);
 
         // Resolve capability configuration (constructor options > character settings > defaults).
-        let disable_basic = self.capability_options.disable_basic.unwrap_or(
-            parse_truthy_setting(self.get_setting("DISABLE_BASIC_CAPABILITIES").await),
-        );
-        let enable_extended = self.capability_options.enable_extended.unwrap_or(
-            parse_truthy_setting(self.get_setting("ENABLE_EXTENDED_CAPABILITIES").await),
-        );
-        let enable_autonomy = self.capability_options.enable_autonomy.unwrap_or(
-            parse_truthy_setting(self.get_setting("ENABLE_AUTONOMY").await),
-        );
+        let disable_basic = self
+            .capability_options
+            .disable_basic
+            .unwrap_or(parse_truthy_setting(
+                self.get_setting("DISABLE_BASIC_CAPABILITIES").await,
+            ));
+        let enable_extended =
+            self.capability_options
+                .enable_extended
+                .unwrap_or(parse_truthy_setting(
+                    self.get_setting("ENABLE_EXTENDED_CAPABILITIES").await,
+                ));
+        let enable_autonomy =
+            self.capability_options
+                .enable_autonomy
+                .unwrap_or(parse_truthy_setting(
+                    self.get_setting("ENABLE_AUTONOMY").await,
+                ));
         self.set_enable_autonomy(enable_autonomy);
 
         // Bootstrap plugin parity: always register built-in bootstrap capabilities first.
@@ -931,18 +940,14 @@ impl AgentRuntime {
                             provider_name: def.name.clone(),
                             purpose: "compose_state".to_string(),
                             data: HashMap::new(),
-                            query: message
-                                .content
-                                .text
-                                .as_ref()
-                                .map(|t| {
-                                    [(
-                                        "message".to_string(),
-                                        Value::String(t.chars().take(2000).collect()),
-                                    )]
-                                    .into_iter()
-                                    .collect()
-                                }),
+                            query: message.content.text.as_ref().map(|t| {
+                                [(
+                                    "message".to_string(),
+                                    Value::String(t.chars().take(2000).collect()),
+                                )]
+                                .into_iter()
+                                .collect()
+                            }),
                             timestamp_ms: chrono_timestamp(),
                         });
                     }
@@ -1055,7 +1060,7 @@ impl AgentRuntime {
         let to_run: Vec<String> = if action_planning_enabled {
             selected_actions.to_vec()
         } else {
-            selected_actions.get(0).cloned().into_iter().collect()
+            selected_actions.first().cloned().into_iter().collect()
         };
 
         // Clone to avoid holding lock across await
@@ -1087,7 +1092,10 @@ impl AgentRuntime {
             });
 
             let Some(handler) = handler else {
-                results.push(ActionResult::failure(&format!("Action not found: {}", name)));
+                results.push(ActionResult::failure(&format!(
+                    "Action not found: {}",
+                    name
+                )));
                 continue;
             };
 
@@ -1358,8 +1366,14 @@ impl AgentRuntime {
                     .chars()
                     .take(2000)
                     .collect::<String>();
-                let temperature = params.get("temperature").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let max_tokens = params.get("maxTokens").and_then(|v| v.as_i64()).unwrap_or(0);
+                let temperature = params
+                    .get("temperature")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                let max_tokens = params
+                    .get("maxTokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
 
                 let mut logs = self.trajectory_logs.lock().expect("lock poisoned");
                 logs.llm_calls.push(TrajectoryLlmCall {

@@ -230,13 +230,21 @@ impl ActionResult {
     }
 
     /// Add a value to the result.
-    pub fn with_value(mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+    pub fn with_value(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
         self.values.insert(key.into(), value.into());
         self
     }
 
     /// Add data to the result.
-    pub fn with_data(mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+    pub fn with_data(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
         self.data.insert(key.into(), value.into());
         self
     }
@@ -266,13 +274,21 @@ impl ProviderResult {
     }
 
     /// Add a value to the result.
-    pub fn with_value(mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+    pub fn with_value(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
         self.values.insert(key.into(), value.into());
         self
     }
 
     /// Add data to the result.
-    pub fn with_data(mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+    pub fn with_data(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
         self.data.insert(key.into(), value.into());
         self
     }
@@ -314,7 +330,11 @@ impl EvaluatorResult {
     }
 
     /// Add details to the result.
-    pub fn with_detail(mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+    pub fn with_detail(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
         self.details.insert(key.into(), value.into());
         self
     }
@@ -438,4 +458,3 @@ impl Default for Role {
         Self::None
     }
 }
-

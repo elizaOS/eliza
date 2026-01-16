@@ -1,11 +1,10 @@
-import type { CodeTask, TaskResult } from "../../types.js";
 import { ClaudeAgentSdkSubAgent } from "./claude-agent-sdk-sub-agent.js";
 import { CodexSdkSubAgent } from "./codex-sdk-sub-agent.js";
 import { ElizaSubAgent } from "./eliza-sub-agent.js";
 import { ElizaOSNativeSubAgent } from "./elizaos-native-sub-agent.js";
 import { OpenCodeSubAgent } from "./opencode-sub-agent.js";
 import { SweAgentSubAgent } from "./sweagent-sub-agent.js";
-import type { SubAgent, SubAgentContext } from "./types.js";
+import type { SubAgent } from "./types.js";
 
 const CLAUDE_CODE_PROMPT_TEMPLATE = `You are a Claude Code–style coding worker. Execute tasks using these tools:
 

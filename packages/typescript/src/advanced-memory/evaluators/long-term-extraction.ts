@@ -1,14 +1,14 @@
+import { logger } from "../../logger.ts";
 import {
   type Evaluator,
   type IAgentRuntime,
   type Memory,
   ModelType,
 } from "../../types/index.ts";
-import { logger } from "../../logger.ts";
 import { composePromptFromState } from "../../utils.ts";
+import { longTermExtractionTemplate } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
-import { longTermExtractionTemplate } from "../prompts.ts";
 
 function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
   const memoryMatches = xml.matchAll(
@@ -23,7 +23,10 @@ function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
     const confidence = Number.parseFloat(match[3].trim());
 
     if (!Object.values(LongTermMemoryCategory).includes(category)) {
-      logger.warn({ src: "evaluator:memory" }, `Invalid memory category: ${category}`);
+      logger.warn(
+        { src: "evaluator:memory" },
+        `Invalid memory category: ${category}`,
+      );
       continue;
     }
 
@@ -41,7 +44,10 @@ export const longTermExtractionEvaluator: Evaluator = {
   similes: ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
   alwaysRun: true,
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     if (message.entityId === runtime.agentId) return false;
     if (!message.content?.text) return false;
 
@@ -50,12 +56,23 @@ export const longTermExtractionEvaluator: Evaluator = {
 
     const config = memoryService.getConfig();
     if (!config.longTermExtractionEnabled) {
-      logger.debug({ src: "evaluator:memory" }, "Long-term memory extraction is disabled");
+      logger.debug(
+        { src: "evaluator:memory" },
+        "Long-term memory extraction is disabled",
+      );
       return false;
     }
 
-    const currentMessageCount = await runtime.countMemories(message.roomId, false, "messages");
-    return memoryService.shouldRunExtraction(message.entityId, message.roomId, currentMessageCount);
+    const currentMessageCount = await runtime.countMemories(
+      message.roomId,
+      false,
+      "messages",
+    );
+    return memoryService.shouldRunExtraction(
+      message.entityId,
+      message.roomId,
+      currentMessageCount,
+    );
   },
 
   handler: async (runtime: IAgentRuntime, message: Memory) => {
@@ -69,7 +86,10 @@ export const longTermExtractionEvaluator: Evaluator = {
     const { entityId, roomId } = message;
 
     try {
-      logger.info({ src: "evaluator:memory" }, `Extracting long-term memories for entity ${entityId}`);
+      logger.info(
+        { src: "evaluator:memory" },
+        `Extracting long-term memories for entity ${entityId}`,
+      );
 
       const recentMessages = await runtime.getMemories({
         tableName: "messages",
@@ -81,16 +101,24 @@ export const longTermExtractionEvaluator: Evaluator = {
       const formattedMessages = recentMessages
         .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
         .map((msg) => {
-          const sender = msg.entityId === runtime.agentId ? runtime.character.name : "User";
+          const sender =
+            msg.entityId === runtime.agentId ? runtime.character.name : "User";
           return `${sender}: ${msg.content.text || "[non-text message]"}`;
         })
         .join("\n");
 
-      const existingMemories = await memoryService.getLongTermMemories(entityId, undefined, 30);
+      const existingMemories = await memoryService.getLongTermMemories(
+        entityId,
+        undefined,
+        30,
+      );
       const formattedExisting =
         existingMemories.length > 0
           ? existingMemories
-              .map((m) => `[${m.category}] ${m.content} (confidence: ${m.confidence})`)
+              .map(
+                (m) =>
+                  `[${m.category}] ${m.content} (confidence: ${m.confidence})`,
+              )
               .join("\n")
           : "None yet";
 
@@ -113,7 +141,10 @@ export const longTermExtractionEvaluator: Evaluator = {
       );
 
       for (const extraction of extractions) {
-        if (extraction.confidence >= Math.max(config.longTermConfidenceThreshold, 0.85)) {
+        if (
+          extraction.confidence >=
+          Math.max(config.longTermConfidenceThreshold, 0.85)
+        ) {
           await memoryService.storeLongTermMemory({
             agentId: runtime.agentId,
             entityId,
@@ -139,8 +170,16 @@ export const longTermExtractionEvaluator: Evaluator = {
         }
       }
 
-      const currentMessageCount = await runtime.countMemories(roomId, false, "messages");
-      await memoryService.setLastExtractionCheckpoint(entityId, roomId, currentMessageCount);
+      const currentMessageCount = await runtime.countMemories(
+        roomId,
+        false,
+        "messages",
+      );
+      await memoryService.setLastExtractionCheckpoint(
+        entityId,
+        roomId,
+        currentMessageCount,
+      );
       logger.debug(
         { src: "evaluator:memory" },
         `Updated checkpoint to ${currentMessageCount} for entity ${entityId}`,
@@ -157,4 +196,3 @@ export const longTermExtractionEvaluator: Evaluator = {
 
   examples: [],
 };
-

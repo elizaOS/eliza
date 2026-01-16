@@ -1,4 +1,5 @@
 import { v4 } from "uuid";
+import { withCanonicalActionDocs } from "../action-docs.ts";
 import { createUniqueUuid } from "../entities.ts";
 import { logger } from "../logger.ts";
 import {
@@ -42,7 +43,6 @@ import type { ServiceClass } from "../types/plugin.ts";
 import { ChannelType, ContentType } from "../types/primitives.ts";
 import { getLocalServerUrl } from "../utils/node.ts";
 import { composePromptFromState, parseKeyValueXml } from "../utils.ts";
-import { withCanonicalActionDocs } from "../action-docs.ts";
 import * as actions from "./actions/index.ts";
 import * as autonomy from "./autonomy/index.ts";
 import * as evaluators from "./evaluators/index.ts";

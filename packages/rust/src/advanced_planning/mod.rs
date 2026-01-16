@@ -8,12 +8,14 @@
 
 use crate::runtime::{AgentRuntime, Service};
 use crate::types::components::ActionResult;
-use crate::types::components::{ActionDefinition, ActionHandler, ProviderDefinition, ProviderHandler, ProviderResult};
+use crate::types::components::{
+    ActionDefinition, ActionHandler, ProviderDefinition, ProviderHandler, ProviderResult,
+};
 use crate::types::memory::Memory;
 use crate::types::model::model_type;
+use crate::types::plugin::Plugin;
 use crate::types::primitives::UUID;
 use crate::types::state::State;
-use crate::types::plugin::Plugin;
 use crate::xml::parse_key_value_xml;
 use anyhow::Result;
 use regex::Regex;
@@ -73,7 +75,8 @@ pub fn create_advanced_planning_plugin(runtime: Weak<AgentRuntime>) -> Plugin {
     plugin.action_handlers.push(Arc::new(ProcessAnalysisAction));
     plugin.action_handlers.push(Arc::new(ExecuteFinalAction));
     plugin.action_handlers.push(Arc::new(CreatePlanAction));
-    plugin.provider_handlers
+    plugin
+        .provider_handlers
         .push(Arc::new(MessageClassifierProvider { runtime }));
 
     // Keep definitions in sync for serialization.
@@ -96,7 +99,9 @@ impl MessageClassifierProvider {
     fn definition_static() -> ProviderDefinition {
         ProviderDefinition {
             name: "messageClassifier".to_string(),
-            description: Some("Classifies messages by complexity and planning requirements".to_string()),
+            description: Some(
+                "Classifies messages by complexity and planning requirements".to_string(),
+            ),
             dynamic: Some(false),
             position: None,
             private: None,
@@ -114,9 +119,18 @@ impl ProviderHandler for MessageClassifierProvider {
         let text = message.content.text.clone().unwrap_or_default();
         if text.trim().is_empty() {
             let mut data = HashMap::new();
-            data.insert("classification".to_string(), Value::String("general".to_string()));
-            data.insert("confidence".to_string(), Value::Number(serde_json::Number::from_f64(0.1).unwrap()));
-            data.insert("complexity".to_string(), Value::String("simple".to_string()));
+            data.insert(
+                "classification".to_string(),
+                Value::String("general".to_string()),
+            );
+            data.insert(
+                "confidence".to_string(),
+                Value::Number(serde_json::Number::from_f64(0.1).unwrap()),
+            );
+            data.insert(
+                "complexity".to_string(),
+                Value::String("simple".to_string()),
+            );
             data.insert("planningRequired".to_string(), Value::Bool(false));
             data.insert("stakeholders".to_string(), Value::Array(vec![]));
             data.insert("constraints".to_string(), Value::Array(vec![]));
@@ -183,26 +197,66 @@ impl ProviderHandler for MessageClassifierProvider {
         }
 
         let mut data = HashMap::new();
-        data.insert("classification".to_string(), Value::String(classification.clone()));
+        data.insert(
+            "classification".to_string(),
+            Value::String(classification.clone()),
+        );
         data.insert(
             "confidence".to_string(),
             Value::Number(serde_json::Number::from_f64(confidence).unwrap()),
         );
         data.insert("originalText".to_string(), Value::String(text));
-        data.insert("complexity".to_string(), Value::String(if complexity.is_empty() { "simple".to_string() } else { complexity.to_string() }));
-        data.insert("planningType".to_string(), Value::String(if planning_type.is_empty() { "direct_action".to_string() } else { planning_type.to_string() }));
-        data.insert("planningRequired".to_string(), Value::Bool(planning_required));
-        data.insert("capabilities".to_string(), Value::Array(list_field(&lines, "CAPABILITIES:")));
-        data.insert("stakeholders".to_string(), Value::Array(list_field(&lines, "STAKEHOLDERS:")));
-        data.insert("constraints".to_string(), Value::Array(list_field(&lines, "CONSTRAINTS:")));
-        data.insert("dependencies".to_string(), Value::Array(list_field(&lines, "DEPENDENCIES:")));
+        data.insert(
+            "complexity".to_string(),
+            Value::String(if complexity.is_empty() {
+                "simple".to_string()
+            } else {
+                complexity.to_string()
+            }),
+        );
+        data.insert(
+            "planningType".to_string(),
+            Value::String(if planning_type.is_empty() {
+                "direct_action".to_string()
+            } else {
+                planning_type.to_string()
+            }),
+        );
+        data.insert(
+            "planningRequired".to_string(),
+            Value::Bool(planning_required),
+        );
+        data.insert(
+            "capabilities".to_string(),
+            Value::Array(list_field(&lines, "CAPABILITIES:")),
+        );
+        data.insert(
+            "stakeholders".to_string(),
+            Value::Array(list_field(&lines, "STAKEHOLDERS:")),
+        );
+        data.insert(
+            "constraints".to_string(),
+            Value::Array(list_field(&lines, "CONSTRAINTS:")),
+        );
+        data.insert(
+            "dependencies".to_string(),
+            Value::Array(list_field(&lines, "DEPENDENCIES:")),
+        );
 
         Ok(ProviderResult {
             text: Some(format!(
                 "Message classified as: {} ({} complexity, {}) with confidence: {}",
                 classification,
-                if complexity.is_empty() { "simple" } else { complexity },
-                if planning_type.is_empty() { "direct_action" } else { planning_type },
+                if complexity.is_empty() {
+                    "simple"
+                } else {
+                    complexity
+                },
+                if planning_type.is_empty() {
+                    "direct_action"
+                } else {
+                    planning_type
+                },
                 confidence
             )),
             values: None,
@@ -250,7 +304,10 @@ impl ActionHandler for AnalyzeInputAction {
         let words: Vec<&str> = text.split_whitespace().collect();
         let has_numbers = text.chars().any(|c| c.is_ascii_digit());
         let lower = text.to_lowercase();
-        let sentiment = if lower.contains("urgent") || lower.contains("emergency") || lower.contains("critical") {
+        let sentiment = if lower.contains("urgent")
+            || lower.contains("emergency")
+            || lower.contains("critical")
+        {
             "urgent"
         } else if lower.contains("good") {
             "positive"
@@ -261,14 +318,27 @@ impl ActionHandler for AnalyzeInputAction {
         };
 
         let mut data = HashMap::new();
-        data.insert("wordCount".to_string(), Value::Number(serde_json::Number::from(words.len() as u64)));
+        data.insert(
+            "wordCount".to_string(),
+            Value::Number(serde_json::Number::from(words.len() as u64)),
+        );
         data.insert("hasNumbers".to_string(), Value::Bool(has_numbers));
-        data.insert("sentiment".to_string(), Value::String(sentiment.to_string()));
-        data.insert("timestamp".to_string(), Value::Number(serde_json::Number::from(0)));
+        data.insert(
+            "sentiment".to_string(),
+            Value::String(sentiment.to_string()),
+        );
+        data.insert(
+            "timestamp".to_string(),
+            Value::Number(serde_json::Number::from(0)),
+        );
 
         Ok(Some(ActionResult {
             success: true,
-            text: Some(format!("Analyzed {} words with {} sentiment", words.len(), sentiment)),
+            text: Some(format!(
+                "Analyzed {} words with {} sentiment",
+                words.len(),
+                sentiment
+            )),
             values: None,
             data: Some(data),
             error: None,
@@ -333,7 +403,10 @@ impl ActionHandler for ProcessAnalysisAction {
 
         let mut data = HashMap::new();
         data.insert("needsMoreInfo".to_string(), Value::Bool(needs_more_info));
-        data.insert("suggestedResponse".to_string(), Value::String(suggested.to_string()));
+        data.insert(
+            "suggestedResponse".to_string(),
+            Value::String(suggested.to_string()),
+        );
         data.insert("continueChain".to_string(), Value::Bool(!needs_more_info));
 
         Ok(Some(ActionResult {
@@ -408,7 +481,12 @@ impl ActionHandler for CreatePlanAction {
     }
 
     async fn validate(&self, message: &Memory, _state: Option<&State>) -> bool {
-        let t = message.content.text.clone().unwrap_or_default().to_lowercase();
+        let t = message
+            .content
+            .text
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
         t.contains("plan")
             || t.contains("project")
             || t.contains("comprehensive")
@@ -423,8 +501,14 @@ impl ActionHandler for CreatePlanAction {
         _options: Option<&crate::types::components::HandlerOptions>,
     ) -> Result<Option<ActionResult>, anyhow::Error> {
         let mut data = HashMap::new();
-        data.insert("actionName".to_string(), Value::String("CREATE_PLAN".to_string()));
-        data.insert("phaseCount".to_string(), Value::Number(serde_json::Number::from(1)));
+        data.insert(
+            "actionName".to_string(),
+            Value::String("CREATE_PLAN".to_string()),
+        );
+        data.insert(
+            "phaseCount".to_string(),
+            Value::Number(serde_json::Number::from(1)),
+        );
         Ok(Some(ActionResult {
             success: true,
             text: Some("Created 1-phase plan".to_string()),
@@ -573,7 +657,11 @@ impl PlanningService {
 
         let plan = ActionPlan {
             id: UUID::new_v4(),
-            goal: message.content.text.clone().unwrap_or_else(|| "Execute plan".to_string()),
+            goal: message
+                .content
+                .text
+                .clone()
+                .unwrap_or_else(|| "Execute plan".to_string()),
             steps,
             execution_model: ExecutionModel::Sequential,
         };
@@ -635,7 +723,11 @@ impl PlanningService {
     }
 
     /// Validate a plan against runtime actions and dependency integrity.
-    pub async fn validate_plan(&self, runtime: &AgentRuntime, plan: &ActionPlan) -> (bool, Vec<String>) {
+    pub async fn validate_plan(
+        &self,
+        runtime: &AgentRuntime,
+        plan: &ActionPlan,
+    ) -> (bool, Vec<String>) {
         let mut issues: Vec<String> = Vec::new();
         if plan.steps.is_empty() {
             issues.push("Plan has no steps".to_string());
@@ -656,11 +748,17 @@ impl PlanningService {
         for step in &plan.steps {
             let name = step.action_name.to_lowercase();
             if !known.contains(&name) && name != "reply" {
-                issues.push(format!("Action '{}' not found in runtime", step.action_name));
+                issues.push(format!(
+                    "Action '{}' not found in runtime",
+                    step.action_name
+                ));
             }
             for dep in &step.dependencies {
                 if !ids.contains(dep) {
-                    issues.push(format!("Step '{}' has invalid dependency '{}'", step.id, dep));
+                    issues.push(format!(
+                        "Step '{}' has invalid dependency '{}'",
+                        step.id, dep
+                    ));
                 }
             }
         }
@@ -708,7 +806,10 @@ impl PlanningService {
                     let ready: Vec<&ActionStep> = plan
                         .steps
                         .iter()
-                        .filter(|s| pending.contains(&s.id) && s.dependencies.iter().all(|d| completed.contains(d)))
+                        .filter(|s| {
+                            pending.contains(&s.id)
+                                && s.dependencies.iter().all(|d| completed.contains(d))
+                        })
                         .collect();
                     if ready.is_empty() {
                         anyhow::bail!("No steps ready to execute - possible circular dependency");
@@ -723,7 +824,10 @@ impl PlanningService {
             }
         }
 
-        self.executions.lock().expect("lock poisoned").remove(&plan.id);
+        self.executions
+            .lock()
+            .expect("lock poisoned")
+            .remove(&plan.id);
 
         Ok(PlanExecutionResult {
             plan_id: plan.id.clone(),
@@ -786,7 +890,10 @@ impl Service for PlanningService {
 
 fn parse_plan_from_xml(xml: &str, fallback_goal: &str) -> ActionPlan {
     let parsed = parse_key_value_xml(xml).unwrap_or_default();
-    let goal = parsed.get("goal").cloned().unwrap_or_else(|| fallback_goal.to_string());
+    let goal = parsed
+        .get("goal")
+        .cloned()
+        .unwrap_or_else(|| fallback_goal.to_string());
     let execution_model = parsed
         .get("execution_model")
         .map(|s| ExecutionModel::from_str(s))
@@ -940,23 +1047,21 @@ mod tests {
                 model_type::TEXT_LARGE,
                 Box::new(|_params| {
                     Box::pin(async move {
-                        Ok(
-                            [
-                                "<plan>",
-                                "<goal>Do thing</goal>",
-                                "<execution_model>sequential</execution_model>",
-                                "<steps>",
-                                "<step>",
-                                "<id>step_1</id>",
-                                "<action>REPLY</action>",
-                                "<parameters>{\"text\":\"ok\"}</parameters>",
-                                "<dependencies>[]</dependencies>",
-                                "</step>",
-                                "</steps>",
-                                "</plan>",
-                            ]
-                            .join("\n"),
-                        )
+                        Ok([
+                            "<plan>",
+                            "<goal>Do thing</goal>",
+                            "<execution_model>sequential</execution_model>",
+                            "<steps>",
+                            "<step>",
+                            "<id>step_1</id>",
+                            "<action>REPLY</action>",
+                            "<parameters>{\"text\":\"ok\"}</parameters>",
+                            "<dependencies>[]</dependencies>",
+                            "</step>",
+                            "</steps>",
+                            "</plan>",
+                        ]
+                        .join("\n"))
                     })
                 }),
             )
@@ -985,7 +1090,9 @@ mod tests {
 
         let message = Memory::message(UUID::new_v4(), UUID::new_v4(), "hi");
         let state = runtime.compose_state(&message).await?;
-        let exec = planning.execute_plan(&runtime, &plan, &message, &state).await?;
+        let exec = planning
+            .execute_plan(&runtime, &plan, &message, &state)
+            .await?;
 
         assert!(exec.success);
         assert_eq!(exec.total_steps, 1);
@@ -993,4 +1100,3 @@ mod tests {
         Ok(())
     }
 }
-

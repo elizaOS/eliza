@@ -1,14 +1,20 @@
+import { and, desc, eq, type SQL, sql } from "drizzle-orm";
+import type { PgTable, TableConfig } from "drizzle-orm/pg-core";
+import { logger } from "../../logger.ts";
 import {
   type IAgentRuntime,
   Service,
   type ServiceTypeName,
   type UUID,
 } from "../../types/index.ts";
-import { logger } from "../../logger.ts";
-import { and, desc, eq, type SQL, sql } from "drizzle-orm";
-import type { PgTable, TableConfig } from "drizzle-orm/pg-core";
 import { longTermMemories, sessionSummaries } from "../schemas/index.ts";
-import type { JsonValue, LongTermMemory, LongTermMemoryCategory, MemoryConfig, SessionSummary } from "../types.ts";
+import type {
+  JsonValue,
+  LongTermMemory,
+  LongTermMemoryCategory,
+  MemoryConfig,
+  SessionSummary,
+} from "../types.ts";
 
 type DbPrimitive = string | number | boolean | null | Date;
 type DbValue = DbPrimitive | DbValue[] | { [key: string]: DbValue };
@@ -113,15 +119,23 @@ export class MemoryService extends Service {
 
     const threshold = runtime.getSetting("MEMORY_SUMMARIZATION_THRESHOLD");
     if (threshold) {
-      this.memoryConfig.shortTermSummarizationThreshold = Number.parseInt(String(threshold), 10);
+      this.memoryConfig.shortTermSummarizationThreshold = Number.parseInt(
+        String(threshold),
+        10,
+      );
     }
 
     const retainRecent = runtime.getSetting("MEMORY_RETAIN_RECENT");
     if (retainRecent) {
-      this.memoryConfig.shortTermRetainRecent = Number.parseInt(String(retainRecent), 10);
+      this.memoryConfig.shortTermRetainRecent = Number.parseInt(
+        String(retainRecent),
+        10,
+      );
     }
 
-    const summarizationInterval = runtime.getSetting("MEMORY_SUMMARIZATION_INTERVAL");
+    const summarizationInterval = runtime.getSetting(
+      "MEMORY_SUMMARIZATION_INTERVAL",
+    );
     if (summarizationInterval) {
       this.memoryConfig.shortTermSummarizationInterval = Number.parseInt(
         String(summarizationInterval),
@@ -131,7 +145,10 @@ export class MemoryService extends Service {
 
     const maxNewMessages = runtime.getSetting("MEMORY_MAX_NEW_MESSAGES");
     if (maxNewMessages) {
-      this.memoryConfig.summaryMaxNewMessages = Number.parseInt(String(maxNewMessages), 10);
+      this.memoryConfig.summaryMaxNewMessages = Number.parseInt(
+        String(maxNewMessages),
+        10,
+      );
     }
 
     const longTermEnabled = runtime.getSetting("MEMORY_LONG_TERM_ENABLED");
@@ -141,24 +158,37 @@ export class MemoryService extends Service {
       this.memoryConfig.longTermExtractionEnabled = true;
     }
 
-    const confidenceThreshold = runtime.getSetting("MEMORY_CONFIDENCE_THRESHOLD");
+    const confidenceThreshold = runtime.getSetting(
+      "MEMORY_CONFIDENCE_THRESHOLD",
+    );
     if (confidenceThreshold) {
-      this.memoryConfig.longTermConfidenceThreshold = Number.parseFloat(String(confidenceThreshold));
+      this.memoryConfig.longTermConfidenceThreshold = Number.parseFloat(
+        String(confidenceThreshold),
+      );
     }
 
-    const extractionThreshold = runtime.getSetting("MEMORY_EXTRACTION_THRESHOLD");
+    const extractionThreshold = runtime.getSetting(
+      "MEMORY_EXTRACTION_THRESHOLD",
+    );
     if (extractionThreshold) {
-      this.memoryConfig.longTermExtractionThreshold = Number.parseInt(String(extractionThreshold), 10);
+      this.memoryConfig.longTermExtractionThreshold = Number.parseInt(
+        String(extractionThreshold),
+        10,
+      );
     }
 
     const extractionInterval = runtime.getSetting("MEMORY_EXTRACTION_INTERVAL");
     if (extractionInterval) {
-      this.memoryConfig.longTermExtractionInterval = Number.parseInt(String(extractionInterval), 10);
+      this.memoryConfig.longTermExtractionInterval = Number.parseInt(
+        String(extractionInterval),
+        10,
+      );
     }
 
     logger.debug(
       {
-        summarizationThreshold: this.memoryConfig.shortTermSummarizationThreshold,
+        summarizationThreshold:
+          this.memoryConfig.shortTermSummarizationThreshold,
         summarizationInterval: this.memoryConfig.shortTermSummarizationInterval,
         maxNewMessages: this.memoryConfig.summaryMaxNewMessages,
         retainRecent: this.memoryConfig.shortTermRetainRecent,
@@ -208,7 +238,10 @@ export class MemoryService extends Service {
     return `memory:extraction:${entityId}:${roomId}`;
   }
 
-  async getLastExtractionCheckpoint(entityId: UUID, roomId: UUID): Promise<number> {
+  async getLastExtractionCheckpoint(
+    entityId: UUID,
+    roomId: UUID,
+  ): Promise<number> {
     const key = this.getExtractionKey(entityId, roomId);
 
     const cached = this.lastExtractionCheckpoints.get(key);
@@ -223,12 +256,19 @@ export class MemoryService extends Service {
       return messageCount;
     } catch (error) {
       const err = error instanceof Error ? error.message : String(error);
-      logger.warn({ src: "service:memory", err }, "Failed to get extraction checkpoint from cache");
+      logger.warn(
+        { src: "service:memory", err },
+        "Failed to get extraction checkpoint from cache",
+      );
       return 0;
     }
   }
 
-  async setLastExtractionCheckpoint(entityId: UUID, roomId: UUID, messageCount: number): Promise<void> {
+  async setLastExtractionCheckpoint(
+    entityId: UUID,
+    roomId: UUID,
+    messageCount: number,
+  ): Promise<void> {
     const key = this.getExtractionKey(entityId, roomId);
     this.lastExtractionCheckpoints.set(key, messageCount);
 
@@ -247,7 +287,11 @@ export class MemoryService extends Service {
     }
   }
 
-  async shouldRunExtraction(entityId: UUID, roomId: UUID, currentMessageCount: number): Promise<boolean> {
+  async shouldRunExtraction(
+    entityId: UUID,
+    roomId: UUID,
+    currentMessageCount: number,
+  ): Promise<boolean> {
     const threshold = this.memoryConfig.longTermExtractionThreshold;
     const interval = this.memoryConfig.longTermExtractionInterval;
 
@@ -255,9 +299,14 @@ export class MemoryService extends Service {
       return false;
     }
 
-    const lastCheckpoint = await this.getLastExtractionCheckpoint(entityId, roomId);
-    const currentCheckpoint = Math.floor(currentMessageCount / interval) * interval;
-    const shouldRun = currentMessageCount >= threshold && currentCheckpoint > lastCheckpoint;
+    const lastCheckpoint = await this.getLastExtractionCheckpoint(
+      entityId,
+      roomId,
+    );
+    const currentCheckpoint =
+      Math.floor(currentMessageCount / interval) * interval;
+    const shouldRun =
+      currentMessageCount >= threshold && currentCheckpoint > lastCheckpoint;
 
     logger.debug(
       {
@@ -278,7 +327,10 @@ export class MemoryService extends Service {
   }
 
   async storeLongTermMemory(
-    memory: Omit<LongTermMemory, "id" | "createdAt" | "updatedAt" | "accessCount">,
+    memory: Omit<
+      LongTermMemory,
+      "id" | "createdAt" | "updatedAt" | "accessCount"
+    >,
   ): Promise<LongTermMemory> {
     const db = this.getDb();
 
@@ -316,7 +368,11 @@ export class MemoryService extends Service {
     return newMemory;
   }
 
-  async getLongTermMemories(entityId: UUID, category?: LongTermMemoryCategory, limit = 10): Promise<LongTermMemory[]> {
+  async getLongTermMemories(
+    entityId: UUID,
+    category?: LongTermMemoryCategory,
+    limit = 10,
+  ): Promise<LongTermMemory[]> {
     const db = this.getDb();
 
     const conditions: SQL[] = [
@@ -336,7 +392,10 @@ export class MemoryService extends Service {
       .select()
       .from(longTermMemories)
       .where(whereClause)
-      .orderBy(desc(longTermMemories.confidence), desc(longTermMemories.updatedAt))
+      .orderBy(
+        desc(longTermMemories.confidence),
+        desc(longTermMemories.updatedAt),
+      )
       .limit(limit);
 
     return results.map((row) => ({
@@ -359,7 +418,9 @@ export class MemoryService extends Service {
   async updateLongTermMemory(
     id: UUID,
     entityId: UUID,
-    updates: Partial<Omit<LongTermMemory, "id" | "agentId" | "entityId" | "createdAt">>,
+    updates: Partial<
+      Omit<LongTermMemory, "id" | "agentId" | "entityId" | "createdAt">
+    >,
   ): Promise<void> {
     const db = this.getDb();
     const updateData: Record<string, DbValue> = {
@@ -367,11 +428,16 @@ export class MemoryService extends Service {
     };
 
     if (updates.content !== undefined) updateData.content = updates.content;
-    if (updates.metadata !== undefined) updateData.metadata = updates.metadata as Record<string, DbValue>;
-    if (updates.confidence !== undefined) updateData.confidence = updates.confidence;
-    if (updates.embedding !== undefined) updateData.embedding = updates.embedding;
-    if (updates.lastAccessedAt !== undefined) updateData.lastAccessedAt = updates.lastAccessedAt;
-    if (updates.accessCount !== undefined) updateData.accessCount = updates.accessCount;
+    if (updates.metadata !== undefined)
+      updateData.metadata = updates.metadata as Record<string, DbValue>;
+    if (updates.confidence !== undefined)
+      updateData.confidence = updates.confidence;
+    if (updates.embedding !== undefined)
+      updateData.embedding = updates.embedding;
+    if (updates.lastAccessedAt !== undefined)
+      updateData.lastAccessedAt = updates.lastAccessedAt;
+    if (updates.accessCount !== undefined)
+      updateData.accessCount = updates.accessCount;
 
     await db
       .update(longTermMemories)
@@ -450,7 +516,9 @@ export class MemoryService extends Service {
     };
   }
 
-  async storeSessionSummary(summary: Omit<SessionSummary, "id" | "createdAt" | "updatedAt">): Promise<SessionSummary> {
+  async storeSessionSummary(
+    summary: Omit<SessionSummary, "id" | "createdAt" | "updatedAt">,
+  ): Promise<SessionSummary> {
     const db = this.getDb();
 
     const id = crypto.randomUUID() as UUID;
@@ -490,7 +558,12 @@ export class MemoryService extends Service {
   async updateSessionSummary(
     id: UUID,
     roomId: UUID,
-    updates: Partial<Omit<SessionSummary, "id" | "agentId" | "roomId" | "createdAt" | "updatedAt">>,
+    updates: Partial<
+      Omit<
+        SessionSummary,
+        "id" | "agentId" | "roomId" | "createdAt" | "updatedAt"
+      >
+    >,
   ): Promise<void> {
     const db = this.getDb();
     const updateData: Record<string, DbValue> = {
@@ -498,12 +571,16 @@ export class MemoryService extends Service {
     };
 
     if (updates.summary !== undefined) updateData.summary = updates.summary;
-    if (updates.messageCount !== undefined) updateData.messageCount = updates.messageCount;
-    if (updates.lastMessageOffset !== undefined) updateData.lastMessageOffset = updates.lastMessageOffset;
+    if (updates.messageCount !== undefined)
+      updateData.messageCount = updates.messageCount;
+    if (updates.lastMessageOffset !== undefined)
+      updateData.lastMessageOffset = updates.lastMessageOffset;
     if (updates.endTime !== undefined) updateData.endTime = updates.endTime;
     if (updates.topics !== undefined) updateData.topics = updates.topics;
-    if (updates.metadata !== undefined) updateData.metadata = updates.metadata as Record<string, DbValue>;
-    if (updates.embedding !== undefined) updateData.embedding = updates.embedding;
+    if (updates.metadata !== undefined)
+      updateData.metadata = updates.metadata as Record<string, DbValue>;
+    if (updates.embedding !== undefined)
+      updateData.embedding = updates.embedding;
 
     await db
       .update(sessionSummaries)
@@ -525,7 +602,10 @@ export class MemoryService extends Service {
     );
   }
 
-  async getSessionSummaries(roomId: UUID, limit = 5): Promise<SessionSummary[]> {
+  async getSessionSummaries(
+    roomId: UUID,
+    limit = 5,
+  ): Promise<SessionSummary[]> {
     const db = this.getDb();
     const results = await db
       .select()
@@ -575,17 +655,28 @@ export class MemoryService extends Service {
     }
 
     try {
-      const candidates = await this.getLongTermMemories(entityId, undefined, 200);
+      const candidates = await this.getLongTermMemories(
+        entityId,
+        undefined,
+        200,
+      );
       const scored = candidates
         .filter((m) => (m.embedding?.length ?? 0) > 0)
-        .map((m) => ({ memory: m, similarity: cosineSimilarity(m.embedding ?? [], queryEmbedding) }))
+        .map((m) => ({
+          memory: m,
+          similarity: cosineSimilarity(m.embedding ?? [], queryEmbedding),
+        }))
         .filter((x) => x.similarity >= matchThreshold)
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, limit);
 
       return scored.map((x) => ({ ...x.memory, similarity: x.similarity }));
     } catch (error) {
-      logger.warn({ error }, "Vector search failed, falling back to recent memories", { src: "service:memory" });
+      logger.warn(
+        { error },
+        "Vector search failed, falling back to recent memories",
+        { src: "service:memory" },
+      );
       return this.getLongTermMemories(entityId, undefined, limit);
     }
   }
@@ -629,4 +720,3 @@ function cosineSimilarity(a: number[], b: number[]): number {
   const denom = Math.sqrt(normA) * Math.sqrt(normB);
   return denom === 0 ? 0 : dot / denom;
 }
-

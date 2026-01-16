@@ -6,16 +6,19 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 
-import { withCanonicalActionDocs, withCanonicalEvaluatorDocs } from "./action-docs";
+import {
+  withCanonicalActionDocs,
+  withCanonicalEvaluatorDocs,
+} from "./action-docs";
 import { parseActionParams, validateActionParams } from "./actions";
 import {
   type CapabilityConfig,
   createBootstrapPlugin,
 } from "./bootstrap/index";
+import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createUniqueUuid } from "./entities";
 import { createLogger } from "./logger";
 import { BM25 } from "./search";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { DefaultMessageService } from "./services/message";
 import { decryptSecret, getSalt } from "./settings";
 import {
@@ -593,7 +596,9 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Advanced planning is built into core, but only loaded when enabled on the character.
     if (this.character.advancedPlanning === true) {
-      const { createAdvancedPlanningPlugin } = await import("./advanced-planning/index.ts");
+      const { createAdvancedPlanningPlugin } = await import(
+        "./advanced-planning/index.ts"
+      );
       pluginRegistrationPromises.push(
         this.registerPlugin(createAdvancedPlanningPlugin()),
       );
@@ -601,7 +606,9 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Advanced memory is built into core, but only loaded when enabled on the character.
     if (this.character.advancedMemory === true) {
-      const { createAdvancedMemoryPlugin } = await import("./advanced-memory/index.ts");
+      const { createAdvancedMemoryPlugin } = await import(
+        "./advanced-memory/index.ts"
+      );
       pluginRegistrationPromises.push(
         this.registerPlugin(createAdvancedMemoryPlugin()),
       );
@@ -616,7 +623,8 @@ export class AgentRuntime implements IAgentRuntime {
 
     const allowNoDatabase =
       options?.allowNoDatabase === true ||
-      String(this.getSetting("ALLOW_NO_DATABASE") ?? "").toLowerCase() === "true";
+      String(this.getSetting("ALLOW_NO_DATABASE") ?? "").toLowerCase() ===
+        "true";
 
     if (!this.adapter) {
       if (allowNoDatabase) {
@@ -626,13 +634,13 @@ export class AgentRuntime implements IAgentRuntime {
         );
         this.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
       } else {
-      this.logger.error(
-        { src: "agent", agentId: this.agentId },
-        "Database adapter not initialized",
-      );
-      throw new Error(
-        "Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.",
-      );
+        this.logger.error(
+          { src: "agent", agentId: this.agentId },
+          "Database adapter not initialized",
+        );
+        throw new Error(
+          "Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.",
+        );
       }
     }
 
@@ -2608,7 +2616,9 @@ export class AgentRuntime implements IAgentRuntime {
   ///
   /// Note: Plugins can register arbitrary service type strings; callers may
   /// therefore provide either a core `ServiceTypeName` or a plugin-defined string.
-  getServiceLoadPromise(serviceType: ServiceTypeName | string): Promise<Service> {
+  getServiceLoadPromise(
+    serviceType: ServiceTypeName | string,
+  ): Promise<Service> {
     // if this.isInitialized then the this p will exist and already be resolved
     let p = this.servicePromises.get(serviceType);
     if (!p) {
@@ -3077,7 +3087,8 @@ export class AgentRuntime implements IAgentRuntime {
           }) => void;
         };
         const stepId = getTrajectoryContext()?.trajectoryStepId;
-        const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
+        const trajLogger =
+          this.getService<TrajectoryLogger>("trajectory_logger");
         if (stepId && trajLogger) {
           const tempRaw = isPlainObject(modelParams)
             ? (modelParams as { temperature?: number }).temperature
@@ -3088,9 +3099,10 @@ export class AgentRuntime implements IAgentRuntime {
           trajLogger.logLlmCall({
             stepId,
             model: String(modelKey),
-            systemPrompt: typeof this.character.system === "string"
-              ? this.character.system
-              : "",
+            systemPrompt:
+              typeof this.character.system === "string"
+                ? this.character.system
+                : "",
             userPrompt: promptContent ?? "",
             response: fullText,
             temperature: typeof tempRaw === "number" ? tempRaw : 0,
@@ -3163,9 +3175,12 @@ export class AgentRuntime implements IAgentRuntime {
           stepId,
           model: String(modelKey),
           systemPrompt:
-            typeof this.character.system === "string" ? this.character.system : "",
+            typeof this.character.system === "string"
+              ? this.character.system
+              : "",
           userPrompt: promptContent ?? "",
-          response: typeof response === "string" ? response : JSON.stringify(response),
+          response:
+            typeof response === "string" ? response : JSON.stringify(response),
           temperature: typeof tempRaw === "number" ? tempRaw : 0,
           maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
           purpose: "action",

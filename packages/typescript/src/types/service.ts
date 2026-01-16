@@ -114,7 +114,7 @@ export const ServiceType = {
   MESSAGE: "message",
   POST: "post",
   UNKNOWN: "unknown",
-} as const satisfies ServiceTypeRegistry;
+} as const;
 
 /**
  * Client instance

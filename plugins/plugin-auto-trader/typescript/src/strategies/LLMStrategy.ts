@@ -1,7 +1,13 @@
-import { type IAgentRuntime, logger, ModelType, parseJSONObjectFromText } from '@elizaos/core';
-import type { TradingStrategy, StrategyContextMarketData, AgentState, PortfolioSnapshot, TradeOrder } from '../types.ts';
-import { TradeType, OrderType } from '../types.ts';
-import type { TokenValidationService } from '../services/TokenValidationService.ts';
+import { type IAgentRuntime, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import type { TokenValidationService } from "../services/TokenValidationService.ts";
+import type {
+  AgentState,
+  PortfolioSnapshot,
+  StrategyContextMarketData,
+  TradeOrder,
+  TradingStrategy,
+} from "../types.ts";
+import { OrderType, TradeType } from "../types.ts";
 
 /**
  * Token data from Birdeye trending API
@@ -84,7 +90,7 @@ PREVIOUS PICKS:
 TRENDING TOKENS (Solana):
 {{trendingTokens}}
 
-CURRENT PORTFOLIO VALUE: ${{portfolioValue}}
+CURRENT PORTFOLIO VALUE: ${{ portfolioValue }}
 
 Respond ONLY with a JSON object in this exact format:
 {
@@ -109,7 +115,7 @@ Respond ONLY with a JSON object in this exact format:
 
 /**
  * LLMStrategy - AI-powered trading strategy using language models
- * 
+ *
  * This strategy:
  * 1. Fetches trending tokens from Birdeye
  * 2. Uses an LLM to analyze opportunities
@@ -117,13 +123,18 @@ Respond ONLY with a JSON object in this exact format:
  * 4. Generates buy signals with proper exit conditions
  */
 export class LLMStrategy implements TradingStrategy {
-  public readonly id = 'llm';
-  public readonly name = 'LLM Trading Strategy';
-  public readonly description = 'AI-powered trading using language models to analyze trending tokens';
+  public readonly id = "llm";
+  public readonly name = "LLM Trading Strategy";
+  public readonly description =
+    "AI-powered trading using language models to analyze trending tokens";
 
   private runtime: IAgentRuntime | null = null;
   private config: LLMStrategyConfig;
-  private previousPicks: Array<{ timestamp: number; token: string; reason: string }> = [];
+  private previousPicks: Array<{
+    timestamp: number;
+    token: string;
+    reason: string;
+  }> = [];
   private trendingTokensCache: TrendingToken[] = [];
   private lastTrendingFetch = 0;
   private readonly TRENDING_CACHE_TTL = 60000; // 1 minute
@@ -135,18 +146,18 @@ export class LLMStrategy implements TradingStrategy {
   public async initialize(runtime?: IAgentRuntime): Promise<void> {
     if (runtime) {
       this.runtime = runtime;
-      
-      const birdeyeKey = runtime.getSetting('BIRDEYE_API_KEY');
+
+      const birdeyeKey = runtime.getSetting("BIRDEYE_API_KEY");
       if (birdeyeKey) {
         this.config.birdeyeApiKey = birdeyeKey;
       }
 
-      const maxBuy = runtime.getSetting('MAX_PORTFOLIO_ALLOCATION');
+      const maxBuy = runtime.getSetting("MAX_PORTFOLIO_ALLOCATION");
       if (maxBuy) {
         this.config.maxBuyAmountPercent = Number(maxBuy) * 100;
       }
 
-      const minLiquidity = runtime.getSetting('MIN_LIQUIDITY_USD');
+      const minLiquidity = runtime.getSetting("MIN_LIQUIDITY_USD");
       if (minLiquidity) {
         this.config.minLiquidity = Number(minLiquidity);
       }
@@ -186,26 +197,30 @@ export class LLMStrategy implements TradingStrategy {
     }
 
     // Pre-validate tokens to filter out obvious scams/honeypots BEFORE LLM analysis
-    const validationService = runtime.getService('TokenValidationService') as TokenValidationService | undefined;
+    const validationService = runtime.getService("TokenValidationService") as
+      | TokenValidationService
+      | undefined;
     let validTokens = trendingTokens;
-    
+
     if (validationService) {
       const validationResults = await Promise.all(
         trendingTokens.map(async (token) => ({
           token,
           validation: await validationService.validateToken(token.address),
-        }))
+        })),
       );
-      
-      validTokens = validationResults
-        .filter(r => r.validation.isValid)
-        .map(r => r.token);
-      
-      const rejected = validationResults.filter(r => !r.validation.isValid);
+
+      validTokens = validationResults.filter((r) => r.validation.isValid).map((r) => r.token);
+
+      const rejected = validationResults.filter((r) => !r.validation.isValid);
       if (rejected.length > 0) {
-        logger.info(`[${this.name}] Pre-filtered ${rejected.length} tokens (honeypot/scam indicators)`);
-        rejected.slice(0, 3).forEach(r => {
-          logger.debug(`[${this.name}] Rejected ${r.token.symbol}: ${r.validation.rejectionReasons.join(', ')}`);
+        logger.info(
+          `[${this.name}] Pre-filtered ${rejected.length} tokens (honeypot/scam indicators)`,
+        );
+        rejected.slice(0, 3).forEach((r) => {
+          logger.debug(
+            `[${this.name}] Rejected ${r.token.symbol}: ${r.validation.rejectionReasons.join(", ")}`,
+          );
         });
       }
     }
@@ -219,7 +234,7 @@ export class LLMStrategy implements TradingStrategy {
     const decision = await this.getLLMDecision(
       runtime,
       validTokens,
-      params.portfolioSnapshot.totalValue
+      params.portfolioSnapshot.totalValue,
     );
 
     if (!decision || decision.pickedNothing || decision.recommendBuyIndex === null) {
@@ -300,11 +315,14 @@ export class LLMStrategy implements TradingStrategy {
    */
   private async fetchTrendingTokens(runtime: IAgentRuntime): Promise<TrendingToken[]> {
     // Check cache
-    if (Date.now() - this.lastTrendingFetch < this.TRENDING_CACHE_TTL && this.trendingTokensCache.length > 0) {
+    if (
+      Date.now() - this.lastTrendingFetch < this.TRENDING_CACHE_TTL &&
+      this.trendingTokensCache.length > 0
+    ) {
       return this.trendingTokensCache;
     }
 
-    const apiKey = this.config.birdeyeApiKey || runtime.getSetting('BIRDEYE_API_KEY');
+    const apiKey = this.config.birdeyeApiKey || runtime.getSetting("BIRDEYE_API_KEY");
     if (!apiKey) {
       logger.error(`[${this.name}] Birdeye API key not configured`);
       return [];
@@ -314,10 +332,10 @@ export class LLMStrategy implements TradingStrategy {
       `https://public-api.birdeye.so/defi/tokenlist?sort_by=v24hUSD&sort_type=desc&offset=0&limit=${this.config.trendingTokensCount}`,
       {
         headers: {
-          'X-API-KEY': apiKey,
-          'x-chain': 'solana',
+          "X-API-KEY": apiKey,
+          "x-chain": "solana",
         },
-      }
+      },
     );
 
     if (!response.ok) {
@@ -325,7 +343,7 @@ export class LLMStrategy implements TradingStrategy {
       return [];
     }
 
-    const data = await response.json() as {
+    const data = (await response.json()) as {
       success: boolean;
       data: {
         tokens: Array<{
@@ -349,8 +367,10 @@ export class LLMStrategy implements TradingStrategy {
 
     // Filter tokens by liquidity and volume
     const filteredTokens = data.data.tokens
-      .filter(t => t.liquidity >= this.config.minLiquidity && t.v24hUSD >= this.config.minVolume24h)
-      .map(t => ({
+      .filter(
+        (t) => t.liquidity >= this.config.minLiquidity && t.v24hUSD >= this.config.minVolume24h,
+      )
+      .map((t) => ({
         address: t.address,
         symbol: t.symbol,
         name: t.name,
@@ -375,28 +395,31 @@ export class LLMStrategy implements TradingStrategy {
   private async getLLMDecision(
     runtime: IAgentRuntime,
     trendingTokens: TrendingToken[],
-    portfolioValue: number
+    portfolioValue: number,
   ): Promise<LLMTradingDecision | null> {
     // Format trending tokens for prompt
     const tokensText = trendingTokens
-      .map((t, i) => `${i + 1}. ${t.symbol}: $${t.price.toFixed(6)} | 24h: ${t.priceChange24h.toFixed(2)}% | Vol: $${(t.volume24h / 1e6).toFixed(2)}M | Liq: $${(t.liquidity / 1e6).toFixed(2)}M | MCap: $${(t.marketCap / 1e6).toFixed(2)}M`)
-      .join('\n');
+      .map(
+        (t, i) =>
+          `${i + 1}. ${t.symbol}: $${t.price.toFixed(6)} | 24h: ${t.priceChange24h.toFixed(2)}% | Vol: $${(t.volume24h / 1e6).toFixed(2)}M | Liq: $${(t.liquidity / 1e6).toFixed(2)}M | MCap: $${(t.marketCap / 1e6).toFixed(2)}M`,
+      )
+      .join("\n");
 
     // Format previous picks
-    const previousPicksText = this.previousPicks.length > 0
-      ? this.previousPicks
-          .map(p => `${new Date(p.timestamp).toISOString()}: ${p.token} - ${p.reason}`)
-          .join('\n')
-      : 'No previous picks in this session.';
+    const previousPicksText =
+      this.previousPicks.length > 0
+        ? this.previousPicks
+            .map((p) => `${new Date(p.timestamp).toISOString()}: ${p.token} - ${p.reason}`)
+            .join("\n")
+        : "No previous picks in this session.";
 
-    const prompt = TRADING_DECISION_PROMPT
-      .replace('{{trendingTokens}}', tokensText)
-      .replace('{{previousPicks}}', previousPicksText)
-      .replace('{{portfolioValue}}', portfolioValue.toFixed(2));
+    const prompt = TRADING_DECISION_PROMPT.replace("{{trendingTokens}}", tokensText)
+      .replace("{{previousPicks}}", previousPicksText)
+      .replace("{{portfolioValue}}", portfolioValue.toFixed(2));
 
     const response = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
-      system: 'You are an expert cryptocurrency trading analyst. Respond only with valid JSON.',
+      system: "You are an expert cryptocurrency trading analyst. Respond only with valid JSON.",
     });
 
     if (!response) {
@@ -412,23 +435,27 @@ export class LLMStrategy implements TradingStrategy {
 
     // Validate and normalize the response
     const decision: LLMTradingDecision = {
-      marketAssessment: String(parsed.marketAssessment || ''),
+      marketAssessment: String(parsed.marketAssessment || ""),
       pickedNothing: Boolean(parsed.pickedNothing),
-      recommendBuyIndex: parsed.recommendBuyIndex !== null ? Number(parsed.recommendBuyIndex) : null,
-      reason: String(parsed.reason || ''),
+      recommendBuyIndex:
+        parsed.recommendBuyIndex !== null ? Number(parsed.recommendBuyIndex) : null,
+      reason: String(parsed.reason || ""),
       opportunityScore: Number(parsed.opportunityScore || 0),
       riskScore: Number(parsed.riskScore || 100),
-      buyAmountPercent: Math.min(Number(parsed.buyAmountPercent || 0), this.config.maxBuyAmountPercent),
-      tokenStrengths: String(parsed.tokenStrengths || ''),
-      tokenWeaknesses: String(parsed.tokenWeaknesses || ''),
-      exitConditions: String(parsed.exitConditions || ''),
+      buyAmountPercent: Math.min(
+        Number(parsed.buyAmountPercent || 0),
+        this.config.maxBuyAmountPercent,
+      ),
+      tokenStrengths: String(parsed.tokenStrengths || ""),
+      tokenWeaknesses: String(parsed.tokenWeaknesses || ""),
+      exitConditions: String(parsed.exitConditions || ""),
       exitLiquidityThreshold: Number(parsed.exitLiquidityThreshold || this.config.minLiquidity),
       exitVolumeThreshold: Number(parsed.exitVolumeThreshold || this.config.minVolume24h),
       currentPrice: Number(parsed.currentPrice || 0),
       stopLossPrice: Number(parsed.stopLossPrice || 0),
       takeProfitPrice: Number(parsed.takeProfitPrice || 0),
-      stopLossReasoning: String(parsed.stopLossReasoning || ''),
-      takeProfitReasoning: String(parsed.takeProfitReasoning || ''),
+      stopLossReasoning: String(parsed.stopLossReasoning || ""),
+      takeProfitReasoning: String(parsed.takeProfitReasoning || ""),
     };
 
     logger.debug(`[${this.name}] LLM decision:`, {
@@ -444,7 +471,11 @@ export class LLMStrategy implements TradingStrategy {
   /**
    * Get recent picks for display
    */
-  public getPreviousPicks(): Array<{ timestamp: number; token: string; reason: string }> {
+  public getPreviousPicks(): Array<{
+    timestamp: number;
+    token: string;
+    reason: string;
+  }> {
     return [...this.previousPicks];
   }
 

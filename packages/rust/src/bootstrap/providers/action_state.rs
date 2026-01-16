@@ -104,4 +104,3 @@ impl Provider for ActionStateProvider {
             .with_data("completed", completed))
     }
 }
-

@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 
-import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
-import { SimulationService } from '../services/SimulationService.ts';
-import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
-import { AnalyticsService } from '../services/analyticsService.ts';
-import { AgentRuntime } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import * as fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import chalk from 'chalk';
-import dotenv from 'dotenv';
+import * as fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type { AgentRuntime } from "@elizaos/core";
+import chalk from "chalk";
+import dotenv from "dotenv";
+import { v4 as uuidv4 } from "uuid";
+import { AnalyticsService } from "../services/analyticsService.ts";
+import { DefaultHistoricalDataService } from "../services/HistoricalDataService.ts";
+import { PerformanceReportingService } from "../services/PerformanceReportingService.ts";
+import { SimulationService } from "../services/SimulationService.ts";
+import { StrategyRegistryService } from "../services/StrategyRegistryService.ts";
 
 // Load environment variables
 dotenv.config();
@@ -28,15 +28,15 @@ class MockRuntime implements Partial<AgentRuntime> {
   }
 
   getService(serviceName: string): any {
-    if (serviceName === 'StrategyRegistryService') return strategyRegistry;
-    if (serviceName === 'HistoricalDataService') return historicalDataService;
-    if (serviceName === 'PerformanceReportingService') return performanceService;
-    if (serviceName === 'AnalyticsService') return analyticsService;
+    if (serviceName === "StrategyRegistryService") return strategyRegistry;
+    if (serviceName === "HistoricalDataService") return historicalDataService;
+    if (serviceName === "PerformanceReportingService") return performanceService;
+    if (serviceName === "AnalyticsService") return analyticsService;
     return null;
   }
 
-  useModel(modelType: any, params: any, provider?: string): Promise<any> {
-    throw new Error('Model not needed for verification');
+  useModel(_modelType: any, _params: any, _provider?: string): Promise<any> {
+    throw new Error("Model not needed for verification");
   }
 }
 
@@ -52,7 +52,7 @@ async function verifySetup() {
 =============================================================
 🔍 ElizaOS Auto-Trader Setup Verification
 =============================================================
-`)
+`),
   );
 
   const checks = {
@@ -64,39 +64,39 @@ async function verifySetup() {
   };
 
   // 1. Check environment variables
-  console.log(chalk.yellow('\n1️⃣ Checking environment variables...'));
+  console.log(chalk.yellow("\n1️⃣ Checking environment variables..."));
   if (process.env.BIRDEYE_API_KEY) {
-    console.log(chalk.green('   ✅ BIRDEYE_API_KEY found'));
+    console.log(chalk.green("   ✅ BIRDEYE_API_KEY found"));
     checks.envVars = true;
   } else {
-    console.log(chalk.red('   ❌ BIRDEYE_API_KEY not found'));
-    console.log(chalk.yellow('      Please add BIRDEYE_API_KEY to your .env file'));
+    console.log(chalk.red("   ❌ BIRDEYE_API_KEY not found"));
+    console.log(chalk.yellow("      Please add BIRDEYE_API_KEY to your .env file"));
   }
 
   // 2. Initialize services
-  console.log(chalk.yellow('\n2️⃣ Initializing services...'));
+  console.log(chalk.yellow("\n2️⃣ Initializing services..."));
   try {
     const runtime = new MockRuntime() as AgentRuntime;
 
     performanceService = new PerformanceReportingService(runtime);
     await performanceService.start();
-    console.log(chalk.green('   ✅ PerformanceReportingService initialized'));
+    console.log(chalk.green("   ✅ PerformanceReportingService initialized"));
 
     analyticsService = new AnalyticsService(runtime);
     await analyticsService.start();
-    console.log(chalk.green('   ✅ AnalyticsService initialized'));
+    console.log(chalk.green("   ✅ AnalyticsService initialized"));
 
     strategyRegistry = new StrategyRegistryService(runtime);
     await strategyRegistry.start();
-    console.log(chalk.green('   ✅ StrategyRegistryService initialized'));
+    console.log(chalk.green("   ✅ StrategyRegistryService initialized"));
 
     historicalDataService = new DefaultHistoricalDataService(runtime);
     await historicalDataService.start();
-    console.log(chalk.green('   ✅ HistoricalDataService initialized'));
+    console.log(chalk.green("   ✅ HistoricalDataService initialized"));
 
     simulationService = new SimulationService(runtime);
     await simulationService.start();
-    console.log(chalk.green('   ✅ SimulationService initialized'));
+    console.log(chalk.green("   ✅ SimulationService initialized"));
 
     checks.services = true;
   } catch (error: any) {
@@ -104,11 +104,11 @@ async function verifySetup() {
   }
 
   // 3. Check strategies
-  console.log(chalk.yellow('\n3️⃣ Checking registered strategies...'));
+  console.log(chalk.yellow("\n3️⃣ Checking registered strategies..."));
   const strategies = strategyRegistry.listStrategies();
   console.log(chalk.white(`   Found ${strategies.length} strategies:`));
 
-  const requiredStrategies = ['optimized-momentum-v1', 'mean-reversion-strategy'];
+  const requiredStrategies = ["optimized-momentum-v1", "mean-reversion-strategy"];
   let allStrategiesFound = true;
 
   for (const strategyName of requiredStrategies) {
@@ -124,13 +124,13 @@ async function verifySetup() {
   checks.strategies = allStrategiesFound;
 
   // 4. Check cache
-  console.log(chalk.yellow('\n4️⃣ Checking data cache...'));
-  const cacheDir = path.join(__dirname, '../../cache/birdeye');
+  console.log(chalk.yellow("\n4️⃣ Checking data cache..."));
+  const cacheDir = path.join(__dirname, "../../cache/birdeye");
 
   if (fs.existsSync(cacheDir)) {
     const files = fs.readdirSync(cacheDir);
     const dataFiles = files.filter(
-      (f) => f.endsWith('.json') && !f.includes('summary') && !f.includes('report')
+      (f) => f.endsWith(".json") && !f.includes("summary") && !f.includes("report"),
     );
 
     if (dataFiles.length > 0) {
@@ -138,29 +138,29 @@ async function verifySetup() {
       checks.cache = true;
 
       // Check summary
-      const summaryPath = path.join(cacheDir, 'download_summary.json');
+      const summaryPath = path.join(cacheDir, "download_summary.json");
       if (fs.existsSync(summaryPath)) {
-        const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
+        const summary = JSON.parse(fs.readFileSync(summaryPath, "utf-8"));
         const coinCount = Object.keys(summary.coins || {}).length;
         console.log(chalk.green(`   ✅ Data available for ${coinCount} coins`));
       }
     } else {
-      console.log(chalk.yellow('   ⚠️ No cached data found'));
-      console.log(chalk.white('      Run `npm run download-data` to download historical data'));
+      console.log(chalk.yellow("   ⚠️ No cached data found"));
+      console.log(chalk.white("      Run `npm run download-data` to download historical data"));
     }
   } else {
-    console.log(chalk.yellow('   ⚠️ Cache directory does not exist'));
-    console.log(chalk.white('      Run `npm run download-data` to download historical data'));
+    console.log(chalk.yellow("   ⚠️ Cache directory does not exist"));
+    console.log(chalk.white("      Run `npm run download-data` to download historical data"));
   }
 
   // 5. Run mini backtest
-  console.log(chalk.yellow('\n5️⃣ Running mini backtest...'));
+  console.log(chalk.yellow("\n5️⃣ Running mini backtest..."));
 
   if (checks.services && checks.envVars) {
     try {
       const testCoin = {
-        address: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
-        symbol: 'BONK',
+        address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+        symbol: "BONK",
       };
 
       const endDate = new Date();
@@ -169,22 +169,22 @@ async function verifySetup() {
 
       const data = await historicalDataService.fetchData(
         testCoin.address,
-        '1h',
+        "1h",
         startDate,
         endDate,
-        'birdeye'
+        "birdeye",
       );
 
       if (data && data.length > 0) {
         console.log(
-          chalk.green(`   ✅ Successfully fetched ${data.length} candles for ${testCoin.symbol}`)
+          chalk.green(`   ✅ Successfully fetched ${data.length} candles for ${testCoin.symbol}`),
         );
 
         // Try a quick backtest
         const report = await simulationService.runBacktest({
-          strategyName: 'optimized-momentum-v1',
+          strategyName: "optimized-momentum-v1",
           pair: testCoin.address,
-          interval: '1h',
+          interval: "1h",
           startDate,
           endDate,
           initialCapital: 10000,
@@ -193,12 +193,12 @@ async function verifySetup() {
         const pnl = ((report.finalPortfolioValue - 10000) / 10000) * 100;
         console.log(
           chalk.green(
-            `   ✅ Backtest completed: PnL ${pnl.toFixed(2)}%, Trades: ${report.metrics.totalTrades}`
-          )
+            `   ✅ Backtest completed: PnL ${pnl.toFixed(2)}%, Trades: ${report.metrics.totalTrades}`,
+          ),
         );
         checks.backtest = true;
       } else {
-        console.log(chalk.yellow('   ⚠️ Could not fetch test data'));
+        console.log(chalk.yellow("   ⚠️ Could not fetch test data"));
       }
     } catch (error: any) {
       console.log(chalk.yellow(`   ⚠️ Mini backtest failed: ${error.message}`));
@@ -206,9 +206,9 @@ async function verifySetup() {
   }
 
   // Summary
-  console.log(chalk.cyan('\n' + '='.repeat(60)));
-  console.log(chalk.cyan('📊 VERIFICATION SUMMARY'));
-  console.log(chalk.cyan('='.repeat(60)));
+  console.log(chalk.cyan(`\n${"=".repeat(60)}`));
+  console.log(chalk.cyan("📊 VERIFICATION SUMMARY"));
+  console.log(chalk.cyan("=".repeat(60)));
 
   const allChecks = Object.values(checks);
   const passedChecks = allChecks.filter((c) => c).length;
@@ -217,17 +217,17 @@ async function verifySetup() {
   console.log(chalk.white(`\nChecks passed: ${passedChecks}/${totalChecks}`));
 
   Object.entries(checks).forEach(([check, passed]) => {
-    const checkName = check.charAt(0).toUpperCase() + check.slice(1).replace(/([A-Z])/g, ' $1');
+    const checkName = check.charAt(0).toUpperCase() + check.slice(1).replace(/([A-Z])/g, " $1");
     console.log(passed ? chalk.green(`✅ ${checkName}`) : chalk.red(`❌ ${checkName}`));
   });
 
   if (passedChecks === totalChecks) {
-    console.log(chalk.bold.green('\n✅ All checks passed! Your setup is ready.'));
-    console.log(chalk.white('\nNext steps:'));
-    console.log(chalk.white('1. Run `npm run download-data` to download full historical data'));
-    console.log(chalk.white('2. Run `npm run run:all` to execute the full pipeline'));
+    console.log(chalk.bold.green("\n✅ All checks passed! Your setup is ready."));
+    console.log(chalk.white("\nNext steps:"));
+    console.log(chalk.white("1. Run `npm run download-data` to download full historical data"));
+    console.log(chalk.white("2. Run `npm run run:all` to execute the full pipeline"));
   } else {
-    console.log(chalk.bold.yellow('\n⚠️ Some checks failed. Please fix the issues above.'));
+    console.log(chalk.bold.yellow("\n⚠️ Some checks failed. Please fix the issues above."));
   }
 
   // Cleanup
@@ -242,6 +242,6 @@ async function verifySetup() {
 
 // Run verification
 verifySetup().catch((error) => {
-  console.error(chalk.red('\n❌ Verification failed:'), error);
+  console.error(chalk.red("\n❌ Verification failed:"), error);
   process.exit(1);
 });

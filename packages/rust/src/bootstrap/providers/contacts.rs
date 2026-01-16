@@ -44,4 +44,3 @@ impl Provider for ContactsProvider {
         .with_value("contactsAvailable", true))
     }
 }
-

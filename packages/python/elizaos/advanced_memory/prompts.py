@@ -86,4 +86,3 @@ If there are no qualifying facts, respond with <memories></memories>
     <confidence>0.95</confidence>
   </memory>
 </memories>"""
-

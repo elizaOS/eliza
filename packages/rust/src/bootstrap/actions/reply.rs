@@ -21,7 +21,13 @@ impl Action for ReplyAction {
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["GREET", "REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND", "RESPONSE"]
+        &[
+            "GREET",
+            "REPLY_TO_MESSAGE",
+            "SEND_REPLY",
+            "RESPOND",
+            "RESPONSE",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -101,4 +107,3 @@ impl Action for ReplyAction {
             .with_data("messageGenerated", true))
     }
 }
-

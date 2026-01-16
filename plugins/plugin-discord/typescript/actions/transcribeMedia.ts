@@ -198,7 +198,7 @@ export const transcribeMedia: Action = {
 ${mediaTranscript?.trim() || ""}
 \`\`\`
 `;
-      await callback(callbackData);
+      await callback?.(callbackData);
     }
     // if text is big, let's send as an attachment
     else if (callbackData.text) {
@@ -207,7 +207,7 @@ ${mediaTranscript?.trim() || ""}
       // save the transcript to a file
       await runtime.setCache<string>(transcriptFilename, callbackData.text);
 
-      await callback({
+      await callback?.({
         ...callbackData,
         text: "I've attached the transcript as a text file.",
         attachments: [

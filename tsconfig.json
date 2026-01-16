@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ES2022",
-    "lib": ["ES2021.String", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "node",
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -15,14 +15,46 @@
     "declaration": true,
     "declarationMap": true,
     "strict": true,
+    "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
       "@elizaos/core": ["packages/typescript/src/index.node.ts"],
-      "@elizaos/core/*": ["packages/typescript/src/*"],
-      "@elizaos/plugin-sql": ["plugins/plugin-sql/typescript/index.ts"],
-      "@elizaos/plugin-sql/*": ["plugins/plugin-sql/typescript/*"],
-      "@elizaos/plugin-openai": ["plugins/plugin-openai/typescript/index.ts"],
-      "@elizaos/plugin-openai/*": ["plugins/plugin-openai/typescript/*"]
+      "@elizaos/core/*": ["packages/typescript/src/*"]
     }
-  }
+  },
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/cypress/**",
+    "**/*.cy.tsx",
+    "**/*.cy.ts",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/__tests__/**",
+    "**/scripts/**",
+    "**/e2e/**",
+    "examples/code/**",
+    "examples/avatar/**",
+    "examples/vrm/**",
+    "examples/supabase/**",
+    "examples/polymarket/**",
+    "examples/react/**",
+    "examples/next/**",
+    "examples/farcaster-miniapp/**",
+    "packages/python/**",
+    "packages/elizaos/examples/**",
+    "plugins/plugin-lp-manager/**",
+    "plugins/plugin-local-ai/**",
+    "plugins/plugin-vision/**",
+    "plugins/plugin-github/**",
+    "plugins/plugin-evm/**",
+    "plugins/plugin-polymarket/**",
+    "plugins/plugin-sql/**",
+    "plugins/plugin-minecraft/**",
+    "plugins/plugin-linear/**",
+    "plugins/plugin-knowledge/**",
+    "**/testing/**",
+    "**/build.ts"
+  ]
 }

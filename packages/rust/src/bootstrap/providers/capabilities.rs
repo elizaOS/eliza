@@ -72,9 +72,13 @@ impl Provider for CapabilitiesProvider {
             .with_value("modelCount", available_models.len() as i64)
             .with_value("hasVoice", features.contains(&"voice"))
             .with_value("hasVision", features.contains(&"vision"))
-            .with_data("models", serde_json::to_value(&available_models).unwrap_or_default())
-            .with_data("features", serde_json::to_value(&features).unwrap_or_default()))
+            .with_data(
+                "models",
+                serde_json::to_value(&available_models).unwrap_or_default(),
+            )
+            .with_data(
+                "features",
+                serde_json::to_value(&features).unwrap_or_default(),
+            ))
     }
 }
-
-

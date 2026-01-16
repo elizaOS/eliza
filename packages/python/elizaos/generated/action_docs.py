@@ -6,9 +6,7 @@ DO NOT EDIT - Generated from packages/prompts/specs/**.
 from __future__ import annotations
 
 import json
-
 from typing import Literal, TypedDict
-
 
 JsonSchemaType = Literal["string", "number", "boolean", "object", "array"]
 ActionDocParameterExampleValue = str | int | float | bool | None
@@ -19,8 +17,8 @@ class ActionDocParameterSchema(TypedDict, total=False):
     description: str
     default: ActionDocParameterExampleValue
     enum: list[str]
-    properties: dict[str, "ActionDocParameterSchema"]
-    items: "ActionDocParameterSchema"
+    properties: dict[str, ActionDocParameterSchema]
+    items: ActionDocParameterSchema
     minimum: float
     maximum: float
     pattern: str

@@ -3,16 +3,16 @@
 //! This module provides the message handling service that processes incoming messages
 //! and generates responses using the agent's character, providers, and model handlers.
 
-use crate::runtime::AgentRuntime;
 use crate::prompts::{
     MESSAGE_HANDLER_TEMPLATE, MULTI_STEP_DECISION_TEMPLATE, MULTI_STEP_SUMMARY_TEMPLATE,
     SHOULD_RESPOND_TEMPLATE,
 };
+use crate::runtime::AgentRuntime;
+use crate::template::render_template;
 use crate::types::memory::Memory;
 use crate::types::primitives::{Content, UUID};
 use crate::types::state::State;
 use crate::types::HandlerCallback;
-use crate::template::render_template;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
@@ -197,10 +197,8 @@ impl IMessageService for DefaultMessageService {
         // Multi-step workflow (TypeScript/Python parity)
         let use_multi_step = parse_bool_setting(runtime.get_setting("USE_MULTI_STEP").await);
         if use_multi_step {
-            let max_iters = parse_int_setting(
-                runtime.get_setting("MAX_MULTISTEP_ITERATIONS").await,
-                6,
-            );
+            let max_iters =
+                parse_int_setting(runtime.get_setting("MAX_MULTISTEP_ITERATIONS").await, 6);
             return run_multi_step(runtime, message, &state, callback, max_iters).await;
         }
 
@@ -262,7 +260,10 @@ impl IMessageService for DefaultMessageService {
             let mut required_by_action: HashMap<String, Vec<String>> = HashMap::new();
             for a in &actions {
                 let a_upper = a.trim().to_uppercase();
-                if let Some(def) = defs.iter().find(|d| d.name.trim().to_uppercase() == a_upper) {
+                if let Some(def) = defs
+                    .iter()
+                    .find(|d| d.name.trim().to_uppercase() == a_upper)
+                {
                     if let Some(params) = &def.parameters {
                         let required: Vec<String> = params
                             .iter()
@@ -388,9 +389,8 @@ impl IMessageService for DefaultMessageService {
         let mut response_messages: Vec<Memory> = vec![response_memory.clone()];
 
         // Execute actions (canonical loop parity)
-        let is_simple_reply = actions.len() == 1
-            && actions[0].to_uppercase() == "REPLY"
-            && providers.is_empty();
+        let is_simple_reply =
+            actions.len() == 1 && actions[0].to_uppercase() == "REPLY" && providers.is_empty();
 
         if is_simple_reply && !benchmark_mode {
             // Simple chat-style response: return the model text directly.
@@ -481,7 +481,9 @@ async fn persist_evaluator_results(
         content.source = Some("auto".to_string());
         content.thought = r.text.clone();
         if let Some(err) = &r.error {
-            content.extra.insert("error".to_string(), Value::String(err.clone()));
+            content
+                .extra
+                .insert("error".to_string(), Value::String(err.clone()));
         }
         if let Some(data) = &r.data {
             for (k, v) in data {
@@ -534,7 +536,11 @@ fn build_canonical_prompt(character_name: &str, message: &Memory, state: &State)
     render_template(MESSAGE_HANDLER_TEMPLATE, &data)
 }
 
-fn build_should_respond_prompt(character_name: &str, message: &Memory, state: &State) -> Result<String> {
+fn build_should_respond_prompt(
+    character_name: &str,
+    message: &Memory,
+    state: &State,
+) -> Result<String> {
     let user_text = message.content.text.as_deref().unwrap_or("");
     let mut providers_text = state.text.clone();
     if !user_text.is_empty() {
@@ -565,7 +571,10 @@ fn parse_bool_setting(v: Option<crate::types::settings::SettingValue>) -> bool {
     match v {
         Some(crate::types::settings::SettingValue::Bool(b)) => b,
         Some(crate::types::settings::SettingValue::String(s)) => {
-            matches!(s.trim().to_lowercase().as_str(), "true" | "yes" | "1" | "on")
+            matches!(
+                s.trim().to_lowercase().as_str(),
+                "true" | "yes" | "1" | "on"
+            )
         }
         _ => false,
     }
@@ -595,7 +604,11 @@ fn format_action_results(results: &[crate::types::ActionResult]) -> String {
             .unwrap_or("");
         let status = if r.success { "success" } else { "failed" };
         let text = r.text.clone().unwrap_or_default();
-        lines.push(format!("- {} ({}): {}", name, status, text).trim().to_string());
+        lines.push(
+            format!("- {} ({}): {}", name, status, text)
+                .trim()
+                .to_string(),
+        );
     }
     lines.join("\n")
 }
@@ -769,16 +782,24 @@ mod tests {
 
         // SHOULD_RESPOND model call
         runtime
-            .register_model("TEXT_SMALL", Box::new(|_params| {
-                Box::pin(async move { Ok("<response><action>IGNORE</action></response>".to_string()) })
-            }))
+            .register_model(
+                "TEXT_SMALL",
+                Box::new(|_params| {
+                    Box::pin(async move {
+                        Ok("<response><action>IGNORE</action></response>".to_string())
+                    })
+                }),
+            )
             .await;
 
         // If called, this would mean shouldRespond didn't short-circuit.
         runtime
-            .register_model("TEXT_LARGE", Box::new(|_params| {
-                Box::pin(async move { Err(anyhow::anyhow!("TEXT_LARGE should not be called")) })
-            }))
+            .register_model(
+                "TEXT_LARGE",
+                Box::new(|_params| {
+                    Box::pin(async move { Err(anyhow::anyhow!("TEXT_LARGE should not be called")) })
+                }),
+            )
             .await;
 
         let service = DefaultMessageService::new();
@@ -799,8 +820,8 @@ mod tests {
         use crate::types::{
             ActionResult, EvaluationExample, EvaluatorDefinition, EvaluatorHandler, Plugin,
         };
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
         struct TestEvaluator {
             hits: Arc<AtomicUsize>,
@@ -837,7 +858,9 @@ mod tests {
         }
 
         let hits = Arc::new(AtomicUsize::new(0));
-        let evaluator = Arc::new(TestEvaluator { hits: Arc::clone(&hits) });
+        let evaluator = Arc::new(TestEvaluator {
+            hits: Arc::clone(&hits),
+        });
 
         let mut plugin = Plugin::new("test", "test");
         plugin.evaluator_handlers.push(evaluator);

@@ -1,24 +1,23 @@
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { ExternalLink, Search } from 'lucide-react';
-import moment from 'moment';
-import Loader from './loader.js';
-import { Badge } from './ui/badge.js';
-import { Button } from './ui/button.js';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card.js';
-import { Input } from './ui/input.js';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table.js';
-import React from 'react';
+import { useQuery } from "@tanstack/react-query";
+import { ExternalLink, Search } from "lucide-react";
+import moment from "moment";
+import { useState } from "react";
+import Loader from "./loader.js";
+import { Badge } from "./ui/badge.js";
+import { Button } from "./ui/button.js";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
+import { Input } from "./ui/input.js";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
 
 export default function Tweets() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'timestamp' | 'likes' | 'retweets'>('timestamp');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState<"timestamp" | "likes" | "retweets">("timestamp");
 
   const query = useQuery({
-    queryKey: ['tweets'],
+    queryKey: ["tweets"],
     queryFn: async () => {
-      const response = await fetch('/api/intel/tweets', {
-        method: 'GET',
+      const response = await fetch("/api/intel/tweets", {
+        method: "GET",
       });
       const result = await response.json();
       return result.success ? result.data : [];
@@ -38,17 +37,16 @@ export default function Tweets() {
       (tweet) =>
         !searchTerm ||
         tweet.text?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tweet.username?.toLowerCase().includes(searchTerm.toLowerCase())
+        tweet.username?.toLowerCase().includes(searchTerm.toLowerCase()),
     )
     .sort((a, b) => {
       switch (sortBy) {
-        case 'likes':
+        case "likes":
           return (b.likes || b.metadata?.likes || 0) - (a.likes || a.metadata?.likes || 0);
-        case 'retweets':
+        case "retweets":
           return (
             (b.retweets || b.metadata?.retweets || 0) - (a.retweets || a.metadata?.retweets || 0)
           );
-        case 'timestamp':
         default:
           return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
       }
@@ -58,20 +56,20 @@ export default function Tweets() {
   const totalTweets = tweets.length;
   const totalLikes = tweets.reduce(
     (sum, tweet) => sum + (tweet.likes || tweet.metadata?.likes || 0),
-    0
+    0,
   );
   const totalRetweets = tweets.reduce(
     (sum, tweet) => sum + (tweet.retweets || tweet.metadata?.retweets || 0),
-    0
+    0,
   );
   const avgEngagement = totalTweets > 0 ? (totalLikes + totalRetweets) / totalTweets : 0;
 
   const getEngagementColor = (likes: number, retweets: number) => {
     const total = likes + retweets;
-    if (total >= 100) return 'text-green-600';
-    if (total >= 50) return 'text-yellow-600';
-    if (total >= 10) return 'text-blue-600';
-    return 'text-muted-foreground';
+    if (total >= 100) return "text-green-600";
+    if (total >= 50) return "text-yellow-600";
+    if (total >= 10) return "text-blue-600";
+    return "text-muted-foreground";
   };
 
   return (
@@ -142,13 +140,13 @@ export default function Tweets() {
               {/* Sort Options */}
               <div className="flex gap-1">
                 {[
-                  { key: 'timestamp', label: 'Recent' },
-                  { key: 'likes', label: 'Likes' },
-                  { key: 'retweets', label: 'Retweets' },
+                  { key: "timestamp", label: "Recent" },
+                  { key: "likes", label: "Likes" },
+                  { key: "retweets", label: "Retweets" },
                 ].map((option) => (
                   <Button
                     key={option.key}
-                    variant={sortBy === option.key ? 'default' : 'outline'}
+                    variant={sortBy === option.key ? "default" : "outline"}
                     size="sm"
                     onClick={() => setSortBy(option.key as any)}
                   >
@@ -175,13 +173,13 @@ export default function Tweets() {
               {filteredTweets.map((item, index) => {
                 const likes = item.likes || item.metadata?.likes || 0;
                 const retweets = item.retweets || item.metadata?.retweets || 0;
-                const username = item.username || item.metadata?.username || 'Unknown';
+                const username = item.username || item.metadata?.username || "Unknown";
                 const tweetId = item.id || item.metadata?.id;
 
                 return (
                   <TableRow key={`${item._id || item.id || index}_${likes}`}>
                     <TableCell className="text-sm text-muted-foreground">
-                      {moment(item.timestamp).format('MMM DD, HH:mm')}
+                      {moment(item.timestamp).format("MMM DD, HH:mm")}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -220,7 +218,7 @@ export default function Tweets() {
                           size="sm"
                           variant="ghost"
                           onClick={() => {
-                            window.open(`https://x.com/${username}/status/${tweetId}`, '_blank');
+                            window.open(`https://x.com/${username}/status/${tweetId}`, "_blank");
                           }}
                         >
                           <ExternalLink className="h-4 w-4" />
@@ -236,12 +234,12 @@ export default function Tweets() {
           {filteredTweets.length === 0 && (
             <div className="text-center py-8">
               <p className="text-muted-foreground">
-                {searchTerm ? 'No tweets match your search' : 'No tweets available'}
+                {searchTerm ? "No tweets match your search" : "No tweets available"}
               </p>
               <p className="text-sm text-muted-foreground mt-2">
                 {searchTerm
-                  ? 'Try adjusting your search terms'
-                  : 'Tweets will appear here once the Twitter plugin is active'}
+                  ? "Try adjusting your search terms"
+                  : "Tweets will appear here once the Twitter plugin is active"}
               </p>
             </div>
           )}

@@ -61,7 +61,7 @@ export const pinMessage: Action = {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
-      await callback({
+      await callback?.({
         text: "Discord service is not available.",
         source: "discord",
       });
@@ -70,7 +70,7 @@ export const pinMessage: Action = {
 
     const messageInfo = await getMessageRef(runtime, message, state);
     if (!messageInfo) {
-      await callback({
+      await callback?.({
         text: "I couldn't understand which message you want to pin. Please be more specific.",
         source: "discord",
       });
@@ -81,7 +81,7 @@ export const pinMessage: Action = {
       const stateData = state.data;
       const room = stateData?.room || (await runtime.getRoom(message.roomId));
       if (!room || !room.channelId) {
-        await callback({
+        await callback?.({
           text: "I couldn't determine the current channel.",
           source: "discord",
         });
@@ -90,7 +90,7 @@ export const pinMessage: Action = {
 
       const channel = await discordService.client.channels.fetch(room.channelId);
       if (!channel || !channel.isTextBased()) {
-        await callback({
+        await callback?.({
           text: "I can only pin messages in text channels.",
           source: "discord",
         });
@@ -107,7 +107,7 @@ export const pinMessage: Action = {
       if (botMember) {
         const permissions = textChannel.permissionsFor(botMember);
         if (!permissions || !permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-          await callback({
+          await callback?.({
             text: "I don't have permission to pin messages in this channel. I need the 'Manage Messages' permission.",
             source: "discord",
           });
@@ -153,7 +153,7 @@ export const pinMessage: Action = {
       }
 
       if (!targetMessage) {
-        await callback({
+        await callback?.({
           text: "I couldn't find the message you want to pin. Try being more specific or use 'last message'.",
           source: "discord",
         });
@@ -162,7 +162,7 @@ export const pinMessage: Action = {
 
       // Check if already pinned
       if (targetMessage.pinned) {
-        await callback({
+        await callback?.({
           text: "That message is already pinned.",
           source: "discord",
         });
@@ -178,7 +178,7 @@ export const pinMessage: Action = {
           source: message.content.source,
         };
 
-        await callback(response);
+        await callback?.(response);
       } catch (error) {
         runtime.logger.error(
           {
@@ -188,7 +188,7 @@ export const pinMessage: Action = {
           },
           "Failed to pin message"
         );
-        await callback({
+        await callback?.({
           text: "I couldn't pin that message. The channel might have reached the maximum number of pinned messages (50).",
           source: "discord",
         });
@@ -202,7 +202,7 @@ export const pinMessage: Action = {
         },
         "Error pinning message"
       );
-      await callback({
+      await callback?.({
         text: "I encountered an error while trying to pin the message. Please make sure I have the necessary permissions.",
         source: "discord",
       });

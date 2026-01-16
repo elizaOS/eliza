@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { PublicKey } from '@solana/web3.js';
-import { ALL_MEME_COINS } from '../config/memeCoins.ts';
+import { PublicKey } from "@solana/web3.js";
+import { ALL_MEME_COINS } from "../config/memeCoins.ts";
 
 async function validateAddresses() {
-  console.log('Validating Solana addresses...\n');
+  console.log("Validating Solana addresses...\n");
 
   const validAddresses: typeof ALL_MEME_COINS = [];
   const invalidAddresses: typeof ALL_MEME_COINS = [];
@@ -20,7 +20,7 @@ async function validateAddresses() {
       } else {
         invalidAddresses.push(coin);
       }
-    } catch (error) {
+    } catch (_error) {
       invalidAddresses.push(coin);
     }
   }
@@ -30,7 +30,7 @@ async function validateAddresses() {
   console.log(`Invalid addresses: ${invalidAddresses.length}\n`);
 
   if (invalidAddresses.length > 0) {
-    console.log('Invalid addresses found:');
+    console.log("Invalid addresses found:");
     invalidAddresses.forEach((coin: { symbol: string; address: string }) => {
       console.log(`- ${coin.symbol}: ${coin.address}`);
     });

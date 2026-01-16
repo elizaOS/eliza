@@ -143,7 +143,7 @@ export const reactToMessage: Action = {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
-      await callback({
+      await callback?.({
         text: "Discord service is not available.",
         source: "discord",
       });
@@ -239,7 +239,7 @@ export const reactToMessage: Action = {
       // Only show error to user if they explicitly requested a reaction
       // Silent failure is appropriate when agent spontaneously decides to react
       if (needsLLM) {
-        await callback({
+        await callback?.({
           text: "I couldn't understand which message to react to or what emoji to use. Try being more specific, like 'react with 👍 to the last message'.",
           source: "discord",
         });
@@ -251,7 +251,7 @@ export const reactToMessage: Action = {
       const stateData = state.data;
       const room = stateData?.room || (await runtime.getRoom(message.roomId));
       if (!room || !room.channelId) {
-        await callback({
+        await callback?.({
           text: "I couldn't determine the current channel.",
           source: "discord",
         });
@@ -260,7 +260,7 @@ export const reactToMessage: Action = {
 
       const channel = await discordService.client.channels.fetch(room.channelId);
       if (!channel || !channel.isTextBased()) {
-        await callback({
+        await callback?.({
           text: "I can only react to messages in text channels.",
           source: "discord",
         });
@@ -306,7 +306,7 @@ export const reactToMessage: Action = {
       }
 
       if (!targetMessage) {
-        await callback({
+        await callback?.({
           text: "I couldn't find the message you want me to react to. Try being more specific or use 'last message'.",
           source: "discord",
         });
@@ -334,7 +334,7 @@ export const reactToMessage: Action = {
           source: message.content.source,
         };
 
-        await callback(response);
+        await callback?.(response);
       } catch (error) {
         runtime.logger.error(
           {
@@ -345,7 +345,7 @@ export const reactToMessage: Action = {
           },
           "Failed to add reaction"
         );
-        await callback({
+        await callback?.({
           text: `I couldn't add that reaction. Make sure the emoji "${reactionInfo.emoji}" is valid and I have permission to add reactions.`,
           source: "discord",
         });
@@ -359,7 +359,7 @@ export const reactToMessage: Action = {
         },
         "Error in react to message"
       );
-      await callback({
+      await callback?.({
         text: "I encountered an error while trying to react to the message. Please make sure I have the necessary permissions.",
         source: "discord",
       });

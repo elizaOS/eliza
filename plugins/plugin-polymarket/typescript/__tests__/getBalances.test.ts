@@ -1,7 +1,7 @@
 import type { HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getBalancesAction } from "../actions/getBalances";
-import { initializeClobClient, getWalletAddress } from "../utils/clobClient";
+import { getWalletAddress, initializeClobClient } from "../utils/clobClient";
 
 vi.mock("../utils/clobClient", () => ({
   initializeClobClient: vi.fn(),
@@ -101,7 +101,7 @@ describe("getBalancesAction", () => {
       testMessage,
       testState,
       { parameters: { tokenIds: ["token-1"], includeCollateral: true } },
-      callback
+      callback,
     );
 
     expect(result.success).toBe(true);

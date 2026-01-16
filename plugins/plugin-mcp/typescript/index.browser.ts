@@ -14,4 +14,3 @@ export const mcpPlugin: Plugin = {
 };
 
 export default mcpPlugin;
-

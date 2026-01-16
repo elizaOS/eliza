@@ -36,22 +36,6 @@ export const agentOrchestratorPlugin: Plugin = {
 
 export default agentOrchestratorPlugin;
 
-export type { AgentOrchestratorPluginOptions } from "./src/types.js";
-export type {
-  AgentProvider,
-  AgentProviderId,
-  OrchestratedTask,
-  OrchestratedTaskMetadata,
-  ProviderTaskExecutionContext,
-  TaskEvent,
-  TaskEventType,
-  TaskResult,
-  TaskStatus,
-  TaskUserStatus,
-  TaskStep,
-} from "./src/types.js";
-
-export { AgentOrchestratorService } from "./src/services/agent-orchestrator-service.js";
 export {
   cancelTaskAction,
   createTaskAction,
@@ -61,4 +45,18 @@ export {
   searchTasksAction,
   switchTaskAction,
 } from "./src/actions/task-management.js";
-
+export { AgentOrchestratorService } from "./src/services/agent-orchestrator-service.js";
+export type {
+  AgentOrchestratorPluginOptions,
+  AgentProvider,
+  AgentProviderId,
+  OrchestratedTask,
+  OrchestratedTaskMetadata,
+  ProviderTaskExecutionContext,
+  TaskEvent,
+  TaskEventType,
+  TaskResult,
+  TaskStatus,
+  TaskStep,
+  TaskUserStatus,
+} from "./src/types.js";

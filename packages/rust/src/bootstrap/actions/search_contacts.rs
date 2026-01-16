@@ -19,7 +19,12 @@ impl Action for SearchContactsAction {
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["FIND_CONTACTS", "LOOK_UP_CONTACTS", "LIST_CONTACTS", "SHOW_CONTACTS"]
+        &[
+            "FIND_CONTACTS",
+            "LOOK_UP_CONTACTS",
+            "LIST_CONTACTS",
+            "SHOW_CONTACTS",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -82,4 +87,3 @@ impl Action for SearchContactsAction {
         .with_data("categories", cat_str))
     }
 }
-

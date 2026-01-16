@@ -14,4 +14,3 @@ export const localAiPlugin: Plugin = {
 };
 
 export default localAiPlugin;
-

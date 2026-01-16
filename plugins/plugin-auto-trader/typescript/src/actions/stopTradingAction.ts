@@ -1,35 +1,42 @@
-import type { Action, IAgentRuntime, Memory, HandlerCallback, State } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import { AutoTradingManager } from '../services/AutoTradingManager.ts';
+import type {
+  Action,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import type { AutoTradingManager } from "../services/AutoTradingManager.ts";
 
 export const stopTradingAction: Action = {
-  name: 'STOP_TRADING',
-  description: 'Stop automated trading',
+  name: "STOP_TRADING",
+  description: "Stop automated trading",
 
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Stop trading',
+          text: "Stop trading",
         },
       },
       {
-        name: '{{agentName}}',
+        name: "{{agentName}}",
         content: {
-          text: 'Stopping automated trading. All positions remain open. You can check your portfolio status anytime.',
+          text: "Stopping automated trading. All positions remain open. You can check your portfolio status anytime.",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Pause auto-trader',
+          text: "Pause auto-trader",
         },
       },
       {
-        name: '{{agentName}}',
+        name: "{{agentName}}",
         content: {
           text: "Auto-trading has been paused. Your open positions will not be affected. You can restart trading whenever you're ready.",
         },
@@ -38,28 +45,28 @@ export const stopTradingAction: Action = {
   ],
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
-    const text = (message.content.text || '').toLowerCase();
-    return text.includes('stop') || text.includes('pause') || text.includes('halt');
+    const text = (message.content.text || "").toLowerCase();
+    return text.includes("stop") || text.includes("pause") || text.includes("halt");
   },
 
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    _options?: HandlerOptions,
+    callback?: HandlerCallback,
   ) => {
     try {
-      const autoTradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+      const autoTradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
       if (!autoTradingManager) {
-        throw new Error('AutoTradingManager not found');
+        throw new Error("AutoTradingManager not found");
       }
 
       const status = autoTradingManager.getStatus();
       const wasTrading = status.isTrading;
       await autoTradingManager.stopTrading();
 
-      let response = '';
+      let response = "";
       if (wasTrading) {
         const positions = status.positions;
         const dailyPnL = status.performance.dailyPnL;
@@ -68,35 +75,38 @@ export const stopTradingAction: Action = {
 
 📊 Current Status:
 • Open positions: ${positions.length}
-• Today's P&L: ${dailyPnL >= 0 ? '+' : ''}$${dailyPnL.toFixed(2)}
+• Today's P&L: ${dailyPnL >= 0 ? "+" : ""}$${dailyPnL.toFixed(2)}
 
 Your open positions will remain active. You can:
 - Check portfolio status anytime
 - Restart trading when ready
 - Manually manage positions if needed`;
       } else {
-        response = 'Auto-trading is not currently active.';
+        response = "Auto-trading is not currently active.";
       }
 
       if (callback) {
         callback({
           text: response,
-          action: 'STOP_TRADING',
+          action: "STOP_TRADING",
         });
       }
 
-      return;
+      return undefined;
     } catch (error) {
-      logger.error('Error stopping trading:', error);
+      logger.error(
+        "Error stopping trading:",
+        error instanceof Error ? error.message : String(error),
+      );
 
       if (callback) {
         callback({
-          text: `Failed to stop trading: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          action: 'STOP_TRADING',
+          text: `Failed to stop trading: ${error instanceof Error ? error.message : "Unknown error"}`,
+          action: "STOP_TRADING",
         });
       }
 
-      return;
+      return undefined;
     }
   },
 };

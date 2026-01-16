@@ -492,11 +492,7 @@ export class AgentOrchestratorService extends Service {
     this.emitter.off(event, handler);
   }
 
-  private emit(
-    type: TaskEventType,
-    taskId: string,
-    data?: Record<string, JsonValue>,
-  ): void {
+  private emit(type: TaskEventType, taskId: string, data?: Record<string, JsonValue>): void {
     const event: TaskEvent = data ? { type, taskId, data } : { type, taskId };
     this.emitter.emit(type, event);
     this.emitter.emit("task", event);
@@ -557,4 +553,3 @@ export class AgentOrchestratorService extends Service {
     return lines.join("\n").trim();
   }
 }
-

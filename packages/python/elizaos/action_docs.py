@@ -135,4 +135,3 @@ def get_canonical_action_example_calls(action_name: str) -> list[dict[str, objec
         if isinstance(item, dict):
             out.append(item)
     return out
-

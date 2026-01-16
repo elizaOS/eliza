@@ -20,7 +20,12 @@ impl Action for MuteRoomAction {
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["SILENCE_ROOM", "QUIET_ROOM", "DISABLE_NOTIFICATIONS", "STOP_RESPONDING"]
+        &[
+            "SILENCE_ROOM",
+            "QUIET_ROOM",
+            "DISABLE_NOTIFICATIONS",
+            "STOP_RESPONDING",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -62,16 +67,19 @@ impl Action for MuteRoomAction {
         _state: Option<&State>,
         _responses: Option<&[Memory]>,
     ) -> PluginResult<ActionResult> {
-        let room_id = message.room_id.ok_or_else(|| {
-            PluginError::InvalidInput("No room specified to mute".to_string())
-        })?;
+        let room_id = message
+            .room_id
+            .ok_or_else(|| PluginError::InvalidInput("No room specified to mute".to_string()))?;
 
         let room = runtime
             .get_room(room_id)
             .await?
             .ok_or_else(|| PluginError::NotFound("Room not found".to_string()))?;
 
-        let room_name = room.name.clone().unwrap_or_else(|| "Unknown Room".to_string());
+        let room_name = room
+            .name
+            .clone()
+            .unwrap_or_else(|| "Unknown Room".to_string());
 
         // Update world's muted rooms
         if let Some(world_id) = room.world_id {
@@ -90,10 +98,9 @@ impl Action for MuteRoomAction {
                 let room_str = room_id.to_string();
                 if !muted.contains(&room_str) {
                     muted.push(room_str);
-                    world.metadata.insert(
-                        "mutedRooms".to_string(),
-                        serde_json::json!(muted),
-                    );
+                    world
+                        .metadata
+                        .insert("mutedRooms".to_string(), serde_json::json!(muted));
                     runtime.update_world(&world).await?;
                 }
             }
@@ -128,4 +135,3 @@ impl Action for MuteRoomAction {
             .with_data("roomName", room_name))
     }
 }
-

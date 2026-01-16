@@ -1,7 +1,10 @@
 import type { UUID } from "../types/index.ts";
 
 export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  | JsonPrimitive
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 export enum LongTermMemoryCategory {
   EPISODIC = "episodic",
@@ -71,4 +74,3 @@ export interface SummaryResult {
 }
 
 export type MemoryServiceTypeName = "memory";
-

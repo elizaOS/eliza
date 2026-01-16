@@ -41,12 +41,7 @@ impl Provider for AttachmentsProvider {
 
         let formatted: Vec<String> = attachments
             .iter()
-            .map(|att| {
-                format!(
-                    "- Type: {}\n  URL: {}",
-                    att.attachment_type, att.url
-                )
-            })
+            .map(|att| format!("- Type: {}\n  URL: {}", att.attachment_type, att.url))
             .collect();
 
         let text = format!(
@@ -65,9 +60,13 @@ impl Provider for AttachmentsProvider {
         Ok(ProviderResult::new(text)
             .with_value("hasAttachments", true)
             .with_value("attachmentCount", attachments.len() as i64)
-            .with_data("attachmentTypes", serde_json::to_value(&types).unwrap_or_default())
-            .with_data("attachments", serde_json::to_value(attachments).unwrap_or_default()))
+            .with_data(
+                "attachmentTypes",
+                serde_json::to_value(&types).unwrap_or_default(),
+            )
+            .with_data(
+                "attachments",
+                serde_json::to_value(attachments).unwrap_or_default(),
+            ))
     }
 }
-
-

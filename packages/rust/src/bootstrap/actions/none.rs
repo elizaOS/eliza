@@ -44,4 +44,3 @@ impl Action for NoneAction {
             .with_data("actionName", "NONE"))
     }
 }
-

@@ -19,7 +19,12 @@ impl Action for AddContactAction {
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["SAVE_CONTACT", "REMEMBER_PERSON", "ADD_TO_CONTACTS", "SAVE_TO_ROLODEX"]
+        &[
+            "SAVE_CONTACT",
+            "REMEMBER_PERSON",
+            "ADD_TO_CONTACTS",
+            "SAVE_TO_ROLODEX",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -41,8 +46,10 @@ impl Action for AddContactAction {
         let entity_id = match message.entity_id {
             Some(id) => id,
             None => {
-                return Ok(ActionResult::failure("No entity specified to add as contact.")
-                    .with_data("error", "Missing entity ID"));
+                return Ok(
+                    ActionResult::failure("No entity specified to add as contact.")
+                        .with_data("error", "Missing entity ID"),
+                );
             }
         };
 
@@ -85,10 +92,11 @@ impl Action for AddContactAction {
             &format!("Added contact {} with categories: {}", entity_name, cat_str),
         );
 
-        Ok(ActionResult::success(format!("Added {} to contacts as {}.", entity_name, cat_str))
-            .with_value("contactAdded", true)
-            .with_data("entityId", entity_id.to_string())
-            .with_data("categories", cat_str))
+        Ok(
+            ActionResult::success(format!("Added {} to contacts as {}.", entity_name, cat_str))
+                .with_value("contactAdded", true)
+                .with_data("entityId", entity_id.to_string())
+                .with_data("categories", cat_str),
+        )
     }
 }
-

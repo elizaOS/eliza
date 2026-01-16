@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
 from elizaos.types import Plugin
 
-from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
 from .actions import BASIC_ACTIONS, EXTENDED_ACTIONS
 from .autonomy import (
     AutonomyService,

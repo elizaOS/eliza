@@ -6,6 +6,7 @@ import {
   type Entity,
   formatMessages,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -140,7 +141,7 @@ export const createGoalAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
-    _options: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {

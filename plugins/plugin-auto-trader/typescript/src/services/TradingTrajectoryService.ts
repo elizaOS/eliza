@@ -5,9 +5,9 @@
  * decisions and outcomes for reinforcement learning training.
  */
 
-import { Service, type IAgentRuntime, logger } from '@elizaos/core';
-import type { TradeOrder, Position } from '../types.ts';
-import { TradeType } from '../types.ts';
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import type { Position, TradeOrder } from "../types.ts";
+import { TradeType } from "../types.ts";
 
 // Import types from trajectory logger (we'll make this optional)
 interface EnvironmentState {
@@ -22,23 +22,29 @@ interface EnvironmentState {
 }
 
 interface TrajectoryLoggerService {
-  startTrajectory(agentId: string, options?: {
-    scenarioId?: string;
-    episodeId?: string;
-    metadata?: Record<string, unknown>;
-  }): string;
+  startTrajectory(
+    agentId: string,
+    options?: {
+      scenarioId?: string;
+      episodeId?: string;
+      metadata?: Record<string, unknown>;
+    },
+  ): string;
   startStep(trajectoryId: string, envState: EnvironmentState): string;
-  logLLMCall(stepId: string, llmCall: {
-    model: string;
-    systemPrompt: string;
-    userPrompt: string;
-    response: string;
-    reasoning?: string;
-    temperature: number;
-    maxTokens: number;
-    purpose: 'action' | 'reasoning' | 'evaluation' | 'response' | 'other';
-    actionType?: string;
-  }): void;
+  logLLMCall(
+    stepId: string,
+    llmCall: {
+      model: string;
+      systemPrompt: string;
+      userPrompt: string;
+      response: string;
+      reasoning?: string;
+      temperature: number;
+      maxTokens: number;
+      purpose: "action" | "reasoning" | "evaluation" | "response" | "other";
+      actionType?: string;
+    },
+  ): void;
   completeStep(
     trajectoryId: string,
     stepId: string,
@@ -50,12 +56,12 @@ interface TrajectoryLoggerService {
       result?: Record<string, unknown>;
       reasoning?: string;
     },
-    rewardInfo?: { reward?: number; components?: Record<string, number> }
+    rewardInfo?: { reward?: number; components?: Record<string, number> },
   ): void;
   endTrajectory(
     trajectoryId: string,
-    status: 'completed' | 'terminated' | 'error' | 'timeout',
-    finalMetrics?: Record<string, unknown>
+    status: "completed" | "terminated" | "error" | "timeout",
+    finalMetrics?: Record<string, unknown>,
   ): Promise<void>;
   getActiveTrajectory(trajectoryId: string): unknown | null;
 }
@@ -71,18 +77,14 @@ export interface TradingEnvironmentState {
 }
 
 export class TradingTrajectoryService extends Service {
-  public static readonly serviceType = 'TradingTrajectoryService';
-  public readonly capabilityDescription = 'Logs trading trajectories for RL training';
+  public static readonly serviceType = "TradingTrajectoryService";
+  public readonly capabilityDescription = "Logs trading trajectories for RL training";
 
   private trajectoryLogger: TrajectoryLoggerService | null = null;
   private activeTrajectoryId: string | null = null;
   private activeStepId: string | null = null;
   private sessionStartState: TradingEnvironmentState | null = null;
   private enabled = false;
-
-  constructor(runtime: IAgentRuntime) {
-    super(runtime);
-  }
 
   public static async start(runtime: IAgentRuntime): Promise<TradingTrajectoryService> {
     const instance = new TradingTrajectoryService(runtime);
@@ -93,19 +95,19 @@ export class TradingTrajectoryService extends Service {
   private async initialize(): Promise<void> {
     // Try to get TrajectoryLoggerService if available
     try {
-      const { TrajectoryLoggerService } = await import('@elizaos/plugin-trajectory-logger');
+      const { TrajectoryLoggerService } = await import("@elizaos/plugin-trajectory-logger");
       this.trajectoryLogger = new TrajectoryLoggerService();
       this.enabled = true;
-      logger.info('[TradingTrajectoryService] Trajectory logging enabled');
+      logger.info("[TradingTrajectoryService] Trajectory logging enabled");
     } catch {
-      logger.info('[TradingTrajectoryService] Trajectory logger not available - logging disabled');
+      logger.info("[TradingTrajectoryService] Trajectory logger not available - logging disabled");
       this.enabled = false;
     }
   }
 
   public async stop(): Promise<void> {
     if (this.activeTrajectoryId) {
-      await this.endSession('terminated');
+      await this.endSession("terminated");
     }
   }
 
@@ -125,19 +127,16 @@ export class TradingTrajectoryService extends Service {
 
     this.sessionStartState = params.initialState;
 
-    this.activeTrajectoryId = this.trajectoryLogger!.startTrajectory(
-      this.runtime.agentId,
-      {
-        scenarioId: params.scenarioId || `trading-${params.strategy}`,
-        episodeId: `session-${Date.now()}`,
-        metadata: {
-          strategy: params.strategy,
-          initialBalance: params.initialState.solBalance,
-          initialPortfolioValue: params.initialState.portfolioValue,
-          tradingMode: this.runtime.getSetting('TRADING_MODE') || 'paper',
-        },
-      }
-    );
+    this.activeTrajectoryId = this.trajectoryLogger?.startTrajectory(this.runtime.agentId, {
+      scenarioId: params.scenarioId || `trading-${params.strategy}`,
+      episodeId: `session-${Date.now()}`,
+      metadata: {
+        strategy: params.strategy,
+        initialBalance: params.initialState.solBalance,
+        initialPortfolioValue: params.initialState.portfolioValue,
+        tradingMode: this.runtime.getSetting("TRADING_MODE") || "paper",
+      },
+    });
 
     logger.info(`[TradingTrajectoryService] Started trajectory: ${this.activeTrajectoryId}`);
     return this.activeTrajectoryId;
@@ -159,7 +158,7 @@ export class TradingTrajectoryService extends Service {
       custom: {
         dailyPnL: envState.dailyPnL,
         winRate: envState.winRate,
-        positions: envState.openPositions.map(p => ({
+        positions: envState.openPositions.map((p) => ({
           token: p.tokenAddress,
           amount: p.amount,
           entryPrice: p.entryPrice,
@@ -168,7 +167,10 @@ export class TradingTrajectoryService extends Service {
       },
     };
 
-    this.activeStepId = this.trajectoryLogger!.startStep(this.activeTrajectoryId, trajectoryEnvState);
+    this.activeStepId = this.trajectoryLogger?.startStep(
+      this.activeTrajectoryId,
+      trajectoryEnvState,
+    );
     return this.activeStepId;
   }
 
@@ -184,15 +186,15 @@ export class TradingTrajectoryService extends Service {
   }): void {
     if (!this.isEnabled() || !this.activeStepId) return;
 
-    this.trajectoryLogger!.logLLMCall(this.activeStepId, {
+    this.trajectoryLogger?.logLLMCall(this.activeStepId, {
       model: params.model,
-      systemPrompt: 'Trading strategy analysis',
+      systemPrompt: "Trading strategy analysis",
       userPrompt: params.prompt,
       response: params.response,
       reasoning: params.reasoning,
       temperature: 0.7,
       maxTokens: 4096,
-      purpose: 'action',
+      purpose: "action",
       actionType: params.actionType,
     });
   }
@@ -209,41 +211,42 @@ export class TradingTrajectoryService extends Service {
   }): void {
     if (!this.isEnabled() || !this.activeTrajectoryId || !this.activeStepId) return;
 
-    const action = params.order ? {
-      actionType: params.order.action === TradeType.BUY ? 'BUY' : 'SELL',
-      actionName: `${params.order.action}_${params.order.pair}`,
-      parameters: {
-        pair: params.order.pair,
-        quantity: params.order.quantity,
-        price: params.order.price,
-        orderType: params.order.orderType,
-      },
-      success: params.success,
-      result: params.txId ? { txId: params.txId } : params.error ? { error: params.error } : undefined,
-      reasoning: params.order.reason,
-    } : {
-      actionType: 'HOLD',
-      actionName: 'HOLD',
-      parameters: {},
-      success: true,
-      reasoning: 'No trade signal',
-    };
+    const action = params.order
+      ? {
+          actionType: params.order.action === TradeType.BUY ? "BUY" : "SELL",
+          actionName: `${params.order.action}_${params.order.pair}`,
+          parameters: {
+            pair: params.order.pair,
+            quantity: params.order.quantity,
+            price: params.order.price,
+            orderType: params.order.orderType,
+          },
+          success: params.success,
+          result: params.txId
+            ? { txId: params.txId }
+            : params.error
+              ? { error: params.error }
+              : undefined,
+          reasoning: params.order.reason,
+        }
+      : {
+          actionType: "HOLD",
+          actionName: "HOLD",
+          parameters: {},
+          success: true,
+          reasoning: "No trade signal",
+        };
 
     // Calculate reward based on outcome
     const reward = this.calculateReward(params);
 
-    this.trajectoryLogger!.completeStep(
-      this.activeTrajectoryId,
-      this.activeStepId,
-      action,
-      {
-        reward,
-        components: {
-          environmentReward: reward,
-          profitLoss: params.pnlChange || 0,
-        },
-      }
-    );
+    this.trajectoryLogger?.completeStep(this.activeTrajectoryId, this.activeStepId, action, {
+      reward,
+      components: {
+        environmentReward: reward,
+        profitLoss: params.pnlChange || 0,
+      },
+    });
 
     this.activeStepId = null;
   }
@@ -252,8 +255,8 @@ export class TradingTrajectoryService extends Service {
    * End the trading session trajectory
    */
   public async endSession(
-    status: 'completed' | 'terminated' | 'error' | 'timeout',
-    finalState?: TradingEnvironmentState
+    status: "completed" | "terminated" | "error" | "timeout",
+    finalState?: TradingEnvironmentState,
   ): Promise<void> {
     if (!this.isEnabled() || !this.activeTrajectoryId) return;
 
@@ -268,7 +271,7 @@ export class TradingTrajectoryService extends Service {
       metrics.pnlChange = finalState.totalPnL - this.sessionStartState.totalPnL;
     }
 
-    await this.trajectoryLogger!.endTrajectory(this.activeTrajectoryId, status, metrics);
+    await this.trajectoryLogger?.endTrajectory(this.activeTrajectoryId, status, metrics);
 
     logger.info(`[TradingTrajectoryService] Ended trajectory: ${this.activeTrajectoryId}`, metrics);
 

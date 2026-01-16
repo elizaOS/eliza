@@ -48,4 +48,3 @@ impl Action for IgnoreAction {
             .with_data("actionName", "IGNORE"))
     }
 }
-

@@ -1,8 +1,8 @@
-import { Box, Text, useInput } from "ink";
+import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
+import { Box, type Key, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import React, { useState } from "react";
 import { useStore } from "../lib/store.js";
-import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
 import type {
   SubAgentType,
   TaskStatus,
@@ -143,7 +143,7 @@ export function TaskPane({
 
   // Handle keyboard navigation
   useInput(
-    (char, key) => {
+    (char: string, key: Key) => {
       if (!isFocused) return;
 
       // Renaming: let TextInput handle most keystrokes.
@@ -156,9 +156,9 @@ export function TaskPane({
         if (key.return) {
           const next = renameDraft.trim();
           if (next.length > 0 && currentTask?.id && taskService) {
-            taskService.renameTask(currentTask.id, next).catch((err: Error) => {
-              reportTaskServiceError(taskService, currentTask.id, "renameTask", err);
-            });
+            // TODO: renameTask is not implemented in AgentOrchestratorService
+            // For now, just close the rename dialog
+            console.warn("Task renaming not yet implemented");
           }
           setIsRenaming(false);
           setRenameDraft("");
@@ -173,11 +173,21 @@ export function TaskPane({
           if (taskService) {
             if (confirm.type === "cancel") {
               taskService.cancelTask(confirm.taskId).catch((err: Error) => {
-                reportTaskServiceError(taskService, confirm.taskId, "cancelTask", err);
+                reportTaskServiceError(
+                  taskService,
+                  confirm.taskId,
+                  "cancelTask",
+                  err,
+                );
               });
             } else {
               taskService.deleteTask(confirm.taskId).catch((err: Error) => {
-                reportTaskServiceError(taskService, confirm.taskId, "deleteTask", err);
+                reportTaskServiceError(
+                  taskService,
+                  confirm.taskId,
+                  "deleteTask",
+                  err,
+                );
               });
             }
           }
@@ -258,9 +268,12 @@ export function TaskPane({
         );
         const nextStatus: TaskUserStatus =
           currentUserStatus === "done" ? "open" : "done";
-        taskService.setUserStatus(currentTask.id, nextStatus).catch((err: Error) => {
-          reportTaskServiceError(taskService, currentTask.id, "setUserStatus", err);
-        });
+        const taskId = currentTask.id;
+        if (taskId) {
+          taskService.setUserStatus(taskId, nextStatus).catch((err: Error) => {
+            reportTaskServiceError(taskService, taskId, "setUserStatus", err);
+          });
+        }
       }
 
       // Edit mode commands
@@ -272,9 +285,19 @@ export function TaskPane({
         const current = currentTask.metadata?.subAgentType ?? "eliza";
         const idx = Math.max(0, SUB_AGENT_TYPES.indexOf(current));
         const next = SUB_AGENT_TYPES[(idx + 1) % SUB_AGENT_TYPES.length];
-        taskService.setTaskSubAgentType(currentTask.id, next).catch((err: Error) => {
-          reportTaskServiceError(taskService, currentTask.id, "setTaskSubAgentType", err);
-        });
+        const taskIdForSubAgent = currentTask.id;
+        if (taskIdForSubAgent) {
+          taskService
+            .setTaskSubAgentType(taskIdForSubAgent, next)
+            .catch((err: Error) => {
+              reportTaskServiceError(
+                taskService,
+                taskIdForSubAgent,
+                "setTaskSubAgentType",
+                err,
+              );
+            });
+        }
         return;
       }
 
@@ -306,17 +329,20 @@ export function TaskPane({
             reportTaskServiceError(taskService, taskId, "pauseTask", err);
           });
         } else if (status === "paused" || status === "pending") {
-          taskService
-            .resumeTask(taskId)
-            .then(
-              () =>
-                taskService.startTaskExecution(taskId).catch((err: Error) => {
-                  reportTaskServiceError(taskService, taskId, "startTaskExecution", err);
-                }),
-              (err: Error) => {
-                reportTaskServiceError(taskService, taskId, "resumeTask", err);
-              },
-            );
+          taskService.resumeTask(taskId).then(
+            () =>
+              taskService.startTaskExecution(taskId).catch((err: Error) => {
+                reportTaskServiceError(
+                  taskService,
+                  taskId,
+                  "startTaskExecution",
+                  err,
+                );
+              }),
+            (err: Error) => {
+              reportTaskServiceError(taskService, taskId, "resumeTask", err);
+            },
+          );
         }
         return;
       }

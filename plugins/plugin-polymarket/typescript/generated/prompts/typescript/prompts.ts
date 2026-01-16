@@ -688,4 +688,3 @@ Output:
 Output JSON:`;
 
 export const SETUP_WEBSOCKET_TEMPLATE = setupWebsocketTemplate;
-

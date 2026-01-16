@@ -84,9 +84,10 @@ impl ActionHandler for SendToAdminAction {
             let mut content = crate::types::primitives::Content::default();
             content.text = Some(message_to_admin.clone());
             content.source = Some("autonomy-to-admin".to_string());
-            content
-                .extra
-                .insert("adminUserId".to_string(), Value::String(admin_user_id.clone()));
+            content.extra.insert(
+                "adminUserId".to_string(),
+                Value::String(admin_user_id.clone()),
+            );
 
             let mut mem = Memory::new(rt.agent_id.clone(), rt.agent_id.clone(), content);
             mem.agent_id = Some(rt.agent_id.clone());
@@ -106,4 +107,3 @@ impl ActionHandler for SendToAdminAction {
         }))
     }
 }
-

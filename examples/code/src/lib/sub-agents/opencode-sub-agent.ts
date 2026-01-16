@@ -1,9 +1,19 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { ModelType } from "@elizaos/core";
-import type { CodeTask, JsonValue, TaskResult, TaskTraceEvent } from "../../types.js";
-import type { SubAgent, SubAgentContext, SubAgentTool, ToolResult } from "./types.js";
+import type {
+  CodeTask,
+  JsonValue,
+  TaskResult,
+  TaskTraceEvent,
+} from "../../types.js";
+import type {
+  SubAgent,
+  SubAgentContext,
+  SubAgentTool,
+  ToolResult,
+} from "./types.js";
 
 /**
  * OpenCode-style system prompt implementing LSP-aware coding assistance.
@@ -94,7 +104,13 @@ DONE: <summary of what was accomplished>
  * OpenCode event types when using the CLI
  */
 interface OpenCodeEvent {
-  type: "message" | "tool_call" | "tool_result" | "file_change" | "done" | "error";
+  type:
+    | "message"
+    | "tool_call"
+    | "tool_result"
+    | "file_change"
+    | "done"
+    | "error";
   data: Record<string, JsonValue>;
 }
 
@@ -141,8 +157,14 @@ function parseOpenCodeOutput(output: string): OpenCodeEvent[] {
 /**
  * Parse tool calls from prompt-based response
  */
-function parseToolCalls(response: string): Array<{ name: string; args: Record<string, string>; content?: string }> {
-  const calls: Array<{ name: string; args: Record<string, string>; content?: string }> = [];
+function parseToolCalls(
+  response: string,
+): Array<{ name: string; args: Record<string, string>; content?: string }> {
+  const calls: Array<{
+    name: string;
+    args: Record<string, string>;
+    content?: string;
+  }> = [];
 
   // Match all TOOL: patterns
   const toolMatches = response.matchAll(
@@ -164,8 +186,12 @@ function parseToolCalls(response: string): Array<{ name: string; args: Record<st
     let content: string | undefined;
     if (name === "write_file") {
       const fullMatch = match[0];
-      const afterTool = response.slice(response.indexOf(fullMatch) + fullMatch.length);
-      const contentMatch = afterTool.match(/CONTENT_START\s*([\s\S]*?)\s*CONTENT_END/);
+      const afterTool = response.slice(
+        response.indexOf(fullMatch) + fullMatch.length,
+      );
+      const contentMatch = afterTool.match(
+        /CONTENT_START\s*([\s\S]*?)\s*CONTENT_END/,
+      );
       if (contentMatch) {
         content = contentMatch[1];
       }
@@ -232,10 +258,17 @@ export class OpenCodeSubAgent implements SubAgent {
   private readonly debug: boolean;
   private readonly preferCli: boolean;
 
-  constructor(config?: { maxIterations?: number; debug?: boolean; preferCli?: boolean }) {
-    this.maxIterations = config?.maxIterations ?? getEnvInt("ELIZA_CODE_OPENCODE_MAX_ITERATIONS", 25);
+  constructor(config?: {
+    maxIterations?: number;
+    debug?: boolean;
+    preferCli?: boolean;
+  }) {
+    this.maxIterations =
+      config?.maxIterations ??
+      getEnvInt("ELIZA_CODE_OPENCODE_MAX_ITERATIONS", 25);
     this.debug = config?.debug ?? process.env.ELIZA_CODE_DEBUG === "1";
-    this.preferCli = config?.preferCli ?? process.env.ELIZA_CODE_OPENCODE_PREFER_CLI === "1";
+    this.preferCli =
+      config?.preferCli ?? process.env.ELIZA_CODE_OPENCODE_PREFER_CLI === "1";
   }
 
   cancel(): void {
@@ -264,7 +297,10 @@ export class OpenCodeSubAgent implements SubAgent {
   /**
    * Execute task using OpenCode CLI
    */
-  private async executeWithCli(task: CodeTask, context: SubAgentContext): Promise<TaskResult> {
+  private async executeWithCli(
+    task: CodeTask,
+    context: SubAgentContext,
+  ): Promise<TaskResult> {
     const { workingDirectory, onMessage, onTrace, isCancelled } = context;
 
     const filesCreated: string[] = [];
@@ -287,12 +323,12 @@ export class OpenCodeSubAgent implements SubAgent {
         env: { ...process.env, OPENCODE_NONINTERACTIVE: "1" },
       });
 
-      let stdout = "";
+      let _stdout = "";
       let stderr = "";
 
       this.process.stdout?.on("data", (data: Buffer) => {
         const chunk = data.toString();
-        stdout += chunk;
+        _stdout += chunk;
 
         if (isCancelled()) {
           this.cancel();
@@ -399,7 +435,9 @@ export class OpenCodeSubAgent implements SubAgent {
           return;
         }
 
-        const summary = finalResponse.trim().split("\n")[0] || `Completed with exit code ${code}`;
+        const summary =
+          finalResponse.trim().split("\n")[0] ||
+          `Completed with exit code ${code}`;
         resolve({
           success: code === 0,
           summary,
@@ -414,7 +452,10 @@ export class OpenCodeSubAgent implements SubAgent {
   /**
    * Execute task using prompt-based approach (ElizaOS runtime)
    */
-  private async executeWithPrompt(task: CodeTask, context: SubAgentContext): Promise<TaskResult> {
+  private async executeWithPrompt(
+    task: CodeTask,
+    context: SubAgentContext,
+  ): Promise<TaskResult> {
     const {
       runtime,
       workingDirectory,
@@ -430,9 +471,18 @@ export class OpenCodeSubAgent implements SubAgent {
     const filesCreated: string[] = [];
     const filesModified: string[] = [];
 
-    const maxTraceResponseChars = getEnvInt("ELIZA_CODE_TRACE_MAX_RESPONSE_CHARS", this.debug ? 20000 : 4000);
-    const maxTraceToolOutputChars = getEnvInt("ELIZA_CODE_TRACE_MAX_TOOL_OUTPUT_CHARS", 8000);
-    const maxUiPreviewChars = getEnvInt("ELIZA_CODE_TRACE_UI_PREVIEW_CHARS", 180);
+    const maxTraceResponseChars = getEnvInt(
+      "ELIZA_CODE_TRACE_MAX_RESPONSE_CHARS",
+      this.debug ? 20000 : 4000,
+    );
+    const maxTraceToolOutputChars = getEnvInt(
+      "ELIZA_CODE_TRACE_MAX_TOOL_OUTPUT_CHARS",
+      8000,
+    );
+    const maxUiPreviewChars = getEnvInt(
+      "ELIZA_CODE_TRACE_UI_PREVIEW_CHARS",
+      180,
+    );
 
     let traceSeq = 0;
     const base = (): Pick<TaskTraceEvent, "ts" | "seq"> => {
@@ -459,7 +509,12 @@ Start by understanding the requirements, then implement the solution step by ste
     while (iteration < this.maxIterations && !this.cancelled) {
       if (isCancelled()) {
         onMessage("Task cancelled", "warning");
-        onTrace?.({ kind: "status", status: "cancelled", message: "Task cancelled", ...base() });
+        onTrace?.({
+          kind: "status",
+          status: "cancelled",
+          message: "Task cancelled",
+          ...base(),
+        });
         return {
           success: false,
           summary: "Task was cancelled",
@@ -473,7 +528,12 @@ Start by understanding the requirements, then implement the solution step by ste
         if (!wasPaused) {
           wasPaused = true;
           onMessage("Task paused", "warning");
-          onTrace?.({ kind: "status", status: "paused", message: "Task paused", ...base() });
+          onTrace?.({
+            kind: "status",
+            status: "paused",
+            message: "Task paused",
+            ...base(),
+          });
         }
         await sleep(300);
         continue;
@@ -482,19 +542,32 @@ Start by understanding the requirements, then implement the solution step by ste
       if (wasPaused) {
         wasPaused = false;
         onMessage("Task resumed", "info");
-        onTrace?.({ kind: "status", status: "resumed", message: "Task resumed", ...base() });
+        onTrace?.({
+          kind: "status",
+          status: "resumed",
+          message: "Task resumed",
+          ...base(),
+        });
       }
 
       iteration++;
       onProgress({
         taskId: task.id ?? "",
-        progress: Math.min(90, Math.round((iteration / this.maxIterations) * 80)),
+        progress: Math.min(
+          90,
+          Math.round((iteration / this.maxIterations) * 80),
+        ),
       });
 
       // Call LLM
-      const systemPrompt = OPENCODE_SYSTEM_PROMPT.replace("{cwd}", workingDirectory);
+      const systemPrompt = OPENCODE_SYSTEM_PROMPT.replace(
+        "{cwd}",
+        workingDirectory,
+      );
       const history = messages
-        .map((m) => (m.role === "user" ? `User: ${m.content}` : `Assistant: ${m.content}`))
+        .map((m) =>
+          m.role === "user" ? `User: ${m.content}` : `Assistant: ${m.content}`,
+        )
         .join("\n\n");
       const prompt = `${systemPrompt}\n\n${history}\n\nAssistant:`;
 
@@ -512,7 +585,12 @@ Start by understanding the requirements, then implement the solution step by ste
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         onMessage(`LLM error: ${errorMsg}`, "error");
-        onTrace?.({ kind: "note", level: "error", message: errorMsg, ...base() });
+        onTrace?.({
+          kind: "note",
+          level: "error",
+          message: errorMsg,
+          ...base(),
+        });
         return {
           success: false,
           summary: `Failed: ${errorMsg}`,
@@ -524,8 +602,14 @@ Start by understanding the requirements, then implement the solution step by ste
 
       // Log response
       const responseRedacted = redactSensitiveText(response);
-      const responseStored = truncateText(responseRedacted, maxTraceResponseChars);
-      const responsePreview = truncateText(collapseWhitespace(firstNonEmptyLine(responseStored)), maxUiPreviewChars);
+      const responseStored = truncateText(
+        responseRedacted,
+        maxTraceResponseChars,
+      );
+      const responsePreview = truncateText(
+        collapseWhitespace(firstNonEmptyLine(responseStored)),
+        maxUiPreviewChars,
+      );
 
       onTrace?.({
         kind: "llm",
@@ -538,9 +622,15 @@ Start by understanding the requirements, then implement the solution step by ste
 
       // Check if done
       if (response.includes("DONE:")) {
-        const summary = response.split("DONE:")[1]?.trim().split("\n")[0] ?? "Task completed";
+        const summary =
+          response.split("DONE:")[1]?.trim().split("\n")[0] ?? "Task completed";
         onMessage(`Done: ${summary}`, "info");
-        onTrace?.({ kind: "note", level: "info", message: `Done: ${summary}`, ...base() });
+        onTrace?.({
+          kind: "note",
+          level: "info",
+          message: `Done: ${summary}`,
+          ...base(),
+        });
         return {
           success: true,
           summary,
@@ -556,7 +646,8 @@ Start by understanding the requirements, then implement the solution step by ste
         messages.push({ role: "assistant", content: response });
         messages.push({
           role: "user",
-          content: "Continue with the task. Use TOOL: to execute commands, or say DONE: when finished.",
+          content:
+            "Continue with the task. Use TOOL: to execute commands, or say DONE: when finished.",
         });
         continue;
       }
@@ -574,7 +665,8 @@ Start by understanding the requirements, then implement the solution step by ste
         });
 
         const result =
-          (call.name.startsWith("MCP:") || call.name.includes("/")) && callMcpTool
+          (call.name.startsWith("MCP:") || call.name.includes("/")) &&
+          callMcpTool
             ? await (async () => {
                 const [server, toolName] = call.name
                   .replace("MCP:", "")
@@ -601,8 +693,14 @@ Start by understanding the requirements, then implement the solution step by ste
         results.push({ name: call.name, result });
 
         const outputRedacted = redactSensitiveText(result.output);
-        const outputStored = truncateText(outputRedacted, maxTraceToolOutputChars);
-        const outputPreview = truncateText(collapseWhitespace(firstNonEmptyLine(outputStored)), maxUiPreviewChars);
+        const outputStored = truncateText(
+          outputRedacted,
+          maxTraceToolOutputChars,
+        );
+        const outputPreview = truncateText(
+          collapseWhitespace(firstNonEmptyLine(outputStored)),
+          maxUiPreviewChars,
+        );
 
         onTrace?.({
           kind: "tool_result",
@@ -617,7 +715,10 @@ Start by understanding the requirements, then implement the solution step by ste
 
       // Build result message
       const resultOutput = results
-        .map((r) => `[${r.name}] ${r.result.success ? "✓" : "✗"} ${truncateText(r.result.output, 2000)}`)
+        .map(
+          (r) =>
+            `[${r.name}] ${r.result.success ? "✓" : "✗"} ${truncateText(r.result.output, 2000)}`,
+        )
         .join("\n\n");
 
       messages.push({ role: "assistant", content: response });
@@ -646,7 +747,10 @@ Start by understanding the requirements, then implement the solution step by ste
     workingDirectory: string,
     filesCreated: string[],
     filesModified: string[],
-    onMessage: (message: string, priority: "info" | "warning" | "error") => void,
+    onMessage: (
+      message: string,
+      priority: "info" | "warning" | "error",
+    ) => void,
   ): Promise<ToolResult> {
     if (name === "write_file" && content !== undefined) {
       const tool = tools.find((t) => t.name === "write_file");
@@ -668,7 +772,9 @@ Start by understanding the requirements, then implement the solution step by ste
       return result;
     }
 
-    const tool = tools.find((t) => t.name === name || t.name === name.toLowerCase());
+    const tool = tools.find(
+      (t) => t.name === name || t.name === name.toLowerCase(),
+    );
     if (!tool) {
       return { success: false, output: `Unknown tool: ${name}` };
     }
@@ -684,7 +790,8 @@ Start by understanding the requirements, then implement the solution step by ste
         const abs = path.resolve(workingDirectory, filepath);
         const link = pathToFileURL(abs).toString();
         const sizeValue = result.data?.size;
-        const sizeSuffix = typeof sizeValue === "number" ? ` (${sizeValue} chars)` : "";
+        const sizeSuffix =
+          typeof sizeValue === "number" ? ` (${sizeValue} chars)` : "";
         onMessage(`FILE write: ${filepath}${sizeSuffix} — ${link}`, "info");
       } else if (name === "edit_file" || name.includes("edit")) {
         if (!filesModified.includes(filepath)) {
@@ -745,8 +852,14 @@ function redactSensitiveText(text: string): string {
   out = out.replace(/\bsk-[A-Za-z0-9]{16,}\b/g, "[REDACTED:API_KEY]");
   out = out.replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED:AWS_ACCESS_KEY_ID]");
   out = out.replace(/\bghp_[A-Za-z0-9]{20,}\b/g, "[REDACTED:GITHUB_TOKEN]");
-  out = out.replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[REDACTED:GITHUB_TOKEN]");
-  out = out.replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED:SLACK_TOKEN]");
+  out = out.replace(
+    /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+    "[REDACTED:GITHUB_TOKEN]",
+  );
+  out = out.replace(
+    /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
+    "[REDACTED:SLACK_TOKEN]",
+  );
   out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, "Bearer [REDACTED]");
   out = out.replace(/\bBasic\s+[A-Za-z0-9+/=]{10,}\b/g, "Basic [REDACTED]");
   out = out.replace(/(password\s*[:=]\s*)(\S+)/gi, "$1[REDACTED]");

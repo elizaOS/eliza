@@ -99,7 +99,7 @@ export const readChannel: Action = {
 
     if (!state) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "State is not available.",
           source: "discord",
         });
@@ -114,7 +114,7 @@ export const readChannel: Action = {
         "Could not parse channel information from message"
       );
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I couldn't understand which channel you want me to read from. Please specify the channel name or say 'this channel' for the current channel.",
           source: "discord",
         });
@@ -149,7 +149,7 @@ export const readChannel: Action = {
         const serverId = room?.messageServerId;
         if (!serverId) {
           if (callback) {
-            await callback({
+            await callback?.({
               text: "I couldn't determine which server to search for that channel.",
               source: "discord",
             });
@@ -169,7 +169,7 @@ export const readChannel: Action = {
 
       if (!targetChannel || !targetChannel.isTextBased()) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I couldn't find that channel or I don't have access to it. Make sure the channel exists and I have permission to read messages there.",
             source: "discord",
           });
@@ -185,7 +185,7 @@ export const readChannel: Action = {
         const permissions = targetChannel.permissionsFor(botMember);
         if (!permissions || !permissions.has(PermissionsBitField.Flags.ReadMessageHistory)) {
           if (callback) {
-            await callback({
+            await callback?.({
               text: "I don't have permission to read message history in that channel.",
               source: "discord",
             });
@@ -220,7 +220,7 @@ export const readChannel: Action = {
 
       if (messages.size === 0) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: `No messages found in <#${targetChannel.id}>.`,
             source: "discord",
           });
@@ -247,7 +247,7 @@ export const readChannel: Action = {
 
         if (channelInfo.focusUser && relevantMessages.length === 0) {
           if (callback) {
-            await callback({
+            await callback?.({
               text: `I couldn't find any messages from "${channelInfo.focusUser}" in the recent messages from <#${targetChannel.id}>.`,
               source: "discord",
             });
@@ -290,7 +290,7 @@ export const readChannel: Action = {
         };
 
         if (callback) {
-          await callback(response);
+          await callback?.(response);
         }
         return { success: true, text: response.text };
       } else {
@@ -317,7 +317,7 @@ export const readChannel: Action = {
         };
 
         if (callback) {
-          await callback(response);
+          await callback?.(response);
         }
         return { success: true, text: response.text };
       }
@@ -331,7 +331,7 @@ export const readChannel: Action = {
         "Error reading channel"
       );
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I encountered an error while trying to read the channel messages. Please make sure I have the necessary permissions and try again.",
           source: "discord",
         });

@@ -6,7 +6,7 @@ export class RateLimiter {
   constructor(
     private minDelay: number = 1000, // Minimum delay between requests in ms
     private maxRetries: number = 3,
-    private backoffMultiplier: number = 2
+    private backoffMultiplier: number = 2,
   ) {}
 
   async execute<T>(fn: () => Promise<T>): Promise<T> {
@@ -32,9 +32,9 @@ export class RateLimiter {
             retries++;
 
             // Check if it's a rate limit error
-            if (error.message?.includes('429') || error.status === 429) {
+            if (error.message?.includes("429") || error.status === 429) {
               console.log(
-                `Rate limited. Waiting ${delay}ms before retry ${retries}/${this.maxRetries}...`
+                `Rate limited. Waiting ${delay}ms before retry ${retries}/${this.maxRetries}...`,
               );
               await new Promise((res) => setTimeout(res, delay));
               delay *= this.backoffMultiplier;

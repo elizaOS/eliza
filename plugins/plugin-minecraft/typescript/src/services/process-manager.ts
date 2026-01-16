@@ -41,7 +41,9 @@ export class MinecraftProcessManager {
   async start(): Promise<void> {
     if (this.isRunning) return;
     if (!this.entryPath) {
-      throw new Error("mineflayer-server entry not found (run: bun run build:server)");
+      throw new Error(
+        "mineflayer-server entry not found (run: bun run build:server)",
+      );
     }
 
     const env = {
@@ -81,7 +83,9 @@ export class MinecraftProcessManager {
       });
 
       this.process.on("exit", (code) => {
-        logger.info(`Minecraft server process exited with code ${code ?? "unknown"}`);
+        logger.info(
+          `Minecraft server process exited with code ${code ?? "unknown"}`,
+        );
         this.isRunning = false;
       });
 
@@ -115,4 +119,3 @@ export class MinecraftProcessManager {
     return `ws://localhost:${this.serverPort}`;
   }
 }
-

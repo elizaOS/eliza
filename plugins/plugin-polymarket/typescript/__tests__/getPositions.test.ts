@@ -125,7 +125,7 @@ describe("getPositionsAction", () => {
       testMessage,
       testState,
       { parameters: { limit: 50 } },
-      callback
+      callback,
     );
 
     expect(result.success).toBe(true);

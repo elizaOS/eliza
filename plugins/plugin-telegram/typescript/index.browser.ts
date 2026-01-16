@@ -14,4 +14,3 @@ export const telegramPlugin: Plugin = {
 };
 
 export default telegramPlugin;
-

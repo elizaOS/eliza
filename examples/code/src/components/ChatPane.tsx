@@ -1,4 +1,4 @@
-import { Box, Text, useInput } from "ink";
+import { Box, type Key, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../lib/store.js";
@@ -298,7 +298,7 @@ export function ChatPane({
 
   // Handle input
   useInput(
-    (_char, key) => {
+    (_char: string, key: Key) => {
       if (!isFocused) return;
 
       // Tab to autocomplete

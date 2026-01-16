@@ -1,24 +1,44 @@
 #!/usr/bin/env node
 
-import { SimulationService } from '../services/SimulationService.ts';
-import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
-import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
+import dotenv from "dotenv";
+import { DefaultHistoricalDataService } from "../services/HistoricalDataService.ts";
+import { PerformanceReportingService } from "../services/PerformanceReportingService.ts";
+import { SimulationService } from "../services/SimulationService.ts";
+import { StrategyRegistryService } from "../services/StrategyRegistryService.ts";
 import {
-  OptimizedMomentumStrategy,
   DEFAULT_PARAMS,
-} from '../strategies/OptimizedMomentumStrategy.ts';
-import dotenv from 'dotenv';
+  OptimizedMomentumStrategy,
+} from "../strategies/OptimizedMomentumStrategy.ts";
 
 dotenv.config();
 
 // Test tokens - expand this list for production
 const TEST_TOKENS = [
-  { address: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', symbol: 'BONK', name: 'Bonk' },
-  { address: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', symbol: 'WIF', name: 'dogwifhat' },
-  { address: '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr', symbol: 'POPCAT', name: 'Popcat' },
-  { address: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', symbol: 'JUP', name: 'Jupiter' },
-  { address: 'rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof', symbol: 'RENDER', name: 'Render' },
+  {
+    address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+    symbol: "BONK",
+    name: "Bonk",
+  },
+  {
+    address: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+    symbol: "WIF",
+    name: "dogwifhat",
+  },
+  {
+    address: "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+    symbol: "POPCAT",
+    name: "Popcat",
+  },
+  {
+    address: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+    symbol: "JUP",
+    name: "Jupiter",
+  },
+  {
+    address: "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof",
+    symbol: "RENDER",
+    name: "Render",
+  },
 ];
 
 // Parameter grid for optimization
@@ -50,7 +70,7 @@ interface OptimizationResult {
 function calculateSharpeRatio(returns: number[]): number {
   if (returns.length === 0) return 0;
   const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
-  const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
+  const variance = returns.reduce((sum, r) => sum + (r - avgReturn) ** 2, 0) / returns.length;
   const stdDev = Math.sqrt(variance);
   return stdDev > 0 ? (avgReturn * 252) / (stdDev * Math.sqrt(252)) : 0; // Annualized
 }
@@ -79,14 +99,14 @@ async function runBuyAndHoldBenchmark(
   token: any,
   startDate: Date,
   endDate: Date,
-  initialCapital: number
+  _initialCapital: number,
 ): Promise<number> {
-  const historicalData = await simulationService['historicalDataService'].fetchData(
+  const historicalData = await simulationService.historicalDataService.fetchData(
     token.address,
-    '1m',
+    "1m",
     startDate,
     endDate,
-    'birdeye'
+    "birdeye",
   );
 
   if (!historicalData || historicalData.length < 2) return 0;
@@ -102,9 +122,9 @@ async function testParameterCombination(
   services: Map<string, any>,
   tokens: any[],
   timeframe: { start: Date; end: Date },
-  initialCapital: number
+  initialCapital: number,
 ): Promise<OptimizationResult> {
-  const { simulationService, strategyRegistry } = services.get('services');
+  const { simulationService, strategyRegistry } = services.get("services");
 
   // Register strategy with these params
   const strategy = new OptimizedMomentumStrategy(params);
@@ -123,13 +143,13 @@ async function testParameterCombination(
       const result = await simulationService.runBacktest({
         strategyName: strategy.id,
         pair: token.address,
-        interval: '1m',
+        interval: "1m",
         startDate: timeframe.start,
         endDate: timeframe.end,
         initialCapital,
         transactionCostPercentage: 0.001,
         slippagePercentage: 0.001,
-        dataSource: 'birdeye',
+        dataSource: "birdeye",
       });
 
       const strategyReturn = ((result.finalPortfolioValue - initialCapital) / initialCapital) * 100;
@@ -140,7 +160,7 @@ async function testParameterCombination(
         token,
         timeframe.start,
         timeframe.end,
-        initialCapital
+        initialCapital,
       );
 
       returns.push(strategyReturn);
@@ -187,7 +207,7 @@ async function testParameterCombination(
   const winRate = totalTrades > 0 ? totalWins / totalTrades : 0;
 
   // Remove strategy to avoid conflicts
-  strategyRegistry['strategies'].delete(strategy.id);
+  strategyRegistry.strategies.delete(strategy.id);
 
   return {
     params,
@@ -232,29 +252,29 @@ function* generateParamCombinations(grid: any): Generator<any> {
 }
 
 async function main() {
-  console.log('🔧 Strategy Parameter Optimization\n');
+  console.log("🔧 Strategy Parameter Optimization\n");
 
   // Create minimal runtime
   const services = new Map<string, any>();
   const runtime = {
     getSetting: (key: string) => process.env[key],
-    agentId: 'optimizer',
+    agentId: "optimizer",
     services,
     getService: (name: string) => services.get(name),
   } as any;
 
   // Initialize services
   const performanceReporting = new PerformanceReportingService(runtime);
-  services.set('PerformanceReportingService', performanceReporting);
+  services.set("PerformanceReportingService", performanceReporting);
 
   const strategyRegistry = new StrategyRegistryService(runtime);
-  services.set('StrategyRegistryService', strategyRegistry);
+  services.set("StrategyRegistryService", strategyRegistry);
 
   const historicalDataService = new DefaultHistoricalDataService(runtime);
-  services.set('HistoricalDataService', historicalDataService);
+  services.set("HistoricalDataService", historicalDataService);
 
   const simulationService = new SimulationService(runtime);
-  services.set('SimulationService', simulationService);
+  services.set("SimulationService", simulationService);
 
   // Start services
   await performanceReporting.start();
@@ -262,7 +282,7 @@ async function main() {
   await historicalDataService.start();
   await simulationService.start();
 
-  console.log('✓ Services initialized\n');
+  console.log("✓ Services initialized\n");
 
   // Optimization settings
   const endDate = new Date();
@@ -271,17 +291,17 @@ async function main() {
   const maxTests = 50; // Limit number of combinations to test
 
   console.log(`Testing period: ${startDate.toISOString()} to ${endDate.toISOString()}`);
-  console.log(`Tokens: ${TEST_TOKENS.map((t) => t.symbol).join(', ')}`);
+  console.log(`Tokens: ${TEST_TOKENS.map((t) => t.symbol).join(", ")}`);
   console.log(`Initial capital: $${initialCapital}\n`);
 
   // Store services for easy access
-  services.set('services', { simulationService, strategyRegistry });
+  services.set("services", { simulationService, strategyRegistry });
 
   // Test parameter combinations
   const results: OptimizationResult[] = [];
   let testCount = 0;
 
-  console.log('Running optimization...\n');
+  console.log("Running optimization...\n");
 
   for (const params of generateParamCombinations(PARAM_GRID)) {
     if (testCount >= maxTests) break;
@@ -293,7 +313,7 @@ async function main() {
       services,
       TEST_TOKENS.slice(0, 3), // Use first 3 tokens for speed
       { start: startDate, end: endDate },
-      initialCapital
+      initialCapital,
     );
 
     results.push(result);
@@ -302,7 +322,7 @@ async function main() {
     // Show progress
     if (result.avgReturn > 0) {
       console.log(
-        `  Return: ${result.avgReturn.toFixed(2)}%, Sharpe: ${result.sharpeRatio.toFixed(2)}, Win Rate: ${(result.winRate * 100).toFixed(1)}%`
+        `  Return: ${result.avgReturn.toFixed(2)}%, Sharpe: ${result.sharpeRatio.toFixed(2)}, Win Rate: ${(result.winRate * 100).toFixed(1)}%`,
       );
     }
   }
@@ -311,39 +331,39 @@ async function main() {
   results.sort((a, b) => b.sharpeRatio - a.sharpeRatio);
 
   // Display results
-  console.log('\n' + '='.repeat(80));
-  console.log('OPTIMIZATION RESULTS');
-  console.log('='.repeat(80));
+  console.log(`\n${"=".repeat(80)}`);
+  console.log("OPTIMIZATION RESULTS");
+  console.log("=".repeat(80));
 
-  console.log('\nTop 10 Parameter Combinations (by Sharpe Ratio):');
-  console.log('-'.repeat(80));
+  console.log("\nTop 10 Parameter Combinations (by Sharpe Ratio):");
+  console.log("-".repeat(80));
 
   results.slice(0, 10).forEach((result, i) => {
     console.log(`\n${i + 1}. Sharpe Ratio: ${result.sharpeRatio.toFixed(2)}`);
     console.log(
-      `   Return: ${result.avgReturn.toFixed(2)}% | Benchmark Outperformance: ${result.benchmarkOutperformance.toFixed(2)}%`
+      `   Return: ${result.avgReturn.toFixed(2)}% | Benchmark Outperformance: ${result.benchmarkOutperformance.toFixed(2)}%`,
     );
     console.log(
-      `   Win Rate: ${(result.winRate * 100).toFixed(1)}% | Max Drawdown: ${(result.maxDrawdown * 100).toFixed(1)}%`
+      `   Win Rate: ${(result.winRate * 100).toFixed(1)}% | Max Drawdown: ${(result.maxDrawdown * 100).toFixed(1)}%`,
     );
     console.log(
-      `   Trades/Day: ${result.avgTradesPerDay.toFixed(1)} | Profitable Tokens: ${result.profitableTokens}/${TEST_TOKENS.slice(0, 3).length}`
+      `   Trades/Day: ${result.avgTradesPerDay.toFixed(1)} | Profitable Tokens: ${result.profitableTokens}/${TEST_TOKENS.slice(0, 3).length}`,
     );
     console.log(
-      `   Key Params: Volume=${result.params.minVolumeRatio}, Price=${(result.params.minPriceChange * 100).toFixed(1)}%, SL=${(result.params.stopLoss * 100).toFixed(1)}%`
+      `   Key Params: Volume=${result.params.minVolumeRatio}, Price=${(result.params.minPriceChange * 100).toFixed(1)}%, SL=${(result.params.stopLoss * 100).toFixed(1)}%`,
     );
   });
 
   // Best by different metrics
-  console.log('\n' + '-'.repeat(80));
-  console.log('Best By Different Metrics:');
-  console.log('-'.repeat(80));
+  console.log(`\n${"-".repeat(80)}`);
+  console.log("Best By Different Metrics:");
+  console.log("-".repeat(80));
 
   const bestReturn = results.reduce((best, r) => (r.avgReturn > best.avgReturn ? r : best));
   const bestWinRate = results.reduce((best, r) => (r.winRate > best.winRate ? r : best));
   const bestDrawdown = results.reduce((best, r) => (r.maxDrawdown < best.maxDrawdown ? r : best));
   const bestOutperformance = results.reduce((best, r) =>
-    r.benchmarkOutperformance > best.benchmarkOutperformance ? r : best
+    r.benchmarkOutperformance > best.benchmarkOutperformance ? r : best,
   );
 
   console.log(`\nHighest Return: ${bestReturn.avgReturn.toFixed(2)}%`);
@@ -353,19 +373,19 @@ async function main() {
 
   // Save best params
   const bestParams = results[0].params;
-  console.log('\n' + '='.repeat(80));
-  console.log('RECOMMENDED PARAMETERS (Best Sharpe Ratio):');
-  console.log('='.repeat(80));
+  console.log(`\n${"=".repeat(80)}`);
+  console.log("RECOMMENDED PARAMETERS (Best Sharpe Ratio):");
+  console.log("=".repeat(80));
   console.log(JSON.stringify(bestParams, null, 2));
 
   // Create optimized strategy file
-  const fs = await import('fs');
-  const optimizedParams = `export const OPTIMIZED_PARAMS = ${JSON.stringify(bestParams, null, 2)};\n`;
-  fs.writeFileSync('optimized_params.json', JSON.stringify(bestParams, null, 2));
-  console.log('\n✓ Optimized parameters saved to optimized_params.json');
+  const fs = await import("node:fs");
+  const _optimizedParams = `export const OPTIMIZED_PARAMS = ${JSON.stringify(bestParams, null, 2)};\n`;
+  fs.writeFileSync("optimized_params.json", JSON.stringify(bestParams, null, 2));
+  console.log("\n✓ Optimized parameters saved to optimized_params.json");
 }
 
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  console.error("Fatal error:", error);
   process.exit(1);
 });

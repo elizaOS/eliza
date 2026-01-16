@@ -11,7 +11,9 @@ async def _always_validate(_runtime, _message, _state=None) -> bool:
     return True
 
 
-async def analyze_input_handler(_runtime, message, _state=None, options=None, _callback=None, _responses=None):
+async def analyze_input_handler(
+    _runtime, message, _state=None, options=None, _callback=None, _responses=None
+):
     abort_signal = getattr(options, "abort_signal", None)
     if abort_signal is not None and getattr(abort_signal, "aborted", False):
         raise RuntimeError("Analysis aborted")
@@ -40,7 +42,9 @@ async def analyze_input_handler(_runtime, message, _state=None, options=None, _c
     )
 
 
-async def process_analysis_handler(_runtime, _message, _state=None, options=None, _callback=None, _responses=None):
+async def process_analysis_handler(
+    _runtime, _message, _state=None, options=None, _callback=None, _responses=None
+):
     previous = getattr(options, "previous_results", None) or []
     prev0 = previous[0] if previous else None
     analysis = getattr(prev0, "data", None) or {}
@@ -72,7 +76,9 @@ async def process_analysis_handler(_runtime, _message, _state=None, options=None
     )
 
 
-async def execute_final_handler(_runtime, _message, _state=None, options=None, callback=None, _responses=None):
+async def execute_final_handler(
+    _runtime, _message, _state=None, options=None, callback=None, _responses=None
+):
     previous = getattr(options, "previous_results", None) or []
     decisions = None
     for r in previous:
@@ -95,11 +101,17 @@ async def create_plan_validate(_runtime, message, _state=None) -> bool:
     return any(k in text for k in ["plan", "project", "comprehensive", "organize", "strategy"])
 
 
-async def create_plan_handler(_runtime, _message, _state=None, _options=None, callback=None, _responses=None):
+async def create_plan_handler(
+    _runtime, _message, _state=None, _options=None, callback=None, _responses=None
+):
     plan_id = str(uuid4())
     if callback is not None:
         await callback(
-            {"text": "I've created a comprehensive project plan.", "actions": ["CREATE_PLAN"], "source": "planning"}
+            {
+                "text": "I've created a comprehensive project plan.",
+                "actions": ["CREATE_PLAN"],
+                "source": "planning",
+            }
         )
     return ActionResult(success=True, text="Created plan", data={"planId": plan_id})
 
@@ -131,4 +143,3 @@ create_plan_action = Action(
     validate=create_plan_validate,
     handler=create_plan_handler,
 )
-

@@ -1,11 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import Loader from './loader.js';
-import { Badge } from './ui/badge.js';
-import { Button } from './ui/button.js';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card.js';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table.js';
-import { cn } from './utils.js';
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import Loader from "./loader.js";
+import { Badge } from "./ui/badge.js";
+import { Button } from "./ui/button.js";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
+import { cn } from "./utils.js";
 
 const formatUSD = (value: number): string => {
   if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
@@ -13,16 +13,16 @@ const formatUSD = (value: number): string => {
   if (value >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
 
   const options: Intl.NumberFormatOptions = {
-    style: 'currency',
-    currency: 'USD',
+    style: "currency",
+    currency: "USD",
     minimumFractionDigits: value >= 1 ? 2 : 2,
     maximumFractionDigits: value >= 1 ? 2 : 10,
   };
 
-  return new Intl.NumberFormat('en-US', options).format(value);
+  return new Intl.NumberFormat("en-US", options).format(value);
 };
 
-const formatNumber = (value: number): string => {
+const _formatNumber = (value: number): string => {
   if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
   if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
   if (value >= 1e3) return `${(value / 1e3).toFixed(2)}K`;
@@ -30,13 +30,13 @@ const formatNumber = (value: number): string => {
 };
 
 export default function Trending() {
-  const [selectedChain, setSelectedChain] = useState<'all' | 'solana' | 'base' | 'ethereum'>('all');
+  const [selectedChain, setSelectedChain] = useState<"all" | "solana" | "base" | "ethereum">("all");
 
   const query = useQuery({
-    queryKey: ['trending'],
+    queryKey: ["trending"],
     queryFn: async () => {
-      const response = await fetch('/api/intel/trending', {
-        method: 'GET',
+      const response = await fetch("/api/intel/trending", {
+        method: "GET",
       });
       const result = await response.json();
       return result.success ? result.data : { solana: [], base: [], ethereum: [] };
@@ -45,12 +45,12 @@ export default function Trending() {
   });
 
   const logos = {
-    ethereum: '/logos/ethereum.png',
-    base: '/logos/base.jpeg',
-    solana: '/logos/solana.png',
-    birdeye: '/logos/birdeye.png',
-    coinmarketcap: '/logos/coinmarketcap.png',
-    L1: '/logos/l1.png',
+    ethereum: "/logos/ethereum.png",
+    base: "/logos/base.jpeg",
+    solana: "/logos/solana.png",
+    birdeye: "/logos/birdeye.png",
+    coinmarketcap: "/logos/coinmarketcap.png",
+    L1: "/logos/l1.png",
   };
 
   if (query?.isPending) {
@@ -59,13 +59,13 @@ export default function Trending() {
 
   const data = query?.data || {};
   const allTokens = [
-    ...(data.solana || []).map((t) => ({ ...t, chain: 'solana' })),
-    ...(data.base || []).map((t) => ({ ...t, chain: 'base' })),
-    ...(data.ethereum || []).map((t) => ({ ...t, chain: 'ethereum' })),
+    ...(data.solana || []).map((t) => ({ ...t, chain: "solana" })),
+    ...(data.base || []).map((t) => ({ ...t, chain: "base" })),
+    ...(data.ethereum || []).map((t) => ({ ...t, chain: "ethereum" })),
   ];
 
   const filteredTokens =
-    selectedChain === 'all'
+    selectedChain === "all"
       ? allTokens
       : allTokens.filter((token) => token.chain === selectedChain);
 
@@ -101,9 +101,9 @@ export default function Trending() {
           </CardHeader>
           <CardContent>
             <div
-              className={`text-2xl font-bold ${avgChange >= 0 ? 'text-green-600' : 'text-red-600'}`}
+              className={`text-2xl font-bold ${avgChange >= 0 ? "text-green-600" : "text-red-600"}`}
             >
-              {avgChange >= 0 ? '+' : ''}
+              {avgChange >= 0 ? "+" : ""}
               {avgChange.toFixed(2)}%
             </div>
             <p className="text-xs text-muted-foreground">Market sentiment</p>
@@ -141,16 +141,16 @@ export default function Trending() {
           <CardTitle className="flex items-center justify-between">
             Trending Tokens
             <div className="flex gap-2">
-              {['all', 'solana', 'base', 'ethereum'].map((chain) => (
+              {["all", "solana", "base", "ethereum"].map((chain) => (
                 <Button
                   key={chain}
-                  variant={selectedChain === chain ? 'default' : 'outline'}
+                  variant={selectedChain === chain ? "default" : "outline"}
                   size="sm"
                   onClick={() => setSelectedChain(chain as any)}
                   className="capitalize"
                 >
-                  {chain === 'all' ? 'All Chains' : chain}
-                  {chain !== 'all' && (
+                  {chain === "all" ? "All Chains" : chain}
+                  {chain !== "all" && (
                     <Badge variant="secondary" className="ml-2">
                       {data[chain]?.length || 0}
                     </Badge>
@@ -216,14 +216,14 @@ export default function Trending() {
                   <TableCell className="text-right">
                     {item?.price24hChangePercent !== undefined ? (
                       <Badge
-                        variant={item.price24hChangePercent >= 0 ? 'default' : 'destructive'}
+                        variant={item.price24hChangePercent >= 0 ? "default" : "destructive"}
                         className={cn(
                           item.price24hChangePercent >= 0
-                            ? 'bg-green-100 text-green-800 hover:bg-green-100'
-                            : 'bg-red-100 text-red-800 hover:bg-red-100'
+                            ? "bg-green-100 text-green-800 hover:bg-green-100"
+                            : "bg-red-100 text-red-800 hover:bg-red-100",
                         )}
                       >
-                        {item.price24hChangePercent >= 0 ? '+' : ''}
+                        {item.price24hChangePercent >= 0 ? "+" : ""}
                         {item.price24hChangePercent.toFixed(2)}%
                       </Badge>
                     ) : (
@@ -231,44 +231,44 @@ export default function Trending() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {item.volume24hUSD ? formatUSD(item.volume24hUSD) : '-'}
+                    {item.volume24hUSD ? formatUSD(item.volume24hUSD) : "-"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {item.marketcap ? formatUSD(item.marketcap) : '-'}
+                    {item.marketcap ? formatUSD(item.marketcap) : "-"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {item?.liquidity ? formatUSD(item.liquidity) : '-'}
+                    {item?.liquidity ? formatUSD(item.liquidity) : "-"}
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-center gap-1">
                       {[
                         {
-                          provider: 'birdeye',
+                          provider: "birdeye",
                           href: `https://www.birdeye.so/token/${item.address}?chain=${item.chain}`,
-                          disabled: item.chain === 'L1',
+                          disabled: item.chain === "L1",
                         },
                         {
-                          provider: 'solana',
+                          provider: "solana",
                           href: `https://solscan.io/token/${item.address}`,
-                          disabled: item.chain !== 'solana',
+                          disabled: item.chain !== "solana",
                         },
                         {
-                          provider: 'base',
+                          provider: "base",
                           href: `https://basescan.org/address/${item.address}`,
-                          disabled: item.chain !== 'base',
+                          disabled: item.chain !== "base",
                         },
                       ].map((linkItem, linkIndex) => (
                         <a
-                          href={linkItem?.disabled ? '#' : linkItem.href}
+                          href={linkItem?.disabled ? "#" : linkItem.href}
                           target="_blank"
                           key={linkIndex}
                           rel="noreferrer"
                           aria-disabled={linkItem.disabled}
                           className={cn([
-                            'rounded-md p-1 hover:bg-muted transition-colors',
+                            "rounded-md p-1 hover:bg-muted transition-colors",
                             linkItem?.disabled
-                              ? 'opacity-30 cursor-not-allowed'
-                              : 'opacity-70 hover:opacity-100',
+                              ? "opacity-30 cursor-not-allowed"
+                              : "opacity-70 hover:opacity-100",
                           ])}
                         >
                           <img

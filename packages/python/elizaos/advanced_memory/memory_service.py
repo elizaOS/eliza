@@ -134,7 +134,9 @@ class MemoryService(Service):
                 return 0
         return int(self._extraction_checkpoints.get(key, 0))
 
-    async def set_last_extraction_checkpoint(self, entity_id: UUID, room_id: UUID, message_count: int) -> None:
+    async def set_last_extraction_checkpoint(
+        self, entity_id: UUID, room_id: UUID, message_count: int
+    ) -> None:
         runtime = self.runtime
         key = self._checkpoint_key(entity_id, room_id)
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
@@ -142,7 +144,9 @@ class MemoryService(Service):
             return
         self._extraction_checkpoints[key] = int(message_count)
 
-    async def should_run_extraction(self, entity_id: UUID, room_id: UUID, current_message_count: int) -> bool:
+    async def should_run_extraction(
+        self, entity_id: UUID, room_id: UUID, current_message_count: int
+    ) -> bool:
         threshold = self._config.long_term_extraction_threshold
         interval = self._config.long_term_extraction_interval
         if current_message_count < threshold:
@@ -240,7 +244,9 @@ class MemoryService(Service):
         self._session_summaries[str(room_id)] = s
         return s
 
-    async def update_session_summary(self, summary_id: UUID, room_id: UUID, **updates: object) -> None:
+    async def update_session_summary(
+        self, summary_id: UUID, room_id: UUID, **updates: object
+    ) -> None:
         runtime = self.runtime
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
             existing = await self.get_current_session_summary(room_id)
@@ -248,12 +254,24 @@ class MemoryService(Service):
                 return
             # Reuse store_session_summary to persist updated state.
             summary_text = (
-                str(updates["summary"]) if "summary" in updates and isinstance(updates["summary"], str) else existing.summary
+                str(updates["summary"])
+                if "summary" in updates and isinstance(updates["summary"], str)
+                else existing.summary
             )
-            msg_count = int(updates["message_count"]) if "message_count" in updates else existing.message_count
-            last_off = int(updates["last_message_offset"]) if "last_message_offset" in updates else existing.last_message_offset
+            msg_count = (
+                int(updates["message_count"])
+                if "message_count" in updates
+                else existing.message_count
+            )
+            last_off = (
+                int(updates["last_message_offset"])
+                if "last_message_offset" in updates
+                else existing.last_message_offset
+            )
             topics = (
-                [str(t) for t in updates["topics"]] if "topics" in updates and isinstance(updates["topics"], list) else existing.topics
+                [str(t) for t in updates["topics"]]
+                if "topics" in updates and isinstance(updates["topics"], list)
+                else existing.topics
             )
             meta = (
                 {str(k): v for k, v in updates["metadata"].items()}
@@ -367,7 +385,9 @@ class MemoryService(Service):
                             category=cat,
                             content=str((m.get("content") or {}).get("text") or ""),
                             confidence=float(meta.get("confidence") or 1.0),
-                            source=str(meta.get("source")) if meta.get("source") is not None else None,
+                            source=str(meta.get("source"))
+                            if meta.get("source") is not None
+                            else None,
                             metadata=dict(meta.get("metadata") or {}),
                         )
                     )
@@ -395,7 +415,9 @@ class MemoryService(Service):
             sections.append(f"**{name}**:\n" + "\n".join(f"- {x.content}" for x in items))
         return "\n\n".join(sections)
 
-    async def summarize_from_messages(self, room_id: UUID, agent_id: UUID, agent_name: str, messages: list[object]) -> None:
+    async def summarize_from_messages(
+        self, room_id: UUID, agent_id: UUID, agent_name: str, messages: list[object]
+    ) -> None:
         # `messages` is a list of elizaos Memory objects; we only use common fields.
         dialogue = []
         for m in messages:
@@ -465,7 +487,9 @@ class MemoryService(Service):
             formatted.append(f"{sender}: {text}")
         existing = await self.get_long_term_memories(entity_id, None, 30)
         existing_text = (
-            "\n".join(f"[{m.category.value}] {m.content} (confidence: {m.confidence})" for m in existing)
+            "\n".join(
+                f"[{m.category.value}] {m.content} (confidence: {m.confidence})" for m in existing
+            )
             if existing
             else "None yet"
         )
@@ -488,4 +512,3 @@ class MemoryService(Service):
                     source="conversation",
                     metadata={"roomId": str(room_id), "extractedAt": int(time.time() * 1000)},
                 )
-

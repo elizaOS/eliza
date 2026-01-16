@@ -47,27 +47,35 @@ impl Provider for ContextBenchProvider {
             Ok(ProviderResult {
                 text: Some(format!("# Benchmark Context\n{}", ctx)),
                 values: Some(
-                    [("benchmark_has_context".to_string(), serde_json::Value::Bool(true))]
-                        .into_iter()
-                        .collect(),
+                    [(
+                        "benchmark_has_context".to_string(),
+                        serde_json::Value::Bool(true),
+                    )]
+                    .into_iter()
+                    .collect(),
                 ),
                 data: Some(
-                    [("benchmarkContext".to_string(), serde_json::Value::String(ctx))]
-                        .into_iter()
-                        .collect(),
+                    [(
+                        "benchmarkContext".to_string(),
+                        serde_json::Value::String(ctx),
+                    )]
+                    .into_iter()
+                    .collect(),
                 ),
             })
         } else {
             Ok(ProviderResult {
                 text: None,
                 values: Some(
-                    [("benchmark_has_context".to_string(), serde_json::Value::Bool(false))]
-                        .into_iter()
-                        .collect(),
+                    [(
+                        "benchmark_has_context".to_string(),
+                        serde_json::Value::Bool(false),
+                    )]
+                    .into_iter()
+                    .collect(),
                 ),
                 data: None,
             })
         }
     }
 }
-

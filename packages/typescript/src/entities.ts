@@ -24,7 +24,9 @@ interface ParsedResolution {
   };
 }
 
-function parseEntityResolutionXml(xml: string): (ParsedResolution & { type?: string; entityId?: string }) | null {
+function parseEntityResolutionXml(
+  xml: string,
+): (ParsedResolution & { type?: string; entityId?: string }) | null {
   if (!xml) return null;
 
   const trimmed = xml.trim();
@@ -87,7 +89,8 @@ function parseEntityResolutionXml(xml: string): (ParsedResolution & { type?: str
             if (!m || typeof m !== "object") continue;
             const mo = m as Record<string, unknown>;
             const name = typeof mo.name === "string" ? mo.name : undefined;
-            const reason = typeof mo.reason === "string" ? mo.reason : undefined;
+            const reason =
+              typeof mo.reason === "string" ? mo.reason : undefined;
             if (name) jMatches.push({ name, reason });
           }
         }
@@ -343,7 +346,11 @@ export async function findEntityByName(
     const matchKey = stripAt(firstMatch.name);
 
     const matchingEntity = allEntities.find((entity) => {
-      if (entity.names.some((n) => stripAt(n) === matchKey || normalize(n) === matchName)) {
+      if (
+        entity.names.some(
+          (n) => stripAt(n) === matchKey || normalize(n) === matchName,
+        )
+      ) {
         return true;
       }
 
@@ -357,7 +364,8 @@ export async function findEntityByName(
             (stripAt(cDataUsername) === matchKey ||
               normalize(cDataUsername) === matchName)) ||
           (cDataHandle &&
-            (stripAt(cDataHandle) === matchKey || normalize(cDataHandle) === matchName))
+            (stripAt(cDataHandle) === matchKey ||
+              normalize(cDataHandle) === matchName))
         );
       });
     });
@@ -386,7 +394,8 @@ export async function findEntityByName(
       const data = c.data as Record<string, unknown>;
       const username =
         typeof data.username === "string" ? data.username.toLowerCase() : null;
-      const handle = typeof data.handle === "string" ? data.handle.toLowerCase() : null;
+      const handle =
+        typeof data.handle === "string" ? data.handle.toLowerCase() : null;
       const handleNoAt = handle ? handle.replace(/^@+/, "") : null;
       return (
         (username !== null && resultLower.includes(username)) ||
@@ -403,7 +412,8 @@ export async function findEntityByName(
   // couldn't map it, and there's only a single candidate entity in context,
   // return it rather than failing closed.
   if (
-    (resolution.type === "USERNAME_MATCH" || resolution.type === "NAME_MATCH") &&
+    (resolution.type === "USERNAME_MATCH" ||
+      resolution.type === "NAME_MATCH") &&
     filteredEntities.length === 1
   ) {
     return filteredEntities[0] ?? null;

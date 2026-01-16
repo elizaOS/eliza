@@ -20,7 +20,12 @@ impl Action for ScheduleFollowUpAction {
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["REMIND_FOLLOW_UP", "SET_REMINDER", "REMIND_ABOUT", "FOLLOW_UP_WITH"]
+        &[
+            "REMIND_FOLLOW_UP",
+            "SET_REMINDER",
+            "REMIND_ABOUT",
+            "FOLLOW_UP_WITH",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -92,4 +97,3 @@ impl Action for ScheduleFollowUpAction {
         .with_data("days", days))
     }
 }
-

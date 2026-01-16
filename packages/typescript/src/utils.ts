@@ -31,8 +31,17 @@ function isRestrictedCSPEnvironment(): boolean {
     typeof globalThis !== "undefined" &&
     typeof (globalThis as Record<string, unknown>).chrome === "object" &&
     (globalThis as Record<string, unknown>).chrome !== null &&
-    typeof ((globalThis as Record<string, unknown>).chrome as Record<string, unknown>)?.runtime === "object" &&
-    typeof (((globalThis as Record<string, unknown>).chrome as Record<string, unknown>)?.runtime as Record<string, unknown>)?.id === "string";
+    typeof (
+      (globalThis as Record<string, unknown>).chrome as Record<string, unknown>
+    )?.runtime === "object" &&
+    typeof (
+      (
+        (globalThis as Record<string, unknown>).chrome as Record<
+          string,
+          unknown
+        >
+      )?.runtime as Record<string, unknown>
+    )?.id === "string";
 
   if (isBrowserExtension) {
     _isRestrictedCSP = true;
@@ -58,21 +67,29 @@ function isRestrictedCSPEnvironment(): boolean {
  */
 function simpleTemplateReplace(
   template: string,
-  context: Record<string, unknown>
+  context: Record<string, unknown>,
 ): string {
   // First handle triple-brace (unescaped) - {{{varName}}}
-  let result = template.replace(/\{\{\{([^{}]+)\}\}\}/g, (_match, varName: string) => {
-    const key = varName.trim();
-    const value = context[key];
-    if (value === undefined || value === null) return "";
-    return String(value);
-  });
+  let result = template.replace(
+    /\{\{\{([^{}]+)\}\}\}/g,
+    (_match, varName: string) => {
+      const key = varName.trim();
+      const value = context[key];
+      if (value === undefined || value === null) return "";
+      return String(value);
+    },
+  );
 
   // Then handle double-brace - {{varName}}
   result = result.replace(/\{\{([^{}]+)\}\}/g, (_match, varName: string) => {
     const key = varName.trim();
     // Skip block helpers like {{#if}}, {{/if}}, {{else}}, {{>partial}}
-    if (key.startsWith("#") || key.startsWith("/") || key.startsWith(">") || key === "else") {
+    if (
+      key.startsWith("#") ||
+      key.startsWith("/") ||
+      key.startsWith(">") ||
+      key === "else"
+    ) {
       return "";
     }
     const value = context[key];

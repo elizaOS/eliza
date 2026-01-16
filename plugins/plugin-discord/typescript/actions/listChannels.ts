@@ -52,7 +52,7 @@ export const listChannels: Action = {
 
       if (allowedChannelIds.length === 0) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I'm currently listening to all channels (no restrictions are set).",
             source: "discord",
           });
@@ -131,7 +131,7 @@ export const listChannels: Action = {
       };
 
       if (callback) {
-        await callback(response);
+        await callback?.(response);
       }
       return { success: true, text: response.text };
     } catch (error) {
@@ -144,7 +144,7 @@ export const listChannels: Action = {
         "Error listing channels"
       );
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I encountered an error while trying to list the channels. Please try again.",
           source: "discord",
         });

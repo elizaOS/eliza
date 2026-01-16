@@ -48,7 +48,7 @@ async function listPromptTxtFiles(dir) {
 
   try {
     await walk(dir);
-  } catch (e) {
+  } catch (_e) {
     // Directory might not exist (e.g., plugins/ in minimal checkouts).
   }
 
@@ -81,9 +81,21 @@ function scanContent(filePath, content) {
       re: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/,
       severity: "error",
     },
-    { name: "Slack token", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/, severity: "error" },
-    { name: "AWS access key id", re: /\bAKIA[0-9A-Z]{16}\b/, severity: "error" },
-    { name: "Google API key", re: /\bAIza[0-9A-Za-z\-_]{30,}\b/, severity: "error" },
+    {
+      name: "Slack token",
+      re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
+      severity: "error",
+    },
+    {
+      name: "AWS access key id",
+      re: /\bAKIA[0-9A-Z]{16}\b/,
+      severity: "error",
+    },
+    {
+      name: "Google API key",
+      re: /\bAIza[0-9A-Za-z\-_]{30,}\b/,
+      severity: "error",
+    },
     {
       name: "OpenAI-style key",
       re: /\bsk-[A-Za-z0-9]{20,}\b/,
@@ -121,7 +133,9 @@ async function main() {
   /** @type {string[]} */
   let pluginPromptFiles = [];
   try {
-    const pluginEntries = await fs.readdir(PLUGINS_DIR, { withFileTypes: true });
+    const pluginEntries = await fs.readdir(PLUGINS_DIR, {
+      withFileTypes: true,
+    });
     for (const entry of pluginEntries) {
       if (!entry.isDirectory()) continue;
       const candidate = path.join(PLUGINS_DIR, entry.name, "prompts");
@@ -171,4 +185,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(2);
 });
-

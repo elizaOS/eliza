@@ -1,12 +1,17 @@
-import pytest
+import secrets
 
-from elizaos import AgentRuntime, Character
-from elizaos.settings import decrypt_string_value, encrypt_string_value, get_salt
-from elizaos.settings import migrate_encrypted_string_value
-from elizaos.settings import _derive_key
+import pytest
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
-import secrets
+
+from elizaos import AgentRuntime, Character
+from elizaos.settings import (
+    _derive_key,
+    decrypt_string_value,
+    encrypt_string_value,
+    get_salt,
+    migrate_encrypted_string_value,
+)
 
 
 class TestSettingsCrypto:

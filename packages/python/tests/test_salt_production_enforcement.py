@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from elizaos.settings import get_salt
@@ -22,4 +20,3 @@ def test_get_salt_allows_override_in_production(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "true")
 
     assert get_salt() == "secretsalt"
-

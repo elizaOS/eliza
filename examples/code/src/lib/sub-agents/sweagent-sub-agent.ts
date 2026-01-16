@@ -4,15 +4,20 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   AbstractModel,
   DefaultAgent,
-  TextProblemStatement,
-  ToolHandler,
   type History,
   type ModelConfig,
   type ModelOutput,
   type TemplateConfig,
+  TextProblemStatement,
   type ToolConfig,
+  ToolHandler,
 } from "@elizaos/sweagent-root";
-import type { CodeTask, JsonValue, TaskResult, TaskTraceEvent } from "../../types.js";
+import type {
+  CodeTask,
+  JsonValue,
+  TaskResult,
+  TaskTraceEvent,
+} from "../../types.js";
 import type { SubAgent, SubAgentContext, SubAgentTool } from "./types.js";
 
 const SUBMISSION_MARKER = "<<SWE_AGENT_SUBMISSION>>";
@@ -40,8 +45,14 @@ function redactSensitiveText(text: string): string {
   out = out.replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED:AWS_ACCESS_KEY_ID]");
   out = out.replace(/\bASIA[0-9A-Z]{16}\b/g, "[REDACTED:AWS_ACCESS_KEY_ID]");
   out = out.replace(/\bghp_[A-Za-z0-9]{20,}\b/g, "[REDACTED:GITHUB_TOKEN]");
-  out = out.replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[REDACTED:GITHUB_TOKEN]");
-  out = out.replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED:SLACK_TOKEN]");
+  out = out.replace(
+    /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+    "[REDACTED:GITHUB_TOKEN]",
+  );
+  out = out.replace(
+    /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
+    "[REDACTED:SLACK_TOKEN]",
+  );
   out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, "Bearer [REDACTED]");
   out = out.replace(/\bBasic\s+[A-Za-z0-9+/=]{10,}\b/g, "Basic [REDACTED]");
   out = out.replace(/(password\s*[:=]\s*)(\S+)/gi, "$1[REDACTED]");
@@ -161,7 +172,10 @@ interface SweAgentEnvironment {
   readFile: (p: string, encoding?: string) => Promise<string>;
   writeFile: (p: string, content: string) => Promise<void>;
   setEnvVariables: (vars: Record<string, string>) => Promise<void>;
-  executeCommand: (command: string, options?: Record<string, JsonValue>) => Promise<void>;
+  executeCommand: (
+    command: string,
+    options?: Record<string, JsonValue>,
+  ) => Promise<void>;
   interruptSession: () => Promise<void>;
   getCwd?: () => string;
   repo?: { repoName: string };
@@ -207,13 +221,17 @@ class LocalToolEnvironment implements SweAgentEnvironment {
 
   async readFile(p: string, encoding: string = "utf-8"): Promise<string> {
     const resolved =
-      p === "/root/model.patch" ? this.patchPath : path.resolve(this.workingDirectory, p);
+      p === "/root/model.patch"
+        ? this.patchPath
+        : path.resolve(this.workingDirectory, p);
     return await fs.readFile(resolved, encoding);
   }
 
   async writeFile(p: string, content: string): Promise<void> {
     const resolved =
-      p === "/root/model.patch" ? this.patchPath : path.resolve(this.workingDirectory, p);
+      p === "/root/model.patch"
+        ? this.patchPath
+        : path.resolve(this.workingDirectory, p);
     await ensureDir(path.dirname(resolved));
     await fs.writeFile(resolved, content, "utf-8");
   }
@@ -276,8 +294,16 @@ export class SweAgentSubAgent implements SubAgent {
   async execute(task: CodeTask, context: SubAgentContext): Promise<TaskResult> {
     this.cancelled = false;
 
-    const { runtime, workingDirectory, tools, onProgress, onMessage, onTrace, isCancelled, isPaused } =
-      context;
+    const {
+      runtime,
+      workingDirectory,
+      tools,
+      onProgress,
+      onMessage,
+      onTrace,
+      isCancelled,
+      isPaused,
+    } = context;
 
     const shellTool = findTool(tools, "shell");
 
@@ -287,13 +313,17 @@ export class SweAgentSubAgent implements SubAgent {
         summary: "SWE-agent requires a git repository",
         filesCreated: [],
         filesModified: [],
-        error: "Not a git repository (git rev-parse --is-inside-work-tree returned false)",
+        error:
+          "Not a git repository (git rev-parse --is-inside-work-tree returned false)",
       };
     }
 
     const beforeStatus = await getGitStatus(shellTool);
 
-    const patchPath = path.resolve(workingDirectory, ".eliza/sweagent/model.patch");
+    const patchPath = path.resolve(
+      workingDirectory,
+      ".eliza/sweagent/model.patch",
+    );
     const env = new LocalToolEnvironment({
       workingDirectory,
       shellTool,
@@ -383,7 +413,10 @@ export class SweAgentSubAgent implements SubAgent {
       iteration += 1;
       onProgress({
         taskId: task.id ?? "",
-        progress: Math.min(90, Math.round((iteration / this.maxIterations) * 80)),
+        progress: Math.min(
+          90,
+          Math.round((iteration / this.maxIterations) * 80),
+        ),
       });
 
       const step = await agent.step();
@@ -419,7 +452,8 @@ export class SweAgentSubAgent implements SubAgent {
       patchExists = false;
     }
 
-    const success = patchExists || delta.created.length + delta.modified.length > 0;
+    const success =
+      patchExists || delta.created.length + delta.modified.length > 0;
     if (!success) {
       return {
         success: false,
@@ -445,4 +479,3 @@ export function createSweAgentSubAgent(config?: {
 }): SubAgent {
   return new SweAgentSubAgent(config);
 }
-

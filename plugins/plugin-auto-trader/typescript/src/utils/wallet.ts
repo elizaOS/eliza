@@ -1,6 +1,6 @@
-import { logger, type IAgentRuntime } from '@elizaos/core';
-import { Keypair } from '@solana/web3.js';
-import { decodeBase58 } from './utils.ts'; // decodeBase58 is imported from utils.ts
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import { Keypair } from "@solana/web3.js";
+import { decodeBase58 } from "./utils.ts"; // decodeBase58 is imported from utils.ts
 
 /**
  * Gets wallet keypair from runtime settings.
@@ -13,17 +13,17 @@ import { decodeBase58 } from './utils.ts'; // decodeBase58 is imported from util
  * @throws Error if private key is missing or invalid
  */
 export function getWalletKeypair(runtime?: IAgentRuntime): Keypair {
-  const privateKeyString = runtime?.getSetting('SOLANA_PRIVATE_KEY');
+  const privateKeyString = runtime?.getSetting("SOLANA_PRIVATE_KEY");
   if (!privateKeyString) {
     // It's important to distinguish this error source if multiple getWalletKeypair functions exist.
-    throw new Error('No wallet private key configured (invoked from degenTrader/utils/wallet.ts)');
+    throw new Error("No wallet private key configured (invoked from degenTrader/utils/wallet.ts)");
   }
 
   try {
     const privateKeyBytes = decodeBase58(privateKeyString);
     return Keypair.fromSecretKey(privateKeyBytes);
   } catch (error) {
-    logger.error('Failed to create wallet keypair (in degenTrader/utils/wallet.ts):', error);
+    logger.error("Failed to create wallet keypair (in degenTrader/utils/wallet.ts):", error);
     throw error;
   }
 }

@@ -11,9 +11,9 @@ import {
   getSimplifiedMarketsTemplate,
   getSpreadTemplate,
   orderTemplate,
+  researchMarketTemplate,
   retrieveAllMarketsTemplate,
   setupWebsocketTemplate,
-  researchMarketTemplate,
 } from "./generated/prompts/typescript/prompts";
 
 export {

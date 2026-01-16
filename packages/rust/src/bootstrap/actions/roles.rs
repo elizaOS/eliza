@@ -41,7 +41,13 @@ impl Action for UpdateRoleAction {
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["ASSIGN_ROLE", "CHANGE_ROLE", "SET_ROLE", "MODIFY_PERMISSIONS", "GRANT_ROLE"]
+        &[
+            "ASSIGN_ROLE",
+            "CHANGE_ROLE",
+            "SET_ROLE",
+            "MODIFY_PERMISSIONS",
+            "GRANT_ROLE",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -101,9 +107,9 @@ impl Action for UpdateRoleAction {
             .await?
             .ok_or_else(|| PluginError::NotFound("Room not found".to_string()))?;
 
-        let world_id = room.world_id.ok_or_else(|| {
-            PluginError::InvalidInput("Room has no world".to_string())
-        })?;
+        let world_id = room
+            .world_id
+            .ok_or_else(|| PluginError::InvalidInput("Room has no world".to_string()))?;
 
         let world = runtime
             .get_world(world_id)
@@ -162,7 +168,12 @@ impl Action for UpdateRoleAction {
             "MEMBER" => Role::Member,
             "GUEST" => Role::Guest,
             "NONE" => Role::None,
-            _ => return Err(PluginError::InvalidInput(format!("Invalid role: {}", new_role_str))),
+            _ => {
+                return Err(PluginError::InvalidInput(format!(
+                    "Invalid role: {}",
+                    new_role_str
+                )))
+            }
         };
 
         // Get old role
@@ -202,4 +213,3 @@ impl Action for UpdateRoleAction {
         .with_data("thought", thought))
     }
 }
-

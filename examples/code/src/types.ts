@@ -210,7 +210,7 @@ export interface CodeTaskMetadata {
   /** Todos created during task execution */
   todos?: SubAgentTodo[];
   /** Additional plugin-specific metadata. */
-  [key: string]: JsonValue | undefined;
+  [key: string]: unknown;
 }
 
 /** Code task - uses core Task with typed metadata */

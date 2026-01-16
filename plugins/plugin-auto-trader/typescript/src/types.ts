@@ -1,11 +1,13 @@
-import { IAgentRuntime as AgentRuntime, UUID } from '@elizaos/core';
 // Import core wallet and token types
 import type {
-  IWalletService,
+  IAgentRuntime as AgentRuntime,
   WalletPortfolio as CoreWalletPortfolio,
+  IWalletService,
+  TokenBalance,
+  TokenData,
+  UUID,
   WalletAsset,
-} from '@elizaos/core';
-import type { ITokenDataService, TokenData, TokenBalance } from '@elizaos/core';
+} from "@elizaos/core";
 
 // #region --- Portfolio and Trading Data Interfaces ---
 
@@ -54,14 +56,14 @@ export interface TradingStrategy {
 }
 
 export enum TradeType {
-  BUY = 'BUY',
-  SELL = 'SELL',
+  BUY = "BUY",
+  SELL = "SELL",
 }
 
 export enum OrderType {
-  MARKET = 'MARKET',
-  LIMIT = 'LIMIT',
-  STOP = 'STOP',
+  MARKET = "MARKET",
+  LIMIT = "LIMIT",
+  STOP = "STOP",
 }
 
 export interface TradeOrder {
@@ -125,7 +127,7 @@ export interface HistoricalDataService {
     interval: string,
     startDate: Date,
     endDate: Date,
-    dataSource: string
+    dataSource: string,
   ): Promise<OHLCV[]>;
 }
 
@@ -141,7 +143,7 @@ export interface TradeSimulationResult {
 }
 
 // Use core wallet types where possible, add custom extensions as needed
-export { IWalletService, TokenData, TokenBalance };
+export type { IWalletService, TokenData, TokenBalance };
 
 // Extend core types for plugin-specific needs
 export interface WalletPortfolio extends CoreWalletPortfolio {
@@ -202,8 +204,12 @@ export interface RandomStrategyParams {
 
 export interface RuleBasedStrategyParams {
   indicators?: string[];
-  buyConditions?: { [indicator: string]: { threshold: number; condition: 'above' | 'below' } };
-  sellConditions?: { [indicator: string]: { threshold: number; condition: 'above' | 'below' } };
+  buyConditions?: {
+    [indicator: string]: { threshold: number; condition: "above" | "below" };
+  };
+  sellConditions?: {
+    [indicator: string]: { threshold: number; condition: "above" | "below" };
+  };
   riskSettings?: {
     maxPositionSize?: number;
     stopLossPercentage?: number;

@@ -1,8 +1,7 @@
-import { describe, expect, test } from "vitest";
-import { writeFileSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { describe, expect, test } from "vitest";
 import { loadWasmPlugin } from "../wasm-loader";
 
 describe("WASM Loader - limits", () => {
@@ -19,4 +18,3 @@ describe("WASM Loader - limits", () => {
     ).rejects.toThrow(/WASM binary too large/);
   });
 });
-
