@@ -64,11 +64,26 @@ import {
   getLocalServerUrl,
   logger,
 } from '../index';
-import {
-  MarkableExtractor,
-  createStreamingContext,
-} from '../utils/streaming';
+import { MarkableExtractor, createStreamingContext } from '../utils/streaming';
 // Streaming context import removed - using onStreamChunk directly in dynamicPromptExecFromState
+
+/**
+ * Escape Handlebars syntax in a string to prevent template injection.
+ *
+ * WHY: When embedding LLM-generated text into continuation prompts, the text
+ * goes through Handlebars.compile(). If the LLM output contains {{variable}},
+ * Handlebars will try to substitute it with state values, corrupting the prompt.
+ *
+ * This function escapes {{ to \\{{ so Handlebars outputs literal {{.
+ *
+ * @param text - Text that may contain Handlebars-like syntax
+ * @returns Text with {{ escaped to prevent interpretation
+ */
+function escapeHandlebars(text: string): string {
+  // Escape {{ to \{{ - Handlebars will output this as literal {{
+  // Also escape {{{ for triple-brace (raw) syntax
+  return text.replace(/\{\{\{/g, '\\{{{').replace(/\{\{/g, '\\{{');
+}
 
 /**
  * Image description response from the model
@@ -251,7 +266,8 @@ export class DefaultMessageService implements IMessageService {
       // We use MarkableExtractor for tracking retry state (getStreamedText, isComplete).
       // WHY MarkableExtractor: We need isComplete() to work for retry/fallback logic.
       // The extractor is marked complete when dynamicPromptExecFromState succeeds.
-      const streamingExtractor = opts.onStreamChunk && !useMultiStep ? new MarkableExtractor() : undefined;
+      const streamingExtractor =
+        opts.onStreamChunk && !useMultiStep ? new MarkableExtractor() : undefined;
       const streamingContext = streamingExtractor
         ? createStreamingContext(streamingExtractor, opts.onStreamChunk!, responseId)
         : undefined;
@@ -1176,12 +1192,14 @@ export class DefaultMessageService implements IMessageService {
       streamingCtx?.reset?.();
 
       // Build continuation prompt with full context
+      // WHY escapeHandlebars: Prevent Handlebars template injection if streamedText contains {{...}}
       const prompt = runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate;
+      const escapedStreamedText = escapeHandlebars(streamedText);
       const continuationPrompt = `${prompt}
 
 [CONTINUATION REQUIRED]
 Your previous response was cut off. The user already received this text:
-"${streamedText}"
+"${escapedStreamedText}"
 
 Continue EXACTLY from where you left off. Do NOT repeat what was already said.
 Output ONLY the continuation, starting immediately after the last character above.`;
@@ -2010,11 +2028,13 @@ Output ONLY the continuation, starting immediately after the last character abov
 
       const summaryPrompt =
         runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate;
+      // WHY escapeHandlebars: Prevent Handlebars template injection if currentStreamedText contains {{...}}
+      const escapedCurrentStreamedText = escapeHandlebars(currentStreamedText);
       const summaryContinuationPrompt = `${summaryPrompt}
 
 [CONTINUATION REQUIRED]
 Your previous response was cut off. The user already received this text:
-"${currentStreamedText}"
+"${escapedCurrentStreamedText}"
 
 Continue EXACTLY from where you left off. Do NOT repeat what was already said.
 Output ONLY the continuation, starting immediately after the last character above.`;
@@ -2039,7 +2059,8 @@ Output ONLY the continuation, starting immediately after the last character abov
           contextCheckLevel: 0, // Fast mode for continuations - we trust the model
           // Pass through messageId so consumers can track which message the chunk belongs to
           onStreamChunk: summaryStreamingContext?.onStreamChunk
-            ? (chunk: string, messageId?: string) => summaryStreamingContext!.onStreamChunk(chunk, messageId)
+            ? (chunk: string, messageId?: string) =>
+                summaryStreamingContext!.onStreamChunk(chunk, messageId)
             : undefined,
         },
       });
