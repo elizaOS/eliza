@@ -1,95 +1,49 @@
-import dotenv from 'dotenv';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-
 /**
- * Expands a file path starting with `~` to the project directory.
+ * Sanitizes a JSON object by replacing problematic Unicode escape sequences
+ * that could cause errors during JSON serialization/storage
  *
- * @param filepath - The path to expand.
- * @returns The expanded path.
+ * @param value - The value to sanitize
+ * @param seen - WeakSet to track circular references (internal use)
+ * @returns The sanitized value
  */
-export function expandTildePath(filepath: string): string {
-  if (filepath && filepath.startsWith('~')) {
-    return path.join(process.cwd(), filepath.slice(1));
+export function sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+  if (value === null || value === undefined) {
+    return value;
   }
-  return filepath;
-}
 
-/**
- * Resolves the path to the nearest `.env` file.
- *
- * If no `.env` file is found when traversing up from the starting directory,
- * a path to `.env` in the starting directory is returned.
- *
- * @param startDir - The directory to start searching from. Defaults to the
- *   current working directory.
- * @returns The resolved path to the `.env` file.
- */
-export function resolveEnvFile(startDir: string = process.cwd()): string {
-  let currentDir = startDir;
+  if (typeof value === 'string') {
+    // Handle multiple cases that can cause PostgreSQL/PgLite JSON parsing errors:
+    // 1. Remove null bytes (U+0000) which are not allowed in PostgreSQL text fields
+    // 2. Escape single backslashes that might be interpreted as escape sequences
+    // 3. Fix broken Unicode escape sequences (\u not followed by 4 hex digits)
+    return value
+      .replace(/\u0000/g, '') // Remove null bytes
+      .replace(/\\(?!["\\/bfnrtu])/g, '\\\\') // Escape single backslashes not part of valid escape sequences
+      .replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u'); // Fix malformed Unicode escape sequences
+  }
 
-  while (true) {
-    const candidate = path.join(currentDir, '.env');
-    if (existsSync(candidate)) {
-      return candidate;
+  if (typeof value === 'object') {
+    if (seen.has(value as object)) {
+      return null;
+    } else {
+      seen.add(value as object);
     }
 
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      break;
-    }
-    currentDir = parentDir;
-  }
-
-  return path.join(startDir, '.env');
-}
-
-/**
- * Resolves the directory used for PGlite database storage.
- *
- * Resolution order:
- * 1. The `dir` argument if provided.
- * 2. The `PGLITE_DATA_DIR` environment variable.
- * 3. The `fallbackDir` argument if provided.
- * 4. `./.eliza/.elizadb` relative to the current working directory.
- *
- * @param dir - Optional directory preference.
- * @param fallbackDir - Optional fallback directory when env var is not set.
- * @returns The resolved data directory with any tilde expanded.
- */
-export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
-  const envPath = resolveEnvFile();
-  if (existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-  }
-
-  // cwd might be plugin-sql if we're running tests from monorepo
-  // are we in monorepo config?
-  let monoPath;
-  if (existsSync(path.join(process.cwd(), 'packages', 'core'))) {
-    monoPath = process.cwd();
-  } else {
-    const twoUp = path.resolve(process.cwd(), '../..'); // assuming running from package
-    if (existsSync(path.join(twoUp, 'packages', 'core'))) {
-      monoPath = twoUp;
+    if (Array.isArray(value)) {
+      return value.map((item) => sanitizeJsonObject(item, seen));
+    } else {
+      const result: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(value)) {
+        // Also sanitize object keys
+        const sanitizedKey =
+          typeof key === 'string'
+            ? key.replace(/\u0000/g, '').replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u')
+            : key;
+        result[sanitizedKey] = sanitizeJsonObject(val, seen);
+      }
+      return result;
     }
   }
 
-  const base =
-    dir ??
-    process.env.PGLITE_DATA_DIR ??
-    fallbackDir ??
-    (monoPath ? path.join(monoPath, '.eliza', '.elizadb') : undefined) ??
-    path.join(process.cwd(), '.eliza', '.elizadb');
-
-  // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)
-  const resolved = expandTildePath(base);
-  const legacyPath = path.join(process.cwd(), '.elizadb');
-  if (resolved === legacyPath) {
-    const newPath = path.join(process.cwd(), '.eliza', '.elizadb');
-    process.env.PGLITE_DATA_DIR = newPath;
-    return newPath;
-  }
-
-  return resolved;
+  return value;
 }

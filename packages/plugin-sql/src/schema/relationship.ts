@@ -9,6 +9,7 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { Metadata } from '@elizaos/core';
 import { agentTable } from './agent';
 import { entityTable } from './entity';
 
@@ -36,7 +37,7 @@ export const relationshipTable = pgTable(
       .notNull()
       .references(() => agentTable.id, { onDelete: 'cascade' }),
     tags: text('tags').array(),
-    metadata: jsonb('metadata'),
+    metadata: jsonb('metadata').$type<Metadata>(),
   },
   (table) => [
     index('idx_relationships_users').on(table.sourceEntityId, table.targetEntityId),
