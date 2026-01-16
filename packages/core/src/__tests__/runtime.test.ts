@@ -299,18 +299,6 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         },
       ]);
       (
-        mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<
-          IDatabaseAdapter['getEntitiesByIds']
-        >
-      ).mockResolvedValue([
-        {
-          id: agentId,
-          agentId: agentId,
-          names: [mockCharacter.name],
-          metadata: {},
-        },
-      ]);
-      (
         mockDatabaseAdapter.getRoomsByIds as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>
       ).mockResolvedValue([]);
       (
@@ -352,18 +340,6 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         },
       ]);
       (
-        mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<
-          IDatabaseAdapter['getEntitiesByIds']
-        >
-      ).mockResolvedValue([
-        {
-          id: agentId,
-          agentId: agentId,
-          names: [mockCharacter.name],
-          metadata: {},
-        },
-      ]);
-      (
         mockDatabaseAdapter.getRoomsByIds as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>
       ).mockResolvedValue([]);
       (
@@ -371,7 +347,6 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           IDatabaseAdapter['getParticipantsForRoom']
         >
       ).mockResolvedValue([]);
-      // mockDatabaseAdapter.getAgent is NOT called by initialize anymore after ensureAgentExists returns the agent
     });
 
     afterEach(() => {
@@ -383,8 +358,6 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
       expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-      // expect(mockDatabaseAdapter.getAgent).toHaveBeenCalledWith(agentId); // This is no longer called
-      expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
       expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
@@ -396,7 +369,6 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
       expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-      expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
       expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
@@ -411,7 +383,6 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(mockDatabaseAdapter.isReady).toHaveBeenCalled();
       expect(mockDatabaseAdapter.init).not.toHaveBeenCalled();
       expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-      expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
       expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
@@ -1419,6 +1390,131 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect(typeof result2).toBe('string');
         expect(typeof result3).toBe('string');
       });
+    });
+  });
+
+  describe('ensureEmbeddingDimension', () => {
+    it('should use EMBEDDING_DIMENSION from settings and skip API call', async () => {
+      const characterWithEmbeddingDimension: Character = {
+        ...mockCharacter,
+        settings: {
+          EMBEDDING_DIMENSION: 1536,
+        },
+      };
+
+      const runtimeWithDimension = new AgentRuntime({
+        character: characterWithEmbeddingDimension,
+        agentId: agentId,
+        adapter: mockDatabaseAdapter,
+      });
+
+      // Register a mock embedding model
+      const embeddingHandler = mock().mockResolvedValue([0.1, 0.2, 0.3]);
+      runtimeWithDimension.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        embeddingHandler,
+        'test-provider'
+      );
+
+      // Reset mock call counts
+      (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
+
+      await runtimeWithDimension.ensureEmbeddingDimension();
+
+      // Should call ensureEmbeddingDimension with the configured value
+      expect(mockDatabaseAdapter.ensureEmbeddingDimension).toHaveBeenCalledWith(1536);
+      // Should NOT call the embedding model since dimension was provided
+      expect(embeddingHandler).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to API call when EMBEDDING_DIMENSION is not set', async () => {
+      const runtimeWithoutDimension = new AgentRuntime({
+        character: mockCharacter,
+        agentId: agentId,
+        adapter: mockDatabaseAdapter,
+      });
+
+      // Register a mock embedding model that returns a 768-dim vector
+      const embeddingHandler = mock().mockResolvedValue(new Array(768).fill(0.1));
+      runtimeWithoutDimension.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        embeddingHandler,
+        'test-provider'
+      );
+
+      // Reset mock call counts
+      (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
+
+      await runtimeWithoutDimension.ensureEmbeddingDimension();
+
+      // Should call the embedding model to determine dimension
+      expect(embeddingHandler).toHaveBeenCalled();
+      // Should call ensureEmbeddingDimension with the inferred dimension
+      expect(mockDatabaseAdapter.ensureEmbeddingDimension).toHaveBeenCalledWith(768);
+    });
+
+    it('should fall back to API call when EMBEDDING_DIMENSION is invalid', async () => {
+      const characterWithInvalidDimension: Character = {
+        ...mockCharacter,
+        settings: {
+          EMBEDDING_DIMENSION: 'not-a-number',
+        },
+      };
+
+      const runtimeWithInvalidDimension = new AgentRuntime({
+        character: characterWithInvalidDimension,
+        agentId: agentId,
+        adapter: mockDatabaseAdapter,
+      });
+
+      // Register a mock embedding model
+      const embeddingHandler = mock().mockResolvedValue(new Array(512).fill(0.1));
+      runtimeWithInvalidDimension.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        embeddingHandler,
+        'test-provider'
+      );
+
+      // Reset mock call counts
+      (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
+
+      await runtimeWithInvalidDimension.ensureEmbeddingDimension();
+
+      // Should fall back to API call since dimension is invalid
+      expect(embeddingHandler).toHaveBeenCalled();
+      expect(mockDatabaseAdapter.ensureEmbeddingDimension).toHaveBeenCalledWith(512);
+    });
+
+    it('should handle string EMBEDDING_DIMENSION setting', async () => {
+      const characterWithStringDimension: Character = {
+        ...mockCharacter,
+        settings: {
+          EMBEDDING_DIMENSION: '3072',
+        },
+      };
+
+      const runtimeWithStringDimension = new AgentRuntime({
+        character: characterWithStringDimension,
+        agentId: agentId,
+        adapter: mockDatabaseAdapter,
+      });
+
+      // Register a mock embedding model
+      const embeddingHandler = mock().mockResolvedValue([0.1]);
+      runtimeWithStringDimension.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        embeddingHandler,
+        'test-provider'
+      );
+
+      // Reset mock call counts
+      (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
+
+      await runtimeWithStringDimension.ensureEmbeddingDimension();
+
+      // Should parse string and use it
+      expect(mockDatabaseAdapter.ensureEmbeddingDimension).toHaveBeenCalledWith(3072);
+      expect(embeddingHandler).not.toHaveBeenCalled();
     });
   });
 }); // End of main describe block

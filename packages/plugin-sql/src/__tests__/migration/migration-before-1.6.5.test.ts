@@ -6,11 +6,11 @@
  *
  * Works with both PGLite (default) and PostgreSQL (when POSTGRES_URL is set).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { sql } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/pglite';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite/vector';
+import { sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/pglite';
 import { migrateToEntityRLS } from '../../migrations';
 
 describe('migrateToEntityRLS (pre-1.6.5 migration)', () => {
@@ -229,28 +229,40 @@ describe('migrateToEntityRLS (pre-1.6.5 migration)', () => {
     });
 
     it('should skip schema migration but still run RLS cleanup', async () => {
-      // Enable RLS on rooms table to test cleanup
-      await db.execute(sql`ALTER TABLE rooms ENABLE ROW LEVEL SECURITY`);
+      // This test verifies RLS cleanup when data isolation is DISABLED
+      // Save and unset ENABLE_DATA_ISOLATION to test cleanup behavior
+      const savedEnableDataIsolation = process.env.ENABLE_DATA_ISOLATION;
+      delete process.env.ENABLE_DATA_ISOLATION;
 
-      // Verify RLS is enabled
-      const beforeRls = await db.execute(sql`
-        SELECT relrowsecurity FROM pg_class WHERE relname = 'rooms'
-      `);
-      expect(beforeRls.rows[0].relrowsecurity).toBe(true);
+      try {
+        // Enable RLS on rooms table to test cleanup
+        await db.execute(sql`ALTER TABLE rooms ENABLE ROW LEVEL SECURITY`);
 
-      // Run migration (should skip schema changes but do RLS cleanup)
-      await migrateToEntityRLS(mockAdapter);
+        // Verify RLS is enabled
+        const beforeRls = await db.execute(sql`
+          SELECT relrowsecurity FROM pg_class WHERE relname = 'rooms'
+        `);
+        expect(beforeRls.rows[0].relrowsecurity).toBe(true);
 
-      // Verify RLS is disabled (cleanup happened)
-      const afterRls = await db.execute(sql`
-        SELECT relrowsecurity FROM pg_class WHERE relname = 'rooms'
-      `);
-      expect(afterRls.rows[0].relrowsecurity).toBe(false);
+        // Run migration (should skip schema changes but do RLS cleanup)
+        await migrateToEntityRLS(mockAdapter);
 
-      // Verify data is still intact
-      const rooms = await db.execute(sql`SELECT * FROM rooms`);
-      expect(rooms.rows).toHaveLength(1);
-      expect(rooms.rows[0].name).toBe('Test Room');
+        // Verify RLS is disabled (cleanup happened)
+        const afterRls = await db.execute(sql`
+          SELECT relrowsecurity FROM pg_class WHERE relname = 'rooms'
+        `);
+        expect(afterRls.rows[0].relrowsecurity).toBe(false);
+
+        // Verify data is still intact
+        const rooms = await db.execute(sql`SELECT * FROM rooms`);
+        expect(rooms.rows).toHaveLength(1);
+        expect(rooms.rows[0].name).toBe('Test Room');
+      } finally {
+        // Restore environment
+        if (savedEnableDataIsolation !== undefined) {
+          process.env.ENABLE_DATA_ISOLATION = savedEnableDataIsolation;
+        }
+      }
     });
 
     it('should not modify existing snake_case columns', async () => {

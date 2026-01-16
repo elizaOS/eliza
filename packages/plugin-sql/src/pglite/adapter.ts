@@ -40,13 +40,15 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
 
   /**
    * Execute a callback with isolation context.
-   * PGLite: No RLS support, just execute the callback in a simple transaction.
+   * PGLite: No RLS support, execute callback directly.
+   * We avoid db.transaction() because drizzle's transaction handling blocks on PGLite.
+   * PGLite handles async operations internally with its own queue.
    */
   public async withIsolationContext<T>(
     _entityId: UUID | null,
     callback: (tx: PgliteDatabase) => Promise<T>
   ): Promise<T> {
-    return this.db.transaction(callback);
+    return callback(this.db);
   }
 
   // Methods required by TypeScript but not in base class

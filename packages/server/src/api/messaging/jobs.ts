@@ -647,7 +647,7 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
     apiKeyAuthMiddleware,
     async (req: express.Request, res: express.Response) => {
       try {
-        const { jobId } = req.params;
+        const jobId = String(req.params.jobId);
 
         const job = jobs.get(jobId);
         if (!job) {

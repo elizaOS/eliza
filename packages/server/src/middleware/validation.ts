@@ -32,7 +32,7 @@ export const agentExistsMiddleware = (elizaOS: ElizaOS) => {
  */
 export const validateUuidMiddleware = (paramName: string) => {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const paramValue = req.params[paramName];
+    const paramValue = String(req.params[paramName]);
     let validatedUuid: UUID | null;
 
     // Use enhanced validation for channel IDs
@@ -68,7 +68,7 @@ export const validateChannelIdMiddleware = () => {
       return sendError(res, 400, 'MISSING_CHANNEL_ID', 'Channel ID is required');
     }
 
-    const validatedChannelId = validateChannelId(channelId, clientIp);
+    const validatedChannelId = validateChannelId(String(channelId), clientIp);
 
     if (!validatedChannelId) {
       // Rate limit failed attempts to prevent brute force
