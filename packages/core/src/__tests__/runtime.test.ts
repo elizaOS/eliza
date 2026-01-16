@@ -840,6 +840,33 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect(runtime.actions).toContain(action1);
         expect(runtime.actions).toContain(action2);
       });
+
+      it('should unregister an action', () => {
+        const action = createMockAction('testAction');
+        runtime.registerAction(action);
+        expect(runtime.actions).toContain(action);
+
+        const result = runtime.unregisterAction('testAction');
+        expect(result).toBe(true);
+        expect(runtime.actions).not.toContain(action);
+      });
+
+      it('should return false when unregistering non-existent action', () => {
+        const result = runtime.unregisterAction('nonExistentAction');
+        expect(result).toBe(false);
+      });
+
+      it('should only unregister the specified action', () => {
+        const action1 = createMockAction('testAction1');
+        const action2 = createMockAction('testAction2');
+        runtime.registerAction(action1);
+        runtime.registerAction(action2);
+
+        const result = runtime.unregisterAction('testAction1');
+        expect(result).toBe(true);
+        expect(runtime.actions).not.toContain(action1);
+        expect(runtime.actions).toContain(action2);
+      });
     });
 
     describe('model settings from character configuration', () => {
