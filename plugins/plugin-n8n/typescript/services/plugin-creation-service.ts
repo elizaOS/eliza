@@ -28,8 +28,13 @@ export class PluginCreationService extends Service {
   private createdPlugins: Set<string> = new Set();
   private lastJobCreation: number = 0;
   private jobCreationCount: number = 0;
+  protected declare runtime: IAgentRuntime;
 
   public readonly capabilityDescription: string = "Plugin creation service";
+
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime);
+  }
 
   async stop(): Promise<void> {
     for (const job of this.jobs.values()) {
