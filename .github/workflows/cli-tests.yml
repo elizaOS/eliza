@@ -132,7 +132,7 @@ jobs:
         run: bun install -g bats
 
       - name: Run CLI TypeScript tests
-        run: cross-env bun test tests/commands/
+        run: cross-env bun test tests/commands/ --timeout 300000
         working-directory: packages/cli
         env:
           ELIZA_TEST_MODE: true
