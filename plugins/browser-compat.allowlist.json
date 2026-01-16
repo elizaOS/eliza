@@ -1,5 +1,8 @@
 {
   "plugin-computeruse": {
     "reason": "Node-only: interacts with local machine/MCP and uses process.env."
+  },
+  "plugin-ollama": {
+    "reason": "Node-only: depends on server-side AI SDK utilities not browser-compatible."
   }
 }

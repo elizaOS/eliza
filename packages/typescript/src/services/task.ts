@@ -4,6 +4,7 @@ import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 import type { State } from "../types/state";
+import type { JsonValue } from "../types";
 import type { Task } from "../types/task";
 
 /**
@@ -208,13 +209,6 @@ export class TaskService extends Service {
       // Finally default to 0 if neither exists
       let taskStartTime: number;
 
-      // if tags does not contain "repeat", execute immediately
-      if (!task.tags?.includes("repeat")) {
-        // does not contain repeat
-        await this.executeTask(task);
-        continue;
-      }
-
       if (typeof task.updatedAt === "number") {
         taskStartTime = task.updatedAt;
       } else if (
@@ -222,15 +216,15 @@ export class TaskService extends Service {
         typeof task.metadata.updatedAt === "number"
       ) {
         taskStartTime = task.metadata.updatedAt;
+      } else if (typeof task.updatedAt === "bigint") {
+        taskStartTime = Number(task.updatedAt);
+      } else if (typeof task.updatedAt === "bigint") {
+        taskStartTime = Number(task.updatedAt);
       } else if (task.updatedAt) {
         taskStartTime = new Date(task.updatedAt).getTime();
       } else {
         taskStartTime = 0; // Default to immediate execution if no timestamp found
       }
-
-      // Get updateInterval from metadata
-      const taskMetadata = task.metadata;
-      const updateIntervalMs = taskMetadata?.updateInterval ?? 0; // update immediately
 
       // if tags does not contain "repeat", execute immediately
       if (!task.tags?.includes("repeat")) {
@@ -238,9 +232,16 @@ export class TaskService extends Service {
         continue;
       }
 
+      // Get updateInterval from metadata
+      const taskMetadata = task.metadata;
+      const updateIntervalMs = taskMetadata?.updateInterval ?? 0; // update immediately
+
       const taskMetadataUpdatedAt = taskMetadata?.updatedAt;
       const taskMetadataCreatedAt = taskMetadata?.createdAt;
-      if (taskMetadataUpdatedAt === taskMetadataCreatedAt) {
+      if (
+        String(taskMetadataUpdatedAt ?? "") ===
+        String(taskMetadataCreatedAt ?? "")
+      ) {
         if (task.tags?.includes("immediate")) {
           this.runtime.logger.debug(
             {
@@ -330,7 +331,11 @@ export class TaskService extends Service {
       },
       "Executing task",
     );
-    await worker.execute(this.runtime, task.metadata || {}, task);
+    const taskOptions = (task.metadata ?? {}) as Record<
+      string,
+      JsonValue | object
+    >;
+    await worker.execute(this.runtime, taskOptions, task);
     //this.runtime.logger.debug('task.tags are', task.tags);
 
     // Handle repeating vs non-repeating tasks

@@ -1,11 +1,32 @@
 import { IAgentRuntime as AgentRuntime, UUID } from '@elizaos/core';
-// Import core wallet and token types
-import type {
-  IWalletService,
-  WalletPortfolio as CoreWalletPortfolio,
-  WalletAsset,
-} from '@elizaos/core';
-import type { ITokenDataService, TokenData, TokenBalance } from '@elizaos/core';
+
+export interface TokenBalance {
+  tokenAddress: string;
+  amount: string;
+  decimals?: number;
+}
+
+export interface TokenData {
+  address: string;
+  symbol?: string;
+  name?: string;
+  decimals?: number;
+}
+
+export interface ITokenDataService {
+  getTokenData(address: string): Promise<TokenData | null>;
+  getTokenBalance?(address: string): Promise<TokenBalance | null>;
+}
+
+export interface WalletAsset {
+  tokenAddress: string;
+  amount: number;
+  usdValue?: number;
+}
+
+export interface IWalletService {
+  getPortfolio?(agentId: UUID): Promise<WalletPortfolio | null>;
+}
 
 // #region --- Portfolio and Trading Data Interfaces ---
 
@@ -140,12 +161,10 @@ export interface TradeSimulationResult {
   updatedPortfolio?: { [assetSymbol: string]: PortfolioAssetHolding };
 }
 
-// Use core wallet types where possible, add custom extensions as needed
-export { IWalletService, TokenData, TokenBalance };
-
-// Extend core types for plugin-specific needs
-export interface WalletPortfolio extends CoreWalletPortfolio {
-  // Any additional fields specific to auto-trader
+// Portfolio view for strategy contexts
+export interface WalletPortfolio {
+  items: PortfolioAssetHolding[];
+  totalValue?: number;
 }
 
 export interface PortfolioAssetHolding extends WalletAsset {

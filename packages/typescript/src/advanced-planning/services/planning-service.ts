@@ -70,6 +70,7 @@ interface PlanExecutionResult {
 }
 
 type WorkingMemory = Record<string, JsonValue>;
+type RuntimeAction = IAgentRuntime["actions"][number];
 
 class PlanWorkingMemory {
   private memory = new Map<string, JsonValue>();
@@ -265,13 +266,45 @@ export class PlanningService extends Service {
       abortController,
     });
 
+    const actionByName = this.buildActionLookup(runtime);
+
     try {
       if (plan.executionModel === "sequential") {
-        await this.executeSequential(runtime, plan, message, workingMemory, results, errors, callback, abortController.signal);
+        await this.executeSequential(
+          runtime,
+          actionByName,
+          plan,
+          message,
+          workingMemory,
+          results,
+          errors,
+          callback,
+          abortController.signal,
+        );
       } else if (plan.executionModel === "parallel") {
-        await this.executeParallel(runtime, plan, message, workingMemory, results, errors, callback, abortController.signal);
+        await this.executeParallel(
+          runtime,
+          actionByName,
+          plan,
+          message,
+          workingMemory,
+          results,
+          errors,
+          callback,
+          abortController.signal,
+        );
       } else if (plan.executionModel === "dag") {
-        await this.executeDAG(runtime, plan, message, workingMemory, results, errors, callback, abortController.signal);
+        await this.executeDAG(
+          runtime,
+          actionByName,
+          plan,
+          message,
+          workingMemory,
+          results,
+          errors,
+          callback,
+          abortController.signal,
+        );
       } else {
         throw new Error(`Unsupported execution model: ${plan.executionModel}`);
       }
@@ -313,6 +346,7 @@ export class PlanningService extends Service {
     plan: ActionPlan,
   ): Promise<{ valid: boolean; errors: string[]; warnings: string[] }> {
     const issues: string[] = [];
+    const actionByName = this.buildActionLookup(runtime);
 
     if (!plan.id || !plan.goal || !plan.steps) {
       issues.push("Plan missing required fields (id, goal, or steps)");
@@ -328,8 +362,7 @@ export class PlanningService extends Service {
         continue;
       }
 
-      const action = runtime.actions.find((a) => a.name === step.actionName);
-      if (!action) {
+      if (!actionByName.has(step.actionName)) {
         issues.push(`Action '${step.actionName}' not found in runtime`);
       }
     }
@@ -640,6 +673,7 @@ Focus on:
 
   private async executeSequential(
     runtime: IAgentRuntime,
+    actionByName: Map<string, RuntimeAction>,
     plan: ActionPlan,
     message: Memory,
     workingMemory: PlanWorkingMemory,
@@ -657,6 +691,7 @@ Focus on:
       try {
         const result = await this.executeStep(
           runtime,
+          actionByName,
           step,
           message,
           workingMemory,
@@ -686,6 +721,7 @@ Focus on:
 
   private async executeParallel(
     runtime: IAgentRuntime,
+    actionByName: Map<string, RuntimeAction>,
     plan: ActionPlan,
     message: Memory,
     workingMemory: PlanWorkingMemory,
@@ -696,7 +732,16 @@ Focus on:
   ): Promise<void> {
     const promises = plan.steps.map(async (step) => {
       try {
-        const result = await this.executeStep(runtime, step, message, workingMemory, results, callback, abortSignal);
+        const result = await this.executeStep(
+          runtime,
+          actionByName,
+          step,
+          message,
+          workingMemory,
+          results,
+          callback,
+          abortSignal,
+        );
         return { result, error: null as Error | null };
       } catch (e) {
         return { result: null as ActionResult | null, error: e instanceof Error ? e : new Error(String(e)) };
@@ -715,6 +760,7 @@ Focus on:
 
   private async executeDAG(
     runtime: IAgentRuntime,
+    actionByName: Map<string, RuntimeAction>,
     plan: ActionPlan,
     message: Memory,
     workingMemory: PlanWorkingMemory,
@@ -723,46 +769,42 @@ Focus on:
     callback?: HandlerCallback,
     abortSignal?: AbortSignal,
   ): Promise<void> {
-    const completed = new Set<UUID>();
-    const pending = new Set(plan.steps.map((s) => s.id).filter((id): id is UUID => Boolean(id)));
-
-    while (pending.size > 0 && !abortSignal?.aborted) {
-      const readySteps = plan.steps.filter(
-        (step) =>
-          Boolean(step.id) &&
-          pending.has(step.id as UUID) &&
-          (step.dependencies || []).every((depId) => completed.has(depId)),
-      );
-
-      if (readySteps.length === 0) {
-        throw new Error("No steps ready to execute - possible circular dependency");
+    const order = this.buildDagExecutionOrder(plan.steps);
+    const stepById = new Map<UUID, ActionStep>();
+    for (const step of plan.steps) {
+      if (step.id) {
+        stepById.set(step.id, step);
       }
+    }
 
-      const promises = readySteps.map(async (step) => {
-        try {
-          const result = await this.executeStep(runtime, step, message, workingMemory, results, callback, abortSignal);
-          return { stepId: step.id as UUID, result, error: null as Error | null };
-        } catch (e) {
-          return { stepId: step.id as UUID, result: null as ActionResult | null, error: e instanceof Error ? e : new Error(String(e)) };
-        }
-      });
+    for (const stepId of order) {
+      if (abortSignal?.aborted) {
+        throw new Error("Plan execution aborted");
+      }
+      const step = stepById.get(stepId);
+      if (!step) continue;
 
-      const stepResults = await Promise.all(promises);
-      for (const { stepId, result, error } of stepResults) {
-        pending.delete(stepId);
-        completed.add(stepId);
-
-        if (error) {
-          errors.push(error);
-        } else if (result) {
-          results.push(result);
-        }
+      try {
+        const result = await this.executeStep(
+          runtime,
+          actionByName,
+          step,
+          message,
+          workingMemory,
+          results,
+          callback,
+          abortSignal,
+        );
+        results.push(result);
+      } catch (e) {
+        errors.push(e instanceof Error ? e : new Error(String(e)));
       }
     }
   }
 
   private async executeStep(
     runtime: IAgentRuntime,
+    actionByName: Map<string, RuntimeAction>,
     step: ActionStep,
     message: Memory,
     workingMemory: PlanWorkingMemory,
@@ -774,7 +816,7 @@ Focus on:
       throw new Error("Step missing actionName");
     }
 
-    const action = runtime.actions.find((a) => a.name === step.actionName);
+    const action = actionByName.get(step.actionName);
     if (!action) {
       throw new Error(`Action '${step.actionName}' not found`);
     }
@@ -871,6 +913,114 @@ Focus on:
       }
     }
     return false;
+  }
+
+  private buildActionLookup(runtime: IAgentRuntime): Map<string, RuntimeAction> {
+    const actionByName = new Map<string, RuntimeAction>();
+    for (const action of runtime.actions) {
+      actionByName.set(action.name, action);
+    }
+    return actionByName;
+  }
+
+  private buildDagExecutionOrder(steps: ActionStep[]): UUID[] {
+    const depsRemaining = new Map<UUID, number>();
+    const dependents = new Map<UUID, UUID[]>();
+    const indexById = new Map<UUID, number>();
+
+    for (let i = 0; i < steps.length; i += 1) {
+      const id = steps[i]?.id;
+      if (!id) continue;
+      const dependencies = steps[i].dependencies ?? [];
+      depsRemaining.set(id, dependencies.length);
+      indexById.set(id, i);
+      for (const dep of dependencies) {
+        const list = dependents.get(dep);
+        if (list) {
+          list.push(id);
+        } else {
+          dependents.set(dep, [id]);
+        }
+      }
+    }
+
+    const readyHeap: number[] = [];
+    for (const [id, idx] of indexById) {
+      if ((depsRemaining.get(id) ?? 0) === 0) {
+        this.pushReadyStep(readyHeap, idx);
+      }
+    }
+
+    const order: UUID[] = [];
+    while (readyHeap.length > 0) {
+      const idx = this.popReadyStep(readyHeap);
+      if (idx === undefined) break;
+      const step = steps[idx];
+      if (!step?.id) continue;
+      const stepId = step.id;
+      order.push(stepId);
+
+      const nextSteps = dependents.get(stepId);
+      if (!nextSteps) continue;
+      for (const nextId of nextSteps) {
+        const remaining = depsRemaining.get(nextId);
+        if (remaining === undefined || remaining <= 0) continue;
+        const updated = remaining - 1;
+        depsRemaining.set(nextId, updated);
+        if (updated === 0) {
+          const nextIdx = indexById.get(nextId);
+          if (nextIdx !== undefined) {
+            this.pushReadyStep(readyHeap, nextIdx);
+          }
+        }
+      }
+    }
+
+    if (order.length !== indexById.size) {
+      throw new Error("No steps ready to execute - possible circular dependency");
+    }
+
+    return order;
+  }
+
+  private pushReadyStep(heap: number[], value: number): void {
+    heap.push(value);
+    let index = heap.length - 1;
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (heap[parent] <= heap[index]) break;
+      const tmp = heap[parent];
+      heap[parent] = heap[index];
+      heap[index] = tmp;
+      index = parent;
+    }
+  }
+
+  private popReadyStep(heap: number[]): number | undefined {
+    if (heap.length === 0) return undefined;
+    const result = heap[0];
+    const last = heap.pop();
+    if (last === undefined || heap.length === 0) {
+      return result;
+    }
+    heap[0] = last;
+    let index = 0;
+    const length = heap.length;
+    while (true) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      if (left >= length) break;
+      let smallest = left;
+      if (right < length && heap[right] < heap[left]) {
+        smallest = right;
+      }
+      if (heap[index] <= heap[smallest]) break;
+      const tmp = heap[index];
+      heap[index] = heap[smallest];
+      heap[smallest] = tmp;
+      index = smallest;
+    }
+    return result;
   }
 
   private buildAdaptationPrompt(

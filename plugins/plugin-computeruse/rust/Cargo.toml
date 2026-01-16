@@ -1,7 +1,8 @@
 [package]
 name = "elizaos-plugin-computeruse"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
+authors = ["elizaOS Contributors"]
 description = "Computer automation plugin for ElizaOS - enables AI agents to control the local machine (when supported) or a ComputerUse MCP server"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"

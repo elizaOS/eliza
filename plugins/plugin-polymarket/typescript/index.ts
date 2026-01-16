@@ -38,8 +38,18 @@ export type {
 } from "./types";
 export { ResearchStatus as ResearchStatusEnum } from "./types";
 export { POLYGON_CHAIN_ID, DEFAULT_CLOB_API_URL, ACCOUNT_STATE_TTL_MS } from "./constants";
-export { ResearchStorageService } from "./services";
+export { ResearchStorageService, PolymarketService } from "./services";
 export { researchTaskWorker, RESEARCH_TASK_NAME, TRADE_EVALUATION_TASK_NAME } from "./workers";
+export { polymarketProvider } from "./providers";
+export {
+  checkOrderScoringAction,
+  getOrderBookDepthAction,
+  getOrderDetailsAction,
+  getTokenInfoAction,
+  placeOrderAction,
+  researchMarketAction,
+  retrieveAllMarketsAction,
+} from "./actions";
 
 const configSchema = z.object({
   CLOB_API_URL: z

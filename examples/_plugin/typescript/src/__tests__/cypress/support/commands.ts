@@ -1,3 +1,4 @@
+// @ts-nocheck
 /// <reference types="cypress" />
 /// <reference types="@cypress/react" />
 

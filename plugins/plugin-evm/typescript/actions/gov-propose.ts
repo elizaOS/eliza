@@ -1,4 +1,5 @@
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { type Address, encodeFunctionData, type Hex } from "viem";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
 import { WalletProvider } from "../providers/wallet";
@@ -56,9 +57,11 @@ export class ProposeAction {
   }
 }
 
+const spec = requireActionSpec("GOV_PROPOSE");
+
 export const proposeAction = {
-  name: "propose",
-  description: "Execute a DAO governance proposal",
+  name: spec.name,
+  description: spec.description,
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
@@ -146,5 +149,5 @@ export const proposeAction = {
       },
     ],
   ],
-  similes: ["PROPOSE", "GOVERNANCE_PROPOSE"],
+  similes: spec.similes ? [...spec.similes] : [],
 };

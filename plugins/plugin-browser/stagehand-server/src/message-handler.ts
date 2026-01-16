@@ -72,7 +72,7 @@ export class MessageHandler {
           return await this.handleDestroySession(requestId, sessionId!);
 
         case "navigate":
-          return await this.handleNavigate(requestId, sessionId!, data.url);
+          return await this.handleNavigate(requestId, sessionId!, data?.url ?? "");
 
         case "goBack":
           return await this.handleGoBack(requestId, sessionId!);
@@ -87,30 +87,30 @@ export class MessageHandler {
           return await this.handleClick(
             requestId,
             sessionId!,
-            data.description,
+            data?.description ?? "",
           );
 
         case "type":
           return await this.handleType(
             requestId,
             sessionId!,
-            data.text,
-            data.field,
+            data?.text ?? "",
+            data?.field ?? "",
           );
 
         case "select":
           return await this.handleSelect(
             requestId,
             sessionId!,
-            data.option,
-            data.dropdown,
+            data?.option ?? "",
+            data?.dropdown ?? "",
           );
 
         case "extract":
           return await this.handleExtract(
             requestId,
             sessionId!,
-            data.instruction,
+            data?.instruction ?? "",
           );
 
         case "screenshot":

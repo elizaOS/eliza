@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from elizaos.types import MemoryType, Provider, ProviderResult
+from elizaos.generated.spec_helpers import require_provider_spec
+from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("FACTS")
 
 
 async def get_facts_context(
@@ -22,7 +26,7 @@ async def get_facts_context(
     if entity_id:
         sender_facts = await runtime.get_memories(
             entity_id=entity_id,
-            memory_type=MemoryType.FACT,
+            memory_type="fact",
             limit=10,
         )
 
@@ -44,7 +48,7 @@ async def get_facts_context(
     if room_id:
         room_facts = await runtime.get_memories(
             room_id=room_id,
-            memory_type=MemoryType.FACT,
+            memory_type="fact",
             limit=5,
         )
 
@@ -75,8 +79,8 @@ async def get_facts_context(
 
 
 facts_provider = Provider(
-    name="FACTS",
-    description="Provides known facts about entities learned through conversation",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_facts_context,
-    dynamic=True,
+    dynamic=_spec.get("dynamic", True),
 )

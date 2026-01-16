@@ -270,7 +270,10 @@ export class TradingTrajectoryService extends Service {
 
     await this.trajectoryLogger!.endTrajectory(this.activeTrajectoryId, status, metrics);
 
-    logger.info(`[TradingTrajectoryService] Ended trajectory: ${this.activeTrajectoryId}`, metrics);
+    logger.info(
+      metrics,
+      `[TradingTrajectoryService] Ended trajectory: ${this.activeTrajectoryId}`,
+    );
 
     this.activeTrajectoryId = null;
     this.activeStepId = null;

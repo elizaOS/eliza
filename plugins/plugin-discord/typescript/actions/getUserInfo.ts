@@ -12,6 +12,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { GuildMember } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 // Import generated prompts
@@ -84,19 +85,12 @@ const formatUserInfo = (member: GuildMember, detailed: boolean = false): string 
   return basicInfo.join("\n");
 };
 
+const spec = requireActionSpec("GET_USER_INFO");
+
 export const getUserInfo: Action = {
-  name: "GET_USER_INFO",
-  similes: [
-    "GET_USER_INFO",
-    "USER_INFO",
-    "WHO_IS",
-    "ABOUT_USER",
-    "USER_DETAILS",
-    "MEMBER_INFO",
-    "CHECK_USER",
-  ],
-  description:
-    "Get detailed information about a Discord user including their roles, join date, and permissions.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -236,53 +230,7 @@ export const getUserInfo: Action = {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "who is @john?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll get information about john.",
-          actions: ["GET_USER_INFO"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "tell me about myself",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll get your user information.",
-          actions: ["GET_USER_INFO"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "get detailed info on the admin user",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll get detailed information about the admin.",
-          actions: ["GET_USER_INFO"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default getUserInfo;

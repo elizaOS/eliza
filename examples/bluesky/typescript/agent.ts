@@ -108,8 +108,10 @@ async function main(): Promise<void> {
     agentId: runtime.agentId,
     messageServerId: worldId,
     metadata: {
-      platform: "bluesky",
       description: "Bluesky social network",
+      extra: {
+        platform: "bluesky",
+      },
     },
   });
 

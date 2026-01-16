@@ -13,6 +13,7 @@ import {
   parseKeyValueXml,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { extractCancellationTemplate } from "../generated/prompts/typescript/prompts.js";
 import { createGoalDataService, type GoalData } from "../services/goalDataService.js";
 
@@ -76,10 +77,12 @@ async function extractTaskCancellation(
   }
 }
 
+const spec = requireActionSpec("CANCEL_GOAL");
+
 export const cancelGoalAction: Action = {
-  name: "CANCEL_GOAL",
-  similes: ["DELETE_GOAL", "REMOVE_TASK", "DELETE_TASK", "REMOVE_GOAL"],
-  description: "Cancels and deletes a goal item from the user's task list immediately.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     try {
@@ -203,64 +206,7 @@ export const cancelGoalAction: Action = {
     }
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Cancel my task to finish taxes",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: 'Are you sure you want to cancel this one-off task: "Finish taxes" (Priority 2, due 4/15/2023)? Once cancelled, it will be permanently removed.',
-          actions: ["CANCEL_GOAL_CONFIRM"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Yes, please cancel it",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✓ Task cancelled: "Finish taxes" has been removed from your goal list.',
-          actions: ["CANCEL_GOAL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I don't want to do 50 pushups anymore, please delete that task",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: 'Are you sure you want to cancel this daily task: "Do 50 pushups"? Once cancelled, it will be permanently removed.',
-          actions: ["CANCEL_GOAL_CONFIRM"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "No, I changed my mind, I'll keep it",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: 'I\'ve kept your daily task "Do 50 pushups" active. Keep up the good work!',
-          actions: ["CANCEL_GOAL_REJECTED"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default cancelGoalAction;

@@ -1,6 +1,6 @@
-import type { Character } from "@elizaos/core";
+import { createCharacter } from "@elizaos/core";
 
-export const character: Character = {
+export const character = createCharacter({
   name: "LPManager",
   bio: "Autonomous liquidity position manager for DeFi. Monitors LP positions across Solana (Raydium, Orca, Meteora) and EVM chains (Uniswap V3, PancakeSwap V3, Aerodrome), optimizing yields through smart rebalancing.",
 
@@ -74,6 +74,6 @@ Report status with: positions, yields, opportunities detected, and actions taken
     LP_MIN_POOL_TVL_USD: "100000",
     LP_MAX_IL_RISK_PERCENT: "10",
   },
-};
+});
 
 export default character;

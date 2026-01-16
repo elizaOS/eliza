@@ -1,0 +1,118 @@
+[package]
+name = "computeruse-rs"
+version = { workspace = true }
+edition = "2021"
+description = "A Playwright-style SDK for automating desktop GUI applications"
+authors = ["elizaOS Contributors"]
+repository = "https://github.com/mediar-ai/computeruse"
+homepage = "https://github.com/mediar-ai/computeruse"
+documentation = "https://docs.rs/computeruse"
+readme = "../../README.md"
+keywords = ["automation", "gui", "desktop", "accessibility", "testing"]
+categories = ["accessibility", "api-bindings", "development-tools::testing"]
+license-file = { workspace = true }
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+base64 = { workspace = true }
+sysinfo = { workspace = true }
+regex = { workspace = true }
+computeruse-computer-use = { workspace = true }
+
+# OCR / Vision
+xcap = { workspace = true }
+image = { workspace = true }
+uni-ocr = { workspace = true }
+async-trait = { workspace = true }
+futures = "0.3"
+blake3 = "1.5.0"
+# Screenshot storage
+chrono = "0.4"
+dirs = "5.0"
+# Extension bridge (WebSocket)
+once_cell = "1.19"
+similar = "2.5"
+uuid = { version = "1", features = ["v4"] }
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.23" }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+enigo = "0.6.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.25.0"
+core-foundation = "0.10.1"
+accessibility = "0.2.0"
+accessibility-sys = "0.2.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+atspi = "0.25"
+zbus = "5.5"
+
+[lib]
+name = "computeruse"
+path = "src/lib.rs"
+
+
+[features]
+default = []
+
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    "Win32_Security",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Input",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_Graphics_Gdi",
+    # OCR support
+    "Media_Ocr",
+    "Graphics_Imaging",
+    "Storage_Streams",
+    "Foundation",
+] }
+
+
+uiautomation = { workspace = true, features = [
+    "clipboard",
+    "input",
+    "process",
+] }
+# https://github.com/mediar-ai/uiautomation-rs 
+# uiautomation = { git = "https://github.com/mediar-ai/uiautomation-rs", branch = "main", features = [
+#     "clipboard",
+#     "input",
+#     "process",
+# ] }
+reqwest = { version = "0.12.5", features = ["json", "blocking", "rustls-tls"] }
+
+[[example]]
+name = "benchmark_example"
+path = "examples/benchmark_example.rs"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+axum = "0.8.3"
+tower-http = { version = "0.6.2", features = ["cors", "limit"] }
+reqwest = { version = "0.12.5", features = ["json", "blocking"] }
+serde_json = "1"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+anyhow = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+warp = "0.3.7"
+tiny_http = "0.12.0"
+urlencoding = "2.1.3"

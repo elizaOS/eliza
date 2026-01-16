@@ -1,6 +1,6 @@
-import type { Character } from "@elizaos/core";
+import { createCharacter } from "@elizaos/core";
 
-export const character: Character = {
+export const character = createCharacter({
   name: "FarcasterBot",
 
   bio: "An opinionated but helpful AI agent on Farcaster, powered by OpenAI and elizaOS.",
@@ -63,6 +63,6 @@ You must follow these rules:
       },
     ],
   ],
-};
+});
 
 export default character;

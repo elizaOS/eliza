@@ -30,6 +30,7 @@ import {
   sendAcknowledgement,
   sendError,
 } from "../utils/llmHelpers";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 // =============================================================================
 // Type Definitions
@@ -129,6 +130,67 @@ function formatVolume(volume: string | number): string {
   if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
   if (num >= 1_000) return `$${(num / 1_000).toFixed(1)}K`;
   return `$${num.toFixed(0)}`;
+}
+
+const CARD_MAX_WIDTH = 88;
+
+function wrapCardLines(text: string, maxWidth: number): string[] {
+  if (text.length <= maxWidth) return [text];
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current.length > 0 ? `${current} ${word}` : word;
+    if (next.length <= maxWidth) {
+      current = next;
+      continue;
+    }
+    if (current.length > 0) {
+      lines.push(current);
+    }
+    if (word.length > maxWidth) {
+      let remaining = word;
+      while (remaining.length > maxWidth) {
+        lines.push(remaining.slice(0, maxWidth));
+        remaining = remaining.slice(maxWidth);
+      }
+      current = remaining;
+    } else {
+      current = word;
+    }
+  }
+  if (current.length > 0) lines.push(current);
+  return lines.length > 0 ? lines : [""];
+}
+
+function buildCard(title: string, lines: string[]): string {
+  const titleLines = wrapCardLines(title, CARD_MAX_WIDTH);
+  const bodyLines = lines.flatMap((line) => wrapCardLines(line, CARD_MAX_WIDTH));
+  const allLines = [...titleLines, ...bodyLines];
+  const contentWidth = Math.max(20, ...allLines.map((line) => line.length));
+  const border = `+${"-".repeat(contentWidth + 2)}+`;
+  const divider = `| ${"-".repeat(contentWidth)} |`;
+  const renderLine = (line: string) => `| ${line.padEnd(contentWidth)} |`;
+  const rows = [
+    border,
+    ...titleLines.map(renderLine),
+    divider,
+    ...bodyLines.map(renderLine),
+    border,
+  ];
+  return rows.join("\n");
+}
+
+function getMarketUrl(market: GammaMarket): string | null {
+  const slug = market.slug?.trim();
+  if (slug) return `https://polymarket.com/market/${slug}`;
+  const id = market.conditionId || market.id;
+  return id ? `https://polymarket.com/market/${id}` : null;
+}
+
+function getEventUrl(event: GammaEvent): string | null {
+  const slug = event.slug?.trim();
+  return slug ? `https://polymarket.com/event/${slug}` : null;
 }
 
 /**
@@ -312,107 +374,104 @@ function formatMarketResult(
   index: number,
   eventTitle?: string
 ): string {
-  const statusEmoji = market.active && !market.closed ? "🟢" : "🔴";
-  let text = `**${index + 1}. ${market.question}** ${statusEmoji}\n`;
-
+  const status = market.active && !market.closed ? "Active" : "Closed";
+  const title = `Market #${index + 1}: ${market.question}`;
   const outcomes = parseOutcomes(market.outcomes);
   const prices = parseOutcomePrices(market.outcomePrices);
+  const lines: string[] = [`Status: ${status}`];
 
   if (outcomes.length > 0 && prices.length > 0) {
     const priceStr = outcomes
       .map((outcome, i) => `${outcome}: ${formatPrice(prices[i] || 0)}`)
       .join(" | ");
-    text += `   📊 ${priceStr}\n`;
+    lines.push(`Prices: ${priceStr}`);
   }
 
   const vol = formatVolume(market.volume);
   if (vol) {
-    text += `   💰 Volume: ${vol}`;
+    let volumeLine = `Volume: ${vol}`;
     if (market.volume24hr) {
-      text += ` (24h: ${formatVolume(market.volume24hr)})`;
+      volumeLine += ` (24h: ${formatVolume(market.volume24hr)})`;
     }
-    text += `\n`;
+    lines.push(volumeLine);
   }
 
   if (eventTitle && eventTitle !== market.question) {
-    text += `   📁 Event: ${eventTitle}\n`;
+    lines.push(`Event: ${eventTitle}`);
   }
 
   if (market.endDate) {
-    text += `   ⏰ Ends: ${new Date(market.endDate).toLocaleDateString()}\n`;
+    lines.push(`Ends: ${new Date(market.endDate).toLocaleDateString()}`);
   }
 
   // Show token IDs if available (these are what you need for trading)
   if (market.clobTokenIds) {
     try {
       const tokenIds = JSON.parse(market.clobTokenIds) as string[];
-      const outcomes = parseOutcomes(market.outcomes);
+      const tokenOutcomes = parseOutcomes(market.outcomes);
       if (tokenIds.length > 0) {
-        text += `   🔑 Tokens: `;
-        tokenIds.forEach((tid, i) => {
-          const outcomeName = outcomes[i] || (i === 0 ? "Yes" : "No");
-          text += `${outcomeName}=\`${tid.slice(0, 12)}...\` `;
+        const tokens = tokenIds.map((tid, i) => {
+          const outcomeName = tokenOutcomes[i] || (i === 0 ? "Yes" : "No");
+          return `${outcomeName}=${tid.slice(0, 12)}...`;
         });
-        text += `\n`;
+        lines.push(`Tokens: ${tokens.join(" ")}`);
       }
     } catch {
       // Fallback to condition ID if token parsing fails
       if (market.conditionId) {
-        text += `   🔑 ID: \`${market.conditionId.slice(0, 16)}...\`\n`;
+        lines.push(`ID: ${market.conditionId.slice(0, 16)}...`);
       }
     }
   } else if (market.conditionId) {
-    text += `   🔑 ID: \`${market.conditionId.slice(0, 16)}...\`\n`;
+    lines.push(`ID: ${market.conditionId.slice(0, 16)}...`);
   }
 
-  return text;
+  const betUrl = getMarketUrl(market);
+  if (betUrl) {
+    lines.push(`Bet: ${betUrl}`);
+  }
+
+  return buildCard(title, lines);
 }
 
 function formatEventResult(event: GammaEvent, index: number): string {
-  const statusEmoji = event.active && !event.closed ? "🟢" : "🔴";
-  let text = `**${index + 1}. ${event.title}** ${statusEmoji}\n`;
+  const status = event.active && !event.closed ? "Active" : "Closed";
+  const title = `Event #${index + 1}: ${event.title}`;
+  const lines: string[] = [`Status: ${status}`];
 
   const vol = formatVolume(event.volume || 0);
   if (vol) {
-    text += `   💰 Volume: ${vol}\n`;
+    lines.push(`Volume: ${vol}`);
   }
 
   if (event.endDate) {
-    text += `   ⏰ Ends: ${new Date(event.endDate).toLocaleDateString()}\n`;
+    lines.push(`Ends: ${new Date(event.endDate).toLocaleDateString()}`);
   }
 
   const marketCount = event.markets?.length || 0;
   if (marketCount > 0) {
-    text += `   📊 ${marketCount} market(s)\n`;
+    lines.push(`Markets: ${marketCount}`);
   }
 
-  return text;
+  const eventUrl = getEventUrl(event);
+  if (eventUrl) {
+    lines.push(`Event page: ${eventUrl}`);
+  }
+
+  return buildCard(title, lines);
 }
 
 // =============================================================================
 // Unified Markets Action
 // =============================================================================
 
+const spec = requireActionSpec("GET_MARKETS");
+
 export const retrieveAllMarketsAction: Action = {
-  name: "POLYMARKET_GET_MARKETS",
-  similes: [
-    "GET_MARKETS",
-    "LIST_MARKETS",
-    "SHOW_MARKETS",
-    "FETCH_MARKETS",
-    "POLYMARKET_MARKETS",
-    "ALL_MARKETS",
-    "BROWSE_MARKETS",
-    "VIEW_MARKETS",
-    "SEARCH_MARKETS",
-    "FIND_MARKETS",
-    "SEARCH_POLYMARKET",
-    "LOOKUP_MARKETS",
-    "QUERY_MARKETS",
-    "MARKET_SEARCH",
-  ],
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
   description:
-    "Find or browse Polymarket prediction markets. Use for keyword searches ('find miami heat markets'), " +
+    `${spec.description} Use for specific queries (e.g. 'find miami heat markets'), ` +
     "category browsing ('show sports markets'), or general listing. Supports: query (search term), " +
     "category (tag filter), active (boolean), limit (number), simplified (boolean), " +
     "sampling (boolean), sampling_mode (random|rewards).",
@@ -564,11 +623,14 @@ export const retrieveAllMarketsAction: Action = {
         const activeMarkets = markets.filter((m) => m.active && !m.closed);
         const limitedMarkets = activeMarkets.slice(0, limit);
 
-        let responseText = `🎯 **Sampling Markets (Rewards Enabled)** (${limitedMarkets.length} results)\n\n`;
+        let responseText = `🎯 Sampling Markets (Rewards Enabled) (${limitedMarkets.length} results)\n\n`;
         limitedMarkets.forEach((market, index) => {
-          responseText += `${index + 1}. Condition: \`${market.condition_id.slice(0, 16)}...\`\n`;
-          responseText += `   Min Incentive Size: ${market.min_incentive_size}\n`;
-          responseText += `   Max Incentive Spread: ${market.max_incentive_spread}\n\n`;
+          const lines = [
+            `Condition: ${market.condition_id.slice(0, 16)}...`,
+            `Min Incentive Size: ${market.min_incentive_size}`,
+            `Max Incentive Spread: ${market.max_incentive_spread}`,
+          ];
+          responseText += buildCard(`Sampling Market #${index + 1}`, lines) + "\n\n";
         });
 
         const responseContent: Content = { text: responseText, actions: ["POLYMARKET_GET_MARKETS"] };
@@ -701,11 +763,11 @@ export const retrieveAllMarketsAction: Action = {
         // If filtering removed all results, show a few from the events for context
         if (matchingMarkets.length === 0 && allMarketsFromEvents.length > 0) {
           // Show the event-level info instead of individual markets
-          responseText = `🔍 **Search Results for "${searchTerm}"**\n\n`;
+          responseText = `🔍 Search Results for "${searchTerm}"\n\n`;
           responseText += `Found ${events.length} related event(s), but no exact market match for "${searchTerm}".\n\n`;
           
           events.slice(0, limit).forEach((event, index) => {
-            responseText += formatEventResult(event, index) + "\n";
+            responseText += formatEventResult(event, index) + "\n\n";
           });
           
           if (relatedTags.length > 0) {
@@ -719,7 +781,7 @@ export const retrieveAllMarketsAction: Action = {
         
         markets = matchingMarkets;
 
-        responseText = `🔍 **Search Results for "${searchTerm}"**\n\n`;
+        responseText = `🔍 Search Results for "${searchTerm}"\n\n`;
 
         if (markets.length === 0 && events.length === 0) {
           responseText += `No markets found matching "${searchTerm}".\n\n`;
@@ -733,13 +795,13 @@ export const retrieveAllMarketsAction: Action = {
           const limited = markets.slice(0, limit);
           limited.forEach((market, index) => {
             const eventTitle = (market as GammaMarket & { _eventTitle?: string })._eventTitle;
-            responseText += formatMarketResult(market, index, eventTitle) + "\n";
+            responseText += formatMarketResult(market, index, eventTitle) + "\n\n";
           });
         } else {
           // Show events if no individual markets
           responseText += `Found ${events.length} event(s):\n\n`;
           events.slice(0, limit).forEach((event, index) => {
-            responseText += formatEventResult(event, index) + "\n";
+            responseText += formatEventResult(event, index) + "\n\n";
           });
         }
       } else {
@@ -764,7 +826,7 @@ export const retrieveAllMarketsAction: Action = {
         }
 
         if (category && tagId) {
-          responseText = `📊 **${category.charAt(0).toUpperCase() + category.slice(1)} Markets**\n\n`;
+          responseText = `📊 ${category.charAt(0).toUpperCase() + category.slice(1)} Markets\n\n`;
         } else if (category) {
           // Tag not found, try search instead
           const searchResult = await fetchGammaSearch(runtime, category, limit, activeOnly);
@@ -775,9 +837,9 @@ export const retrieveAllMarketsAction: Action = {
               markets.push(...filterActiveMarkets(event.markets));
             }
           }
-          responseText = `🔍 **Markets matching "${category}"**\n\n`;
+          responseText = `🔍 Markets matching "${category}"\n\n`;
         } else {
-          responseText = `📊 **Active Polymarket Markets** (Top by Volume)\n\n`;
+          responseText = `📊 Active Polymarket Markets (Top by Volume)\n\n`;
         }
 
         if (events.length === 0 && markets.length === 0) {
@@ -791,12 +853,12 @@ export const retrieveAllMarketsAction: Action = {
         } else if (simplified || markets.length === 0) {
           // Show events in simplified view
           events.slice(0, limit).forEach((event, index) => {
-            responseText += formatEventResult(event, index) + "\n";
+            responseText += formatEventResult(event, index) + "\n\n";
           });
         } else {
           // Show individual markets
           markets.slice(0, limit).forEach((market, index) => {
-            responseText += formatMarketResult(market, index) + "\n";
+            responseText += formatMarketResult(market, index) + "\n\n";
           });
         }
       }

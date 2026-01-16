@@ -3,10 +3,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("FOLLOW_UPS")
 
 
 async def get_follow_ups_context(
@@ -105,8 +109,8 @@ async def get_follow_ups_context(
 
 
 follow_ups_provider = Provider(
-    name="FOLLOW_UPS",
-    description="Provides information about upcoming follow-ups and reminders",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_follow_ups_context,
-    dynamic=True,
+    dynamic=_spec.get("dynamic", True),
 )

@@ -16,6 +16,7 @@ import {
   extractTaskSelectionTemplate,
   extractTaskUpdateTemplate,
 } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
   createTodoDataService,
   type TodoData,
@@ -206,10 +207,12 @@ async function applyTaskUpdate(
   return updatedTask || task;
 }
 
+const spec = requireActionSpec("UPDATE_TODO");
+
 export const updateTodoAction: Action = {
-  name: "UPDATE_TODO",
-  similes: ["EDIT_TODO", "MODIFY_TASK", "CHANGE_TASK", "MODIFY_TODO", "EDIT_TASK"],
-  description: "Updates an existing todo item immediately based on user description.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if *any* active (non-completed) TODO exists
@@ -318,36 +321,7 @@ export const updateTodoAction: Action = {
     }
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Update my taxes task to be due on April 18 instead",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✓ Task updated: "Finish taxes" has been updated.',
-          actions: ["UPDATE_TODO_SUCCESS"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Change the priority of my report task to high priority and make it urgent",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✓ Task updated: "Write report" has been updated.',
-          actions: ["UPDATE_TODO_SUCCESS"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default updateTodoAction;

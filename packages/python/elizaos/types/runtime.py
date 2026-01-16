@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -32,6 +32,10 @@ if TYPE_CHECKING:
     from elizaos.types.task import TaskWorker
 
 
+# Type alias for streaming model handlers
+StreamingModelHandler = Callable[["IAgentRuntime", dict[str, Any]], AsyncIterator[str]]
+
+
 # Runtime settings type
 RuntimeSettings = dict[str, str | bool | int | float | None]
 
@@ -49,7 +53,7 @@ class TargetInfo(BaseModel):
     model_config = {"populate_by_name": True, "extra": "allow"}
 
 
-class IAgentRuntime(IDatabaseAdapter, ABC):
+class IAgentRuntime(ABC):
     # Properties that must be implemented
     @property
     @abstractmethod
@@ -109,6 +113,29 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
 
     @abstractmethod
     async def get_connection(self) -> Any: ...
+
+    @abstractmethod
+    async def get_cache(self, key: str) -> object | None: ...
+
+    @abstractmethod
+    async def set_cache(self, key: str, value: object) -> bool: ...
+
+    @abstractmethod
+    async def delete_cache(self, key: str) -> None: ...
+
+    @abstractmethod
+    async def get_memories(
+        self, params: dict[str, Any] | None = None, **kwargs: Any
+    ) -> list[Any]: ...
+
+    @abstractmethod
+    async def create_memory(
+        self,
+        memory: dict[str, object] | None = None,
+        table_name: str | None = None,
+        unique: bool | None = None,
+        **kwargs: object,
+    ) -> Any: ...
 
     # Plugin management
     @abstractmethod
@@ -288,6 +315,39 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         self, model_type: str
     ) -> Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]] | None: ...
 
+    @abstractmethod
+    def use_model_stream(
+        self,
+        model_type: str | ModelType,
+        params: dict[str, Any] | None = None,
+        provider: str | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        """
+        Use a streaming model handler to generate text token by token.
+
+        Args:
+            model_type: The model type (e.g., ModelType.TEXT_LARGE_STREAM)
+            params: Parameters for the model (prompt, system, temperature, etc.)
+            provider: Optional specific provider to use
+            **kwargs: Additional parameters merged into params
+
+        Returns:
+            An async iterator yielding text chunks as they are generated.
+        """
+        ...
+
+    @abstractmethod
+    def register_streaming_model(
+        self,
+        model_type: str | ModelType,
+        handler: StreamingModelHandler,
+        provider: str,
+        priority: int = 0,
+    ) -> None:
+        """Register a streaming model handler."""
+        ...
+
     # Event handling
     @abstractmethod
     def register_event(
@@ -353,6 +413,9 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
     async def get_entity_by_id(self, entity_id: UUID) -> Entity | None: ...
 
     @abstractmethod
+    async def get_entity(self, entity_id: UUID) -> Entity | None: ...
+
+    @abstractmethod
     async def get_room(self, room_id: UUID) -> Room | None: ...
 
     @abstractmethod
@@ -375,3 +438,12 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
 
     @abstractmethod
     async def update_world(self, world: World) -> None: ...
+
+    @abstractmethod
+    async def get_world(self, world_id: UUID) -> World | None: ...
+
+    @abstractmethod
+    async def get_relationships(self, params: dict[str, object]) -> list[object]: ...
+
+    @abstractmethod
+    async def search_knowledge(self, query: str, limit: int = 5) -> list[object]: ...

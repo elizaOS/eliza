@@ -1,0 +1,45 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "name": "{{user1}}",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "{{user1}}",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "{{user1}}",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "{{user1}}",
+      "description": "Deep research: ${marketQuestion.substring(0, 50)}...",
+      "parameters": []
+    },
+    {
+      "name": "query",
+      "description": "Search term for specific markets (e.g.,",
+      "parameters": []
+    },
+    {
+      "name": "tokenId",
+      "description": "Polymarket condition token ID to get info for",
+      "parameters": []
+    },
+    {
+      "name": "tokenId",
+      "description": "Token ID to trade",
+      "parameters": []
+    },
+    {
+      "name": "tokenIds",
+      "description": "Array of Polymarket condition token IDs to fetch depth for",
+      "parameters": []
+    }
+  ]
+}

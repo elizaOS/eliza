@@ -14,10 +14,14 @@ use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
+use crate::prompts::{
+    AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE, AUTONOMY_CONTINUOUS_FIRST_TEMPLATE,
+    AUTONOMY_TASK_CONTINUE_TEMPLATE, AUTONOMY_TASK_FIRST_TEMPLATE,
+};
 use crate::runtime::{AgentRuntime, Service};
 use crate::services::IMessageService;
 use crate::types::database::GetMemoriesParams;
-use crate::types::environment::{ChannelType, Room, World};
+use crate::types::environment::{Room, RoomMetadata, World, WorldMetadata};
 use crate::types::memory::Memory;
 use crate::types::primitives::{Content, UUID};
 use crate::types::settings::SettingValue;
@@ -46,7 +50,7 @@ pub struct AutonomyService {
 
 #[derive(Clone, Copy)]
 enum AutonomyMode {
-    Monologue,
+    Continuous,
     Task,
 }
 
@@ -211,7 +215,7 @@ impl AutonomyService {
                 name: Some("Autonomy World".to_string()),
                 agent_id: rt.agent_id.clone(),
                 message_server_id: Some(UUID::default_uuid()),
-                metadata: Some(crate::types::environment::WorldMetadata {
+                metadata: Some(WorldMetadata {
                     extra: HashMap::from([(
                         "type".to_string(),
                         Value::String("autonomy".to_string()),
@@ -229,14 +233,16 @@ impl AutonomyService {
                 name: Some("Autonomous Thoughts".to_string()),
                 agent_id: Some(rt.agent_id.clone()),
                 source: "autonomy-service".to_string(),
-                room_type: ChannelType::SelfChannel,
+                room_type: "SELF".to_string(),
                 channel_id: Some("autonomous".to_string()),
                 message_server_id: Some(UUID::default_uuid()),
                 world_id: Some(self.autonomous_world_id.clone()),
-                metadata: Some(HashMap::from([(
-                    "description".to_string(),
-                    Value::String("Room for autonomous agent thinking".to_string()),
-                )])),
+                metadata: Some(RoomMetadata {
+                    values: HashMap::from([(
+                        "description".to_string(),
+                        Value::String("Room for autonomous agent thinking".to_string()),
+                    )]),
+                }),
             };
             let _ = adapter.create_room(&room).await?;
         }
@@ -255,7 +261,7 @@ impl AutonomyService {
             Some(SettingValue::String(s)) if s.trim().eq_ignore_ascii_case("task") => {
                 AutonomyMode::Task
             }
-            _ => AutonomyMode::Monologue,
+            _ => AutonomyMode::Continuous,
         }
     }
 
@@ -264,6 +270,38 @@ impl AutonomyService {
             Some(SettingValue::String(s)) if !s.trim().is_empty() => UUID::new(s.trim()).ok(),
             _ => None,
         }
+    }
+
+    fn dedupe_and_sort_memories(memories: Vec<Memory>, messages: Vec<Memory>) -> Vec<Memory> {
+        let mut by_id: HashMap<UUID, Memory> = HashMap::new();
+        for m in memories.into_iter().chain(messages) {
+            let Some(id) = m.id.clone() else {
+                continue;
+            };
+            let replace = match by_id.get(&id) {
+                Some(existing) => m.created_at.unwrap_or(0) < existing.created_at.unwrap_or(0),
+                None => true,
+            };
+            if replace {
+                by_id.insert(id, m);
+            }
+        }
+        let mut combined: Vec<Memory> = by_id.into_values().collect();
+        combined.sort_by_key(|m| m.created_at.unwrap_or(0));
+        combined
+    }
+
+    fn latest_autonomous_thought(memories: Vec<Memory>, agent_id: &UUID) -> Option<String> {
+        memories
+            .into_iter()
+            .filter(|m| {
+                m.entity_id == *agent_id
+                    && m.content.extra.get("isAutonomous").and_then(Value::as_bool) == Some(true)
+                    && m.content.text.as_deref().unwrap_or("").trim().len() > 0
+            })
+            .max_by_key(|m| m.created_at.unwrap_or(0))
+            .and_then(|m| m.content.text)
+            .map(|s| s.trim().to_string())
     }
 
     async fn get_target_room_context_text(&self, rt: &AgentRuntime) -> String {
@@ -293,21 +331,9 @@ impl AutonomyService {
             .await
             .unwrap_or_default();
 
-        let mut combined: Vec<Memory> = Vec::with_capacity(memories.len() + messages.len());
-        combined.extend(memories);
-        combined.extend(messages);
-        combined.sort_by_key(|m| m.created_at.unwrap_or(0));
-
-        let mut seen: std::collections::HashSet<UUID> = std::collections::HashSet::new();
+        let combined = Self::dedupe_and_sort_memories(memories, messages);
         let mut lines: Vec<String> = Vec::new();
         for m in combined {
-            let Some(id) = m.id.clone() else {
-                continue;
-            };
-            if seen.contains(&id) {
-                continue;
-            }
-            seen.insert(id);
             let role = if m.entity_id == rt.agent_id {
                 "Agent"
             } else {
@@ -326,28 +352,18 @@ impl AutonomyService {
         }
     }
 
-    fn create_monologue_prompt(
+    fn create_continuous_prompt(
         &self,
         last_thought: Option<&str>,
         is_first: bool,
         target_context: &str,
     ) -> String {
-        let header = "You are running in AUTONOMOUS REFLECTION MODE.\n\nYour job: reflect on context, decide what you want to do next, and act if appropriate.\n- Use available actions/tools when they can advance the goal.\n- If you cannot act, state the missing info and the safest next step to obtain it.\n- Keep the response concise, focused on the next action.";
-        let context = format!("USER CONTEXT (most recent last):\n{}", target_context);
-
-        if is_first {
-            return format!(
-                "{}\n\n{}\n\nThink briefly, then state what you want to do next and take action if needed.",
-                header, context
-            );
-        }
-
-        format!(
-            "{}\n\n{}\n\nYour last autonomous note: \"{}\"\n\nContinue from that note. Decide the next step and act if needed.",
-            header,
-            context,
-            last_thought.unwrap_or("")
-        )
+        let template = if is_first {
+            AUTONOMY_CONTINUOUS_FIRST_TEMPLATE
+        } else {
+            AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE
+        };
+        Self::fill_autonomy_template(template, target_context, last_thought)
     }
 
     fn create_task_prompt(
@@ -356,22 +372,22 @@ impl AutonomyService {
         is_first: bool,
         target_context: &str,
     ) -> String {
-        let header = "You are running in AUTONOMOUS TASK MODE.\n\nYour job: continue helping the user and make progress toward the task.\n- Use available actions/tools to gather information or execute steps.\n- Prefer safe, incremental steps; if unsure, gather more context before acting.";
-        let context = format!("USER CHAT CONTEXT (most recent last):\n{}", target_context);
+        let template = if is_first {
+            AUTONOMY_TASK_FIRST_TEMPLATE
+        } else {
+            AUTONOMY_TASK_CONTINUE_TEMPLATE
+        };
+        Self::fill_autonomy_template(template, target_context, last_thought)
+    }
 
-        if is_first {
-            return format!(
-                "{}\n\n{}\n\nDecide what to do next. Think briefly, then take the most useful action.",
-                header, context
-            );
-        }
-
-        format!(
-            "{}\n\n{}\n\nYour last autonomous note: \"{}\"\n\nContinue the task. Decide the next step and take action now.",
-            header,
-            context,
-            last_thought.unwrap_or("")
-        )
+    fn fill_autonomy_template(
+        template: &str,
+        target_context: &str,
+        last_thought: Option<&str>,
+    ) -> String {
+        let mut output = template.replace("{{targetRoomContext}}", target_context);
+        output = output.replace("{{lastThought}}", last_thought.unwrap_or(""));
+        output
     }
 
     async fn perform_autonomous_think(&self) -> Result<()> {
@@ -387,15 +403,15 @@ impl AutonomyService {
             AutonomyMode::Task => {
                 self.create_task_prompt(last_thought.as_deref(), is_first, &target_context)
             }
-            AutonomyMode::Monologue => {
-                self.create_monologue_prompt(last_thought.as_deref(), is_first, &target_context)
+            AutonomyMode::Continuous => {
+                self.create_continuous_prompt(last_thought.as_deref(), is_first, &target_context)
             }
         };
 
         let mut content = Content::default();
         content.text = Some(prompt);
         content.source = Some("autonomy-service".to_string());
-        content.channel_type = Some(ChannelType::SelfChannel);
+        content.channel_type = Some("SELF".to_string());
         content
             .extra
             .insert("isAutonomous".to_string(), Value::Bool(true));
@@ -404,7 +420,7 @@ impl AutonomyService {
             .insert("isInternalThought".to_string(), Value::Bool(true));
         let mode_str = match mode {
             AutonomyMode::Task => "task",
-            AutonomyMode::Monologue => "monologue",
+            AutonomyMode::Continuous => "continuous",
         };
         content
             .extra
@@ -421,8 +437,8 @@ impl AutonomyService {
         msg.world_id = Some(self.autonomous_world_id.clone());
         msg.agent_id = Some(rt.agent_id.clone());
 
-        let callback: crate::types::components::HandlerCallback = Arc::new(|_content: Content| {
-            Box::pin(async move { Ok(Vec::new()) })
+        let callback: crate::types::components::HandlerCallback = Box::new(|_content: Content| {
+            Box::pin(async move { Vec::new() })
         });
 
         let service = rt.message_service();
@@ -444,19 +460,7 @@ impl AutonomyService {
             ..Default::default()
         };
         let memories = adapter.get_memories(params).await.ok()?;
-        let mut candidates: Vec<_> = memories
-            .into_iter()
-            .filter(|m| {
-                m.entity_id == rt.agent_id
-                    && m.content.extra.get("isAutonomous").and_then(Value::as_bool) == Some(true)
-                    && m.content.text.as_deref().unwrap_or("").trim().len() > 0
-            })
-            .collect();
-        candidates.sort_by_key(|m| m.created_at.unwrap_or(0));
-        candidates
-            .last()
-            .and_then(|m| m.content.text.clone())
-            .map(|s| s.trim().to_string())
+        Self::latest_autonomous_thought(memories, &rt.agent_id)
     }
 }
 
@@ -479,6 +483,90 @@ impl Service for AutonomyService {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build_memory(
+        id: UUID,
+        created_at: i64,
+        entity_id: UUID,
+        room_id: UUID,
+        text: &str,
+        is_autonomous: bool,
+    ) -> Memory {
+        let mut content = Content::default();
+        content.text = Some(text.to_string());
+        if is_autonomous {
+            content
+                .extra
+                .insert("isAutonomous".to_string(), Value::Bool(true));
+        }
+        Memory {
+            id: Some(id),
+            entity_id,
+            agent_id: None,
+            created_at: Some(created_at),
+            content,
+            embedding: None,
+            room_id,
+            world_id: None,
+            unique: None,
+            similarity: None,
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn dedupe_and_sort_memories_keeps_earliest_duplicate() {
+        let entity_id = UUID::new_v4();
+        let room_id = UUID::new_v4();
+        let shared_id = UUID::new_v4();
+        let older = build_memory(
+            shared_id.clone(),
+            10,
+            entity_id.clone(),
+            room_id.clone(),
+            "old",
+            false,
+        );
+        let newer = build_memory(shared_id, 20, entity_id, room_id, "new", false);
+
+        let combined = AutonomyService::dedupe_and_sort_memories(vec![newer], vec![older]);
+        assert_eq!(combined.len(), 1);
+        assert_eq!(combined[0].created_at, Some(10));
+        assert_eq!(combined[0].content.text.as_deref(), Some("old"));
+    }
+
+    #[test]
+    fn latest_autonomous_thought_uses_latest_timestamp() {
+        let agent_id = UUID::new_v4();
+        let room_id = UUID::new_v4();
+        let other_id = UUID::new_v4();
+        let first = build_memory(
+            UUID::new_v4(),
+            5,
+            agent_id.clone(),
+            room_id.clone(),
+            "first",
+            true,
+        );
+        let second = build_memory(
+            UUID::new_v4(),
+            10,
+            agent_id.clone(),
+            room_id.clone(),
+            "second",
+            true,
+        );
+        let other = build_memory(UUID::new_v4(), 20, other_id, room_id, "other", true);
+
+        let thought =
+            AutonomyService::latest_autonomous_thought(vec![other, second, first], &agent_id);
+        assert_eq!(thought.as_deref(), Some("second"));
     }
 }
 

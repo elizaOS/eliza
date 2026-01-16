@@ -1,7 +1,163 @@
 import { validateCharacter } from "./schemas/character";
-import type { Character } from "./types";
+import type {
+  Character,
+  CharacterSettings,
+  KnowledgeItem,
+  MessageExample,
+  MessageExampleGroup,
+} from "./types";
 
-export function parseCharacter(input: string | object | Character): Character {
+type LegacyKnowledgeItem =
+  | string
+  | { path: string; shared?: boolean }
+  | { directory: string; shared?: boolean }
+  | KnowledgeItem;
+
+type MessageExamplesInput = MessageExampleGroup[] | MessageExample[][];
+
+export interface CharacterInput {
+  id?: string;
+  name?: string;
+  username?: string;
+  system?: string;
+  templates?: Record<string, string>;
+  bio?: string | string[];
+  messageExamples?: MessageExamplesInput;
+  postExamples?: string[];
+  topics?: string[];
+  adjectives?: string[];
+  knowledge?: LegacyKnowledgeItem[];
+  plugins?: string[];
+  settings?: CharacterSettings;
+  secrets?: Record<string, string>;
+  style?: { all?: string[]; chat?: string[]; post?: string[] };
+  advancedPlanning?: boolean;
+  advancedMemory?: boolean;
+}
+
+interface NormalizedCharacterInput {
+  id?: string;
+  name?: string;
+  username?: string;
+  system?: string;
+  templates: Record<string, string>;
+  bio: string[];
+  messageExamples: MessageExampleGroup[];
+  postExamples: string[];
+  topics: string[];
+  adjectives: string[];
+  knowledge: KnowledgeItem[];
+  plugins: string[];
+  settings?: CharacterSettings;
+  secrets: Record<string, string>;
+  style?: { all?: string[]; chat?: string[]; post?: string[] };
+  advancedPlanning?: boolean;
+  advancedMemory?: boolean;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isMessageExampleGroup = (
+  value: MessageExampleGroup | MessageExample[],
+): value is MessageExampleGroup =>
+  isRecord(value) && "examples" in value && Array.isArray(value.examples);
+
+function normalizeMessageExamples(
+  input?: MessageExamplesInput,
+): MessageExampleGroup[] {
+  if (!input || input.length === 0) return [];
+  const first = input[0];
+  if (Array.isArray(first)) {
+    const exampleSets = input as MessageExample[][];
+    return exampleSets.map((examples) => ({ examples }));
+  }
+  if (isMessageExampleGroup(first)) {
+    return input as MessageExampleGroup[];
+  }
+  return [];
+}
+
+function normalizeKnowledgeItem(item: LegacyKnowledgeItem): KnowledgeItem | null {
+  if (typeof item === "string") {
+    return { item: { case: "path", value: item } };
+  }
+  if (!isRecord(item)) {
+    return null;
+  }
+  if ("item" in item && isRecord(item.item)) {
+    const caseValue = item.item.case;
+    if (caseValue === "path" && typeof item.item.value === "string") {
+      return item as KnowledgeItem;
+    }
+    if (
+      caseValue === "directory" &&
+      isRecord(item.item.value) &&
+      typeof item.item.value.path === "string"
+    ) {
+      return item as KnowledgeItem;
+    }
+  }
+  if ("path" in item && typeof item.path === "string") {
+    return { item: { case: "path", value: item.path } };
+  }
+  if ("directory" in item && typeof item.directory === "string") {
+    return {
+      item: {
+        case: "directory",
+        value: {
+          directory: item.directory,
+          shared: typeof item.shared === "boolean" ? item.shared : undefined,
+        },
+      },
+    };
+  }
+  return null;
+}
+
+export function normalizeCharacterInput(
+  input: CharacterInput,
+): NormalizedCharacterInput {
+  const bioValue = input.bio;
+  const normalizedBio =
+    bioValue === undefined
+      ? []
+      : Array.isArray(bioValue)
+        ? bioValue
+        : [bioValue];
+
+  const normalizedKnowledge = (input.knowledge ?? [])
+    .map((item) => normalizeKnowledgeItem(item))
+    .filter((item): item is KnowledgeItem => item !== null);
+
+  return {
+    id: input.id,
+    name: input.name,
+    username: input.username,
+    system: input.system,
+    templates: input.templates ?? {},
+    bio: normalizedBio,
+    messageExamples: normalizeMessageExamples(input.messageExamples),
+    postExamples: input.postExamples ?? [],
+    topics: input.topics ?? [],
+    adjectives: input.adjectives ?? [],
+    knowledge: normalizedKnowledge,
+    plugins: input.plugins ?? [],
+    settings: input.settings ?? {},
+    secrets: input.secrets ?? {},
+    style: input.style,
+    advancedPlanning: input.advancedPlanning,
+    advancedMemory: input.advancedMemory,
+  };
+}
+
+export function createCharacter(input: CharacterInput & { name: string }): Character {
+  return normalizeCharacterInput(input) as Character;
+}
+
+export function parseCharacter(
+  input: string | object | Character | CharacterInput,
+): Character {
   if (typeof input === "string") {
     throw new Error(
       `Character path provided but must be loaded first: ${input}`,
@@ -9,7 +165,11 @@ export function parseCharacter(input: string | object | Character): Character {
   }
 
   if (typeof input === "object") {
-    const validationResult = validateCharacter(input);
+    const normalized =
+      input && typeof input === "object"
+        ? normalizeCharacterInput(input as CharacterInput)
+        : input;
+    const validationResult = validateCharacter(normalized);
 
     if (!validationResult.success) {
       const validationError = validationResult.error;
@@ -53,17 +213,11 @@ export function validateCharacterConfig(character: Character): {
   };
 }
 
-export function mergeCharacterDefaults(char: Partial<Character>): Character {
-  const defaults: Partial<Character> = {
-    settings: {},
-    plugins: [],
-    bio: [],
-  };
-
+export function mergeCharacterDefaults(char: CharacterInput): Character {
+  const normalized = normalizeCharacterInput(char);
   return {
-    ...defaults,
-    ...char,
-    name: char.name || "Unnamed Character",
+    ...normalized,
+    name: normalized.name || "Unnamed Character",
   } as Character;
 }
 

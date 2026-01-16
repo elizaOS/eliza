@@ -1,12 +1,14 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
 
-export type Command = "help" | "verify" | "chat";
+export type Command = "help" | "verify" | "chat" | "settings" | "input-test";
 
 export type CliOptions = {
   readonly execute: boolean;
-  readonly network: boolean;
   readonly intervalMs: number;
   readonly iterations: number;
   readonly orderSize: number;
@@ -31,6 +33,48 @@ export type EnvConfig = {
   readonly funderAddress?: string;
 };
 
+export type LlmProvider = "openai" | "anthropic" | "gemini" | "groq" | "grok";
+
+type EnvLine =
+  | {
+      readonly type: "blank";
+      readonly raw: string;
+    }
+  | {
+      readonly type: "comment";
+      readonly raw: string;
+    }
+  | {
+      readonly type: "entry";
+      readonly key: string;
+      readonly value: string;
+      readonly raw: string;
+    };
+
+export type EnvFile = {
+  readonly exists: boolean;
+  readonly lines: EnvLine[];
+  readonly values: Record<string, string>;
+};
+
+const LLM_PROVIDER_ORDER = ["openai", "anthropic", "gemini", "groq", "grok"] as const;
+
+const LLM_PROVIDER_KEYS: Record<LlmProvider, readonly string[]> = {
+  openai: ["OPENAI_API_KEY"],
+  anthropic: ["ANTHROPIC_API_KEY"],
+  gemini: ["GOOGLE_GENERATIVE_AI_API_KEY"],
+  groq: ["GROQ_API_KEY"],
+  grok: ["XAI_API_KEY"],
+};
+
+const LLM_MODEL_KEYS: Record<LlmProvider, readonly string[]> = {
+  openai: ["OPENAI_LARGE_MODEL", "LARGE_MODEL"],
+  anthropic: ["ANTHROPIC_LARGE_MODEL", "LARGE_MODEL"],
+  gemini: ["GOOGLE_LARGE_MODEL", "LARGE_MODEL"],
+  groq: ["GROQ_LARGE_MODEL", "LARGE_MODEL"],
+  grok: ["XAI_MODEL", "XAI_LARGE_MODEL", "LARGE_MODEL"],
+};
+
 export const PrivateKeySchema = z
   .string()
   .transform((v) => (v.startsWith("0x") ? v : `0x${v}`))
@@ -52,7 +96,6 @@ export function parseArgs(argv: readonly string[]): { command: Command; options:
 
   const defaults: CliOptions = {
     execute: false,
-    network: false,
     intervalMs: 30_000,
     iterations: 10,
     orderSize: 1,
@@ -65,7 +108,6 @@ export function parseArgs(argv: readonly string[]): { command: Command; options:
 
   const mutable: {
     execute: boolean;
-    network: boolean;
     intervalMs: number;
     iterations: number;
     orderSize: number;
@@ -80,10 +122,6 @@ export function parseArgs(argv: readonly string[]): { command: Command; options:
     const a = rest[i];
     if (a === "--execute") {
       mutable.execute = true;
-      continue;
-    }
-    if (a === "--network") {
-      mutable.network = true;
       continue;
     }
     if (a === "--interval-ms") {
@@ -156,7 +194,7 @@ export function parseArgs(argv: readonly string[]): { command: Command; options:
     }
   }
 
-  if (!["help", "verify", "chat"].includes(command)) {
+  if (!["help", "verify", "chat", "settings", "input-test"].includes(command)) {
     return { command: "help", options: defaults };
   }
   return { command, options: mutable };
@@ -235,6 +273,161 @@ export function loadEnvConfig(options: CliOptions): EnvConfig {
     );
   }
 
-  return { privateKey, clobApiUrl, creds, signatureType, funderAddress };
+  return {
+    privateKey,
+    clobApiUrl,
+    creds,
+    ...(typeof signatureType === "number" ? { signatureType } : {}),
+    ...(typeof funderAddress === "string" ? { funderAddress } : {}),
+  };
 }
 
+export function resolveEnvPath(): string {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  return path.join(__dirname, ".env");
+}
+
+function parseEnvValue(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return "";
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    const inner = trimmed.slice(1, -1);
+    return inner.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function formatEnvValue(value: string): string {
+  if (!/[\s#"'\\]/.test(value)) return value;
+  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+  return `"${escaped}"`;
+}
+
+function parseEnvLine(line: string): EnvLine {
+  const trimmed = line.trim();
+  if (trimmed.length === 0) {
+    return { type: "blank", raw: line };
+  }
+  if (trimmed.startsWith("#")) {
+    return { type: "comment", raw: line };
+  }
+  const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line);
+  if (!match) {
+    return { type: "comment", raw: line };
+  }
+  const key = match[1] ?? "";
+  const rawValue = match[2] ?? "";
+  return { type: "entry", key, value: parseEnvValue(rawValue), raw: line };
+}
+
+function serializeEnvLines(lines: readonly EnvLine[]): string {
+  return lines
+    .map((line) => {
+      if (line.type === "entry") {
+        return `${line.key}=${formatEnvValue(line.value)}`;
+      }
+      return line.raw;
+    })
+    .join("\n")
+    .trimEnd()
+    .concat("\n");
+}
+
+export async function readEnvFile(envPath: string): Promise<EnvFile> {
+  try {
+    const contents = await fs.readFile(envPath, "utf8");
+    const rawLines = contents.split(/\r?\n/);
+    const lines = rawLines.map((line) => parseEnvLine(line));
+    const values: Record<string, string> = {};
+    for (const line of lines) {
+      if (line.type === "entry") {
+        values[line.key] = line.value;
+      }
+    }
+    return { exists: true, lines, values };
+  } catch (error) {
+    if (error instanceof Error && "code" in error) {
+      const code = (error as { code?: string }).code;
+      if (code === "ENOENT") {
+        return { exists: false, lines: [], values: {} };
+      }
+    }
+    throw error;
+  }
+}
+
+export async function writeEnvFile(
+  envPath: string,
+  existingLines: readonly EnvLine[],
+  updates: Record<string, string>
+): Promise<void> {
+  const pending = new Map(Object.entries(updates));
+  const nextLines: EnvLine[] = existingLines.map((line) => {
+    if (line.type !== "entry") return line;
+    if (!pending.has(line.key)) return line;
+    const value = pending.get(line.key) ?? "";
+    pending.delete(line.key);
+    return {
+      type: "entry",
+      key: line.key,
+      value,
+      raw: `${line.key}=${formatEnvValue(value)}`,
+    };
+  });
+  for (const [key, value] of pending.entries()) {
+    nextLines.push({
+      type: "entry",
+      key,
+      value,
+      raw: `${key}=${formatEnvValue(value)}`,
+    });
+  }
+  const serialized = serializeEnvLines(nextLines);
+  await fs.writeFile(envPath, serialized, "utf8");
+}
+
+export function applyEnvValues(values: Record<string, string>): void {
+  for (const [key, value] of Object.entries(values)) {
+    process.env[key] = value;
+  }
+}
+
+export function resolveLlmProvider(
+  getValue: (key: string) => string | undefined
+): LlmProvider | null {
+  const explicit = normalizeEnvValue(
+    getValue("ELIZA_LLM_PROVIDER") ?? getValue("LLM_PROVIDER")
+  );
+  if (explicit) {
+    if (LLM_PROVIDER_ORDER.includes(explicit as LlmProvider)) {
+      return explicit as LlmProvider;
+    }
+  }
+  for (const provider of LLM_PROVIDER_ORDER) {
+    const keys = LLM_PROVIDER_KEYS[provider];
+    for (const key of keys) {
+      if (normalizeEnvValue(getValue(key))) {
+        return provider;
+      }
+    }
+  }
+  return null;
+}
+
+export function resolveLlmModel(
+  provider: LlmProvider | null,
+  getValue: (key: string) => string | undefined
+): string | null {
+  const explicit = normalizeEnvValue(getValue("ELIZA_LLM_MODEL") ?? getValue("LLM_MODEL"));
+  if (explicit) return explicit;
+  if (!provider) return null;
+  for (const key of LLM_MODEL_KEYS[provider]) {
+    const value = normalizeEnvValue(getValue(key));
+    if (value) return value;
+  }
+  return null;
+}

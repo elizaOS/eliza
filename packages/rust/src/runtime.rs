@@ -4,8 +4,8 @@
 
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
 use crate::types::components::{
-    ActionDefinition, ActionHandler, ActionResult, EvaluatorDefinition, EvaluatorHandler,
-    HandlerOptions, ProviderDefinition, ProviderHandler,
+    ActionDefinition, ActionHandler, ActionParameters, ActionResult, EvaluatorDefinition,
+    EvaluatorHandler, HandlerOptions, ProviderDefinition, ProviderHandler,
 };
 use crate::types::database::{GetMemoriesParams, SearchMemoriesParams};
 use crate::types::environment::{Entity, Room, World};
@@ -225,6 +225,7 @@ fn setting_value_to_json_value(value: &SettingValue) -> serde_json::Value {
         SettingValue::Null => serde_json::Value::Null,
     }
 }
+
 
 fn normalize_setting_value(value: SettingValue) -> SettingValue {
     match value {
@@ -918,9 +919,7 @@ impl AgentRuntime {
                         state.text.push_str(&text);
                     }
                     if let Some(values) = result.values {
-                        for (k, v) in values {
-                            state.values.insert(k, v);
-                        }
+                        state.merge_values_struct(&values);
                     }
 
                     // Trajectory logging (best-effort; must never break core flow)
@@ -1128,7 +1127,7 @@ impl AgentRuntime {
             if !evaluator.validate(message, Some(state)).await {
                 continue;
             }
-            match evaluator.handle(message, Some(state)).await {
+            match evaluator.handle(message, Some(state), None).await {
                 Ok(Some(r)) => results.push(r),
                 Ok(None) => {}
                 Err(e) => results.push(ActionResult::failure(&e.to_string())),

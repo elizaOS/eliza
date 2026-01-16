@@ -11,11 +11,14 @@ import {
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 import { type CreatePullRequestParams, createPullRequestSchema, formatZodErrors } from "../types";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("CREATE_PULL_REQUEST");
 
 const examples: ActionExample[][] = [
   [
     {
-      name: "{{user1}}",
+      name: spec.name,
       content: {
         text: "Create a pull request from feature/dark-mode to main with title 'Add dark mode support'",
       },
@@ -47,16 +50,8 @@ const examples: ActionExample[][] = [
 
 export const createPullRequestAction: Action = {
   name: "CREATE_GITHUB_PULL_REQUEST",
-  similes: [
-    "OPEN_PR",
-    "CREATE_PR",
-    "NEW_PULL_REQUEST",
-    "SUBMIT_PR",
-    "OPEN_PULL_REQUEST",
-    "MERGE_REQUEST",
-  ],
-  description:
-    "Creates a new pull request in a GitHub repository to merge changes from one branch to another.",
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);

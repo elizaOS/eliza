@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   AgentRuntime,
   ChannelType,
-  type Character,
+  createCharacter,
   createMessageMemory,
   logger,
   MemoryType,
@@ -214,14 +214,14 @@ async function main(): Promise<void> {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-  const character: Character = {
+  const character = createCharacter({
     name: "AutonomousLocalAgent",
     bio: "A sandboxed autonomous loop agent that uses local inference and a restricted shell.",
     settings: {
       LLM_MODE: "SMALL",
       CHECK_SHOULD_RESPOND: false,
     },
-  };
+  });
 
   logger.info(
     {

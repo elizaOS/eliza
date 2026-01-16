@@ -1,8 +1,8 @@
 [package]
 name = "elizaos-plugin-openai"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
-authors = ["elizaOS Team <team@elizaos.ai>"]
+authors = ["elizaOS Contributors"]
 description = "elizaOS OpenAI Plugin - OpenAI API integration for text, image, audio, and embeddings"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"

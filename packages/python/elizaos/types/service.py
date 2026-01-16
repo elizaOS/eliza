@@ -58,7 +58,7 @@ class Service(ABC):
 
     def __init__(self, runtime: IAgentRuntime | None = None) -> None:
         self._runtime = runtime
-        self._config: Metadata | None = None
+        self._config: object | None = None
 
     @property
     def runtime(self) -> IAgentRuntime:
@@ -71,11 +71,11 @@ class Service(ABC):
         self._runtime = value
 
     @property
-    def config(self) -> Metadata | None:
+    def config(self) -> object | None:
         return self._config
 
     @config.setter
-    def config(self, value: Metadata | None) -> None:
+    def config(self, value: object | None) -> None:
         self._config = value
 
     @property

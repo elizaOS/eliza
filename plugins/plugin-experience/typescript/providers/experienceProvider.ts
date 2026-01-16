@@ -6,14 +6,17 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { ExperienceService } from "../service";
 
 /**
  * Simple experience provider that injects relevant experiences into context
  * Similar to the knowledge provider but focused on agent learnings
  */
+const spec = requireProviderSpec("experienceProvider");
+
 export const experienceProvider: Provider = {
-  name: "EXPERIENCE",
+  name: spec.name,
   description: "Provides relevant past experiences and learnings for the current context",
 
   async get(runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ProviderResult> {

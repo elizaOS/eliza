@@ -64,40 +64,59 @@ def load_plugin(name: str) -> Plugin:
 async def register_plugin(runtime: IAgentRuntime, plugin: Plugin) -> None:
     try:
         logger.info(f"Registering plugin: {plugin.name}")
-        if plugin.dependencies:
-            for dep in plugin.dependencies:
+        # Use getattr for optional plugin attributes to handle non-standard plugins
+        dependencies = getattr(plugin, "dependencies", None)
+        if dependencies:
+            for dep in dependencies:
                 if dep not in [p.name for p in runtime.plugins]:
                     raise PluginRegistrationError(
                         f"Missing dependency: {dep}",
                         plugin_name=plugin.name,
                     )
 
-        if plugin.init:
-            config = plugin.config or {}
-            await plugin.init(config, runtime)
+        init_fn = getattr(plugin, "init", None)
+        if init_fn:
+            config = getattr(plugin, "config", None) or {}
+            # Handle different init signatures
+            import inspect
+            sig = inspect.signature(init_fn)
+            params = list(sig.parameters.values())
+            # Filter out 'self' parameter for bound methods
+            non_self_params = [p for p in params if p.name != "self"]
+            if len(non_self_params) >= 2:
+                await init_fn(config, runtime)
+            elif len(non_self_params) == 1:
+                await init_fn(config)
+            else:
+                await init_fn()
 
-        if plugin.actions:
-            for action in plugin.actions:
+        actions = getattr(plugin, "actions", None)
+        if actions:
+            for action in actions:
                 runtime.register_action(action)
                 logger.debug(f"Registered action: {action.name}")
 
-        if plugin.providers:
-            for provider in plugin.providers:
+        providers = getattr(plugin, "providers", None)
+        if providers:
+            for provider in providers:
                 runtime.register_provider(provider)
                 logger.debug(f"Registered provider: {provider.name}")
 
-        if plugin.evaluators:
-            for evaluator in plugin.evaluators:
+        evaluators = getattr(plugin, "evaluators", None)
+        if evaluators:
+            for evaluator in evaluators:
                 runtime.register_evaluator(evaluator)
                 logger.debug(f"Registered evaluator: {evaluator.name}")
 
-        if plugin.services:
-            for service_class in plugin.services:
+        services = getattr(plugin, "services", None)
+        if services:
+            for service_class in services:
                 await runtime.register_service(service_class)
-                logger.debug(f"Registered service: {service_class.service_type}")
+                logger.debug(f"Registered service: {getattr(service_class, 'service_type', 'unknown')}")
 
-        if plugin.models:
-            for model_type, handler in plugin.models.items():
+        models = getattr(plugin, "models", None)
+        if models:
+            for model_type, handler in models.items():
                 runtime.register_model(
                     model_type,
                     handler,
@@ -105,8 +124,19 @@ async def register_plugin(runtime: IAgentRuntime, plugin: Plugin) -> None:
                 )
                 logger.debug(f"Registered model: {model_type}")
 
-        if plugin.events:
-            for event_type, event_handlers in plugin.events.items():
+        streaming_models = getattr(plugin, "streaming_models", None)
+        if streaming_models:
+            for model_type, handler in streaming_models.items():
+                runtime.register_streaming_model(
+                    model_type,
+                    handler,
+                    provider=plugin.name,
+                )
+                logger.debug(f"Registered streaming model: {model_type}")
+
+        events = getattr(plugin, "events", None)
+        if events:
+            for event_type, event_handlers in events.items():
                 for event_handler in event_handlers:
                     runtime.register_event(event_type, event_handler)
                 logger.debug(f"Registered event handlers for: {event_type}")

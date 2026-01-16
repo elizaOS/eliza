@@ -7,17 +7,34 @@ from typing import TYPE_CHECKING
 from elizaos.types import Plugin
 
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
-from .actions import BASIC_ACTIONS, EXTENDED_ACTIONS
+
+# Import from new capability modules
+from elizaos.basic_capabilities import basic_actions, basic_providers, basic_services
+from elizaos.advanced_capabilities import (
+    advanced_actions,
+    advanced_providers,
+    advanced_evaluators,
+    advanced_services,
+)
+
+# Autonomy capabilities remain in bootstrap
 from .autonomy import (
     AutonomyService,
     admin_chat_provider,
     autonomy_status_provider,
     send_to_admin_action,
 )
-from .evaluators import BASIC_EVALUATORS, EXTENDED_EVALUATORS
-from .providers import BASIC_PROVIDERS, EXTENDED_PROVIDERS
-from .services import BASIC_SERVICES, EXTENDED_SERVICES
 from .types import CapabilityConfig
+
+# Re-export for backward compatibility
+BASIC_ACTIONS = basic_actions
+EXTENDED_ACTIONS = advanced_actions
+BASIC_PROVIDERS = basic_providers
+EXTENDED_PROVIDERS = advanced_providers
+BASIC_EVALUATORS: list = []  # No basic evaluators
+EXTENDED_EVALUATORS = advanced_evaluators
+BASIC_SERVICES = basic_services
+EXTENDED_SERVICES = advanced_services
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime

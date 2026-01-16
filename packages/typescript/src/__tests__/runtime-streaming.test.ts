@@ -42,7 +42,15 @@ describe("useModel Streaming", () => {
   const mockCharacter: Character = {
     id: stringToUuid("test-streaming"),
     name: "StreamBot",
-    bio: "A bot for testing streaming",
+    bio: ["A bot for testing streaming"],
+    templates: {},
+    messageExamples: [],
+    postExamples: [],
+    topics: [],
+    adjectives: [],
+    knowledge: [],
+    plugins: [],
+    secrets: {},
   };
 
   // Helper to create a mock TextStreamResult

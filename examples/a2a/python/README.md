@@ -10,12 +10,13 @@ An HTTP server that exposes an elizaOS agent for agent-to-agent communication us
 ## Setup
 
 ```bash
-# Create virtual environment
+# Create a venv and install all required packages
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+source venv/bin/activate
+pip install -e packages/python
+pip install -e plugins/plugin-openai/python
+pip install -e plugins/plugin-inmemorydb/python
+pip install -r examples/a2a/python/requirements.txt
 
 # Optional: enable OpenAI-backed responses
 export OPENAI_API_KEY=your-api-key

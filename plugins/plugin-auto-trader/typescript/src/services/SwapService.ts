@@ -149,12 +149,16 @@ export class SwapService extends Service {
   private async initialize(): Promise<void> {
     logger.info(`[${SwapService.serviceType}] Initializing swap service...`);
 
-    const rpcUrl = this.runtime.getSetting('SOLANA_RPC_URL') || 'https://api.mainnet-beta.solana.com';
+    const rpcUrlSetting = this.runtime.getSetting('SOLANA_RPC_URL');
+    const rpcUrl =
+      typeof rpcUrlSetting === 'string' && rpcUrlSetting.trim().length > 0
+        ? rpcUrlSetting
+        : 'https://api.mainnet-beta.solana.com';
     this.connection = new Connection(rpcUrl, 'confirmed');
 
-    const privateKeyString = this.runtime.getSetting('SOLANA_PRIVATE_KEY');
-    if (privateKeyString) {
-      const privateKeyBytes = bs58.decode(privateKeyString);
+    const privateKeySetting = this.runtime.getSetting('SOLANA_PRIVATE_KEY');
+    if (typeof privateKeySetting === 'string' && privateKeySetting.trim().length > 0) {
+      const privateKeyBytes = bs58.decode(privateKeySetting);
       this.walletKeypair = Keypair.fromSecretKey(privateKeyBytes);
       logger.info(`[${SwapService.serviceType}] Wallet configured: ${this.walletKeypair.publicKey.toBase58()}`);
     } else {
@@ -271,14 +275,17 @@ export class SwapService extends Service {
         const parsedError = parseJSONObjectFromText(errorText);
 
         if (parsedError?.errorCode === 'TOKEN_NOT_TRADABLE') {
-          logger.error(`[${SwapService.serviceType}] Token not tradable:`, parsedError.error);
+          logger.error(
+            { error: parsedError.error },
+            `[${SwapService.serviceType}] Token not tradable`,
+          );
           return null;
         }
 
-        logger.error(`[${SwapService.serviceType}] Quote request failed:`, {
-          status: response.status,
-          error: errorText,
-        });
+        logger.error(
+          { status: response.status, error: errorText },
+          `[${SwapService.serviceType}] Quote request failed`,
+        );
         return null;
       }
 
@@ -288,7 +295,8 @@ export class SwapService extends Service {
       logger.info(`[SwapService] Quote: ${params.amount} → ${outputAmount} (${quote.priceImpactPct}% impact, ${quote.routePlan.length} routes)`);
       return quote;
     } catch (error) {
-      logger.error(`[${SwapService.serviceType}] Quote fetch error:`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(message, `[${SwapService.serviceType}] Quote fetch error`);
       return null;
     }
   }
@@ -338,10 +346,10 @@ export class SwapService extends Service {
 
       if (!swapResponse.ok) {
         const errorText = await swapResponse.text();
-        logger.error(`[${SwapService.serviceType}] Swap request failed:`, {
-          status: swapResponse.status,
-          error: errorText,
-        });
+        logger.error(
+          { status: swapResponse.status, error: errorText },
+          `[${SwapService.serviceType}] Swap request failed`,
+        );
         return {
           ...errorResult(`Jupiter swap request failed: ${errorText}`),
           outputAmount: await this.smallestUnitToAmount(params.outputMint, quote.outAmount),
@@ -410,8 +418,9 @@ export class SwapService extends Service {
         explorerUrl: `https://solscan.io/tx/${signature}`,
       };
     } catch (error) {
-      logger.error(`[${SwapService.serviceType}] Swap execution error:`, error);
-      return errorResult(error instanceof Error ? error.message : 'Unknown swap error');
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(message, `[${SwapService.serviceType}] Swap execution error`);
+      return errorResult(message || 'Unknown swap error');
     }
   }
 

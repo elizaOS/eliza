@@ -72,16 +72,16 @@ describe("Character Definition", () => {
     const examples = character.messageExamples ?? [];
     expect(examples.length).toBeGreaterThan(0);
 
-    // Each example should be a conversation array
+    // Each example should be a group with examples
     const firstExample = examples[0];
-    expect(Array.isArray(firstExample)).toBe(true);
-    expect(firstExample?.length).toBeGreaterThan(0);
+    expect(Array.isArray(firstExample?.examples)).toBe(true);
+    expect(firstExample?.examples?.length).toBeGreaterThan(0);
   });
 
   test("message examples have proper structure", () => {
     const examples = character.messageExamples ?? [];
-    const firstConvo = examples[0] ?? [];
-    const example = firstConvo[0];
+    const firstGroup = examples[0];
+    const example = firstGroup?.examples?.[0];
     expect(example).toHaveProperty("name");
     expect(example).toHaveProperty("content");
     expect(example?.content).toHaveProperty("text");

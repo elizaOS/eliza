@@ -15,6 +15,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { extractCancellationTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { createTodoDataService, type TodoData } from "../services/todoDataService";
 
 interface TaskCancellation {
@@ -72,10 +73,12 @@ async function extractTaskCancellation(
   return finalResult;
 }
 
+const spec = requireActionSpec("CANCEL_TODO");
+
 export const cancelTodoAction: Action = {
-  name: "CANCEL_TODO",
-  similes: ["DELETE_TODO", "REMOVE_TASK", "DELETE_TASK", "REMOVE_TODO"],
-  description: "Cancels and deletes a todo item from the user's task list immediately.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     if (!message.roomId) {
@@ -181,64 +184,7 @@ export const cancelTodoAction: Action = {
     return { success: true, text: `Task cancelled: ${taskName}` };
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Cancel my task to finish taxes",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: 'Are you sure you want to cancel this one-off task: "Finish taxes" (Priority 2, due 4/15/2023)? Once cancelled, it will be permanently removed.',
-          actions: ["CANCEL_TODO_CONFIRM"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Yes, please cancel it",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✓ Task cancelled: "Finish taxes" has been removed from your todo list.',
-          actions: ["CANCEL_TODO"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I don't want to do 50 pushups anymore, please delete that task",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: 'Are you sure you want to cancel this daily task: "Do 50 pushups" (current streak: 3 days)? Once cancelled, it will be permanently removed.',
-          actions: ["CANCEL_TODO_CONFIRM"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "No, I changed my mind, I'll keep it",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: 'I\'ve kept your daily task "Do 50 pushups" active. Keep up the good work with your streak!',
-          actions: ["CANCEL_TODO_REJECTED"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default cancelTodoAction;

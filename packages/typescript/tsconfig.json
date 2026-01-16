@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./",
+    "rootDir": "../../",
     "baseUrl": "../../",
     "typeRoots": ["../../node_modules/@types"],
     "types": ["node", "bun"],
@@ -17,7 +17,7 @@
       "@elizaos/plugin-sql": ["./plugins/plugin-sql/typescript/index.ts"]
     }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "../@schemas/**/*.ts"],
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.spec.ts",

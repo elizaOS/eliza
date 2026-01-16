@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-gaia"
-version = "1.0.0"
+version = "2.0.0"
 description = "GAIA Benchmark Implementation for ElizaOS - Evaluating AI assistants on real-world tasks"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "benchmark", "gaia", "agents", "llm", "elizaos", "evaluation"]
 classifiers = [

@@ -6,6 +6,7 @@ import type {
   IAgentRuntime,
   ImageDescriptionParams,
   ImageGenerationParams,
+  JsonValue,
   ObjectGenerationParams,
   Plugin,
   ResearchParams,
@@ -136,14 +137,14 @@ export const openaiPlugin: Plugin = {
     [ModelType.OBJECT_SMALL]: async (
       runtime: IAgentRuntime,
       params: ObjectGenerationParams
-    ): Promise<Record<string, unknown>> => {
+    ): Promise<Record<string, JsonValue>> => {
       return handleObjectSmall(runtime, params);
     },
 
     [ModelType.OBJECT_LARGE]: async (
       runtime: IAgentRuntime,
       params: ObjectGenerationParams
-    ): Promise<Record<string, unknown>> => {
+    ): Promise<Record<string, JsonValue>> => {
       return handleObjectLarge(runtime, params);
     },
 
@@ -157,9 +158,11 @@ export const openaiPlugin: Plugin = {
 
   tests: [
     {
+      $typeName: "eliza.v1.TestSuite",
       name: "openai_plugin_tests",
       tests: [
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_api_connectivity",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const baseURL = getBaseURL(runtime);
@@ -178,6 +181,7 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_text_embedding",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
@@ -192,6 +196,7 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_text_small",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const text = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -206,6 +211,7 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_text_large",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const text = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -220,6 +226,7 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_tokenizer_roundtrip",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const originalText = "Hello, tokenizer test!";
@@ -248,6 +255,7 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_streaming",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const chunks: string[] = [];
@@ -272,6 +280,7 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_image_description",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const testImageUrl =
@@ -292,6 +301,7 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_transcription",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             // Fetch a short audio sample
@@ -312,6 +322,7 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_text_to_speech",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const audioData = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
@@ -326,6 +337,7 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_object_generation",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
@@ -343,6 +355,7 @@ export const openaiPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openai_test_research",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             // Note: Deep research can take a long time (minutes to hours)

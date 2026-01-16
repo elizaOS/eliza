@@ -15,6 +15,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { mediaAttachmentIdTemplate } from "../generated/prompts/typescript/prompts.js";
 
 /**
@@ -62,16 +63,12 @@ const getMediaAttachmentId = async (
  * @property {Function} handler - Handler function for the action.
  * @property {ActionExample[][]} examples - Examples demonstrating the action.
  */
+const spec = requireActionSpec("TRANSCRIBE_MEDIA");
+
 export const transcribeMedia: Action = {
-  name: "TRANSCRIBE_MEDIA",
-  similes: [
-    "TRANSCRIBE_AUDIO",
-    "TRANSCRIBE_VIDEO",
-    "MEDIA_TRANSCRIPT",
-    "VIDEO_TRANSCRIPT",
-    "AUDIO_TRANSCRIPT",
-  ],
-  description: "Transcribe the full text of an audio or video file that the user has attached.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (message.content.source !== "discord") {
       return false;
@@ -233,38 +230,7 @@ ${mediaTranscript?.trim() || ""}
 
     return { success: true, text: callbackData.text };
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Please transcribe the audio file I just sent.",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Sure, I'll transcribe the full audio for you.",
-          actions: ["TRANSCRIBE_MEDIA"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Can I get a transcript of that video recording?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Absolutely, give me a moment to generate the full transcript of the video.",
-          actions: ["TRANSCRIBE_MEDIA"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default transcribeMedia;

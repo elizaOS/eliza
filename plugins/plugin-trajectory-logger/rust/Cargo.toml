@@ -1,8 +1,8 @@
 [package]
 name = "elizaos-plugin-trajectory-logger"
-version = "1.2.0"
+version = "2.0.0"
 edition = "2021"
-authors = ["elizaOS Team"]
+authors = ["elizaOS Contributors"]
 description = "Trajectory logging plugin for elizaOS - Rust implementation"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"

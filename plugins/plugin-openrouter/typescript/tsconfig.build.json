@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "outDir": "dist",
+    "noEmit": false,
+    "outDir": "./dist/node",
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,

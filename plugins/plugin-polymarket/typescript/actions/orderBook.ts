@@ -41,6 +41,7 @@ import {
 } from "@elizaos/core";
 import { getOrderBookDepthTemplate } from "../templates";
 import type { OrderBook } from "../types";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
   initializeClobClient,
   callLLMWithTimeout,
@@ -85,10 +86,12 @@ interface DepthData {
  * - For actual prices → use `getTokenInfoAction`
  * - For trading → use `placeOrderAction`
  */
+const spec = requireActionSpec("ORDER_BOOK");
+
 export const getOrderBookDepthAction: Action = {
-  name: "POLYMARKET_GET_ORDER_BOOK_DEPTH",
-  similes: ["ORDER_BOOK_DEPTH", "DEPTH", "MARKET_DEPTH", "LIQUIDITY", "COMPARE_DEPTH"],
-  description: "Retrieves order book depth (number of bid/ask levels) for multiple tokens to compare liquidity across markets. Use when comparing depth across multiple markets or finding markets with sufficient liquidity for large trades. Parameters: tokenIds (array of condition token IDs, required).",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   parameters: [
     {

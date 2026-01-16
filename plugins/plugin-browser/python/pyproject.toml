@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-browser"
-version = "1.0.0"
+version = "2.0.0"
 description = "Browser automation plugin for ElizaOS - enables AI agents to browse websites, interact with elements, and extract data"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "ElizaOS Team" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = [
     "elizaos",

@@ -299,6 +299,28 @@ export function unsaltSettingValue(setting: Setting, salt: string): Setting {
   return settingCopy;
 }
 
+function extractSettingsRecord(worldSettings: WorldSettings): Record<string, Setting> {
+  if (worldSettings.settings && typeof worldSettings.settings === "object") {
+    return worldSettings.settings;
+  }
+  const { settings: _settings, ...rest } = worldSettings as WorldSettings &
+    Record<string, Setting>;
+  return rest;
+}
+
+function wrapSettingsRecord(
+  worldSettings: WorldSettings,
+  settings: Record<string, Setting>,
+): WorldSettings {
+  if (worldSettings.settings !== undefined) {
+    return {
+      ...worldSettings,
+      settings,
+    };
+  }
+  return settings as WorldSettings;
+}
+
 /**
  * Applies salt to all settings in a WorldSettings object
  */
@@ -306,13 +328,14 @@ export function saltWorldSettings(
   worldSettings: WorldSettings,
   salt: string,
 ): WorldSettings {
-  const saltedSettings: WorldSettings = {};
+  const settingsRecord = extractSettingsRecord(worldSettings);
+  const saltedSettings: Record<string, Setting> = {};
 
-  for (const [key, setting] of Object.entries(worldSettings)) {
+  for (const [key, setting] of Object.entries(settingsRecord)) {
     saltedSettings[key] = saltSettingValue(setting, salt);
   }
 
-  return saltedSettings;
+  return wrapSettingsRecord(worldSettings, saltedSettings);
 }
 
 /**
@@ -322,13 +345,14 @@ export function unsaltWorldSettings(
   worldSettings: WorldSettings,
   salt: string,
 ): WorldSettings {
-  const unsaltedSettings: WorldSettings = {};
+  const settingsRecord = extractSettingsRecord(worldSettings);
+  const unsaltedSettings: Record<string, Setting> = {};
 
-  for (const [key, setting] of Object.entries(worldSettings)) {
+  for (const [key, setting] of Object.entries(settingsRecord)) {
     unsaltedSettings[key] = unsaltSettingValue(setting, salt);
   }
 
-  return unsaltedSettings;
+  return wrapSettingsRecord(worldSettings, unsaltedSettings);
 }
 
 /**
@@ -410,7 +434,7 @@ export async function initializeOnboarding(
   }
 
   // Create new settings state
-  const worldSettings: WorldSettings = {};
+  const worldSettings: Record<string, Setting> = {};
 
   // Initialize settings from config
   if (config.settings) {
@@ -425,7 +449,7 @@ export async function initializeOnboarding(
   }
 
   // No need to salt here as the settings are just initialized with null values
-  world.metadata.settings = worldSettings;
+  world.metadata.settings = worldSettings as WorldSettings;
 
   await runtime.updateWorld(world);
 
@@ -433,7 +457,7 @@ export async function initializeOnboarding(
     { src: "core:settings", serverId: world.messageServerId },
     "Settings config initialized",
   );
-  return worldSettings;
+  return worldSettings as WorldSettings;
 }
 
 /**
@@ -442,19 +466,11 @@ export async function initializeOnboarding(
  * @returns {Character} - A copy of the character with encrypted secrets
  */
 export function encryptedCharacter(character: Character): Character {
-  // Create a deep copy to avoid modifying the original
-  const encryptedChar = JSON.parse(JSON.stringify(character));
+  const encryptedChar: Character = {
+    ...character,
+    secrets: character.secrets ? { ...character.secrets } : undefined,
+  };
   const salt = getSalt();
-
-  // Encrypt character.settings.secrets if it exists
-  const encryptedCharSettings = encryptedChar.settings;
-  const encryptedCharSettingsSecrets = encryptedCharSettings?.secrets;
-  if (encryptedCharSettingsSecrets) {
-    encryptedChar.settings.secrets = encryptObjectValues(
-      encryptedCharSettingsSecrets,
-      salt,
-    );
-  }
 
   // Encrypt character.secrets if it exists
   if (encryptedChar.secrets) {
@@ -474,19 +490,11 @@ export function decryptedCharacter(
   character: Character,
   _runtime: IAgentRuntime,
 ): Character {
-  // Create a deep copy to avoid modifying the original
-  const decryptedChar = JSON.parse(JSON.stringify(character));
+  const decryptedChar: Character = {
+    ...character,
+    secrets: character.secrets ? { ...character.secrets } : undefined,
+  };
   const salt = getSalt();
-
-  // Decrypt character.settings.secrets if it exists
-  const decryptedCharSettings = decryptedChar.settings;
-  const decryptedCharSettingsSecrets = decryptedCharSettings?.secrets;
-  if (decryptedCharSettingsSecrets) {
-    decryptedChar.settings.secrets = decryptObjectValues(
-      decryptedCharSettingsSecrets,
-      salt,
-    );
-  }
 
   // Decrypt character.secrets if it exists
   if (decryptedChar.secrets) {
@@ -498,15 +506,15 @@ export function decryptedCharacter(
 
 /**
  * Helper function to encrypt all string values in an object
- * @param {Record<string, unknown>} obj - Object with values to encrypt
+ * @param {Record<string, string | number | boolean>} obj - Object with values to encrypt
  * @param {string} salt - The salt to use for encryption
  * @returns {Record<string, unknown>} - Object with encrypted values
  */
 export function encryptObjectValues(
-  obj: Record<string, unknown>,
+  obj: Record<string, string | number | boolean>,
   salt: string,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+): Record<string, string | number | boolean> {
+  const result: Record<string, string | number | boolean> = {};
 
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === "string" && value) {
@@ -521,15 +529,15 @@ export function encryptObjectValues(
 
 /**
  * Helper function to decrypt all string values in an object
- * @param {Record<string, unknown>} obj - Object with encrypted values
+ * @param {Record<string, string | number | boolean>} obj - Object with encrypted values
  * @param {string} salt - The salt to use for decryption
  * @returns {Record<string, unknown>} - Object with decrypted values
  */
 export function decryptObjectValues(
-  obj: Record<string, unknown>,
+  obj: Record<string, string | number | boolean>,
   salt: string,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+): Record<string, string | number | boolean> {
+  const result: Record<string, string | number | boolean> = {};
 
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === "string" && value) {

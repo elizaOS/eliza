@@ -7,7 +7,7 @@
 import {
   AgentRuntime,
   ChannelType,
-  type Character,
+  createCharacter,
   type Content,
   createMessageMemory,
   LLMMode,
@@ -42,13 +42,13 @@ type RuntimeBundle = {
 // Character Definition
 // ============================================
 
-const BROWSER_ASSISTANT_CHARACTER: Character = {
+const BROWSER_ASSISTANT_CHARACTER = createCharacter({
   name: "Browser Assistant",
   system: `You are a helpful browser assistant that can discuss the content of webpages with users.
 When the user asks about "this page", "this article", "this website", or similar, refer to the PAGE_CONTENT context.
 Be concise and helpful. Focus on answering questions about the page content when relevant.`,
   bio: "An AI assistant built on ElizaOS that helps users understand and interact with web content.",
-};
+});
 
 // ============================================
 // Storage Keys
@@ -206,8 +206,8 @@ function applySettings(runtime: AgentRuntime, config: ExtensionConfig, effective
     runtime.setSetting("OPENAI_ALLOW_BROWSER_API_KEY", "true");
     runtime.setSetting("OPENAI_API_KEY", config.provider.openaiApiKey ?? "", true);
     runtime.setSetting("OPENAI_BASE_URL", config.provider.openaiBaseUrl ?? "");
-    runtime.setSetting("OPENAI_SMALL_MODEL", config.provider.openaiSmallModel ?? "gpt-4o-mini");
-    runtime.setSetting("OPENAI_LARGE_MODEL", config.provider.openaiLargeModel ?? "gpt-4o");
+    runtime.setSetting("OPENAI_SMALL_MODEL", config.provider.openaiSmallModel ?? "gpt-5-mini");
+    runtime.setSetting("OPENAI_LARGE_MODEL", config.provider.openaiLargeModel ?? "gpt-5");
   }
 
   if (effectiveMode === "anthropic") {

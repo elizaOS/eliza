@@ -72,3 +72,54 @@ async fn long_term_memory_provider_returns_text_when_memories_exist() -> Result<
     Ok(())
 }
 
+#[test]
+fn get_long_term_memories_returns_top_confidence_items() {
+    let service = advanced_memory::MemoryService::default();
+    let entity_id = elizaos::UUID::new_v4();
+    let agent_id = elizaos::UUID::new_v4();
+
+    service.store_long_term_memory(advanced_memory::LongTermMemory {
+        id: elizaos::UUID::new_v4(),
+        agent_id: agent_id.clone(),
+        entity_id: entity_id.clone(),
+        category: advanced_memory::LongTermMemoryCategory::Semantic,
+        content: "low".to_string(),
+        confidence: 0.1,
+        source: None,
+        metadata: Value::Object(Default::default()),
+    });
+    service.store_long_term_memory(advanced_memory::LongTermMemory {
+        id: elizaos::UUID::new_v4(),
+        agent_id: agent_id.clone(),
+        entity_id: entity_id.clone(),
+        category: advanced_memory::LongTermMemoryCategory::Semantic,
+        content: "high".to_string(),
+        confidence: 0.9,
+        source: None,
+        metadata: Value::Object(Default::default()),
+    });
+    service.store_long_term_memory(advanced_memory::LongTermMemory {
+        id: elizaos::UUID::new_v4(),
+        agent_id,
+        entity_id: entity_id.clone(),
+        category: advanced_memory::LongTermMemoryCategory::Semantic,
+        content: "mid".to_string(),
+        confidence: 0.5,
+        source: None,
+        metadata: Value::Object(Default::default()),
+    });
+
+    let out = service.get_long_term_memories(entity_id, 2);
+    assert_eq!(out.len(), 2);
+    assert!(out[0].confidence >= out[1].confidence);
+    assert_eq!(out[0].content, "high");
+}
+
+#[test]
+fn get_long_term_memories_handles_zero_limit() {
+    let service = advanced_memory::MemoryService::default();
+    let entity_id = elizaos::UUID::new_v4();
+    let out = service.get_long_term_memories(entity_id, 0);
+    assert!(out.is_empty());
+}
+

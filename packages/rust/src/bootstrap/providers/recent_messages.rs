@@ -1,12 +1,18 @@
 //! RECENT_MESSAGES provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("RECENT_MESSAGES"));
 
 /// Provider for recent message history.
 pub struct RecentMessagesProvider;
@@ -14,15 +20,15 @@ pub struct RecentMessagesProvider;
 #[async_trait]
 impl Provider for RecentMessagesProvider {
     fn name(&self) -> &'static str {
-        "RECENT_MESSAGES"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Provides recent message history from the current conversation"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(
@@ -101,4 +107,3 @@ impl Provider for RecentMessagesProvider {
             .with_data("roomId", room_id.to_string()))
     }
 }
-

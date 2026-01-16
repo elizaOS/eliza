@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { AgentRuntime, type Character } from "@elizaos/core";
+import { AgentRuntime, createCharacter, type Character } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
 import { initializeClobClient } from "@elizaos/plugin-polymarket";
 
@@ -9,17 +9,15 @@ describe("live integration (Polymarket CLOB)", () => {
     if (process.env.POLYMARKET_LIVE_TESTS !== "1") return;
 
     const key = "0x" + "11".repeat(32);
-    const character: Character = {
+    const character: Character = createCharacter({
       name: "LiveTest",
       bio: "live",
-      settings: {
-        secrets: {
-          EVM_PRIVATE_KEY: key,
-          POLYMARKET_PRIVATE_KEY: key,
-          CLOB_API_URL: "https://clob.polymarket.com",
-        },
+      secrets: {
+        EVM_PRIVATE_KEY: key,
+        POLYMARKET_PRIVATE_KEY: key,
+        CLOB_API_URL: "https://clob.polymarket.com",
       },
-    };
+    });
 
     const runtime = new AgentRuntime({ character, plugins: [sqlPlugin] });
     await runtime.initialize();

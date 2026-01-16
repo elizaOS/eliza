@@ -34,9 +34,11 @@ export const elizaClassicPlugin: Plugin = {
 
   tests: [
     {
+      $typeName: "eliza.v1.TestSuite",
       name: "eliza_classic_plugin_tests",
       tests: [
         {
+          $typeName: "eliza.v1.TestCase",
           name: "eliza_test_greeting",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -51,6 +53,7 @@ export const elizaClassicPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "eliza_test_feeling_sad",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -65,6 +68,7 @@ export const elizaClassicPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "eliza_test_family",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -79,6 +83,7 @@ export const elizaClassicPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "eliza_test_computer",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -93,6 +98,7 @@ export const elizaClassicPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "eliza_test_text_small",
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const response = await runtime.useModel(ModelType.TEXT_SMALL, {

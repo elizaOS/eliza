@@ -1,12 +1,12 @@
 [project]
 name = "elizaos-agentbench"
-version = "0.1.0"
+version = "2.0.0"
 description = "AgentBench benchmark implementation for ElizaOS Python"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "ElizaOS Team"}
+    {name = "elizaOS Contributors"}
 ]
 keywords = ["benchmark", "llm", "agents", "elizaos", "agentbench"]
 classifiers = [

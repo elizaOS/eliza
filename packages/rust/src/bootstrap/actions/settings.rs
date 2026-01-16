@@ -10,6 +10,8 @@ use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
 use super::Action;
+use once_cell::sync::Lazy;
+use crate::generated::spec_helpers::require_action_spec;
 
 /// Action for updating settings.
 pub struct UpdateSettingsAction;

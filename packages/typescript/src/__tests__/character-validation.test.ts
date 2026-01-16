@@ -9,7 +9,8 @@ import type { Character } from "../types/agent";
 describe("Character Schema Validation", () => {
   const validCharacter: Character = {
     name: "Test Character",
-    bio: "A test character for validation",
+    bio: ["A test character for validation"],
+    templates: {},
     messageExamples: [],
     postExamples: [],
     topics: ["AI", "Testing"],
@@ -17,12 +18,21 @@ describe("Character Schema Validation", () => {
     knowledge: [],
     plugins: [],
     settings: {},
-    style: {},
+    secrets: {},
+    style: { all: [], chat: [], post: [] },
   };
 
   const minimalValidCharacter: Character = {
     name: "Minimal Character",
-    bio: "Just the basics",
+    bio: ["Just the basics"],
+    templates: {},
+    messageExamples: [],
+    postExamples: [],
+    topics: [],
+    adjectives: [],
+    knowledge: [],
+    plugins: [],
+    secrets: {},
   };
 
   describe("validateCharacter", () => {
@@ -74,12 +84,11 @@ describe("Character Schema Validation", () => {
       expect(resultError?.message).toContain("Character validation failed");
     });
 
-    test("should reject character without bio", () => {
+    test("should default bio when omitted", () => {
       const invalidCharacter = { name: "No Bio Character" };
       const result = validateCharacter(invalidCharacter);
-      expect(result.success).toBe(false);
-      const resultError = result.error;
-      expect(resultError?.message).toContain("Character validation failed");
+      expect(result.success).toBe(true);
+      expect(result.data?.bio).toEqual([]);
     });
 
     test("should accept bio as string array", () => {
@@ -120,24 +129,33 @@ describe("Character Schema Validation", () => {
               content: { text: "Hi there!" },
             },
           ],
-        ],
+        ].map((examples) => ({ examples })),
         postExamples: ["Example post 1", "Example post 2"],
         topics: ["AI", "Testing", "Validation"],
         adjectives: ["helpful", "reliable", "intelligent"],
         knowledge: [
-          "knowledge/file1.txt",
-          { path: "knowledge/file2.txt", shared: true },
-          { directory: "knowledge/shared", shared: true },
+          { item: { case: "path", value: "knowledge/file1.txt" } },
+          {
+            item: {
+              case: "path",
+              value: "knowledge/file2.txt",
+            },
+          },
+          {
+            item: {
+              case: "directory",
+              value: { path: "knowledge/shared", shared: true },
+            },
+          },
         ],
         plugins: ["plugin1", "plugin2"],
         settings: {
-          temperature: 0.7,
-          maxTokens: 1000,
-          debug: true,
+          defaultTemperature: 0.7,
+          defaultMaxTokens: 1000,
+          extra: { debug: true },
         },
         secrets: {
           apiKey: "secret-key",
-          enabled: true,
         },
         style: {
           all: ["casual", "friendly"],
@@ -227,11 +245,21 @@ describe("Character Schema Validation", () => {
         name: "Knowledge Character",
         bio: "Testing knowledge validation",
         knowledge: [
-          "simple/path.txt",
-          { path: "path/with/config.txt", shared: false },
-          { path: "shared/path.txt", shared: true },
-          { directory: "knowledge/dir" },
-          { directory: "shared/dir", shared: true },
+          { item: { case: "path", value: "simple/path.txt" } },
+          { item: { case: "path", value: "path/with/config.txt" } },
+          { item: { case: "path", value: "shared/path.txt" } },
+          {
+            item: {
+              case: "directory",
+              value: { path: "knowledge/dir" },
+            },
+          },
+          {
+            item: {
+              case: "directory",
+              value: { path: "shared/dir", shared: true },
+            },
+          },
         ],
       };
       const result = validateCharacter(characterWithComplexKnowledge);

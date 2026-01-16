@@ -1,16 +1,23 @@
 #!/usr/bin/env node
 
-import { SimulationService } from '../services/SimulationService.ts';
-import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
-import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
-import {
-  OptimizedMomentumStrategy,
-  DEFAULT_PARAMS,
-} from '../strategies/OptimizedMomentumStrategy.ts';
+// Missing services - commented out until implemented
+// import { SimulationService } from '../services/SimulationService.ts';
+// import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
+// import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
+// import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
+// import {
+//   OptimizedMomentumStrategy,
+//   DEFAULT_PARAMS,
+// } from '../strategies/OptimizedMomentumStrategy.ts';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+// Early exit - services not implemented
+// This check ensures the script fails fast if run
+if (typeof require !== 'undefined' && require.main === module) {
+  throw new Error('This script requires SimulationService, StrategyRegistryService, HistoricalDataService, PerformanceReportingService, and OptimizedMomentumStrategy which are not yet implemented');
+}
 
 // Test tokens - expand this list for production
 const TEST_TOKENS = [
@@ -73,43 +80,28 @@ function calculateMaxDrawdown(portfolioValues: number[]): number {
   return maxDrawdown;
 }
 
-// Buy and hold benchmark
+// Buy and hold benchmark - commented out until services are implemented
 async function runBuyAndHoldBenchmark(
-  simulationService: SimulationService,
-  token: any,
-  startDate: Date,
-  endDate: Date,
-  initialCapital: number
+  _simulationService: unknown,
+  _token: unknown,
+  _startDate: Date,
+  _endDate: Date,
+  _initialCapital: number
 ): Promise<number> {
-  const historicalData = await simulationService['historicalDataService'].fetchData(
-    token.address,
-    '1m',
-    startDate,
-    endDate,
-    'birdeye'
-  );
-
-  if (!historicalData || historicalData.length < 2) return 0;
-
-  const startPrice = historicalData[0].close;
-  const endPrice = historicalData[historicalData.length - 1].close;
-  return ((endPrice - startPrice) / startPrice) * 100;
+  throw new Error('Services not implemented');
+  return 0;
 }
 
-// Test a single parameter combination
+// Test a single parameter combination - commented out until services are implemented
 async function testParameterCombination(
-  params: any,
-  services: Map<string, any>,
-  tokens: any[],
-  timeframe: { start: Date; end: Date },
-  initialCapital: number
+  _params: unknown,
+  _services: Map<string, unknown>,
+  _tokens: unknown[],
+  _timeframe: { start: Date; end: Date },
+  _initialCapital: number
 ): Promise<OptimizationResult> {
-  const { simulationService, strategyRegistry } = services.get('services');
-
-  // Register strategy with these params
-  const strategy = new OptimizedMomentumStrategy(params);
-  strategyRegistry.registerStrategy(strategy);
-
+  throw new Error('Services not implemented');
+  /* Commented out until services are implemented
   const results = [];
   const returns = [];
   const benchmarkReturns = [];
@@ -199,6 +191,17 @@ async function testParameterCombination(
     profitableTokens,
     benchmarkOutperformance: avgReturn - avgBenchmark,
   };
+  */
+  return {
+    params: {},
+    avgReturn: 0,
+    sharpeRatio: 0,
+    maxDrawdown: 0,
+    winRate: 0,
+    avgTradesPerDay: 0,
+    profitableTokens: 0,
+    benchmarkOutperformance: 0,
+  };
 }
 
 // Generate parameter combinations
@@ -208,8 +211,9 @@ function* generateParamCombinations(grid: any): Generator<any> {
   const indices = new Array(keys.length).fill(0);
 
   while (true) {
-    // Create combination
-    const combination: any = { ...DEFAULT_PARAMS };
+    // Create combination - commented out until DEFAULT_PARAMS is available
+    // const combination: any = { ...DEFAULT_PARAMS };
+    const combination: Record<string, unknown> = {};
     keys.forEach((key, i) => {
       combination[key] = values[i][indices[i]];
     });
@@ -232,6 +236,8 @@ function* generateParamCombinations(grid: any): Generator<any> {
 }
 
 async function main() {
+  throw new Error('This script requires SimulationService, StrategyRegistryService, HistoricalDataService, PerformanceReportingService, and OptimizedMomentumStrategy which are not yet implemented');
+  /* Commented out until services are implemented
   console.log('🔧 Strategy Parameter Optimization\n');
 
   // Create minimal runtime
@@ -363,6 +369,7 @@ async function main() {
   const optimizedParams = `export const OPTIMIZED_PARAMS = ${JSON.stringify(bestParams, null, 2)};\n`;
   fs.writeFileSync('optimized_params.json', JSON.stringify(bestParams, null, 2));
   console.log('\n✓ Optimized parameters saved to optimized_params.json');
+  */
 }
 
 main().catch((error) => {

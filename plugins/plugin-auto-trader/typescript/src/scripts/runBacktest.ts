@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import { SimulationService } from '../services/SimulationService.ts';
-import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
-import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
-import { OptimizedRuleBasedStrategy } from '../strategies/OptimizedRuleBasedStrategy.ts';
+// Missing services - commented out until implemented
+// import { SimulationService } from '../services/SimulationService.ts';
+// import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
+// import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
+// import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
+// import { OptimizedRuleBasedStrategy } from '../strategies/OptimizedRuleBasedStrategy.ts';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -30,12 +31,14 @@ const baseCacheDir = process.env.ELIZA_DATA_DIR || path.join(os.homedir(), '.eli
 const CACHE_DIR = path.join(baseCacheDir, 'cache/auto_trader_historical_data');
 
 class BacktestRunner {
-  private simulationService: SimulationService;
-  private strategyRegistry: StrategyRegistryService;
-  private historicalDataService: DefaultHistoricalDataService;
-  private performanceReporting: PerformanceReportingService;
+  private simulationService: never;
+  private strategyRegistry: never;
+  private historicalDataService: never;
+  private performanceReporting: never;
 
   constructor() {
+    throw new Error('BacktestRunner requires SimulationService, StrategyRegistryService, HistoricalDataService, and PerformanceReportingService which are not yet implemented');
+    /* Commented out until services are implemented
     // Create a minimal runtime object that satisfies service requirements
     const services = new Map<string, any>();
     const runtime = {
@@ -45,7 +48,8 @@ class BacktestRunner {
       getService: (name: string) => services.get(name),
     } as any;
 
-    // Initialize services in the correct order
+    // Initialize services in the correct order - commented out until services are implemented
+    /*
     this.performanceReporting = new PerformanceReportingService(runtime);
     services.set('PerformanceReportingService', this.performanceReporting);
 
@@ -57,9 +61,12 @@ class BacktestRunner {
 
     this.simulationService = new SimulationService(runtime);
     services.set('SimulationService', this.simulationService);
+    */
   }
 
   async initialize() {
+    throw new Error('Services not implemented');
+    /* Commented out until services are implemented
     console.log('Initializing backtesting environment...\n');
 
     // Start services
@@ -79,7 +86,7 @@ class BacktestRunner {
 
     try {
       const files = await fs.readdir(CACHE_DIR);
-      const metadataFiles = files.filter((f) => f.startsWith('metadata_'));
+      const metadataFiles = files.filter((f: string) => f.startsWith('metadata_'));
 
       for (const metaFile of metadataFiles) {
         const metadata = JSON.parse(await fs.readFile(path.join(CACHE_DIR, metaFile), 'utf-8'));
@@ -96,11 +103,13 @@ class BacktestRunner {
     return tokens;
   }
 
-  async runBacktestForToken(token: {
+  async runBacktestForToken(_token: {
     symbol: string;
     address: string;
     name: string;
   }): Promise<BacktestResult | null> {
+    throw new Error('Services not implemented');
+    /* Commented out until services are implemented
     try {
       console.log(`Running backtest for ${token.symbol} (${token.name})...`);
 
@@ -139,7 +148,7 @@ class BacktestRunner {
           ? losses.reduce((sum, t) => sum + (t.realizedPnl || 0), 0) / losses.length
           : 0;
 
-      const bestTrade = Math.max(...result.trades.map((t) => t.realizedPnl || 0), 0);
+      const bestTrade = Math.max(...result.trades.map((t: { realizedPnl?: number }) => t.realizedPnl || 0), 0);
       const worstTrade = Math.min(...result.trades.map((t) => t.realizedPnl || 0), 0);
 
       return {
@@ -159,9 +168,13 @@ class BacktestRunner {
       console.error(`Error backtesting ${token.symbol}:`, error);
       return null;
     }
+    */
+    return null;
   }
 
-  async runAllBacktests() {
+  async runAllBacktests(): Promise<BacktestResult[]> {
+    throw new Error('Services not implemented');
+    /* Commented out until services are implemented
     const tokens = await this.getAvailableTokens();
     console.log(`Found ${tokens.length} tokens with historical data\n`);
 
@@ -322,12 +335,14 @@ class BacktestRunner {
     console.log(`\n📊 Results saved to: ${resultsFilePath}`);
 
     return results;
+    */
+    return [];
   }
 }
 
 // Main execution
 async function main() {
-  const runner = new BacktestRunner();
+  const runner = new BacktestRunner(); // This will throw - services not implemented
 
   try {
     await runner.initialize();

@@ -28,8 +28,8 @@ pub mod testing;
 
 // From primitives
 pub use primitives::{
-    as_uuid, string_to_uuid, Content, ContentType, Media, MentionContext, MentionType, Metadata,
-    UUIDError, DEFAULT_UUID_STR, UUID,
+    as_uuid, string_to_uuid, Content, Media, MentionContext, Metadata, UUIDError, DEFAULT_UUID_STR,
+    UUID,
 };
 
 // From agent
@@ -41,20 +41,18 @@ pub use agent::{
 // From components
 pub use components::{
     ActionContext, ActionDefinition, ActionExample, ActionHandler, ActionParameter,
-    ActionParameterSchema, ActionPlan, ActionPlanStep, ActionResult, ActionStepStatus,
-    EvaluationExample, EvaluatorDefinition, EvaluatorHandler, HandlerCallback, HandlerOptions,
-    ProviderDefinition, ProviderHandler, ProviderResult,
+    ActionParameterSchema, ActionResult, EvaluationExample, EvaluatorDefinition, EvaluatorHandler,
+    HandlerCallback, HandlerOptions, ProviderDefinition, ProviderHandler, ProviderResult,
 };
 
 // From memory
 pub use memory::{
-    BaseMetadata, DescriptionMetadata, DocumentMetadata, FragmentMetadata, Memory, MemoryMetadata,
-    MemoryScope, MemoryType, MessageMemory, MessageMetadata,
+    Memory, MemoryMetadata, MemoryType, MessageMemory,
 };
 
 // From environment
 pub use environment::{
-    ChannelType, Component, Entity, Participant, Relationship, Role, Room, World, WorldMetadata,
+    Component, Entity, Participant, Relationship, Room, RoomMetadata, World, WorldMetadata,
     WorldOwnership,
 };
 
@@ -67,7 +65,7 @@ pub use events::{
 };
 
 // From state
-pub use state::{State, StateData, WorkingMemoryEntry};
+pub use state::{ActionPlan, ActionPlanStep, State, StateData, WorkingMemoryItem};
 
 // From database
 pub use database::{
@@ -110,6 +108,4 @@ pub use task::{GetTasksParams, Task, TaskStatus, TaskWorkerDefinition};
 pub use settings::{EnvironmentConfig, RuntimeSettings, SettingValue};
 
 // From testing
-pub use testing::{
-    TestCase, TestCaseDefinition, TestError, TestResults, TestSuite, TestSuiteDefinition,
-};
+pub use testing::{TestCase, TestSuite};

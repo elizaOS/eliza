@@ -9,6 +9,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { CoderService } from "../services/coderService";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 function extToLang(ext: string): string {
   const e = ext.toLowerCase();
@@ -39,10 +40,12 @@ function getFilepath(
   return loose?.[0]?.trim() ?? "";
 }
 
+const spec = requireActionSpec("READ_FILE");
+
 export const readFile: Action = {
-  name: "READ_FILE",
-  similes: ["VIEW_FILE", "OPEN_FILE", "CAT_FILE", "SHOW_FILE", "GET_FILE"],
-  description: "Read and return a file's contents.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: `${spec.description} Reads a file's contents.`,
   validate: async (
     runtime: IAgentRuntime,
     _message: Memory,
@@ -68,7 +71,7 @@ export const readFile: Action = {
       return { success: false, text: msg };
     }
 
-    const conv = message.roomId || message.agentId;
+    const conv = message.roomId ?? message.agentId ?? runtime.agentId;
     const result = await svc.readFile(conv, filepath);
     if (!result.ok) {
       if (callback) await callback({ content: { text: result.error } });

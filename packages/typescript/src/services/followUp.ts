@@ -1,6 +1,7 @@
 import {
   createUniqueUuid,
   type IAgentRuntime,
+  type JsonValue,
   logger,
   type Memory,
   MemoryType,
@@ -18,7 +19,7 @@ export interface FollowUpTask {
   reason: string;
   message?: string;
   priority: "high" | "medium" | "low";
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, JsonValue | object>;
 }
 
 export interface FollowUpSuggestion {
@@ -287,52 +288,60 @@ export class FollowUpService extends Service {
 
   // Smart Follow-up Suggestions
   async getFollowUpSuggestions(): Promise<FollowUpSuggestion[]> {
-    const suggestions: FollowUpSuggestion[] = [];
-
     // Get all contacts
     const contacts = await this.rolodexService.searchContacts({});
 
-    for (const contact of contacts) {
-      const entity = await this.runtime.getEntityById(contact.entityId);
-      if (!entity) continue;
+    const insights = await this.rolodexService.getRelationshipInsights(
+      this.runtime.agentId,
+    );
+    const needsAttentionById = new Map(
+      insights.needsAttention.map((item) => [item.entity.id, item]),
+    );
+    const candidates = contacts.filter((contact) => {
+      const needsAttention = needsAttentionById.get(contact.entityId);
+      return Boolean(needsAttention && needsAttention.daysSinceContact > 14);
+    });
 
-      // Get relationship insights
-      const insights = await this.rolodexService.getRelationshipInsights(
-        this.runtime.agentId,
-      );
+    const suggestionResults: Array<FollowUpSuggestion | null> = await Promise.all(
+      candidates.map(async (contact) => {
+        const entity = await this.runtime.getEntityById(contact.entityId);
+        if (!entity) return null;
 
-      // Check if this entity needs attention
-      const needsAttention = insights.needsAttention.find(
-        (item) => item.entity.id === contact.entityId,
-      );
+        const needsAttention = needsAttentionById.get(contact.entityId);
+        if (!needsAttention) return null;
 
-      if (needsAttention && needsAttention.daysSinceContact > 14) {
         // Get relationship analytics
         const analytics = await this.rolodexService.analyzeRelationship(
           this.runtime.agentId,
           contact.entityId,
         );
 
-        if (analytics) {
-          suggestions.push({
-            entityId: contact.entityId,
-            entityName: entity.names[0] || "Unknown",
-            reason: this.generateFollowUpReason(
-              contact.categories,
-              needsAttention.daysSinceContact,
-              analytics.strength,
-            ),
-            daysSinceLastContact: needsAttention.daysSinceContact,
-            relationshipStrength: analytics.strength,
-            suggestedMessage: this.generateFollowUpMessage(
-              entity.names[0],
-              contact.categories,
-              needsAttention.daysSinceContact,
-            ),
-          });
+        if (!analytics) {
+          return null;
         }
-      }
-    }
+
+        return {
+          entityId: contact.entityId,
+          entityName: entity.names[0] || "Unknown",
+          reason: this.generateFollowUpReason(
+            contact.categories,
+            needsAttention.daysSinceContact,
+            analytics.strength,
+          ),
+          daysSinceLastContact: needsAttention.daysSinceContact,
+          relationshipStrength: analytics.strength,
+          suggestedMessage: this.generateFollowUpMessage(
+            entity.names[0],
+            contact.categories,
+            needsAttention.daysSinceContact,
+          ),
+        };
+      }),
+    );
+
+    const suggestions = suggestionResults.filter(
+      (suggestion): suggestion is FollowUpSuggestion => suggestion !== null,
+    );
 
     // Sort by priority (high relationship strength + long time since contact)
     suggestions.sort((a, b) => {
@@ -354,7 +363,7 @@ export class FollowUpService extends Service {
       },
       execute: async (
         runtime: IAgentRuntime,
-        _options: { [key: string]: unknown },
+        _options: { [key: string]: JsonValue | object },
         task: Task,
       ) => {
         try {
@@ -399,14 +408,14 @@ export class FollowUpService extends Service {
             runtime as {
               emitEvent: (
                 event: string,
-                payload: Record<string, unknown>,
+                payload: Record<string, JsonValue | object>,
               ) => Promise<void>;
             }
           ).emitEvent("follow_up:due", {
-            taskId: task.id,
-            taskName: task.name,
-            entityId: entity.id,
-            message,
+            taskId: task.id ?? "",
+            taskName: task.name ?? "",
+            entityId: entity.id ?? "",
+            message: message ?? "",
           });
 
           logger.info(
@@ -433,7 +442,7 @@ export class FollowUpService extends Service {
       },
       execute: async (
         runtime: IAgentRuntime,
-        options: { [key: string]: unknown },
+      options: { [key: string]: JsonValue | object },
         task: Task,
       ) => {
         try {

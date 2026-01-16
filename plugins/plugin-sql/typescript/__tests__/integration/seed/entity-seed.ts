@@ -12,7 +12,8 @@ export const entityTestAgentSettings = {
   name: "Entity Test Agent",
   username: "entity_test_agent",
   system: "Test agent system prompt",
-  bio: "An agent for testing entity operations",
+  bio: ["An agent for testing entity operations"],
+  templates: {},
   enabled: true,
   status: AgentStatus.ACTIVE,
   createdAt: Date.now(),
@@ -23,6 +24,7 @@ export const entityTestAgentSettings = {
   adjectives: [],
   knowledge: [],
   plugins: [],
+  secrets: {},
   settings: {
     entityTestSetting: "entity test value",
   },

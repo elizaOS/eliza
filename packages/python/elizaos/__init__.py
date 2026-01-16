@@ -31,11 +31,10 @@ from elizaos.types import (
     Agent,
     AgentStatus,
     BaseMetadata,
-    ChannelType,
     Character,
+    CharacterSettings,
     Component,
     Content,
-    ContentType,
     CustomMetadata,
     DescriptionMetadata,
     DocumentMetadata,
@@ -52,8 +51,6 @@ from elizaos.types import (
     Media,
     Memory,
     MemoryMetadata,
-    MemoryScope,
-    MemoryType,
     MentionContext,
     MessageExample,
     MessageMemory,
@@ -65,7 +62,6 @@ from elizaos.types import (
     Provider,
     ProviderResult,
     Relationship,
-    Role,
     Room,
     Route,
     RouteRequest,
@@ -75,15 +71,50 @@ from elizaos.types import (
     ServiceTypeName,
     State,
     StateData,
+    WorkingMemoryItem,
     Task,
     TaskWorker,
     World,
+    WorldOwnership,
     as_uuid,
     string_to_uuid,
 )
 from elizaos.types.database import IDatabaseAdapter  # noqa: E402
 from elizaos.types.runtime import IAgentRuntime  # noqa: E402
 from elizaos.utils import compose_prompt, compose_prompt_from_state, get_current_time_ms
+from elizaos.generated.action_docs import (
+    ActionDoc,
+    ActionDocExampleCall,
+    ActionDocExampleMessage,
+    ActionDocParameter,
+    ActionDocParameterSchema,
+    ActionDocParameterExampleValue,
+    ProviderDoc,
+    EvaluatorDoc,
+    EvaluatorDocExample,
+    EvaluatorDocMessage,
+    EvaluatorDocMessageContent,
+    core_actions_spec_version,
+    all_actions_spec_version,
+    core_providers_spec_version,
+    all_providers_spec_version,
+    core_evaluators_spec_version,
+    all_evaluators_spec_version,
+    core_action_docs,
+    all_action_docs,
+    core_provider_docs,
+    all_provider_docs,
+    core_evaluator_docs,
+    all_evaluator_docs,
+)
+from elizaos.generated.spec_helpers import (
+    get_action_spec,
+    require_action_spec,
+    get_provider_spec,
+    require_provider_spec,
+    get_evaluator_spec,
+    require_evaluator_spec,
+)
 
 _rebuild_ns = {
     "IAgentRuntime": IAgentRuntime,
@@ -101,11 +132,11 @@ _rebuild_ns = {
     "HandlerOptions": HandlerOptions,
     "ActionResult": ActionResult,
 }
-Plugin.model_rebuild(_types_namespace=_rebuild_ns)
-Action.model_rebuild(_types_namespace=_rebuild_ns)
-Evaluator.model_rebuild(_types_namespace=_rebuild_ns)
-Provider.model_rebuild(_types_namespace=_rebuild_ns)
-TaskWorker.model_rebuild(_types_namespace=_rebuild_ns)
+# Rebuild Pydantic models with forward references
+# Only call model_rebuild on actual Pydantic BaseModel subclasses
+for _type in [Plugin, Task, TaskWorker]:
+    if hasattr(_type, "model_rebuild"):
+        _type.model_rebuild(_types_namespace=_rebuild_ns)
 
 __version__ = "1.0.0"
 
@@ -117,15 +148,12 @@ __all__ = [
     "as_uuid",
     "string_to_uuid",
     "Content",
-    "ContentType",
     "Media",
     "Metadata",
     "MentionContext",
     # Types - Memory
     "Memory",
     "MessageMemory",
-    "MemoryType",
-    "MemoryScope",
     "MemoryMetadata",
     "BaseMetadata",
     "DocumentMetadata",
@@ -135,6 +163,7 @@ __all__ = [
     "CustomMetadata",
     # Types - Agent
     "Character",
+    "CharacterSettings",
     "Agent",
     "AgentStatus",
     "MessageExample",
@@ -142,9 +171,8 @@ __all__ = [
     "Entity",
     "Component",
     "World",
+    "WorldOwnership",
     "Room",
-    "ChannelType",
-    "Role",
     "Participant",
     "Relationship",
     # Types - Components
@@ -170,6 +198,7 @@ __all__ = [
     # Types - State
     "State",
     "StateData",
+    "WorkingMemoryItem",
     # Types - Events
     "EventType",
     "EventPayload",
@@ -215,4 +244,35 @@ __all__ = [
     "compose_prompt",
     "compose_prompt_from_state",
     "get_current_time_ms",
+    # Generated action/provider/evaluator specs (centralized from packages/prompts)
+    "ActionDoc",
+    "ActionDocExampleCall",
+    "ActionDocExampleMessage",
+    "ActionDocParameter",
+    "ActionDocParameterSchema",
+    "ActionDocParameterExampleValue",
+    "ProviderDoc",
+    "EvaluatorDoc",
+    "EvaluatorDocExample",
+    "EvaluatorDocMessage",
+    "EvaluatorDocMessageContent",
+    "core_actions_spec_version",
+    "all_actions_spec_version",
+    "core_providers_spec_version",
+    "all_providers_spec_version",
+    "core_evaluators_spec_version",
+    "all_evaluators_spec_version",
+    "core_action_docs",
+    "all_action_docs",
+    "core_provider_docs",
+    "all_provider_docs",
+    "core_evaluator_docs",
+    "all_evaluator_docs",
+    # Spec helper functions
+    "get_action_spec",
+    "require_action_spec",
+    "get_provider_spec",
+    "require_provider_spec",
+    "get_evaluator_spec",
+    "require_evaluator_spec",
 ]

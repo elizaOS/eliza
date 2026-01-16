@@ -2,8 +2,10 @@ import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@el
 import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME, type RobloxExperienceInfo } from "../types";
 
+const providerName = "roblox-game-state";
+
 export const gameStateProvider: Provider = {
-  name: "roblox-game-state",
+  name: providerName,
   description: "Provides information about the connected Roblox game/experience",
 
   get: async (

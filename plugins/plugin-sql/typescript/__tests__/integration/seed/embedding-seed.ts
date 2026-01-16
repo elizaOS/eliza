@@ -28,7 +28,8 @@ export const embeddingTestAgent = {
   name: "Embedding Test Agent",
   username: "embedding_test_agent",
   system: "Test agent system prompt",
-  bio: "An agent for testing embedding functionality",
+  bio: ["An agent for testing embedding functionality"],
+  templates: {},
   enabled: true,
   status: AgentStatus.ACTIVE,
   createdAt: Date.now(),
@@ -38,6 +39,8 @@ export const embeddingTestAgent = {
   topics: [],
   adjectives: [],
   knowledge: [],
+  plugins: [],
+  secrets: {},
   plugins: [],
   settings: {
     dummySetting: "dummy value",

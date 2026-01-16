@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+env:
+  # Disable incremental compilation to avoid PDB locking issues on Windows
+  CARGO_INCREMENTAL: 0
+  # Reduce debuginfo to speed up builds and reduce PDB size
+  CARGO_PROFILE_DEV_DEBUG: 1
+  # Windows specific: disable long path issues
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
+  # Skip npm install in tests to avoid timeout
+  COMPUTERUSE_SKIP_NPM_INSTALL: 1
+  # Skip telemetry collector check to avoid CI timeouts
+  OTEL_SKIP_COLLECTOR_CHECK: true
+  # Reduce retry time for telemetry in CI
+  OTEL_RETRY_DURATION_MINS: 0
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Clean target directory to avoid PDB conflicts
+      - name: Clean target directory
+        if: runner.os == 'Windows'
+        run: |
+          if (Test-Path target) { Remove-Item -Recurse -Force target }
+        shell: pwsh
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      # Build with retries (exclude Python bindings - built separately in ci-wheels.yml)
+      - name: Build workspace
+        if: runner.os == 'Windows'
+        run: |
+          $attempts = 3
+          for ($i = 1; $i -le $attempts; $i++) {
+            Write-Host "Build attempt $i of $attempts"
+            cargo build --workspace --exclude computeruse-py-bindings --verbose
+            if ($LASTEXITCODE -eq 0) {
+              break
+            }
+            if ($i -lt $attempts) {
+              Write-Host "Build failed, retrying in 5 seconds..."
+              Start-Sleep -Seconds 5
+              # Clean PDB files that might be locked
+              Get-ChildItem -Path target -Include *.pdb -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
+            }
+          }
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+        shell: pwsh
+
+      - name: Build workspace (Unix)
+        if: runner.os != 'Windows'
+        run: cargo build --workspace --exclude computeruse-py-bindings --verbose
+        shell: bash
+
+      - name: Test with telemetry feature
+        if: runner.os == 'Windows'
+        run: |
+          cargo build -p computeruse-mcp-agent --features telemetry
+          cargo test -p computeruse-mcp-agent --features telemetry -- --test-threads=1
+
+      - name: Test with sentry feature
+        if: runner.os == 'Windows'
+        run: |
+          cargo build -p computeruse-mcp-agent --features sentry
+          cargo test -p computeruse-mcp-agent --features sentry -- --test-threads=1
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: |
+          cd packages/computeruse/packages/computeruse-nodejs
+          bun install --ignore-scripts || true
+        shell: bash
+
+      - name: Build Node.js bindings
+        run: |
+          cd packages/computeruse/packages/computeruse-nodejs
+          bun run build
+        shell: bash
+
+      - name: Install workflow package dependencies
+        run: |
+          cd packages/computeruse/packages/workflow
+          npm install
+        shell: bash
+
+      - name: Run workflow package type check
+        run: |
+          cd packages/computeruse/packages/workflow
+          npx tsc --noEmit
+        shell: bash
+
+      - name: Run workflow package unit tests
+        run: |
+          cd packages/computeruse/packages/workflow
+          npm test -- --testPathIgnorePatterns="e2e|integration|mcp" --testTimeout=30000
+        shell: bash
+
+      # - name: Run Node.js tests
+      #   run: |
+      #     cd packages/computeruse/packages/computeruse-nodejs
+      #     bun test
+      #   shell: pwsh
+
+      # # Install Chrome extension and run browser tests
+      # - name: Install Chrome
+      #   run: |
+      #     choco install googlechrome -y --ignore-checksums
+      #     Start-Sleep -Seconds 5
+      #     # check chrome is installed
+      #     $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+      #     if (-not (Test-Path $chromePath)) {
+      #       Write-Error "Chrome is not installed"
+      #     }
+      #   shell: pwsh
+
+      # - name: Install extension via computeruse workflow
+      #   run: |
+      #     Write-Host "Running extension installation workflow..."
+      #     cargo run --bin computeruse -- mcp run crates/computeruse/browser-extension/install_chrome_extension_ui.yml
+      #   shell: pwsh
+      #   timeout-minutes: 5
+      #   continue-on-error: true
+
+      - name: Run Rust tests
+        run: cargo test --workspace --exclude computeruse-py-bindings --verbose -- --test-threads=1

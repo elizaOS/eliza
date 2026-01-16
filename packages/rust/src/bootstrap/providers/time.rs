@@ -2,12 +2,18 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("TIME"));
 
 /// Provider for current time information (TS parity: `TIME`).
 pub struct TimeProvider;
@@ -15,15 +21,15 @@ pub struct TimeProvider;
 #[async_trait]
 impl Provider for TimeProvider {
     fn name(&self) -> &'static str {
-        "TIME"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Provides the current date and time in UTC"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(
@@ -48,4 +54,3 @@ impl Provider for TimeProvider {
             .with_data("isoString", iso_string))
     }
 }
-

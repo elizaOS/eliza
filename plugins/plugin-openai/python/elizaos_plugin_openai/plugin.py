@@ -431,7 +431,7 @@ def create_openai_elizaos_plugin() -> Plugin:
         client = _get_client()
         temperature_raw = params.get("temperature")
         temperature = float(temperature_raw) if isinstance(temperature_raw, (int, float)) else None
-        # Note: gpt-5-mini doesn't support temperature - use defaults
+        # Note: gpt-5-mini has limited temperature support - use defaults
         return await client.generate_text_small(
             params.get("prompt", ""),
             system=params.get("system"),
@@ -442,6 +442,30 @@ def create_openai_elizaos_plugin() -> Plugin:
     async def embedding_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> list[float]:
         client = _get_client()
         return await client.create_embedding(params.get("text", ""))
+
+    async def text_large_stream_handler(
+        runtime: IAgentRuntime, params: dict[str, Any]
+    ) -> AsyncIterator[str]:
+        """Streaming handler for large text generation."""
+        client = _get_client()
+        async for chunk in client.stream_text(
+            params.get("prompt", ""),
+            system=params.get("system"),
+        ):
+            yield chunk
+
+    async def text_small_stream_handler(
+        runtime: IAgentRuntime, params: dict[str, Any]
+    ) -> AsyncIterator[str]:
+        """Streaming handler for small text generation."""
+        client = _get_client()
+        # Use small model for streaming
+        async for chunk in client.stream_text(
+            params.get("prompt", ""),
+            model=os.environ.get("OPENAI_SMALL_MODEL", "gpt-5-mini"),
+            system=params.get("system"),
+        ):
+            yield chunk
 
     async def research_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> dict[str, Any]:
         client = _get_client()
@@ -477,6 +501,10 @@ def create_openai_elizaos_plugin() -> Plugin:
             ModelType.TEXT_SMALL.value: text_small_handler,
             ModelType.TEXT_EMBEDDING.value: embedding_handler,
             ModelType.RESEARCH.value: research_handler,
+        },
+        streaming_models={
+            ModelType.TEXT_LARGE_STREAM.value: text_large_stream_handler,
+            ModelType.TEXT_SMALL_STREAM.value: text_small_stream_handler,
         },
     )
 

@@ -1,4 +1,5 @@
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { composePromptFromState, logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import {
   createConfig,
@@ -514,9 +515,11 @@ async function buildBridgeDetails(
   return bridgeOptions;
 }
 
+const spec = requireActionSpec("BRIDGE");
+
 export const bridgeAction = {
-  name: "EVM_BRIDGE_TOKENS",
-  description: "Bridge tokens between different chains with gas optimization",
+  name: spec.name,
+  description: spec.description,
 
   handler: async (
     runtime: IAgentRuntime,
@@ -603,7 +606,7 @@ export const bridgeAction = {
     ],
   ],
 
-  similes: ["CROSS_CHAIN_TRANSFER", "CHAIN_BRIDGE", "MOVE_CROSS_CHAIN", "BRIDGE_TOKENS"],
+  similes: spec.similes ? [...spec.similes] : [],
 };
 
 export async function checkBridgeStatus(

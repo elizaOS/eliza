@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agents", "ethereum", "evm", "blockchain", "web3", "elizaos"]
 classifiers = [

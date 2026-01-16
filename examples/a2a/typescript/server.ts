@@ -11,7 +11,7 @@
 import {
   AgentRuntime,
   ChannelType,
-  type Character,
+  createCharacter,
   type ContentValue,
   createMessageMemory,
   stringToUuid,
@@ -34,12 +34,12 @@ import { v4 as uuidv4 } from "uuid";
 
 const PORT = Number(process.env.PORT ?? 3000);
 
-const CHARACTER: Character = {
+const CHARACTER = createCharacter({
   name: "Eliza",
   bio: "A helpful AI assistant powered by elizaOS, available via A2A protocol.",
   system:
     "You are a helpful, friendly AI assistant participating in agent-to-agent communication. Be concise, informative, and cooperative.",
-};
+});
 
 // ============================================================================
 // Agent Runtime

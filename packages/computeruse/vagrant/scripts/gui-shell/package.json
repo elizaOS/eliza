@@ -1,0 +1,18 @@
+{
+  "name": "gui-shell",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "bin": {
+    "gui-shell": "./shell.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@lydell/node-pty": "^1.1.0",
+    "net": "^1.0.2"
+  }
+}

@@ -28,7 +28,14 @@
     "test": "cargo test",
     "lint": "cargo clippy --all-targets --features native --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt",
     "lint:fix": "cargo clippy --all-targets --all-features --fix --allow-dirty",
-    "typecheck": "cargo check --all-targets --features native"
+    "typecheck": "cargo check --all-targets --features native",
+    "example:native:basic": "cargo run --example basic_runtime --features native",
+    "example:native:handlers": "cargo run --example with_handlers --features native",
+    "example:wasm:basic": "bun run examples/wasm/basic.ts",
+    "example:wasm:runtime": "bun run examples/wasm/runtime.ts",
+    "example:wasm:chat": "bun run examples/wasm/chat.ts",
+    "example:wasm:benchmark": "bun run examples/wasm/benchmark.ts",
+    "test:wasm": "./wasm-test.sh"
   },
   "author": "elizaOS",
   "license": "MIT",

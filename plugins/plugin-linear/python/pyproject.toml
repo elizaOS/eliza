@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-linear"
-version = "1.0.0"
+version = "2.0.0"
 description = "Linear integration plugin for ElizaOS (Python)"
 readme = "README.md"
 license = "MIT"

@@ -5,9 +5,9 @@
  * system prompt, and Discord-specific settings.
  */
 
-import type { Character } from "@elizaos/core";
+import { createCharacter } from "@elizaos/core";
 
-export const character: Character = {
+export const character = createCharacter({
   name: "DiscordEliza",
   bio: "A helpful and friendly AI assistant on Discord. I can answer questions, have conversations, moderate channels, and help with various tasks.",
   system: `You are DiscordEliza, a helpful AI assistant on Discord.
@@ -26,6 +26,6 @@ If asked to perform moderation tasks, explain what actions would be appropriate.
       shouldRespondOnlyToMentions: true,
     },
   },
-};
+});
 
 export default character;

@@ -12,7 +12,8 @@ export const cacheTestAgentSettings = {
   name: "Cache Test Agent",
   username: "cache_test_agent",
   system: "Test agent system prompt",
-  bio: "An agent for testing cache operations",
+  bio: ["An agent for testing cache operations"],
+  templates: {},
   enabled: true,
   status: AgentStatus.ACTIVE,
   createdAt: Date.now(),
@@ -23,6 +24,7 @@ export const cacheTestAgentSettings = {
   adjectives: [],
   knowledge: [],
   plugins: [],
+  secrets: {},
   settings: {
     cacheTestSetting: "cache test value",
   },

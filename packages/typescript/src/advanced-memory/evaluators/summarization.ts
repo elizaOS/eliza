@@ -1,4 +1,6 @@
+import { requireEvaluatorSpec } from "../../generated/spec-helpers.ts";
 import {
+  type EvaluationExample,
   type Evaluator,
   type IAgentRuntime,
   type Memory,
@@ -11,6 +13,18 @@ import type { MemoryService } from "../services/memory-service.ts";
 import type { SummaryResult } from "../types.ts";
 import { initialSummarizationTemplate, updateSummarizationTemplate } from "../prompts.ts";
 
+// Get text content from centralized specs
+const spec = requireEvaluatorSpec("MEMORY_SUMMARIZATION");
+
+function isDialogueMessage(msg: Memory): boolean {
+  return !(
+    (msg.content?.type as string) === "action_result" &&
+    (msg.metadata?.type as string) === "action_result"
+  ) &&
+    ((msg.metadata?.type as string) === "agent_response_message" ||
+      (msg.metadata?.type as string) === "user_message");
+}
+
 async function getDialogueMessageCount(runtime: IAgentRuntime, roomId: UUID): Promise<number> {
   const messages = await runtime.getMemories({
     tableName: "messages",
@@ -19,17 +33,13 @@ async function getDialogueMessageCount(runtime: IAgentRuntime, roomId: UUID): Pr
     unique: false,
   });
 
-  const dialogueMessages = messages.filter(
-    (msg) =>
-      !(
-        (msg.content?.type as string) === "action_result" &&
-        (msg.metadata?.type as string) === "action_result"
-      ) &&
-      ((msg.metadata?.type as string) === "agent_response_message" ||
-        (msg.metadata?.type as string) === "user_message"),
-  );
-
-  return dialogueMessages.length;
+  let count = 0;
+  for (const msg of messages) {
+    if (isDialogueMessage(msg)) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 function parseSummaryXML(xml: string): SummaryResult {
@@ -50,10 +60,11 @@ function parseSummaryXML(xml: string): SummaryResult {
 }
 
 export const summarizationEvaluator: Evaluator = {
-  name: "MEMORY_SUMMARIZATION",
-  description: "Automatically summarizes conversations to optimize context usage",
-  similes: ["CONVERSATION_SUMMARY", "CONTEXT_COMPRESSION", "MEMORY_OPTIMIZATION"],
-  alwaysRun: true,
+  name: spec.name,
+  description: spec.description,
+  similes: spec.similes ? [...spec.similes] : [],
+  alwaysRun: spec.alwaysRun ?? true,
+  examples: (spec.examples ?? []) as EvaluationExample[],
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     if (!message.content?.text) return false;
@@ -95,15 +106,7 @@ export const summarizationEvaluator: Evaluator = {
         unique: false,
       });
 
-      const allDialogueMessages = allMessages.filter(
-        (msg) =>
-          !(
-            (msg.content?.type as string) === "action_result" &&
-            (msg.metadata?.type as string) === "action_result"
-          ) &&
-          ((msg.metadata?.type as string) === "agent_response_message" ||
-            (msg.metadata?.type as string) === "user_message"),
-      );
+      const allDialogueMessages = allMessages.filter(isDialogueMessage);
 
       const totalDialogueCount = allDialogueMessages.length;
       const newDialogueCount = totalDialogueCount - lastOffset;
@@ -238,7 +241,5 @@ export const summarizationEvaluator: Evaluator = {
     }
     return undefined;
   },
-
-  examples: [],
 };
 

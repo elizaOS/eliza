@@ -12,6 +12,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { Collection, Message, TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import { searchMessagesTemplate } from "../generated/prompts/typescript/prompts.js";
@@ -113,18 +114,12 @@ const searchInMessages = (
   });
 };
 
+const spec = requireActionSpec("SEARCH_MESSAGES");
+
 export const searchMessages: Action = {
-  name: "SEARCH_MESSAGES",
-  similes: [
-    "SEARCH_MESSAGES",
-    "FIND_MESSAGES",
-    "SEARCH_CHAT",
-    "LOOK_FOR_MESSAGES",
-    "FIND_IN_CHAT",
-    "SEARCH_CHANNEL",
-    "SEARCH_DISCORD",
-  ],
-  description: "Search for messages in Discord channels based on keywords, author, or time range.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -278,53 +273,7 @@ export const searchMessages: Action = {
       });
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "search for messages containing 'meeting'",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll search for messages containing 'meeting'.",
-          actions: ["SEARCH_MESSAGES"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "find all links shared in #general from last week",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Let me search for links in #general from the past week.",
-          actions: ["SEARCH_MESSAGES"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "search for messages from @john about the bug",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll look for messages from john about the bug.",
-          actions: ["SEARCH_MESSAGES"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default searchMessages;

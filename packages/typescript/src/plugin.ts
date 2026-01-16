@@ -409,9 +409,11 @@ async function resolvePluginsImpl(
 
   // Second pass: process all plugins and their dependencies
   const queue: (string | Plugin)[] = [...plugins];
+  let queueIndex = 0;
 
-  while (queue.length > 0) {
-    const next = queue.shift();
+  while (queueIndex < queue.length) {
+    const next = queue[queueIndex];
+    queueIndex += 1;
     if (!next) continue;
     const loaded = await loadPlugin(next);
     if (!loaded) continue;

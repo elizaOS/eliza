@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Action/Evaluator Docs Generator
+ * Action/Provider/Evaluator Docs Generator
  *
  * Reads canonical specs from packages/prompts/specs/** and generates
  * language-native docs modules for:
@@ -22,9 +22,11 @@ const REPO_ROOT = path.resolve(__dirname, "../../..");
 const PROMPTS_ROOT = path.resolve(__dirname, "..");
 
 const ACTIONS_SPECS_DIR = path.join(PROMPTS_ROOT, "specs", "actions");
+const PROVIDERS_SPECS_DIR = path.join(PROMPTS_ROOT, "specs", "providers");
 const EVALUATORS_SPECS_DIR = path.join(PROMPTS_ROOT, "specs", "evaluators");
 
 const CORE_ACTIONS_SPEC_PATH = path.join(ACTIONS_SPECS_DIR, "core.json");
+const CORE_PROVIDERS_SPEC_PATH = path.join(PROVIDERS_SPECS_DIR, "core.json");
 const CORE_EVALUATORS_SPEC_PATH = path.join(EVALUATORS_SPECS_DIR, "core.json");
 
 /**
@@ -166,12 +168,34 @@ function assertActionDoc(action, name) {
       assertString(action.similes[i], `${name}.similes[${i}]`);
     }
   }
-  assertArray(action.parameters, `${name}.parameters`);
-  for (let i = 0; i < action.parameters.length; i++) {
-    assertActionParameter(action.parameters[i], `${name}.parameters[${i}]`);
+  if (action.parameters !== undefined) {
+    assertArray(action.parameters, `${name}.parameters`);
+    for (let i = 0; i < action.parameters.length; i++) {
+      assertActionParameter(action.parameters[i], `${name}.parameters[${i}]`);
+    }
+  }
+  if (action.examples !== undefined) {
+    assertArray(action.examples, `${name}.examples`);
   }
   if (action.exampleCalls !== undefined) {
     assertArray(action.exampleCalls, `${name}.exampleCalls`);
+  }
+}
+
+/**
+ * @param {unknown} provider
+ * @param {string} name
+ * @returns {asserts provider is Record<string, unknown>}
+ */
+function assertProviderDoc(provider, name) {
+  assertRecord(provider, name);
+  assertString(provider.name, `${name}.name`);
+  assertString(provider.description, `${name}.description`);
+  if (provider.position !== undefined && typeof provider.position !== "number") {
+    throw new Error(`${name}.position must be a number if provided`);
+  }
+  if (provider.dynamic !== undefined) {
+    assertBoolean(provider.dynamic, `${name}.dynamic`);
   }
 }
 
@@ -189,6 +213,9 @@ function assertEvaluatorDoc(evaluator, name) {
     for (let i = 0; i < evaluator.similes.length; i++) {
       assertString(evaluator.similes[i], `${name}.similes[${i}]`);
     }
+  }
+  if (evaluator.alwaysRun !== undefined) {
+    assertBoolean(evaluator.alwaysRun, `${name}.alwaysRun`);
   }
   if (evaluator.examples !== undefined) {
     assertArray(evaluator.examples, `${name}.examples`);
@@ -212,6 +239,9 @@ function readJson(filePath) {
 function listJsonFiles(rootDir) {
   /** @type {string[]} */
   const out = [];
+  if (!fs.existsSync(rootDir)) {
+    return out;
+  }
   /** @type {string[]} */
   const stack = [rootDir];
   while (stack.length > 0) {
@@ -245,6 +275,21 @@ function parseActionsSpec(root, label) {
     assertActionDoc(root.actions[i], `${label}.actions[${i}]`);
   }
   return { version: root.version, actions: root.actions };
+}
+
+/**
+ * @param {unknown} root
+ * @param {string} label
+ * @returns {{ version: string, providers: unknown[] }}
+ */
+function parseProvidersSpec(root, label) {
+  assertRecord(root, label);
+  assertString(root.version, `${label}.version`);
+  assertArray(root.providers, `${label}.providers`);
+  for (let i = 0; i < root.providers.length; i++) {
+    assertProviderDoc(root.providers[i], `${label}.providers[${i}]`);
+  }
+  return { version: root.version, providers: root.providers };
 }
 
 /**
@@ -284,48 +329,68 @@ function assertUniqueNames(docs, label) {
 /**
  * @param {string} dir
  * @param {string} corePath
- * @param {"actions" | "evaluators"} kind
+ * @param {"actions" | "providers" | "evaluators"} kind
  * @returns {{ core: { version: string, items: unknown[] }, all: { version: string, items: unknown[] } }}
  */
 function loadSpecs(dir, corePath, kind) {
+  if (!fs.existsSync(corePath)) {
+    return {
+      core: { version: "1.0.0", items: [] },
+      all: { version: "1.0.0", items: [] },
+    };
+  }
+
   const coreRoot = readJson(corePath);
   const coreLabel = `${kind} core spec`;
-  const coreParsed =
-    kind === "actions"
-      ? parseActionsSpec(coreRoot, coreLabel)
-      : parseEvaluatorsSpec(coreRoot, coreLabel);
+  let coreParsed;
+  
+  if (kind === "actions") {
+    coreParsed = parseActionsSpec(coreRoot, coreLabel);
+  } else if (kind === "providers") {
+    coreParsed = parseProvidersSpec(coreRoot, coreLabel);
+  } else {
+    coreParsed = parseEvaluatorsSpec(coreRoot, coreLabel);
+  }
 
   const allFiles = listJsonFiles(dir).filter(
     (p) => path.resolve(p) !== path.resolve(corePath),
   );
   /** @type {unknown[]} */
   const merged = [
-    ...(kind === "actions" ? coreParsed.actions : coreParsed.evaluators),
+    ...(kind === "actions" ? coreParsed.actions : kind === "providers" ? coreParsed.providers : coreParsed.evaluators),
   ];
 
   for (const filePath of allFiles) {
     const root = readJson(filePath);
     const label = `${kind} spec (${path.relative(PROMPTS_ROOT, filePath)})`;
-    const parsed =
-      kind === "actions"
-        ? parseActionsSpec(root, label)
-        : parseEvaluatorsSpec(root, label);
+    let parsed;
+    
+    if (kind === "actions") {
+      parsed = parseActionsSpec(root, label);
+    } else if (kind === "providers") {
+      parsed = parseProvidersSpec(root, label);
+    } else {
+      parsed = parseEvaluatorsSpec(root, label);
+    }
+
     if (parsed.version !== coreParsed.version) {
       throw new Error(
         `${label}.version (${parsed.version}) must match core version (${coreParsed.version})`,
       );
     }
-    merged.push(...(kind === "actions" ? parsed.actions : parsed.evaluators));
+    merged.push(...(kind === "actions" ? parsed.actions : kind === "providers" ? parsed.providers : parsed.evaluators));
   }
 
   const itemsLabel =
-    kind === "actions" ? "actions spec.actions" : "evaluators spec.evaluators";
+    kind === "actions" ? "actions spec.actions" : 
+    kind === "providers" ? "providers spec.providers" : 
+    "evaluators spec.evaluators";
   assertUniqueNames(merged, itemsLabel);
 
   return {
     core: {
       version: coreParsed.version,
-      items: kind === "actions" ? coreParsed.actions : coreParsed.evaluators,
+      items: kind === "actions" ? coreParsed.actions : kind === "providers" ? coreParsed.providers : coreParsed.evaluators,
     },
     all: {
       version: coreParsed.version,
@@ -363,7 +428,7 @@ function escapePythonTripleQuoted(content) {
   return content.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
 }
 
-function generateTypeScript(actionsSpec, evaluatorsSpec) {
+function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
   const outDir = path.join(
     REPO_ROOT,
     "packages",
@@ -380,6 +445,16 @@ function generateTypeScript(actionsSpec, evaluatorsSpec) {
   );
   const actionsAllJson = JSON.stringify(
     { version: actionsSpec.all.version, actions: actionsSpec.all.items },
+    null,
+    2,
+  );
+  const providersJson = JSON.stringify(
+    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    null,
+    2,
+  );
+  const providersAllJson = JSON.stringify(
+    { version: providersSpec.all.version, providers: providersSpec.all.items },
     null,
     2,
   );
@@ -401,7 +476,7 @@ function generateTypeScript(actionsSpec, evaluatorsSpec) {
   );
 
   const content = `/**
- * Auto-generated canonical action/evaluator docs.
+ * Auto-generated canonical action/provider/evaluator docs.
  * DO NOT EDIT - Generated from packages/prompts/specs/**.
  */
 
@@ -433,12 +508,28 @@ export type ActionDocExampleCall = {
   params?: Record<string, Record<string, ActionDocParameterExampleValue>>;
 };
 
+export type ActionDocExampleMessage = {
+  name: string;
+  content: {
+    text: string;
+    actions?: readonly string[];
+  };
+};
+
 export type ActionDoc = {
   name: string;
   description: string;
   similes?: readonly string[];
-  parameters: readonly ActionDocParameter[];
+  parameters?: readonly ActionDocParameter[];
+  examples?: readonly (readonly ActionDocExampleMessage[])[];
   exampleCalls?: readonly ActionDocExampleCall[];
+};
+
+export type ProviderDoc = {
+  name: string;
+  description: string;
+  position?: number;
+  dynamic?: boolean;
 };
 
 export type EvaluatorDocMessageContent = {
@@ -461,16 +552,21 @@ export type EvaluatorDoc = {
   name: string;
   description: string;
   similes?: readonly string[];
+  alwaysRun?: boolean;
   examples?: readonly EvaluatorDocExample[];
 };
 
 export const coreActionsSpecVersion = ${JSON.stringify(actionsSpec.core.version)} as const;
 export const allActionsSpecVersion = ${JSON.stringify(actionsSpec.all.version)} as const;
+export const coreProvidersSpecVersion = ${JSON.stringify(providersSpec.core.version)} as const;
+export const allProvidersSpecVersion = ${JSON.stringify(providersSpec.all.version)} as const;
 export const coreEvaluatorsSpecVersion = ${JSON.stringify(evaluatorsSpec.core.version)} as const;
 export const allEvaluatorsSpecVersion = ${JSON.stringify(evaluatorsSpec.all.version)} as const;
 
 export const coreActionsSpec = ${actionsJson} as const satisfies { version: string; actions: readonly ActionDoc[] };
 export const allActionsSpec = ${actionsAllJson} as const satisfies { version: string; actions: readonly ActionDoc[] };
+export const coreProvidersSpec = ${providersJson} as const satisfies { version: string; providers: readonly ProviderDoc[] };
+export const allProvidersSpec = ${providersAllJson} as const satisfies { version: string; providers: readonly ProviderDoc[] };
 export const coreEvaluatorsSpec = ${evaluatorsJson} as const satisfies {
   version: string;
   evaluators: readonly EvaluatorDoc[];
@@ -482,6 +578,8 @@ export const allEvaluatorsSpec = ${evaluatorsAllJson} as const satisfies {
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
 export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
+export const coreProviderDocs: readonly ProviderDoc[] = coreProvidersSpec.providers;
+export const allProviderDocs: readonly ProviderDoc[] = allProvidersSpec.providers;
 export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.evaluators;
 export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;
 `;
@@ -489,7 +587,7 @@ export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evalu
   fs.writeFileSync(path.join(outDir, "action-docs.ts"), content);
 }
 
-function generatePython(actionsSpec, evaluatorsSpec) {
+function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
   const outDir = path.join(
     REPO_ROOT,
     "packages",
@@ -514,6 +612,16 @@ function generatePython(actionsSpec, evaluatorsSpec) {
     null,
     2,
   );
+  const providersJson = JSON.stringify(
+    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    null,
+    2,
+  );
+  const providersAllJson = JSON.stringify(
+    { version: providersSpec.all.version, providers: providersSpec.all.items },
+    null,
+    2,
+  );
   const evaluatorsJson = JSON.stringify(
     {
       version: evaluatorsSpec.core.version,
@@ -532,7 +640,7 @@ function generatePython(actionsSpec, evaluatorsSpec) {
   );
 
   const content = `"""
-Auto-generated canonical action/evaluator docs.
+Auto-generated canonical action/provider/evaluator docs.
 DO NOT EDIT - Generated from packages/prompts/specs/**.
 """
 
@@ -573,12 +681,25 @@ class ActionDocExampleCall(TypedDict, total=False):
     params: dict[str, dict[str, ActionDocParameterExampleValue]]
 
 
+class ActionDocExampleMessage(TypedDict, total=False):
+    name: str
+    content: dict[str, object]
+
+
 class ActionDoc(TypedDict, total=False):
     name: str
     description: str
     similes: list[str]
     parameters: list[ActionDocParameter]
+    examples: list[list[ActionDocExampleMessage]]
     exampleCalls: list[ActionDocExampleCall]
+
+
+class ProviderDoc(TypedDict, total=False):
+    name: str
+    description: str
+    position: int
+    dynamic: bool
 
 
 class EvaluatorDocMessageContent(TypedDict, total=False):
@@ -601,40 +722,53 @@ class EvaluatorDoc(TypedDict, total=False):
     name: str
     description: str
     similes: list[str]
+    alwaysRun: bool
     examples: list[EvaluatorDocExample]
 
 
 core_actions_spec_version: str = ${JSON.stringify(actionsSpec.core.version)}
 all_actions_spec_version: str = ${JSON.stringify(actionsSpec.all.version)}
+core_providers_spec_version: str = ${JSON.stringify(providersSpec.core.version)}
+all_providers_spec_version: str = ${JSON.stringify(providersSpec.all.version)}
 core_evaluators_spec_version: str = ${JSON.stringify(evaluatorsSpec.core.version)}
 all_evaluators_spec_version: str = ${JSON.stringify(evaluatorsSpec.all.version)}
 
 _CORE_ACTION_DOCS_JSON = """${escapePythonTripleQuoted(actionsJson)}"""
 _ALL_ACTION_DOCS_JSON = """${escapePythonTripleQuoted(actionsAllJson)}"""
+_CORE_PROVIDER_DOCS_JSON = """${escapePythonTripleQuoted(providersJson)}"""
+_ALL_PROVIDER_DOCS_JSON = """${escapePythonTripleQuoted(providersAllJson)}"""
 _CORE_EVALUATOR_DOCS_JSON = """${escapePythonTripleQuoted(evaluatorsJson)}"""
 _ALL_EVALUATOR_DOCS_JSON = """${escapePythonTripleQuoted(evaluatorsAllJson)}"""
 
 core_action_docs: dict[str, object] = json.loads(_CORE_ACTION_DOCS_JSON)
 all_action_docs: dict[str, object] = json.loads(_ALL_ACTION_DOCS_JSON)
+core_provider_docs: dict[str, object] = json.loads(_CORE_PROVIDER_DOCS_JSON)
+all_provider_docs: dict[str, object] = json.loads(_ALL_PROVIDER_DOCS_JSON)
 core_evaluator_docs: dict[str, object] = json.loads(_CORE_EVALUATOR_DOCS_JSON)
 all_evaluator_docs: dict[str, object] = json.loads(_ALL_EVALUATOR_DOCS_JSON)
 
 __all__ = [
     "ActionDoc",
     "ActionDocExampleCall",
+    "ActionDocExampleMessage",
     "ActionDocParameter",
     "ActionDocParameterSchema",
     "ActionDocParameterExampleValue",
+    "ProviderDoc",
     "EvaluatorDoc",
     "EvaluatorDocExample",
     "EvaluatorDocMessage",
     "EvaluatorDocMessageContent",
     "core_actions_spec_version",
     "all_actions_spec_version",
+    "core_providers_spec_version",
+    "all_providers_spec_version",
     "core_evaluators_spec_version",
     "all_evaluators_spec_version",
     "core_action_docs",
     "all_action_docs",
+    "core_provider_docs",
+    "all_provider_docs",
     "core_evaluator_docs",
     "all_evaluator_docs",
 ]
@@ -643,7 +777,7 @@ __all__ = [
   fs.writeFileSync(path.join(outDir, "action_docs.py"), content);
 }
 
-function generateRust(actionsSpec, evaluatorsSpec) {
+function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
   const outDir = path.join(REPO_ROOT, "packages", "rust", "src", "generated");
   ensureDir(outDir);
 
@@ -654,6 +788,16 @@ function generateRust(actionsSpec, evaluatorsSpec) {
   );
   const actionsAllJson = JSON.stringify(
     { version: actionsSpec.all.version, actions: actionsSpec.all.items },
+    null,
+    2,
+  );
+  const providersJson = JSON.stringify(
+    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    null,
+    2,
+  );
+  const providersAllJson = JSON.stringify(
+    { version: providersSpec.all.version, providers: providersSpec.all.items },
     null,
     2,
   );
@@ -678,6 +822,10 @@ function generateRust(actionsSpec, evaluatorsSpec) {
     escapeRustRawString(actionsJson);
   const { content: actionsAllContent, hashCount: actionsAllHashCount } =
     escapeRustRawString(actionsAllJson);
+  const { content: providersContent, hashCount: providersHashCount } =
+    escapeRustRawString(providersJson);
+  const { content: providersAllContent, hashCount: providersAllHashCount } =
+    escapeRustRawString(providersAllJson);
   const { content: evalContent, hashCount: evalHashCount } =
     escapeRustRawString(evaluatorsJson);
   const { content: evalAllContent, hashCount: evalAllHashCount } =
@@ -685,14 +833,18 @@ function generateRust(actionsSpec, evaluatorsSpec) {
 
   const actionsDelim = "#".repeat(actionsHashCount);
   const actionsAllDelim = "#".repeat(actionsAllHashCount);
+  const providersDelim = "#".repeat(providersHashCount);
+  const providersAllDelim = "#".repeat(providersAllHashCount);
   const evalDelim = "#".repeat(evalHashCount);
   const evalAllDelim = "#".repeat(evalAllHashCount);
 
-  const content = `//! Auto-generated canonical action/evaluator docs.
+  const content = `//! Auto-generated canonical action/provider/evaluator docs.
 //! DO NOT EDIT - Generated from packages/prompts/specs/**.
 
 pub const CORE_ACTION_DOCS_JSON: &str = r${actionsDelim}"${actionsContent}"${actionsDelim};
 pub const ALL_ACTION_DOCS_JSON: &str = r${actionsAllDelim}"${actionsAllContent}"${actionsAllDelim};
+pub const CORE_PROVIDER_DOCS_JSON: &str = r${providersDelim}"${providersContent}"${providersDelim};
+pub const ALL_PROVIDER_DOCS_JSON: &str = r${providersAllDelim}"${providersAllContent}"${providersAllDelim};
 pub const CORE_EVALUATOR_DOCS_JSON: &str = r${evalDelim}"${evalContent}"${evalDelim};
 pub const ALL_EVALUATOR_DOCS_JSON: &str = r${evalAllDelim}"${evalAllContent}"${evalAllDelim};
 `;
@@ -710,17 +862,22 @@ function main() {
     CORE_ACTIONS_SPEC_PATH,
     "actions",
   );
+  const providersSpec = loadSpecs(
+    PROVIDERS_SPECS_DIR,
+    CORE_PROVIDERS_SPEC_PATH,
+    "providers",
+  );
   const evaluatorsSpec = loadSpecs(
     EVALUATORS_SPECS_DIR,
     CORE_EVALUATORS_SPEC_PATH,
     "evaluators",
   );
 
-  generateTypeScript(actionsSpec, evaluatorsSpec);
-  generatePython(actionsSpec, evaluatorsSpec);
-  generateRust(actionsSpec, evaluatorsSpec);
+  generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec);
+  generatePython(actionsSpec, providersSpec, evaluatorsSpec);
+  generateRust(actionsSpec, providersSpec, evaluatorsSpec);
 
-  console.log("Generated action/evaluator docs.");
+  console.log("Generated action/provider/evaluator docs.");
 }
 
 main();

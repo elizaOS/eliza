@@ -1,18 +1,35 @@
 import {
   AgentRuntime,
   ChannelType,
+  createCharacter,
   type Character,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import type { AutonomyService } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
+import anthropicPlugin from "@elizaos/plugin-anthropic";
+import googleGenAIPlugin from "@elizaos/plugin-google-genai";
+import groqPlugin from "@elizaos/plugin-groq";
+import XAIPlugin from "@elizaos/plugin-xai";
 import sqlPlugin from "@elizaos/plugin-sql";
 import polymarketPlugin from "@elizaos/plugin-polymarket";
 import { Wallet } from "@ethersproject/wallet";
 import { ClobClient } from "@polymarket/clob-client";
-import { loadEnvConfig, type CliOptions, type EnvConfig } from "./lib";
-import { runPolymarketTui } from "./tui";
+import {
+  applyEnvValues,
+  loadEnvConfig,
+  readEnvFile,
+  resolveEnvPath,
+  resolveLlmModel,
+  resolveLlmProvider,
+  writeEnvFile,
+  type CliOptions,
+  type EnvConfig,
+  type LlmProvider,
+} from "./lib";
+import { runPolymarketTui, runSettingsWizard, type SettingsField } from "./tui";
+import { runInkInputTest } from "./ink-input-test";
 
 type RuntimeSession = {
   readonly runtime: AgentRuntime;
@@ -30,6 +47,16 @@ const DEFAULT_ROOM_ID = stringToUuid("polymarket-runtime-room");
 const DEFAULT_WORLD_ID = stringToUuid("polymarket-runtime-world");
 const DEFAULT_USER_ID = stringToUuid("polymarket-operator");
 const POLYGON_CHAIN_ID = 137;
+const PROVIDER_OPTIONS = ["openai", "anthropic", "gemini", "groq", "grok"] as const;
+const DEFAULT_LLM_MODELS: Record<LlmProvider, string> = {
+  openai: "gpt-5",
+  anthropic: "claude-sonnet-4-20250514",
+  gemini: "gemini-2.5-pro-preview-03-25",
+  groq: "llama-3.3-70b-versatile",
+  grok: "grok-3",
+};
+
+type EnvSnapshot = Record<string, string>;
 
 type DerivedApiCreds = {
   readonly key?: string;
@@ -43,6 +70,8 @@ type WriteArgs = {
   encoding: BufferEncoding | undefined;
   callback: WriteCallback | undefined;
 };
+
+const wrappedStreams = new WeakSet<NodeJS.WriteStream>();
 
 function normalizeWriteArgs(
   encoding: BufferEncoding | WriteCallback | undefined,
@@ -77,6 +106,8 @@ function filterLines(text: string, pending: { value: string }): string {
 }
 
 function wrapWriteStream(stream: NodeJS.WriteStream): void {
+  if (wrappedStreams.has(stream)) return;
+  wrappedStreams.add(stream);
   const originalWrite = stream.write.bind(stream) as typeof stream.write;
   const pending = { value: "" };
 
@@ -101,8 +132,13 @@ function wrapWriteStream(stream: NodeJS.WriteStream): void {
   };
 }
 
-function createCharacter(settings: CharacterSettings): Character {
-  return {
+type CharacterConfig = {
+  settings: CharacterSettings;
+  secrets: Record<string, string>;
+};
+
+function buildCharacter(config: CharacterConfig): Character {
+  return createCharacter({
     name: "Eliza",
     username: "eliza",
     bio: [
@@ -117,69 +153,323 @@ function createCharacter(settings: CharacterSettings): Character {
       ],
       chat: ["Be concise", "Log actions clearly"],
     },
-    settings,
-  };
+    settings: config.settings,
+    secrets: config.secrets,
+  });
 }
 
 function buildCharacterSettings(
   options: CliOptions,
   config: EnvConfig
-): CharacterSettings {
+): CharacterConfig {
   const signatureTypeSecret =
     typeof config.signatureType === "number" ? String(config.signatureType) : undefined;
 
-  return {
+  const secrets: Record<string, string> = {
+    EVM_PRIVATE_KEY: config.privateKey,
+    POLYMARKET_PRIVATE_KEY: config.privateKey,
+    CLOB_API_URL: config.clobApiUrl,
+    ...(signatureTypeSecret
+      ? {
+          POLYMARKET_SIGNATURE_TYPE: signatureTypeSecret,
+        }
+      : {}),
+    ...(config.funderAddress
+      ? {
+          POLYMARKET_FUNDER_ADDRESS: config.funderAddress,
+        }
+      : {}),
+    ...(config.creds
+      ? {
+          CLOB_API_KEY: config.creds.key,
+          CLOB_API_SECRET: config.creds.secret,
+          CLOB_API_PASSPHRASE: config.creds.passphrase,
+        }
+      : {}),
+    ...(options.rpcUrl
+      ? {
+          [`ETHEREUM_PROVIDER_${options.chain.toUpperCase()}`]: options.rpcUrl,
+          [`EVM_PROVIDER_${options.chain.toUpperCase()}`]: options.rpcUrl,
+        }
+      : {}),
+  };
+
+  const settings: CharacterSettings = {
     chains: {
       evm: [options.chain],
     },
-    secrets: {
-      EVM_PRIVATE_KEY: config.privateKey,
-      POLYMARKET_PRIVATE_KEY: config.privateKey,
-      CLOB_API_URL: config.clobApiUrl,
-      ...(signatureTypeSecret
-        ? {
-            POLYMARKET_SIGNATURE_TYPE: signatureTypeSecret,
-          }
-        : {}),
-      ...(config.funderAddress
-        ? {
-            POLYMARKET_FUNDER_ADDRESS: config.funderAddress,
-          }
-        : {}),
-      ...(config.creds
-        ? {
-            CLOB_API_KEY: config.creds.key,
-            CLOB_API_SECRET: config.creds.secret,
-            CLOB_API_PASSPHRASE: config.creds.passphrase,
-          }
-        : {}),
-      ...(options.rpcUrl
-        ? {
-            [`ETHEREUM_PROVIDER_${options.chain.toUpperCase()}`]: options.rpcUrl,
-            [`EVM_PROVIDER_${options.chain.toUpperCase()}`]: options.rpcUrl,
-          }
-        : {}),
-    },
   };
+
+  return { settings, secrets };
+}
+
+function collectEnvSnapshot(fileValues: Record<string, string>): EnvSnapshot {
+  const snapshot: EnvSnapshot = { ...fileValues };
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      snapshot[key] = value.trim();
+    }
+  }
+  return snapshot;
+}
+
+function getEnvValue(snapshot: EnvSnapshot, key: string): string | undefined {
+  const value = snapshot[key];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function resolveProvider(snapshot: EnvSnapshot): LlmProvider | null {
+  return resolveLlmProvider((key) => getEnvValue(snapshot, key));
+}
+
+function resolveModel(snapshot: EnvSnapshot, provider: LlmProvider | null): string | null {
+  return resolveLlmModel(provider, (key) => getEnvValue(snapshot, key));
+}
+
+function isMissingRequired(value: string | undefined): boolean {
+  return typeof value !== "string" || value.trim().length === 0;
+}
+
+type SettingsFieldOptions = {
+  readonly includeProvider: boolean;
+};
+
+function buildSettingsFields(
+  snapshot: EnvSnapshot,
+  options: CliOptions,
+  fieldOptions: SettingsFieldOptions
+): SettingsField[] {
+  const provider = resolveProvider(snapshot) ?? "openai";
+  const model = resolveModel(snapshot, provider) ?? DEFAULT_LLM_MODELS[provider];
+  const fields: SettingsField[] = [];
+  if (fieldOptions.includeProvider) {
+    fields.push({
+      key: "ELIZA_LLM_PROVIDER",
+      label: "LLM Provider",
+      type: "select",
+      options: PROVIDER_OPTIONS,
+      value: provider,
+    });
+  }
+  fields.push(
+    {
+      key: "ELIZA_LLM_MODEL",
+      label: "LLM Model",
+      value: model,
+      required: true,
+    },
+    {
+      key: "OPENAI_API_KEY",
+      label: "OpenAI API Key",
+      value: getEnvValue(snapshot, "OPENAI_API_KEY") ?? "",
+      secret: true,
+      required: provider === "openai",
+    },
+    {
+      key: "ANTHROPIC_API_KEY",
+      label: "Anthropic API Key",
+      value: getEnvValue(snapshot, "ANTHROPIC_API_KEY") ?? "",
+      secret: true,
+      required: provider === "anthropic",
+    },
+    {
+      key: "GOOGLE_GENERATIVE_AI_API_KEY",
+      label: "Gemini API Key",
+      value: getEnvValue(snapshot, "GOOGLE_GENERATIVE_AI_API_KEY") ?? "",
+      secret: true,
+      required: provider === "gemini",
+    },
+    {
+      key: "GROQ_API_KEY",
+      label: "Groq API Key",
+      value: getEnvValue(snapshot, "GROQ_API_KEY") ?? "",
+      secret: true,
+      required: provider === "groq",
+    },
+    {
+      key: "XAI_API_KEY",
+      label: "Grok API Key",
+      value: getEnvValue(snapshot, "XAI_API_KEY") ?? "",
+      secret: true,
+      required: provider === "grok",
+    },
+    {
+      key: "EVM_PRIVATE_KEY",
+      label: "Polymarket Wallet Private Key",
+      value:
+        getEnvValue(snapshot, "EVM_PRIVATE_KEY") ??
+        getEnvValue(snapshot, "POLYMARKET_PRIVATE_KEY") ??
+        "",
+      secret: true,
+      required: true,
+    },
+    {
+      key: "CLOB_API_URL",
+      label: "CLOB API URL",
+      value: getEnvValue(snapshot, "CLOB_API_URL") ?? "https://clob.polymarket.com",
+    },
+    {
+      key: "CLOB_API_KEY",
+      label: "CLOB API Key",
+      value: getEnvValue(snapshot, "CLOB_API_KEY") ?? "",
+      secret: true,
+      required: options.execute,
+    },
+    {
+      key: "CLOB_API_SECRET",
+      label: "CLOB API Secret",
+      value: getEnvValue(snapshot, "CLOB_API_SECRET") ?? "",
+      secret: true,
+      required: options.execute,
+    },
+    {
+      key: "CLOB_API_PASSPHRASE",
+      label: "CLOB API Passphrase",
+      value: getEnvValue(snapshot, "CLOB_API_PASSPHRASE") ?? "",
+      secret: true,
+      required: options.execute,
+    },
+    {
+      key: "POLYMARKET_SIGNATURE_TYPE",
+      label: "Polymarket Signature Type",
+      value: getEnvValue(snapshot, "POLYMARKET_SIGNATURE_TYPE") ?? "",
+    },
+    {
+      key: "POLYMARKET_FUNDER_ADDRESS",
+      label: "Polymarket Funder Address",
+      value: getEnvValue(snapshot, "POLYMARKET_FUNDER_ADDRESS") ?? "",
+    }
+  );
+  return fields;
+}
+
+function findMissingRequired(fields: SettingsField[]): string[] {
+  return fields
+    .filter((field) => field.required)
+    .filter((field) => isMissingRequired(field.value))
+    .map((field) => field.label);
+}
+
+async function ensureEnvConfig(options: CliOptions, force: boolean): Promise<void> {
+  const envPath = resolveEnvPath();
+  const envFile = await readEnvFile(envPath);
+  const snapshot = collectEnvSnapshot(envFile.values);
+  const resolvedProvider = resolveProvider(snapshot);
+  const fields = buildSettingsFields(snapshot, options, {
+    includeProvider: force || resolvedProvider === null,
+  });
+  const missingRequired = findMissingRequired(fields);
+  if (!force && missingRequired.length === 0) {
+    return;
+  }
+
+  const result = await runSettingsWizard({
+    title: "Polymarket Setup",
+    subtitle:
+      missingRequired.length > 0
+        ? `Missing required: ${missingRequired.join(", ")}`
+        : "Enter required secrets to continue.",
+    fields,
+  });
+  if (result.status !== "saved") {
+    throw new Error("Setup cancelled.");
+  }
+
+  const updates: Record<string, string> = {};
+  for (const [key, value] of Object.entries(result.values)) {
+    if (value.trim().length > 0) {
+      updates[key] = value.trim();
+    }
+  }
+  await writeEnvFile(envPath, envFile.lines, updates);
+  applyEnvValues(updates);
+}
+
+function resolveRuntimeProvider(): LlmProvider | null {
+  return resolveLlmProvider((key) => {
+    const value = process.env[key];
+    return typeof value === "string" ? value : undefined;
+  });
+}
+
+function resolveRuntimeModel(provider: LlmProvider | null): string | null {
+  return resolveLlmModel(provider, (key) => {
+    const value = process.env[key];
+    return typeof value === "string" ? value : undefined;
+  });
+}
+
+function buildLlmPlugins(provider: LlmProvider | null): Array<typeof openaiPlugin> {
+  if (!provider) return [openaiPlugin];
+  switch (provider) {
+    case "anthropic":
+      return [anthropicPlugin];
+    case "gemini":
+      return [googleGenAIPlugin];
+    case "groq":
+      return [groqPlugin];
+    case "grok":
+      return [XAIPlugin];
+    case "openai":
+    default:
+      return [openaiPlugin];
+  }
+}
+
+function buildRuntimeSettings(provider: LlmProvider | null): Record<string, string | undefined> {
+  const model = resolveRuntimeModel(provider);
+  const smallModel =
+    process.env.ELIZA_LLM_SMALL_MODEL ?? process.env.LLM_SMALL_MODEL ?? model ?? undefined;
+  const settings: Record<string, string | undefined> = {
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    XAI_API_KEY: process.env.XAI_API_KEY,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    GROQ_BASE_URL: process.env.GROQ_BASE_URL,
+    XAI_BASE_URL: process.env.XAI_BASE_URL,
+    ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+    GOOGLE_API_BASE_URL: process.env.GOOGLE_API_BASE_URL,
+    LARGE_MODEL: model ?? undefined,
+    SMALL_MODEL: smallModel,
+    POSTGRES_URL: process.env.POSTGRES_URL || undefined,
+    PGLITE_DATA_DIR: process.env.PGLITE_DATA_DIR || "memory://",
+  };
+  if (model) {
+    if (provider === "openai") settings.OPENAI_LARGE_MODEL = model;
+    if (provider === "anthropic") settings.ANTHROPIC_LARGE_MODEL = model;
+    if (provider === "gemini") settings.GOOGLE_LARGE_MODEL = model;
+    if (provider === "groq") settings.GROQ_LARGE_MODEL = model;
+    if (provider === "grok") settings.XAI_LARGE_MODEL = model;
+  }
+  if (smallModel) {
+    if (provider === "openai") settings.OPENAI_SMALL_MODEL = smallModel;
+    if (provider === "anthropic") settings.ANTHROPIC_SMALL_MODEL = smallModel;
+    if (provider === "gemini") settings.GOOGLE_SMALL_MODEL = smallModel;
+    if (provider === "groq") settings.GROQ_SMALL_MODEL = smallModel;
+    if (provider === "grok") settings.XAI_SMALL_MODEL = smallModel;
+  }
+  return settings;
 }
 
 async function createRuntimeSession(
   options: CliOptions,
   config: EnvConfig
 ): Promise<RuntimeSession> {
-  const settings = buildCharacterSettings(options, config);
-  const character = createCharacter(settings);
-  const agentId = stringToUuid(character.name);
+  const configBundle = buildCharacterSettings(options, config);
+  const character = buildCharacter(configBundle);
+  const agentId = stringToUuid(character.name ?? "eliza");
+  const llmProvider = resolveRuntimeProvider();
+  const llmPlugins = buildLlmPlugins(llmProvider);
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin, polymarketPlugin, openaiPlugin],
-    settings: {
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-      POSTGRES_URL: process.env.POSTGRES_URL || undefined,
-      PGLITE_DATA_DIR: process.env.PGLITE_DATA_DIR || "memory://",
-    },
-    logLevel: "info", // Changed from "error" to debug action selection
+    plugins: [sqlPlugin, polymarketPlugin, ...llmPlugins],
+    settings: buildRuntimeSettings(llmProvider),
+    logLevel: "error",
     enableAutonomy: true,
     actionPlanning: true,
     checkShouldRespond: false,
@@ -245,10 +535,6 @@ async function resolveApiCredentials(
   options: CliOptions,
   config: EnvConfig
 ): Promise<EnvConfig> {
-  if (!options.network) {
-    return config;
-  }
-
   const signer = new Wallet(config.privateKey);
   const client = new ClobClient(config.clobApiUrl, POLYGON_CHAIN_ID, signer);
   let derived: DerivedApiCreds | null = null;
@@ -294,21 +580,33 @@ function logSessionStart(options: CliOptions): void {
   console.log("✅ runtime initialized");
   console.log(`🔧 chain: ${options.chain}`);
   console.log(`🔧 execute: ${options.execute ? "enabled" : "disabled"}`);
-  console.log(`🔧 network: ${options.network ? "enabled" : "disabled"}`);
 }
 
 async function runWithSession(
   options: CliOptions,
   handler: (session: RuntimeSession) => Promise<void>
 ): Promise<void> {
+  wrapWriteStream(process.stdout);
+  wrapWriteStream(process.stderr);
+  await ensureEnvConfig(options, false);
   const rawConfig = loadEnvConfig(options);
   const config = await resolveApiCredentials(options, rawConfig);
   const session = await createRuntimeSession(options, config);
+  let exiting = false;
+  const onSigint = () => {
+    if (exiting) return;
+    exiting = true;
+    void session.runtime.stop().finally(() => {
+      process.exit(0);
+    });
+  };
+  process.once("SIGINT", onSigint);
 
   logSessionStart(options);
   try {
     await handler(session);
   } finally {
+    process.off("SIGINT", onSigint);
     await session.runtime.stop();
   }
 }
@@ -324,4 +622,14 @@ export async function chat(options: CliOptions): Promise<void> {
   await runWithSession(options, async (session) => {
     await startChat(session);
   });
+}
+
+export async function settings(options: CliOptions): Promise<void> {
+  await ensureEnvConfig(options, true);
+  console.log("✅ settings saved to .env");
+}
+
+export async function inputTest(options: CliOptions): Promise<void> {
+  void options;
+  runInkInputTest();
 }

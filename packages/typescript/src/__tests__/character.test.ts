@@ -30,9 +30,8 @@ describe("Character Config Functions", () => {
       const obj = {
         name: "TestChar",
         bio: ["Test bio"],
-        settings: {
-          secrets: {},
-        },
+        secrets: {},
+        settings: {},
       };
 
       const parsed = parseCharacter(obj);
@@ -93,18 +92,14 @@ describe("Character Config Functions", () => {
     test("should not override provided values", () => {
       const partial: Partial<Character> = {
         name: "TestChar",
-        settings: { secrets: { key: "value" } },
+        secrets: { key: "value" },
         plugins: ["plugin1"],
       };
 
       const merged = mergeCharacterDefaults(partial);
 
       expect(merged.name).toBe("TestChar");
-      const mergedSettings = merged.settings;
-      const mergedSettingsSecrets =
-        mergedSettings &&
-        (mergedSettings.secrets as Record<string, string> | undefined);
-      expect(mergedSettingsSecrets?.key).toBe("value");
+      expect(merged.secrets.key).toBe("value");
       expect(merged.plugins).toHaveLength(1);
     });
   });

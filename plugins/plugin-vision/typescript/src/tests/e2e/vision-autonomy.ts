@@ -4,7 +4,7 @@ import { createUniqueUuid } from "@elizaos/core";
 import { killAutonomousAction } from "../../action";
 import type { VisionService } from "../../service";
 
-export class VisionAutonomyE2ETestSuite implements TestSuite {
+export class VisionAutonomyE2ETestSuite  {
   name = "plugin-vision-autonomy-e2e";
   description = "Tests for vision plugin integration with autonomy plugin";
 

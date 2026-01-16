@@ -1,12 +1,17 @@
 //! ENTITIES provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("ENTITIES"));
 
 /// Provider for entity information.
 pub struct EntitiesProvider;
@@ -14,15 +19,15 @@ pub struct EntitiesProvider;
 #[async_trait]
 impl Provider for EntitiesProvider {
     fn name(&self) -> &'static str {
-        "ENTITIES"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Provides information about entities in the current context (users, agents, participants)"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(

@@ -1,0 +1,71 @@
+{
+  "version": "1.0.0",
+  "description": "Canonical public configuration for Babylon",
+
+  "networks": {
+    "local": {
+      "chainId": 31337,
+      "name": "Localnet (Hardhat)",
+      "rpcUrl": "http://localhost:8545",
+      "contracts": {
+        "diamond": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+        "identityRegistry": "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82",
+        "reputationSystem": "0x9A676e781A523b5d0C0e43731313A708CB607508",
+        "predictionMarketFacet": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+        "oracleFacet": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+        "babylonOracle": "0xc6e7DF5E7b4f2A278906862b61205850344D4e7d"
+      }
+    },
+    "baseSepolia": {
+      "chainId": 84532,
+      "name": "Base Sepolia (Staging)",
+      "rpcUrl": "https://sepolia.base.org",
+      "contracts": {
+        "diamond": "0xdC3f0aD2f76Cea9379af897fa8EAD4A6d5e43990",
+        "identityRegistry": "0x4102F9b209796b53a18B063A438D05C7C9Af31A2",
+        "reputationSystem": "0x7960E6044bbeE480F5388be1903b3A1dd69c126D",
+        "predictionMarketFacet": "0x95A1aEe004de01267daDD1e55C1a3fc2818636cE",
+        "oracleFacet": "0x58A0Cd5307CdE4F2ccD8E2cA71510206F1365D9B"
+      }
+    },
+    "base": {
+      "chainId": 8453,
+      "name": "Base Mainnet (Production)",
+      "rpcUrl": "https://mainnet.base.org",
+      "contracts": {
+        "diamond": "0x0000000000000000000000000000000000000000",
+        "identityRegistry": "0x0000000000000000000000000000000000000000",
+        "reputationSystem": "0x0000000000000000000000000000000000000000",
+        "predictionMarketFacet": "0x0000000000000000000000000000000000000000",
+        "oracleFacet": "0x0000000000000000000000000000000000000000"
+      }
+    }
+  },
+
+  "environments": {
+    "development": {
+      "network": "local",
+      "endpoints": {
+        "apiBaseUrl": "http://localhost:3000/api",
+        "a2aEndpoint": "ws://localhost:3001/ws/a2a",
+        "mcpEndpoint": "http://localhost:3000/mcp"
+      }
+    },
+    "staging": {
+      "network": "baseSepolia",
+      "endpoints": {
+        "apiBaseUrl": "https://staging.babylon.market/api",
+        "a2aEndpoint": "wss://staging.babylon.market/ws/a2a",
+        "mcpEndpoint": "https://staging.babylon.market/mcp"
+      }
+    },
+    "production": {
+      "network": "base",
+      "endpoints": {
+        "apiBaseUrl": "https://babylon.market/api",
+        "a2aEndpoint": "wss://babylon.market/ws/a2a",
+        "mcpEndpoint": "https://babylon.market/mcp"
+      }
+    }
+  }
+}

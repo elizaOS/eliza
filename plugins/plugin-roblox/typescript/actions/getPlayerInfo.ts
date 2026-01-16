@@ -12,16 +12,18 @@ import {
 import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME, type RobloxUser } from "../types";
 
+const actionName = "GET_ROBLOX_PLAYER";
+
 const getPlayerInfoExamples: ActionExample[][] = [
   [
     {
-      name: "{{user1}}",
+      name: actionName,
       content: {
         text: "Who is player 12345678?",
       },
     },
     {
-      name: "{{agentName}}",
+      name: actionName,
       content: {
         text: "Let me look up that player's information for you.",
         action: "GET_ROBLOX_PLAYER",
@@ -67,9 +69,9 @@ function extractUserIdentifier(
 }
 
 const getPlayerInfo: Action = {
-  name: "GET_ROBLOX_PLAYER",
-  similes: ["LOOKUP_PLAYER", "FIND_PLAYER", "PLAYER_INFO", "WHO_IS_PLAYER", "ROBLOX_USER_INFO"],
-  description: "Look up information about a Roblox player by their user ID or username.",
+  name: actionName,
+  similes: [],
+  description: "Fetch Roblox player information by username or user id.",
   examples: getPlayerInfoExamples,
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {

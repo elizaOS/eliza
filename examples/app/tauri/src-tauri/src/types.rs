@@ -36,8 +36,8 @@ impl Default for AppConfig {
             provider: ProviderSettings {
                 openai_api_key: String::new(),
                 openai_base_url: "https://api.openai.com/v1".to_string(),
-                openai_small_model: "gpt-4o-mini".to_string(),
-                openai_large_model: "gpt-4o".to_string(),
+                openai_small_model: "gpt-5-mini".to_string(),
+                openai_large_model: "gpt-5".to_string(),
 
                 xai_api_key: String::new(),
                 xai_base_url: "https://api.x.ai/v1".to_string(),

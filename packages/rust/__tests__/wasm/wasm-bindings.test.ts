@@ -180,8 +180,13 @@ describeWasm("WASM Bindings", () => {
       system: "You are a helpful assistant.",
       bio: ["An AI assistant", "Helps users"],
       topics: ["general", "coding"],
+      templates: {},
       messageExamples: [],
       postExamples: [],
+      adjectives: [],
+      knowledge: [],
+      plugins: [],
+      secrets: {},
       settings: {},
     });
 
@@ -214,7 +219,16 @@ describeWasm("WASM Bindings", () => {
     const testAgentJson = JSON.stringify({
       id: "550e8400-e29b-41d4-a716-446655440000",
       name: "TestAgent",
-      bio: "A test agent",
+      bio: ["A test agent"],
+      templates: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: [],
+      adjectives: [],
+      knowledge: [],
+      plugins: [],
+      secrets: {},
+      settings: {},
       status: "active",
       enabled: true,
     });

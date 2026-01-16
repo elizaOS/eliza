@@ -8,11 +8,11 @@
  * - Memory persistence for trading history
  *
  * Usage:
- *   OPENAI_API_KEY=key EVM_PRIVATE_KEY=key bun run polymarket-demo.ts once --network
+ *   OPENAI_API_KEY=key EVM_PRIVATE_KEY=key bun run polymarket-demo.ts once
  *
  * For live trading (requires CLOB API credentials):
  *   OPENAI_API_KEY=key EVM_PRIVATE_KEY=key CLOB_API_KEY=key CLOB_API_SECRET=secret CLOB_API_PASSPHRASE=pass \
- *   bun run polymarket-demo.ts once --network --execute
+ *   bun run polymarket-demo.ts once --execute
  */
 
 // Suppress verbose logging
@@ -29,9 +29,9 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, ".env") });
 
 import { parseArgs } from "./lib";
-import { chat, verify } from "./runner";
+import { chat, inputTest, verify } from "./runner";
 
-type Command = "help" | "verify" | "chat";
+type Command = "help" | "verify" | "chat" | "input-test";
 
 function usage(): void {
   const text = [
@@ -41,7 +41,8 @@ function usage(): void {
     "",
     "Commands:",
     "  chat                   Start a chat session (default)",
-    "  verify                 Validate config and wallet derivation (offline unless --network)",
+    "  verify                 Validate config and wallet derivation",
+    "  input-test             Run Ink input/scroll test",
     "",
     "Required Environment:",
     "  OPENAI_API_KEY         For AI decision making",
@@ -55,7 +56,6 @@ function usage(): void {
     "  PGLITE_DATA_DIR        Persistent database path (default: memory://)",
     "",
     "Flags:",
-    "  --network              Perform network calls (CLOB API)",
     "  --execute              Place real orders (requires CLOB credentials)",
     "  --interval-ms <n>      Loop delay for `run` (default 30000)",
     "  --iterations <n>       Loop count for `run` (default 10)",
@@ -68,7 +68,7 @@ function usage(): void {
     "",
     "Examples:",
     "  # Interactive chat (with /autonomy true|false)",
-    "  bun run polymarket-demo.ts chat --network",
+    "  bun run polymarket-demo.ts chat",
   ].join("\n");
   console.log(text);
 }
@@ -85,6 +85,9 @@ async function main(): Promise<void> {
       break;
     case "verify":
       await verify(options);
+      break;
+    case "input-test":
+      await inputTest(options);
       break;
     default:
       usage();

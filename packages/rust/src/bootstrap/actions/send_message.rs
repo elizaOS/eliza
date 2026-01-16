@@ -1,15 +1,21 @@
 //! SEND_MESSAGE action implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::{PluginError, PluginResult};
+use crate::generated::spec_helpers::require_action_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{ActionResult, Content, Memory, MemoryType, State};
 
 use super::Action;
+
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("SEND_MESSAGE"));
 
 /// Action for sending messages.
 pub struct SendMessageAction;
@@ -17,16 +23,18 @@ pub struct SendMessageAction;
 #[async_trait]
 impl Action for SendMessageAction {
     fn name(&self) -> &'static str {
-        "SEND_MESSAGE"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["MESSAGE", "DM", "DIRECT_MESSAGE", "POST_MESSAGE", "NOTIFY"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Send a message to a specific room or entity. \
-         Use this for targeted communication outside the current context."
+        &SPEC.description
     }
 
     async fn validate(&self, _runtime: &dyn IAgentRuntime, _message: &Memory) -> bool {

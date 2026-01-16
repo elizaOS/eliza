@@ -70,7 +70,7 @@ const examples = [
   --instances.subset lite \\
   --instances.split dev \\
   --instances.slice :3 \\
-  --agent.model.name gpt-4o`,
+  --agent.model.name gpt-5`,
   },
   {
     title: "Parallel Execution",
@@ -79,7 +79,7 @@ const examples = [
   --instances.subset lite \\
   --instances.slice :50 \\
   --num_workers 5 \\
-  --agent.model.name gpt-4o`,
+  --agent.model.name gpt-5`,
   },
   {
     title: "With Evaluation",
@@ -87,7 +87,7 @@ const examples = [
   --instances.type swe_bench \\
   --instances.subset lite \\
   --instances.evaluate \\
-  --agent.model.name gpt-4o`,
+  --agent.model.name gpt-5`,
   },
   {
     title: "Multimodal Dataset",

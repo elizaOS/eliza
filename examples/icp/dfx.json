@@ -1,0 +1,27 @@
+{
+  "canisters": {
+    "eliza_icp_backend": {
+      "type": "rust",
+      "package": "eliza_icp_backend",
+      "candid": "src/eliza_icp_backend/eliza_icp_backend.did",
+      "dependencies": ["chainkey_testing_canister"]
+    },
+    "chainkey_testing_canister": {
+      "type": "custom",
+      "candid": "vetkeys/chainkey_testing_canister.did",
+      "wasm": "vetkeys/chainkey_testing_canister.wasm"
+    },
+    "frontend": {
+      "type": "assets",
+      "source": ["src/frontend/assets"]
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": "",
+      "args": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}

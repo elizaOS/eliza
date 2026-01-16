@@ -8,12 +8,15 @@ import {
 } from "@elizaos/core";
 import type { ShellService } from "../services/shellService";
 import type { CommandHistoryEntry, FileOperation } from "../types";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 
 const MAX_OUTPUT_LENGTH = 8000;
 const TRUNCATE_SEGMENT_LENGTH = 4000;
 
+const spec = requireProviderSpec("shellHistoryProvider");
+
 export const shellHistoryProvider: Provider = {
-  name: "SHELL_HISTORY",
+  name: spec.name,
   description:
     "Provides recent shell command history, current working directory, and file operations within the restricted environment",
   position: 99,
@@ -34,6 +37,13 @@ export const shellHistoryProvider: Provider = {
     }
 
     const conversationId = message.roomId || message.agentId;
+    if (!conversationId) {
+      return {
+        text: "No conversation ID available",
+        values: { historyCount: 0, cwd: "N/A", allowedDir: "N/A" },
+        data: { historyCount: 0, cwd: "N/A", allowedDir: "N/A" },
+      };
+    }
     const history = shellService.getCommandHistory(conversationId, 10);
     const cwd = shellService.getCurrentDirectory(conversationId);
     const allowedDir = shellService.getAllowedDirectory();

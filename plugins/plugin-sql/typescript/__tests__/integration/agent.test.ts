@@ -7,6 +7,18 @@ import { agentTable } from "../../schema";
 import { mockCharacter } from "../fixtures";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
+const baseAgentDefaults = {
+  templates: {},
+  messageExamples: [],
+  postExamples: [],
+  topics: [],
+  adjectives: [],
+  knowledge: [],
+  plugins: [],
+  secrets: {},
+  style: { all: [], chat: [], post: [] },
+};
+
 describe("Agent Integration Tests", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let cleanup: () => Promise<void>;
@@ -23,11 +35,11 @@ describe("Agent Integration Tests", () => {
   beforeEach(() => {
     // Reset or seed data before each test if needed
     testAgent = {
+      ...baseAgentDefaults,
       id: testAgentId,
       name: "Test Agent",
-      bio: "A test agent for running tests.",
+      bio: ["A test agent for running tests."],
       system: "You are a helpful assistant.",
-      plugins: [],
       settings: { testSetting: "test value" },
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -62,6 +74,7 @@ describe("Agent Integration Tests", () => {
       it("should successfully create an agent", async () => {
         const newAgentId = stringToUuid("new-test-agent-create");
         const newAgent: Agent = {
+          ...baseAgentDefaults,
           id: newAgentId,
           name: "Integration Test Create",
           enabled: true,
@@ -70,14 +83,7 @@ describe("Agent Integration Tests", () => {
           username: "integration-create",
           system: "System message",
           bio: ["Bio line 1"],
-          messageExamples: [],
-          postExamples: [],
-          topics: [],
-          adjectives: [],
-          knowledge: [],
-          plugins: [],
           settings: {},
-          style: {},
         };
 
         const result = await adapter.createAgent(newAgent);
@@ -93,6 +99,7 @@ describe("Agent Integration Tests", () => {
         const sharedName = "duplicate-name";
         const agent1Id = uuidv4() as UUID; // Use random UUID
         const agent1: Agent = {
+          ...baseAgentDefaults,
           id: agent1Id,
           name: sharedName,
           enabled: true,
@@ -101,20 +108,14 @@ describe("Agent Integration Tests", () => {
           username: "duplicate-name-1",
           system: "System message",
           bio: ["First agent with this name"],
-          messageExamples: [],
-          postExamples: [],
-          topics: [],
-          adjectives: [],
-          knowledge: [],
-          plugins: [],
           settings: {},
-          style: {},
         };
         const result1 = await adapter.createAgent(agent1);
         expect(result1).toBe(true);
 
         const agent2Id = uuidv4() as UUID; // Use random UUID
         const agent2: Agent = {
+          ...baseAgentDefaults,
           id: agent2Id,
           name: sharedName,
           enabled: true,
@@ -123,14 +124,7 @@ describe("Agent Integration Tests", () => {
           username: "duplicate-name-2",
           system: "System message",
           bio: ["Second agent with this name"],
-          messageExamples: [],
-          postExamples: [],
-          topics: [],
-          adjectives: [],
-          knowledge: [],
-          plugins: [],
           settings: {},
-          style: {},
         };
         const result2 = await adapter.createAgent(agent2);
         expect(result2).toBe(true);
@@ -235,7 +229,7 @@ describe("Agent Integration Tests", () => {
         const minimalAgent = {
           id: uuidv4() as UUID,
           name: "Minimal Agent",
-          bio: "Just the required fields",
+          bio: ["Just the required fields"],
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
@@ -323,7 +317,7 @@ describe("Agent Integration Tests", () => {
 
         // Update the agent
         const updateData: Partial<Agent> = {
-          bio: "Updated bio",
+          bio: ["Updated bio"],
           settings: {
             updatedSetting: "new value",
           },
@@ -441,7 +435,7 @@ describe("Agent Integration Tests", () => {
 
         // Update only non-settings fields
         const updateData: Partial<Agent> = {
-          bio: "Updated bio only",
+          bio: ["Updated bio only"],
           username: "new_username",
         };
 
@@ -463,7 +457,7 @@ describe("Agent Integration Tests", () => {
           ...testAgent,
           id: uuidv4() as UUID,
           name: "Integration Test Update Settings Only",
-          bio: "Original bio",
+          bio: ["Original bio"],
         };
 
         await adapter.createAgent(newAgent);
@@ -494,7 +488,7 @@ describe("Agent Integration Tests", () => {
           id: agentId,
           name: "Test Agent Settings Removal",
           username: "test_settings_removal",
-          bio: "test bio",
+          bio: ["test bio"],
           settings: {
             topLevelToBeRemoved: "keep this for a moment",
             anotherTopLevel: "this should stay",
@@ -561,7 +555,7 @@ describe("Agent Integration Tests", () => {
         const agentToCreate: Agent = {
           id: agentId,
           name: "Complex Secrets Agent",
-          bio: "This is a test agent with complex secrets",
+          bio: ["This is a test agent with complex secrets"],
           username: "complex_secrets_agent",
           settings: initialAgentSettings,
           createdAt: Date.now(),
@@ -736,7 +730,7 @@ describe("Agent Integration Tests", () => {
 
         // Try to update non-existent agent
         const updateData: Partial<Agent> = {
-          bio: "This should not be saved",
+          bio: ["This should not be saved"],
         };
 
         const result = await adapter.updateAgent(nonExistentId, updateData);

@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("EVALUATORS")
 
 
 async def get_evaluators(
@@ -47,8 +51,8 @@ async def get_evaluators(
 
 
 evaluators_provider = Provider(
-    name="EVALUATORS",
-    description="Available evaluators for assessing agent behavior",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_evaluators,
-    dynamic=False,
+    dynamic=_spec.get("dynamic", False),
 )

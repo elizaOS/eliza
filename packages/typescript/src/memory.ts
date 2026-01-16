@@ -20,12 +20,13 @@ export function createMessageMemory(params: {
   content: Content & { text: string };
   embedding?: number[];
 }): MessageMemory {
+  const now = Date.now();
   return {
     ...params,
-    createdAt: Date.now(),
+    createdAt: now,
     metadata: {
       type: MemoryType.MESSAGE,
-      timestamp: Date.now(),
+      timestamp: now,
       scope: params.agentId ? "private" : "shared",
     },
   };

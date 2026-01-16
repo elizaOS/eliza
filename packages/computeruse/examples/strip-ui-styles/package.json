@@ -1,0 +1,16 @@
+{
+  "name": "strip-ui-styles",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@mediar-ai/computeruse": "^0.23.36",
+    "sharp": "^0.34.5"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "display": "Solution file for building all packages with project references",
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/contracts" },
+    { "path": "./packages/db" },
+    { "path": "./packages/engine" },
+    { "path": "./packages/api" },
+    { "path": "./packages/a2a" },
+    { "path": "./packages/mcp" },
+    { "path": "./packages/training" },
+    { "path": "./packages/agents" }
+  ]
+}

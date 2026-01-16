@@ -52,8 +52,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   provider: {
     openaiApiKey: "",
     openaiBaseUrl: "https://api.openai.com/v1",
-    openaiSmallModel: "gpt-4o-mini",
-    openaiLargeModel: "gpt-4o",
+    openaiSmallModel: "gpt-5-mini",
+    openaiLargeModel: "gpt-5",
 
     anthropicApiKey: "",
     anthropicSmallModel: "claude-3-5-haiku-20241022",
@@ -75,8 +75,8 @@ export const DEFAULT_CONFIG: AppConfig = {
 
     openrouterApiKey: "",
     openrouterBaseUrl: "https://openrouter.ai/api/v1",
-    openrouterSmallModel: "openai/gpt-4o-mini",
-    openrouterLargeModel: "openai/gpt-4o",
+    openrouterSmallModel: "openai/gpt-5-mini",
+    openrouterLargeModel: "openai/gpt-5",
 
     ollamaApiEndpoint: "http://localhost:11434",
     ollamaSmallModel: "llama3.2:3b",

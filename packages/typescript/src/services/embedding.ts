@@ -220,43 +220,28 @@ export class EmbeddingGenerationService extends Service {
    * High priority items go to the front, normal in the middle, low at the end
    */
   private insertItemByPriority(queueItem: EmbeddingQueueItem): void {
-    if (queueItem.priority === "high") {
-      // Find the position after the last high priority item
-      let insertIndex = 0;
-      for (let i = 0; i < this.queue.length; i++) {
-        if (this.queue[i].priority !== "high") {
-          break;
-        }
-        insertIndex = i + 1;
-      }
-      this.queue.splice(insertIndex, 0, queueItem);
-    } else if (queueItem.priority === "low") {
+    if (queueItem.priority === "low" || this.queue.length === 0) {
       // Add to end of queue
       this.queue.push(queueItem);
-    } else {
-      // Normal priority - add after high priority items but before low priority items
-      let insertIndex = 0;
-
-      // First, skip all high priority items
-      for (let i = 0; i < this.queue.length; i++) {
-        if (this.queue[i].priority !== "high") {
-          insertIndex = i;
-          break;
-        }
-        insertIndex = i + 1;
-      }
-
-      // Then find where low priority items start
-      for (let i = insertIndex; i < this.queue.length; i++) {
-        if (this.queue[i].priority === "low") {
-          insertIndex = i;
-          break;
-        }
-        insertIndex = i + 1;
-      }
-
-      this.queue.splice(insertIndex, 0, queueItem);
+      return;
     }
+
+    let insertIndex = this.queue.length;
+    for (let i = 0; i < this.queue.length; i++) {
+      const priority = this.queue[i].priority;
+      if (queueItem.priority === "high") {
+        if (priority !== "high") {
+          insertIndex = i;
+          break;
+        }
+      } else if (priority === "low") {
+        // Normal priority - add after high priority items but before low priority items
+        insertIndex = i;
+        break;
+      }
+    }
+
+    this.queue.splice(insertIndex, 0, queueItem);
   }
 
   private startProcessing(): void {

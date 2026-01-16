@@ -1,7 +1,14 @@
+import type {
+  ComponentTypeDefinition as ProtoComponentTypeDefinition,
+  JSONSchemaDefinition as ProtoJSONSchemaDefinition,
+  PluginManifest as ProtoPluginManifest,
+  RouteManifest as ProtoRouteManifest,
+} from "./proto.js";
+import type { JsonValue } from "./proto.js";
 import type { Character } from "./agent";
 import type { Action, Evaluator, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
-import type { EventHandler, EventPayloadMap } from "./events";
+import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
@@ -29,13 +36,7 @@ export interface ServiceClass {
 /**
  * Supported types for route request body fields
  */
-export type RouteBodyValue =
-  | string
-  | number
-  | boolean
-  | null
-  | RouteBodyValue[]
-  | { [key: string]: RouteBodyValue };
+export type RouteBodyValue = JsonValue;
 
 /**
  * Minimal request interface
@@ -57,8 +58,8 @@ export interface RouteRequest {
  */
 export interface RouteResponse {
   status: (code: number) => RouteResponse;
-  json: (data: unknown) => RouteResponse;
-  send: (data: unknown) => RouteResponse;
+  json: (data: JsonValue) => RouteResponse;
+  send: (data: JsonValue) => RouteResponse;
   end: () => RouteResponse;
   setHeader?: (name: string, value: string | string[]) => RouteResponse;
   sendFile?: (path: string) => RouteResponse;
@@ -92,24 +93,14 @@ export type Route = PublicRoute | PrivateRoute;
 /**
  * JSON Schema type definition for component validation
  */
-export interface JSONSchemaDefinition {
-  type: "string" | "number" | "boolean" | "object" | "array" | "null";
-  properties?: Record<string, JSONSchemaDefinition>;
-  items?: JSONSchemaDefinition;
-  required?: string[];
-  enum?: (string | number | boolean)[];
-  description?: string;
-}
+export type JSONSchemaDefinition = ProtoJSONSchemaDefinition;
 
 /**
  * Component type definition for entity components
  */
-export interface ComponentTypeDefinition {
-  /** Component type name */
-  name: string;
-  /** JSON Schema for component data validation */
+export interface ComponentTypeDefinition
+  extends Omit<ProtoComponentTypeDefinition, "schema"> {
   schema: JSONSchemaDefinition;
-  /** Optional custom validator function */
   validator?: (data: Record<string, RouteBodyValue>) => boolean;
 }
 
@@ -123,7 +114,9 @@ export type PluginEvents = {
 
 /** Internal type for runtime event storage - allows dynamic access for event registration */
 export type RuntimeEventStorage = PluginEvents & {
-  [key: string]: ((params: unknown) => Promise<void>)[] | undefined;
+  [key: string]: ((
+    params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
+  ) => Promise<void>)[] | undefined;
 };
 
 export interface Plugin {
@@ -170,7 +163,7 @@ export interface Plugin {
 
   priority?: number;
 
-  schema?: Record<string, unknown>;
+  schema?: Record<string, JsonValue | object>;
 }
 
 export interface ProjectAgent {
@@ -183,3 +176,6 @@ export interface ProjectAgent {
 export interface Project {
   agents: ProjectAgent[];
 }
+
+export type PluginManifest = ProtoPluginManifest;
+export type RouteManifest = ProtoRouteManifest;

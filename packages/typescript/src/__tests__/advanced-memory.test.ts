@@ -2,14 +2,22 @@ import { describe, expect, test } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { Character, UUID } from "../types";
 import { MemoryService } from "../advanced-memory";
+import { LongTermMemoryCategory } from "../advanced-memory/types";
 
 describe("advanced memory (built-in)", () => {
   test("auto-loads providers + evaluators + memory service when enabled", async () => {
     const character: Character = {
       name: "AdvMemory",
-      bio: "Test",
+      bio: ["Test"],
+      templates: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: [],
+      adjectives: [],
+      knowledge: [],
       advancedMemory: true,
       plugins: [],
+      secrets: {},
     };
 
     const runtime = new AgentRuntime({ character });
@@ -45,9 +53,16 @@ describe("advanced memory (built-in)", () => {
   test("does not load when disabled", async () => {
     const character: Character = {
       name: "AdvMemoryOff",
-      bio: "Test",
+      bio: ["Test"],
+      templates: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: [],
+      adjectives: [],
+      knowledge: [],
       advancedMemory: false,
       plugins: [],
+      secrets: {},
     };
 
     const runtime = new AgentRuntime({ character });
@@ -55,6 +70,72 @@ describe("advanced memory (built-in)", () => {
 
     expect(runtime.hasService("memory")).toBe(false);
     expect(runtime.providers.some((p) => p.name === "LONG_TERM_MEMORY")).toBe(false);
+  });
+
+  test("searchLongTermMemories returns top matches and respects limit", async () => {
+    const svc = new MemoryService({} as AgentRuntime);
+    svc.updateConfig({ longTermVectorSearchEnabled: true });
+
+    const now = new Date();
+    const entityId = "12345678-1234-1234-1234-123456789223" as UUID;
+    const agentId = "12345678-1234-1234-1234-123456789224" as UUID;
+
+    const memories = [
+      {
+        id: "12345678-1234-1234-1234-123456789225" as UUID,
+        agentId,
+        entityId,
+        category: LongTermMemoryCategory.SEMANTIC,
+        content: "high",
+        embedding: [1, 0],
+        confidence: 1,
+        source: "",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "12345678-1234-1234-1234-123456789226" as UUID,
+        agentId,
+        entityId,
+        category: LongTermMemoryCategory.SEMANTIC,
+        content: "mid",
+        embedding: [0.9, 0],
+        confidence: 1,
+        source: "",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "12345678-1234-1234-1234-123456789227" as UUID,
+        agentId,
+        entityId,
+        category: LongTermMemoryCategory.SEMANTIC,
+        content: "low",
+        embedding: [0.2, 0],
+        confidence: 1,
+        source: "",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+
+    // Override db access for test
+    svc.getLongTermMemories = async () => memories;
+
+    const results = await svc.searchLongTermMemories(entityId, [1, 0], 2, 0);
+    expect(results.map((m) => m.content)).toEqual(["high", "mid"]);
+  });
+
+  test("getLongTermMemories returns empty when limit <= 0", async () => {
+    const svc = new MemoryService({} as AgentRuntime);
+    // Ensure db isn't touched when limit is 0
+    (svc as unknown as { getDb: () => never }).getDb = () => {
+      throw new Error("db access not expected");
+    };
+
+    const entityId = "12345678-1234-1234-1234-123456789228" as UUID;
+    const results = await svc.getLongTermMemories(entityId, undefined, 0);
+    expect(results).toEqual([]);
   });
 });
 

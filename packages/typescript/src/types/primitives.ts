@@ -1,23 +1,33 @@
+import type {
+  Content as ProtoContent,
+  Media as ProtoMedia,
+  MentionContext as ProtoMentionContext,
+} from "./proto.js";
+import type { JsonObject, JsonValue } from "./proto.js";
+import type { UnknownField } from "@bufbuild/protobuf";
+
 /**
- * Defines a custom type UUID representing a universally unique identifier
+ * Defines a UUID as a string for protobuf interoperability.
  */
-export type UUID = `${string}-${string}-${string}-${string}-${string}`;
+export type UUID = string;
 
 /**
  * Channel types for messaging
  */
-export enum ChannelType {
-  SELF = "SELF", // Messages to self
-  DM = "DM", // Direct messages between two participants
-  GROUP = "GROUP", // Group messages with multiple participants
-  VOICE_DM = "VOICE_DM", // Voice direct messages
-  VOICE_GROUP = "VOICE_GROUP", // Voice channels with multiple participants
-  FEED = "FEED", // Social media feed
-  THREAD = "THREAD", // Threaded conversation
-  WORLD = "WORLD", // World channel
-  FORUM = "FORUM", // Forum discussion
-  API = "API", // API channel for external integrations
-}
+export const ChannelType = {
+  SELF: "SELF",
+  DM: "DM",
+  GROUP: "GROUP",
+  VOICE_DM: "VOICE_DM",
+  VOICE_GROUP: "VOICE_GROUP",
+  FEED: "FEED",
+  THREAD: "THREAD",
+  WORLD: "WORLD",
+  FORUM: "FORUM",
+  API: "API",
+} as const;
+
+export type ChannelType = (typeof ChannelType)[keyof typeof ChannelType];
 
 /**
  * The default UUID used when no room or world is specified.
@@ -46,10 +56,7 @@ export function asUUID(id: string): UUID {
  * Allowed value types for content dynamic properties
  */
 export type ContentValue =
-  | string
-  | number
-  | boolean
-  | null
+  | JsonValue
   | undefined
   | ContentValue[]
   | { [key: string]: ContentValue };
@@ -59,7 +66,20 @@ export type ContentValue =
  * This is the primary data structure for messages exchanged between
  * users, agents, and the system.
  */
-export interface Content {
+export interface Content
+  extends Omit<
+    ProtoContent,
+    | "$typeName"
+    | "$unknown"
+    | "actions"
+    | "providers"
+    | "attachments"
+    | "channelType"
+    | "inReplyTo"
+    | "mentionContext"
+    | "responseMessageId"
+    | "responseId"
+  > {
   /** The agent's internal thought process */
   thought?: string;
 
@@ -136,6 +156,7 @@ export interface Content {
     | MentionContext
     | Media[]
     | Content
+    | UnknownField[]
     | undefined;
 }
 
@@ -145,7 +166,8 @@ export interface Content {
  * This allows bootstrap to make intelligent decisions about responding
  * while keeping platform-specific logic isolated.
  */
-export interface MentionContext {
+export interface MentionContext
+  extends Omit<ProtoMentionContext, "$typeName" | "$unknown"> {
   /** Platform native mention (@Discord, @Telegram, etc.) */
   isMention: boolean;
 
@@ -162,7 +184,10 @@ export interface MentionContext {
 /**
  * Represents a media attachment
  */
-export type Media = {
+export type Media = Omit<
+  ProtoMedia,
+  "$typeName" | "$unknown" | "contentType"
+> & {
   /** Unique identifier */
   id: string;
 
@@ -185,13 +210,15 @@ export type Media = {
   contentType?: ContentType;
 };
 
-export enum ContentType {
-  IMAGE = "image",
-  VIDEO = "video",
-  AUDIO = "audio",
-  DOCUMENT = "document",
-  LINK = "link",
-}
+export const ContentType = {
+  IMAGE: "image",
+  VIDEO: "video",
+  AUDIO: "audio",
+  DOCUMENT: "document",
+  LINK: "link",
+} as const;
+
+export type ContentType = (typeof ContentType)[keyof typeof ContentType];
 
 /**
  * Allowed value types for metadata (JSON-serializable).
@@ -206,14 +233,11 @@ export enum ContentType {
  * unsafe 'as unknown as' casts.
  */
 export type MetadataValue =
-  | string
-  | number
-  | boolean
-  | null
+  | JsonValue
   | undefined
   | MetadataValue[]
   | { readonly [key: string]: MetadataValue | undefined }
-  | Record<string, unknown>;
+  | JsonObject;
 
 /**
  * A type for metadata objects with JSON-serializable values.

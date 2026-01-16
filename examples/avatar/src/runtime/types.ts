@@ -69,8 +69,8 @@ export const DEFAULT_DEMO_CONFIG: DemoConfig = {
     openaiBaseUrl: "https://api.openai.com/v1",
     // NOTE: This demo runs in the browser using AI SDK v5.
     // GPT-5 models require a newer OpenAI provider spec (v3), so default to v2-compatible models.
-    openaiSmallModel: "gpt-4o-mini",
-    openaiLargeModel: "gpt-4o",
+    openaiSmallModel: "gpt-5-mini",
+    openaiLargeModel: "gpt-5",
     openaiBrowserBaseUrl: "",
 
     anthropicApiKey: "",

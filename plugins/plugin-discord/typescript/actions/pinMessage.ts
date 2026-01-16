@@ -12,6 +12,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { type Message, PermissionsBitField, type TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import { pinMessageTemplate } from "../generated/prompts/typescript/prompts.js";
@@ -44,10 +45,12 @@ const getMessageRef = async (
   return null;
 };
 
+const spec = requireActionSpec("PIN_MESSAGE");
+
 export const pinMessage: Action = {
-  name: "PIN_MESSAGE",
-  similes: ["PIN_MESSAGE", "PIN_MSG", "PIN_THIS", "PIN_THAT", "MAKE_PINNED", "ADD_PIN"],
-  description: "Pin an important message in a Discord channel.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -208,53 +211,7 @@ export const pinMessage: Action = {
       });
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "pin that message",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll pin that message for you.",
-          actions: ["PIN_MESSAGE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "pin the announcement john just made",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll find and pin john's announcement.",
-          actions: ["PIN_MESSAGE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "pin the last message, it's important",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Pinning the last message to keep it visible.",
-          actions: ["PIN_MESSAGE"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default pinMessage;

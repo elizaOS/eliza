@@ -167,29 +167,14 @@ const findChannel = async (
 };
 
 import type { HandlerOptions } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("LEAVE_CHANNEL");
 
 export const leaveChannel: Action = {
-  name: "LEAVE_CHANNEL",
-  similes: [
-    "LEAVE_CHANNEL",
-    "STOP_LISTENING_CHANNEL",
-    "STOP_MONITORING_CHANNEL",
-    "REMOVE_CHANNEL",
-    "UNWATCH_CHANNEL",
-    "LEAVE_TEXT_CHANNEL",
-    "IGNORE_CHANNEL",
-    "LEAVE_VOICE",
-    "LEAVE_VC",
-    "LEAVE_VOICE_CHAT",
-    "LEAVE_VOICE_CHANNEL",
-    "LEAVE_CALL",
-    "EXIT_VOICE",
-    "DISCONNECT_VOICE",
-    "LEAVE_DISCORD_CHANNEL",
-    "EXIT_CHANNEL",
-  ],
-  description:
-    "Leave a Discord channel - either text (stop monitoring messages) or voice (disconnect from voice chat). Use this when asked to leave, exit, or disconnect from any Discord channel.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -457,113 +442,7 @@ export const leaveChannel: Action = {
       return undefined;
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "leave the dev-voice channel",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll leave the dev-voice channel.",
-          actions: ["LEAVE_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "{{name2}} leave the dev-voice channel in discord",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Leaving the dev-voice channel now.",
-          actions: ["LEAVE_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Stop listening to #general",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll stop listening to the #general channel.",
-          actions: ["LEAVE_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "leave voice",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll leave the voice channel.",
-          actions: ["LEAVE_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Leave this channel",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll stop monitoring messages in this channel.",
-          actions: ["LEAVE_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "hop off vc",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Leaving the voice channel now.",
-          actions: ["LEAVE_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Please stop monitoring the spam channel",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll stop monitoring the spam channel.",
-          actions: ["LEAVE_CHANNEL"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default leaveChannel;

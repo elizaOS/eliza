@@ -76,6 +76,8 @@ export default autoTraderPlugin;
 // Export types
 export * from './types.ts';
 export * from './types/trading.ts';
+// Explicitly re-export to resolve ambiguity
+export type { PortfolioAssetHolding, WalletPortfolio } from './types/trading.ts';
 
 // Export services for direct access
 export { AutoTradingManager } from './services/AutoTradingManager.ts';

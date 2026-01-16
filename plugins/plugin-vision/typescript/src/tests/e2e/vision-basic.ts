@@ -4,7 +4,7 @@ import { createUniqueUuid } from "@elizaos/core";
 import { captureImageAction, describeSceneAction } from "../../action";
 import type { VisionService } from "../../service";
 
-export class VisionBasicE2ETestSuite implements TestSuite {
+export class VisionBasicE2ETestSuite  {
   name = "plugin-vision-basic-e2e";
   description = "Basic end-to-end tests for vision plugin functionality";
 

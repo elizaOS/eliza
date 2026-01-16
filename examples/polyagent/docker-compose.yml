@@ -1,0 +1,137 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: babylon-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: babylon
+      POSTGRES_PASSWORD: babylon_dev_password
+      POSTGRES_DB: babylon
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command: >
+      postgres
+      -c max_connections=300
+      -c shared_buffers=512MB
+      -c effective_cache_size=2GB
+      -c maintenance_work_mem=128MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=8MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c max_worker_processes=8
+      -c max_parallel_workers_per_gather=4
+      -c max_parallel_workers=8
+      -c max_parallel_maintenance_workers=4
+      -c autovacuum_max_workers=3
+      -c log_min_duration_statement=100
+      -c log_connections=on
+      -c log_disconnections=on
+      -c log_lock_waits=on
+      -c deadlock_timeout=1s
+      -c idle_in_transaction_session_timeout=60000
+      -c statement_timeout=60000
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U babylon"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: babylon-pgbouncer
+    restart: unless-stopped
+    ports:
+      - "6432:5432"
+    environment:
+      DATABASE_URL: "postgresql://babylon:babylon_dev_password@postgres:5432/babylon"
+      POOL_MODE: transaction
+      # Client-side settings (what connects to PgBouncer)
+      MAX_CLIENT_CONN: 10000
+      DEFAULT_POOL_SIZE: 200
+      MIN_POOL_SIZE: 20
+      RESERVE_POOL_SIZE: 20
+      # Server-side settings (PgBouncer to PostgreSQL)
+      MAX_DB_CONNECTIONS: 200
+      MAX_USER_CONNECTIONS: 10000
+      # Timeouts
+      SERVER_IDLE_TIMEOUT: 600
+      SERVER_LIFETIME: 3600
+      SERVER_CONNECT_TIMEOUT: 15
+      CLIENT_IDLE_TIMEOUT: 0
+      # Performance
+      QUERY_TIMEOUT: 60
+      IDLE_TRANSACTION_TIMEOUT: 60
+      # Logging
+      LOG_CONNECTIONS: 1
+      LOG_DISCONNECTIONS: 1
+      LOG_POOLER_ERRORS: 1
+      VERBOSE: 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "babylon"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: babylon-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --tcp-backlog 511
+      --timeout 300
+      --tcp-keepalive 60
+      --maxclients 10000
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: babylon-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: babylon
+      MINIO_ROOT_PASSWORD: babylon_dev_password
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  minio_data:
+    driver: local
+  redis_data:
+    driver: local

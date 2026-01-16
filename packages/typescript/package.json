@@ -50,7 +50,7 @@
     "build": "bun run build.ts",
     "build:watch": "bun run build.ts --watch",
     "dev": "bun run build:watch",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete 2>/dev/null || true",
     "perf:settings": "bun run scripts/perf-settings.ts",
     "test": "vitest run --coverage",
     "test:coverage": "vitest run --coverage",
@@ -75,6 +75,7 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.10.2",
+    "@elizaos/prompts": "workspace:*",
     "@langchain/core": "^1.1.12",
     "@langchain/textsplitters": "^1.0.1",
     "adze": "^2.2.5",

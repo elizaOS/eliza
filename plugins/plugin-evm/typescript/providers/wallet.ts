@@ -32,6 +32,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import * as viemChains from "viem/chains";
 
 import { DEFAULT_CHAINS, EVM_SERVICE_NAME } from "../constants";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import {
   assertChainConfigured,
   assertDefined,
@@ -430,8 +431,10 @@ class LazyTeeWalletProvider extends WalletProvider {
   }
 }
 
+const spec = requireProviderSpec("wallet");
+
 export const evmWalletProvider: Provider = {
-  name: "EVMWalletProvider",
+  name: spec.name,
   async get(runtime: IAgentRuntime, _message: Memory, state?: State): Promise<ProviderResult> {
     try {
       const evmService = runtime.getService(EVM_SERVICE_NAME);

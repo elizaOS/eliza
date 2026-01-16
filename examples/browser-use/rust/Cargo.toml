@@ -1,0 +1,18 @@
+[package]
+name = "example-browser-use-rust"
+version = "0.1.0"
+edition = "2021"
+description = "Autonomous browser agent exploring quantum physics"
+license = "MIT"
+publish = false
+
+[dependencies]
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["json"] }
+rand = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+lazy_static = "1.4"

@@ -1,12 +1,17 @@
 //! CHOICE provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("CHOICE"));
 
 /// Provider for choice options.
 pub struct ChoiceProvider;
@@ -14,15 +19,15 @@ pub struct ChoiceProvider;
 #[async_trait]
 impl Provider for ChoiceProvider {
     fn name(&self) -> &'static str {
-        "CHOICE"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Available choice options for selection"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(
@@ -41,9 +46,8 @@ impl Provider for ChoiceProvider {
 
         // Also check state for choices
         let state_choices: Vec<serde_json::Value> = state
-            .and_then(|s| s.values.get("choices"))
-            .and_then(|v| v.as_array())
-            .cloned()
+            .and_then(|s| s.get_value("choices"))
+            .and_then(|v| v.as_array().cloned())
             .unwrap_or_default();
 
         let all_choices: Vec<serde_json::Value> = choices

@@ -1,9 +1,12 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { PluginRegistryData } from "../types";
 import { getPluginCreationService } from "../utils/get-plugin-creation-service";
 
+const spec = requireProviderSpec("plugin-registry-provider");
+
 export const pluginRegistryProvider: Provider = {
-  name: "plugin_registry",
+  name: spec.name,
   description: "Provides information about all created plugins in the current session",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     const service = getPluginCreationService(runtime);

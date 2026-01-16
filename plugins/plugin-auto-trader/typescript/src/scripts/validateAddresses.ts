@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { PublicKey } from '@solana/web3.js';
-import { ALL_MEME_COINS } from '../config/memeCoins.ts';
+// Missing config - commented out until implemented
+// import { ALL_MEME_COINS } from '../config/memeCoins.ts';
+const ALL_MEME_COINS: Array<{ symbol: string; address: string }> = [];
 
 async function validateAddresses() {
   console.log('Validating Solana addresses...\n');

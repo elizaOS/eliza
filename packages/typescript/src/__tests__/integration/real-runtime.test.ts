@@ -234,11 +234,14 @@ describe("Integration Tests with Mocked Infrastructure", () => {
     name: "IntegrationTestAgent",
     system: "You are a helpful assistant for integration testing.",
     bio: ["Integration test agent"],
+    templates: {},
     messageExamples: [],
     postExamples: [],
     topics: ["testing"],
+    adjectives: [],
     knowledge: [],
     plugins: [],
+    secrets: {},
     settings: {},
   };
 
@@ -406,6 +409,14 @@ describe("Inference Tests with Mock Handlers", () => {
     name: "InferenceTestAgent",
     system: "You are a helpful assistant.",
     bio: ["Test agent for inference"],
+    templates: {},
+    messageExamples: [],
+    postExamples: [],
+    topics: [],
+    adjectives: [],
+    knowledge: [],
+    plugins: [],
+    secrets: {},
   };
 
   beforeAll(async () => {

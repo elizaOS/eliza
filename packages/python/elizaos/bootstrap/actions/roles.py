@@ -6,10 +6,34 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_action_spec("UPDATE_ROLE")
+
+
+def _convert_spec_examples() -> list[list[ActionExample]]:
+    """Convert spec examples to ActionExample format."""
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
 
 
 class Role(str, Enum):
@@ -20,39 +44,11 @@ class Role(str, Enum):
     NONE = "NONE"
 
 
-UPDATE_ROLE_TEMPLATE = """# Update entity role in the world.
-
-{{providers}}
-
-# Current Role Assignments:
-{{#each roles}}
-- {{this.entityId}}: {{this.role}}
-{{/each}}
-
-Valid roles: OWNER, ADMIN, MEMBER, GUEST, NONE
-
-<response>
-    <thought>Your reasoning for the role change</thought>
-    <entity_id>The entity ID to update</entity_id>
-    <new_role>The new role to assign (OWNER, ADMIN, MEMBER, GUEST, or NONE)</new_role>
-</response>"""
-
-
 @dataclass
 class UpdateRoleAction:
-    name: str = "UPDATE_ROLE"
-    similes: list[str] = field(
-        default_factory=lambda: [
-            "ASSIGN_ROLE",
-            "CHANGE_ROLE",
-            "SET_ROLE",
-            "MODIFY_PERMISSIONS",
-            "GRANT_ROLE",
-        ]
-    )
-    description: str = (
-        "Update the role of an entity in a world. Use this to manage permissions and access levels."
-    )
+    name: str = _spec["name"]
+    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
+    description: str = _spec["description"]
 
     async def validate(
         self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
@@ -184,21 +180,7 @@ class UpdateRoleAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return [
-            [
-                ActionExample(
-                    name="{{name1}}",
-                    content=Content(text="Make @user an admin in this server."),
-                ),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(
-                        text="I'll update their role to admin.",
-                        actions=["UPDATE_ROLE"],
-                    ),
-                ),
-            ],
-        ]
+        return _convert_spec_examples()
 
 
 update_role_action = Action(

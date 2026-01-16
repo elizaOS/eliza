@@ -1,0 +1,79 @@
+name: Release Browser Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package extension
+        run: |
+          set -euo pipefail
+          cd crates/computeruse/browser-extension
+          zip -r ../../../computeruse-browser-extension.zip .
+          cd -
+          echo "[OK] Extension packaged"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          files: |
+            computeruse-browser-extension.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get Chrome Web Store access token
+        id: cws_token
+        run: |
+          RESPONSE=$(curl -s -X POST https://oauth2.googleapis.com/token \
+            -d "client_id=${{ secrets.CWS_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.CWS_CLIENT_SECRET }}" \
+            -d "refresh_token=${{ secrets.CWS_REFRESH_TOKEN }}" \
+            -d "grant_type=refresh_token")
+          ACCESS_TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
+          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+            echo "[WARN] Failed to get access token: $RESPONSE"
+            exit 1
+          fi
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
+          echo "[OK] Access token obtained"
+
+      - name: Upload to Chrome Web Store
+        run: |
+          RESPONSE=$(curl -s -X PUT \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/${{ secrets.CWS_EXTENSION_ID }}" \
+            -H "Authorization: Bearer ${{ steps.cws_token.outputs.access_token }}" \
+            -H "x-goog-api-version: 2" \
+            -T computeruse-browser-extension.zip)
+          echo "Upload response: $RESPONSE"
+          UPLOAD_STATE=$(echo "$RESPONSE" | jq -r '.uploadState')
+          if [ "$UPLOAD_STATE" != "SUCCESS" ]; then
+            echo "[WARN] Upload failed: $RESPONSE"
+            exit 1
+          fi
+          echo "[OK] Extension uploaded to Chrome Web Store"
+
+      - name: Publish to Chrome Web Store
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/${{ secrets.CWS_EXTENSION_ID }}/publish" \
+            -H "Authorization: Bearer ${{ steps.cws_token.outputs.access_token }}" \
+            -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0")
+          echo "Publish response: $RESPONSE"
+          STATUS=$(echo "$RESPONSE" | jq -r '.status[0]')
+          if [ "$STATUS" != "OK" ]; then
+            echo "[WARN] Publish may require review: $RESPONSE"
+          fi
+          echo "[OK] Extension submitted for publishing"

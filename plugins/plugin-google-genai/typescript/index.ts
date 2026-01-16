@@ -4,6 +4,8 @@ import type {
   ImageDescriptionParams,
   ObjectGenerationParams,
   Plugin,
+  TestCase,
+  TestSuite,
   TextEmbeddingParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
@@ -158,9 +160,9 @@ const pluginTests = [
           }
         },
       },
-    ],
+    ] as TestCase[],
   },
-];
+] as TestSuite[];
 
 type ProcessEnvLike = Record<string, string | undefined>;
 

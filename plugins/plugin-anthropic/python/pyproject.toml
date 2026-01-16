@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-anthropic"
-version = "1.0.0"
+version = "2.0.0"
 description = "elizaOS Anthropic Plugin - Claude API client for text and object generation"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agents", "anthropic", "claude", "llm", "elizaos"]
 classifiers = [

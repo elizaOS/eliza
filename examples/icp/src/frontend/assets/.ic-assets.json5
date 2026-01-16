@@ -1,0 +1,24 @@
+[
+  {
+    "match": "**/*",
+    "disable_security_policy_warning": true,
+    "headers": {
+      "Content-Security-Policy": "default-src 'self'; script-src 'self' https://esm.sh; connect-src 'self' http://localhost:* http://127.0.0.1:* https://*.ic0.app https://*.icp0.io; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "strict-origin-when-cross-origin"
+    }
+  },
+  {
+    "match": "*.html",
+    "headers": {
+      "Content-Type": "text/html; charset=utf-8"
+    }
+  },
+  {
+    "match": "*.js",
+    "headers": {
+      "Content-Type": "application/javascript"
+    }
+  }
+]

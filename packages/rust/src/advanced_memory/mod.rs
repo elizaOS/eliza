@@ -15,8 +15,8 @@ use serde_json::Value;
 
 use crate::runtime::{AgentRuntime, Service};
 use crate::types::components::{
-    ActionResult, EvaluatorDefinition, EvaluatorHandler, ProviderDefinition, ProviderHandler,
-    ProviderResult,
+    ActionResult, EvaluatorDefinition, EvaluatorHandler, HandlerOptions, ProviderDefinition,
+    ProviderHandler, ProviderResult,
 };
 use crate::types::database::GetMemoriesParams;
 use crate::types::plugin::Plugin;
@@ -26,60 +26,12 @@ use crate::types::settings::SettingValue;
 use crate::types::state::State;
 use crate::types::Memory;
 
-const INITIAL_SUMMARIZATION_TEMPLATE: &str = r#"# Task: Summarize Conversation
-
-# Recent Messages
-{{recentMessages}}
-
-Respond in this XML format:
-<summary>
-  <text>Your summary</text>
-  <topics>topic1, topic2</topics>
-  <keyPoints>
-    <point>Key point</point>
-  </keyPoints>
-</summary>
-"#;
-
-const UPDATE_SUMMARIZATION_TEMPLATE: &str = r#"# Task: Update and Condense Conversation Summary
-
-# Existing Summary
-{{existingSummary}}
-
-# Existing Topics
-{{existingTopics}}
-
-# New Messages Since Last Summary
-{{newMessages}}
-
-Respond in this XML format:
-<summary>
-  <text>Your updated summary</text>
-  <topics>topic1, topic2</topics>
-  <keyPoints>
-    <point>Key point</point>
-  </keyPoints>
-</summary>
-"#;
-
-const LONG_TERM_EXTRACTION_TEMPLATE: &str = r#"# Task: Extract Long-Term Memory (Strict Criteria)
-
-# Recent Messages
-{{recentMessages}}
-
-# Current Long-Term Memories
-{{existingMemories}}
-
-If there are no qualifying facts, respond with <memories></memories>.
-
-<memories>
-  <memory>
-    <category>semantic</category>
-    <content>User prefers concise answers</content>
-    <confidence>0.95</confidence>
-  </memory>
-</memories>
-"#;
+// Import templates from centralized prompts
+use crate::prompts::{
+    INITIAL_SUMMARIZATION_TEMPLATE,
+    UPDATE_SUMMARIZATION_TEMPLATE,
+    LONG_TERM_EXTRACTION_TEMPLATE,
+};
 
 const TABLE_SESSION_SUMMARY: &str = "session_summary";
 const TABLE_LONG_TERM_MEMORY: &str = "long_term_memory";
@@ -378,6 +330,17 @@ impl MemoryService {
             .get(&entity_id)
             .cloned()
             .unwrap_or_default();
+        if limit == 0 || out.is_empty() {
+            return Vec::new();
+        }
+        if out.len() > limit {
+            out.select_nth_unstable_by(limit, |a, b| {
+                b.confidence
+                    .partial_cmp(&a.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            out.truncate(limit);
+        }
         out.sort_by(|a, b| {
             b.confidence
                 .partial_cmp(&a.confidence)
@@ -573,7 +536,6 @@ impl MemoryService {
         for m in rows {
             let meta = match m.metadata {
                 Some(crate::types::memory::MemoryMetadata::Custom(v)) => v,
-                Some(other) => serde_json::to_value(other).unwrap_or(Value::Null),
                 None => Value::Null,
             };
             let cat = meta
@@ -657,7 +619,6 @@ impl MemoryService {
         };
         let meta = match &m.metadata {
             Some(crate::types::memory::MemoryMetadata::Custom(v)) => v.clone(),
-            Some(other) => serde_json::to_value(other).unwrap_or(Value::Null),
             None => Value::Null,
         };
         Some(SessionSummary {
@@ -921,6 +882,7 @@ impl EvaluatorHandler for SummarizationEvaluator {
         &self,
         message: &Memory,
         _state: Option<&State>,
+        _options: Option<&HandlerOptions>,
     ) -> Result<Option<ActionResult>, anyhow::Error> {
         let Some(runtime) = self.runtime.upgrade() else {
             return Ok(None);
@@ -1080,6 +1042,7 @@ impl EvaluatorHandler for LongTermExtractionEvaluator {
         &self,
         message: &Memory,
         _state: Option<&State>,
+        _options: Option<&HandlerOptions>,
     ) -> Result<Option<ActionResult>, anyhow::Error> {
         let Some(runtime) = self.runtime.upgrade() else {
             return Ok(None);

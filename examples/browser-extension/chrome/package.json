@@ -10,6 +10,9 @@
     "clean": "rm -rf dist",
     "package": "bun run build && cd .. && zip -r chrome/chrome-extension.zip chrome -x 'chrome/node_modules/*' -x 'chrome/src/*' -x 'chrome/*.ts' -x 'chrome/tsconfig.json' -x 'chrome/tsup.config.ts'"
   },
+  "dependencies": {
+    "uuid": "^11.1.0"
+  },
   "devDependencies": {
     "@types/chrome": "^0.1.33",
     "@types/uuid": "^11.0.0",

@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 /// Configuration for bootstrap capabilities.
 ///
-/// - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
-/// - Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
+/// - Basic: Core functionality (reply, ignore, none, choice actions; core providers; task/embedding services)
+/// - Extended/Advanced: Additional features (contacts, room management, roles, settings, image generation)
 /// - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
 #[derive(Debug, Clone, Default)]
 pub struct CapabilityConfig {
@@ -19,6 +19,8 @@ pub struct CapabilityConfig {
     pub disable_basic: bool,
     /// Enable extended capabilities (default: false)
     pub enable_extended: bool,
+    /// Alias for enable_extended (for consistency with TypeScript)
+    pub advanced_capabilities: bool,
     /// Skip the character provider (used for anonymous agents without a character file)
     pub skip_character_provider: bool,
     /// Enable autonomy capabilities (default: false)
@@ -41,9 +43,15 @@ impl CapabilityConfig {
         Self {
             disable_basic: false,
             enable_extended: true,
+            advanced_capabilities: true,
             skip_character_provider: false,
             enable_autonomy: false,
         }
+    }
+
+    /// Create a config with advanced capabilities enabled (alias for with_extended)
+    pub fn with_advanced() -> Self {
+        Self::with_extended()
     }
 
     /// Create a config with only extended capabilities (no basic)
@@ -51,9 +59,15 @@ impl CapabilityConfig {
         Self {
             disable_basic: true,
             enable_extended: true,
+            advanced_capabilities: true,
             skip_character_provider: false,
             enable_autonomy: false,
         }
+    }
+
+    /// Check if advanced/extended capabilities are enabled
+    pub fn has_advanced(&self) -> bool {
+        self.enable_extended || self.advanced_capabilities
     }
 
     /// Create a config for an anonymous agent (skips character provider)
@@ -61,6 +75,7 @@ impl CapabilityConfig {
         Self {
             disable_basic: false,
             enable_extended: false,
+            advanced_capabilities: false,
             skip_character_provider: true,
             enable_autonomy: false,
         }
@@ -71,6 +86,7 @@ impl CapabilityConfig {
         Self {
             disable_basic: false,
             enable_extended: false,
+            advanced_capabilities: false,
             skip_character_provider: false,
             enable_autonomy: true,
         }
@@ -81,6 +97,7 @@ impl CapabilityConfig {
         Self {
             disable_basic: false,
             enable_extended: true,
+            advanced_capabilities: true,
             skip_character_provider: false,
             enable_autonomy: true,
         }

@@ -3,8 +3,11 @@ import type {
   IAgentRuntime,
   ImageDescriptionParams,
   ImageGenerationParams,
+  JsonValue,
   ObjectGenerationParams,
   Plugin,
+  TestCase,
+  TestSuite,
   TextEmbeddingParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
@@ -64,6 +67,7 @@ const pluginTests = [
         },
       },
       {
+        
         name: "gateway_test_text_small",
         fn: async (runtime: IAgentRuntime) => {
           const text = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -78,6 +82,7 @@ const pluginTests = [
         },
       },
       {
+        
         name: "gateway_test_text_large",
         fn: async (runtime: IAgentRuntime) => {
           const text = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -92,6 +97,7 @@ const pluginTests = [
         },
       },
       {
+        
         name: "gateway_test_text_embedding",
         fn: async (runtime: IAgentRuntime) => {
           const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
@@ -106,6 +112,7 @@ const pluginTests = [
         },
       },
       {
+        
         name: "gateway_test_object_generation",
         fn: async (runtime: IAgentRuntime) => {
           const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
@@ -146,9 +153,9 @@ const pluginTests = [
           logger.info(`[Gateway Test] Streaming test: ${chunks.length} chunks received`);
         },
       },
-    ],
+    ] as TestCase[],
   },
-];
+] as TestSuite[];
 
 type ProcessEnvLike = Record<string, string | undefined>;
 
@@ -220,14 +227,14 @@ export const gatewayPlugin: Plugin = {
     [ModelType.OBJECT_SMALL]: async (
       runtime: IAgentRuntime,
       params: ObjectGenerationParams
-    ): Promise<Record<string, unknown>> => {
+    ): Promise<Record<string, JsonValue>> => {
       return handleObjectSmall(runtime, params);
     },
 
     [ModelType.OBJECT_LARGE]: async (
       runtime: IAgentRuntime,
       params: ObjectGenerationParams
-    ): Promise<Record<string, unknown>> => {
+    ): Promise<Record<string, JsonValue>> => {
       return handleObjectLarge(runtime, params);
     },
   },

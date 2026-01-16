@@ -1,9 +1,11 @@
 //! CHOOSE_OPTION action implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 
 use crate::error::{PluginError, PluginResult};
+use crate::generated::spec_helpers::require_action_spec;
 use crate::prompts::CHOOSE_OPTION_TEMPLATE;
 use crate::runtime::{IAgentRuntime, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
@@ -11,22 +13,28 @@ use crate::xml::parse_key_value_xml;
 
 use super::Action;
 
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("CHOOSE_OPTION"));
+
 /// Action for choosing from available options.
 pub struct ChooseOptionAction;
 
 #[async_trait]
 impl Action for ChooseOptionAction {
     fn name(&self) -> &'static str {
-        "CHOOSE_OPTION"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["SELECT_OPTION", "PICK_OPTION", "SELECT_TASK", "PICK_TASK"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Choose an option from available choices. Used for task selection \
-         and decision-making when multiple options are presented."
+        &SPEC.description
     }
 
     async fn validate(&self, _runtime: &dyn IAgentRuntime, _message: &Memory) -> bool {
@@ -89,4 +97,3 @@ impl Action for ChooseOptionAction {
             .with_data("thought", thought))
     }
 }
-

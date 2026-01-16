@@ -1,11 +1,11 @@
-import type { Character, Plugin } from "@elizaos/core";
+import { createCharacter, type Character, type Plugin } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 
-export const mockCharacter: Character = {
+export const mockCharacter: Character = createCharacter({
   name: "Test Agent",
   bio: ["A test agent for running tests."],
-};
+});
 
 export const helloWorldSchema = {
   helloWorldTable: pgTable("hello_world", {

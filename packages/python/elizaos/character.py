@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
+from google.protobuf.json_format import MessageToDict, ParseDict
 
 from elizaos.types.agent import Character
 
@@ -56,26 +56,27 @@ def load_character_from_file(path: str) -> Character:
 
 def validate_and_create_character(data: dict[str, Any]) -> Character:
     try:
-        return Character(**data)
-    except ValidationError as e:
-        errors = [f"{err['loc']}: {err['msg']}" for err in e.errors()]
-        error_message = "; ".join(errors)
+        character = Character()
+        ParseDict(data, character)
+        return character
+    except Exception as e:
+        error_message = str(e)
         raise CharacterValidationError(
             f"Character validation failed: {error_message}",
-            errors=errors,
+            errors=[error_message],
         ) from e
 
 
 def validate_character_config(character: Character) -> dict[str, Any]:
     try:
         # Re-validate by converting to dict and back
-        Character(**character.model_dump())
+        ParseDict(MessageToDict(character, preserving_proto_field_name=False), Character())
         return {
             "isValid": True,
             "errors": [],
         }
-    except ValidationError as e:
-        errors = [f"{err['loc']}: {err['msg']}" for err in e.errors()]
+    except Exception as e:
+        errors = [str(e)]
         return {
             "isValid": False,
             "errors": errors,
@@ -93,7 +94,9 @@ def merge_character_defaults(char: dict[str, Any]) -> Character:
     if not merged.get("name"):
         merged["name"] = "Unnamed Character"
 
-    return Character(**merged)
+    character = Character()
+    ParseDict(merged, character)
+    return character
 
 
 def build_character_plugins(env: dict[str, str | None] | None = None) -> list[str]:

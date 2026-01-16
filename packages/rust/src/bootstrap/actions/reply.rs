@@ -1,9 +1,11 @@
 //! REPLY action implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 
 use crate::error::{PluginError, PluginResult};
+use crate::generated::spec_helpers::require_action_spec;
 use crate::prompts::REPLY_TEMPLATE;
 use crate::runtime::{IAgentRuntime, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
@@ -11,24 +13,29 @@ use crate::xml::parse_key_value_xml;
 
 use super::Action;
 
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("REPLY"));
+
 /// Action for generating and sending a reply message.
 pub struct ReplyAction;
 
 #[async_trait]
 impl Action for ReplyAction {
     fn name(&self) -> &'static str {
-        "REPLY"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["GREET", "REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND", "RESPONSE"]
+        // Convert Vec<String> to static slice - this is safe because SPEC is Lazy/static
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Replies to the current conversation with the text from the generated message. \
-         Default if the agent is responding with a message and no other action. \
-         Use REPLY at the beginning of a chain of actions as an acknowledgement, \
-         and at the end of a chain of actions as a final response."
+        &SPEC.description
     }
 
     async fn validate(&self, _runtime: &dyn IAgentRuntime, _message: &Memory) -> bool {

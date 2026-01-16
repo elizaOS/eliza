@@ -1,4 +1,9 @@
-import { type IAgentRuntime, ModelType, type ObjectGenerationParams } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type JsonValue,
+  ModelType,
+  type ObjectGenerationParams,
+} from "@elizaos/core";
 import { generateObject, jsonSchema } from "ai";
 import type { JSONSchema7 } from "json-schema";
 
@@ -11,7 +16,7 @@ async function generateObjectWithModel(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.OBJECT_SMALL | typeof ModelType.OBJECT_LARGE,
   params: ObjectGenerationParams
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, JsonValue>> {
   const openrouter = createOpenRouterProvider(runtime);
   const modelName =
     modelType === ModelType.OBJECT_SMALL ? getSmallModel(runtime) : getLargeModel(runtime);
@@ -35,7 +40,7 @@ async function generateObjectWithModel(
     if (usage) {
       emitModelUsageEvent(runtime, modelType, params.prompt, usage);
     }
-    return object as Record<string, unknown>;
+    return object as Record<string, JsonValue>;
   } catch (error: unknown) {
     return handleObjectGenerationError(error);
   }
@@ -44,13 +49,13 @@ async function generateObjectWithModel(
 export async function handleObjectSmall(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, JsonValue>> {
   return generateObjectWithModel(runtime, ModelType.OBJECT_SMALL, params);
 }
 
 export async function handleObjectLarge(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, JsonValue>> {
   return generateObjectWithModel(runtime, ModelType.OBJECT_LARGE, params);
 }

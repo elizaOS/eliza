@@ -5,6 +5,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
+from google.protobuf.json_format import MessageToDict
 from uuid import UUID, uuid4
 
 from elizaos.logger import Logger
@@ -279,12 +280,14 @@ Focus on:
 
         # resolve dependencies
         for step in steps:
-            dep_strings = step.parameters.pop("_depStrings", [])
+            dep_strings_raw = step.parameters.pop("_depStrings", [])
+            step_dep_strings: list[str] = []
+            if isinstance(dep_strings_raw, list):
+                step_dep_strings = [str(d).strip() for d in dep_strings_raw if str(d).strip()]
             deps: list[UUID] = []
-            if isinstance(dep_strings, list):
-                for d in dep_strings:
-                    if isinstance(d, str) and d in step_id_map:
-                        deps.append(step_id_map[d])
+            for d in step_dep_strings:
+                if d in step_id_map:
+                    deps.append(step_id_map[d])
             step.dependencies = deps
 
         if not steps:
@@ -311,16 +314,32 @@ Focus on:
         self._active_plans[plan_id] = plan
         return plan
 
-    def _find_action(self, action_name: str):
-        target = action_name.strip()
-        target_norm = re.sub(r"[_\s]+", "", target).lower()
+    def _normalize_action_name(self, name: str) -> str:
+        return re.sub(r"[_\s]+", "", name.strip()).lower()
+
+    def _build_action_lookup(self) -> dict[str, object]:
+        lookup: dict[str, object] = {}
         for action in self.runtime.actions:
-            name_norm = re.sub(r"[_\s]+", "", action.name).lower()
+            name_norm = self._normalize_action_name(action.name)
+            lookup.setdefault(name_norm, action)
+            if action.similes:
+                for s in action.similes:
+                    simile_norm = self._normalize_action_name(s)
+                    lookup.setdefault(simile_norm, action)
+        return lookup
+
+    def _find_action(self, action_name: str, action_lookup: dict[str, object] | None = None):
+        target_norm = self._normalize_action_name(action_name)
+        if action_lookup is not None:
+            return action_lookup.get(target_norm)
+
+        for action in self.runtime.actions:
+            name_norm = self._normalize_action_name(action.name)
             if name_norm == target_norm:
                 return action
             if action.similes:
                 for s in action.similes:
-                    if re.sub(r"[_\s]+", "", s).lower() == target_norm:
+                    if self._normalize_action_name(s) == target_norm:
                         return action
         return None
 
@@ -335,6 +354,7 @@ Focus on:
             raise ValueError("Planning context must have a non-empty goal")
 
         prompt = self._build_planning_prompt(context, message, state)
+        action_lookup = self._build_action_lookup()
         try:
             response = await self.runtime.use_model(
                 "TEXT_LARGE",
@@ -343,7 +363,7 @@ Focus on:
             plan = self._parse_plan(str(response), goal=goal)
             # enhance plan by downgrading unknown actions to REPLY
             for step in plan.steps:
-                if not self._find_action(step.action_name):
+                if not self._find_action(step.action_name, action_lookup):
                     missing = step.action_name
                     step.action_name = "REPLY"
                     step.parameters = {"text": f"Unable to find action: {missing}"}
@@ -363,11 +383,12 @@ Focus on:
             errors.append("Plan has no steps")
 
         step_ids = {s.id for s in plan.steps}
+        action_lookup = self._build_action_lookup()
         for step in plan.steps:
             if not step.action_name:
                 errors.append(f"Step {step.id} missing action_name")
                 continue
-            if self._find_action(step.action_name) is None:
+            if self._find_action(step.action_name, action_lookup) is None:
                 errors.append(f"Action '{step.action_name}' not found in runtime")
             for dep in step.dependencies:
                 if dep not in step_ids:
@@ -419,15 +440,16 @@ Focus on:
 
         execution_state = PlanState(status="running", start_time=start, current_step_index=0)
         execution = PlanExecution(state=execution_state, working_memory=working_memory, results=results)
+        action_lookup = self._build_action_lookup()
         self._executions[plan.id] = execution
 
         try:
             if plan.execution_model == "parallel":
-                await self._execute_parallel(plan, message, state, callback, execution)
+                await self._execute_parallel(plan, message, state, callback, execution, action_lookup)
             elif plan.execution_model == "dag":
-                await self._execute_dag(plan, message, state, callback, execution)
+                await self._execute_dag(plan, message, state, callback, execution, action_lookup)
             else:
-                await self._execute_sequential(plan, message, state, callback, execution)
+                await self._execute_sequential(plan, message, state, callback, execution, action_lookup)
 
             execution_state.status = "failed" if errors else "completed"
             execution_state.end_time = time.time()
@@ -463,11 +485,12 @@ Focus on:
         state: State | None,
         callback: HandlerCallback | None,
         execution: PlanExecution,
+        action_lookup: dict[str, object],
     ) -> None:
         for i, step in enumerate(plan.steps):
             if execution.abort_event.is_set():
                 raise RuntimeError("Plan execution aborted")
-            result = await self._execute_step(step, message, state, callback, execution)
+            result = await self._execute_step(step, message, state, callback, execution, action_lookup)
             if result is not None:
                 execution.results.append(result)
             execution.state.current_step_index = i + 1
@@ -479,8 +502,12 @@ Focus on:
         state: State | None,
         callback: HandlerCallback | None,
         execution: PlanExecution,
+        action_lookup: dict[str, object],
     ) -> None:
-        tasks = [self._execute_step(step, message, state, callback, execution) for step in plan.steps]
+        tasks = [
+            self._execute_step(step, message, state, callback, execution, action_lookup)
+            for step in plan.steps
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in results:
             if isinstance(r, ActionResult):
@@ -493,31 +520,57 @@ Focus on:
         state: State | None,
         callback: HandlerCallback | None,
         execution: PlanExecution,
+        action_lookup: dict[str, object],
     ) -> None:
-        completed: set[UUID] = set()
-        pending: set[UUID] = {s.id for s in plan.steps}
-        by_id = {s.id: s for s in plan.steps}
+        import heapq
 
-        while pending and not execution.abort_event.is_set():
-            ready: list[ActionStep] = []
-            for sid in list(pending):
-                step = by_id.get(sid)
-                if step and all(dep in completed for dep in step.dependencies):
-                    ready.append(step)
+        by_id: dict[UUID, ActionStep] = {s.id: s for s in plan.steps}
+        in_degree: dict[UUID, int] = {s.id: len(s.dependencies) for s in plan.steps}
+        dependents: dict[UUID, list[UUID]] = {}
+        index_by_id: dict[UUID, int] = {}
+        for idx, step in enumerate(plan.steps):
+            index_by_id[step.id] = idx
+            for dep in step.dependencies:
+                dependents.setdefault(dep, []).append(step.id)
 
-            if not ready:
-                raise RuntimeError("No steps ready to execute - possible circular dependency")
+        ready_heap: list[tuple[int, UUID]] = [
+            (index_by_id[sid], sid) for sid, count in in_degree.items() if count == 0
+        ]
+        heapq.heapify(ready_heap)
+
+        completed_count = 0
+        while ready_heap and not execution.abort_event.is_set():
+            ready_batch: list[ActionStep] = []
+            while ready_heap:
+                _, sid = heapq.heappop(ready_heap)
+                ready_batch.append(by_id[sid])
+
+            if not ready_batch:
+                break
 
             results = await asyncio.gather(
-                *[self._execute_step(step, message, state, callback, execution) for step in ready],
+                *[
+                    self._execute_step(step, message, state, callback, execution, action_lookup)
+                    for step in ready_batch
+                ],
                 return_exceptions=True,
             )
 
-            for step, r in zip(ready, results):
-                pending.discard(step.id)
-                completed.add(step.id)
+            for step, r in zip(ready_batch, results):
+                completed_count += 1
                 if isinstance(r, ActionResult):
                     execution.results.append(r)
+
+                for nxt in dependents.get(step.id, []):
+                    remaining = in_degree.get(nxt, 0)
+                    if remaining > 0:
+                        remaining -= 1
+                        in_degree[nxt] = remaining
+                        if remaining == 0:
+                            heapq.heappush(ready_heap, (index_by_id[nxt], nxt))
+
+        if completed_count != len(plan.steps):
+            raise RuntimeError("No steps ready to execute - possible circular dependency")
 
     async def _execute_step(
         self,
@@ -526,13 +579,14 @@ Focus on:
         state: State | None,
         callback: HandlerCallback | None,
         execution: PlanExecution,
+        action_lookup: dict[str, object],
     ) -> ActionResult | None:
-        action = self._find_action(step.action_name)
+        action = self._find_action(step.action_name, action_lookup)
         if action is None:
             raise RuntimeError(f"Action '{step.action_name}' not found")
 
         previous_results = execution.results
-        action_context = ActionContext(previousResults=previous_results)
+        action_context = ActionContext(previous_results=previous_results)
 
         retries = 0
         max_retries = step.retry_policy.max_retries if step.retry_policy else 0
@@ -541,14 +595,15 @@ Focus on:
                 raise RuntimeError("Plan execution aborted")
             try:
                 options = HandlerOptions(
-                    actionContext=action_context,
+                    action_context=action_context,
                     parameters=step.parameters,
                 )
                 # Attach extra execution context (allowed by extra="allow")
                 options.previous_results = previous_results  # type: ignore[attr-defined]
                 options.context = {"workingMemory": execution.working_memory}  # type: ignore[attr-defined]
 
-                ok = await action.validate_fn(self.runtime, message, state)
+                validate_fn = getattr(action, "validate", None) or getattr(action, "validate_fn", None)
+                ok = await validate_fn(self.runtime, message, state) if validate_fn else True
                 if not ok:
                     return None
 
@@ -597,7 +652,7 @@ Focus on:
 
 ORIGINAL PLAN: {json.dumps({"id": str(plan.id), "goal": plan.goal, "steps": [{"id": str(s.id), "action": s.action_name} for s in plan.steps]}, indent=2)}
 CURRENT STEP INDEX: {current_step_index}
-COMPLETED RESULTS: {json.dumps([r.model_dump() for r in results], indent=2)}
+COMPLETED RESULTS: {json.dumps([MessageToDict(r, preserving_proto_field_name=False) for r in results], indent=2)}
 {f"ERROR: {str(error)}" if error else ""}
 
 Return the adapted plan in the same XML format as the original planning response."""

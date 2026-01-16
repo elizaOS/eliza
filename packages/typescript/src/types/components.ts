@@ -1,3 +1,11 @@
+import type {
+  ActionExample as ProtoActionExample,
+  ActionParameter as ProtoActionParameter,
+  ActionParameterSchema as ProtoActionParameterSchema,
+  ActionParameters as ProtoActionParametersType,
+  EvaluationExample as ProtoEvaluationExample,
+} from "./proto.js";
+import type { JsonObject, JsonValue } from "./proto.js";
 import type { Memory } from "./memory";
 import type { Content } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -7,32 +15,34 @@ import type { ActionPlan, State } from "./state";
  * JSON Schema type for action parameter validation.
  * Supports basic JSON Schema properties for parameter definition.
  */
-export type ActionParameterSchema = {
-  /** The JSON Schema type (string, number, boolean, object, array) */
-  type: "string" | "number" | "boolean" | "object" | "array";
-  /** Description of the parameter for LLM guidance */
-  description?: string;
+export interface ActionParameterSchema
+  extends Omit<
+    ProtoActionParameterSchema,
+    | "$typeName"
+    | "$unknown"
+    | "defaultValue"
+    | "properties"
+    | "items"
+    | "enumValues"
+  > {
   /** Default value if parameter is not provided */
-  default?: string | number | boolean | null;
-  /** Allowed values for enum-style parameters */
-  enum?: string[];
+  default?: JsonValue | null;
   /** For object types, define nested properties */
   properties?: Record<string, ActionParameterSchema>;
   /** For array types, define the item schema */
   items?: ActionParameterSchema;
-  /** Minimum value for numbers */
-  minimum?: number;
-  /** Maximum value for numbers */
-  maximum?: number;
-  /** Pattern for string validation (regex) */
-  pattern?: string;
-};
+  /** Enumerated allowed values (schema-compatible) */
+  enumValues?: string[];
+  /** Enumerated allowed values */
+  enum?: string[];
+}
 
 /**
  * Defines a single parameter for an action.
  * Parameters are extracted from the conversation by the LLM and passed to the action handler.
  */
-export interface ActionParameter {
+export interface ActionParameter
+  extends Omit<ProtoActionParameter, "$typeName" | "$unknown" | "schema"> {
   /** Parameter name (used as the key in the parameters object) */
   name: string;
   /** Human-readable description for LLM guidance */
@@ -73,18 +83,23 @@ export interface ActionParameters {
     | ActionParameterValue
     | ActionParameters
     | ActionParameterValue[]
-    | ActionParameters[];
+    | ActionParameters[]
+    | JsonValue;
 }
+
+export type ProtoActionParameters = ProtoActionParametersType;
 
 /**
  * Example content with associated user for demonstration purposes
  */
-export interface ActionExample {
-  /** User associated with the example */
-  name: string;
-
-  /** Content of the example */
+export interface ActionExample
+  extends Omit<ProtoActionExample, "$typeName" | "$unknown" | "content"> {
   content: Content;
+}
+
+export interface EvaluationExample
+  extends Omit<ProtoEvaluationExample, "$typeName" | "$unknown" | "messages"> {
+  messages: ActionExample[];
 }
 
 /**
@@ -99,7 +114,7 @@ export type Handler = (
   runtime: IAgentRuntime,
   message: Memory,
   state?: State,
-  options?: HandlerOptions,
+  options?: HandlerOptions | Record<string, JsonValue | undefined>,
   callback?: HandlerCallback,
   responses?: Memory[],
 ) => Promise<ActionResult | undefined>;
@@ -171,20 +186,6 @@ export interface Action {
 }
 
 /**
- * Example for evaluating agent behavior
- */
-export interface EvaluationExample {
-  /** Evaluation context */
-  prompt: string;
-
-  /** Example messages */
-  messages: Array<ActionExample>;
-
-  /** Expected outcome */
-  outcome: string;
-}
-
-/**
  * Evaluator for assessing agent responses
  */
 export interface Evaluator {
@@ -231,16 +232,20 @@ export type JsonPrimitive = string | number | boolean | null;
  */
 export type ProviderValue =
   | JsonPrimitive
-  | undefined
-  | readonly unknown[]
-  | Record<string, unknown>;
+  | JsonValue
+  | Uint8Array
+  | bigint
+  | object
+  | ProviderValue[]
+  | { [key: string]: ProviderValue | undefined }
+  | undefined;
 
 /**
  * Data record type that accepts any JSON-serializable values.
  * This is broader than ProviderValue to accommodate domain types
  * like Memory[], Character, Content without requiring casts.
  */
-export type ProviderDataRecord = Record<string, unknown>;
+export type ProviderDataRecord = Record<string, ProviderValue>;
 
 /**
  * Result returned by a provider
@@ -254,8 +259,7 @@ export interface ProviderResult {
 
   /**
    * Structured data for programmatic access by other components.
-   * Accepts any JSON-serializable object values including domain types
-   * like Memory[], Character, Content, etc.
+   * Accepts JSON-serializable values and domain objects.
    */
   data?: ProviderDataRecord;
 }
@@ -383,4 +387,7 @@ export interface HandlerOptions {
    * or infer from context when safe).
    */
   parameterErrors?: string[];
+
+  /** Allow extensions from plugins */
+  [key: string]: JsonValue | object | undefined;
 }

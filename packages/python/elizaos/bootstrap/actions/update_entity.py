@@ -5,29 +5,42 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import UPDATE_ENTITY_TEMPLATE
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
+# Get text content from centralized specs
+_spec = require_action_spec("UPDATE_ENTITY")
+
+
+def _convert_spec_examples() -> list[list[ActionExample]]:
+    """Convert spec examples to ActionExample format."""
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
+
 
 @dataclass
 class UpdateEntityAction:
-    name: str = "UPDATE_ENTITY"
-    similes: list[str] = field(
-        default_factory=lambda: [
-            "MODIFY_ENTITY",
-            "CHANGE_ENTITY",
-            "EDIT_ENTITY",
-            "UPDATE_PROFILE",
-            "SET_ENTITY_INFO",
-        ]
-    )
-    description: str = (
-        "Update information about an entity. "
-        "Use this to modify entity profiles, metadata, or attributes."
-    )
+    name: str = _spec["name"]
+    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
+    description: str = _spec["description"]
 
     async def validate(
         self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
@@ -149,21 +162,7 @@ Type: {entity.entity_type or "Unknown"}
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return [
-            [
-                ActionExample(
-                    name="{{name1}}",
-                    content=Content(text="Update my profile bio to 'AI enthusiast'."),
-                ),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(
-                        text="I'll update your profile information.",
-                        actions=["UPDATE_ENTITY"],
-                    ),
-                ),
-            ],
-        ]
+        return _convert_spec_examples()
 
 
 update_entity_action = Action(

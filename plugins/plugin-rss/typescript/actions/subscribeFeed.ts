@@ -10,14 +10,17 @@ import type {
 } from "@elizaos/core";
 import type { RssService } from "../service";
 import { createMessageReply, extractUrls } from "../utils";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("SUBSCRIBE_FEED");
 
 export const subscribeFeedAction: Action = {
-  name: "SUBSCRIBE_RSS_FEED",
-  similes: ["ADD_RSS_FEED", "FOLLOW_RSS_FEED", "SUBSCRIBE_TO_RSS"],
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
   validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     return true;
   },
-  description: "Subscribe to an RSS/Atom feed for automatic monitoring",
+  description: spec.description,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -85,38 +88,7 @@ export const subscribeFeedAction: Action = {
     return { success };
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Subscribe to https://example.com/feed.rss",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll subscribe to that RSS feed for you",
-          actions: ["SUBSCRIBE_RSS_FEED"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Add this feed: https://news.ycombinator.com/rss",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Adding the RSS feed",
-          actions: ["SUBSCRIBE_RSS_FEED"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default subscribeFeedAction;

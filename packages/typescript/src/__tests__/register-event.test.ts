@@ -14,7 +14,15 @@ describe("registerEvent", () => {
   const mockCharacter: Character = {
     id: stringToUuid("test-character"),
     name: "TestBot",
-    bio: "A test bot",
+    bio: ["A test bot"],
+    templates: {},
+    messageExamples: [],
+    postExamples: [],
+    topics: [],
+    adjectives: [],
+    knowledge: [],
+    plugins: [],
+    secrets: {},
   };
 
   beforeEach(() => {

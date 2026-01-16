@@ -3,33 +3,16 @@ syntax = "proto3";
 
 package eliza.v1;
 
+import "eliza/v1/components.proto";
 import "eliza/v1/environment.proto";
 import "google/protobuf/struct.proto";
-
-// Action plan step status
-enum ActionPlanStepStatus {
-  ACTION_PLAN_STEP_STATUS_UNSPECIFIED = 0;
-  ACTION_PLAN_STEP_STATUS_PENDING = 1;
-  ACTION_PLAN_STEP_STATUS_COMPLETED = 2;
-  ACTION_PLAN_STEP_STATUS_FAILED = 3;
-}
-
-// Forward declaration - ActionResult is defined in components.proto
-// We use a simplified version here to avoid circular imports
-message ActionResultRef {
-  bool success = 1;
-  optional string text = 2;
-  optional string error = 3;
-  google.protobuf.Struct data = 4;
-  google.protobuf.Struct values = 5;
-}
 
 // Single step in an action plan
 message ActionPlanStep {
   string action = 1;
-  ActionPlanStepStatus status = 2;
+  string status = 2;
   optional string error = 3;
-  optional ActionResultRef result = 4;
+  optional ActionResult result = 4;
 }
 
 // Multi-step action plan
@@ -38,6 +21,7 @@ message ActionPlan {
   int32 total_steps = 2;
   int32 current_step = 3;
   repeated ActionPlanStep steps = 4;
+  google.protobuf.Struct metadata = 5;
 }
 
 // Provider result cache entry
@@ -52,7 +36,7 @@ message WorkingMemoryItem {
   // Name of the action that created this entry
   string action_name = 1;
   // Result from the action execution
-  ActionResultRef result = 2;
+  ActionResult result = 2;
   // Timestamp when the entry was created
   int64 timestamp = 3;
 }
@@ -70,7 +54,7 @@ message StateData {
   // Current action plan for multi-step actions
   optional ActionPlan action_plan = 5;
   // Results from previous action executions
-  repeated ActionResultRef action_results = 6;
+  repeated ActionResult action_results = 6;
   // Working memory for temporary state during multi-step action execution
   map<string, WorkingMemoryItem> working_memory = 7;
   // Dynamic properties for plugin extensions

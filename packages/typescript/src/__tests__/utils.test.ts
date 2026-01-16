@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   cleanupTestRuntime,
   createTestRuntime,
-} from "../bootstrap/__tests__/test-utils";
+} from "./test-utils";
 import type { Content, Entity, IAgentRuntime, Memory, State } from "../types";
 import * as utils from "../utils";
 import {

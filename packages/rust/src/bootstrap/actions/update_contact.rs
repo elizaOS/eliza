@@ -1,9 +1,11 @@
 //! Update contact action implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_action_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{ActionResult, Memory, State};
 
@@ -12,18 +14,24 @@ use super::Action;
 /// Action to update contact information in the rolodex.
 pub struct UpdateContactAction;
 
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("UPDATE_CONTACT"));
+
 #[async_trait]
 impl Action for UpdateContactAction {
     fn name(&self) -> &'static str {
-        "UPDATE_CONTACT"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["EDIT_CONTACT", "CHANGE_CONTACT", "MODIFY_CONTACT"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Update contact information in the rolodex"
+        &SPEC.description
     }
 
     async fn validate(&self, runtime: &dyn IAgentRuntime, message: &Memory) -> bool {

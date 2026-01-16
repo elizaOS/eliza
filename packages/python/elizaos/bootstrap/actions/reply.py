@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import REPLY_TEMPLATE
 from elizaos.types import (
     Action,
@@ -22,19 +23,35 @@ if TYPE_CHECKING:
         State,
     )
 
+# Get text content from centralized specs
+_spec = require_action_spec("REPLY")
+
+
+def _convert_spec_examples() -> list[list[ActionExample]]:
+    """Convert spec examples to ActionExample format."""
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
+
 
 @dataclass
 class ReplyAction:
-    name: str = "REPLY"
-    similes: list[str] = field(
-        default_factory=lambda: ["GREET", "REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND", "RESPONSE"]
-    )
-    description: str = (
-        "Replies to the current conversation with the text from the generated message. "
-        "Default if the agent is responding with a message and no other action. "
-        "Use REPLY at the beginning of a chain of actions as an acknowledgement, "
-        "and at the end of a chain of actions as a final response."
-    )
+    name: str = _spec["name"]
+    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
+    description: str = _spec["description"]
 
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
@@ -110,40 +127,7 @@ class ReplyAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return [
-            [
-                ActionExample(name="{{name1}}", content=Content(text="Hello there!")),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(text="Hi! How can I help you today?", actions=["REPLY"]),
-                ),
-            ],
-            [
-                ActionExample(
-                    name="{{name1}}", content=Content(text="What's your favorite color?")
-                ),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(
-                        text="I really like deep shades of blue. They remind me of the ocean.",
-                        actions=["REPLY"],
-                    ),
-                ),
-            ],
-            [
-                ActionExample(
-                    name="{{name1}}",
-                    content=Content(text="Can you explain how neural networks work?"),
-                ),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(
-                        text="Let me break that down for you in simple terms...",
-                        actions=["REPLY"],
-                    ),
-                ),
-            ],
-        ]
+        return _convert_spec_examples()
 
 
 reply_action = Action(

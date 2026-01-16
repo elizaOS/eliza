@@ -77,6 +77,7 @@ pub type ActionCallback = Box<dyn Fn(&crate::types::Content) + Send + Sync>;
 /// Get basic actions (always available).
 pub fn basic_actions() -> Vec<Box<dyn Action>> {
     vec![
+        Box::new(ChooseOptionAction),
         Box::new(ReplyAction),
         Box::new(IgnoreAction),
         Box::new(NoneAction),
@@ -87,7 +88,6 @@ pub fn basic_actions() -> Vec<Box<dyn Action>> {
 pub fn extended_actions() -> Vec<Box<dyn Action>> {
     vec![
         Box::new(AddContactAction),
-        Box::new(ChooseOptionAction),
         Box::new(FollowRoomAction),
         Box::new(GenerateImageAction),
         Box::new(MuteRoomAction),

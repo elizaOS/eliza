@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanupTestRuntime,
   createTestRuntime,
-} from "../bootstrap/__tests__/test-utils";
+} from "./test-utils";
 import {
   createUniqueUuid,
   findEntityByName,

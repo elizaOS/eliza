@@ -4,6 +4,7 @@ import type {
   Entity,
   IDatabaseAdapter,
   Log,
+  LogBody,
   Memory,
   MemoryMetadata,
   Metadata,
@@ -11,6 +12,7 @@ import type {
   Relationship,
   Room,
   Task,
+  JsonValue,
   UUID,
   World,
 } from "./types";
@@ -22,8 +24,8 @@ import type {
  * @abstract
  * implements IDatabaseAdapter
  */
-export abstract class DatabaseAdapter<DB = unknown>
-  implements IDatabaseAdapter
+export abstract class DatabaseAdapter<DB extends object = object>
+  implements IDatabaseAdapter<DB>
 {
   /**
    * The database instance.
@@ -54,10 +56,7 @@ export abstract class DatabaseAdapter<DB = unknown>
   abstract runPluginMigrations(
     plugins: Array<{
       name: string;
-      schema?: Record<
-        string,
-        string | number | boolean | null | Record<string, unknown>
-      >;
+      schema?: Record<string, JsonValue>;
     }>,
     options?: {
       verbose?: boolean;
@@ -228,7 +227,7 @@ export abstract class DatabaseAdapter<DB = unknown>
    * @returns A Promise that resolves when the log entry has been saved.
    */
   abstract log(params: {
-    body: { [key: string]: unknown };
+    body: LogBody;
     entityId: UUID;
     roomId: UUID;
     type: string;

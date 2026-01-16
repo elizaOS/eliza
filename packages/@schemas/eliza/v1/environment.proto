@@ -3,16 +3,7 @@ syntax = "proto3";
 
 package eliza.v1;
 
-import "eliza/v1/primitives.proto";
 import "google/protobuf/struct.proto";
-
-// Role enumeration for access control
-enum Role {
-  ROLE_UNSPECIFIED = 0;
-  ROLE_OWNER = 1;
-  ROLE_ADMIN = 2;
-  ROLE_NONE = 3;
-}
 
 // Entity component - extensible data attached to entities
 message Component {
@@ -50,7 +41,7 @@ message WorldOwnership {
 message WorldMetadata {
   optional WorldOwnership ownership = 1;
   // Role assignments keyed by entity ID
-  map<string, Role> roles = 2;
+  map<string, string> roles = 2;
   // Additional dynamic metadata
   google.protobuf.Struct extra = 3;
 }
@@ -75,7 +66,7 @@ message Room {
   optional string name = 2;
   optional string agent_id = 3;
   string source = 4;
-  ChannelType type = 5;
+  string type = 5;
   optional string channel_id = 6;
   optional string message_server_id = 7;
   optional string world_id = 8;

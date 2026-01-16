@@ -9,20 +9,16 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
+const spec = requireActionSpec("LIST_CHANNELS");
+
 export const listChannels: Action = {
-  name: "LIST_CHANNELS",
-  similes: [
-    "SHOW_CHANNELS",
-    "LIST_LISTENING_CHANNELS",
-    "SHOW_MONITORED_CHANNELS",
-    "GET_CHANNELS",
-    "WHICH_CHANNELS",
-    "CHANNELS_LIST",
-  ],
-  description: "Lists all Discord channels the bot is currently listening to and responding in.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -152,53 +148,7 @@ export const listChannels: Action = {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Which channels are you listening to?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Let me show you all the channels I'm currently monitoring.",
-          actions: ["LIST_CHANNELS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "List all monitored channels",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll list all the channels I'm currently listening to.",
-          actions: ["LIST_CHANNELS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Show me your channel list",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Here are all the channels I'm monitoring.",
-          actions: ["LIST_CHANNELS"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default listChannels;

@@ -1,12 +1,17 @@
 //! CAPABILITIES provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ModelType, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("CAPABILITIES"));
 
 /// Provider for agent capabilities.
 pub struct CapabilitiesProvider;
@@ -14,15 +19,15 @@ pub struct CapabilitiesProvider;
 #[async_trait]
 impl Provider for CapabilitiesProvider {
     fn name(&self) -> &'static str {
-        "CAPABILITIES"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Agent capabilities including models, services, and features"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        false
+        SPEC.dynamic.unwrap_or(false)
     }
 
     async fn get(

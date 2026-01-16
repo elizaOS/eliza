@@ -8,7 +8,7 @@
 import {
   AgentRuntime,
   ChannelType,
-  type Character,
+  createCharacter,
   type ContentValue,
   createMessageMemory,
   stringToUuid,
@@ -33,7 +33,7 @@ process.env.COMPUTERUSE_MCP_SERVER = process.env.COMPUTERUSE_MCP_SERVER ?? "comp
 const HAS_OPENAI =
   typeof process.env.OPENAI_API_KEY === "string" && process.env.OPENAI_API_KEY.trim().length > 0;
 
-const CHARACTER: Character = {
+const CHARACTER = createCharacter({
   name: "OkComputer",
   bio: "An elizaOS agent with computer control abilities.",
   system: [
@@ -59,7 +59,7 @@ const CHARACTER: Character = {
     // Autonomy is controlled via runtime.enableAutonomy
     AUTONOMY_MODE: process.env.AUTONOMY_MODE ?? "task",
   },
-};
+});
 
 let runtime: AgentRuntime | null = null;
 const sessions: Map<string, { roomId: UUID; userId: UUID }> = new Map();

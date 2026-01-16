@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-elizacloud"
-version = "1.7.4"
+version = "2.0.0"
 description = "ElizaOS Cloud plugin - Multi-model AI generation with text, image, and audio support"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agents", "llm", "openai", "embeddings", "elizaos", "cloud"]
 classifiers = [

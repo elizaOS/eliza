@@ -32,7 +32,7 @@ function resolveTextParams(
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;
 
-  const rawParams = params as Record<string, unknown>;
+  const rawParams = params as unknown as Record<string, unknown>;
   const topPExplicit = "topP" in rawParams;
   const temperatureExplicit = "temperature" in rawParams;
 

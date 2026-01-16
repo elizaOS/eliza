@@ -374,7 +374,7 @@ async function createTestRuntime(): Promise<{
   cleanup: () => Promise<void>;
 }> {
   const sqlPlugin = await import('@elizaos/plugin-sql');
-  const { AgentRuntime } = await import('@elizaos/core');
+  const { AgentRuntime, createCharacter } = await import('@elizaos/core');
   const { v4: uuidv4 } = await import('uuid');
 
   const agentId = uuidv4();
@@ -383,7 +383,7 @@ async function createTestRuntime(): Promise<{
 
   const runtime = new AgentRuntime({
     agentId,
-    character: {
+    character: createCharacter({
       name: 'Test Agent',
       bio: ['A test agent'],
       system: 'You are a helpful assistant.',
@@ -393,8 +393,11 @@ async function createTestRuntime(): Promise<{
       postExamples: [],
       topics: ['testing'],
       adjectives: ['helpful'],
+      knowledge: [],
+      secrets: {},
+      templates: {},
       style: { all: [], chat: [], post: [] },
-    },
+    }),
     adapter,
     plugins: [],
   });

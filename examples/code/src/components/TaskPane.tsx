@@ -155,9 +155,10 @@ export function TaskPane({
         }
         if (key.return) {
           const next = renameDraft.trim();
-          if (next.length > 0 && currentTask?.id && taskService) {
-            taskService.renameTask(currentTask.id, next).catch((err: Error) => {
-              reportTaskServiceError(taskService, currentTask.id, "renameTask", err);
+          const taskId = currentTask?.id ?? null;
+          if (next.length > 0 && taskId && taskService) {
+            taskService.renameTask(taskId, next).catch((err: Error) => {
+              reportTaskServiceError(taskService, taskId, "renameTask", err);
             });
           }
           setIsRenaming(false);
@@ -246,34 +247,35 @@ export function TaskPane({
       }
 
       // Mark/unmark current task as finished (user-controlled)
-      if (
-        char === "d" &&
-        !key.ctrl &&
-        !key.meta &&
-        currentTask?.id &&
-        taskService
-      ) {
+      if (char === "d" && !key.ctrl && !key.meta && taskService) {
+        const taskId = currentTask?.id ?? null;
+        if (!taskId) return;
         const currentUserStatus = getTaskUserStatus(
           currentTask.metadata?.userStatus,
         );
         const nextStatus: TaskUserStatus =
           currentUserStatus === "done" ? "open" : "done";
-        taskService.setUserStatus(currentTask.id, nextStatus).catch((err: Error) => {
-          reportTaskServiceError(taskService, currentTask.id, "setUserStatus", err);
+        taskService.setUserStatus(taskId, nextStatus).catch((err: Error) => {
+          reportTaskServiceError(taskService, taskId, "setUserStatus", err);
         });
       }
 
       // Edit mode commands
       if (!editMode) return;
-      if (!currentTask?.id || !taskService) return;
+      if (!taskService) return;
+      const taskId = currentTask?.id ?? null;
+      if (!taskId) return;
 
       // Cycle sub-agent
       if (char === "a" && !key.ctrl && !key.meta) {
-        const current = currentTask.metadata?.subAgentType ?? "eliza";
+        const rawType = currentTask.metadata?.subAgentType;
+        const current = SUB_AGENT_TYPES.includes(rawType as SubAgentType)
+          ? (rawType as SubAgentType)
+          : "eliza";
         const idx = Math.max(0, SUB_AGENT_TYPES.indexOf(current));
         const next = SUB_AGENT_TYPES[(idx + 1) % SUB_AGENT_TYPES.length];
-        taskService.setTaskSubAgentType(currentTask.id, next).catch((err: Error) => {
-          reportTaskServiceError(taskService, currentTask.id, "setTaskSubAgentType", err);
+        taskService.setTaskSubAgentType(taskId, next).catch((err: Error) => {
+          reportTaskServiceError(taskService, taskId, "setTaskSubAgentType", err);
         });
         return;
       }
@@ -287,13 +289,13 @@ export function TaskPane({
 
       // Cancel (confirm)
       if (char === "c" && !key.ctrl && !key.meta) {
-        setConfirm({ type: "cancel", taskId: currentTask.id });
+        setConfirm({ type: "cancel", taskId });
         return;
       }
 
       // Delete (confirm)
       if (char === "x" && !key.ctrl && !key.meta) {
-        setConfirm({ type: "delete", taskId: currentTask.id });
+        setConfirm({ type: "delete", taskId });
         return;
       }
 

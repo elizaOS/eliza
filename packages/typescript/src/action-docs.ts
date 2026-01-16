@@ -18,13 +18,16 @@ const coreActionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByNam
 );
 
 function toActionParameter(
-  param: (typeof allActionDocs)[number]["parameters"][number],
+  param: NonNullable<(typeof allActionDocs)[number]["parameters"]>[number],
 ): ActionParameter {
   return {
     name: param.name,
     description: param.description,
     required: param.required,
-    schema: param.schema,
+    schema: {
+      ...param.schema,
+      enumValues: param.schema.enum,
+    },
     examples: param.examples ? [...param.examples] : undefined,
   };
 }
@@ -44,7 +47,7 @@ export function withCanonicalActionDocs(action: Action): Action {
   const parameters =
     action.parameters && action.parameters.length > 0
       ? action.parameters
-      : doc.parameters.map(toActionParameter);
+      : (doc.parameters ?? []).map(toActionParameter);
 
   return {
     ...action,
@@ -77,7 +80,7 @@ const coreEvaluatorDocByName: EvaluatorDocByName =
 function toEvaluationExample(
   ex: NonNullable<(typeof allEvaluatorDocs)[number]["examples"]>[number],
 ): EvaluationExample {
-  const messages: ActionExample[] = ex.messages.map((m) => ({
+  const messages: ActionExample[] = (ex.messages ?? []).map((m) => ({
     name: m.name,
     content: {
       text: m.content.text,

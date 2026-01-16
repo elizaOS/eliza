@@ -1,4 +1,5 @@
 import type { Logger } from "../logger";
+import type { JsonValue } from "./proto.js";
 import type { Character } from "./agent";
 import type {
   Action,
@@ -7,7 +8,7 @@ import type {
   HandlerCallback,
   Provider,
 } from "./components";
-import type { DbConnection, IDatabaseAdapter } from "./database";
+import type { IDatabaseAdapter } from "./database";
 import type { Entity, Room, World } from "./environment";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { Memory, MemoryMetadata } from "./memory";
@@ -39,7 +40,7 @@ import type { TaskWorker } from "./task";
  * state composition, model usage, and task management.
  */
 
-export interface IAgentRuntime extends IDatabaseAdapter {
+export interface IAgentRuntime extends IDatabaseAdapter<object> {
   // Properties
   agentId: UUID;
   character: Character;
@@ -63,7 +64,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   initialize(options?: { skipMigrations?: boolean }): Promise<void>;
 
   /** Get the underlying database connection. Type depends on the adapter implementation. */
-  getConnection(): Promise<DbConnection | unknown>;
+  getConnection(): Promise<object>;
 
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
 
@@ -182,7 +183,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     type?: ChannelType | string;
     worldId: UUID;
     userId?: UUID;
-    metadata?: Record<string, unknown>;
+    metadata?: Record<string, JsonValue>;
   }): Promise<void>;
 
   ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;
@@ -242,8 +243,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     modelType: ModelTypeName | string,
     handler: (
       runtime: IAgentRuntime,
-      params: Record<string, unknown>,
-    ) => Promise<unknown>,
+      params: Record<string, JsonValue | object>,
+    ) => Promise<JsonValue | object>,
     provider: string,
     priority?: number,
   ): void;
@@ -259,8 +260,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   ):
     | ((
         runtime: IAgentRuntime,
-        params: Record<string, unknown>,
-      ) => Promise<unknown>)
+        params: Record<string, JsonValue | object>,
+      ) => Promise<JsonValue | object>)
     | undefined;
 
   registerEvent<T extends keyof EventPayloadMap>(

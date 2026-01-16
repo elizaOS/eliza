@@ -1,9 +1,11 @@
 //! GENERATE_IMAGE action implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 
 use crate::error::{PluginError, PluginResult};
+use crate::generated::spec_helpers::require_action_spec;
 use crate::prompts::IMAGE_GENERATION_TEMPLATE;
 use crate::bootstrap::runtime::{IAgentRuntime, ModelOutput, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
@@ -11,22 +13,28 @@ use crate::xml::parse_key_value_xml;
 
 use super::Action;
 
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("GENERATE_IMAGE"));
+
 /// Action for generating images.
 pub struct GenerateImageAction;
 
 #[async_trait]
 impl Action for GenerateImageAction {
     fn name(&self) -> &'static str {
-        "GENERATE_IMAGE"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["CREATE_IMAGE", "MAKE_IMAGE", "DRAW", "PAINT", "VISUALIZE", "RENDER_IMAGE"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Generate an image using AI image generation models. \
-         Use this when the user requests visual content or imagery."
+        &SPEC.description
     }
 
     async fn validate(&self, runtime: &dyn IAgentRuntime, _message: &Memory) -> bool {

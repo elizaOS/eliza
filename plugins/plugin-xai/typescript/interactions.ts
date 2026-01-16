@@ -13,6 +13,7 @@ import {
   type MessagePayload,
   ModelType,
 } from "@elizaos/core";
+import type { WorldOwnership } from "@elizaos/core/types/proto.js";
 import type { ClientBase } from "./base";
 import { SearchMode } from "./client/index";
 import type { Post as ClientPost } from "./client/posts";
@@ -621,10 +622,12 @@ Response (YES/NO):`;
           agentId: this.runtime.agentId,
           messageServerId: userId as `${string}-${string}-${string}-${string}-${string}`,
           metadata: {
-            ownership: { ownerId: userId || "" },
-            x: {
-              username: username,
-              id: userId,
+            ownership: { ownerId: userId || "" } as unknown as WorldOwnership,
+            extra: {
+              x: {
+                username: username,
+                id: userId,
+              },
             },
           },
         });
@@ -956,7 +959,7 @@ Response (YES/NO):`;
         xUsername: xUsername as string,
         thread: thread,
       },
-    } as MemoryMetadata;
+    } as unknown as MemoryMetadata;
 
     // Process message through message service
     const result = await this.runtime.messageService?.handleMessage(

@@ -1,5 +1,6 @@
 import { elizaLogger } from '@elizaos/core';
-import { WalletIntegrationService } from '../services/WalletIntegrationService.ts';
+// Missing service - commented out until implemented
+// import { WalletIntegrationService } from '../services/WalletIntegrationService.ts';
 
 // Mock runtime for testing
 const mockRuntime = {
@@ -14,6 +15,8 @@ const mockRuntime = {
 } as any;
 
 async function main() {
+  throw new Error('This script requires WalletIntegrationService which is not yet implemented');
+  /* Commented out until service is implemented
   console.log('🔧 Testing Wallet Integration Service\n');
 
   try {
@@ -49,7 +52,7 @@ async function main() {
         '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr': 'POPCAT',
       };
 
-      balance.tokens.forEach((tokenInfo, mint) => {
+      balance.tokens.forEach((tokenInfo: { amount: number; decimals: number }, mint: string) => {
         const name = knownTokens[mint] || mint.slice(0, 8) + '...';
         console.log(`  • ${name}: ${tokenInfo.amount.toFixed(tokenInfo.decimals > 2 ? 4 : 2)}`);
       });
@@ -67,6 +70,7 @@ async function main() {
     console.error('\n❌ Error testing wallet integration:', error);
     process.exit(1);
   }
+  */
 }
 
 main()

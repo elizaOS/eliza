@@ -9,12 +9,15 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { createGoalDataService } from "../services/goalDataService.js";
 
+const spec = requireActionSpec("COMPLETE_GOAL");
+
 export const completeGoalAction: Action = {
-  name: "COMPLETE_GOAL",
-  similes: ["ACHIEVE_GOAL", "FINISH_GOAL", "CHECK_OFF_GOAL", "ACCOMPLISH_GOAL"],
-  description: "Marks a goal as completed/achieved.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (!message.roomId) {
       logger.warn("No roomId provided for complete goal validation");

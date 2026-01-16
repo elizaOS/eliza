@@ -15,7 +15,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from elizaos import ChannelType
 from elizaos.services.message_service import MessageProcessingResult
 from elizaos.types import (
     Action,
@@ -76,7 +75,7 @@ def make_decision_message(
         content=Content(
             text=text,
             source=source,
-            channel_type=ChannelType.API.value,
+            channel_type="API",
         ),
         metadata=meta,
     )

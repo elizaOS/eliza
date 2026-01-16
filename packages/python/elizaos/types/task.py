@@ -1,68 +1,26 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from enum import Enum
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable
+from typing import TYPE_CHECKING, Protocol
 
-from pydantic import BaseModel, Field
-
-from elizaos.types.primitives import UUID
+from elizaos.types.generated.eliza.v1 import task_pb2
 
 if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
 
+Task = task_pb2.Task
+TaskMetadata = task_pb2.TaskMetadata
+TaskStatus = task_pb2.TaskStatus
 
-class TaskStatus(str, Enum):
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+# Runtime worker interface (not in proto)
+class TaskWorker(Protocol):
+    name: str
 
+    def __call__(
+        self,
+        runtime: "IAgentRuntime",
+        params: dict[str, object],
+        task: Task,
+    ) -> Awaitable[None]: ...
 
-class TaskMetadata(BaseModel):
-    priority: int | None = Field(default=None, description="Task priority")
-    retry_count: int | None = Field(
-        default=None, alias="retryCount", description="Number of retries"
-    )
-    max_retries: int | None = Field(
-        default=None, alias="maxRetries", description="Maximum retries allowed"
-    )
-    scheduled_at: int | None = Field(
-        default=None, alias="scheduledAt", description="Scheduled execution time"
-    )
-    interval: int | None = Field(default=None, description="Repeat interval in milliseconds")
-
-    model_config = {"populate_by_name": True, "extra": "allow"}
-
-
-class Task(BaseModel):
-    id: UUID | None = Field(default=None, description="Unique identifier")
-    name: str = Field(..., description="Task name")
-    description: str | None = Field(default=None, description="Task description")
-    room_id: UUID | None = Field(default=None, alias="roomId", description="Associated room")
-    entity_id: UUID | None = Field(default=None, alias="entityId", description="Associated entity")
-    world_id: UUID | None = Field(default=None, alias="worldId", description="Associated world")
-    status: TaskStatus = Field(default=TaskStatus.PENDING, description="Task status")
-    tags: list[str] | None = Field(default=None, description="Tags for filtering")
-    metadata: TaskMetadata | None = Field(default=None, description="Task metadata")
-    created_at: int | None = Field(
-        default=None, alias="createdAt", description="Creation timestamp"
-    )
-    updated_at: int | None = Field(
-        default=None, alias="updatedAt", description="Last update timestamp"
-    )
-
-    model_config = {"populate_by_name": True}
-
-
-class TaskWorker(BaseModel):
-    name: str = Field(..., description="Worker name matching task name")
-    validate_fn: Callable[[IAgentRuntime, Task], Awaitable[bool]] | None = Field(
-        default=None, alias="validate", description="Validation function"
-    )
-    execute: Callable[[IAgentRuntime, Task, dict[str, Any]], Awaitable[Any]] = Field(
-        ..., description="Execution function"
-    )
-
-    model_config = {"arbitrary_types_allowed": True, "populate_by_name": True}
+__all__ = ["Task", "TaskMetadata", "TaskStatus", "TaskWorker"]

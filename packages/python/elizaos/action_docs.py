@@ -44,12 +44,19 @@ def _coerce_action_parameters(values: object) -> list[object]:
 
     # Local import to avoid import cycles during package init.
     from elizaos.types import ActionParameter  # noqa: PLC0415
+    from google.protobuf.json_format import ParseDict
 
     out: list[object] = []
     for item in values:
         if not isinstance(item, dict):
             continue
-        out.append(ActionParameter.model_validate(item))
+        # Use protobuf ParseDict to convert dict to protobuf message
+        try:
+            param = ParseDict(item, ActionParameter())
+            out.append(param)
+        except Exception:
+            # If conversion fails, skip this item
+            pass
     return out
 
 
@@ -87,7 +94,9 @@ def with_canonical_action_docs(action: Action) -> Action:
     if not update:
         return action
 
-    return action.model_copy(update=update)
+    for key, value in update.items():
+        setattr(action, key, value)
+    return action
 
 
 def with_canonical_evaluator_docs(evaluator: Evaluator) -> Evaluator:
@@ -115,7 +124,9 @@ def with_canonical_evaluator_docs(evaluator: Evaluator) -> Evaluator:
     if not update:
         return evaluator
 
-    return evaluator.model_copy(update=update)
+    for key, value in update.items():
+        setattr(evaluator, key, value)
+    return evaluator
 
 
 def get_canonical_action_example_calls(action_name: str) -> list[dict[str, object]]:

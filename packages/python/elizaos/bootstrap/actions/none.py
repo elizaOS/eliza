@@ -3,20 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.types import Action, ActionExample, ActionResult, Content
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
+# Get text content from centralized specs
+_spec = require_action_spec("NONE")
+
 
 @dataclass
 class NoneAction:
-    name: str = "NONE"
-    similes: list[str] = field(default_factory=lambda: ["NO_ACTION", "NO_RESPONSE", "PASS"])
-    description: str = (
-        "Do nothing and skip to the next action. Use this when no specific action "
-        "is required but processing should continue."
-    )
+    name: str = _spec["name"]
+    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
+    description: str = _spec["description"]
 
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
@@ -41,15 +42,23 @@ class NoneAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return [
-            [
-                ActionExample(
-                    name="{{name1}}",
-                    content=Content(text="Just thinking out loud here..."),
-                ),
-                ActionExample(name="{{name2}}", content=Content(text="", actions=["NONE"])),
-            ],
-        ]
+        # Convert spec examples to ActionExample format
+        spec_examples = _spec.get("examples", [])
+        if spec_examples:
+            return [
+                [
+                    ActionExample(
+                        name=msg.get("name", ""),
+                        content=Content(
+                            text=msg.get("content", {}).get("text", ""),
+                            actions=msg.get("content", {}).get("actions"),
+                        ),
+                    )
+                    for msg in example
+                ]
+                for example in spec_examples
+            ]
+        return []
 
 
 none_action = Action(

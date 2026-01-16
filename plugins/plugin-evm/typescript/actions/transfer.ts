@@ -21,6 +21,7 @@ import {
   type Transaction,
   type TransferParams,
 } from "../types";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 export class TransferAction {
   constructor(private readonly walletProvider: WalletProvider) {}
@@ -112,9 +113,11 @@ async function buildTransferDetails(
   return transferDetails;
 }
 
+const spec = requireActionSpec("TRANSFER");
+
 export const transferAction: Action = {
-  name: "EVM_TRANSFER_TOKENS",
-  description: "Transfer tokens between addresses on the same chain",
+  name: spec.name,
+  description: spec.description,
 
   handler: async (
     runtime: IAgentRuntime,
@@ -188,5 +191,5 @@ export const transferAction: Action = {
     ],
   ],
 
-  similes: ["EVM_TRANSFER", "EVM_SEND_TOKENS", "EVM_TOKEN_TRANSFER", "EVM_MOVE_TOKENS"],
+  similes: spec.similes ? [...spec.similes] : [],
 };

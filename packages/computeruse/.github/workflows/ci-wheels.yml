@@ -1,0 +1,102 @@
+name: Build and Publish Python Wheels
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  PACKAGE_NAME: computeruse-py
+
+jobs:
+  build-wheels:
+    strategy:
+      matrix:
+        include:
+          # Windows
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            manylinux: false
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            manylinux: false
+          # macOS
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            manylinux: false
+          - os: macos-13
+            target: x86_64-apple-darwin
+            manylinux: false
+          # Linux
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: manylinux2014
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux2014
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libatspi2.0-dev libgtk-3-dev libx11-dev libxcb1-dev libxkbcommon-dev
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build wheel (Linux manylinux)
+        if: matrix.manylinux != false
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --out dist -m packages/computeruse-python/Cargo.toml
+
+      - name: Build wheel (non-Linux)
+        if: matrix.manylinux == false
+        working-directory: packages/computeruse-python
+        run: maturin build --release --target ${{ matrix.target }} --out ../../dist
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.target }}
+          path: dist/*.whl
+
+  publish:
+    name: Publish to PyPI
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: wheel-*
+          merge-multiple: true
+
+      - name: List wheels
+        run: ls -la dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+          packages-dir: dist/

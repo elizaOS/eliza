@@ -25,6 +25,7 @@ import { ResearchStorageService } from "../services/researchStorage";
 import { type MarketResearch, ResearchStatus } from "../types";
 import { RESEARCH_TASK_NAME } from "../workers/researchTaskWorker";
 import { researchMarketTemplate } from "../templates";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
   callLLMWithTimeout,
   isLLMError,
@@ -132,20 +133,16 @@ function formatFullReport(research: MarketResearch): string {
   return text;
 }
 
+const spec = requireActionSpec("RESEARCH_MARKET");
+
 export const researchMarketAction: Action = {
-  name: "POLYMARKET_RESEARCH_MARKET",
-  similes: [
-    "RESEARCH_MARKET",
-    "ANALYZE_MARKET",
-    "DEEP_RESEARCH",
-    "INVESTIGATE_MARKET",
-    "MARKET_RESEARCH",
-    "RESEARCH_PREDICTION",
-    "STUDY_MARKET",
-    "GET_RESEARCH",
-    "CHECK_RESEARCH",
-  ],
-  description: "Initiates or retrieves deep research on a Polymarket prediction market using OpenAI's deep research capabilities. Takes 20-40 minutes. Returns cached results if available, status if in progress, or starts new research. Use forceRefresh=true to force new research. Parameters: marketId (condition_id), marketQuestion (the prediction question), forceRefresh (optional boolean), callbackAction (optional: EVALUATE_TRADE or NOTIFY_ONLY).",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description:
+    `${spec.description} Uses deep research capabilities. Takes 20-40 minutes. Returns cached results ` +
+    "if available, status if in progress, or starts new research. Use forceRefresh=true to force " +
+    "new research. Parameters: marketId (condition_id), marketQuestion (the prediction question), " +
+    "forceRefresh (optional boolean), callbackAction (optional: EVALUATE_TRADE or NOTIFY_ONLY).",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const openaiKey = runtime.getSetting("OPENAI_API_KEY");

@@ -1,13 +1,19 @@
 //! NONE action implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_action_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{ActionResult, Memory, State};
 
 use super::Action;
+
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("NONE"));
 
 /// Action that does nothing.
 pub struct NoneAction;
@@ -15,16 +21,18 @@ pub struct NoneAction;
 #[async_trait]
 impl Action for NoneAction {
     fn name(&self) -> &'static str {
-        "NONE"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["NO_ACTION", "NO_RESPONSE", "PASS"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Do nothing and skip to the next action. Use this when no specific action \
-         is required but processing should continue."
+        &SPEC.description
     }
 
     async fn validate(&self, _runtime: &dyn IAgentRuntime, _message: &Memory) -> bool {
@@ -44,4 +52,3 @@ impl Action for NoneAction {
             .with_data("actionName", "NONE"))
     }
 }
-

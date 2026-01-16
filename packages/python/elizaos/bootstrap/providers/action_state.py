@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("ACTION_STATE")
 
 
 async def get_action_state_context(
@@ -59,8 +63,9 @@ async def get_action_state_context(
 
 
 action_state_provider = Provider(
-    name="ACTION_STATE",
-    description="Provides information about the current action state and available actions",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_action_state_context,
-    dynamic=True,
+    position=_spec.get("position"),
+    dynamic=_spec.get("dynamic", True),
 )

@@ -1,0 +1,22 @@
+---
+# Cron scheduling example - runs every hour at minute 30
+# Format: "SECOND MINUTE HOUR DAY MONTH DAY_OF_WEEK"
+cron: "0 30 * * * *"
+
+steps:
+  - tool_name: "run_command"
+    arguments:
+      run: "echo 'Scheduled cron job executed!'"
+      shell: "bash"
+
+  - tool_name: "run_command"
+    arguments:
+      run: "date '+%Y-%m-%d %H:%M:%S'"
+      shell: "bash"
+
+  - tool_name: "run_command"
+    arguments:
+      run: "uptime"
+      shell: "bash"
+
+stop_on_error: true

@@ -1,7 +1,8 @@
 [package]
 name = "elizaos-plugin-linear"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
+authors = ["elizaOS Contributors"]
 description = "Linear integration plugin for ElizaOS (Rust)"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"

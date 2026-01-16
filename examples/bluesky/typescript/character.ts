@@ -1,4 +1,4 @@
-import type { Character } from "@elizaos/core";
+import { createCharacter } from "@elizaos/core";
 
 /**
  * Bluesky agent character configuration.
@@ -9,7 +9,7 @@ import type { Character } from "@elizaos/core";
  * - Guide response generation style
  * - Provide few-shot examples for better responses
  */
-export const character: Character = {
+export const character = createCharacter({
   name: "BlueSkyBot",
 
   // Bio shown in state composition and available to the LLM
@@ -156,6 +156,6 @@ Remember: You're responding on Bluesky, so keep it brief and engaging!`,
     model: "gpt-5-mini",
     maxOutputTokens: 300,
   },
-};
+});
 
 export default character;

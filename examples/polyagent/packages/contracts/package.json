@@ -1,0 +1,61 @@
+{
+  "name": "@babylon/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Smart contract types and deployment information for Babylon",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "require": "./src/index.ts"
+    },
+    "./deployments/local": {
+      "types": "./deployments/local/index.ts",
+      "import": "./deployments/local/index.ts",
+      "require": "./deployments/local/index.ts"
+    },
+    "./deployments/base-sepolia": {
+      "types": "./deployments/base-sepolia/index.ts",
+      "import": "./deployments/base-sepolia/index.ts",
+      "require": "./deployments/base-sepolia/index.ts"
+    },
+    "./deployments/base": {
+      "types": "./deployments/base/index.ts",
+      "import": "./deployments/base/index.ts",
+      "require": "./deployments/base/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "deployments"
+  ],
+  "scripts": {
+    "lint": "biome lint src/",
+    "typecheck": "tsc -b .",
+    "build": "command -v forge >/dev/null 2>&1 && forge build || echo 'Skipping forge build (Foundry not installed)'",
+    "test": "forge test -vvv",
+    "test:unit": "forge test --match-path 'test/*.t.sol' --no-match-path 'test/Fuzz*.sol' --no-match-path 'test/Invariant*.sol' -vvv",
+    "test:fuzz": "forge test --match-path 'test/Fuzz*.sol' -vvv",
+    "test:invariant": "forge test --match-path 'test/Invariant*.sol' -vvv",
+    "test:all": "forge test -vvv && bun run slither",
+    "test:coverage": "forge coverage --report lcov",
+    "slither": "slither . --config-file slither.config.json --checklist",
+    "slither:triage": "slither . --config-file slither.config.json --triage-mode",
+    "security": "bun run test && bun run slither",
+    "security:full": "bun run test:all && bun run test:fuzz && bun run test:invariant"
+  },
+  "dependencies": {
+    "@babylon/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "ethers": "^6.16.0",
+    "viem": "^2.41.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "hardhat-preprocessor": "^0.1.5",
+    "typescript": "^5.9.3"
+  }
+}

@@ -11,6 +11,7 @@ import {
   type World,
   AgentRuntime,
   elizaLogger,
+  type MessagePayload,
 } from '@elizaos/core';
 import { v4 as uuid } from 'uuid';
 import { strict as assert } from 'node:assert';
@@ -49,11 +50,11 @@ export async function setupScenario(
     id: asUUID(uuid()),
     agentId: runtime.agentId,
     name: 'E2E Test World',
-    serverId: 'e2e-test-server',
+    messageServerId: asUUID(uuid()),
     metadata: {
       ownership: {
         ownerId: user.id,
-      },
+      } as unknown as { ownerId: string },
     },
   };
   await runtime.ensureWorldExists(world);
@@ -128,7 +129,7 @@ export function sendMessageAndWaitForResponse(
       runtime,
       message,
       callback,
-    });
+    } as unknown as MessagePayload);
   });
 }
 
@@ -206,14 +207,17 @@ export function validateTradingResult(result: any): void {
   }
   
   // Log summary
-  elizaLogger.info(`[Test] Trading Summary:`, {
-    duration: `${result.duration / 1000}s`,
-    totalTrades: result.finalPerformance.totalTrades,
-    winRate: `${(result.finalPerformance.winRate * 100).toFixed(1)}%`,
-    totalPnL: result.finalPerformance.totalPnL.toFixed(2),
-    dailyPnL: result.finalPerformance.dailyPnL.toFixed(2),
-    finalPositions: result.finalStatus.positions.length,
-  });
+  elizaLogger.info(
+    {
+      duration: `${result.duration / 1000}s`,
+      totalTrades: result.finalPerformance.totalTrades,
+      winRate: `${(result.finalPerformance.winRate * 100).toFixed(1)}%`,
+      totalPnL: result.finalPerformance.totalPnL.toFixed(2),
+      dailyPnL: result.finalPerformance.dailyPnL.toFixed(2),
+      finalPositions: result.finalStatus.positions.length,
+    },
+    `[Test] Trading Summary`
+  );
 }
 
 export async function simulateConversation(

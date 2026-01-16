@@ -60,8 +60,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     // OpenAI
     openaiApiKey: "",
     openaiBaseUrl: "https://api.openai.com/v1",
-    openaiSmallModel: "gpt-4o-mini",
-    openaiLargeModel: "gpt-4o",
+    openaiSmallModel: "gpt-5-mini",
+    openaiLargeModel: "gpt-5",
 
     // Anthropic
     anthropicApiKey: "",
@@ -88,8 +88,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     // OpenRouter
     openrouterApiKey: "",
     openrouterBaseUrl: "https://openrouter.ai/api/v1",
-    openrouterSmallModel: "openai/gpt-4o-mini",
-    openrouterLargeModel: "openai/gpt-4o",
+    openrouterSmallModel: "openai/gpt-5-mini",
+    openrouterLargeModel: "openai/gpt-5",
 
     // Ollama
     ollamaApiEndpoint: "http://localhost:11434",

@@ -1,14 +1,20 @@
 //! UNMUTE_ROOM action implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::error::{PluginError, PluginResult};
+use crate::generated::spec_helpers::require_action_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{ActionResult, Content, Memory, MemoryType, State};
 
 use super::Action;
+
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("UNMUTE_ROOM"));
 
 /// Action for unmuting a room.
 pub struct UnmuteRoomAction;
@@ -16,16 +22,18 @@ pub struct UnmuteRoomAction;
 #[async_trait]
 impl Action for UnmuteRoomAction {
     fn name(&self) -> &'static str {
-        "UNMUTE_ROOM"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["UNSILENCE_ROOM", "ENABLE_NOTIFICATIONS", "RESUME_RESPONDING", "START_LISTENING"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Unmute a room to resume responding and receiving notifications. \
-         Use this when you want to start interacting with a muted room again."
+        &SPEC.description
     }
 
     async fn validate(&self, runtime: &dyn IAgentRuntime, message: &Memory) -> bool {

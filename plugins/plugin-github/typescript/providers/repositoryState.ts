@@ -1,8 +1,11 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 
+const spec = requireProviderSpec("repositoryState");
+
 export const repositoryStateProvider: Provider = {
-  name: "GITHUB_REPOSITORY_STATE",
+  name: spec.name,
   description: "Provides context about the current GitHub repository including recent activity",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {

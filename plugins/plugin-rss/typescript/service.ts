@@ -304,7 +304,7 @@ export class RssService extends Service {
         description: "Periodically check RSS feeds for new items",
         worldId: this.runtime.agentId,
         metadata: {
-          createdAt: Date.now(),
+          createdAt: String(Date.now()),
           updatedAt: Date.now(),
           updateInterval: intervalInMs,
         },

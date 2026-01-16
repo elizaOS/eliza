@@ -1,11 +1,14 @@
 import type { Action, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { ModelType } from "@elizaos/core";
 import type { FarcasterService } from "../services/FarcasterService";
 import { FARCASTER_SERVICE_NAME, FarcasterMessageType } from "../types";
 
+const spec = requireActionSpec("REPLY_CAST");
+
 export const replyCastAction: Action = {
-  name: "REPLY_TO_CAST",
-  description: "Replies to a cast on Farcaster",
+  name: spec.name,
+  description: spec.description,
   examples: [
     [
       {

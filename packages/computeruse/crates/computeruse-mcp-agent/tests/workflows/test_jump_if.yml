@@ -1,0 +1,130 @@
+name: Test Jump Array Feature
+description: Test conditional jump functionality with multiple jump conditions in array format
+
+# This test verifies:
+# 1. Basic jump with single condition
+# 2. Multiple jump conditions (first match wins)
+# 3. Jump with reason logging
+# 4. Conditional jumps that don't trigger
+# 5. Complex expressions in conditions
+
+steps:
+  # Test 1: Single jump condition
+  - tool_name: delay
+    id: single_jump
+    arguments:
+      delay_ms: 10
+    jumps:
+      - if: "single_jump_status == 'success'"
+        to_id: after_skip_1
+        reason: "Single condition met - jumping forward"
+
+  # This should be SKIPPED
+  - tool_name: delay
+    id: skipped_step_1
+    arguments:
+      delay_ms: 20
+
+  # Jump target for test 1
+  - tool_name: delay
+    id: after_skip_1
+    arguments:
+      delay_ms: 10
+
+  # Test 2: Multiple jump conditions (testing second condition)
+  - tool_name: delay
+    id: multi_jump
+    arguments:
+      delay_ms: 10
+    jumps:
+      - if: "multi_jump_result.nonexistent == 'value'"  # False - won't trigger
+        to_id: wrong_target
+        reason: "First condition - should not trigger"
+      - if: "multi_jump_status == 'success'"  # True - should trigger
+        to_id: correct_target
+        reason: "Second condition matched - jumping to correct target"
+      - if: "true"  # Would match but never evaluated (second already matched)
+        to_id: never_reached
+        reason: "Third condition - never evaluated"
+
+  # These should be SKIPPED by second condition jump
+  - tool_name: delay
+    id: skipped_by_multi_1
+    arguments:
+      delay_ms: 15
+
+  - tool_name: delay
+    id: wrong_target
+    arguments:
+      delay_ms: 100
+
+  - tool_name: delay
+    id: never_reached
+    arguments:
+      delay_ms: 100
+
+  # Jump target for test 2 (second condition)
+  - tool_name: delay
+    id: correct_target
+    arguments:
+      delay_ms: 10
+
+  # Test 3: No jumps trigger (all conditions false)
+  - tool_name: delay
+    id: no_jump_step
+    arguments:
+      delay_ms: 10
+    jumps:
+      - if: "no_jump_step_result.field1 == 'notexist'"
+        to_id: unreachable_1
+        reason: "Should not jump - field doesn't exist"
+      - if: "false"
+        to_id: unreachable_2
+        reason: "Should not jump - explicitly false"
+      - if: "no_jump_step_status == 'failed'"
+        to_id: unreachable_3
+        reason: "Should not jump - status is success not failed"
+
+  # This should execute normally (no jumps triggered)
+  - tool_name: delay
+    id: normal_flow_continues
+    arguments:
+      delay_ms: 10
+
+  # Test 4: Complex expression in condition
+  - tool_name: delay
+    id: complex_jump
+    arguments:
+      delay_ms: 10
+    jumps:
+      - if: "(complex_jump_status == 'success') && (normal_flow_continues_status == 'success')"
+        to_id: final_step
+        reason: "Complex expression evaluated - both steps succeeded"
+
+  # Should be skipped
+  - tool_name: delay
+    id: skipped_by_complex
+    arguments:
+      delay_ms: 50
+
+  # Final target
+  - tool_name: delay
+    id: final_step
+    arguments:
+      delay_ms: 5
+
+  # These are never reached (defined as jump targets that shouldn't execute)
+  - tool_name: delay
+    id: unreachable_1
+    arguments:
+      delay_ms: 1000
+
+  - tool_name: delay
+    id: unreachable_2
+    arguments:
+      delay_ms: 1000
+
+  - tool_name: delay
+    id: unreachable_3
+    arguments:
+      delay_ms: 1000

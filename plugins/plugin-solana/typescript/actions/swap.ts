@@ -18,6 +18,7 @@ import { getWalletKey } from "../keypairUtils";
 import type { SolanaService } from "../service";
 
 import type { Item } from "../types";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 async function getTokenDecimals(connection: Connection, mintAddress: string): Promise<number> {
   const mintPublicKey = new PublicKey(mintAddress);
@@ -147,21 +148,16 @@ async function getTokenFromWallet(
 
 import { swapTemplate } from "../generated/prompts/typescript/prompts.js";
 
+const spec = requireActionSpec("SWAP");
+
 export const executeSwap: Action = {
-  name: "SWAP_SOLANA",
-  similes: [
-    "SWAP_SOL",
-    "SWAP_TOKENS_SOLANA",
-    "TOKEN_SWAP_SOLANA",
-    "TRADE_TOKENS_SOLANA",
-    "EXCHANGE_TOKENS_SOLANA",
-  ],
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
   validate: async (runtime: IAgentRuntime, _message: Memory) => {
     const solanaService = runtime.getService(SOLANA_SERVICE_NAME);
     return !!solanaService;
   },
-  description:
-    "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
+  description: spec.description,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -299,21 +295,5 @@ export const executeSwap: Action = {
       throw error;
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Swap 0.1 SOL for USDC",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll help you swap 0.1 SOL for USDC",
-          actions: ["SWAP_SOLANA"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };

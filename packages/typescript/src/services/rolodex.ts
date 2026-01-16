@@ -1,8 +1,10 @@
 import {
   type Entity,
   type IAgentRuntime,
+  type JsonValue,
   logger,
   type Metadata,
+  type MetadataValue,
   type Relationship,
   Service,
   stringToUuid,
@@ -40,7 +42,7 @@ export interface ContactInfo {
   categories: string[];
   tags: string[];
   preferences: ContactPreferences;
-  customFields: Record<string, unknown>;
+  customFields: Record<string, JsonValue>;
   privacyLevel: "public" | "private" | "restricted";
   lastModified: string;
 }
@@ -51,7 +53,7 @@ function contactInfoToMetadata(contactInfo: ContactInfo): Metadata {
     entityId: contactInfo.entityId,
     categories: contactInfo.categories,
     tags: contactInfo.tags,
-    preferences: contactInfo.preferences,
+    preferences: contactInfo.preferences as MetadataValue,
     customFields: contactInfo.customFields,
     privacyLevel: contactInfo.privacyLevel,
     lastModified: contactInfo.lastModified,
@@ -65,7 +67,7 @@ function metadataToContactInfo(data: Metadata): ContactInfo {
     categories: data.categories as string[],
     tags: data.tags as string[],
     preferences: data.preferences as ContactPreferences,
-    customFields: (data.customFields as Record<string, unknown>) ?? {},
+    customFields: (data.customFields as Record<string, JsonValue>) ?? {},
     privacyLevel: data.privacyLevel as "public" | "private" | "restricted",
     lastModified: data.lastModified as string,
   };
@@ -168,6 +170,26 @@ export class RolodexService extends Service {
   private contactInfoCache: Map<UUID, ContactInfo> = new Map();
   private analyticsCache: Map<string, RelationshipAnalytics> = new Map();
   private categoriesCache: ContactCategory[] = [];
+  private static readonly CONTACT_CACHE_LIMIT = 2000;
+  private static readonly ANALYTICS_CACHE_LIMIT = 2000;
+
+  private setCacheWithLimit<K, V>(
+    cache: Map<K, V>,
+    key: K,
+    value: V,
+    limit: number,
+  ): void {
+    if (cache.has(key)) {
+      cache.delete(key);
+    }
+    cache.set(key, value);
+    if (cache.size > limit) {
+      const firstKey = cache.keys().next().value;
+      if (firstKey !== undefined) {
+        cache.delete(firstKey);
+      }
+    }
+  }
 
   async initialize(runtime: IAgentRuntime): Promise<void> {
     this.runtime = runtime;
@@ -226,9 +248,14 @@ export class RolodexService extends Service {
         (c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
       );
 
-      if (contactComponent) {
-        const contactInfo = metadataToContactInfo(contactComponent.data);
-        this.contactInfoCache.set(entityId, contactInfo);
+      if (contactComponent?.data) {
+        const contactInfo = metadataToContactInfo(contactComponent.data as Metadata);
+        this.setCacheWithLimit(
+          this.contactInfoCache,
+          entityId,
+          contactInfo,
+          RolodexService.CONTACT_CACHE_LIMIT,
+        );
       }
     }
 
@@ -242,14 +269,14 @@ export class RolodexService extends Service {
     entityId: UUID,
     categories: string[] = ["acquaintance"],
     preferences?: ContactPreferences,
-    customFields?: Record<string, unknown>,
+    customFields?: Record<string, JsonValue>,
   ): Promise<ContactInfo> {
     const contactInfo: ContactInfo = {
       entityId,
       categories,
       tags: [],
       preferences: preferences ?? {},
-      customFields: customFields ?? {},
+      customFields: customFields ?? ({} as Record<string, JsonValue>),
       privacyLevel: "private",
       lastModified: new Date().toISOString(),
     };
@@ -267,7 +294,12 @@ export class RolodexService extends Service {
       createdAt: Date.now(),
     });
 
-    this.contactInfoCache.set(entityId, contactInfo);
+    this.setCacheWithLimit(
+      this.contactInfoCache,
+      entityId,
+      contactInfo,
+      RolodexService.CONTACT_CACHE_LIMIT,
+    );
 
     // Emit entity lifecycle event
     const entity = await this.runtime.getEntityById(entityId);
@@ -276,11 +308,11 @@ export class RolodexService extends Service {
         this.runtime as {
           emitEvent: (
             event: string,
-            payload: Record<string, unknown>,
+            payload: Record<string, JsonValue | object>,
           ) => Promise<void>;
         }
       ).emitEvent(EntityLifecycleEvent.UPDATED, {
-        entityId: entity.id,
+        entityId: entity.id ?? "",
         source: "rolodex",
       });
     }
@@ -321,7 +353,12 @@ export class RolodexService extends Service {
       });
     }
 
-    this.contactInfoCache.set(entityId, updated);
+    this.setCacheWithLimit(
+      this.contactInfoCache,
+      entityId,
+      updated,
+      RolodexService.CONTACT_CACHE_LIMIT,
+    );
 
     logger.info(`[RolodexService] Updated contact ${entityId}`);
     return updated;
@@ -342,9 +379,14 @@ export class RolodexService extends Service {
       (c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
     );
 
-    if (contactComponent) {
-      const contactInfo = metadataToContactInfo(contactComponent.data);
-      this.contactInfoCache.set(entityId, contactInfo);
+    if (contactComponent?.data) {
+      const contactInfo = metadataToContactInfo(contactComponent.data as Metadata);
+      this.setCacheWithLimit(
+        this.contactInfoCache,
+        entityId,
+        contactInfo,
+        RolodexService.CONTACT_CACHE_LIMIT,
+      );
       return contactInfo;
     }
 
@@ -388,18 +430,20 @@ export class RolodexService extends Service {
 
       // Check categories
       if (criteria.categories && criteria.categories.length > 0) {
+        const categorySet = new Set(contactInfo.categories);
         matches =
           matches &&
           criteria.categories.some((cat) =>
-            contactInfo.categories.includes(cat),
+            categorySet.has(cat),
           );
       }
 
       // Check tags
       if (criteria.tags && criteria.tags.length > 0) {
+        const tagSet = new Set(contactInfo.tags);
         matches =
           matches &&
-          criteria.tags.some((tag) => contactInfo.tags.includes(tag));
+          criteria.tags.some((tag) => tagSet.has(tag));
       }
 
       // Check privacy level
@@ -414,22 +458,22 @@ export class RolodexService extends Service {
 
     // If searchTerm is provided, further filter by entity names
     if (criteria.searchTerm) {
+      const searchTermLower = criteria.searchTerm.toLowerCase();
+      const entities = await Promise.all(
+        results.map((contact) => this.runtime.getEntityById(contact.entityId)),
+      );
       const filteredResults: ContactInfo[] = [];
-      if (criteria.searchTerm) {
-        const searchTermLower = criteria.searchTerm.toLowerCase();
-        for (const contact of results) {
-          const entity = await this.runtime.getEntityById(contact.entityId);
-          if (
-            entity?.names.some((name) =>
-              name.toLowerCase().includes(searchTermLower),
-            )
-          ) {
-            filteredResults.push(contact);
-          }
+      for (let i = 0; i < results.length; i++) {
+        const entity = entities[i];
+        if (
+          entity?.names.some((name) =>
+            name.toLowerCase().includes(searchTermLower),
+          )
+        ) {
+          filteredResults.push(results[i]);
         }
-        return filteredResults;
       }
-      return results;
+      return filteredResults;
     }
 
     return results;
@@ -569,7 +613,12 @@ export class RolodexService extends Service {
     }
 
     // Cache the result
-    this.analyticsCache.set(cacheKey, analytics);
+    this.setCacheWithLimit(
+      this.analyticsCache,
+      cacheKey,
+      analytics,
+      RolodexService.ANALYTICS_CACHE_LIMIT,
+    );
 
     return analytics;
   }
@@ -598,17 +647,22 @@ export class RolodexService extends Service {
       }>,
     };
 
-    for (const rel of relationships) {
-      const targetId =
-        rel.sourceEntityId === entityId
-          ? rel.targetEntityId
-          : rel.sourceEntityId;
+    const targetIds = relationships.map((rel) =>
+      rel.sourceEntityId === entityId ? rel.targetEntityId : rel.sourceEntityId,
+    );
+    const entities = await Promise.all(
+      targetIds.map((targetId) => this.runtime.getEntityById(targetId)),
+    );
+    const analyticsResults = await Promise.all(
+      targetIds.map((targetId, index) =>
+        entities[index] ? this.analyzeRelationship(entityId, targetId) : null,
+      ),
+    );
 
-      const entity = await this.runtime.getEntityById(targetId);
-      if (!entity) continue;
-
-      const analytics = await this.analyzeRelationship(entityId, targetId);
-      if (!analytics) continue;
+    for (let i = 0; i < relationships.length; i++) {
+      const entity = entities[i];
+      const analytics = analyticsResults[i];
+      if (!entity || !analytics) continue;
 
       // Strongest relationships
       if (analytics.strength > 70) {

@@ -1,176 +1,151 @@
-//! State types for elizaOS
-//!
-//! Contains State, StateData, and related types for runtime state management.
+//! State types (proto-backed) with helpers for dynamic values.
 
-use serde::{Deserialize, Serialize};
+use prost_types::{value::Kind, Struct, Value};
+use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
-use super::components::{ActionPlan, ActionResult};
+pub use super::generated::eliza::v1::{
+    ActionPlan, ActionPlanStep, ProviderCacheEntry, State, StateData, StateValues,
+    WorkingMemoryItem,
+};
+use super::components::ActionResult;
 use super::environment::{Entity, Room, World};
 
-/// Working memory entry for multi-step action execution
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkingMemoryEntry {
-    /// Name of the action that created this entry
-    pub action_name: String,
-    /// Result from the action execution
-    pub result: ActionResult,
-    /// Timestamp when the entry was created
-    pub timestamp: i64,
+fn prost_value_from_json(value: JsonValue) -> Value {
+    let kind = match value {
+        JsonValue::Null => Kind::NullValue(0),
+        JsonValue::Bool(v) => Kind::BoolValue(v),
+        JsonValue::Number(n) => Kind::NumberValue(n.as_f64().unwrap_or(0.0)),
+        JsonValue::String(s) => Kind::StringValue(s),
+        JsonValue::Array(items) => Kind::ListValue(prost_types::ListValue {
+            values: items.into_iter().map(prost_value_from_json).collect(),
+        }),
+        JsonValue::Object(map) => Kind::StructValue(Struct {
+            fields: map
+                .into_iter()
+                .map(|(k, v)| (k, prost_value_from_json(v)))
+                .collect(),
+        }),
+    };
+    Value { kind: Some(kind) }
 }
 
-/// Structured data cached in state by providers and actions
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StateData {
-    /// Cached room data
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub room: Option<Room>,
-    /// Cached world data
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub world: Option<World>,
-    /// Cached entity data
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub entity: Option<Entity>,
-    /// Provider results cache
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub providers: Option<HashMap<String, HashMap<String, serde_json::Value>>>,
-    /// Current action plan
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub action_plan: Option<ActionPlan>,
-    /// Results from previous actions
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub action_results: Option<Vec<ActionResult>>,
-    /// Working memory for temporary state during multi-step action execution
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub working_memory: Option<HashMap<String, WorkingMemoryEntry>>,
-    /// Additional dynamic properties
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+fn json_from_prost_value(value: &Value) -> JsonValue {
+    match value.kind.as_ref() {
+        Some(Kind::NullValue(_)) => JsonValue::Null,
+        Some(Kind::BoolValue(v)) => JsonValue::Bool(*v),
+        Some(Kind::NumberValue(v)) => JsonValue::Number(
+            serde_json::Number::from_f64(*v).unwrap_or_else(|| serde_json::Number::from(0)),
+        ),
+        Some(Kind::StringValue(v)) => JsonValue::String(v.clone()),
+        Some(Kind::StructValue(s)) => JsonValue::Object(
+            s.fields
+                .iter()
+                .map(|(k, v)| (k.clone(), json_from_prost_value(v)))
+                .collect(),
+        ),
+        Some(Kind::ListValue(list)) => {
+            JsonValue::Array(list.values.iter().map(json_from_prost_value).collect())
+        }
+        None => JsonValue::Null,
+    }
 }
 
-/// Represents the current state or context of a conversation
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct State {
-    /// Key-value store for general state variables
-    pub values: HashMap<String, serde_json::Value>,
-    /// Structured data cache
-    pub data: StateData,
-    /// String representation of current context
-    pub text: String,
-    /// Additional dynamic properties
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+fn ensure_struct(target: &mut Option<Struct>) -> &mut Struct {
+    target.get_or_insert_with(|| Struct {
+        fields: HashMap::new(),
+    })
 }
 
 impl State {
-    /// Create a new empty state
     pub fn new() -> Self {
-        State::default()
-    }
-
-    /// Create a state with the given text
-    pub fn with_text(text: &str) -> Self {
         State {
-            text: text.to_string(),
-            ..Default::default()
+            values: Some(StateValues::default()),
+            data: Some(StateData::default()),
+            text: String::new(),
+            extra: None,
         }
     }
 
-    /// Set a value in the state
-    pub fn set_value(&mut self, key: &str, value: serde_json::Value) {
-        self.values.insert(key.to_string(), value);
+    pub fn with_text(text: &str) -> Self {
+        let mut state = State::new();
+        state.text = text.to_string();
+        state
     }
 
-    /// Get a value from the state
-    pub fn get_value(&self, key: &str) -> Option<&serde_json::Value> {
-        self.values.get(key)
+    pub fn get_value(&self, key: &str) -> Option<JsonValue> {
+        let values = self.values.as_ref()?;
+        let extra = values.extra.as_ref()?;
+        extra.fields.get(key).map(json_from_prost_value)
     }
 
-    /// Get a string value from the state
-    pub fn get_string(&self, key: &str) -> Option<&str> {
-        self.values.get(key).and_then(|v| v.as_str())
+    pub fn set_value(&mut self, key: &str, value: JsonValue) {
+        let values = self.values.get_or_insert_with(StateValues::default);
+        let extra = ensure_struct(&mut values.extra);
+        extra
+            .fields
+            .insert(key.to_string(), prost_value_from_json(value));
     }
 
-    /// Get a bool value from the state
-    pub fn get_bool(&self, key: &str) -> Option<bool> {
-        self.values.get(key).and_then(|v| v.as_bool())
+    pub fn values_map(&self) -> HashMap<String, JsonValue> {
+        let mut out = HashMap::new();
+        if let Some(values) = &self.values {
+            if let Some(extra) = &values.extra {
+                for (k, v) in &extra.fields {
+                    out.insert(k.clone(), json_from_prost_value(v));
+                }
+            }
+        }
+        out
     }
 
-    /// Get an i64 value from the state
-    pub fn get_i64(&self, key: &str) -> Option<i64> {
-        self.values.get(key).and_then(|v| v.as_i64())
+    pub fn merge_values_struct(&mut self, values: &Struct) {
+        for (k, v) in &values.fields {
+            self.set_value(k, json_from_prost_value(v));
+        }
     }
 
-    /// Merge another state into this one
+    pub fn data_mut(&mut self) -> &mut StateData {
+        self.data.get_or_insert_with(StateData::default)
+    }
+
+    pub fn data_ref(&self) -> Option<&StateData> {
+        self.data.as_ref()
+    }
+
+    pub fn set_room(&mut self, room: Room) {
+        self.data_mut().room = Some(room);
+    }
+
+    pub fn set_world(&mut self, world: World) {
+        self.data_mut().world = Some(world);
+    }
+
+    pub fn set_entity(&mut self, entity: Entity) {
+        self.data_mut().entity = Some(entity);
+    }
+
+    pub fn add_action_result(&mut self, result: ActionResult) {
+        let data = self.data_mut();
+        if let Some(results) = &mut data.action_results {
+            results.push(result);
+        } else {
+            data.action_results = Some(vec![result]);
+        }
+    }
+
     pub fn merge(&mut self, other: State) {
-        for (k, v) in other.values {
-            self.values.insert(k, v);
+        for (k, v) in other.values_map() {
+            self.set_value(&k, v);
         }
         if !other.text.is_empty() {
             self.text = other.text;
         }
-        for (k, v) in other.extra {
-            self.extra.insert(k, v);
+        if let Some(extra) = other.extra {
+            let target = ensure_struct(&mut self.extra);
+            for (k, v) in extra.fields {
+                target.fields.insert(k, v);
+            }
         }
-    }
-
-    /// Set the room in state data
-    pub fn set_room(&mut self, room: Room) {
-        self.data.room = Some(room);
-    }
-
-    /// Set the world in state data
-    pub fn set_world(&mut self, world: World) {
-        self.data.world = Some(world);
-    }
-
-    /// Set the entity in state data
-    pub fn set_entity(&mut self, entity: Entity) {
-        self.data.entity = Some(entity);
-    }
-
-    /// Add an action result
-    pub fn add_action_result(&mut self, result: ActionResult) {
-        if let Some(ref mut results) = self.data.action_results {
-            results.push(result);
-        } else {
-            self.data.action_results = Some(vec![result]);
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_state_creation() {
-        let state = State::with_text("Hello, world!");
-        assert_eq!(state.text, "Hello, world!");
-    }
-
-    #[test]
-    fn test_state_values() {
-        let mut state = State::new();
-        state.set_value("name", serde_json::json!("Alice"));
-        state.set_value("age", serde_json::json!(30));
-        state.set_value("active", serde_json::json!(true));
-
-        assert_eq!(state.get_string("name"), Some("Alice"));
-        assert_eq!(state.get_i64("age"), Some(30));
-        assert_eq!(state.get_bool("active"), Some(true));
-    }
-
-    #[test]
-    fn test_state_serialization() {
-        let mut state = State::with_text("Test context");
-        state.set_value("key", serde_json::json!("value"));
-
-        let json = serde_json::to_string(&state).unwrap();
-        assert!(json.contains("\"text\":\"Test context\""));
-        assert!(json.contains("\"key\":\"value\""));
     }
 }

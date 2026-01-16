@@ -42,36 +42,31 @@ export const messageClassifierProvider: Provider = {
 
       const responseText = String(response);
       const lines = responseText.split("\n");
+      const fields: Record<string, string> = {};
+      for (const line of lines) {
+        const separatorIndex = line.indexOf(":");
+        if (separatorIndex === -1) continue;
+        const key = line.slice(0, separatorIndex).trim();
+        const value = line.slice(separatorIndex + 1).trim();
+        if (key) {
+          fields[key] = value;
+        }
+      }
 
-      const parseField = (prefix: string): string[] => {
-        const line = lines.find((l) => l.startsWith(prefix));
-        if (!line) {
+      const parseField = (key: string): string[] => {
+        const value = fields[key];
+        if (!value) {
           return [];
         }
-        const value = line.substring(prefix.length).trim();
         return value
-          ? value
-              .split(",")
-              .map((s) => s.trim())
-              .filter((s) => s.length > 0)
-          : [];
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
       };
 
-      const complexity =
-        lines
-          .find((l) => l.startsWith("COMPLEXITY:"))
-          ?.substring(11)
-          .trim() || "simple";
-      const planningType =
-        lines
-          .find((l) => l.startsWith("PLANNING:"))
-          ?.substring(9)
-          .trim() || "direct_action";
-      const confidenceStr =
-        lines
-          .find((l) => l.startsWith("CONFIDENCE:"))
-          ?.substring(11)
-          .trim() || "0.5";
+      const complexity = fields.COMPLEXITY || "simple";
+      const planningType = fields.PLANNING || "direct_action";
+      const confidenceStr = fields.CONFIDENCE || "0.5";
       const confidence = Math.min(1.0, Math.max(0.0, Number.parseFloat(confidenceStr) || 0.5));
 
       const capabilities = parseField("CAPABILITIES:");
@@ -81,14 +76,15 @@ export const messageClassifierProvider: Provider = {
 
       const planningRequired = planningType !== "direct_action" && complexity !== "simple";
 
+      const textLower = text.toLowerCase();
       let messageClassification = "general";
-      if (text.toLowerCase().includes("strategic") || planningType === "strategic_planning") {
+      if (textLower.includes("strategic") || planningType === "strategic_planning") {
         messageClassification = "strategic";
-      } else if (text.toLowerCase().includes("analyz")) {
+      } else if (textLower.includes("analyz")) {
         messageClassification = "analysis";
-      } else if (text.toLowerCase().includes("process")) {
+      } else if (textLower.includes("process")) {
         messageClassification = "processing";
-      } else if (text.toLowerCase().includes("execute")) {
+      } else if (textLower.includes("execute")) {
         messageClassification = "execution";
       }
 

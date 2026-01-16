@@ -1,9 +1,12 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { logger } from "@elizaos/core";
 import type { FeedItemMetadata } from "../types";
 
+const spec = requireProviderSpec("feedItems");
+
 export const feedItemsProvider: Provider = {
-  name: "FEEDITEMS",
+  name: spec.name,
   description: "Provides recent news and articles from subscribed RSS feeds",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     try {

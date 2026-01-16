@@ -8,6 +8,7 @@
 import {
   AgentRuntime,
   ChannelType,
+  createCharacter,
   type Character,
   createMessageMemory,
   stringToUuid,
@@ -40,14 +41,14 @@ function getCharacter(): Character {
   if (process.env.OPENAI_API_KEY) {
     secrets.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   }
-  return {
+  return createCharacter({
     name: process.env.CHARACTER_NAME ?? "Eliza",
     bio: process.env.CHARACTER_BIO ?? "A helpful AI assistant.",
     system:
       process.env.CHARACTER_SYSTEM ??
       "You are a helpful, concise AI assistant. Respond thoughtfully to user messages.",
     secrets,
-  };
+  });
 }
 
 // Singleton runtime

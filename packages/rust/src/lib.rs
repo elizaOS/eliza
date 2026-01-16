@@ -37,8 +37,13 @@ pub mod bootstrap_core;
 #[cfg(all(feature = "bootstrap-internal", feature = "native", not(feature = "wasm")))]
 pub mod bootstrap;
 #[cfg(all(feature = "bootstrap-internal", feature = "native", not(feature = "wasm")))]
+pub mod basic_capabilities;
+#[cfg(all(feature = "bootstrap-internal", feature = "native", not(feature = "wasm")))]
+pub mod advanced_capabilities;
+#[cfg(all(feature = "bootstrap-internal", feature = "native", not(feature = "wasm")))]
 pub mod error;
 pub mod plugin;
+pub mod platform;
 pub mod prompts;
 pub mod runtime;
 pub mod services;
@@ -47,8 +52,14 @@ pub mod template;
 pub mod types;
 pub mod xml;
 
+/// Auto-generated action/provider/evaluator docs from centralized specs
+pub mod generated;
+
 #[cfg(feature = "wasm")]
 pub mod wasm;
+
+/// Synchronous runtime for environments without async (ICP, embedded, WASI)
+pub mod sync_runtime;
 
 // Re-export commonly used items at the crate root for convenience
 pub use character::{
@@ -63,9 +74,7 @@ pub use types::agent::{Agent, AgentStatus, Bio, Character};
 pub use types::primitives::{Content, Metadata, UUID};
 
 // Re-export environment types (entities, rooms, worlds, etc.)
-pub use types::environment::{
-    ChannelType, Component, Entity, Relationship, Room, World, WorldMetadata,
-};
+pub use types::environment::{Component, Entity, Relationship, Room, World, WorldMetadata};
 
 // Re-export memory types
 pub use types::memory::{Memory, MemoryMetadata};
@@ -78,6 +87,37 @@ pub use types::task::{Task, TaskStatus};
 
 // Re-export plugin types
 pub use types::plugin::Plugin;
+
+// Re-export platform utilities
+pub use platform::{AnyArc, PlatformService};
+
+// Re-export unified runtime (works in both sync and async modes)
+pub use sync_runtime::{
+    // Unified types (primary API)
+    UnifiedDatabaseAdapter, UnifiedRuntime, UnifiedRuntimeOptions,
+    UnifiedMessageService, UnifiedMessageProcessingOptions, UnifiedMessageProcessingResult,
+    UnifiedModelHandler, UnifiedService,
+    // Unified handler traits
+    UnifiedActionHandler, UnifiedProviderHandler, UnifiedEvaluatorHandler,
+    UnifiedProviderResult,
+    // Event handler type
+    EventHandler as UnifiedEventHandler,
+    // Backward compatibility aliases
+    DatabaseAdapterSync, SyncAgentRuntime, SyncMessageService,
+    SyncMessageProcessingResult, SyncModelHandler,
+};
+
+// Re-export generated action/provider/evaluator docs from centralized specs
+pub use generated::action_docs::{
+    CORE_ACTION_DOCS_JSON, ALL_ACTION_DOCS_JSON, CORE_PROVIDER_DOCS_JSON,
+    ALL_PROVIDER_DOCS_JSON, CORE_EVALUATOR_DOCS_JSON, ALL_EVALUATOR_DOCS_JSON,
+};
+pub use generated::spec_helpers::{
+    ActionDoc, ProviderDoc, EvaluatorDoc,
+    get_action_spec, require_action_spec,
+    get_provider_spec, require_provider_spec,
+    get_evaluator_spec, require_evaluator_spec,
+};
 
 /// Initialize the library (sets up panic hooks for WASM, logging, etc.)
 pub fn init() {

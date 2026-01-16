@@ -6,7 +6,7 @@ export class OrcaService extends Service {
   static serviceType = 'ORCA_SERVICE';
   capabilityDescription = 'Provides Orca DEX integration for LP management';
 
-  constructor(public runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
     console.log('ORCA_SERVICE cstr');
   }

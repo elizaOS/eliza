@@ -4,9 +4,11 @@ import contextlib
 import time
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from google.protobuf.struct_pb2 import Struct
 
 from elizaos.types.memory import Memory
 from elizaos.types.model import ModelType
@@ -17,6 +19,7 @@ if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
 
 HandlerCallback = Callable[[Content], Coroutine[Any, Any, list[Memory]]]
+StreamChunkCallback = Callable[[str], Coroutine[Any, Any, None]]
 
 
 @dataclass
@@ -24,6 +27,14 @@ class MessageProcessingResult:
     did_respond: bool
     response_content: Content | None
     response_messages: list[Memory] = field(default_factory=list)
+    state: State | None = None
+
+
+@dataclass
+class StreamingMessageResult:
+    """Result metadata for streaming message processing."""
+
+    response_memory: Memory
     state: State | None = None
 
 
@@ -35,6 +46,21 @@ class IMessageService(ABC):
         message: Memory,
         callback: HandlerCallback | None = None,
     ) -> MessageProcessingResult: ...
+
+    @abstractmethod
+    def handle_message_stream(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+    ) -> AsyncIterator[str | StreamingMessageResult]:
+        """
+        Process a message and stream the response token by token.
+
+        Yields:
+            str: Text chunks as they are generated
+            StreamingMessageResult: Final result with metadata (yielded last)
+        """
+        ...
 
 
 def _parse_actions_from_xml(xml_response: str) -> list[str]:
@@ -443,8 +469,9 @@ class DefaultMessageService(IMessageService):
             prompt = self._build_canonical_prompt(runtime, message, state, template)
 
             # Step 4: Generate response using the model
+            # Use protobuf enum name (MODEL_TYPE_TEXT_LARGE not TEXT_LARGE)
             raw_response = await runtime.use_model(
-                ModelType.TEXT_LARGE.value,
+                str(ModelType.MODEL_TYPE_TEXT_LARGE),
                 {
                     "prompt": prompt,
                     "system": runtime.character.system,
@@ -502,9 +529,16 @@ class DefaultMessageService(IMessageService):
             # Benchmark mode: force action-based response generation.
             # If the context-bench provider is active, require REPLY to run so the
             # full Provider -> Model -> Action -> Evaluator loop is exercised.
-            benchmark_mode = (
-                bool(state.values.get("benchmark_has_context")) if state.values else False
-            )
+            benchmark_mode = False
+            if state.values:
+                # Handle both dict-like and protobuf StateValues
+                if hasattr(state.values, "get") and callable(state.values.get):
+                    benchmark_mode = bool(state.values.get("benchmark_has_context"))
+                elif hasattr(state.values, "extra"):
+                    # Protobuf - check extra map field
+                    extra = state.values.extra
+                    if hasattr(extra, "get") and callable(extra.get):
+                        benchmark_mode = bool(extra.get("benchmark_has_context", ""))
             if benchmark_mode:
                 if not actions:
                     actions = ["REPLY"]
@@ -527,18 +561,20 @@ class DefaultMessageService(IMessageService):
                 actions=actions if actions else None,
                 providers=providers if providers else None,
             )
-            # Store params as extra attribute (Content has extra="allow")
+            # Store params in Content.data for protobuf compatibility
             if params:
-                response_content.params = params
+                if not response_content.data:
+                    response_content.data = Struct()
+                response_content.data.update({"params": params})
 
             response_id = as_uuid(str(uuid.uuid4()))
             response_memory = Memory(
                 id=response_id,
-                entityId=runtime.agent_id,
-                agentId=runtime.agent_id,
-                roomId=message.room_id,
+                entity_id=runtime.agent_id,
+                agent_id=runtime.agent_id,
+                room_id=message.room_id,
                 content=response_content,
-                createdAt=int(time.time() * 1000),
+                created_at=int(time.time() * 1000),
             )
 
             # Save response memory (if adapter available)
@@ -554,9 +590,6 @@ class DefaultMessageService(IMessageService):
             # By default, we treat a plain REPLY as a chat-style response.
             # In benchmark mode (context-bench), we WANT to execute REPLY so the full
             # Provider -> Model -> Action -> Evaluator loop is exercised.
-            benchmark_mode = (
-                bool(state.values.get("benchmark_has_context")) if state.values else False
-            )
             if actions and (benchmark_mode or not (len(actions) == 1 and actions[0] == "REPLY")):
                 runtime.logger.debug(f"Processing {len(actions)} actions: {actions}")
                 await runtime.process_actions(message, responses, state, callback)
@@ -620,7 +653,23 @@ class DefaultMessageService(IMessageService):
             context = f"{context}\n\n# Current Message\nUser: {user_text}".strip()
 
         # Build values for template substitution
-        values = dict(state.values) if state.values else {}
+        # Handle both dict-like and protobuf StateValues
+        if state.values:
+            if hasattr(state.values, "agent_name"):
+                # Protobuf StateValues
+                values = {
+                    "agentName": state.values.agent_name or character.name,
+                    "actionNames": state.values.action_names or "",
+                    "providers": state.values.providers or context,
+                }
+            elif hasattr(state.values, "items"):
+                # Dict-like
+                values = dict(state.values)
+            else:
+                values = {}
+        else:
+            values = {}
+        
         values["agentName"] = character.name
         values["providers"] = context
 
@@ -720,11 +769,11 @@ class DefaultMessageService(IMessageService):
                 )
                 response_memory = Memory(
                     id=response_id,
-                    entityId=runtime.agent_id,
-                    agentId=runtime.agent_id,
-                    roomId=message.room_id,
+                    entity_id=runtime.agent_id,
+                    agent_id=runtime.agent_id,
+                    room_id=message.room_id,
                     content=response_content,
-                    createdAt=int(time.time() * 1000),
+                    created_at=int(time.time() * 1000),
                 )
                 await runtime.process_actions(message, [response_memory], state, callback)
 
@@ -848,7 +897,7 @@ class DefaultMessageService(IMessageService):
             "Attempting param repair."
         )
 
-        # Compose a minimal “repair” prompt. Prefer JSON output for robustness.
+        # Compose a minimal "repair" prompt. Prefer JSON output for robustness.
         missing_lines = "\n".join(
             f"- {a}: required params = {', '.join(req)}" for a, req in missing_actions.items()
         )
@@ -897,3 +946,96 @@ class DefaultMessageService(IMessageService):
             merged[action_name].extend(entries)
 
         return merged
+
+    async def _handle_message_stream_impl(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+    ) -> AsyncIterator[str | StreamingMessageResult]:
+        """Internal implementation of streaming message handling."""
+        _ = runtime.start_run(message.room_id)
+
+        try:
+            check_should_respond = runtime.is_check_should_respond_enabled()
+            if not check_should_respond:
+                runtime.logger.debug(
+                    "check_should_respond disabled, always responding (ChatGPT mode)"
+                )
+
+            runtime.logger.debug("Saving incoming message to memory")
+            if message.id:
+                existing_memory = await runtime.get_memory_by_id(message.id)
+                if not existing_memory:
+                    await runtime.create_memory(message, "messages")
+            else:
+                message.id = as_uuid(str(uuid.uuid4()))
+                await runtime.create_memory(message, "messages")
+
+            # Compose state from providers
+            state = await runtime.compose_state(message)
+
+            # Build the prompt using canonical template
+            from elizaos.prompts import MESSAGE_HANDLER_TEMPLATE
+
+            template = MESSAGE_HANDLER_TEMPLATE
+            if runtime.character.templates and "messageHandlerTemplate" in runtime.character.templates:
+                template = runtime.character.templates["messageHandlerTemplate"]
+            prompt = self._build_canonical_prompt(runtime, message, state, template)
+
+            # Collect full response while streaming
+            full_response_parts: list[str] = []
+
+            # Stream response using the streaming model
+            async for chunk in runtime.use_model_stream(
+                ModelType.TEXT_LARGE_STREAM.value,
+                {
+                    "prompt": prompt,
+                    "system": runtime.character.system,
+                    "temperature": 0.7,
+                },
+            ):
+                full_response_parts.append(chunk)
+                yield chunk
+
+            # Build the complete response
+            full_response = "".join(full_response_parts)
+            response_content = Content(text=full_response)
+            response_id = as_uuid(str(uuid.uuid4()))
+            response_memory = Memory(
+                id=response_id,
+                entityId=runtime.agent_id,
+                agentId=runtime.agent_id,
+                roomId=message.room_id,
+                content=response_content,
+                createdAt=int(time.time() * 1000),
+            )
+
+            # Save response memory
+            runtime.logger.debug("Saving response to memory")
+            await runtime.create_memory(response_memory, "messages")
+
+            # Yield final result with metadata
+            yield StreamingMessageResult(
+                response_memory=response_memory,
+                state=state,
+            )
+
+        except Exception as e:
+            runtime.logger.error(f"Error processing streaming message: {e}")
+            raise
+        finally:
+            runtime.end_run()
+
+    def handle_message_stream(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+    ) -> AsyncIterator[str | StreamingMessageResult]:
+        """
+        Process a message and stream the response token by token.
+
+        Yields:
+            str: Text chunks as they are generated
+            StreamingMessageResult: Final result with metadata (yielded last)
+        """
+        return self._handle_message_stream_impl(runtime, message)

@@ -8,6 +8,10 @@ use uuid::Uuid;
 use crate::bootstrap::error::PluginResult;
 use crate::bootstrap::runtime::IAgentRuntime;
 use crate::bootstrap::services::{Service, ServiceType};
+use crate::prompts::{
+    AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE, AUTONOMY_CONTINUOUS_FIRST_TEMPLATE,
+    AUTONOMY_TASK_CONTINUE_TEMPLATE, AUTONOMY_TASK_FIRST_TEMPLATE,
+};
 use super::types::AutonomyStatus;
 
 /// Service type constant for autonomy.
@@ -126,27 +130,38 @@ impl AutonomyService {
         "Autonomous operation loop for continuous agent thinking and actions"
     }
 
-    /// Create the monologue prompt for autonomous thinking.
-    pub fn create_monologue_prompt(&self, last_thought: Option<&str>, is_first_thought: bool) -> String {
-        let header = "You are running in AUTONOMOUS REFLECTION MODE.\n\nYour job: reflect on context, decide what you want to do next, and act if appropriate.\n- Use available actions/tools when they can advance the goal.\n- If you cannot act, state the missing info and the safest next step to obtain it.\n- Keep the response concise, focused on the next action.";
-        if is_first_thought {
-            return format!(
-                "{}\n\nThink briefly, then state what you want to do next and take action if needed.",
-                header
-            );
-        }
-
-        if let Some(thought) = last_thought {
-            format!(
-                "{}\n\nYour last autonomous note: \"{}\"\n\nContinue from that note. Decide the next step and act if needed.",
-                header, thought
-            )
+    /// Create the continuous prompt for autonomous thinking.
+    pub fn create_continuous_prompt(
+        &self,
+        last_thought: Option<&str>,
+        is_first_thought: bool,
+    ) -> String {
+        let template = if is_first_thought {
+            AUTONOMY_CONTINUOUS_FIRST_TEMPLATE
         } else {
-            format!(
-                "{}\n\nThink briefly, then state what you want to do next and take action if needed.",
-                header
-            )
-        }
+            AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE
+        };
+        Self::fill_autonomy_template(template, last_thought)
+    }
+
+    /// Create the task prompt for autonomous thinking.
+    pub fn create_task_prompt(
+        &self,
+        last_thought: Option<&str>,
+        is_first_thought: bool,
+    ) -> String {
+        let template = if is_first_thought {
+            AUTONOMY_TASK_FIRST_TEMPLATE
+        } else {
+            AUTONOMY_TASK_CONTINUE_TEMPLATE
+        };
+        Self::fill_autonomy_template(template, last_thought)
+    }
+
+    fn fill_autonomy_template(template: &str, last_thought: Option<&str>) -> String {
+        let mut output = template.replace("{{targetRoomContext}}", "(no target room configured)");
+        output = output.replace("{{lastThought}}", last_thought.unwrap_or(""));
+        output
     }
 
     /// Get the autonomous room ID.
@@ -417,23 +432,44 @@ mod tests {
     }
 
     #[test]
-    fn test_create_monologue_prompt_first_thought() {
+    fn test_create_continuous_prompt_first_thought() {
         let service = AutonomyService::new();
         
-        let prompt = service.create_monologue_prompt(None, true);
+        let prompt = service.create_continuous_prompt(None, true);
         
-        assert!(prompt.contains("AUTONOMOUS REFLECTION MODE"));
+        assert!(prompt.contains("AUTONOMOUS CONTINUOUS MODE"));
         assert!(prompt.contains("decide what you want to do next"));
     }
 
     #[test]
-    fn test_create_monologue_prompt_continuation() {
+    fn test_create_continuous_prompt_continuation() {
         let service = AutonomyService::new();
         
-        let prompt = service.create_monologue_prompt(Some("I was thinking about consciousness"), false);
+        let prompt = service.create_continuous_prompt(Some("I was thinking about consciousness"), false);
         
         assert!(prompt.contains("Your last autonomous note"));
         assert!(prompt.contains("I was thinking about consciousness"));
+    }
+
+    #[test]
+    fn test_create_task_prompt_first_thought() {
+        let service = AutonomyService::new();
+        
+        let prompt = service.create_task_prompt(None, true);
+        
+        assert!(prompt.contains("AUTONOMOUS TASK MODE"));
+        assert!(prompt.contains("ComputerUse"));
+        assert!(prompt.contains("MCP mode"));
+    }
+
+    #[test]
+    fn test_create_task_prompt_continuation() {
+        let service = AutonomyService::new();
+        
+        let prompt = service.create_task_prompt(Some("Working on the task"), false);
+        
+        assert!(prompt.contains("Your last autonomous note"));
+        assert!(prompt.contains("Working on the task"));
     }
 
     #[test]

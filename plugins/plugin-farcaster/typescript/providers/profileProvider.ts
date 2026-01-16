@@ -1,10 +1,13 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { FarcasterService } from "../services/FarcasterService";
 import { FARCASTER_SERVICE_NAME } from "../types";
 import { getFarcasterFid } from "../utils/config";
 
+const spec = requireProviderSpec("profileProvider");
+
 export const farcasterProfileProvider: Provider = {
-  name: "farcasterProfile",
+  name: spec.name,
   description: "Provides information about the agent's Farcaster profile",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {

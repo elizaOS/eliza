@@ -4,11 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-localdb"
-version = "1.0.0"
+version = "2.0.0"
 description = "Simple JSON-based local database storage for elizaOS"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
+authors = [
+    { name = "elizaOS Contributors" }
+]
 dependencies = []
 
 [project.optional-dependencies]

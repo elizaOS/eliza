@@ -2,6 +2,7 @@
 name = "elizaos-plugin-agent-orchestrator"
 version = "2.0.0"
 edition = "2021"
+authors = ["elizaOS Contributors"]
 description = "Agent Orchestrator Plugin for ElizaOS - orchestrates tasks across agent providers"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"

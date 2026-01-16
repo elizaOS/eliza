@@ -12,6 +12,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { type Message, PermissionsBitField, type TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import { unpinMessageTemplate } from "../generated/prompts/typescript/prompts.js";
@@ -44,10 +45,12 @@ const getMessageRef = async (
   return null;
 };
 
+const spec = requireActionSpec("UNPIN_MESSAGE");
+
 export const unpinMessage: Action = {
-  name: "UNPIN_MESSAGE",
-  similes: ["UNPIN_MESSAGE", "UNPIN_MSG", "UNPIN_THIS", "UNPIN_THAT", "REMOVE_PIN", "DELETE_PIN"],
-  description: "Unpin a message in a Discord channel.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -226,53 +229,7 @@ export const unpinMessage: Action = {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "unpin the last pinned message",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll unpin the most recent pinned message.",
-          actions: ["UNPIN_MESSAGE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "unpin the message about the old meeting schedule",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll find and unpin the message about the meeting schedule.",
-          actions: ["UNPIN_MESSAGE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "remove the pin from john's announcement",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll unpin john's announcement.",
-          actions: ["UNPIN_MESSAGE"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default unpinMessage;

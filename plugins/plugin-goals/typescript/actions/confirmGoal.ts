@@ -14,6 +14,7 @@ import {
   parseKeyValueXml,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { extractConfirmationTemplate } from "../generated/prompts/typescript/prompts.js";
 import { createGoalDataService } from "../services/goalDataService.js";
 
@@ -92,10 +93,12 @@ ${pendingTask.recurring ? `Recurring: ${pendingTask.recurring}` : ""}
   }
 }
 
+const spec = requireActionSpec("CONFIRM_GOAL");
+
 export const confirmGoalAction: Action = {
-  name: "CONFIRM_GOAL",
-  similes: ["CONFIRM_TASK", "APPROVE_GOAL", "APPROVE_TASK", "GOAL_CONFIRM"],
-  description: "Confirms or cancels a pending goal creation after user review.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State): Promise<boolean> => {
     const pendingGoal = state?.data?.pendingGoal as PendingGoalData | undefined;
@@ -256,64 +259,7 @@ export const confirmGoalAction: Action = {
     }
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Add a goal to finish my taxes by April 15",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create a one-off goal: 'Finish taxes' with Priority 2, Due April 15.\n\nIs this correct?",
-          actions: ["CREATE_GOAL_PREVIEW"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Yes, that looks good",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "✅ Created task: 'Finish taxes' (Priority 2, Due: 4/15/2024)",
-          actions: ["CONFIRM_GOAL_SUCCESS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I want to add a daily task to exercise",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create a daily goal: 'Exercise'.\n\nIs this correct?",
-          actions: ["CREATE_GOAL_PREVIEW"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Actually, nevermind",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Okay, I've cancelled the task creation. Let me know if you'd like to create a different task.",
-          actions: ["CONFIRM_GOAL_CANCELLED"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default confirmGoalAction;

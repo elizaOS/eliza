@@ -1,12 +1,17 @@
 //! ATTACHMENTS provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("ATTACHMENTS"));
 
 /// Provider for message attachments.
 pub struct AttachmentsProvider;
@@ -14,15 +19,15 @@ pub struct AttachmentsProvider;
 #[async_trait]
 impl Provider for AttachmentsProvider {
     fn name(&self) -> &'static str {
-        "ATTACHMENTS"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Media attachments in the current message"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(

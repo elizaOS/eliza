@@ -1,7 +1,8 @@
 [package]
 name = "elizaos-plugin-knowledge"
-version = "1.6.1"
+version = "2.0.0"
 edition = "2021"
+authors = ["elizaOS Contributors"]
 description = "Knowledge plugin for elizaOS, providing Retrieval Augmented Generation (RAG) capabilities"
 license = "MIT"
 repository = "https://github.com/elizaos-plugins/plugin-knowledge"

@@ -6,22 +6,12 @@ package eliza.v1;
 import "eliza/v1/primitives.proto";
 import "google/protobuf/struct.proto";
 
-// JSON Schema type for action parameter validation
-enum SchemaType {
-  SCHEMA_TYPE_UNSPECIFIED = 0;
-  SCHEMA_TYPE_STRING = 1;
-  SCHEMA_TYPE_NUMBER = 2;
-  SCHEMA_TYPE_BOOLEAN = 3;
-  SCHEMA_TYPE_OBJECT = 4;
-  SCHEMA_TYPE_ARRAY = 5;
-}
-
 // JSON Schema for action parameter validation
 message ActionParameterSchema {
-  SchemaType type = 1;
+  string type = 1;
   optional string description = 2;
-  // Default value as JSON string
-  optional string default_value = 3;
+  // Default value
+  google.protobuf.Value default_value = 3;
   // Allowed enum values
   repeated string enum_values = 4;
   // Nested properties for object types

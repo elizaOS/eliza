@@ -3,11 +3,13 @@ import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME } from "../types";
 
 export class RobloxTestSuite implements TestSuite {
+  readonly $typeName = "eliza.v1.TestSuite" as const;
   name = "roblox";
   description = "Test suite for Roblox plugin";
 
   tests: TestCase[] = [
     {
+      $typeName: "eliza.v1.TestCase",
       name: "Service initialization",
       fn: async (runtime: IAgentRuntime) => {
         const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
@@ -27,6 +29,7 @@ export class RobloxTestSuite implements TestSuite {
       },
     },
     {
+      $typeName: "eliza.v1.TestCase",
       name: "Configuration validation",
       fn: async (runtime: IAgentRuntime) => {
         const apiKey = runtime.getSetting("ROBLOX_API_KEY");
@@ -51,6 +54,7 @@ export class RobloxTestSuite implements TestSuite {
       },
     },
     {
+      $typeName: "eliza.v1.TestCase",
       name: "Actions registered",
       fn: async (runtime: IAgentRuntime) => {
         runtime.logger.info("Roblox actions registration check passed");

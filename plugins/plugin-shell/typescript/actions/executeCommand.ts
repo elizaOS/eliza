@@ -11,8 +11,10 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import type { HandlerOptions } from "@elizaos/core";
 import { commandExtractionTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { ShellService } from "../services/shellService";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 export { commandExtractionTemplate };
 
 const extractCommand = async (
@@ -40,25 +42,12 @@ const extractCommand = async (
   return null;
 };
 
+const spec = requireActionSpec("EXECUTE_COMMAND");
+
 export const executeCommand: Action = {
-  name: "EXECUTE_COMMAND",
-  similes: [
-    "RUN_COMMAND",
-    "SHELL_COMMAND",
-    "TERMINAL_COMMAND",
-    "EXEC",
-    "RUN",
-    "EXECUTE",
-    "CREATE_FILE",
-    "WRITE_FILE",
-    "MAKE_FILE",
-    "INSTALL",
-    "BREW_INSTALL",
-    "NPM_INSTALL",
-    "APT_INSTALL",
-  ],
-  description:
-    "Execute shell commands including brew install, npm install, apt-get, system commands, file operations, directory navigation, and scripts.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
     const shellService = runtime.getService<ShellService>("shell");
     if (!shellService) {
@@ -106,26 +95,30 @@ export const executeCommand: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
   ) => {
     const shellService = runtime.getService<ShellService>("shell");
 
     if (!shellService) {
-      await callback({
-        text: "Shell service is not available.",
-        source: message.content.source,
-      });
+      if (callback) {
+        await callback({
+          text: "Shell service is not available.",
+          source: message.content.source,
+        });
+      }
       return { success: false, error: "Shell service is not available." };
     }
 
     const commandInfo = await extractCommand(runtime, message, state);
     if (!commandInfo?.command) {
       logger.error("Failed to extract command from message:", message.content.text);
-      await callback({
-        text: "Could not determine which command to execute. Please specify a shell command.",
-        source: message.content.source,
-      });
+      if (callback) {
+        await callback({
+          text: "Could not determine which command to execute. Please specify a shell command.",
+          source: message.content.source,
+        });
+      }
       return { success: false, error: "Could not extract command." };
     }
 
@@ -159,125 +152,23 @@ export const executeCommand: Action = {
         source: message.content.source,
       };
 
-      await callback(response);
+      if (callback) {
+        await callback(response);
+      }
       return { success: result.success, text: responseText };
     } catch (error) {
       logger.error("Error executing command:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      await callback({
-        text: `Failed to execute command: ${errorMessage}`,
-        source: message.content.source,
-      });
+      if (callback) {
+        await callback({
+          text: `Failed to execute command: ${errorMessage}`,
+          source: message.content.source,
+        });
+      }
       return { success: false, error: errorMessage };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "run ls -la",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll execute that command for you.",
-          actions: ["EXECUTE_COMMAND"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "show me what files are in this directory",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll list the files in the current directory.",
-          actions: ["EXECUTE_COMMAND"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "navigate to the src folder",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll change to the src directory.",
-          actions: ["EXECUTE_COMMAND"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "check the git status",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll check the git repository status.",
-          actions: ["EXECUTE_COMMAND"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "create a file called hello.txt",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create hello.txt for you.",
-          actions: ["EXECUTE_COMMAND"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "create hello_world.py and write a python hello world script inside",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create hello_world.py with a Python hello world script.",
-          actions: ["EXECUTE_COMMAND"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "brew install orbstack",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll install orbstack using brew.",
-          actions: ["EXECUTE_COMMAND"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default executeCommand;

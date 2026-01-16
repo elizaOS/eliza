@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("KNOWLEDGE")
 
 
 async def get_knowledge_context(
@@ -62,8 +66,8 @@ async def get_knowledge_context(
 
 
 knowledge_provider = Provider(
-    name="KNOWLEDGE",
-    description="Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_knowledge_context,
-    dynamic=True,
+    dynamic=_spec.get("dynamic", True),
 )

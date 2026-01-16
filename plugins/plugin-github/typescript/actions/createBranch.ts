@@ -11,6 +11,9 @@ import {
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 import { type CreateBranchParams, createBranchSchema, formatZodErrors } from "../types";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("CREATE_BRANCH");
 
 const examples: ActionExample[][] = [
   [
@@ -47,8 +50,8 @@ const examples: ActionExample[][] = [
 
 export const createBranchAction: Action = {
   name: "CREATE_GITHUB_BRANCH",
-  similes: ["NEW_BRANCH", "BRANCH_FROM", "FORK_BRANCH", "CREATE_FEATURE_BRANCH"],
-  description: "Creates a new branch in a GitHub repository from an existing branch or commit.",
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);

@@ -222,6 +222,16 @@ impl Plugin {
         self.evaluator_handlers.push(handler);
         self
     }
+
+    /// Add route definitions
+    pub fn with_routes(mut self, routes: Vec<RouteDefinition>) -> Self {
+        if let Some(ref mut existing) = self.definition.routes {
+            existing.extend(routes);
+        } else {
+            self.definition.routes = Some(routes);
+        }
+        self
+    }
 }
 
 /// Project agent configuration

@@ -1,5 +1,7 @@
+import { requireEvaluatorSpec } from "../../generated/spec-helpers.ts";
 import {
   type Evaluator,
+  type EvaluationExample,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -9,6 +11,9 @@ import { composePromptFromState } from "../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
 import { longTermExtractionTemplate } from "../prompts.ts";
+
+const spec = requireEvaluatorSpec("LONG_TERM_MEMORY_EXTRACTION");
+const validMemoryCategories = new Set(Object.values(LongTermMemoryCategory));
 
 function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
   const memoryMatches = xml.matchAll(
@@ -22,7 +27,7 @@ function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
     const content = match[2].trim();
     const confidence = Number.parseFloat(match[3].trim());
 
-    if (!Object.values(LongTermMemoryCategory).includes(category)) {
+    if (!validMemoryCategories.has(category)) {
       logger.warn({ src: "evaluator:memory" }, `Invalid memory category: ${category}`);
       continue;
     }
@@ -36,10 +41,11 @@ function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
 }
 
 export const longTermExtractionEvaluator: Evaluator = {
-  name: "LONG_TERM_MEMORY_EXTRACTION",
-  description: "Extracts long-term facts about users from conversations",
-  similes: ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
-  alwaysRun: true,
+  name: spec.name,
+  description: spec.description,
+  similes: spec.similes ? [...spec.similes] : [],
+  alwaysRun: spec.alwaysRun ?? true,
+  examples: (spec.examples ?? []) as EvaluationExample[],
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     if (message.entityId === runtime.agentId) return false;
@@ -78,21 +84,24 @@ export const longTermExtractionEvaluator: Evaluator = {
         unique: false,
       });
 
+      const agentName = runtime.character.name ?? "Agent";
       const formattedMessages = recentMessages
         .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
         .map((msg) => {
-          const sender = msg.entityId === runtime.agentId ? runtime.character.name : "User";
+          const sender = msg.entityId === runtime.agentId ? agentName : "User";
           return `${sender}: ${msg.content.text || "[non-text message]"}`;
         })
         .join("\n");
 
       const existingMemories = await memoryService.getLongTermMemories(entityId, undefined, 30);
-      const formattedExisting =
-        existingMemories.length > 0
-          ? existingMemories
-              .map((m) => `[${m.category}] ${m.content} (confidence: ${m.confidence})`)
-              .join("\n")
-          : "None yet";
+      let formattedExisting = "None yet";
+      if (existingMemories.length > 0) {
+        const lines: string[] = [];
+        for (const memory of existingMemories) {
+          lines.push(`[${memory.category}] ${memory.content} (confidence: ${memory.confidence})`);
+        }
+        formattedExisting = lines.join("\n");
+      }
 
       const state = await runtime.composeState(message);
       const prompt = composePromptFromState({
@@ -112,32 +121,36 @@ export const longTermExtractionEvaluator: Evaluator = {
         `Extracted ${extractions.length} long-term memories`,
       );
 
-      for (const extraction of extractions) {
-        if (extraction.confidence >= Math.max(config.longTermConfidenceThreshold, 0.85)) {
-          await memoryService.storeLongTermMemory({
-            agentId: runtime.agentId,
-            entityId,
-            category: extraction.category,
-            content: extraction.content,
-            confidence: extraction.confidence,
-            source: "conversation",
-            metadata: {
-              roomId,
-              extractedAt: new Date().toISOString(),
-            },
-          });
+      const minConfidence = Math.max(config.longTermConfidenceThreshold, 0.85);
+      const extractedAt = new Date().toISOString();
+      await Promise.all(
+        extractions.map(async (extraction) => {
+          if (extraction.confidence >= minConfidence) {
+            await memoryService.storeLongTermMemory({
+              agentId: runtime.agentId,
+              entityId,
+              category: extraction.category,
+              content: extraction.content,
+              confidence: extraction.confidence,
+              source: "conversation",
+              metadata: {
+                roomId,
+                extractedAt,
+              },
+            });
 
-          logger.info(
-            { src: "evaluator:memory" },
-            `Stored long-term memory: [${extraction.category}] ${extraction.content.substring(0, 50)}...`,
-          );
-        } else {
-          logger.debug(
-            { src: "evaluator:memory" },
-            `Skipped low-confidence memory: ${extraction.content} (confidence: ${extraction.confidence})`,
-          );
-        }
-      }
+            logger.info(
+              { src: "evaluator:memory" },
+              `Stored long-term memory: [${extraction.category}] ${extraction.content.substring(0, 50)}...`,
+            );
+          } else {
+            logger.debug(
+              { src: "evaluator:memory" },
+              `Skipped low-confidence memory: ${extraction.content} (confidence: ${extraction.confidence})`,
+            );
+          }
+        }),
+      );
 
       const currentMessageCount = await runtime.countMemories(roomId, false, "messages");
       await memoryService.setLastExtractionCheckpoint(entityId, roomId, currentMessageCount);
@@ -154,7 +167,5 @@ export const longTermExtractionEvaluator: Evaluator = {
     }
     return undefined;
   },
-
-  examples: [],
 };
 

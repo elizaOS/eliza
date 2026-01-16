@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-instagram"
-version = "1.0.0"
+version = "2.0.0"
 description = "Instagram plugin for elizaOS - Python implementation for Instagram integration"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agents", "instagram", "social", "elizaos"]
 classifiers = [

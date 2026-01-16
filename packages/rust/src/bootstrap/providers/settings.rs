@@ -1,12 +1,17 @@
 //! SETTINGS provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("SETTINGS"));
 
 /// Sensitive key patterns to filter out.
 const SENSITIVE_PATTERNS: &[&str] = &[
@@ -27,15 +32,15 @@ pub struct SettingsProvider;
 #[async_trait]
 impl Provider for SettingsProvider {
     fn name(&self) -> &'static str {
-        "SETTINGS"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Current settings for the agent/server (filtered for security)"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(

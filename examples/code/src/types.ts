@@ -197,7 +197,7 @@ export interface CodeTaskMetadata {
   filesModified?: string[];
   filesCreated?: string[];
   workingDirectory: string;
-  subAgentType?: SubAgentType;
+  subAgentType?: SubAgentType | string;
   createdAt: number;
   startedAt?: number;
   completedAt?: number;

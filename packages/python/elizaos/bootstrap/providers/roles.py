@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("ROLES")
 
 
 def format_role_info(entity_name: str, role: str) -> str:
@@ -84,8 +88,8 @@ async def get_roles(
 
 
 roles_provider = Provider(
-    name="ROLES",
-    description="Roles assigned to entities in the current context",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_roles,
-    dynamic=True,
+    dynamic=_spec.get("dynamic", True),
 )

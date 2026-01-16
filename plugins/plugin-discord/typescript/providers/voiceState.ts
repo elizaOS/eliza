@@ -2,8 +2,11 @@ import { getVoiceConnection } from "@discordjs/voice";
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State, UUID } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
 import type { GuildChannel } from "discord.js";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 import { ServiceType } from "../types";
+
+const spec = requireProviderSpec("voiceState");
 
 /**
  * Provides information about the voice state of the user, including whether they are currently in a voice channel.
@@ -14,7 +17,7 @@ import { ServiceType } from "../types";
  * @returns {Object} An object containing information about the voice state of the user
  */
 export const voiceStateProvider: Provider = {
-  name: "voiceState",
+  name: spec.name,
   get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     // Voice doesn't get a discord message, so we need to use the channel for guild data
     const room = await runtime.getRoom(message.roomId);

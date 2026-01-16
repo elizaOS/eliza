@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
-import { SimulationService } from '../services/SimulationService.ts';
-import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
-import { AnalyticsService } from '../services/analyticsService.ts';
+// Missing services - commented out until implemented
+// import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
+// import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
+// import { SimulationService } from '../services/SimulationService.ts';
+// import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
+// import { AnalyticsService } from '../services/analyticsService.ts';
 import { AgentRuntime } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
@@ -20,19 +21,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Mock runtime
-class MockRuntime implements Partial<AgentRuntime> {
+class MockRuntime {
   public agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
 
   getSetting(key: string): string | undefined {
     return process.env[key];
   }
 
-  getService(serviceName: string): any {
+  getService(_serviceName: string): unknown {
+    // Services not implemented
+    return null;
+    /* Commented out until services are implemented
     if (serviceName === 'StrategyRegistryService') return strategyRegistry;
     if (serviceName === 'HistoricalDataService') return historicalDataService;
     if (serviceName === 'PerformanceReportingService') return performanceService;
     if (serviceName === 'AnalyticsService') return analyticsService;
-    return null;
+    */
   }
 
   useModel(modelType: any, params: any, provider?: string): Promise<any> {
@@ -40,13 +44,16 @@ class MockRuntime implements Partial<AgentRuntime> {
   }
 }
 
-let strategyRegistry: StrategyRegistryService;
-let historicalDataService: DefaultHistoricalDataService;
-let performanceService: PerformanceReportingService;
-let analyticsService: AnalyticsService;
-let simulationService: SimulationService;
+// Services not implemented - commented out
+// let strategyRegistry: StrategyRegistryService;
+// let historicalDataService: DefaultHistoricalDataService;
+// let performanceService: PerformanceReportingService;
+// let analyticsService: AnalyticsService;
+// let simulationService: SimulationService;
 
 async function verifySetup() {
+  throw new Error('This script requires missing services: HistoricalDataService, StrategyRegistryService, SimulationService, PerformanceReportingService, AnalyticsService');
+  /* Commented out until services are implemented
   console.log(
     chalk.bold.cyan(`
 =============================================================
@@ -238,6 +245,7 @@ async function verifySetup() {
     await performanceService.stop();
     await analyticsService.stop();
   }
+  */
 }
 
 // Run verification

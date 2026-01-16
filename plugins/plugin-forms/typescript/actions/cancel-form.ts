@@ -7,13 +7,16 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { FormsService } from "../services/forms-service";
 import type { Form } from "../types";
 
+const spec = requireActionSpec("CANCEL-FORM");
+
 export const cancelFormAction: Action = {
-  name: "CANCEL_FORM",
-  similes: ["ABORT_FORM", "STOP_FORM", "QUIT_FORM", "EXIT_FORM"],
-  description: "Cancels an active form",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
     const formsService = runtime.getService<FormsService>("forms");

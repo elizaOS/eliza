@@ -21,7 +21,7 @@ import {
   type ActionResult,
   AgentRuntime,
   ChannelType,
-  type Character,
+  createCharacter,
   createMessageMemory,
   type HandlerCallback,
   type HandlerOptions,
@@ -728,7 +728,7 @@ interface LiveAgent {
 }
 
 async function createAgentRuntime(agentState: AgentState): Promise<LiveAgent> {
-  const character: Character = {
+  const character = createCharacter({
     id: agentState.id as UUID,
     name: `Agent-${agentState.id.slice(0, 6)}`,
     bio: [
@@ -741,7 +741,7 @@ async function createAgentRuntime(agentState: AgentState): Promise<LiveAgent> {
       DNA_EFFICIENCY: agentState.dna.efficiency,
       DNA_HUE: agentState.dna.hue,
     },
-  };
+  });
 
   // Create the adapter using the shared storage
   const adapter = new InMemoryDatabaseAdapter(

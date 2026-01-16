@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.generated.spec_helpers import require_action_spec
+from elizaos.prompts import UPDATE_CONTACT_TEMPLATE
 from elizaos.types import (
     Action,
     ActionExample,
@@ -21,37 +23,35 @@ if TYPE_CHECKING:
         State,
     )
 
+# Get text content from centralized specs
+_spec = require_action_spec("UPDATE_CONTACT")
 
-UPDATE_CONTACT_TEMPLATE = """# Update Contact Information
 
-Current message: {{message}}
-Sender: {{senderName}} (ID: {{senderId}})
-
-Extract update information:
-1. Who to update (name or entity reference)
-2. Fields to update (categories, tags, preferences, notes)
-3. Operation (add_to or replace)
-
-<response>
-<contactName>Name of the contact to update</contactName>
-<operation>add_to or replace</operation>
-<categories>comma-separated list of categories</categories>
-<tags>comma-separated list of tags</tags>
-<notes>Any additional notes</notes>
-</response>"""
+def _convert_spec_examples() -> list[list[ActionExample]]:
+    """Convert spec examples to ActionExample format."""
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
 
 
 @dataclass
 class UpdateContactAction:
-    name: str = "UPDATE_CONTACT_INFO"
-    similes: list[str] = field(
-        default_factory=lambda: [
-            "EDIT_CONTACT",
-            "MODIFY_CONTACT",
-            "CHANGE_CONTACT_INFO",
-        ]
-    )
-    description: str = "Updates an existing contact in the rolodex"
+    name: str = _spec["name"]
+    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
+    description: str = _spec["description"]
 
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
@@ -143,7 +143,7 @@ class UpdateContactAction:
                 response_text += f" Tags: {', '.join(tags)}."
 
             if callback:
-                await callback(Content(text=response_text, actions=["UPDATE_CONTACT_INFO"]))
+                await callback(Content(text=response_text, actions=["UPDATE_CONTACT"]))
 
             return ActionResult(
                 text=response_text,
@@ -165,20 +165,7 @@ class UpdateContactAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return [
-            [
-                ActionExample(
-                    name="{{name1}}", content=Content(text="Update John Doe and add the tech tag")
-                ),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(
-                        text="I've updated John Doe's contact information. Tags: tech.",
-                        actions=["UPDATE_CONTACT_INFO"],
-                    ),
-                ),
-            ],
-        ]
+        return _convert_spec_examples()
 
 
 update_contact_action = Action(

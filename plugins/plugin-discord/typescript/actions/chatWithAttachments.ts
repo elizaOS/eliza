@@ -22,6 +22,7 @@ import {
   attachmentIdsTemplate,
   attachmentSummarizationTemplate as summarizationTemplate,
 } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 /**
  * Retrieves attachment IDs from a model using a prompt generated from the current state and a template.
@@ -69,27 +70,12 @@ const getAttachmentIds = async (
  * @property {Object[]} examples - Examples demonstrating how to use the action with message content and expected responses
  */
 
+const spec = requireActionSpec("CHAT_WITH_ATTACHMENTS");
+
 export const chatWithAttachments: Action = {
-  name: "CHAT_WITH_ATTACHMENTS",
-  similes: [
-    "CHAT_WITH_ATTACHMENT",
-    "SUMMARIZE_FILES",
-    "SUMMARIZE_FILE",
-    "SUMMARIZE_ATACHMENT",
-    "CHAT_WITH_PDF",
-    "ATTACHMENT_SUMMARY",
-    "RECAP_ATTACHMENTS",
-    "SUMMARIZE_FILE",
-    "SUMMARIZE_VIDEO",
-    "SUMMARIZE_AUDIO",
-    "SUMMARIZE_IMAGE",
-    "SUMMARIZE_DOCUMENT",
-    "SUMMARIZE_LINK",
-    "ATTACHMENT_SUMMARY",
-    "FILE_SUMMARY",
-  ],
-  description:
-    "Answer a user request informed by specific attachments based on their IDs. If a user asks to chat with a PDF, or wants more specific information about a link or video or anything else they've attached, this is the action to use.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const room = await _runtime.getRoom(message.roomId);
 
@@ -331,68 +317,7 @@ ${currentSummary.trim()}
       return { success: false, error: "Empty response from chat with attachments action" };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Can you summarize the attachments b3e23, c4f67, and d5a89?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Sure thing! I'll pull up those specific attachments and provide a summary of their content.",
-          actions: ["CHAT_WITH_ATTACHMENTS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I need a technical summary of the PDFs I sent earlier - a1b2c3.pdf, d4e5f6.pdf, and g7h8i9.pdf",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll take a look at those specific PDF attachments and put together a technical summary for you. Give me a few minutes to review them.",
-          actions: ["CHAT_WITH_ATTACHMENTS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Can you watch this video for me and tell me which parts you think are most relevant to the report I'm writing? (the one I attached in my last message)",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "sure, no problem.",
-          actions: ["CHAT_WITH_ATTACHMENTS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "can you read my blog post and give me a detailed breakdown of the key points I made, and then suggest a handful of posts to promote it?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "great idea, give me a minute",
-          actions: ["CHAT_WITH_ATTACHMENTS"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default chatWithAttachments;

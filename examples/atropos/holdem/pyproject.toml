@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-atropos-holdem"
-version = "1.0.0"
+version = "2.0.0"
 description = "Texas Hold'em poker environment for ElizaOS RL training with Atropos"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [
-    { name = "ElizaOS Team" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["elizaos", "atropos", "reinforcement-learning", "poker", "texas-holdem"]
 classifiers = [

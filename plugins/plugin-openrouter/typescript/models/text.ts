@@ -1,4 +1,9 @@
-import type { GenerateTextParams, IAgentRuntime, TextStreamResult } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  JsonValue,
+  TextStreamResult,
+} from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { generateText, streamText } from "ai";
 
@@ -15,10 +20,12 @@ function buildGenerateParams(
   const temperature = params.temperature ?? 0.7;
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;
+  const paramsWithMax = params as GenerateTextParams & {
+    maxOutputTokens?: number;
+    maxTokens?: number;
+  };
   const resolvedMaxOutput =
-    (params as Record<string, unknown>).maxOutputTokens ??
-    (params as Record<string, unknown>).maxTokens ??
-    8192;
+    paramsWithMax.maxOutputTokens ?? paramsWithMax.maxTokens ?? 8192;
 
   const openrouter = createOpenRouterProvider(runtime);
   const modelName =
@@ -42,7 +49,7 @@ function buildGenerateParams(
 function handleStreamingGeneration(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
-  generateParams: Record<string, unknown>,
+  generateParams: Record<string, JsonValue | object>,
   prompt: string,
   _modelLabel: string
 ): TextStreamResult {

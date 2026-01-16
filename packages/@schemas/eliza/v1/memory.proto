@@ -6,30 +6,12 @@ package eliza.v1;
 import "eliza/v1/primitives.proto";
 import "google/protobuf/struct.proto";
 
-// Memory type enumeration for built-in memory types
-enum MemoryType {
-  MEMORY_TYPE_UNSPECIFIED = 0;
-  MEMORY_TYPE_DOCUMENT = 1; // Whole document or large text
-  MEMORY_TYPE_FRAGMENT = 2; // Chunk of a document for embedding/search
-  MEMORY_TYPE_MESSAGE = 3; // Conversational message
-  MEMORY_TYPE_DESCRIPTION = 4; // Descriptive information
-  MEMORY_TYPE_CUSTOM = 5; // Custom memory type
-}
-
-// Memory scope - visibility and accessibility
-enum MemoryScope {
-  MEMORY_SCOPE_UNSPECIFIED = 0;
-  MEMORY_SCOPE_SHARED = 1; // Accessible to multiple entities
-  MEMORY_SCOPE_PRIVATE = 2; // Specific to a single entity
-  MEMORY_SCOPE_ROOM = 3; // Scoped to a specific room
-}
-
 // Base memory metadata
 message BaseMetadata {
-  MemoryType type = 1;
+  string type = 1;
   optional string source = 2;
   optional string source_id = 3;
-  optional MemoryScope scope = 4;
+  optional string scope = 4;
   optional int64 timestamp = 5;
   repeated string tags = 6;
 }
@@ -49,6 +31,8 @@ message FragmentMetadata {
 // Message-specific metadata
 message MessageMetadata {
   BaseMetadata base = 1;
+  optional string trajectory_step_id = 2;
+  optional string benchmark_context = 3;
 }
 
 // Description-specific metadata

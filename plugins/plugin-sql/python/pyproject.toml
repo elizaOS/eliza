@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-sql"
-version = "1.0.0"
+version = "2.0.0"
 description = "elizaOS SQL Plugin - PostgreSQL and PGLite database adapters for elizaOS"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agents", "database", "postgresql", "pglite", "elizaos"]
 classifiers = [

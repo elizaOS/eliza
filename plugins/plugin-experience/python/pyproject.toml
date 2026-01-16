@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-experience"
-version = "1.2.0"
+version = "2.0.0"
 description = "elizaOS Experience Plugin - records and recalls transferable agent learnings"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-authors = [{ name = "elizaOS Team", email = "team@elizaos.ai" }]
+authors = [{ name = "elizaOS Contributors" }]
 keywords = ["ai", "agents", "experience", "learning", "elizaos"]
 classifiers = [
     "Development Status :: 4 - Beta",

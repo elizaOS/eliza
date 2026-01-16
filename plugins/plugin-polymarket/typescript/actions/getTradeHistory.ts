@@ -14,6 +14,7 @@ import { getTradeHistoryTemplate } from "../templates";
 import type { GetTradesParams, TradeEntry, TradeHistoryActivityData } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 /**
  * Type assertion helper for trades from Polymarket API.
@@ -34,13 +35,16 @@ interface LLMTradeHistoryResult {
  * Get Trade History Action for Polymarket.
  * Retrieves the authenticated user's trade history.
  */
+const spec = requireActionSpec("GET_TRADE_HISTORY");
+
 export const getTradeHistoryAction: Action = {
-  name: "POLYMARKET_GET_TRADE_HISTORY",
-  similes: ["MY_TRADES", "TRADE_LOG", "FILLED_ORDERS", "PAST_TRADES", "TRADING_HISTORY"].map(
-    (s) => `POLYMARKET_${s}`
-  ),
+  name: spec.name,
+  similes: spec.similes ? spec.similes.map((s) => `POLYMARKET_${s}`) : [],
   description:
-    "Retrieves the authenticated user's filled trade history, optionally filtered by market or asset. Use when the user asks for past trades or fills. Do not use for open orders or a specific order status; use getActiveOrdersAction or getOrderDetailsAction. Parameters: market (optional slug), assetId (optional token ID), limit (optional). Requires full CLOB credentials.",
+    `${spec.description} Retrieves filled trade history, optionally filtered by market or asset. ` +
+    "Use when the user asks for past trades or fills. Do not use for open orders or a specific " +
+    "order status; use getActiveOrdersAction or getOrderDetailsAction. Parameters: market (optional slug), " +
+    "assetId (optional token ID), limit (optional). Requires full CLOB credentials.",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     runtime.logger.info(

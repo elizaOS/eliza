@@ -1,4 +1,7 @@
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("SWAP_TOKENS");
 import { composePromptFromState, logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import {
   createConfig,
@@ -694,8 +697,8 @@ async function buildSwapDetails(
 }
 
 export const swapAction = {
-  name: "EVM_SWAP_TOKENS",
-  description: "Swap tokens on the same chain",
+  name: spec.name,
+  description: spec.description,
 
   handler: async (
     runtime: IAgentRuntime,
@@ -770,5 +773,5 @@ export const swapAction = {
     ],
   ],
 
-  similes: ["TOKEN_SWAP", "EXCHANGE_TOKENS", "TRADE_TOKENS"],
+  similes: spec.similes ? [...spec.similes] : [],
 };

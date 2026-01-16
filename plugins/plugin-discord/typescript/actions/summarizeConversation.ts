@@ -20,6 +20,7 @@ import {
   splitChunks,
   trimTokens,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 /**
  * Normalizes a numeric timestamp to milliseconds.
@@ -197,17 +198,12 @@ const getDateRange = async (
  * @property {Function} handler - Asynchronous function to handle the action.
  * @property {ActionExample[][]} examples - Array of examples demonstrating the action.
  */
+const spec = requireActionSpec("SUMMARIZE_CONVERSATION");
+
 export const summarize: Action = {
-  name: "SUMMARIZE_CONVERSATION",
-  similes: [
-    "RECAP",
-    "RECAP_CONVERSATION",
-    "SUMMARIZE_CHAT",
-    "SUMMARIZATION",
-    "CHAT_SUMMARY",
-    "CONVERSATION_SUMMARY",
-  ],
-  description: "Summarizes the conversation and attachments.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (message.content.source !== "discord") {
       return false;
@@ -451,74 +447,7 @@ ${currentSummary.trim()}
       return { success: false, error: "Empty response from summarize conversation action" };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "```js\nconst x = 10\n```",
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "can you give me a detailed report on what we're talking about?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "sure, no problem, give me a minute to get that together for you",
-          actions: ["SUMMARIZE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "please summarize the conversation we just had and include this blogpost i'm linking (Attachment: b3e12)",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "sure, give me a sec",
-          actions: ["SUMMARIZE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Can you summarize what moon and avf are talking about?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Yeah, just hold on a second while I get that together for you...",
-          actions: ["SUMMARIZE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "i need to write a blog post about farming, can you summarize the discussion from a few hours ago?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "no problem, give me a few minutes to read through everything",
-          actions: ["SUMMARIZE"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default summarize;

@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-openai"
-version = "1.0.0"
+version = "2.0.0"
 description = "elizaOS OpenAI Plugin - OpenAI API integration for text, image, audio, and embeddings"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agents", "openai", "gpt", "embeddings", "elizaos", "llm"]
 classifiers = [

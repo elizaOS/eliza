@@ -1,0 +1,154 @@
+name: Publish Workflow Package
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Publish NPM Packages"]
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  wait-for-computeruse:
+    name: Wait for @mediar-ai/computeruse to be published
+    runs-on: ubuntu-latest
+    # Only run if triggered by successful workflow_run
+    if: |
+      github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Extract version from package.json
+        id: version
+        run: |
+          # Get version from package.json peerDependencies
+          VERSION=$(node -p "require('./packages/workflow/package.json').peerDependencies['@mediar-ai/computeruse'].replace('^', '')")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Waiting for @mediar-ai/computeruse@$VERSION"
+
+      - name: Wait for @mediar-ai/computeruse to be available
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Waiting for @mediar-ai/computeruse@$VERSION to be available on NPM..."
+
+          for i in {1..30}; do
+            if npm view "@mediar-ai/computeruse@$VERSION" version >/dev/null 2>&1; then
+              echo "✅ @mediar-ai/computeruse@$VERSION is available!"
+              exit 0
+            fi
+            echo "⏳ Waiting for package... (attempt $i/30)"
+            sleep 20
+          done
+
+          echo "❌ Timeout: @mediar-ai/computeruse@$VERSION not found after 10 minutes"
+          exit 1
+
+  publish:
+    name: Publish @mediar-ai/workflow to NPM
+    runs-on: ubuntu-latest
+    needs: [wait-for-computeruse]
+    # Run on workflow_dispatch regardless of dependency
+    if: always() && (needs.wait-for-computeruse.result == 'success' || github.event_name == 'workflow_dispatch')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: |
+          cd packages/workflow
+          npm install
+
+      - name: Build TypeScript
+        run: |
+          cd packages/workflow
+          npm run build
+
+      - name: Verify build output
+        run: |
+          cd packages/workflow
+          echo "Verifying dist/ directory exists:"
+          ls -la dist/ || echo "dist/ directory not found"
+          if [ -f "dist/index.js" ] && [ -f "dist/index.d.ts" ]; then
+            echo "✓ Build output verified"
+          else
+            echo "✗ ERROR: Build output missing"
+            exit 1
+          fi
+
+      - name: Publish to NPM
+        run: |
+          cd packages/workflow
+
+          # Extract package info
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+
+          echo "Publishing package: $PACKAGE_NAME@$PACKAGE_VERSION"
+
+          # Check if this version already exists on NPM
+          if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "Version $PACKAGE_VERSION of $PACKAGE_NAME already exists on NPM, skipping..."
+          else
+            echo "Publishing $PACKAGE_NAME@$PACKAGE_VERSION..."
+
+            if npm publish --access public; then
+              echo "✓ Successfully published $PACKAGE_NAME@$PACKAGE_VERSION"
+            else
+              echo "✗ Failed to publish $PACKAGE_NAME"
+              exit 1
+            fi
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify publication
+        continue-on-error: true
+        run: |
+          cd packages/workflow
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+
+          echo "=== Verifying publication ==="
+          echo "Waiting for NPM propagation..."
+          sleep 20
+
+          # Try multiple times to verify package
+          package_found=false
+          for attempt in 1 2 3; do
+            echo "Checking if package is available (attempt $attempt/3)..."
+            if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+              echo "✓ Package $PACKAGE_NAME@$PACKAGE_VERSION is available on NPM"
+              package_found=true
+              break
+            else
+              echo "⏳ Package not found yet, waiting..."
+              if [ $attempt -lt 3 ]; then
+                sleep 20
+              fi
+            fi
+          done
+
+          if [ "$package_found" = true ]; then
+            echo ""
+            echo "🎉 Package $PACKAGE_NAME@$PACKAGE_VERSION has been published!"
+            echo "📦 NPM: https://www.npmjs.com/package/$PACKAGE_NAME"
+            echo ""
+          else
+            echo "⚠️  Package verification failed after multiple attempts"
+            echo "This might be due to NPM propagation delays"
+            echo "Check manually: npm view $PACKAGE_NAME@$PACKAGE_VERSION"
+          fi

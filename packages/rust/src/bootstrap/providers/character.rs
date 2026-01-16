@@ -1,12 +1,18 @@
 //! CHARACTER provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("CHARACTER"));
 
 /// Provider for character information.
 pub struct CharacterProvider;
@@ -14,15 +20,15 @@ pub struct CharacterProvider;
 #[async_trait]
 impl Provider for CharacterProvider {
     fn name(&self) -> &'static str {
-        "CHARACTER"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Provides the agent's character definition and personality information"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        false
+        SPEC.dynamic.unwrap_or(false)
     }
 
     async fn get(
@@ -87,4 +93,3 @@ impl Provider for CharacterProvider {
             .with_data("bio", character.bio.clone()))
     }
 }
-

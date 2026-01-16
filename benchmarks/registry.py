@@ -220,6 +220,26 @@ def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_mind2web_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="mind2web:root")
+    step_acc = expect_float(
+        get_required(root, "overall_step_accuracy", ctx="mind2web:root"),
+        ctx="mind2web:overall_step_accuracy",
+    )
+    return ScoreExtraction(
+        score=step_acc,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_step_accuracy": step_acc,
+            "overall_element_accuracy": get_optional(root, "overall_element_accuracy") or 0,
+            "overall_operation_accuracy": get_optional(root, "overall_operation_accuracy") or 0,
+            "overall_task_success_rate": get_optional(root, "overall_task_success_rate") or 0,
+            "total_tasks": get_optional(root, "total_tasks") or 0,
+        },
+    )
+
+
 def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     python = sys.executable
 
@@ -425,6 +445,26 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _swe_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="swe-bench-*.json")
 
+    def _mind2web_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        args = [python, "-m", "benchmarks.mind2web", "--output", str(output_dir)]
+        if model.provider:
+            args.extend(["--provider", model.provider])
+        if model.temperature is not None:
+            args.extend(["--temperature", str(model.temperature)])
+        max_tasks = extra.get("max_tasks")
+        if isinstance(max_tasks, int) and max_tasks > 0:
+            args.extend(["--max-tasks", str(max_tasks)])
+        sample = extra.get("sample")
+        if sample is True:
+            args.append("--sample")
+        real_llm = extra.get("real_llm")
+        if real_llm is True:
+            args.append("--real-llm")
+        return args
+
+    def _mind2web_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="mind2web-results*.json")
+
     return [
         BenchmarkDefinition(
             id="bfcl",
@@ -565,6 +605,20 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_swe_cmd,
             locate_result=_swe_result,
             extract_score=_score_from_swebench_json,
+        ),
+        BenchmarkDefinition(
+            id="mind2web",
+            display_name="Mind2Web",
+            description="Web agent navigation benchmark (OSU-NLP-Group)",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=("GROQ_API_KEY",),
+                paths=(),
+                notes="Uses sample tasks by default; --hf loads from HuggingFace. Supports Groq, OpenAI, Anthropic.",
+            ),
+            build_command=_mind2web_cmd,
+            locate_result=_mind2web_result,
+            extract_score=_score_from_mind2web_json,
         ),
     ]
 

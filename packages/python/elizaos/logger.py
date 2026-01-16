@@ -68,8 +68,8 @@ def _redact_value(value: object, *, redact_keys: frozenset[str]) -> object:
 
 
 def _redaction_processor(
-    _logger: logging.Logger, _method_name: str, event_dict: dict[str, object]
-) -> dict[str, object]:
+    _logger: logging.Logger, _method_name: str, event_dict: structlog.types.EventDict
+) -> structlog.types.EventDict:
     enabled = _parse_bool(os.environ.get("ELIZA_LOG_REDACT"), default=True)
     if not enabled:
         return event_dict

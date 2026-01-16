@@ -1,4 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, ProviderValue, State } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { logger } from "@elizaos/core";
 import {
   DEFAULT_CLOB_API_URL,
@@ -186,8 +187,10 @@ function formatActivityContextText(activityContext: ActivityContext): string {
   return lines.join("\n");
 }
 
+const spec = requireProviderSpec("polymarket");
+
 export const polymarketProvider: Provider = {
-  name: "POLYMARKET_PROVIDER",
+  name: spec.name,
   description: "Provides current Polymarket account state and trading context from the service cache",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {

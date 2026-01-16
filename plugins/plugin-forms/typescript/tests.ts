@@ -1,9 +1,11 @@
-import type { TestSuite } from "@elizaos/core";
+import type { TestCase, TestSuite } from "@elizaos/core";
 
 export const FormsPluginTestSuite: TestSuite = {
+  $typeName: "eliza.v1.TestSuite",
   name: "Forms Plugin Test Suite",
   tests: [
     {
+      $typeName: "eliza.v1.TestCase",
       name: "Create and complete a basic form",
       fn: async (runtime) => {
         const { FormsService } = await import("./services/forms-service.js");
@@ -25,5 +27,5 @@ export const FormsPluginTestSuite: TestSuite = {
         await formsService.cancelForm(form.id);
       },
     },
-  ],
-};
+  ] as TestCase[],
+} as TestSuite;

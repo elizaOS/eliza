@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("WORLD")
 
 
 async def get_world_context(
@@ -86,8 +90,8 @@ async def get_world_context(
 
 
 world_provider = Provider(
-    name="WORLD",
-    description="Provides information about the current world context including settings and members",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_world_context,
-    dynamic=True,
+    dynamic=_spec.get("dynamic", True),
 )

@@ -2,6 +2,7 @@ import * as readline from "node:readline";
 import {
   AgentRuntime,
   ChannelType,
+  createCharacter,
   type Character,
   createMessageMemory,
   stringToUuid,
@@ -11,10 +12,10 @@ import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 
-const character: Character = {
+const character: Character = createCharacter({
   name: "Eliza",
   bio: "A helpful AI assistant.",
-};
+});
 
 console.log("🚀 Starting Eliza...\n");
 

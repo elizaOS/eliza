@@ -14,6 +14,7 @@ import {
 } from "@elizaos/core";
 import type { TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 
 const sendMessageTemplate = `You are helping to extract send message parameters.
@@ -35,17 +36,12 @@ Respond with a JSON object like:
 
 Only respond with the JSON object, no other text.`;
 
+const spec = requireActionSpec("SEND_MESSAGE");
+
 export const sendMessage: Action = {
-  name: "SEND_MESSAGE",
-  similes: [
-    "SEND_DISCORD_MESSAGE",
-    "POST_MESSAGE",
-    "SAY",
-    "CHAT",
-    "WRITE_MESSAGE",
-    "SEND_TO_CHANNEL",
-  ],
-  description: "Send a message to a Discord channel.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -188,38 +184,7 @@ export const sendMessage: Action = {
       });
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "send a message saying hello everyone",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll send that message to the channel.",
-          actions: ["SEND_MESSAGE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "post an announcement in general channel",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll post that announcement to the general channel.",
-          actions: ["SEND_MESSAGE"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default sendMessage;

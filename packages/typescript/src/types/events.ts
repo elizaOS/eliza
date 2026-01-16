@@ -80,7 +80,7 @@ export enum PlatformPrefix {
  */
 export interface EventPayload {
   runtime: IAgentRuntime;
-  source: string;
+  source?: string;
   onComplete?: () => void;
 }
 
@@ -104,7 +104,7 @@ export interface EntityPayload extends EventPayload {
     originalId: string;
     username: string;
     displayName?: string;
-    [key: string]: unknown;
+    type?: string;
   };
 }
 
@@ -121,8 +121,6 @@ export interface MessagePayload extends EventPayload {
  */
 export interface ChannelClearedPayload extends EventPayload {
   roomId: UUID;
-  channelId: string;
-  memoryCount: number;
 }
 
 /**
@@ -130,8 +128,9 @@ export interface ChannelClearedPayload extends EventPayload {
  */
 export interface InvokePayload extends EventPayload {
   worldId: UUID;
-  userId: string;
   roomId: UUID;
+  userId?: UUID;
+  source?: string;
   callback?: HandlerCallback;
 }
 
@@ -143,11 +142,11 @@ export interface RunEventPayload extends EventPayload {
   messageId: UUID;
   roomId: UUID;
   entityId: UUID;
-  startTime: number;
+  startTime: number | bigint;
   status: "started" | "completed" | "timeout";
-  endTime?: number;
-  duration?: number;
-  error?: string;
+  endTime?: number | bigint;
+  duration?: number | bigint;
+  error?: string | Error;
 }
 
 /**
@@ -166,7 +165,7 @@ export interface ActionEventPayload extends EventPayload {
 export interface EvaluatorEventPayload extends EventPayload {
   evaluatorId: UUID;
   evaluatorName: string;
-  startTime?: number;
+  startTime?: number | bigint;
   completed?: boolean;
   error?: Error;
 }
@@ -175,9 +174,7 @@ export interface EvaluatorEventPayload extends EventPayload {
  * Model event payload type
  */
 export interface ModelEventPayload extends EventPayload {
-  provider: string;
   type: ModelTypeName;
-  prompt: string;
   tokens?: {
     prompt: number;
     completion: number;
@@ -191,11 +188,11 @@ export interface ModelEventPayload extends EventPayload {
 export interface EmbeddingGenerationPayload extends EventPayload {
   memory: Memory;
   priority?: "high" | "normal" | "low";
-  retryCount?: number;
-  maxRetries?: number;
   embedding?: number[];
   error?: Error | string;
   runId?: UUID;
+  retryCount?: number;
+  maxRetries?: number;
 }
 
 /**

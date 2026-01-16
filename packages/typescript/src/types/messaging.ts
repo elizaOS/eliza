@@ -1,3 +1,9 @@
+import type {
+  MessageResult as ProtoMessageResult,
+  MessageStreamChunkPayload as ProtoMessageStreamChunkPayload,
+  MessageStreamErrorPayload as ProtoMessageStreamErrorPayload,
+  TargetInfo as ProtoTargetInfo,
+} from "./proto.js";
 import type { Memory } from "./memory";
 import type { Content, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -5,14 +11,9 @@ import type { IAgentRuntime } from "./runtime";
 /**
  * Information describing the target of a message.
  */
-export interface TargetInfo {
-  source: string; // Platform identifier (e.g., 'discord', 'telegram', 'websocket-api')
-  roomId?: UUID; // Target room ID (platform-specific or runtime-specific)
-  channelId?: string; // Platform-specific channel/chat ID
-  serverId?: string; // Platform-specific server/guild ID
-  entityId?: UUID; // Target user ID (for DMs)
-  threadId?: string; // Platform-specific thread ID (e.g., Telegram topics)
-  // Add other relevant platform-specific identifiers as needed
+export interface TargetInfo extends ProtoTargetInfo {
+  roomId?: UUID;
+  entityId?: UUID;
 }
 
 /**
@@ -59,16 +60,9 @@ export type MessageStreamEventType =
  * Payload for messageStreamChunk event
  * Uses camelCase for client-facing WebSocket events (JS convention)
  */
-export interface MessageStreamChunkPayload {
-  /** ID of the message being streamed */
+export interface MessageStreamChunkPayload
+  extends Omit<ProtoMessageStreamChunkPayload, "messageId" | "agentId"> {
   messageId: UUID;
-  /** The text chunk */
-  chunk: string;
-  /** Chunk index (0-based) */
-  index: number;
-  /** Channel ID where the message is being sent */
-  channelId: string;
-  /** Agent ID that is responding */
   agentId: UUID;
 }
 
@@ -76,17 +70,10 @@ export interface MessageStreamChunkPayload {
  * Payload for messageStreamError event
  * Uses camelCase for client-facing WebSocket events (JS convention)
  */
-export interface MessageStreamErrorPayload {
-  /** ID of the message that failed */
+export interface MessageStreamErrorPayload
+  extends Omit<ProtoMessageStreamErrorPayload, "messageId" | "agentId"> {
   messageId: UUID;
-  /** Channel ID */
-  channelId: string;
-  /** Agent ID */
   agentId: UUID;
-  /** Error message */
-  error: string;
-  /** Partial text generated before the error (if any) */
-  partialText?: string;
 }
 
 /**
@@ -148,23 +135,12 @@ export interface MessageHandlerOptions {
  * Result of sending a message to an agent (User → Agent)
  * Follows the core pattern: ActionResult, ProviderResult, GenerateTextResult, etc.
  */
-export interface MessageResult {
-  /** ID of the user message */
+export interface MessageResult
+  extends Omit<
+    ProtoMessageResult,
+    "messageId" | "userMessage" | "agentResponses"
+  > {
   messageId: UUID;
-
-  /** The user message that was created (only in sync mode) */
   userMessage?: Memory;
-
-  /**
-   * Agent responses (only in sync mode)
-   * Empty in async mode - use onResponse callback instead
-   */
   agentResponses?: Content[];
-
-  /** Usage information for billing (only in sync mode) */
-  usage?: {
-    inputTokens: number;
-    outputTokens: number;
-    model: string;
-  };
 }

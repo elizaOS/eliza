@@ -7,6 +7,7 @@ import type {
   ActionParameterSchema,
   ActionParameters,
   ActionParameterValue,
+  JsonValue,
 } from "./types";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
@@ -159,11 +160,19 @@ const formatSelectedExamples = (examples: ActionExample[][]): string => {
     .join("\n");
 };
 
+function shuffleActions<T>(items: T[]): T[] {
+  const shuffled = [...items];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 export function formatActionNames(actions: Action[]): string {
   if (!actions || !actions.length) return "";
 
-  return [...actions]
-    .sort(() => Math.random() - 0.5)
+  return shuffleActions(actions)
     .map((action) => action.name)
     .join(", ");
 }
@@ -171,8 +180,7 @@ export function formatActionNames(actions: Action[]): string {
 export function formatActions(actions: Action[]): string {
   if (!actions || !actions.length) return "";
 
-  return [...actions]
-    .sort(() => Math.random() - 0.5)
+  return shuffleActions(actions)
     .map((action) => {
       let actionText = `- **${action.name}**: ${action.description || "No description available"}`;
 
@@ -401,7 +409,8 @@ type ValidatableParamValue =
   | ActionParameterValue
   | ActionParameters
   | ActionParameterValue[]
-  | ActionParameters[];
+  | ActionParameters[]
+  | JsonValue;
 
 function validateParamType(
   paramDef: ActionParameter,
@@ -414,8 +423,9 @@ function validateParamType(
       if (typeof value !== "string") {
         return `Parameter '${name}' expected string, got ${typeof value}`;
       }
-      if (schema.enum && !schema.enum.includes(value)) {
-        return `Parameter '${name}' value '${value}' not in allowed values: ${schema.enum.join(", ")}`;
+      const enumValues = schema.enumValues ?? schema.enum;
+      if (enumValues && !enumValues.includes(value)) {
+        return `Parameter '${name}' value '${value}' not in allowed values: ${enumValues.join(", ")}`;
       }
       if (schema.pattern) {
         const regex = new RegExp(schema.pattern);

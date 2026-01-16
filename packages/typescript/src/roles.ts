@@ -1,6 +1,8 @@
 import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
-import { type IAgentRuntime, Role, type UUID, type World } from "./types";
+import type { IAgentRuntime, Role, UUID, World } from "./types";
+
+const DEFAULT_ROLE: Role = "NONE";
 
 export interface ServerOwnershipState {
   servers: {
@@ -19,15 +21,15 @@ export async function getUserServerRole(
   const worldMetadata = world?.metadata;
   const roles = worldMetadata?.roles;
   if (!roles) {
-    return Role.NONE;
+    return DEFAULT_ROLE;
   }
 
   const role = roles[entityId as UUID];
   if (role) {
-    return role as Role;
+    return role;
   }
 
-  return Role.NONE;
+  return DEFAULT_ROLE;
 }
 
 export async function findWorldsForOwner(

@@ -1,16 +1,21 @@
 //! EVALUATORS provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 use crate::generated::action_docs::ALL_EVALUATOR_DOCS_JSON;
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("EVALUATORS"));
 
 #[derive(Debug, Clone, Deserialize)]
 struct EvaluatorDocsRoot {

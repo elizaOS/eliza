@@ -13,6 +13,7 @@ import {
 import {
   AgentRuntime,
   ChannelType,
+  createCharacter,
   type Character,
   createMessageMemory,
   stringToUuid,
@@ -51,13 +52,13 @@ interface InfoResponse {
 
 // Character configuration from environment
 function getCharacter(): Character {
-  return {
+  return createCharacter({
     name: process.env.CHARACTER_NAME ?? "Eliza",
     bio: process.env.CHARACTER_BIO ?? "A helpful AI assistant.",
     system:
       process.env.CHARACTER_SYSTEM ??
       "You are a helpful, concise AI assistant. Respond thoughtfully to user messages.",
-  };
+  });
 }
 
 // Singleton runtime instance
@@ -226,7 +227,7 @@ function handleInfo(): InfoResponse {
     ? bio.join(" ")
     : (bio ?? "A helpful AI assistant.");
   return {
-    name: character.name,
+    name: character.name ?? "elizaos",
     bio: bioStr,
     version: "1.0.0",
     powered_by: "elizaOS",

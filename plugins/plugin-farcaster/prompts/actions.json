@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "name": "user",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "user",
+      "description": "",
+      "parameters": []
+    }
+  ]
+}

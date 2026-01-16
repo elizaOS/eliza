@@ -11,8 +11,16 @@ describe("generateText", () => {
   const mockCharacter: Character = {
     id: stringToUuid("test-character"),
     name: "TestBot",
-    bio: "A helpful AI assistant for testing",
+    bio: ["A helpful AI assistant for testing"],
     system: "You are a friendly and helpful assistant.",
+    templates: {},
+    messageExamples: [],
+    postExamples: [],
+    topics: [],
+    adjectives: [],
+    knowledge: [],
+    plugins: [],
+    secrets: {},
     style: {
       all: ["Be concise", "Be friendly"],
       chat: ["Use casual language"],
@@ -188,7 +196,15 @@ describe("generateText", () => {
     const minimalCharacter: Character = {
       id: stringToUuid("minimal"),
       name: "MinimalBot",
-      bio: "",
+      bio: [],
+      templates: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: [],
+      adjectives: [],
+      knowledge: [],
+      plugins: [],
+      secrets: {},
     };
 
     runtime = new AgentRuntime({
@@ -214,8 +230,16 @@ describe("generateText", () => {
     const characterNoStyle: Character = {
       id: stringToUuid("no-style"),
       name: "NoStyleBot",
-      bio: "A bot without style",
+      bio: ["A bot without style"],
       system: "System prompt",
+      templates: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: [],
+      adjectives: [],
+      knowledge: [],
+      plugins: [],
+      secrets: {},
       style: {
         all: [],
         chat: [],
@@ -305,7 +329,15 @@ describe("generateText", () => {
     const characterNoName: Character = {
       id: stringToUuid("no-name"),
       name: "",
-      bio: "Test bio",
+      bio: ["Test bio"],
+      templates: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: [],
+      adjectives: [],
+      knowledge: [],
+      plugins: [],
+      secrets: {},
     };
 
     runtime = new AgentRuntime({
@@ -327,7 +359,17 @@ describe("generateText", () => {
   it("should handle minimal character for user auto-population", async () => {
     // Create runtime with minimal character (no name property set)
     runtime = new AgentRuntime({
-      character: { bio: "Test" } as Character,
+      character: {
+        bio: ["Test"],
+        templates: {},
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        adjectives: [],
+        knowledge: [],
+        plugins: [],
+        secrets: {},
+      } as Character,
     });
     mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;

@@ -1,10 +1,10 @@
 [package]
 name = "eliza-plugin-simple-voice"
-version = "0.1.0"
+version = "2.0.0"
 edition = "2021"
 description = "Retro 1980s SAM Text-to-Speech plugin for ElizaOS agents"
 license = "MIT"
-authors = ["ElizaOS Team"]
+authors = ["elizaOS Contributors"]
 repository = "https://github.com/ai16z/eliza"
 keywords = ["elizaos", "plugin", "tts", "text-to-speech", "sam", "retro"]
 categories = ["multimedia::audio", "api-bindings"]
