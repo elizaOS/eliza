@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "FEEDITEMS",
+      "description": "Provides recent news and articles from subscribed RSS feeds",
+      "dynamic": true
+    }
+  ]
+}

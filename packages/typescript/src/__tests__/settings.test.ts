@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanupTestRuntime,
   createTestRuntime,
-} from "../bootstrap/__tests__/test-utils";
+} from "./test-utils";
 import * as entities from "../entities";
 import * as logger_module from "../logger";
 import {
@@ -736,34 +736,18 @@ describe("settings utilities", () => {
   });
 
   describe("encryptedCharacter", () => {
-    it("should encrypt character settings.secrets", () => {
-      const character: Character = {
-        id: "char-123" as UUID,
-        name: "Test Character",
-        bio: "Test character bio",
-        settings: {
-          secrets: {
-            API_KEY: "secret-api-key",
-            PASSWORD: "secret-password",
-          },
-        },
-      };
-
-      const encrypted = encryptedCharacter(character);
-
-      const encryptedSettings = encrypted.settings;
-      const encryptedSettingsSecrets = encryptedSettings?.secrets;
-      expect(encryptedSettingsSecrets?.API_KEY).not.toBe("secret-api-key");
-      expect(encryptedSettingsSecrets?.API_KEY).toContain(":");
-      expect(encryptedSettingsSecrets?.PASSWORD).not.toBe("secret-password");
-      expect(encryptedSettingsSecrets?.PASSWORD).toContain(":");
-    });
-
     it("should encrypt character.secrets", () => {
       const character: Character = {
         id: "char-123" as UUID,
         name: "Test Character",
-        bio: "Test character bio",
+        bio: ["Test character bio"],
+        templates: {},
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        adjectives: [],
+        knowledge: [],
+        plugins: [],
         secrets: {
           TOKEN: "secret-token",
           KEY: "secret-key",
@@ -783,7 +767,15 @@ describe("settings utilities", () => {
       const character: Character = {
         id: "char-123" as UUID,
         name: "Test Character",
-        bio: "Test character bio",
+        bio: ["Test character bio"],
+        templates: {},
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        adjectives: [],
+        knowledge: [],
+        plugins: [],
+        secrets: {},
       };
 
       const encrypted = encryptedCharacter(character);
@@ -795,7 +787,14 @@ describe("settings utilities", () => {
       const character: Character = {
         id: "char-123" as UUID,
         name: "Test Character",
-        bio: "Test character bio",
+        bio: ["Test character bio"],
+        templates: {},
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        adjectives: [],
+        knowledge: [],
+        plugins: [],
         secrets: {
           TOKEN: "secret-token",
         },
@@ -811,34 +810,19 @@ describe("settings utilities", () => {
   });
 
   describe("decryptedCharacter", () => {
-    it("should decrypt character settings.secrets", () => {
-      const salt = getSalt();
-      const character: Character = {
-        id: "char-123" as UUID,
-        name: "Test Character",
-        bio: "Test character bio",
-        settings: {
-          secrets: {
-            API_KEY: encryptStringValue("secret-api-key", salt),
-            PASSWORD: encryptStringValue("secret-password", salt),
-          },
-        },
-      };
-
-      const decrypted = decryptedCharacter(character, runtime);
-
-      const decryptedSettings = decrypted.settings;
-      const decryptedSettingsSecrets = decryptedSettings?.secrets;
-      expect(decryptedSettingsSecrets?.API_KEY).toBe("secret-api-key");
-      expect(decryptedSettingsSecrets?.PASSWORD).toBe("secret-password");
-    });
-
     it("should decrypt character.secrets", () => {
       const salt = getSalt();
       const character: Character = {
         id: "char-123" as UUID,
         name: "Test Character",
-        bio: "Test character bio",
+        bio: ["Test character bio"],
+        templates: {},
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        adjectives: [],
+        knowledge: [],
+        plugins: [],
         secrets: {
           TOKEN: encryptStringValue("secret-token", salt),
           KEY: encryptStringValue("secret-key", salt),
@@ -856,7 +840,15 @@ describe("settings utilities", () => {
       const character: Character = {
         id: "char-123" as UUID,
         name: "Test Character",
-        bio: "Test character bio",
+        bio: ["Test character bio"],
+        templates: {},
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        adjectives: [],
+        knowledge: [],
+        plugins: [],
+        secrets: {},
       };
 
       const decrypted = decryptedCharacter(character, runtime);
@@ -948,6 +940,14 @@ ANOTHER_KEY=another-value`;
         const character: Character = {
           name: "TestChar",
           bio: ["Test bio"],
+          templates: {},
+          messageExamples: [],
+          postExamples: [],
+          topics: [],
+          adjectives: [],
+          knowledge: [],
+          plugins: [],
+          secrets: {},
           settings: {
             discord: {
               shouldIgnoreBotMessages: true,
@@ -978,12 +978,9 @@ ANOTHER_KEY=another-value`;
         // Verify .env values are NOT merged into settings root (no duplication)
         expect(characterSettings?.ANOTHER_KEY).toBeUndefined();
 
-        // Verify .env values are merged into settings.secrets
-        const characterSettingsSecrets =
-          characterSettings &&
-          (characterSettings.secrets as Record<string, string>);
-        expect(characterSettingsSecrets?.SIMPLE_KEY).toBe("simple-value");
-        expect(characterSettingsSecrets?.ANOTHER_KEY).toBe("another-value");
+        // Verify .env values are merged into root secrets
+        expect(character.secrets?.SIMPLE_KEY).toBe("simple-value");
+        expect(character.secrets?.ANOTHER_KEY).toBe("another-value");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(testDir, { recursive: true, force: true });

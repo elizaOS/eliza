@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.generated.spec_helpers import require_action_spec
+from elizaos.prompts import SCHEDULE_FOLLOW_UP_TEMPLATE
 from elizaos.types import (
     Action,
     ActionExample,
@@ -22,41 +24,35 @@ if TYPE_CHECKING:
         State,
     )
 
+# Get text content from centralized specs
+_spec = require_action_spec("SCHEDULE_FOLLOW_UP")
 
-SCHEDULE_FOLLOW_UP_TEMPLATE = """# Schedule Follow-up
 
-Current message: {{message}}
-Sender: {{senderName}} (ID: {{senderId}})
-Current Date/Time: {{currentDateTime}}
-
-Extract follow-up information:
-1. Who to follow up with (name or entity reference)
-2. When (date/time or relative time like "tomorrow", "next week")
-3. Reason
-4. Priority (high, medium, low)
-
-<response>
-<contactName>Name of the contact to follow up with</contactName>
-<entityId>ID if known, otherwise leave empty</entityId>
-<scheduledAt>ISO datetime for the follow-up</scheduledAt>
-<reason>Reason for the follow-up</reason>
-<priority>high, medium, or low</priority>
-<message>Optional message or notes for the follow-up</message>
-</response>"""
+def _convert_spec_examples() -> list[list[ActionExample]]:
+    """Convert spec examples to ActionExample format."""
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
 
 
 @dataclass
 class ScheduleFollowUpAction:
-    name: str = "SCHEDULE_FOLLOW_UP"
-    similes: list[str] = field(
-        default_factory=lambda: [
-            "follow up with",
-            "remind me to contact",
-            "schedule a check-in",
-            "set a reminder for",
-        ]
-    )
-    description: str = "Schedule a follow-up reminder for a contact"
+    name: str = _spec["name"]
+    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
+    description: str = _spec["description"]
 
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
@@ -155,21 +151,7 @@ class ScheduleFollowUpAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return [
-            [
-                ActionExample(
-                    name="{{name1}}",
-                    content=Content(text="Remind me to follow up with John next week"),
-                ),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(
-                        text="I've scheduled a follow-up with John for next week.",
-                        actions=["SCHEDULE_FOLLOW_UP"],
-                    ),
-                ),
-            ],
-        ]
+        return _convert_spec_examples()
 
 
 schedule_follow_up_action = Action(

@@ -1,4 +1,9 @@
-import type { IAgentRuntime, ModelTypeName, ObjectGenerationParams } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  JsonValue,
+  ModelTypeName,
+  ObjectGenerationParams,
+} from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateObject, type LanguageModel } from "ai";
 import { createOpenAIClient } from "../providers";
@@ -14,7 +19,7 @@ async function generateObjectByModelType(
   params: ObjectGenerationParams,
   modelType: ModelTypeName,
   getModelFn: ModelNameGetter
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, JsonValue>> {
   const openai = createOpenAIClient(runtime) as ChatModelFactory;
   const modelName = getModelFn(runtime);
 
@@ -47,19 +52,19 @@ async function generateObjectByModelType(
     throw new Error(`Object generation returned ${typeof object}, expected object`);
   }
 
-  return object as Record<string, unknown>;
+  return object as Record<string, JsonValue>;
 }
 
 export async function handleObjectSmall(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, JsonValue>> {
   return generateObjectByModelType(runtime, params, ModelType.OBJECT_SMALL, getSmallModel);
 }
 
 export async function handleObjectLarge(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, JsonValue>> {
   return generateObjectByModelType(runtime, params, ModelType.OBJECT_LARGE, getLargeModel);
 }

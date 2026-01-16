@@ -70,7 +70,7 @@ async function main(): Promise<void> {
   // Ensure the bot connects (uses env vars for host/port/auth/username/version).
   await runAction("MC_CONNECT", "{}");
 
-  // Enable the built-in runtime autonomy loop (bootstrap/autonomy/service.ts).
+  // Enable the built-in runtime autonomy loop (autonomy/service.ts).
   // This runs the full message pipeline (providers → LLM → actions → evaluators) on an interval.
   const autonomy = runtime.getService<AutonomyService>("AUTONOMY");
   if (autonomy) {

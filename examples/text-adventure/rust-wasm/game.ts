@@ -24,7 +24,7 @@ import * as clack from "@clack/prompts";
 import {
   AgentRuntime,
   ChannelType,
-  type Character,
+  createCharacter,
   createMessageMemory,
   stringToUuid,
   type UUID,
@@ -551,8 +551,8 @@ class Configuration {
 }
 
 class AdventureAgent {
-  private static createCharacter(): Character {
-    return {
+  private static createCharacter() {
+    return createCharacter({
       name: "Eliza the Adventurer",
       username: "eliza_adventurer",
       bio: [
@@ -569,7 +569,7 @@ class AdventureAgent {
         ],
         chat: ["Be descriptive about your reasoning"],
       },
-    };
+    });
   }
 
   static async initialize(): Promise<GameSession> {

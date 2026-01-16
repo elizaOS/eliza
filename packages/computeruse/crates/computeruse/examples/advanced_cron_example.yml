@@ -1,0 +1,26 @@
+---
+# Advanced cron example - runs every 1 second
+# Format: "SECOND MINUTE HOUR DAY MONTH DAY_OF_WEEK"
+cron: "* * * * * *"
+
+steps:
+  - tool_name: "run_command"
+    arguments:
+      run: "echo 'Scheduled maintenance task started'"
+
+  - tool_name: "run_command"
+    arguments:
+      run: "date '+%Y-%m-%d %H:%M:%S'"
+
+  - tool_name: "run_command"
+    arguments:
+      run: "echo 'Cron job completed at second level!'"
+
+# Alternative cron expressions (uncomment to use):
+# cron: "0 0 2 * * *"     # Every day at 2 AM
+# cron: "0 0 9 * * 1-5"   # Weekdays at 9 AM
+# cron: "0 0 0 * * 1"     # Every Monday at midnight
+# cron: "0 0 */2 * * *"   # Every 2 hours
+# cron: "0 */5 * * * *"   # Every 5 minutes
+
+stop_on_error: true

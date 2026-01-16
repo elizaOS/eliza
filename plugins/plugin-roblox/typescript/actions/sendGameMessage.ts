@@ -12,16 +12,18 @@ import {
 import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME } from "../types";
 
+const actionName = "SEND_ROBLOX_MESSAGE";
+
 const sendGameMessageExamples: ActionExample[][] = [
   [
     {
-      name: "{{user1}}",
+      name: actionName,
       content: {
         text: "Tell everyone in the game that there's a special event happening",
       },
     },
     {
-      name: "{{agentName}}",
+      name: actionName,
       content: {
         text: "I'll announce the special event to all players in the game!",
         action: "SEND_ROBLOX_MESSAGE",
@@ -46,10 +48,9 @@ const sendGameMessageExamples: ActionExample[][] = [
 ];
 
 const sendGameMessage: Action = {
-  name: "SEND_ROBLOX_MESSAGE",
-  similes: ["ROBLOX_MESSAGE", "GAME_MESSAGE", "SEND_TO_GAME", "BROADCAST_MESSAGE", "TELL_PLAYERS"],
-  description:
-    "Send a message to players in a Roblox game. Can target all players or specific player IDs.",
+  name: actionName,
+  similes: [],
+  description: "Send a message to players in the Roblox game.",
   examples: sendGameMessageExamples,
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {

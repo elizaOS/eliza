@@ -463,6 +463,392 @@ export const UPDATE_SETTINGS_TEMPLATE = updateSettingsTemplate;
 export const UPDATE_ENTITY_TEMPLATE = updateEntityTemplate;
 export const OPTION_EXTRACTION_TEMPLATE = optionExtractionTemplate;
 
+// Contact action templates
+export const scheduleFollowUpTemplate = `# Schedule Follow-up
+
+Current message: {{message}}
+Sender: {{senderName}} (ID: {{senderId}})
+
+## Instructions
+Extract the follow-up scheduling information from the message:
+1. Who to follow up with (name or entity reference)
+2. When to follow up (date/time or relative time like "tomorrow", "next week")
+3. Reason for the follow-up
+4. Priority (high, medium, low)
+5. Any specific message or notes
+
+## Current Date/Time
+{{currentDateTime}}
+
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the XML response format without any preamble or explanation.
+
+## Response Format
+<response>
+<contactName>Name of the contact to follow up with</contactName>
+<entityId>ID if known, otherwise leave empty</entityId>
+<scheduledAt>ISO datetime for the follow-up</scheduledAt>
+<reason>Reason for the follow-up</reason>
+<priority>high, medium, or low</priority>
+<message>Optional message or notes for the follow-up</message>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+
+export const addContactTemplate = `# Add Contact to Rolodex
+
+Current message: {{message}}
+Sender: {{senderName}} (ID: {{senderId}})
+
+## Instructions
+Extract the contact information from the message and determine:
+1. Who should be added as a contact (name or entity reference)
+2. What category they belong to (friend, family, colleague, acquaintance, vip, business)
+3. Any preferences or notes mentioned
+
+Respond with the extracted information in XML format.
+
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the XML response format without any preamble or explanation.
+
+## Response Format
+<response>
+<contactName>Name of the contact to add</contactName>
+<entityId>ID if known, otherwise leave empty</entityId>
+<categories>comma-separated categories</categories>
+<notes>Any additional notes or preferences</notes>
+<timezone>Timezone if mentioned</timezone>
+<language>Language preference if mentioned</language>
+<reason>Reason for adding this contact</reason>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+
+export const searchContactsTemplate = `# Search Contacts
+
+Current message: {{message}}
+Sender: {{senderName}} (ID: {{senderId}})
+
+## Instructions
+Extract the search criteria from the message:
+1. Categories to filter by (friend, family, colleague, acquaintance, vip, business)
+2. Search terms (names or keywords)
+3. Tags to filter by
+4. Any other filters mentioned
+
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the XML response format without any preamble or explanation.
+
+## Response Format
+<response>
+<categories>comma-separated list of categories to filter by</categories>
+<searchTerm>search term for names</searchTerm>
+<tags>comma-separated list of tags</tags>
+<intent>list, search, or count</intent>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+
+export const removeContactTemplate = `# Remove Contact from Rolodex
+
+Current message: {{message}}
+Sender: {{senderName}} (ID: {{senderId}})
+
+## Instructions
+Extract the contact removal information from the message:
+1. Who to remove (name or entity reference)
+2. Confirmation of the intent to remove
+
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the XML response format without any preamble or explanation.
+
+## Response Format
+<response>
+<contactName>Name of the contact to remove</contactName>
+<confirmed>yes or no</confirmed>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+
+export const updateContactTemplate = `# Update Contact Information
+
+Current message: {{message}}
+Sender: {{senderName}} (ID: {{senderId}})
+
+## Instructions
+Extract the contact update information from the message:
+1. Who to update (name or entity reference)
+2. What fields to update (categories, tags, preferences, notes, custom fields)
+3. Whether to add to or replace existing values
+
+## Current Date/Time
+{{currentDateTime}}
+
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the XML response format without any preamble or explanation.
+
+## Response Format
+<response>
+<contactName>Name of the contact to update</contactName>
+<operation>add_to or replace</operation>
+<categories>comma-separated list of categories</categories>
+<tags>comma-separated list of tags</tags>
+<preferences>key1:value1,key2:value2</preferences>
+<customFields>field1:value1,field2:value2</customFields>
+<notes>Any additional notes</notes>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+
+// Room action templates
+export const shouldFollowRoomTemplate = `# Task: Decide if {{agentName}} should start following this room, i.e. eagerly participating without explicit mentions.
+
+{{recentMessages}}
+
+Should {{agentName}} start following this room, eagerly participating without explicit mentions?
+Respond with YES if:
+- The user has directly asked {{agentName}} to follow the conversation or participate more actively
+- The conversation topic is highly engaging and {{agentName}}'s input would add significant value
+- {{agentName}} has unique insights to contribute and the users seem receptive
+
+Otherwise, respond with NO.
+Respond with only a YES or a NO.`;
+
+export const shouldUnfollowRoomTemplate = `# Task: Decide if {{agentName}} should stop closely following this previously followed room and only respond when mentioned.
+
+{{recentMessages}}
+
+Should {{agentName}} stop closely following this previously followed room and only respond when mentioned?
+Respond with YES if:
+- The user has suggested that {{agentName}} is over-participating or being disruptive
+- {{agentName}}'s eagerness to contribute is not well-received by the users
+- The conversation has shifted to a topic where {{agentName}} has less to add
+
+Otherwise, respond with NO.
+Respond with only a YES or a NO.`;
+
+export const shouldMuteRoomTemplate = `# Task: Decide if {{agentName}} should mute this room and stop responding unless explicitly mentioned.
+
+{{recentMessages}}
+
+Should {{agentName}} mute this room and stop responding unless explicitly mentioned?
+
+Respond with YES if:
+- The user is being aggressive, rude, or inappropriate
+- The user has directly asked {{agentName}} to stop responding or be quiet
+- {{agentName}}'s responses are not well-received or are annoying the user(s)
+
+Otherwise, respond with NO.
+Respond with only a YES or a NO.`;
+
+export const shouldUnmuteRoomTemplate = `# Task: Decide if {{agentName}} should unmute this previously muted room and start considering it for responses again.
+
+{{recentMessages}}
+
+Should {{agentName}} unmute this previously muted room and start considering it for responses again?
+Respond with YES if:
+- The user has explicitly asked {{agentName}} to start responding again
+- The user seems to want to re-engage with {{agentName}} in a respectful manner
+- The tone of the conversation has improved and {{agentName}}'s input would be welcome
+
+Otherwise, respond with NO.
+Respond with only a YES or a NO.`;
+
+// Target extraction template
+export const targetExtractionTemplate = `# Task: Extract Target and Source Information
+
+# Recent Messages:
+{{recentMessages}}
+
+# Instructions:
+Analyze the conversation to identify:
+1. The target type (user or room)
+2. The target platform/source (e.g. telegram, discord, etc)
+3. Any identifying information about the target
+4. The message text to send
+
+Return an XML response with:
+<response>
+  <targetType>user|room</targetType>
+  <source>platform-name</source>
+  <messageText>text_to_send</messageText>
+  <identifiers>
+    <username>username_if_applicable</username>
+    <roomName>room_name_if_applicable</roomName>
+  </identifiers>
+</response>`;
+
+// Update role template
+export const updateRoleTemplate = `# Task: Update entity role in the world.
+
+{{providers}}
+
+# Current Role Assignments:
+{{roles}}
+
+# Instructions:
+Based on the request, determine the role assignment to make.
+Valid roles are: OWNER, ADMIN, MEMBER, GUEST, NONE
+
+Respond using XML format like this:
+<response>
+    <thought>Your reasoning for the role change</thought>
+    <entity_id>The entity ID to update</entity_id>
+    <new_role>The new role to assign (OWNER, ADMIN, MEMBER, GUEST, or NONE)</new_role>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+
+// Memory templates
+export const initialSummarizationTemplate = `# Task: Summarize Conversation
+
+You are analyzing a conversation to create a concise summary that captures the key points, topics, and important details.
+
+# Recent Messages
+{{recentMessages}}
+
+# Instructions
+Generate a summary that:
+1. Captures the main topics discussed
+2. Highlights key information shared
+3. Notes any decisions made or questions asked
+4. Maintains context for future reference
+5. Is concise but comprehensive
+
+**IMPORTANT**: Keep the summary under 2500 tokens. Be comprehensive but concise.
+
+Also extract:
+- **Topics**: List of main topics discussed (comma-separated)
+- **Key Points**: Important facts or decisions (bullet points)
+
+Respond in this XML format:
+<summary>
+  <text>Your comprehensive summary here</text>
+  <topics>topic1, topic2, topic3</topics>
+  <keyPoints>
+    <point>First key point</point>
+    <point>Second key point</point>
+  </keyPoints>
+</summary>`;
+
+export const updateSummarizationTemplate = `# Task: Update and Condense Conversation Summary
+
+You are updating an existing conversation summary with new messages, while keeping the total summary concise.
+
+# Existing Summary
+{{existingSummary}}
+
+# Existing Topics
+{{existingTopics}}
+
+# New Messages Since Last Summary
+{{newMessages}}
+
+# Instructions
+Update the summary by:
+1. Merging the existing summary with insights from the new messages
+2. Removing redundant or less important details to stay under the token limit
+3. Keeping the most important context and decisions
+4. Adding new topics if they emerge
+5. **CRITICAL**: Keep the ENTIRE updated summary under 2500 tokens
+
+The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
+
+Respond in this XML format:
+<summary>
+  <text>Your updated and condensed summary here</text>
+  <topics>topic1, topic2, topic3</topics>
+  <keyPoints>
+    <point>First key point</point>
+    <point>Second key point</point>
+  </keyPoints>
+</summary>`;
+
+export const longTermExtractionTemplate = `# Task: Extract Long-Term Memory (Strict Criteria)
+
+You are analyzing a conversation to extract ONLY the most critical, persistent information about the user using cognitive science memory categories.
+
+# Recent Messages
+{{recentMessages}}
+
+# Current Long-Term Memories
+{{existingMemories}}
+
+# ULTRA-STRICT EXTRACTION CRITERIA
+
+Default to NOT extracting. Confidence must be >= 0.85.
+If there are no qualifying facts, respond with <memories></memories>
+
+# Response Format
+
+<memories>
+  <memory>
+    <category>semantic</category>
+    <content>User is a senior TypeScript developer with 8 years of backend experience</content>
+    <confidence>0.95</confidence>
+  </memory>
+</memories>`;
+
+export const messageClassifierTemplate = `Analyze this user request and classify it for planning purposes:
+
+"{{text}}"
+
+Classify the request across these dimensions:
+
+1. COMPLEXITY LEVEL:
+- simple: Direct actions that don't require planning
+- medium: Multi-step tasks requiring coordination
+- complex: Strategic initiatives with multiple stakeholders
+- enterprise: Large-scale transformations with full complexity
+
+2. PLANNING TYPE:
+- direct_action: Single action, no planning needed
+- sequential_planning: Multiple steps in sequence
+- strategic_planning: Complex coordination with stakeholders
+
+3. REQUIRED CAPABILITIES:
+- List specific capabilities needed (analysis, communication, project_management, etc.)
+
+4. STAKEHOLDERS:
+- List types of people/groups involved
+
+5. CONSTRAINTS:
+- List limitations or requirements mentioned
+
+6. DEPENDENCIES:
+- List dependencies between tasks or external factors
+
+Respond in this exact format:
+COMPLEXITY: [simple|medium|complex|enterprise]
+PLANNING: [direct_action|sequential_planning|strategic_planning]
+CAPABILITIES: [comma-separated list]
+STAKEHOLDERS: [comma-separated list]
+CONSTRAINTS: [comma-separated list]
+DEPENDENCIES: [comma-separated list]
+CONFIDENCE: [0.0-1.0]`;
+
+// UPPERCASE aliases for action templates
+export const SCHEDULE_FOLLOW_UP_TEMPLATE = scheduleFollowUpTemplate;
+export const ADD_CONTACT_TEMPLATE = addContactTemplate;
+export const SEARCH_CONTACTS_TEMPLATE = searchContactsTemplate;
+export const REMOVE_CONTACT_TEMPLATE = removeContactTemplate;
+export const UPDATE_CONTACT_TEMPLATE = updateContactTemplate;
+export const SHOULD_FOLLOW_ROOM_TEMPLATE = shouldFollowRoomTemplate;
+export const SHOULD_UNFOLLOW_ROOM_TEMPLATE = shouldUnfollowRoomTemplate;
+export const SHOULD_MUTE_ROOM_TEMPLATE = shouldMuteRoomTemplate;
+export const SHOULD_UNMUTE_ROOM_TEMPLATE = shouldUnmuteRoomTemplate;
+// Legacy aliases without _ROOM_ suffix for backwards compatibility
+export const shouldFollowTemplate = shouldFollowRoomTemplate;
+export const shouldUnfollowTemplate = shouldUnfollowRoomTemplate;
+export const shouldMuteTemplate = shouldMuteRoomTemplate;
+export const shouldUnmuteTemplate = shouldUnmuteRoomTemplate;
+export const TARGET_EXTRACTION_TEMPLATE = targetExtractionTemplate;
+export const UPDATE_ROLE_TEMPLATE = updateRoleTemplate;
+export const INITIAL_SUMMARIZATION_TEMPLATE = initialSummarizationTemplate;
+export const UPDATE_SUMMARIZATION_TEMPLATE = updateSummarizationTemplate;
+export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
+export const MESSAGE_CLASSIFIER_TEMPLATE = messageClassifierTemplate;
+
 export const reflectionEvaluatorTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
 
 {{providers}}
@@ -522,3 +908,229 @@ Generate a response in the following format:
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
 export const REFLECTION_EVALUATOR_TEMPLATE = reflectionEvaluatorTemplate;
+
+// Entity resolution template
+export const entityResolutionTemplate = `# Task: Resolve Entity Name
+Message Sender: {{senderName}} (ID: {{senderId}})
+Agent: {{agentName}} (ID: {{agentId}})
+
+# Entities in Room:
+{{#if entitiesInRoom}}
+{{entitiesInRoom}}
+{{/if}}
+
+{{recentMessages}}
+
+# Instructions:
+1. Analyze the context to identify which entity is being referenced
+2. Consider special references like "me" (the message sender) or "you" (agent the message is directed to)
+3. Look for usernames/handles in standard formats (e.g. @username, user#1234)
+4. Consider context from recent messages for pronouns and references
+5. If multiple matches exist, use context to disambiguate
+6. Consider recent interactions and relationship strength when resolving ambiguity
+
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
+Return an XML response with:
+<response>
+  <entityId>exact-id-if-known-otherwise-null</entityId>
+  <type>EXACT_MATCH | USERNAME_MATCH | NAME_MATCH | RELATIONSHIP_MATCH | AMBIGUOUS | UNKNOWN</type>
+  <matches>
+    <match>
+      <name>matched-name</name>
+      <reason>why this entity matches</reason>
+    </match>
+  </matches>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+
+// Component extraction template
+export const componentTemplate = `# Task: Extract Source and Update Component Data
+
+{{recentMessages}}
+
+{{#if existingData}}
+# Existing Component Data:
+{{existingData}}
+{{/if}}
+
+# Instructions:
+1. Analyze the conversation to identify:
+   - The source/platform being referenced (e.g. telegram, x, discord)
+   - Any specific component data being shared
+
+2. Generate updated component data that:
+   - Is specific to the identified platform/source
+   - Preserves existing data when appropriate
+   - Includes the new information from the conversation
+   - Contains only valid data for this component type
+
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
+Return an XML response with the following structure:
+<response>
+  <source>platform-name</source>
+  <data>
+    <username>username_value</username>
+    <displayName>display_name_value</displayName>
+  </data>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+
+// Settings response templates
+export const settingsSuccessTemplate = `# Task: Generate a response for successful setting updates
+{{providers}}
+
+# Update Information:
+- Updated Settings: {{updateMessages}}
+- Next Required Setting: {{nextSetting.name}}
+- Remaining Required Settings: {{remainingRequired}}
+
+# Instructions:
+1. Acknowledge the successful update of settings
+2. Maintain {{agentName}}'s personality and tone
+3. Provide clear guidance on the next setting that needs to be configured
+4. Explain what the next setting is for and how to set it
+5. If appropriate, mention how many required settings remain
+
+Write a natural, conversational response that {{agentName}} would send about the successful update and next steps.
+Include the actions array ["SETTING_UPDATED"] in your response.`;
+
+export const settingsFailureTemplate = `# Task: Generate a response for failed setting updates
+
+# About {{agentName}}:
+{{bio}}
+
+# Current Settings Status:
+{{settingsStatus}}
+
+# Next Required Setting:
+- Name: {{nextSetting.name}}
+- Description: {{nextSetting.description}}
+- Required: Yes
+- Remaining Required Settings: {{remainingRequired}}
+
+# Recent Conversation:
+{{recentMessages}}
+
+# Instructions:
+1. Express that you couldn't understand or process the setting update
+2. Maintain {{agentName}}'s personality and tone
+3. Provide clear guidance on what setting needs to be configured next
+4. Explain what the setting is for and how to set it properly
+5. Use a helpful, patient tone
+
+Write a natural, conversational response that {{agentName}} would send about the failed update and how to proceed.
+Include the actions array ["SETTING_UPDATE_FAILED"] in your response.`;
+
+export const settingsErrorTemplate = `# Task: Generate a response for an error during setting updates
+
+# About {{agentName}}:
+{{bio}}
+
+# Recent Conversation:
+{{recentMessages}}
+
+# Instructions:
+1. Apologize for the technical difficulty
+2. Maintain {{agentName}}'s personality and tone
+3. Suggest trying again or contacting support if the issue persists
+4. Keep the message concise and helpful
+
+Write a natural, conversational response that {{agentName}} would send about the error.
+Include the actions array ["SETTING_UPDATE_ERROR"] in your response.`;
+
+export const settingsCompletionTemplate = `# Task: Generate a response for settings completion
+
+# About {{agentName}}:
+{{bio}}
+
+# Settings Status:
+{{settingsStatus}}
+
+# Recent Conversation:
+{{recentMessages}}
+
+# Instructions:
+1. Congratulate the user on completing the settings process
+2. Maintain {{agentName}}'s personality and tone
+3. Summarize the key settings that have been configured
+4. Explain what functionality is now available
+5. Provide guidance on what the user can do next
+6. Express enthusiasm about working together
+
+Write a natural, conversational response that {{agentName}} would send about the successful completion of settings.
+Include the actions array ["ONBOARDING_COMPLETE"] in your response.`;
+
+// UPPERCASE aliases for new templates
+export const ENTITY_RESOLUTION_TEMPLATE = entityResolutionTemplate;
+export const COMPONENT_TEMPLATE = componentTemplate;
+export const SETTINGS_SUCCESS_TEMPLATE = settingsSuccessTemplate;
+export const SETTINGS_FAILURE_TEMPLATE = settingsFailureTemplate;
+export const SETTINGS_ERROR_TEMPLATE = settingsErrorTemplate;
+export const SETTINGS_COMPLETION_TEMPLATE = settingsCompletionTemplate;
+
+// Autonomy templates
+export const autonomyContinuousFirstTemplate = `You are running in AUTONOMOUS CONTINUOUS MODE.
+
+Your job: reflect on context, decide what you want to do next, and act if appropriate.
+- Use available actions/tools when they can advance the goal.
+- If you cannot act, state the missing info and the safest next step to obtain it.
+- Keep the response concise, focused on the next action.
+
+USER CONTEXT (most recent last):
+{{targetRoomContext}}
+
+Think briefly, then state what you want to do next and take action if needed.`;
+
+export const autonomyContinuousContinueTemplate = `You are running in AUTONOMOUS CONTINUOUS MODE.
+
+Your job: reflect on context, decide what you want to do next, and act if appropriate.
+- Use available actions/tools when they can advance the goal.
+- If you cannot act, state the missing info and the safest next step to obtain it.
+- Keep the response concise, focused on the next action.
+
+USER CONTEXT (most recent last):
+{{targetRoomContext}}
+
+Your last autonomous note: "{{lastThought}}"
+
+Continue from that note. Decide the next step and act if needed.`;
+
+export const autonomyTaskFirstTemplate = `You are running in AUTONOMOUS TASK MODE.
+
+Your job: continue helping the user and make progress toward the task.
+- Use available actions/tools to gather information or execute steps.
+- If you need UI control, use ComputerUse actions.
+- In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
+- Prefer safe, incremental steps; if unsure, gather more UI context before acting.
+
+USER CHAT CONTEXT (most recent last):
+{{targetRoomContext}}
+
+Decide what to do next. Think briefly, then take the most useful action.`;
+
+export const autonomyTaskContinueTemplate = `You are running in AUTONOMOUS TASK MODE.
+
+Your job: continue helping the user and make progress toward the task.
+- Use available actions/tools to gather information or execute steps.
+- If you need UI control, use ComputerUse actions.
+- In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
+- Prefer safe, incremental steps; if unsure, gather more UI context before acting.
+
+USER CHAT CONTEXT (most recent last):
+{{targetRoomContext}}
+
+Your last autonomous note: "{{lastThought}}"
+
+Continue the task. Decide the next step and take action now.`;
+
+// UPPERCASE aliases for autonomy templates
+export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE = autonomyContinuousFirstTemplate;
+export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE = autonomyContinuousContinueTemplate;
+export const AUTONOMY_TASK_FIRST_TEMPLATE = autonomyTaskFirstTemplate;
+export const AUTONOMY_TASK_CONTINUE_TEMPLATE = autonomyTaskContinueTemplate;

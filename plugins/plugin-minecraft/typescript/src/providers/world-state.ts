@@ -43,7 +43,7 @@ export const minecraftWorldStateProvider: Provider = {
           inventoryCount: invCount,
           nearbyEntitiesCount: entCount,
         },
-        data: state,
+        data: state as Record<string, string | number | boolean | string[]>,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

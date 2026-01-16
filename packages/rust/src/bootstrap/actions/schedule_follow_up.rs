@@ -9,22 +9,30 @@ use crate::runtime::IAgentRuntime;
 use crate::types::{ActionResult, Memory, State};
 
 use super::Action;
+use once_cell::sync::Lazy;
+use crate::generated::spec_helpers::require_action_spec;
 
 /// Action to schedule a follow-up reminder.
 pub struct ScheduleFollowUpAction;
 
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("SCHEDULE_FOLLOW_UP"));
+
 #[async_trait]
 impl Action for ScheduleFollowUpAction {
     fn name(&self) -> &'static str {
-        "SCHEDULE_FOLLOW_UP"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["REMIND_FOLLOW_UP", "SET_REMINDER", "REMIND_ABOUT", "FOLLOW_UP_WITH"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Schedule a follow-up reminder for a contact"
+        &SPEC.description
     }
 
     async fn validate(&self, runtime: &dyn IAgentRuntime, message: &Memory) -> bool {

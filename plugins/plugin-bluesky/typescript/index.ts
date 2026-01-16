@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, TestCase, TestSuite } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { BlueSkyService } from "./services/bluesky";
 import { getApiKeyOptional } from "./utils/config";
@@ -55,9 +55,9 @@ const pluginTests = [
           logger.log("BlueSky service initialized successfully");
         },
       },
-    ],
+    ] as TestCase[],
   },
-];
+] as TestSuite[];
 
 export const blueSkyPlugin: Plugin = {
   name: "bluesky",

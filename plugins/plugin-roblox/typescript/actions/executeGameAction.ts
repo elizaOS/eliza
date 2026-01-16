@@ -12,16 +12,18 @@ import {
 import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME } from "../types";
 
+const actionName = "EXECUTE_ROBLOX_ACTION";
+
 const executeGameActionExamples: ActionExample[][] = [
   [
     {
-      name: "{{user1}}",
+      name: actionName,
       content: {
         text: "Start a fireworks show in the game",
       },
     },
     {
-      name: "{{agentName}}",
+      name: actionName,
       content: {
         text: "I'll trigger the fireworks show for everyone in the game!",
         action: "EXECUTE_ROBLOX_ACTION",
@@ -143,10 +145,9 @@ function parseGameAction(
 }
 
 const executeGameAction: Action = {
-  name: "EXECUTE_ROBLOX_ACTION",
-  similes: ["ROBLOX_ACTION", "GAME_ACTION", "DO_IN_GAME", "TRIGGER_EVENT", "RUN_GAME_COMMAND"],
-  description:
-    "Execute a custom action in a Roblox game, such as spawning entities, giving rewards, or triggering events.",
+  name: actionName,
+  similes: [],
+  description: "Execute an action in the connected Roblox game.",
   examples: executeGameActionExamples,
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {

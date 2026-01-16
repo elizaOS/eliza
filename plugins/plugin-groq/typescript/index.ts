@@ -256,9 +256,11 @@ export const groqPlugin: Plugin = {
 
   tests: [
     {
+      $typeName: "eliza.v1.TestSuite",
       name: "groq_plugin_tests",
       tests: [
         {
+          $typeName: "eliza.v1.TestCase",
           name: "validate_api_key",
           fn: async (runtime) => {
             const baseURL = getBaseURL(runtime);
@@ -277,6 +279,7 @@ export const groqPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "text_small",
           fn: async (runtime) => {
             const text = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -289,6 +292,7 @@ export const groqPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "text_large",
           fn: async (runtime) => {
             const text = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -301,6 +305,7 @@ export const groqPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "object_generation",
           fn: async (runtime) => {
             const obj = await runtime.useModel(ModelType.OBJECT_SMALL, {

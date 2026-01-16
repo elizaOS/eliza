@@ -20,15 +20,22 @@
 /**
  * Check if we're in Node.js or Bun with native crypto module available
  */
+let cachedHasNodeCrypto: boolean | null = null;
 function hasNodeCrypto(): boolean {
+  if (cachedHasNodeCrypto !== null) {
+    return cachedHasNodeCrypto;
+  }
   if (typeof require === "undefined" || typeof process === "undefined") {
-    return false;
+    cachedHasNodeCrypto = false;
+    return cachedHasNodeCrypto;
   }
   const versions = process.versions;
   if (!versions) {
-    return false;
+    cachedHasNodeCrypto = false;
+    return cachedHasNodeCrypto;
   }
-  return versions.node !== undefined || versions.bun !== undefined;
+  cachedHasNodeCrypto = versions.node !== undefined || versions.bun !== undefined;
+  return cachedHasNodeCrypto;
 }
 
 /**

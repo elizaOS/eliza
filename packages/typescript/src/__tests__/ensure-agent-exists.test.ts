@@ -38,11 +38,15 @@ describe("ensureAgentExists - Settings Persistence", () => {
       name: "TestAgent",
       username: "testagent",
       bio: [],
+      templates: {},
       messageExamples: [],
       postExamples: [],
       topics: [],
       style: { all: [], chat: [], post: [] },
       adjectives: [],
+      knowledge: [],
+      plugins: [],
+      secrets: {},
       settings: {
         MODEL: "gpt-4",
         TEMPERATURE: "0.7",
@@ -452,14 +456,21 @@ describe("ensureAgentExists - Settings Persistence", () => {
         id: agentId,
         name: "TestAgent",
         bio: [],
+        templates: {},
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        adjectives: [],
+        knowledge: [],
+        plugins: [],
+        secrets: {
+          SOLANA_PRIVATE_KEY: "secret_from_db",
+        },
         createdAt: Date.now(),
         updatedAt: Date.now(),
         settings: {
           SOLANA_PUBLIC_KEY: "wallet_from_db",
           RUNTIME_SETTING: "from_previous_run",
-          secrets: {
-            SOLANA_PRIVATE_KEY: "secret_from_db",
-          },
         },
       } as Agent;
 
@@ -481,11 +492,15 @@ describe("ensureAgentExists - Settings Persistence", () => {
         name: "TestAgent",
         username: "test",
         bio: [],
+        templates: {},
         messageExamples: [],
         postExamples: [],
         topics: [],
         style: { all: [], chat: [], post: [] },
         adjectives: [],
+        knowledge: [],
+        plugins: [],
+        secrets: {},
         settings: {
           MODEL: "gpt-4", // New setting from character file
         },
@@ -545,12 +560,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
         "from_previous_run",
       );
       expect(testRuntimeCharacterSettings?.MODEL).toBe("gpt-4"); // Character file wins
-      const testRuntimeCharacterSettingsSecrets =
-        testRuntimeCharacterSettings &&
-        (testRuntimeCharacterSettings.secrets as
-          | Record<string, string>
-          | undefined);
-      expect(testRuntimeCharacterSettingsSecrets?.SOLANA_PRIVATE_KEY).toBe(
+      expect(testRuntime.character.secrets?.SOLANA_PRIVATE_KEY).toBe(
         "secret_from_db",
       );
 

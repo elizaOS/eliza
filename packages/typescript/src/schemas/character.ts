@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Character } from "../types/agent";
+import type { JsonValue } from "../types/proto";
 import { ChannelType, ContentType } from "../types/primitives";
 
 // UUID validation schema
@@ -30,6 +31,21 @@ export const mediaSchema = z
   })
   .loose()
   .describe("Media attachment with URL and metadata");
+
+const jsonPrimitiveSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+]);
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    jsonPrimitiveSchema,
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
 
 // Message content schema matching the Content interface
 export const contentSchema = z
@@ -65,7 +81,7 @@ export const contentSchema = z
       .optional()
       .describe("Type of channel this content is for"),
   })
-  .catchall(z.unknown()) // Allow additional dynamic properties per Content interface
+  .catchall(jsonValueSchema)
   .describe("Content structure for messages in conversation examples");
 
 // MessageExample schema
@@ -81,43 +97,46 @@ export const messageExampleSchema = z
   .describe("A single message in a conversation example");
 
 // DirectoryItem schema
-export const directoryItemSchema = z
+export const knowledgeDirectorySchema = z
   .object({
-    directory: z
-      .string()
-      .describe("Path to a directory containing knowledge files"),
+    path: z.string().describe("Path to a knowledge directory"),
     shared: z
       .boolean()
       .optional()
       .describe("Whether this knowledge is shared across characters"),
   })
-  .describe("Directory-based knowledge source");
+  .describe("Knowledge directory with optional shared flag");
 
-// Knowledge item can be a string, object with path, or DirectoryItem
+const knowledgePathItemSchema = z.object({
+  item: z.object({
+    case: z.literal("path"),
+    value: z.string(),
+  }),
+});
+
+const knowledgeDirectoryItemSchema = z.object({
+  item: z.object({
+    case: z.literal("directory"),
+    value: knowledgeDirectorySchema,
+  }),
+});
+
 export const knowledgeItemSchema = z
-  .union([
-    z.string().describe("File path to a knowledge document"),
-    z.object({
-      path: z.string().describe("Path to a knowledge file"),
-      shared: z
-        .boolean()
-        .optional()
-        .describe("Whether this knowledge is shared across characters"),
-    }),
-    directoryItemSchema,
-  ])
-  .describe("Knowledge source - can be a file path, file object, or directory");
+  .union([knowledgePathItemSchema, knowledgeDirectoryItemSchema])
+  .describe("Knowledge source item (path or directory)");
 
-// TemplateType schema - can be string or function (we'll validate as string for JSON)
-export const templateTypeSchema = z
-  .union([
-    z.string().describe("Template string with placeholders"),
-    z
-      .function()
-      .optional(), // Functions won't be in JSON but allowed in runtime
-  ])
-  .describe(
-    "Template for generating text - can be a string template or function",
+export const messageExampleGroupSchema = z
+  .object({
+    examples: z.array(messageExampleSchema),
+  })
+  .describe("Group of message examples");
+
+const messageExamplesSchema = z
+  .array(z.union([messageExampleGroupSchema, z.array(messageExampleSchema)]))
+  .transform((groups) =>
+    groups.map((group) =>
+      Array.isArray(group) ? { examples: group } : group,
+    ),
   );
 
 // Style configuration schema
@@ -125,15 +144,15 @@ export const styleSchema = z
   .object({
     all: z
       .array(z.string())
-      .optional()
+      .default([])
       .describe("Style guidelines applied to all types of responses"),
     chat: z
       .array(z.string())
-      .optional()
+      .default([])
       .describe("Style guidelines specific to chat/conversation responses"),
     post: z
       .array(z.string())
-      .optional()
+      .default([])
       .describe("Style guidelines specific to social media posts"),
   })
   .optional()
@@ -142,17 +161,69 @@ export const styleSchema = z
   );
 
 // Settings schema - flexible object allowing any JSON-serializable values
+const settingsKnownKeys = new Set([
+  "shouldRespondModel",
+  "useMultiStep",
+  "maxMultistepIterations",
+  "bootstrapDefllmoff",
+  "bootstrapKeepResp",
+  "providersTotalTimeoutMs",
+  "maxWorkingMemoryEntries",
+  "alwaysRespondChannels",
+  "alwaysRespondSources",
+  "defaultTemperature",
+  "defaultMaxTokens",
+  "defaultFrequencyPenalty",
+  "defaultPresencePenalty",
+  "disableBasicCapabilities",
+  "enableExtendedCapabilities",
+  "extra",
+]);
+
 export const settingsSchema = z
-  .record(
-    z.string(),
-    z.union([
-      z.string(),
-      z.boolean(),
-      z.number(),
-      z.object({}).loose(),
-      z.array(z.unknown()),
-    ]),
-  )
+  .object({
+    shouldRespondModel: z.string().optional(),
+    useMultiStep: z.boolean().optional(),
+    maxMultistepIterations: z.number().int().optional(),
+    bootstrapDefllmoff: z.boolean().optional(),
+    bootstrapKeepResp: z.boolean().optional(),
+    providersTotalTimeoutMs: z.number().int().optional(),
+    maxWorkingMemoryEntries: z.number().int().optional(),
+    alwaysRespondChannels: z.string().optional(),
+    alwaysRespondSources: z.string().optional(),
+    defaultTemperature: z.number().optional(),
+    defaultMaxTokens: z.number().int().optional(),
+    defaultFrequencyPenalty: z.number().optional(),
+    defaultPresencePenalty: z.number().optional(),
+    disableBasicCapabilities: z.boolean().optional(),
+    enableExtendedCapabilities: z.boolean().optional(),
+    extra: z.record(z.string(), jsonValueSchema).optional(),
+  })
+  .catchall(jsonValueSchema)
+  .transform((value) => {
+    const entries = Object.entries(value) as Array<[string, JsonValue]>;
+    const extraValues: Record<string, JsonValue> = {};
+    const knownValues: Record<string, JsonValue> = {};
+
+    for (const [key, entryValue] of entries) {
+      if (settingsKnownKeys.has(key)) {
+        knownValues[key] = entryValue;
+      } else {
+        extraValues[key] = entryValue;
+      }
+    }
+
+    const mergedExtra =
+      Object.keys(extraValues).length > 0
+        ? { ...(knownValues.extra as Record<string, JsonValue> | undefined), ...extraValues }
+        : (knownValues.extra as Record<string, JsonValue> | undefined);
+
+    if (mergedExtra) {
+      return { ...knownValues, extra: mergedExtra };
+    }
+
+    return knownValues;
+  })
   .optional()
   .describe(
     "Character-specific settings like avatar URL, preferences, and configuration",
@@ -160,8 +231,8 @@ export const settingsSchema = z
 
 // Secrets schema
 export const secretsSchema = z
-  .record(z.string(), z.union([z.string(), z.boolean(), z.number()]))
-  .optional()
+  .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+  .default({})
   .describe(
     "Secret values and API keys (should not be committed to version control)",
   );
@@ -174,6 +245,65 @@ export const characterSchema = z
       .string()
       .min(1, "Character name is required")
       .describe('The name of the character (e.g., "Eliza")'),
+    username: z
+      .string()
+      .optional()
+      .describe("Username for the character on various platforms"),
+    system: z
+      .string()
+      .optional()
+      .describe(
+        "System prompt that defines the character's core behavior and response style",
+      ),
+    templates: z
+      .record(z.string(), z.string())
+      .default({})
+      .describe("Custom templates for generating different types of content"),
+    bio: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .transform((value) =>
+        value === undefined ? [] : Array.isArray(value) ? value : [value],
+      )
+      .describe(
+        "Character biography - accepts a single string or array of biographical points",
+      ),
+    messageExamples: messageExamplesSchema
+      .default([])
+      .describe(
+        "Example conversations showing how the character responds in different scenarios",
+      ),
+    postExamples: z
+      .array(z.string())
+      .default([])
+      .describe(
+        "Example social media posts demonstrating the character's voice and topics",
+      ),
+    topics: z
+      .array(z.string())
+      .default([])
+      .describe("Topics the character is knowledgeable about and engages with"),
+    adjectives: z
+      .array(z.string())
+      .default([])
+      .describe(
+        "Adjectives that describe the character's personality and traits",
+      ),
+    knowledge: z
+      .array(knowledgeItemSchema)
+      .default([])
+      .describe(
+        "Knowledge sources (files, directories) the character can reference",
+      ),
+    plugins: z
+      .array(z.string())
+      .default([])
+      .describe(
+        'List of plugin package names to load (e.g., ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap"] - these are commonly required)',
+      ),
+    settings: settingsSchema,
+    secrets: secretsSchema,
+    style: styleSchema,
     advancedPlanning: z
       .boolean()
       .optional()
@@ -186,64 +316,8 @@ export const characterSchema = z
       .describe(
         "Enable built-in advanced memory. When true, the runtime auto-loads memory capabilities.",
       ),
-    username: z
-      .string()
-      .optional()
-      .describe("Username for the character on various platforms"),
-    system: z
-      .string()
-      .optional()
-      .describe(
-        "System prompt that defines the character's core behavior and response style",
-      ),
-    templates: z
-      .record(z.string(), templateTypeSchema)
-      .optional()
-      .describe("Custom templates for generating different types of content"),
-    bio: z
-      .union([z.string(), z.array(z.string())])
-      .describe(
-        "Character biography - can be a single string or array of biographical points",
-      ),
-    messageExamples: z
-      .array(z.array(messageExampleSchema))
-      .optional()
-      .describe(
-        "Example conversations showing how the character responds in different scenarios",
-      ),
-    postExamples: z
-      .array(z.string())
-      .optional()
-      .describe(
-        "Example social media posts demonstrating the character's voice and topics",
-      ),
-    topics: z
-      .array(z.string())
-      .optional()
-      .describe("Topics the character is knowledgeable about and engages with"),
-    adjectives: z
-      .array(z.string())
-      .optional()
-      .describe(
-        "Adjectives that describe the character's personality and traits",
-      ),
-    knowledge: z
-      .array(knowledgeItemSchema)
-      .optional()
-      .describe(
-        "Knowledge sources (files, directories) the character can reference",
-      ),
-    plugins: z
-      .array(z.string())
-      .optional()
-      .describe(
-        'List of plugin package names to load (e.g., ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap"] - these are commonly required)',
-      ),
-    settings: settingsSchema,
-    secrets: secretsSchema,
-    style: styleSchema,
   })
-  .strict() // Only allow known properties
+  .strict()
   .describe(
     "Complete character definition including personality, behavior, and capabilities",
   );
@@ -260,8 +334,6 @@ export interface CharacterValidationResult {
 
 /**
  * Safely validates character data using Zod schema
- * @param data - Raw character data to validate
- * @returns Validation result with success flag and either data or error
  */
 export function validateCharacter(data: unknown): CharacterValidationResult {
   const result = characterSchema.safeParse(data);
@@ -288,8 +360,6 @@ export function validateCharacter(data: unknown): CharacterValidationResult {
 
 /**
  * Safely parses JSON string and validates as character
- * @param jsonString - JSON string to parse and validate
- * @returns Validation result with success flag and either data or error
  */
 export function parseAndValidateCharacter(
   jsonString: string,
@@ -309,8 +379,6 @@ export function parseAndValidateCharacter(
 
 /**
  * Type guard to check if data is a valid Character
- * @param data - Data to check
- * @returns True if data is a valid Character
  */
 export function isValidCharacter(data: unknown): data is Character {
   return validateCharacter(data).success;

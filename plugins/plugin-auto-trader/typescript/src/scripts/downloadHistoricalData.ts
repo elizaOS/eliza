@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
-import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-import { VERIFIED_MEME_COINS, ALL_MEME_COINS } from '../config/memeCoins.ts';
+// HistoricalDataService and memeCoins config not implemented
+// import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
+// import { VERIFIED_MEME_COINS, ALL_MEME_COINS } from '../config/memeCoins.ts';
+const VERIFIED_MEME_COINS: string[] = [];
+const ALL_MEME_COINS: string[] = [];
 import { AgentRuntime, ModelType } from '@elizaos/core';
 import * as fs from 'fs';
 import path from 'path';
@@ -15,7 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Mock runtime for service initialization
-class MockRuntime implements Partial<AgentRuntime> {
+class MockRuntime {
   getSetting(key: string): string | undefined {
     if (key === 'BIRDEYE_API_KEY') {
       return process.env.BIRDEYE_API_KEY;
@@ -23,12 +26,14 @@ class MockRuntime implements Partial<AgentRuntime> {
     return undefined;
   }
 
-  useModel(modelType: any, params: any, provider?: string): Promise<any> {
+  useModel(_modelType: unknown, _params: unknown, _provider?: string): Promise<unknown> {
     throw new Error('Model not needed for data download');
   }
 }
 
 async function downloadAllData() {
+  throw new Error('HistoricalDataService not implemented - this script requires HistoricalDataService');
+  /* Commented out until HistoricalDataService is implemented
   console.log('🚀 Starting historical data download for all meme coins...');
 
   // Initialize service
@@ -43,9 +48,9 @@ async function downloadAllData() {
 
   console.log(`📅 Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
 
-  // Choose which coins to download
-  const useVerifiedOnly = process.argv.includes('--verified');
-  const coins = useVerifiedOnly ? VERIFIED_MEME_COINS : ALL_MEME_COINS;
+  // Choose which coins to download - commented out until memeCoins config is implemented
+  // const useVerifiedOnly = process.argv.includes('--verified');
+  // const coins: Array<{ symbol: string; address: string }> = useVerifiedOnly ? VERIFIED_MEME_COINS as unknown as Array<{ symbol: string; address: string }> : ALL_MEME_COINS as unknown as Array<{ symbol: string; address: string }>;
 
   console.log(`📊 Downloading data for ${coins.length} coins...`);
 
@@ -69,7 +74,8 @@ async function downloadAllData() {
     try {
       console.log(`\n${progress} Downloading ${coin.symbol} (${coin.address})...`);
 
-      const data = await dataService.fetchData(coin.address, '1h', startDate, endDate, 'birdeye');
+      // const data = await dataService.fetchData(coin.address, '1h', startDate, endDate, 'birdeye');
+      const data: unknown[] = [];
 
       if (data && data.length > 0) {
         results.successful.push(coin.symbol);
@@ -146,6 +152,7 @@ async function downloadAllData() {
   console.log(`\n📁 Report saved to: ${reportPath}`);
 
   await dataService.stop();
+  */
 }
 
 // Parse command line arguments

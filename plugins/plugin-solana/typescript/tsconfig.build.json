@@ -1,18 +1,17 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": false,
+    "rootDir": ".",
+    "outDir": "./dist",
+    "sourceMap": true,
+    "inlineSources": true,
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
-    "outDir": "../dist",
-    "rootDir": ".",
-    "moduleResolution": "bundler",
-    "baseUrl": ".",
-    "paths": {
-      "@elizaos/core": ["../../../packages/typescript/dist/node"]
-    }
+    "noEmit": false,
+    "skipLibCheck": true,
+    "noEmitOnError": false
   },
   "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "__tests__", "**/*.test.ts", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts", "**/*.spec.ts", "build.ts"]
 }

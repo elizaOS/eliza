@@ -7,8 +7,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Character, Content, Memory } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import type { Character, CharacterInput, Content, Memory } from "@elizaos/core";
+import { createCharacter, stringToUuid } from "@elizaos/core";
 import { beforeAll, describe, expect, it } from "vitest";
 
 // WASM module interface
@@ -147,7 +147,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
     it("should serialize Character identically", () => {
       if (!wasm) return;
 
-      const character: Character = {
+      const character: Character = createCharacter({
         name: "TestAgent",
         system: "You are a helpful assistant.",
         bio: ["An AI assistant", "Helps users with tasks"],
@@ -155,7 +155,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
         messageExamples: [],
         postExamples: [],
         settings: {},
-      };
+      });
 
       const tsJson = JSON.stringify(character);
       const rustCharacter = wasm.parseCharacter(tsJson);
@@ -172,7 +172,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
       if (!wasm) return;
 
       // Bio as string (Character.bio is string | string[])
-      const charWithStringBio: Character = {
+      const charWithStringBio: CharacterInput = {
         name: "Agent1",
         bio: "A simple bio",
         messageExamples: [],
@@ -180,7 +180,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
       };
 
       // Bio as array
-      const charWithArrayBio: Character = {
+      const charWithArrayBio: CharacterInput = {
         name: "Agent2",
         bio: ["Line 1", "Line 2"],
         messageExamples: [],
@@ -199,7 +199,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
     it("should pass round-trip test", () => {
       if (!wasm) return;
 
-      const character: Character = {
+      const character: Character = createCharacter({
         name: "TestAgent",
         system: "You are helpful",
         bio: ["Bio line 1", "Bio line 2"],
@@ -210,7 +210,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
           model: "gpt-4",
           temperature: 0.7,
         },
-      };
+      });
 
       expect(wasm.testCharacterRoundTrip(JSON.stringify(character))).toBe(true);
     });

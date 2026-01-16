@@ -8,17 +8,19 @@ import type {
   State,
 } from "@elizaos/core";
 import type { CoderService } from "../services/coderService";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 function getTarget(options: HandlerOptions | undefined): string {
   const opt = options as { path?: string } | undefined;
   return opt?.path?.trim() ?? "";
 }
 
+const spec = requireActionSpec("CHANGE_DIRECTORY");
+
 export const changeDirectory: Action = {
-  name: "CHANGE_DIRECTORY",
-  similes: ["CD", "CWD"],
-  description:
-    "Change the working directory (restricted to allowed directory).",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (runtime: IAgentRuntime): Promise<boolean> =>
     runtime.getService<CoderService>("coder") !== null,
   handler: async (
@@ -42,7 +44,7 @@ export const changeDirectory: Action = {
       return { success: false, text: msg };
     }
 
-    const conv = message.roomId || message.agentId;
+    const conv = message.roomId ?? message.agentId ?? runtime.agentId;
     const result = await svc.changeDirectory(conv, target);
     const out = result.success ? result.stdout : result.stderr;
     if (callback) await callback({ content: { text: out } });

@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "POLYMARKET_PROVIDER",
+      "description": "Provides current Polymarket account state and trading context from the service cache",
+      "dynamic": true
+    }
+  ]
+}

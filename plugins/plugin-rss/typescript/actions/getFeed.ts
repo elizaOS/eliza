@@ -9,16 +9,19 @@ import type {
   State,
 } from "@elizaos/core";
 import { createUniqueUuid, MemoryType } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { RssService } from "../service";
 import { createMessageReply, extractUrls } from "../utils";
 
+const spec = requireActionSpec("GET_FEED");
+
 export const getFeedAction: Action = {
-  name: "GET_NEWSFEED",
-  similes: ["FETCH_RSS", "READ_FEED", "DOWNLOAD_FEED"],
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
   validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     return true;
   },
-  description: "Download and parse an RSS/Atom feed from a URL",
+  description: spec.description,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -125,38 +128,7 @@ export const getFeedAction: Action = {
     return { success: true };
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Read https://server.com/feed.rss",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll check that out",
-          actions: ["GET_NEWSFEED"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Fetch the news from https://news.ycombinator.com/rss",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Fetching the Hacker News feed now",
-          actions: ["GET_NEWSFEED"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default getFeedAction;

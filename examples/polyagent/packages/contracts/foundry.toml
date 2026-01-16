@@ -1,0 +1,43 @@
+[profile.default]
+src = "."
+test = "test"
+out = "out"
+libs = ["../../node_modules", "dependencies"]
+solc = "0.8.33"
+optimizer = true
+optimizer_runs = 200
+via_ir = true
+
+# Base L2 configuration
+[rpc_endpoints]
+base = "https://mainnet.base.org"
+base_sepolia = "https://sepolia.base.org"
+
+[etherscan]
+base = { key = "${ETHERSCAN_API_KEY}", url = "https://api.basescan.org/api" }
+base_sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }
+
+# Testing
+[profile.default.fuzz]
+runs = 256
+
+[profile.default.invariant]
+runs = 256
+depth = 15
+
+# CI profile for faster tests
+[profile.ci]
+fuzz = { runs = 100 }
+invariant = { runs = 100, depth = 10 }
+
+# Gas reporting
+[profile.default.fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = true
+
+# Soldeer dependencies
+[dependencies]
+forge-std = "1.9.7"
+"@openzeppelin-contracts" = "5.4.0"
+

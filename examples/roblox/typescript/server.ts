@@ -1,4 +1,4 @@
-import { AgentRuntime, type Character } from "@elizaos/core";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { robloxPlugin } from "@elizaos/plugin-roblox";
 import sqlPlugin from "@elizaos/plugin-sql";
@@ -17,13 +17,13 @@ function envSettings(): Record<string, string> {
 }
 
 function createRuntime(): AgentRuntime {
-  const character: Character = {
+  const character = createCharacter({
     name: "Eliza",
     bio: "A helpful Roblox guide NPC.",
     system:
       "You are a helpful Roblox guide. Be concise. " +
       "If a user asks you to do something in-game (teleport, move NPC, reward coins), you may use Roblox actions.",
-  };
+  });
 
   const hasOpenAIKey =
     typeof process.env.OPENAI_API_KEY === "string" &&

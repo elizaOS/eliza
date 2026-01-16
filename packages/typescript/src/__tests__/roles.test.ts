@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanupTestRuntime,
   createTestRuntime,
-} from "../bootstrap/__tests__/test-utils";
+} from "./test-utils";
 import * as entities from "../entities";
 import * as logger_module from "../logger";
 import { findWorldsForOwner, getUserServerRole } from "../roles";

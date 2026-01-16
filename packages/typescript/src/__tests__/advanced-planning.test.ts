@@ -26,9 +26,16 @@ describe("advanced planning (built-in)", () => {
   test("auto-loads provider + planning service when enabled", async () => {
     const character: Character = {
       name: "AdvPlanning",
-      bio: "Test",
+      bio: ["Test"],
+      templates: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: [],
+      adjectives: [],
+      knowledge: [],
       advancedPlanning: true,
       plugins: [],
+      secrets: {},
     };
 
     const runtime = new AgentRuntime({ character });
@@ -109,9 +116,16 @@ describe("advanced planning (built-in)", () => {
   test("does not load when disabled", async () => {
     const character: Character = {
       name: "AdvPlanningOff",
-      bio: "Test",
+      bio: ["Test"],
+      templates: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: [],
+      adjectives: [],
+      knowledge: [],
       advancedPlanning: false,
       plugins: [],
+      secrets: {},
     };
 
     const runtime = new AgentRuntime({ character });
@@ -119,6 +133,88 @@ describe("advanced planning (built-in)", () => {
 
     expect(runtime.hasService("planning")).toBe(false);
     expect(runtime.providers.some((p) => p.name === "messageClassifier")).toBe(false);
+  });
+
+  test("executes DAG steps in dependency order", async () => {
+    const character: Character = {
+      name: "AdvPlanningDag",
+      bio: ["Test"],
+      templates: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: [],
+      adjectives: [],
+      knowledge: [],
+      advancedPlanning: true,
+      plugins: [],
+      secrets: {},
+    };
+
+    const runtime = new AgentRuntime({ character });
+    const executionOrder: string[] = [];
+
+    runtime.registerAction({
+      name: "STEP_A",
+      description: "Step A",
+      similes: [],
+      examples: [],
+      validate: async () => true,
+      handler: async () => {
+        executionOrder.push("STEP_A");
+        return { success: true, data: { actionName: "STEP_A" } };
+      },
+    });
+
+    runtime.registerAction({
+      name: "STEP_B",
+      description: "Step B",
+      similes: [],
+      examples: [],
+      validate: async () => true,
+      handler: async () => {
+        executionOrder.push("STEP_B");
+        return { success: true, data: { actionName: "STEP_B" } };
+      },
+    });
+
+    runtime.registerAction({
+      name: "STEP_C",
+      description: "Step C",
+      similes: [],
+      examples: [],
+      validate: async () => true,
+      handler: async () => {
+        executionOrder.push("STEP_C");
+        return { success: true, data: { actionName: "STEP_C" } };
+      },
+    });
+
+    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+
+    const svc = (await runtime.getServiceLoadPromise("planning")) as PlanningService;
+
+    const stepA: UUID = asTestUuid(uuidv4());
+    const stepB: UUID = asTestUuid(uuidv4());
+    const stepC: UUID = asTestUuid(uuidv4());
+
+    const plan = {
+      id: asTestUuid(uuidv4()),
+      goal: "Run DAG",
+      thought: "Run DAG",
+      totalSteps: 3,
+      currentStep: 0,
+      steps: [
+        { id: stepA, actionName: "STEP_A", parameters: {}, dependencies: [] },
+        { id: stepB, actionName: "STEP_B", parameters: {}, dependencies: [stepA] },
+        { id: stepC, actionName: "STEP_C", parameters: {}, dependencies: [stepB] },
+      ],
+      executionModel: "dag",
+      state: { status: "pending" as const },
+    };
+
+    await svc.executePlan(runtime, plan, makeMemory("run"), undefined);
+
+    expect(executionOrder).toEqual(["STEP_A", "STEP_B", "STEP_C"]);
   });
 });
 

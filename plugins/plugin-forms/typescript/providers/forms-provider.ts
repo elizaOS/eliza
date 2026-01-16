@@ -1,9 +1,12 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { FormsService } from "../services/forms-service";
 import type { Form } from "../types";
 
+const spec = requireProviderSpec("forms-provider");
+
 export const formsProvider: Provider = {
-  name: "FORMS_CONTEXT",
+  name: spec.name,
   description: "Provides context about active forms and their current state",
   dynamic: true, // Only called when needed
   position: 50, // Mid-priority

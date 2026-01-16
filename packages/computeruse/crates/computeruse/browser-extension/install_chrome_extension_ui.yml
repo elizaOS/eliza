@@ -1,0 +1,332 @@
+---
+tool_name: execute_sequence
+arguments:
+  variables:
+    release_url:
+      type: string
+      label: GitHub Release asset URL (zip)
+      default: "https://github.com/mediar-ai/computeruse/releases/latest/download/computeruse-browser-extension.zip"
+
+    extension_dir:
+      type: string
+      label: Folder to load (will be created by the download step)
+      default: "%TEMP%\\computeruse-bridge"
+
+    zip_path:
+      type: string
+      label: Path to downloaded zip
+      default: "%TEMP%\\computeruse-browser-extension.zip"
+
+  selectors:
+    address_bar: "role:Edit|name:Address and search bar"
+    dev_mode_toggle: "role:Button|name:Developer mode"
+    load_unpacked: "role:Button|name:Load unpacked"
+    folder_field: "role:Edit|name:Folder:"
+    select_folder_btn: "role:Button|name:Select Folder"
+    reload_button: "role:Button|name:Reload"
+    extensions_doc: "role:Document|name:Extensions"
+
+  steps:
+    # Download the extension zip via JavaScript (NodeJS environment)
+    - tool_name: run_command
+      arguments:
+        engine: javascript
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const os = require('os');
+          (async () => {
+            const url = "${{release_url}}";
+            if (!url || !url.trim()) throw new Error('release_url is empty');
+            const isWin = process.platform === 'win32';
+            const tmp = isWin ? (process.env.TEMP || os.tmpdir()) : os.tmpdir();
+            const zipPath = isWin ? path.join(tmp, 'computeruse-browser-extension.zip') : path.join(tmp, 'computeruse-browser-extension.zip');
+            const destDir = isWin ? path.join(tmp, 'computeruse-bridge') : path.join(tmp, 'computeruse-bridge');
+            const existedBefore = fs.existsSync(destDir);
+            try { fs.rmSync(destDir, { recursive: true, force: true }); } catch (_) {}
+            try { fs.mkdirSync(destDir, { recursive: true }); } catch (e) { throw new Error('Failed to create dest dir: ' + e.message); }
+
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+            const arrayBuf = await res.arrayBuffer();
+            fs.writeFileSync(zipPath, Buffer.from(arrayBuf));
+
+            // Export values via ::set-env for the workflow engine AND return set_env for robust propagation
+            console.log(`::set-env name=zip_path::${zipPath}`);
+            console.log(`::set-env name=extension_dir::${destDir}`);
+            console.log(`::set-env name=is_update_mode::${existedBefore}`);
+            return { set_env: { zip_path: zipPath, extension_dir: destDir, is_update_mode: existedBefore } };
+          })();
+      delay_ms: 200
+
+    # Extract the downloaded zip to the destination folder (Windows + Unix)
+    - tool_name: run_command
+      arguments:
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Avoid template substitution issues: compute paths directly
+          $zip = Join-Path $env:TEMP 'computeruse-browser-extension.zip'
+          $dest = Join-Path $env:TEMP 'computeruse-bridge'
+          if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+        shell: powershell
+      delay_ms: 400
+
+    # Find the actual folder that contains manifest.json (some zips have a nested folder)
+    - tool_name: run_command
+      arguments:
+        engine: javascript
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const os = require('os');
+          (async () => {
+            const isWin = process.platform === 'win32';
+            const root = isWin ? path.join(process.env.TEMP || os.tmpdir(), 'computeruse-bridge') : path.join(os.tmpdir(), 'computeruse-bridge');
+            const stack = [root];
+            let picked = null;
+            while (stack.length) {
+              const dir = stack.pop();
+              let entries;
+              try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { continue; }
+              if (entries.some(e => e.isFile && e.name.toLowerCase() === 'manifest.json' || (!e.isFile && !e.isDirectory && e.name && e.name.toLowerCase() === 'manifest.json'))) {
+                picked = dir; break;
+              }
+              for (const e of entries) {
+                if ((e.isDirectory && e.isDirectory()) || (e.isDirectory === true)) {
+                  stack.push(path.join(dir, e.name));
+                }
+              }
+            }
+            if (!picked) {
+              console.log(`::set-env name=extension_dir_text::${root}`);
+              return { set_env: { extension_dir_text: root } };
+            }
+            console.log(`::set-env name=extension_dir_text::${picked}`);
+            return { set_env: { extension_dir_text: picked } };
+          })();
+      continue_on_error: false
+      delay_ms: 100
+
+    # Navigate directly to the Extensions page using browser navigation tool
+    - tool_name: navigate_browser
+      arguments:
+        url: "chrome://extensions"
+        browser: "chrome"
+      delay_ms: 1000
+
+    # Fallback: force the URL in the address bar if Chrome didn't navigate
+    - tool_name: wait_for_element
+      arguments:
+        selector: "${{ selectors.address_bar }}"
+        condition: "visible"
+        timeout_ms: 15000
+      continue_on_error: true
+
+    - tool_name: click_element
+      arguments:
+        selector: "${{ selectors.address_bar }}"
+      continue_on_error: true
+
+    - tool_name: type_into_element
+      arguments:
+        selector: "${{ selectors.address_bar }}"
+        text_to_type: "chrome://extensions"
+        clear_before_typing: true
+        verify_action: false
+      continue_on_error: true
+
+    - tool_name: press_key_global
+      arguments:
+        key: "{Enter}"
+      delay_ms: 800
+      continue_on_error: true
+
+    # Ensure Developer mode is ON (presence-based; do not trust is_toggled). Do NOT click "Load unpacked" here.
+    - tool_name: run_command
+      arguments:
+        engine: javascript
+        run: |
+          // Use computeruse.js via global 'desktop'
+          const toggleSel = "role:Button|name:Developer mode";
+          const loadSel = "role:Button|name:Load unpacked";
+
+          try {
+            log('Waiting for chrome://extensions page to load...');
+            await sleep(2000);
+
+            // First, let's check if "Load unpacked" is already visible (Dev mode already on)
+            log('Checking if Developer mode is already enabled...');
+            let loadVisible = false;
+            try {
+              await desktop.locator(loadSel).first(2000);
+              loadVisible = true;
+              log('✓ Developer mode already enabled - Load unpacked button found');
+            } catch (_) {
+              log('Developer mode not enabled yet - need to toggle it');
+            }
+
+            if (!loadVisible) {
+              // Try to find and click the Developer mode toggle
+              log('Looking for Developer mode toggle...');
+
+              // Try multiple selector variations
+              const toggleSelectors = [
+                "role:Button|name:Developer mode",
+                "role:ToggleButton|name:Developer mode",
+                "role:Switch|name:Developer mode"
+              ];
+
+              let devToggle = null;
+              for (const sel of toggleSelectors) {
+                try {
+                  log(`Trying selector: ${sel}`);
+                  devToggle = await desktop.locator(sel).first(3000);
+                  log(`✓ Found Developer mode toggle with selector: ${sel}`);
+                  break;
+                } catch (e) {
+                  log(`Selector failed: ${sel} - ${e.message}`);
+                }
+              }
+
+              if (!devToggle) {
+                // Dump available elements for debugging
+                log('Could not find Developer mode toggle. Dumping available buttons...');
+                try {
+                  const allButtons = await desktop.locator('role:Button').all(5000, 50);
+                  log(`Found ${allButtons.length} buttons on page`);
+                  for (let i = 0; i < Math.min(allButtons.length, 20); i++) {
+                    const name = allButtons[i].name();
+                    log(`  Button ${i}: ${name}`);
+                  }
+                } catch (dumpErr) {
+                  log(`Failed to dump buttons: ${dumpErr.message}`);
+                }
+                throw new Error('Developer mode toggle not found');
+              }
+
+              // Click the toggle
+              log('Clicking Developer mode toggle...');
+              await devToggle.click();
+              await sleep(1000);
+
+              // Verify that Load unpacked appeared
+              try {
+                await desktop.locator(loadSel).first(3000);
+                log('✓ Developer mode enabled successfully - Load unpacked button appeared');
+              } catch (e) {
+                log('Warning: Load unpacked button did not appear after toggling Developer mode');
+                throw e;
+              }
+            }
+          } catch (error) {
+            log(`ERROR in Developer mode step: ${error.message}`);
+            throw error;
+          }
+      continue_on_error: false
+      delay_ms: 200
+
+    # Safely remove only the ComputerUse Bridge extension if present using JavaScript
+    - tool_name: run_command
+      arguments:
+        engine: javascript
+        run: |
+          // Find and remove only ComputerUse Bridge extension
+          const extensionName = "ComputerUse Bridge";
+
+          try {
+            // Wait a bit for extensions page to load
+            await sleep(1000);
+
+            // Look for all extension cards on the page
+            const allElements = await desktop.locator("role:Group").all();
+            log(`Found ${allElements.length} groups on extensions page`);
+
+            let computeruseFound = false;
+
+            // Search through elements to find ComputerUse Bridge
+            for (let element of allElements) {
+              try {
+                const name = await element.name();
+                const text = await element.value();
+
+                // Check if this element contains "ComputerUse Bridge" text
+                if ((name && name.includes(extensionName)) || (text && text.includes(extensionName))) {
+                  log(`Found ComputerUse Bridge extension card`);
+                  computeruseFound = true;
+
+                  // Look for Remove button within this specific card
+                  // Try to find the Remove button that's a child of this card
+                  const removeButton = await element.locator("role:Button|name:Remove").first();
+
+                  if (removeButton) {
+                    log(`Found Remove button for ComputerUse Bridge, clicking it`);
+                    await removeButton.click();
+                    await sleep(500);
+
+                    // Confirm removal in the dialog
+                    await desktop.press_key("{Enter}");
+                    log(`Confirmed removal of ComputerUse Bridge`);
+                    await sleep(1000);
+                    break;
+                  } else {
+                    log(`Remove button not found in ComputerUse Bridge card`);
+                  }
+                }
+              } catch (e) {
+                // Skip elements that can't be read
+                continue;
+              }
+            }
+
+            if (!computeruseFound) {
+              log(`ComputerUse Bridge extension not found - probably not installed`);
+            }
+
+          } catch (error) {
+            log(`Error while trying to remove old extension: ${error.message}`);
+            log(`Continuing with installation anyway...`);
+          }
+      continue_on_error: true
+      delay_ms: 500
+
+    # Click Load unpacked, then handle folder picker dialog (Windows)
+    - tool_name: click_element
+      arguments:
+        selector: "${{ selectors.load_unpacked }}"
+      continue_on_error: false
+      delay_ms: 300
+
+    # Folder picker dialog (Windows)
+    - tool_name: wait_for_element
+      arguments:
+        selector: "${{ selectors.folder_field }}"
+        condition: "exists"
+        timeout_ms: 3000
+      continue_on_error: true
+
+    # Use the resolved folder containing manifest.json
+
+    - tool_name: type_into_element
+      arguments:
+        selector: "${{ selectors.folder_field }}"
+        text_to_type: "${{env.extension_dir_text}}"
+        clear_before_typing: true
+        verify_action: false
+      continue_on_error: true
+
+    - tool_name: click_element
+      arguments:
+        selector: "${{ selectors.select_folder_btn }}"
+      delay_ms: 1200
+      continue_on_error: true
+
+    # Verification: look for the Reload button that appears on unpacked extensions
+    - tool_name: wait_for_element
+      arguments:
+        selector: "${{ selectors.reload_button }}"
+        condition: "exists"
+        timeout_ms: 15000
+
+  stop_on_error: true

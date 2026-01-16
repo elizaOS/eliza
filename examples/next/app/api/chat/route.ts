@@ -1,6 +1,7 @@
 import {
   AgentRuntime,
   ChannelType,
+  createCharacter,
   type Character,
   createMessageMemory,
   type IAgentRuntime,
@@ -20,13 +21,13 @@ import { generateElizaResponse } from "@/lib/eliza-classic";
 // Character configuration (same as chat.ts)
 // Pass environment variables via character.secrets so getSetting() can find them
 // Without POSTGRES_URL, plugin-sql will use PGLite automatically
-const character: Character = {
+const character: Character = createCharacter({
   name: "Eliza",
   bio: "A helpful AI assistant.",
   secrets: {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
   },
-};
+});
 
 // Runtime state
 let runtime: IAgentRuntime | null = null;

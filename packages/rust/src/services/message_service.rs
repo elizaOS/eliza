@@ -11,7 +11,7 @@ use crate::prompts::{
 use crate::types::memory::Memory;
 use crate::types::primitives::{Content, UUID};
 use crate::types::state::State;
-use crate::types::HandlerCallback;
+use crate::types::{HandlerCallback, HandlerOptions};
 use crate::template::render_template;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -395,7 +395,7 @@ impl IMessageService for DefaultMessageService {
         if is_simple_reply && !benchmark_mode {
             // Simple chat-style response: return the model text directly.
             if let Some(cb) = callback {
-                let outbound = cb(response_content.clone()).await?;
+                let outbound = cb(response_content.clone()).await;
                 persist_outbound_memories(runtime, &outbound).await?;
                 response_messages.extend(outbound);
             }
@@ -484,7 +484,7 @@ async fn persist_evaluator_results(
             content.extra.insert("error".to_string(), Value::String(err.clone()));
         }
         if let Some(data) = &r.data {
-            for (k, v) in data {
+            for (k, v) in data.iter() {
                 content.extra.insert(k.clone(), v.clone());
             }
         }
@@ -625,9 +625,9 @@ async fn run_multi_step(
         };
 
         let ctx = serde_json::json!({
-            "recentMessages": iter_state.values.get("recentMessages").cloned().unwrap_or(Value::String(String::new())),
-            "actionsWithDescriptions": iter_state.values.get("actionsWithDescriptions").cloned().unwrap_or(Value::String(String::new())),
-            "providersWithDescriptions": iter_state.values.get("providersWithDescriptions").cloned().unwrap_or(Value::String(String::new())),
+            "recentMessages": iter_state.get_value("recentMessages").unwrap_or(Value::String(String::new())),
+            "actionsWithDescriptions": iter_state.get_value("actionsWithDescriptions").unwrap_or(Value::String(String::new())),
+            "providersWithDescriptions": iter_state.get_value("providersWithDescriptions").unwrap_or(Value::String(String::new())),
             "actionResults": format_action_results(&trace_results),
         });
 
@@ -678,7 +678,7 @@ async fn run_multi_step(
     };
 
     let ctx = serde_json::json!({
-        "recentMessages": state.values.get("recentMessages").cloned().unwrap_or(Value::String(String::new())),
+        "recentMessages": state.get_value("recentMessages").unwrap_or(Value::String(String::new())),
         "actionResults": format_action_results(&trace_results),
         "recentMessage": last_thought,
         "bio": "",
@@ -709,7 +709,7 @@ async fn run_multi_step(
     };
 
     if let Some(cb) = callback {
-        let _ = cb(response_content.clone()).await?;
+        let _ = cb(response_content.clone()).await;
     }
 
     runtime.end_run();
@@ -826,11 +826,12 @@ mod tests {
                 true
             }
 
-            async fn handle(
-                &self,
-                _message: &Memory,
-                _state: Option<&State>,
-            ) -> Result<Option<ActionResult>, anyhow::Error> {
+                async fn handle(
+                    &self,
+                    _message: &Memory,
+                    _state: Option<&State>,
+                    _options: Option<&HandlerOptions>,
+                ) -> Result<Option<ActionResult>, anyhow::Error> {
                 self.hits.fetch_add(1, Ordering::SeqCst);
                 Ok(Some(ActionResult::success_with_text("ok")))
             }

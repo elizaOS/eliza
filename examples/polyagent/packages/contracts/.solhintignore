@@ -1,0 +1,8 @@
+# Ignore test files - they use Foundry naming conventions
+test/
+script/
+
+# Ignore dependencies
+dependencies/
+node_modules/
+out/

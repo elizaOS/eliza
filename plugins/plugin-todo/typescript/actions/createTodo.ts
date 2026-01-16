@@ -37,6 +37,7 @@ function isValidTodoInput(
 }
 
 import { composePrompt } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { extractTodoTemplate as extractTodoTemplateBase } from "../generated/prompts/typescript/prompts.js";
 
 const extractTodoTemplate = (text: string, messageHistory: string) => {
@@ -112,11 +113,12 @@ async function extractTodoInfo(
 /**
  * The CREATE_TODO action allows the agent to create a new todo item.
  */
+const spec = requireActionSpec("CREATE_TODO");
+
 export const createTodoAction: Action = {
-  name: "CREATE_TODO",
-  similes: ["ADD_TODO", "NEW_TASK", "ADD_TASK", "CREATE_TASK"],
-  description:
-    "Creates a new todo item from a user description (daily, one-off, or aspirational) immediately.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
     return true;
@@ -258,92 +260,7 @@ export const createTodoAction: Action = {
     return { success: true, text: successMessage };
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Add a todo to finish my taxes by April 15",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create a one-off todo: 'Finish taxes' with Priority 2, Due April 15.\n\nIs this correct?",
-          actions: ["CONFIRM_TODO_REQUESTED"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Yes, that looks good",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "✅ Added new one-off task: 'Finish taxes' (Priority 2, Due: 4/15/2023)",
-          actions: ["CREATE_TODO"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I want to add a daily task to do 50 pushups",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create a daily todo: 'Do 50 pushups'.\n\nIs this correct?",
-          actions: ["CONFIRM_TODO_REQUESTED"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Yes, please add it",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "✅ Added new daily task: 'Do 50 pushups'. This task will reset each day.",
-          actions: ["CREATE_TODO"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Please add an aspirational goal to read more books",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create an aspirational goal: 'Read more books'.\n\nIs this correct?",
-          actions: ["CONFIRM_TODO_REQUESTED"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Yes",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "✅ Added new aspirational goal: 'Read more books'",
-          actions: ["CREATE_TODO"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default createTodoAction;

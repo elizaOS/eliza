@@ -13,7 +13,7 @@ import {
 
 const execAsync = promisify(exec);
 
-export class VisionWorkerE2ETestSuite implements TestSuite {
+export class VisionWorkerE2ETestSuite  {
   name = "plugin-vision-workers-e2e";
   description = "E2E tests for multi-threaded vision system with worker threads";
 

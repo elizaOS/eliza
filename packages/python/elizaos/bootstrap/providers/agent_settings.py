@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
 
+# Get text content from centralized specs
+_spec = require_provider_spec("AGENT_SETTINGS")
 
 SENSITIVE_KEY_PATTERNS = (
     "key",
@@ -53,8 +56,8 @@ async def get_agent_settings_context(
 
 
 agent_settings_provider = Provider(
-    name="AGENT_SETTINGS",
-    description="Provides the agent's current configuration settings (filtered for security)",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_agent_settings_context,
-    dynamic=True,
+    dynamic=_spec.get("dynamic", True),
 )

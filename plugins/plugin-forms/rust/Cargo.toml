@@ -1,8 +1,8 @@
 [package]
 name = "elizaos-plugin-forms"
-version = "1.2.0"
+version = "2.0.0"
 edition = "2021"
-authors = ["elizaOS Team"]
+authors = ["elizaOS Contributors"]
 description = "elizaOS Forms Plugin - Structured conversational data collection"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"

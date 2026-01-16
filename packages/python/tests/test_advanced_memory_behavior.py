@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from elizaos.runtime import AgentRuntime
+from elizaos.advanced_memory.memory_service import MemoryService
 from elizaos.advanced_memory.types import LongTermMemoryCategory
 from elizaos.types.agent import Character
 from elizaos.types.components import ProviderResult
@@ -46,4 +47,50 @@ async def test_memory_provider_formats_long_term_memories() -> None:
     provider = next(p for p in runtime.providers if p.name == "LONG_TERM_MEMORY")
     result: ProviderResult = await provider.get(runtime, msg, await runtime.compose_state(msg))
     assert result.text and "What I Know About You" in result.text
+
+
+@pytest.mark.asyncio
+async def test_get_long_term_memories_returns_top_confidence() -> None:
+    svc = MemoryService(runtime=None)
+    entity_id = as_uuid("12345678-1234-1234-1234-123456789210")
+
+    await svc.store_long_term_memory(
+        agent_id=as_uuid("12345678-1234-1234-1234-123456789211"),
+        entity_id=entity_id,
+        category=LongTermMemoryCategory.SEMANTIC,
+        content="low",
+        confidence=0.1,
+        source=None,
+        metadata={},
+    )
+    await svc.store_long_term_memory(
+        agent_id=as_uuid("12345678-1234-1234-1234-123456789211"),
+        entity_id=entity_id,
+        category=LongTermMemoryCategory.SEMANTIC,
+        content="high",
+        confidence=0.9,
+        source=None,
+        metadata={},
+    )
+    await svc.store_long_term_memory(
+        agent_id=as_uuid("12345678-1234-1234-1234-123456789211"),
+        entity_id=entity_id,
+        category=LongTermMemoryCategory.SEMANTIC,
+        content="mid",
+        confidence=0.5,
+        source=None,
+        metadata={},
+    )
+
+    results = await svc.get_long_term_memories(entity_id, None, 2)
+    assert len(results) == 2
+    assert results[0].content == "high"
+
+
+@pytest.mark.asyncio
+async def test_get_long_term_memories_handles_zero_limit() -> None:
+    svc = MemoryService(runtime=None)
+    entity_id = as_uuid("12345678-1234-1234-1234-123456789220")
+    results = await svc.get_long_term_memories(entity_id, None, 0)
+    assert results == []
 

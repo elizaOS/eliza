@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-gateway"
-version = "1.0.0"
+version = "2.0.0"
 description = "elizaOS Vercel AI Gateway Plugin - AI Gateway integration for text, embeddings, and images"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agents", "vercel", "gateway", "openai", "anthropic", "embeddings", "elizaos", "llm"]
 classifiers = [

@@ -10,6 +10,7 @@
 import {
   AgentRuntime,
   ChannelType,
+  createCharacter,
   type Character,
   createMessageMemory,
   stringToUuid,
@@ -50,13 +51,13 @@ interface ErrorResponse {
 
 // Character configuration from environment
 function getCharacter(): Character {
-  return {
+  return createCharacter({
     name: process.env.CHARACTER_NAME ?? "Eliza",
     bio: process.env.CHARACTER_BIO ?? "A helpful AI assistant.",
     system:
       process.env.CHARACTER_SYSTEM ??
       "You are a helpful, concise AI assistant. Respond thoughtfully to user messages.",
-  };
+  });
 }
 
 // Singleton runtime instance (reused across Lambda invocations)

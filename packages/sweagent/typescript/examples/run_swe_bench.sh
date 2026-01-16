@@ -23,7 +23,7 @@ echo "    --instances.subset lite \\"
 echo "    --instances.split dev \\"
 echo "    --instances.slice :3 \\"
 echo "    --instances.shuffle \\"
-echo "    --agent.model.name gpt-4o \\"
+echo "    --agent.model.name gpt-5 \\"
 echo "    --agent.model.per_instance_cost_limit 2.00 \\"
 echo "    --output_dir ./quick_test"
 echo ""
@@ -36,7 +36,7 @@ npx sweagent run-batch \
     --instances.split dev \
     --instances.slice :3 \
     --instances.shuffle \
-    --agent.model.name gpt-4o \
+    --agent.model.name gpt-5 \
     --agent.model.per_instance_cost_limit 2.00 \
     --output_dir ./quick_test
 
@@ -51,7 +51,7 @@ echo "    --instances.subset lite \\"
 echo "    --instances.split dev \\"
 echo "    --instances.slice :10 \\"
 echo "    --num_workers 3 \\"
-echo "    --agent.model.name gpt-4o \\"
+echo "    --agent.model.name gpt-5 \\"
 echo "    --output_dir ./parallel_test"
 echo ""
 echo "Press Enter to run this example, or Ctrl+C to skip..."
@@ -63,7 +63,7 @@ npx sweagent run-batch \
     --instances.split dev \
     --instances.slice :10 \
     --num_workers 3 \
-    --agent.model.name gpt-4o \
+    --agent.model.name gpt-5 \
     --output_dir ./parallel_test
 
 echo ""
@@ -103,7 +103,7 @@ echo "    --instances.subset lite \\"
 echo "    --instances.split dev \\"
 echo "    --instances.slice :50 \\"
 echo "    --instances.evaluate \\"
-echo "    --agent.model.name gpt-4o \\"
+echo "    --agent.model.name gpt-5 \\"
 echo "    --agent.model.per_instance_cost_limit 2.00 \\"
 echo "    --num_workers 5 \\"
 echo "    --output_dir ./evaluation_run"
@@ -117,7 +117,7 @@ npx sweagent run-batch \
     --instances.split dev \
     --instances.slice :50 \
     --instances.evaluate \
-    --agent.model.name gpt-4o \
+    --agent.model.name gpt-5 \
     --agent.model.per_instance_cost_limit 2.00 \
     --num_workers 5 \
     --output_dir ./evaluation_run

@@ -188,6 +188,7 @@ const createMockState = (text = "", values = {}, data = {}): State => ({
 const mockCharacter: Character = {
   id: stringToUuid(uuidv4()),
   name: "Test Character",
+  templates: {},
   plugins: ["@elizaos/plugin-sql"],
   username: "test",
   bio: ["Test bio"],
@@ -195,6 +196,8 @@ const mockCharacter: Character = {
   postExamples: [],
   topics: [],
   adjectives: [],
+  knowledge: [],
+  secrets: {},
   style: {
     all: [],
     chat: [],
@@ -707,6 +710,22 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     // Add tests for includeList, caching behavior
   });
 
+  describe("Settings", () => {
+    it("should return falsy values without falling back", () => {
+      runtime.character.settings = {
+        TEST_FALSE: false,
+        TEST_EMPTY: "",
+      } as Record<string, string | number | boolean>;
+      runtime.character.secrets = {
+        TEST_ZERO: 0,
+      } as Record<string, string | number | boolean>;
+
+      expect(runtime.getSetting("TEST_FALSE")).toBe(false);
+      expect(runtime.getSetting("TEST_EMPTY")).toBe("");
+      expect(runtime.getSetting("TEST_ZERO")).toBe(0);
+    });
+  });
+
   describe("Model Usage", () => {
     it("should call registered model handler", async () => {
       const modelHandler = vi.fn().mockResolvedValue("success");
@@ -746,6 +765,31 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           params,
         ),
       ).rejects.toThrow(/No handler found/);
+    });
+
+    it("should not mutate input params when streaming callbacks are provided", async () => {
+      type StreamingParams = GenerateTextParams & {
+        onStreamChunk: (chunk: string, messageId?: string) => void;
+        stream?: boolean;
+      };
+      const mockHandler = vi.fn().mockResolvedValue("ok");
+      runtime.registerModel(
+        ModelType.TEXT_SMALL,
+        mockHandler as ModelHandlerFunction,
+        "test-provider",
+      );
+
+      const onStreamChunk = vi.fn();
+      const params: StreamingParams = {
+        prompt: "streaming test",
+        onStreamChunk,
+        stream: true,
+      };
+
+      await runtime.useModel(ModelType.TEXT_SMALL, params);
+
+      expect(params.onStreamChunk).toBe(onStreamChunk);
+      expect(params.stream).toBe(true);
     });
   });
 
@@ -869,6 +913,60 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
       expect(replyWithImageHandler).toHaveBeenCalledTimes(1);
       expect(replyHandler).not.toHaveBeenCalled();
+    });
+
+    it("should evict oldest working memory entries when limit exceeded", async () => {
+      const runtimeWithLimit = runtime as { maxWorkingMemoryEntries: number };
+      runtimeWithLimit.maxWorkingMemoryEntries = 2;
+      let now = 1000;
+      const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => {
+        const current = now;
+        now += 1000;
+        return current;
+      });
+
+      const state = createMockState("composed state", {}, {});
+      vi.spyOn(runtime, "composeState").mockResolvedValue(state);
+
+      const actionNames = ["Action1", "Action2", "Action3"];
+      for (const name of actionNames) {
+        const action = createMockAction(name);
+        action.handler = vi
+          .fn()
+          .mockResolvedValue({ success: true, text: "ok" });
+        runtime.registerAction(action);
+      }
+
+      const message = createMockMemory(
+        "user message",
+        undefined,
+        undefined,
+        undefined,
+        agentId,
+      );
+      const response = createMockMemory(
+        "agent response",
+        undefined,
+        undefined,
+        message.roomId,
+        agentId,
+      );
+      response.content.actions = actionNames;
+
+      await runtime.processActions(message, [response]);
+
+      const workingMemory = (state.data?.workingMemory ?? {}) as Record<
+        string,
+        { actionName: string }
+      >;
+      const storedActions = Object.values(workingMemory).map(
+        (entry) => entry.actionName,
+      );
+      expect(storedActions).toHaveLength(2);
+      expect(storedActions).toContain("Action2");
+      expect(storedActions).toContain("Action3");
+
+      nowSpy.mockRestore();
     });
   });
 

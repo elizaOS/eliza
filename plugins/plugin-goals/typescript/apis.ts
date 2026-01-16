@@ -87,7 +87,7 @@ export const routes: Route[] = [
           sendFile.call(res, filePath);
         } else {
           const content = fs.readFileSync(filePath);
-          res.send(content);
+          (res as unknown as { send: (data: Buffer) => void }).send(content);
         }
       } else {
         res.status(404).send("Asset not found");
@@ -192,7 +192,7 @@ export const routes: Route[] = [
         });
 
         const newGoal = newGoalId ? await dataService.getGoal(newGoalId) : null;
-        res.status(201).json(newGoal);
+        (res.status(201) as { json: (data: unknown) => void }).json(newGoal);
       } catch (error) {
         console.error("Error creating goal:", error);
         res.status(500).send("Error creating goal");
@@ -238,7 +238,7 @@ export const routes: Route[] = [
 
         // Return the final goal state
         const updatedGoal = await dataService.getGoal(goalId);
-        res.json({
+        (res as { json: (data: unknown) => void }).json({
           message: `Goal ${goalId} completed.`,
           goal: updatedGoal,
         });
@@ -286,7 +286,7 @@ export const routes: Route[] = [
         });
 
         const updatedGoal = await dataService.getGoal(goalId);
-        res.json({
+        (res as { json: (data: unknown) => void }).json({
           message: `Goal ${goalId} marked as not completed.`,
           goal: updatedGoal,
         });
@@ -338,7 +338,7 @@ export const routes: Route[] = [
         await dataService.updateGoal(goalId, updates);
 
         const updatedGoal = await dataService.getGoal(goalId);
-        res.json({
+        (res as { json: (data: unknown) => void }).json({
           message: `Goal ${goalId} updated successfully.`,
           goal: updatedGoal,
         });

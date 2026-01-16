@@ -11,6 +11,9 @@ import {
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 import { type CreateCommentParams, createCommentSchema, formatZodErrors } from "../types";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("CREATE_COMMENT");
 
 const examples: ActionExample[][] = [
   [
@@ -47,8 +50,8 @@ const examples: ActionExample[][] = [
 
 export const createCommentAction: Action = {
   name: "CREATE_GITHUB_COMMENT",
-  similes: ["COMMENT_ON_ISSUE", "COMMENT_ON_PR", "ADD_COMMENT", "REPLY_TO_ISSUE", "POST_COMMENT"],
-  description: "Creates a comment on a GitHub issue or pull request.",
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);

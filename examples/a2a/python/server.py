@@ -25,6 +25,7 @@ from elizaos.types.primitives import string_to_uuid
 from elizaos_plugin_eliza_classic.plugin import get_eliza_classic_plugin
 from elizaos_plugin_inmemorydb import InMemoryDatabaseAdapter, MemoryStorage
 from elizaos_plugin_openai import get_openai_plugin
+from elizaos_plugin_inmemorydb import plugin as inmemorydb_plugin
 
 # ============================================================================
 # Configuration
@@ -274,7 +275,7 @@ async def chat_stream(
     x_session_id: str | None = Header(None),
     x_agent_id: str | None = Header(None),
 ) -> StreamingResponse:
-    """Stream a response from the agent."""
+    """Stream a response from the agent using true token-by-token streaming."""
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message is required")
 

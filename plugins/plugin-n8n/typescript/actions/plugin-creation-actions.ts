@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionExample,
   ActionResult,
   HandlerCallback,
   IAgentRuntime,
@@ -7,6 +8,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { z } from "zod";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { PluginCreationJob, PluginSpecification } from "../types";
 import { getPluginCreationService } from "../utils/get-plugin-creation-service";
 import { isValidJsonSpecification, validatePrompt } from "../utils/validation";
@@ -68,17 +70,12 @@ const PluginSpecificationSchema = z.object({
     .optional(),
 });
 
+const spec = requireActionSpec("PLUGIN-CREATION-ACTIONS");
+
 export const createPluginAction: Action = {
-  name: "createPlugin",
-  description: "Create a new plugin from a specification using AI assistance",
-  similes: [
-    "generate plugin",
-    "build plugin",
-    "make plugin",
-    "develop plugin",
-    "create extension",
-    "build extension",
-  ],
+  name: spec.name,
+  description: spec.description,
+  similes: spec.similes ? [...spec.similes] : [],
   examples: [
     [
       {
@@ -188,31 +185,13 @@ export const createPluginAction: Action = {
   },
 };
 
+const checkStatusSpec = requireActionSpec("CHECK_PLUGIN_CREATION_STATUS");
+
 export const checkPluginCreationStatusAction: Action = {
-  name: "checkPluginCreationStatus",
-  description: "Check the status of a plugin creation job",
-  similes: [
-    "plugin status",
-    "check plugin progress",
-    "plugin creation status",
-    "get plugin status",
-  ],
-  examples: [
-    [
-      {
-        name: "user",
-        content: {
-          text: "What's the status of my plugin creation?",
-        },
-      },
-      {
-        name: "agent",
-        content: {
-          text: "Let me check the status of your plugin creation job...",
-        },
-      },
-    ],
-  ],
+  name: checkStatusSpec.name,
+  description: checkStatusSpec.description,
+  similes: checkStatusSpec.similes ? [...checkStatusSpec.similes] : [],
+  examples: (checkStatusSpec.examples ?? []) as ActionExample[][],
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
@@ -327,26 +306,13 @@ export const checkPluginCreationStatusAction: Action = {
   },
 };
 
+const cancelSpec = requireActionSpec("CANCEL_PLUGIN_CREATION");
+
 export const cancelPluginCreationAction: Action = {
-  name: "cancelPluginCreation",
-  description: "Cancel the current plugin creation job",
-  similes: ["stop plugin creation", "abort plugin creation", "cancel plugin"],
-  examples: [
-    [
-      {
-        name: "user",
-        content: {
-          text: "Cancel the plugin creation",
-        },
-      },
-      {
-        name: "agent",
-        content: {
-          text: "I'll cancel the current plugin creation job.",
-        },
-      },
-    ],
-  ],
+  name: cancelSpec.name,
+  description: cancelSpec.description,
+  similes: cancelSpec.similes ? [...cancelSpec.similes] : [],
+  examples: (cancelSpec.examples ?? []) as ActionExample[][],
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
@@ -402,26 +368,13 @@ export const cancelPluginCreationAction: Action = {
   },
 };
 
+const createFromDescSpec = requireActionSpec("CREATE_PLUGIN_FROM_DESCRIPTION");
+
 export const createPluginFromDescriptionAction: Action = {
-  name: "createPluginFromDescription",
-  description: "Create a plugin from a natural language description",
-  similes: ["describe plugin", "plugin from description", "explain plugin", "I need a plugin that"],
-  examples: [
-    [
-      {
-        name: "user",
-        content: {
-          text: "I need a plugin that helps manage todo lists with add, remove, and list functionality",
-        },
-      },
-      {
-        name: "agent",
-        content: {
-          text: "I'll create a todo list management plugin based on your description. This will include actions for adding, removing, and listing todos.",
-        },
-      },
-    ],
-  ],
+  name: createFromDescSpec.name,
+  description: createFromDescSpec.description,
+  similes: createFromDescSpec.similes ? [...createFromDescSpec.similes] : [],
+  examples: (createFromDescSpec.examples ?? []) as ActionExample[][],
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {

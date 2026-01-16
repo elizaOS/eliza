@@ -16,11 +16,14 @@ import {
   type FileChange,
   formatZodErrors,
 } from "../types";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("PUSH_CODE");
 
 const examples: ActionExample[][] = [
   [
     {
-      name: "{{user1}}",
+      name: spec.name,
       content: {
         text: "Push the file changes to the feature/dark-mode branch with message 'Add dark mode styles'",
       },
@@ -52,8 +55,8 @@ const examples: ActionExample[][] = [
 
 export const pushCodeAction: Action = {
   name: "PUSH_GITHUB_CODE",
-  similes: ["COMMIT_CODE", "PUSH_CHANGES", "COMMIT_FILES", "PUSH_FILES", "GIT_PUSH", "SAVE_CODE"],
-  description: "Creates a commit with file changes and pushes to a GitHub branch.",
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);

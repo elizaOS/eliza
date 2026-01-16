@@ -1,4 +1,4 @@
-import type { Plugin } from "@elizaos/core";
+import type { Plugin, TestSuite } from "@elizaos/core";
 import { SEND_MESSAGE_ACTION, sendMessageAction } from "./actions";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
@@ -12,7 +12,7 @@ const telegramPlugin: Plugin = {
   services: [TelegramService],
   actions: [sendMessageAction],
   providers: [chatStateProvider],
-  tests: [new TelegramTestSuite()],
+  tests: [new TelegramTestSuite() as unknown as TestSuite],
 };
 
 export {

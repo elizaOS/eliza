@@ -7,6 +7,7 @@ import {
   EventType,
   type IAgentRuntime,
   logger,
+  type Metadata,
   Role,
   type Room,
   Service,
@@ -386,15 +387,15 @@ export class TelegramService extends Service {
       agentId: this.runtime.agentId,
       messageServerId: createUniqueUuid(this.runtime, chatId) as UUID,
       metadata: {
-        source: "telegram",
-        ...(ownerId && { ownership: { ownerId } }),
         roles: ownerId
           ? {
               [ownerId]: Role.OWNER,
             }
           : {},
-        chatType: chat.type,
-        isForumEnabled: chat.type === "supergroup" && chat.is_forum,
+        extra: {
+          chatType: chat.type,
+          isForumEnabled: chat.type === "supergroup" && chat.is_forum,
+        },
       },
     };
 

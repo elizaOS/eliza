@@ -37,7 +37,7 @@ echo "3. Testing file-based batch run (validation only)..."
 NODE_ENV=test npx ts-node src/run/cli.ts run-batch \
     --instances.type file \
     --instances.path test_instances.json \
-    --agent.model.name gpt-4o \
+    --agent.model.name gpt-5 \
     --output_dir ./test_output \
     --help 2>&1 | head -5
 
@@ -52,7 +52,7 @@ echo "     --instances.type swe_bench \\"
 echo "     --instances.subset lite \\"
 echo "     --instances.split dev \\"
 echo "     --instances.slice :1 \\"
-echo "     --agent.model.name gpt-4o"
+echo "     --agent.model.name gpt-5"
 echo ""
 echo "   ✓ SWE-bench command structure verified"
 

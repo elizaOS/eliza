@@ -8,16 +8,19 @@ import type {
   State,
 } from "@elizaos/core";
 import type { CoderService } from "../services/coderService";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 function getDir(options: HandlerOptions | undefined): string {
   const opt = options as { path?: string } | undefined;
   return opt?.path?.trim() ?? ".";
 }
 
+const spec = requireActionSpec("LIST_FILES");
+
 export const listFiles: Action = {
-  name: "LIST_FILES",
-  similes: ["LS", "LIST_DIR", "LIST_DIRECTORY", "DIR"],
-  description: "List files in a directory.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (runtime: IAgentRuntime): Promise<boolean> =>
     runtime.getService<CoderService>("coder") !== null,
   handler: async (
@@ -34,7 +37,7 @@ export const listFiles: Action = {
       return { success: false, text: msg };
     }
 
-    const conv = message.roomId || message.agentId;
+    const conv = message.roomId ?? message.agentId ?? runtime.agentId;
     const dir = getDir(options);
     const result = await svc.listFiles(conv, dir);
     if (!result.ok) {

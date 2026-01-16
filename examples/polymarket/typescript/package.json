@@ -1,9 +1,12 @@
 {
-  "name": "@elizaos/example-polymarket-demo",
+  "name": "polyagent",
   "version": "2.0.0",
   "description": "Autonomous Polymarket demo agent CLI (TypeScript) using plugin-evm + plugin-polymarket",
   "type": "module",
-  "private": true,
+  "private": false,
+  "bin": {
+    "polyagent": "./bin/polyagent.js"
+  },
   "scripts": {
     "start": "bun run polymarket-demo.ts",
     "test": "bun test"
@@ -16,10 +19,12 @@
     "@elizaos/plugin-polymarket": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@polymarket/clob-client": "^5.2.0",
+    "@zenobius/ink-mouse": "1.0.4",
     "dotenv": "^16.6.1",
     "ink": "^6.6.0",
     "ink-text-input": "^6.0.0",
     "react": "19.2.3",
+    "tsx": "^4.21.0",
     "uuid": "^11.1.0",
     "zod": "^4.3.5"
   },
@@ -32,4 +37,3 @@
     "node": ">=18.0.0"
   }
 }
-

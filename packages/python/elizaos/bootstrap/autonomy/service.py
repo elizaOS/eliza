@@ -7,11 +7,17 @@ import time
 import uuid
 from typing import TYPE_CHECKING
 
-from elizaos.types.environment import ChannelType, Room, World
+from elizaos.types.environment import Room, World
 from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import UUID, Content, as_uuid
 from elizaos.types.service import Service
+from elizaos.prompts import (
+    AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE,
+    AUTONOMY_CONTINUOUS_FIRST_TEMPLATE,
+    AUTONOMY_TASK_CONTINUE_TEMPLATE,
+    AUTONOMY_TASK_FIRST_TEMPLATE,
+)
 
 from .types import AutonomyStatus
 
@@ -99,7 +105,7 @@ class AutonomyService(Service):
                 name="Autonomous Thoughts",
                 worldId=self._autonomous_world_id,
                 source="autonomy-service",
-                type=ChannelType.SELF,
+                type="SELF",
                 metadata={
                     "source": "autonomy-service",
                     "description": "Room for autonomous agent thinking",
@@ -119,11 +125,11 @@ class AutonomyService(Service):
 
     def _get_autonomy_mode(self) -> str:
         if not self._runtime:
-            return "monologue"
+            return "continuous"
         raw = self._runtime.get_setting("AUTONOMY_MODE")
         if isinstance(raw, str) and raw.strip().lower() == "task":
             return "task"
-        return "monologue"
+        return "continuous"
 
     def _get_target_room_id(self) -> UUID | None:
         if not self._runtime:
@@ -148,15 +154,19 @@ class AutonomyService(Service):
         messages_table = await self._runtime.get_memories(
             {"roomId": target_room_id, "count": 15, "tableName": "messages"}
         )
-        recent = [*memories_table, *messages_table]
-        seen: set[str] = set()
-        ordered = sorted(recent, key=lambda m: m.created_at or 0)
+        by_id: dict[str, Memory] = {}
+        for m in [*memories_table, *messages_table]:
+            mem_id = m.id or ""
+            if not mem_id:
+                continue
+            created_at = m.created_at or 0
+            existing = by_id.get(mem_id)
+            if existing is None or created_at < (existing.created_at or 0):
+                by_id[mem_id] = m
+        ordered = sorted(by_id.values(), key=lambda m: m.created_at or 0)
         lines: list[str] = []
         for m in ordered:
             mem_id = m.id or ""
-            if not mem_id or mem_id in seen:
-                continue
-            seen.add(mem_id)
             role = "Agent" if m.entityId == self._runtime.agent_id else "User"
             text = m.content.text if m.content and isinstance(m.content.text, str) else ""
             if text.strip():
@@ -271,7 +281,8 @@ class AutonomyService(Service):
         )
 
         last_agent_thought = None
-        for m in sorted(recent_memories, key=lambda x: x.created_at or 0, reverse=True):
+        last_created_at = None
+        for m in recent_memories:
             if (
                 m.entityId == agent_entity.id
                 and m.content
@@ -279,8 +290,10 @@ class AutonomyService(Service):
                 and m.content.metadata
                 and m.content.metadata.get("isAutonomous") is True
             ):
-                last_agent_thought = m
-                break
+                created_at = m.created_at or 0
+                if last_created_at is None or created_at > last_created_at:
+                    last_created_at = created_at
+                    last_agent_thought = m
 
         if last_agent_thought and last_agent_thought.content and last_agent_thought.content.text:
             last_thought = last_agent_thought.content.text
@@ -289,10 +302,10 @@ class AutonomyService(Service):
 
         mode = self._get_autonomy_mode()
         target_context = await self._get_target_room_context_text()
-        monologue_prompt = (
+        autonomy_prompt = (
             self._create_task_prompt(last_thought, is_first_thought, target_context)
             if mode == "task"
-            else self._create_monologue_prompt(last_thought, is_first_thought, target_context)
+            else self._create_continuous_prompt(last_thought, is_first_thought, target_context)
         )
 
         entity_id = agent_entity.id if agent_entity.id else self._runtime.agent_id
@@ -301,7 +314,7 @@ class AutonomyService(Service):
             id=as_uuid(str(uuid.uuid4())),
             entityId=as_uuid(str(entity_id)),
             content=Content(
-                text=monologue_prompt,
+                text=autonomy_prompt,
                 source="autonomy-service",
                 metadata={
                     "type": "autonomous-prompt",
@@ -343,56 +356,32 @@ class AutonomyService(Service):
 
         self._log("debug", "Autonomous message event emitted to agent pipeline")
 
-    def _create_monologue_prompt(
+    def _create_continuous_prompt(
         self, last_thought: str | None, is_first_thought: bool, target_context: str
     ) -> str:
-        header = """You are running in AUTONOMOUS REFLECTION MODE.
-
-Your job: reflect on context, decide what you want to do next, and act if appropriate.
-- Use available actions/tools when they can advance the goal.
-- If you cannot act, state the missing info and the safest next step to obtain it.
-- Keep the response concise, focused on the next action."""
-        context = f"""USER CONTEXT (most recent last):
-{target_context}"""
-        if is_first_thought:
-            return f"""{header}
-
-{context}
-
-Think briefly, then state what you want to do next and take action if needed."""
-
-        return f"""{header}
-
-{context}
-
-Your last autonomous note: "{last_thought or ''}"
-
-Continue from that note. Decide the next step and act if needed."""
+        template = (
+            AUTONOMY_CONTINUOUS_FIRST_TEMPLATE
+            if is_first_thought
+            else AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE
+        )
+        return self._fill_autonomy_template(template, target_context, last_thought)
 
     def _create_task_prompt(
         self, last_thought: str | None, is_first_thought: bool, target_context: str
     ) -> str:
-        header = """You are running in AUTONOMOUS TASK MODE.
+        template = (
+            AUTONOMY_TASK_FIRST_TEMPLATE
+            if is_first_thought
+            else AUTONOMY_TASK_CONTINUE_TEMPLATE
+        )
+        return self._fill_autonomy_template(template, target_context, last_thought)
 
-Your job: continue helping the user and make progress toward the task.
-- Use available actions/tools to gather information or execute steps.
-- Prefer safe, incremental steps; if unsure, gather more context before acting."""
-        context = f"""USER CHAT CONTEXT (most recent last):
-{target_context}"""
-        if is_first_thought:
-            return f"""{header}
-
-{context}
-
-Decide what to do next. Think briefly, then take the most useful action."""
-
-        return f"""{header}
-
-{context}
-
-Your last autonomous note: "{last_thought or ''}"
-
-Continue the task. Decide the next step and take action now."""
+    def _fill_autonomy_template(
+        self, template: str, target_context: str, last_thought: str | None
+    ) -> str:
+        output = template.replace("{{targetRoomContext}}", target_context)
+        output = output.replace("{{lastThought}}", last_thought or "")
+        return output
 
     def is_loop_running(self) -> bool:
         return self._is_running

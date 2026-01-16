@@ -1,20 +1,22 @@
-import { type IAgentRuntime, logger, type TestSuite } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  type TestCase,
+  type TestSuite,
+} from "@elizaos/core";
 import type { Chat, Message, User } from "@telegraf/types";
 import type { Context, Telegraf } from "telegraf";
 import type { MessageManager } from "./messageManager";
 import type { TelegramService } from "./service";
 import type { TelegramContent } from "./types";
-
 const TEST_IMAGE_URL =
   "https://github.com/elizaOS/awesome-eliza/blob/main/assets/eliza-logo.jpg?raw=true";
-
-export class TelegramTestSuite implements TestSuite {
+export class TelegramTestSuite {
   name = "telegram";
   private telegramClient: TelegramService | null = null;
   private bot: Telegraf<Context> | null = null;
   private messageManager: MessageManager | null = null;
-  tests: { name: string; fn: (runtime: IAgentRuntime) => Promise<void> }[];
-
+  tests: TestCase[];
   constructor() {
     this.tests = [
       {
@@ -37,9 +39,8 @@ export class TelegramTestSuite implements TestSuite {
         name: "Process and Validate Image Attachments in Incoming Messages",
         fn: this.testProcessingImages.bind(this),
       },
-    ];
+    ] as TestCase[];
   }
-
   validateChatId(runtime: IAgentRuntime): string | number {
     const testChatId =
       runtime.getSetting("TELEGRAM_TEST_CHAT_ID") || process.env.TELEGRAM_TEST_CHAT_ID;
@@ -53,7 +54,6 @@ export class TelegramTestSuite implements TestSuite {
     }
     return testChatId;
   }
-
   async getChatInfo(runtime: IAgentRuntime): Promise<Context["chat"]> {
     try {
       const chatId = this.validateChatId(runtime);
@@ -67,7 +67,6 @@ export class TelegramTestSuite implements TestSuite {
       throw new Error(`Error fetching real Telegram chat: ${error}`);
     }
   }
-
   async testCreatingTelegramBot(runtime: IAgentRuntime) {
     this.telegramClient = runtime.getService("telegram") as TelegramService;
     if (!this.telegramClient || !this.telegramClient.messageManager) {
@@ -79,11 +78,9 @@ export class TelegramTestSuite implements TestSuite {
     this.messageManager = this.telegramClient.messageManager;
     logger.debug("Telegram bot initialized successfully.");
   }
-
   async testSendingTextMessage(runtime: IAgentRuntime) {
     try {
       if (!this.bot) throw new Error("Bot not initialized.");
-
       const chatId = this.validateChatId(runtime);
       await this.bot.telegram.sendMessage(chatId, "Testing Telegram message!");
       logger.debug("Message sent successfully.");
@@ -91,19 +88,16 @@ export class TelegramTestSuite implements TestSuite {
       throw new Error(`Error sending Telegram message: ${error}`);
     }
   }
-
   async testSendingMessageWithAttachment(runtime: IAgentRuntime) {
     try {
       if (!this.messageManager) throw new Error("MessageManager not initialized.");
       if (!this.bot) throw new Error("Bot not initialized.");
-
       const chat = await this.getChatInfo(runtime);
       const mockContext: Partial<Context> = {
         chat,
         from: { id: 123, username: "TestUser" } as User,
         telegram: this.bot.telegram,
       };
-
       const messageContent = {
         text: "Here is an image attachment:",
         attachments: [
@@ -118,23 +112,19 @@ export class TelegramTestSuite implements TestSuite {
           },
         ],
       };
-
       await this.messageManager.sendMessageInChunks(
         mockContext as Context,
         messageContent as TelegramContent
       );
-
       logger.success("Message with image attachment sent successfully.");
     } catch (error) {
       throw new Error(`Error sending Telegram message with attachment: ${error}`);
     }
   }
-
   async testHandlingMessage(runtime: IAgentRuntime) {
     try {
       if (!this.bot) throw new Error("Bot not initialized.");
       if (!this.messageManager) throw new Error("MessageManager not initialized.");
-
       const chat = await this.getChatInfo(runtime);
       const mockContext = {
         chat,
@@ -153,7 +143,6 @@ export class TelegramTestSuite implements TestSuite {
         } as Message.TextMessage,
         telegram: this.bot.telegram,
       } as Partial<Context> as Context;
-
       try {
         await this.messageManager.handleMessage(mockContext);
       } catch (error) {
@@ -163,15 +152,12 @@ export class TelegramTestSuite implements TestSuite {
       throw new Error(`Error handling Telegram message: ${error}`);
     }
   }
-
   async testProcessingImages(runtime: IAgentRuntime) {
     try {
       if (!this.bot) throw new Error("Bot not initialized.");
       if (!this.messageManager) throw new Error("MessageManager not initialized.");
-
       const chatId = this.validateChatId(runtime);
       const fileId = await this.getFileId(chatId, TEST_IMAGE_URL);
-
       const mockMessage = {
         message_id: 12345,
         chat: { id: chatId, type: "private" } as Chat,
@@ -186,7 +172,6 @@ export class TelegramTestSuite implements TestSuite {
         ],
         text: `@${this.bot.botInfo?.username}!`,
       };
-
       const result = await this.messageManager.processImage(mockMessage as Message.PhotoMessage);
       if (!result || !result.description) {
         throw new Error("Error processing Telegram image or description not found");
@@ -197,7 +182,6 @@ export class TelegramTestSuite implements TestSuite {
       throw new Error(`Error processing Telegram image: ${error}`);
     }
   }
-
   async getFileId(chatId: string | number, imageUrl: string) {
     try {
       if (!this.bot) {

@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.generated.spec_helpers import require_action_spec
+from elizaos.prompts import SEARCH_CONTACTS_TEMPLATE
 from elizaos.types import (
     Action,
     ActionExample,
@@ -21,38 +23,35 @@ if TYPE_CHECKING:
         State,
     )
 
+# Get text content from centralized specs
+_spec = require_action_spec("SEARCH_CONTACTS")
 
-SEARCH_CONTACTS_TEMPLATE = """# Search Contacts
 
-Current message: {{message}}
-Sender: {{senderName}} (ID: {{senderId}})
-
-Extract search criteria:
-1. Categories (friend, family, colleague, acquaintance, vip, business)
-2. Search terms (names or keywords)
-3. Tags
-
-<response>
-<categories>comma-separated list of categories to filter by</categories>
-<searchTerm>search term for names</searchTerm>
-<tags>comma-separated list of tags</tags>
-<intent>list, search, or count</intent>
-</response>"""
+def _convert_spec_examples() -> list[list[ActionExample]]:
+    """Convert spec examples to ActionExample format."""
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
 
 
 @dataclass
 class SearchContactsAction:
-    name: str = "SEARCH_CONTACTS"
-    similes: list[str] = field(
-        default_factory=lambda: [
-            "list contacts",
-            "show contacts",
-            "search contacts",
-            "find contacts",
-            "who are my friends",
-        ]
-    )
-    description: str = "Search and list contacts in the rolodex"
+    name: str = _spec["name"]
+    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
+    description: str = _spec["description"]
 
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
@@ -147,18 +146,7 @@ class SearchContactsAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return [
-            [
-                ActionExample(name="{{name1}}", content=Content(text="Show me all my friends")),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(
-                        text="Here are your friends: Alice, Bob, Charlie",
-                        actions=["SEARCH_CONTACTS"],
-                    ),
-                ),
-            ],
-        ]
+        return _convert_spec_examples()
 
 
 search_contacts_action = Action(

@@ -8,6 +8,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { CoderService } from "../services/coderService";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 function getInputs(options: HandlerOptions | undefined): {
   pattern: string;
@@ -32,10 +33,12 @@ function getInputs(options: HandlerOptions | undefined): {
   return { pattern, path: p, maxMatches };
 }
 
+const spec = requireActionSpec("SEARCH_FILES");
+
 export const searchFiles: Action = {
-  name: "SEARCH_FILES",
-  similes: ["GREP", "RG", "FIND_IN_FILES", "SEARCH"],
-  description: "Search for text across files under a directory.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (runtime: IAgentRuntime): Promise<boolean> =>
     runtime.getService<CoderService>("coder") !== null,
   handler: async (
@@ -52,7 +55,7 @@ export const searchFiles: Action = {
       return { success: false, text: msg };
     }
 
-    const conv = message.roomId || message.agentId;
+    const conv = message.roomId ?? message.agentId ?? runtime.agentId;
     const { pattern, path, maxMatches } = getInputs(options);
     if (!pattern) {
       const msg = "Missing pattern.";

@@ -17,6 +17,21 @@ if TYPE_CHECKING:
     from elizaos.types.state import State
 
 
+ADMIN_KEYWORDS = (
+    "admin",
+    "user",
+    "tell",
+    "notify",
+    "inform",
+    "update",
+    "message",
+    "send",
+    "communicate",
+    "report",
+    "alert",
+)
+
+
 async def _validate_send_to_admin(
     runtime: IAgentRuntime,
     message: Memory,
@@ -35,21 +50,9 @@ async def _validate_send_to_admin(
         return False
 
     text = (message.content.text or "").lower() if message.content else ""
-    admin_keywords = [
-        "admin",
-        "user",
-        "tell",
-        "notify",
-        "inform",
-        "update",
-        "message",
-        "send",
-        "communicate",
-        "report",
-        "alert",
-    ]
-
-    return any(keyword in text for keyword in admin_keywords)
+    if not text:
+        return False
+    return any(keyword in text for keyword in ADMIN_KEYWORDS)
 
 
 async def _handle_send_to_admin(
@@ -184,6 +187,6 @@ send_to_admin_action = Action(
             },
         ],
     ],
-    validate_fn=_validate_send_to_admin,
+    validate=_validate_send_to_admin,
     handler=_handle_send_to_admin,
 )

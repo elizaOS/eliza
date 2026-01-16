@@ -2,7 +2,7 @@
 name = "elizaos-plugin-polymarket"
 version = "2.0.0"
 edition = "2021"
-authors = ["elizaOS Team"]
+authors = ["elizaOS Contributors"]
 description = "Polymarket prediction markets plugin for elizaOS - Rust implementation"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"

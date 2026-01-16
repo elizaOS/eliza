@@ -1,4 +1,7 @@
-//! Proto-generated types placeholder
-//!
-//! This module will contain types generated from Protocol Buffer schemas
-//! for cross-language interoperability. Currently empty pending proto generation.
+//! Proto-generated types (prost)
+
+pub mod eliza {
+    pub mod v1 {
+        include!("generated/eliza.v1.rs");
+    }
+}

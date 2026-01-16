@@ -5,6 +5,17 @@ import type { Agent, Character, IDatabaseAdapter, UUID } from "../types";
 
 const stringToUuid = (id: string): UUID => id as UUID;
 
+const baseCharacterDefaults = {
+  templates: {},
+  messageExamples: [],
+  postExamples: [],
+  topics: [],
+  adjectives: [],
+  knowledge: [],
+  plugins: [],
+  secrets: {},
+} as const;
+
 /**
  * Test suite to verify agent UUID identification behavior.
  * - Agents are uniquely identified by UUID
@@ -42,11 +53,16 @@ describe("Agent UUID Identification", () => {
       }),
       createAgent: vi.fn().mockImplementation(async (agent: Partial<Agent>) => {
         if (!agent.id) return false;
+        const rawBio = agent.bio;
+        const normalizedBio = Array.isArray(rawBio)
+          ? rawBio
+          : [rawBio ?? "An AI agent"];
         const fullAgent: Agent = {
+          ...baseCharacterDefaults,
           id: agent.id,
           name: agent.name || "Unknown",
           username: agent.username,
-          bio: agent.bio || "An AI agent",
+          bio: normalizedBio,
           createdAt: agent.createdAt || Date.now(),
           updatedAt: agent.updatedAt || Date.now(),
         };
@@ -146,6 +162,7 @@ describe("Agent UUID Identification", () => {
 
     // Create first agent
     const character1: Character = {
+      ...baseCharacterDefaults,
       id: agentId1,
       name: sharedName,
       bio: ["First agent with this name"],
@@ -160,6 +177,7 @@ describe("Agent UUID Identification", () => {
 
     // Create second agent with same name but different ID
     const character2: Character = {
+      ...baseCharacterDefaults,
       id: agentId2,
       name: sharedName,
       bio: ["Second agent with this name"],
@@ -204,11 +222,13 @@ describe("Agent UUID Identification", () => {
 
     // Simulate what happens when a character without ID is processed
     const character1: Character = {
+      ...baseCharacterDefaults,
       name: sharedName,
       bio: ["First agent"],
     };
 
     const character2: Character = {
+      ...baseCharacterDefaults,
       name: sharedName,
       bio: ["Second agent"],
     };
@@ -241,6 +261,7 @@ describe("Agent UUID Identification", () => {
   it("should use character ID if provided, ignoring name-based generation", async () => {
     const explicitId = stringToUuid(uuidv4());
     const character: Character = {
+      ...baseCharacterDefaults,
       id: explicitId,
       name: "TestAgent",
       bio: ["Agent with explicit ID"],
@@ -269,6 +290,7 @@ describe("Agent UUID Identification", () => {
 
     // Create agent with initial name
     const character: Character = {
+      ...baseCharacterDefaults,
       id: agentId,
       name: initialName,
       bio: ["Initial bio"],
@@ -301,13 +323,21 @@ describe("Agent UUID Identification", () => {
 
     const runtime1 = new AgentRuntime({
       agentId: agentId1,
-      character: { name: sharedName, bio: ["First"] } as Character,
+      character: {
+        ...baseCharacterDefaults,
+        name: sharedName,
+        bio: ["First"],
+      },
       adapter: mockAdapter,
     });
 
     const runtime2 = new AgentRuntime({
       agentId: agentId2,
-      character: { name: sharedName, bio: ["Second"] } as Character,
+      character: {
+        ...baseCharacterDefaults,
+        name: sharedName,
+        bio: ["Second"],
+      },
       adapter: mockAdapter,
     });
 

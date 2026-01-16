@@ -1,0 +1,64 @@
+// tee.proto - Trusted Execution Environment types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "google/protobuf/struct.proto";
+
+// Registration details for an agent within a TEE context.
+message TeeAgent {
+  string id = 1;
+  string agent_id = 2;
+  string agent_name = 3;
+  int64 created_at = 4;
+  string public_key = 5;
+  string attestation = 6;
+}
+
+// Operational modes for a TEE.
+enum TEEMode {
+  TEE_MODE_UNSPECIFIED = 0;
+  TEE_MODE_OFF = 1;
+  TEE_MODE_LOCAL = 2;
+  TEE_MODE_DOCKER = 3;
+  TEE_MODE_PRODUCTION = 4;
+}
+
+// Quote obtained during remote attestation.
+message RemoteAttestationQuote {
+  string quote = 1;
+  int64 timestamp = 2;
+}
+
+// Data used to derive a key within a TEE.
+message DeriveKeyAttestationData {
+  string agent_id = 1;
+  string public_key = 2;
+  optional string subject = 3;
+}
+
+// Message content attested by a TEE.
+message AttestedMessage {
+  string entity_id = 1;
+  string room_id = 2;
+  string content = 3;
+}
+
+// Represents a message that has been attested by a TEE.
+message RemoteAttestationMessage {
+  string agent_id = 1;
+  int64 timestamp = 2;
+  AttestedMessage message = 3;
+}
+
+// Types or vendors of TEEs.
+enum TeeType {
+  TEE_TYPE_UNSPECIFIED = 0;
+  TEE_TYPE_TDX_DSTACK = 1;
+}
+
+// Configuration for a TEE plugin.
+message TeePluginConfig {
+  optional string vendor = 1;
+  google.protobuf.Struct vendor_config = 2;
+}

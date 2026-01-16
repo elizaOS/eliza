@@ -1,12 +1,17 @@
 //! ACTION_STATE provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("ACTION_STATE"));
 
 /// Provider for action state information.
 pub struct ActionStateProvider;
@@ -14,15 +19,15 @@ pub struct ActionStateProvider;
 #[async_trait]
 impl Provider for ActionStateProvider {
     fn name(&self) -> &'static str {
-        "ACTION_STATE"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Provides information about the current action state and available actions"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(
@@ -47,7 +52,7 @@ impl Provider for ActionStateProvider {
         let mut completed: Vec<String> = Vec::new();
 
         if let Some(state) = state {
-            if let Some(pending_val) = state.values.get("pendingActions") {
+            if let Some(pending_val) = state.get_value("pendingActions") {
                 if let Some(arr) = pending_val.as_array() {
                     pending = arr
                         .iter()
@@ -56,7 +61,7 @@ impl Provider for ActionStateProvider {
                 }
             }
 
-            if let Some(completed_val) = state.values.get("completedActions") {
+            if let Some(completed_val) = state.get_value("completedActions") {
                 if let Some(arr) = completed_val.as_array() {
                     completed = arr
                         .iter()

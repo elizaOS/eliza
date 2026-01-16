@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createMessageMemory,
   getMemoryText,
@@ -86,6 +86,19 @@ describe("Memory Utilities", () => {
       });
 
       expect(memory.id).toBe(customId);
+    });
+
+    it("should reuse the same timestamp for createdAt and metadata.timestamp", () => {
+      const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1234567890);
+      const memory = createMessageMemory({
+        entityId: mockEntityId,
+        roomId: mockRoomId,
+        content: { text: "Timestamp test" },
+      });
+
+      expect(memory.createdAt).toBe(1234567890);
+      expect(memory.metadata.timestamp).toBe(1234567890);
+      nowSpy.mockRestore();
     });
   });
 

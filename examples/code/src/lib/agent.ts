@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
+import { AgentRuntime, createCharacter, type Plugin } from "@elizaos/core";
 import anthropicPlugin from "@elizaos/plugin-anthropic";
 import goalsPlugin from "@elizaos/plugin-goals";
 import mcpPlugin from "@elizaos/plugin-mcp";
@@ -26,7 +26,7 @@ import type { CodeTask, CodeTaskMetadata, SubAgentType } from "../types.js";
 /**
  * Eliza Code Character Configuration
  */
-const elizaCodeCharacter: Character = {
+const elizaCodeCharacter = createCharacter({
   name: "Eliza",
   bio: [
     "An orchestrator that helps users with coding by delegating implementation to specialized worker sub-agents",
@@ -166,7 +166,7 @@ The current working directory is provided dynamically.`,
       },
     },
   },
-};
+});
 
 /**
  * Initialize the Eliza runtime with coding capabilities

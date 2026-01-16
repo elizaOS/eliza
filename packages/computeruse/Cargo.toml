@@ -1,0 +1,81 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/computeruse",
+    "crates/computeruse-cli",
+    "crates/computeruse-computer-use",
+    "packages/computeruse-python",
+    "packages/computeruse-nodejs",
+    "crates/computeruse-mcp-agent",
+    "crates/computeruse-workflow-recorder",
+]
+
+
+# Shared metadata for workspace members
+[workspace.package]
+version = "0.24.20"
+edition = "2021"         # From your original Cargo.toml
+license-file = "LICENSE"
+
+# Centralized dependency definitions
+[workspace.dependencies]
+# ComputerUse Core library itself (for other members to depend on)
+computeruse = { version = "0.24.20", path = "./crates/computeruse", package = "computeruse-rs" }
+computeruse-computer-use = { version = "0.24.20", path = "./crates/computeruse-computer-use" }
+
+# Common dependencies from your original Cargo.toml
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+anyhow = "1.0.97"
+thiserror = "2.0.12"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "time", "local-time"] }
+tracing-appender = "0.2.3"
+time = { version = "0.3", features = ["formatting", "local-offset"] }
+tokio = { version = "1.44.2", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+# OCR / Vision
+xcap = "0.6.0"
+image = "0.25.6"
+uni-ocr = "0.1.5"
+tempfile = "3.10.1"
+async-trait = "0.1.88"
+base64 = "0.22.1"
+
+# Cross-platform (used in core + CLI); some features are Windows-heavy but the crate is portable.
+sysinfo = "0.36.1"
+windows = "0.61.3"
+uiautomation = "0.22.0"
+
+# Dev dependencies (can be used by examples or tests across the workspace)
+axum = "0.8.3"
+tower-http = { version = "0.6.2", features = ["cors", "limit"] }
+
+# Workflow recorder dependencies
+chrono = "0.4"
+ctrlc = "3.4"
+
+# Standard directories
+dirs = "5.0"
+
+regex = "1.10.5"
+
+[profile.release]
+# Enables full cross-crate optimisations, producing the smallest and fastest binary.
+lto = "fat"
+# Because we bundle some of these executables with npm packages, we
+# remove everything to make the binary as small as possible.
+strip = "symbols"
+
+# See https://github.com/openai/codex/issues/1411 for details.
+codegen-units = 1
+
+# Fast dev iteration profile - use with: cargo build --profile dev-release
+# ~3x faster compile than release, slightly larger binary
+[profile.dev-release]
+inherits = "release"
+opt-level = 1          # Override release's opt-level=3 for faster compile
+lto = false            # No LTO for faster compile
+codegen-units = 256    # Max parallelism
+incremental = true     # Enable incremental compilation

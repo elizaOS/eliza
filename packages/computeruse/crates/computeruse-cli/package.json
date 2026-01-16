@@ -1,0 +1,28 @@
+{
+  "bin": {
+    "computeruse": "index.js",
+    "computeruse-cli": "index.js"
+  },
+  "description": "Windows CLI tool for managing the ComputerUse project",
+  "engines": {
+    "node": ">= 10"
+  },
+  "files": [
+    "index.js"
+  ],
+  "name": "@mediar-ai/cli",
+  "optionalDependencies": {
+    "@mediar-ai/cli-win32-arm64-msvc": "0.24.20",
+    "@mediar-ai/cli-win32-x64-msvc": "0.24.20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mediar-ai/computeruse"
+  },
+  "scripts": {
+    "build": "node ./utils/build-cli.js --release",
+    "build:debug": "node ./utils/build-cli.js --debug",
+    "sync-version": "node ./utils/sync-version.js"
+  },
+  "version": "0.24.20"
+}

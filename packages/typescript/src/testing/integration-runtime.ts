@@ -15,6 +15,7 @@ import type {
   Character,
   IAgentRuntime,
   IDatabaseAdapter,
+  JsonValue,
   Plugin,
   UUID,
 } from "../types";
@@ -65,11 +66,14 @@ export const DEFAULT_TEST_CHARACTER: Character = {
   system:
     "You are a helpful assistant used for integration testing. Respond concisely and accurately.",
   bio: ["Integration test agent for elizaOS"],
+  templates: {},
   messageExamples: [],
   postExamples: [],
   topics: ["testing", "integration"],
+  adjectives: [],
   knowledge: [],
   plugins: [],
+  secrets: {},
   settings: {},
 };
 
@@ -78,8 +82,8 @@ export const DEFAULT_TEST_CHARACTER: Character = {
  */
 type ModelHandlerFn = (
   runtime: IAgentRuntime,
-  params: Record<string, unknown>,
-) => Promise<unknown>;
+  params: Record<string, JsonValue | object>,
+) => Promise<JsonValue | object>;
 
 /**
  * Register Ollama model handlers on the runtime

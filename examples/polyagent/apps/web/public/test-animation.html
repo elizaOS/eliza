@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Animation Test</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #f0f0f0;
+      margin: 0;
+    }
+    
+    @keyframes bounce-squish {
+      0%, 100% {
+        transform: translateY(0) scaleY(1) scaleX(1);
+      }
+      25% {
+        transform: translateY(-25%) scaleY(1.1) scaleX(0.95);
+      }
+      50% {
+        transform: translateY(0) scaleY(0.85) scaleX(1.15);
+      }
+      75% {
+        transform: translateY(-10%) scaleY(1.05) scaleX(0.98);
+      }
+    }
+    
+    .animate-bounce-squish {
+      animation: bounce-squish 1s ease-in-out infinite;
+      transform-origin: center bottom;
+      will-change: transform;
+      display: inline-block;
+    }
+    
+    .logo-container {
+      width: 80px;
+      height: 80px;
+    }
+    
+    svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="logo-container animate-bounce-squish">
+    <svg viewBox="0 0 624 554" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M335.957 17.5C340.737 17.504 342.501 19.3681 343.094 20.3096C343.729 21.3174 344.687 23.9438 342.627 28.5137C342.633 28.4992 342.652 28.4648 342.242 29.2568C341.935 29.8503 341.344 30.9959 340.785 32.3691C339.525 35.464 338.51 39.4643 338.833 44.334L339.679 57.084L352.081 60.1611C358.297 61.7034 365.542 63.6078 372.561 65.2227C420.856 76.3344 462.058 99.175 495.695 135.13C514.006 154.702 528.181 177.275 538.729 202.325C540.334 206.137 542.759 210.65 546.931 214.557C551.261 218.612 556.326 220.952 561.584 222.23C584.616 227.832 597.589 242.886 603.377 267.157C610.342 296.367 604.326 322.296 585.019 345.334C576.72 355.235 565.782 361.263 552.321 363.412C551.268 363.58 546.272 364.193 541.685 367.192C535.819 371.027 533.176 376.667 532.081 381.498V381.499C524.965 412.891 507.727 439.366 484.403 463.536C454.679 494.339 419.302 515.712 377.929 527.188C336.166 538.773 294.534 538.536 252.715 527.187C236.248 522.717 220.382 515.79 204.529 506.791C155.543 478.759 120.367 440.578 101.734 388.642C99.7428 383.09 96.715 376.095 90.3828 370.726C84.262 365.535 77.1453 363.582 70.5879 362.691L69.2842 362.527C50.9277 360.377 37.1504 350.001 28.1514 332.075C20.2346 316.306 16.8763 301.545 17.5947 287.686C18.3088 273.911 23.102 259.927 33.2061 245.671C41.3881 234.126 52.3576 226.913 66.0566 224.323C71.4722 223.299 77.0561 221.278 82.0352 217.214C86.9602 213.194 89.9953 208.231 92.082 203.509C108.045 167.383 131.838 137.035 162.629 111.948C190.017 89.6338 221.451 74.7558 256.223 65.8623C257.301 65.5864 260.412 64.8753 261.505 64.6553C266.179 63.7139 272.983 62.4224 279.368 58.9873C286.502 55.1493 291.898 49.4401 296.335 41.7988C305.488 26.035 318.424 17.4853 335.957 17.5Z"
+        stroke="#0066FF"
+        stroke-width="35"
+      />
+    </svg>
+  </div>
+  <div style="position: fixed; top: 20px; left: 20px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+    <h2>Animation Test</h2>
+    <p>The logo should be bouncing and squishing continuously.</p>
+    <p>If it's not animating, there's a CSS or browser issue.</p>
+  </div>
+</body>
+</html>

@@ -10,7 +10,7 @@
 import {
   AgentRuntime,
   ChannelType,
-  type Character,
+  createCharacter,
   createMessageMemory,
   stringToUuid,
   type UUID,
@@ -48,12 +48,12 @@ interface CallToolRequest {
 // Configuration
 // ============================================================================
 
-const CHARACTER: Character = {
+const CHARACTER = createCharacter({
   name: "Eliza",
   bio: "A helpful AI assistant powered by elizaOS, accessible via MCP.",
   system:
     "You are a helpful, friendly AI assistant. Be concise and informative.",
-};
+});
 
 // ============================================================================
 // MCP Tools Definition

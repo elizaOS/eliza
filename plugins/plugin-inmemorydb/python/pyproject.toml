@@ -1,11 +1,11 @@
 [project]
 name = "elizaos-plugin-inmemorydb"
-version = "1.0.0"
+version = "2.0.0"
 description = "Pure in-memory, ephemeral database storage for elizaOS"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "elizaOS" }]
+authors = [{ name = "elizaOS Contributors" }]
 keywords = ["elizaos", "database", "in-memory", "ephemeral"]
 classifiers = [
     "Development Status :: 4 - Beta",

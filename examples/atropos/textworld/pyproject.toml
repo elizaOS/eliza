@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-atropos-textworld"
-version = "1.0.0"
+version = "2.0.0"
 description = "TextWorld environment for ElizaOS RL training with Atropos"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [
-    { name = "ElizaOS Team" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["elizaos", "atropos", "reinforcement-learning", "textworld", "interactive-fiction"]
 classifiers = [
@@ -39,6 +39,11 @@ dev = [
 ]
 openai = [
     "elizaos-plugin-openai>=1.0.0",
+]
+atropos = [
+    "atroposlib>=0.3.0",
+    # 4.37.0 fixes trust_remote_code handling for Llama/Mistral tokenizers
+    "transformers>=4.37.0",
 ]
 
 [project.scripts]

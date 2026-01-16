@@ -11,9 +11,12 @@ import { type Address, formatUnits, parseAbi } from "viem";
 import { tokenBalanceTemplate } from "../generated/prompts/typescript/prompts.js";
 import { EVMError, EVMErrorCode, type SupportedChain } from "../types";
 import { initWalletProvider } from "./wallet";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireProviderSpec("get-balance");
 
 export const tokenBalanceProvider: Provider = {
-  name: "TOKEN_BALANCE",
+  name: spec.name,
   description: "Token balance for ERC20 tokens when onchain actions are requested",
   dynamic: true,
 

@@ -180,7 +180,7 @@ fn get_actions(config: &CapabilityConfig) -> Vec<Box<dyn Action>> {
     if !config.disable_basic {
         result.extend(basic_actions());
     }
-    if config.enable_extended {
+    if config.has_advanced() {
         result.extend(extended_actions());
     }
     if config.enable_autonomy {
@@ -202,7 +202,7 @@ fn get_providers(config: &CapabilityConfig) -> Vec<Box<dyn Provider>> {
         }
         result.extend(basic);
     }
-    if config.enable_extended {
+    if config.has_advanced() {
         result.extend(extended_providers());
     }
     if config.enable_autonomy {
@@ -219,7 +219,7 @@ fn get_evaluators(config: &CapabilityConfig) -> Vec<Box<dyn Evaluator>> {
     if !config.disable_basic {
         result.extend(basic_evaluators());
     }
-    if config.enable_extended {
+    if config.has_advanced() {
         result.extend(extended_evaluators());
     }
     // Autonomy has no evaluators currently
@@ -231,9 +231,10 @@ fn get_evaluators(config: &CapabilityConfig) -> Vec<Box<dyn Evaluator>> {
 // Basic capabilities - included by default
 // ============================================================================
 
-/// Basic actions: REPLY, IGNORE, NONE
+/// Basic actions: CHOICE, REPLY, IGNORE, NONE
 fn basic_actions() -> Vec<Box<dyn Action>> {
     vec![
+        Box::new(actions::ChooseOptionAction),
         Box::new(actions::ReplyAction),
         Box::new(actions::IgnoreAction),
         Box::new(actions::NoneAction),
@@ -248,6 +249,7 @@ fn basic_providers() -> Vec<Box<dyn Provider>> {
         Box::new(providers::AttachmentsProvider),
         Box::new(providers::CapabilitiesProvider),
         Box::new(providers::CharacterProvider),
+        Box::new(providers::ChoiceProvider),
         Box::new(providers::EntitiesProvider),
         Box::new(providers::EvaluatorsProvider),
         Box::new(providers::ProvidersListProvider),
@@ -266,15 +268,19 @@ fn basic_evaluators() -> Vec<Box<dyn Evaluator>> {
 // Extended capabilities - opt-in
 // ============================================================================
 
-/// Extended actions: CHOICE, FOLLOW/UNFOLLOW, MUTE/UNMUTE, etc.
+/// Extended actions: FOLLOW/UNFOLLOW, MUTE/UNMUTE, contacts, etc.
 fn extended_actions() -> Vec<Box<dyn Action>> {
     vec![
-        Box::new(actions::ChooseOptionAction),
+        Box::new(actions::AddContactAction),
         Box::new(actions::FollowRoomAction),
         Box::new(actions::UnfollowRoomAction),
         Box::new(actions::MuteRoomAction),
         Box::new(actions::UnmuteRoomAction),
+        Box::new(actions::RemoveContactAction),
+        Box::new(actions::ScheduleFollowUpAction),
+        Box::new(actions::SearchContactsAction),
         Box::new(actions::SendMessageAction),
+        Box::new(actions::UpdateContactAction),
         Box::new(actions::UpdateEntityAction),
         Box::new(actions::UpdateRoleAction),
         Box::new(actions::UpdateSettingsAction),
@@ -282,15 +288,17 @@ fn extended_actions() -> Vec<Box<dyn Action>> {
     ]
 }
 
-/// Extended providers: FACTS, ROLES, RELATIONSHIPS, etc.
+/// Extended providers: FACTS, ROLES, RELATIONSHIPS, CONTACTS, etc.
 fn extended_providers() -> Vec<Box<dyn Provider>> {
     vec![
-        Box::new(providers::ChoiceProvider),
+        Box::new(providers::ContactsProvider),
         Box::new(providers::FactsProvider),
+        Box::new(providers::FollowUpsProvider),
+        Box::new(providers::KnowledgeProvider),
         Box::new(providers::RelationshipsProvider),
         Box::new(providers::RolesProvider),
         Box::new(providers::AgentSettingsProvider),
-        Box::new(providers::KnowledgeProvider),
+        Box::new(providers::SettingsProvider),
     ]
 }
 

@@ -1,0 +1,35 @@
+{
+  "bin": {
+    "computeruse-mcp-agent": "index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.3",
+    "node-fetch": "^2.7.0"
+  },
+  "description": "Windows Model Context Protocol (MCP) agent for ComputerUse",
+  "engines": {
+    "node": ">= 10"
+  },
+  "files": [
+    "index.js",
+    "config.js",
+    "scripts/download-source.js"
+  ],
+  "name": "computeruse-mcp-agent",
+  "optionalDependencies": {
+    "computeruse-mcp-win32-arm64-msvc": "0.24.20",
+    "computeruse-mcp-win32-x64-msvc": "0.24.20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mediar-ai/computeruse"
+  },
+  "scripts": {
+    "build": "node ./utils/build-server.js --release",
+    "build:debug": "node ./utils/build-server.js --debug",
+    "postinstall": "node ./scripts/download-source.js",
+    "sync-version": "node ./utils/sync-version.js",
+    "update-badges": "node ./utils/update-badges.js"
+  },
+  "version": "0.24.20"
+}

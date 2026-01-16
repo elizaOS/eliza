@@ -11,6 +11,7 @@
 import {
   AgentRuntime,
   ChannelType,
+  createCharacter,
   type Character,
   type Content,
   createMessageMemory,
@@ -47,7 +48,7 @@ export interface ChatMessage {
 // Character Configuration
 // ============================================================================
 
-const elizaCharacter: Character = {
+const elizaCharacter: Character = createCharacter({
   name: "ELIZA",
   bio: "A Rogerian psychotherapist simulation based on Joseph Weizenbaum's 1966 program. I use pattern matching to engage in therapeutic conversations.",
   system: `You are ELIZA, a Rogerian psychotherapist simulation. Your role is to:
@@ -55,8 +56,8 @@ const elizaCharacter: Character = {
 - Reflect their statements back to them
 - Ask open-ended questions to encourage self-exploration
 - Never give direct advice or diagnoses
-- Focus on feelings and emotions`,
-};
+  - Focus on feelings and emotions`,
+});
 
 // ============================================================================
 // Pre-initialize PGlite with browser-friendly asset loading
@@ -216,6 +217,16 @@ export async function sendMessage(
     },
   });
 
+  const streamOptions = useStreaming
+    ? {
+        $typeName: "eliza.v1.MessageProcessingOptions",
+        onStreamChunk: async (chunk: string): Promise<void> => {
+          responseText += chunk;
+          onChunk?.(chunk);
+        },
+      }
+    : undefined;
+
   const result = await runtime.messageService.handleMessage(
     runtime,
     messageMemory,
@@ -226,14 +237,7 @@ export async function sendMessage(
       }
       return [];
     },
-    useStreaming
-      ? {
-          onStreamChunk: async (chunk: string): Promise<void> => {
-            responseText += chunk;
-            onChunk?.(chunk);
-          },
-        }
-      : undefined,
+    streamOptions,
   );
 
   if (!responseText && typeof result.responseContent?.text === "string") {

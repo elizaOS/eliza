@@ -9,7 +9,7 @@ description = "Agent Orchestrator Plugin for ElizaOS - orchestrates tasks across
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "elizaOS", email = "team@eliza.os"}
+    {name = "elizaOS Contributors"}
 ]
 requires-python = ">=3.11"
 classifiers = [

@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, TestCase, TestSuite } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   getFeedAction,
@@ -109,9 +109,9 @@ export const rssPlugin: Plugin = {
             logger.info("[RSS Test] Service existence test passed");
           },
         },
-      ],
+      ] as TestCase[],
     },
-  ],
+  ] as TestSuite[],
 };
 
 export default rssPlugin;

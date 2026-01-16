@@ -46,27 +46,17 @@ function isTransferContent(content: unknown): content is TransferContent {
 }
 
 import { transferTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("TRANSFER");
 
 export default {
-  name: "TRANSFER_SOLANA",
-  similes: [
-    "TRANSFER_SOL",
-    "SEND_TOKEN_SOLANA",
-    "TRANSFER_TOKEN_SOLANA",
-    "SEND_TOKENS_SOLANA",
-    "TRANSFER_TOKENS_SOLANA",
-    "SEND_SOL",
-    "SEND_TOKEN_SOL",
-    "PAY_SOL",
-    "PAY_TOKEN_SOL",
-    "PAY_TOKENS_SOL",
-    "PAY_TOKENS_SOLANA",
-    "PAY_SOLANA",
-  ],
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
   validate: async () => {
     return true;
   },
-  description: "Transfer SOL or SPL tokens to another address on Solana.",
+  description: spec.description,
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
@@ -232,36 +222,5 @@ export default {
     }
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Send 1.5 SOL to 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Sending SOL now...",
-          actions: ["TRANSFER_SOLANA"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Send 69 $DEGENAI BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump to 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Sending the tokens now...",
-          actions: ["TRANSFER_SOLANA"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 } as Action;

@@ -18,6 +18,7 @@ import type { PolymarketService } from "../services/polymarket";
 import { orderTemplate } from "../templates";
 import type { OrderResponse } from "../types";
 import { initializeClobClient, initializeClobClientWithCreds } from "../utils/clobClient";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
   callLLMWithTimeout,
   isLLMError,
@@ -328,39 +329,12 @@ function selectTokenForOutcome(
   return { tokenId, outcomeLabel, price };
 }
 
+const spec = requireActionSpec("PLACE_ORDER");
+
 export const placeOrderAction: Action = {
-  name: "POLYMARKET_PLACE_ORDER",
-  similes: [
-    "PLACE_ORDER",
-    "CREATE_ORDER",
-    "BUY_TOKEN",
-    "SELL_TOKEN",
-    "LIMIT_ORDER",
-    "MARKET_ORDER",
-    "TRADE",
-    "ORDER",
-    "BUY",
-    "SELL",
-    "PURCHASE",
-    "SUBMIT_ORDER",
-    "EXECUTE_ORDER",
-    "BET",
-    "WAGER",
-    "PUT_MONEY",
-    "PLACE_BET",
-    "MAKE_BET",
-    // Confirmation flow similes - when user confirms a pending order
-    "CONFIRM",
-    "CONFIRM_ORDER",
-    "CONFIRM_BET",
-    "CONFIRM_TRADE",
-    "YES_EXECUTE",
-    "EXECUTE",
-    "DO_IT",
-    "GO_AHEAD",
-    "PROCEED",
-  ],
-  description: "Places a buy/sell order (bet) on Polymarket. Use when user says buy, sell, bet, wager, put money on, or confirms a trade. Will search for market by name if tokenId not provided. Executes immediately without asking for confirmation. Parameters: tokenId or marketName (required), outcome (yes/no), side (buy/sell, default buy), price (0.01-0.99, uses best available if omitted), size (dollar amount or shares, required), orderType (GTC/FOK/FAK, default GTC). Requires CLOB API credentials and private key.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   parameters: [
     { name: "tokenId", description: "Token ID to trade", required: false, schema: { type: "string" } },

@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-minecraft"
-version = "0.1.0"
+version = "2.0.0"
 description = "Minecraft automation plugin for ElizaOS (Mineflayer bridge client)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-authors = [{ name = "ElizaOS Team" }]
+authors = [{ name = "elizaOS Contributors" }]
 keywords = ["elizaos", "plugin", "minecraft", "mineflayer"]
 classifiers = [
   "Development Status :: 3 - Alpha",

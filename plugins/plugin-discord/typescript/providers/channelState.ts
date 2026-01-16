@@ -1,8 +1,11 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
 import type { GuildChannel } from "discord.js";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 import { ServiceType } from "../types";
+
+const spec = requireProviderSpec("channelState");
 
 /**
  * Represents a provider for retrieving channel state information.
@@ -15,7 +18,7 @@ import { ServiceType } from "../types";
  * @returns {Promise<Object>} A promise that resolves to an object containing channel state data, values, and text.
  */
 export const channelStateProvider: Provider = {
-  name: "channelState",
+  name: spec.name,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     const room = state.data?.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {

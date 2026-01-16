@@ -1,17 +1,18 @@
 import { AgentRuntime, elizaLogger } from '@elizaos/core';
-import { AutoTradingService } from '../services/AutoTradingService.ts';
-import { AnalyticsService } from '../services/analyticsService.ts';
-import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
 import { TokenResolverService } from '../services/TokenResolverService.ts';
-import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
-import { SimulationService } from '../services/SimulationService.ts';
-import { WalletIntegrationService } from '../services/WalletIntegrationService.ts';
-import { JupiterSwapService } from '../services/JupiterSwapService.ts';
-import { RealtimePriceFeedService } from '../services/RealtimePriceFeedService.ts';
-import { RiskManagementService } from '../services/RiskManagementService.ts';
-import { TransactionMonitoringService } from '../services/TransactionMonitoringService.ts';
 import { RandomStrategy } from '../strategies/RandomStrategy.ts';
+// Missing services - commented out until implemented
+// import { AutoTradingService } from '../services/AutoTradingService.ts';
+// import { AnalyticsService } from '../services/analyticsService.ts';
+// import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
+// import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
+// import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
+// import { SimulationService } from '../services/SimulationService.ts';
+// import { WalletIntegrationService } from '../services/WalletIntegrationService.ts';
+// import { JupiterSwapService } from '../services/JupiterSwapService.ts';
+// import { RealtimePriceFeedService } from '../services/RealtimePriceFeedService.ts';
+// import { RiskManagementService } from '../services/RiskManagementService.ts';
+// import { TransactionMonitoringService } from '../services/TransactionMonitoringService.ts';
 import * as readline from 'readline';
 
 // Live trading configuration
@@ -24,6 +25,8 @@ const LIVE_TRADING_CONFIG = {
 };
 
 async function main() {
+  throw new Error('This script requires missing services: AutoTradingService, AnalyticsService, StrategyRegistryService, HistoricalDataService, PerformanceReportingService, SimulationService, WalletIntegrationService, JupiterSwapService, RealtimePriceFeedService, RiskManagementService, TransactionMonitoringService');
+  /* Commented out until services are implemented
   console.log('🚀 ElizaOS Auto-Trader Live Trading Test');
   console.log('========================================\n');
 
@@ -168,7 +171,7 @@ async function main() {
 
     // Subscribe to real-time prices for BONK
     const BONK_ADDRESS = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
-    priceFeedService.subscribe(BONK_ADDRESS, (update) => {
+    priceFeedService.subscribe(BONK_ADDRESS, (update: { price: number; source: string }) => {
       console.log(`📊 BONK Price Update: $${update.price.toFixed(8)} (${update.source})`);
     });
 
@@ -309,6 +312,7 @@ async function main() {
 
     process.exit(1);
   }
+  */
 }
 
 // Run the test

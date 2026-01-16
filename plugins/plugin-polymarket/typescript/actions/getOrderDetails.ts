@@ -14,6 +14,7 @@ import { getOrderDetailsTemplate } from "../templates";
 import type { DetailedOrder, OrderDetailsActivityData } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 interface LLMOrderDetailsResult {
   orderId?: string;
@@ -24,11 +25,12 @@ interface LLMOrderDetailsResult {
  * Get Order Details Action for Polymarket.
  * Retrieves detailed information about a specific order by its ID.
  */
+const spec = requireActionSpec("GET_ORDER_DETAILS");
+
 export const getOrderDetailsAction: Action = {
-  name: "POLYMARKET_GET_ORDER_DETAILS",
-  similes: ["ORDER_INFO", "VIEW_ORDER", "SHOW_ORDER", "ORDER_STATUS"].map((s) => `POLYMARKET_${s}`),
-  description:
-    "Retrieves detailed information about a specific order by order ID. Use when the user asks about a particular order’s status, size, or fills. Do not use for listing all open orders or trade history; use getActiveOrdersAction or getTradeHistoryAction. Parameters: orderId (required). Requires full CLOB credentials.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [].map((s) => `POLYMARKET_${s}`),
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     runtime.logger.info(

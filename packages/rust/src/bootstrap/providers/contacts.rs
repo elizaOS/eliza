@@ -1,12 +1,17 @@
 //! Contacts provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("CONTACTS"));
 
 /// Provider for contact information from the rolodex.
 pub struct ContactsProvider;
@@ -14,15 +19,15 @@ pub struct ContactsProvider;
 #[async_trait]
 impl Provider for ContactsProvider {
     fn name(&self) -> &'static str {
-        "CONTACTS"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Provides contact information from the rolodex"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(

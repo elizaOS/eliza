@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-atropos-diplomacy"
-version = "1.0.0"
+version = "2.0.0"
 description = "Diplomacy multi-agent environment for ElizaOS RL training with Atropos"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [
-    { name = "ElizaOS Team" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["elizaos", "atropos", "reinforcement-learning", "diplomacy", "multi-agent"]
 classifiers = [

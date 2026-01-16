@@ -14,6 +14,7 @@ import { checkOrderScoringTemplate } from "../templates";
 import type { AreOrdersScoringResponse, OrderScoringActivityData } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout } from "../utils/llmHelpers";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 interface OfficialOrdersScoringParams {
   orderIds: string[];
@@ -27,12 +28,14 @@ interface LLMScoringResult {
 /**
  * Check if an order is scoring (eligible for rewards) action for Polymarket.
  */
+const spec = requireActionSpec("CHECK_ORDER_SCORING");
+
 export const checkOrderScoringAction: Action = {
-  name: "POLYMARKET_CHECK_ORDER_SCORING",
-  similes: ["ORDERS_ELIGIBLE_FOR_REWARDS", "SCORING_STATUS", "ARE_MY_ORDERS_SCORING"].map(
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [].map(
     (s) => `POLYMARKET_${s}`
   ),
-  description: "Checks whether specific Polymarket order IDs are scoring (eligible for liquidity rewards). Use when user provides order ID(s) and asks about scoring/rewards status. Requires CLOB API credentials. Parameters: orderIds (array of order ID strings, required).",
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     runtime.logger.info(

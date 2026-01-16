@@ -1,30 +1,56 @@
+import type {
+  OnboardingConfig as ProtoOnboardingConfig,
+  RuntimeSettings as ProtoRuntimeSettings,
+  Setting as ProtoSetting,
+  SettingDefinition as ProtoSettingDefinition,
+  WorldSettings as ProtoWorldSettings,
+  JsonValue,
+} from "./proto.js";
+
 /**
- * Interface representing settings with string key-value pairs.
+ * Runtime settings provided as key/value strings.
  */
-export interface RuntimeSettings {
-  [key: string]: string | undefined;
+export interface RuntimeSettings
+  extends Omit<ProtoRuntimeSettings, "$typeName" | "$unknown" | "values"> {
+  values?: Record<string, string>;
+  [key: string]: JsonValue | undefined;
 }
 
-export interface Setting {
-  name: string;
-  description: string; // Used in chat context when discussing the setting
-  usageDescription: string; // Used during settings to guide users
+/**
+ * Definition metadata for a setting (without value).
+ */
+export type SettingDefinition = Omit<
+  ProtoSettingDefinition,
+  "$typeName" | "$unknown"
+>;
+
+/**
+ * Concrete setting value with runtime-only callbacks.
+ */
+export interface Setting
+  extends Omit<ProtoSetting, "$typeName" | "$unknown" | "value"> {
   value: string | boolean | null;
-  required: boolean;
-  public?: boolean; // If true, shown in public channels
-  secret?: boolean; // If true, value is masked and only shown during settings
+  public?: boolean;
+  secret?: boolean;
   validation?: (value: string | boolean | null) => boolean;
-  dependsOn?: string[];
+  dependsOn: string[];
   onSetAction?: (value: string | boolean | null) => string;
-  visibleIf?: (settings: { [key: string]: Setting }) => boolean;
+  visibleIf?: (settings: Record<string, Setting>) => boolean;
 }
 
-export interface WorldSettings {
-  [key: string]: Setting;
+/**
+ * World settings configuration map.
+ */
+export interface WorldSettings
+  extends Omit<ProtoWorldSettings, "$typeName" | "$unknown" | "settings"> {
+  settings?: Record<string, Setting>;
+  [key: string]: Setting | Record<string, Setting> | undefined;
 }
 
-export interface OnboardingConfig {
-  settings: {
-    [key: string]: Omit<Setting, "value">;
-  };
-}
+/**
+ * Onboarding configuration with setting definitions.
+ */
+export type OnboardingConfig = Omit<
+  ProtoOnboardingConfig,
+  "$typeName" | "$unknown"
+>;

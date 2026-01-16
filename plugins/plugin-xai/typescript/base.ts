@@ -8,6 +8,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import type { WorldOwnership } from "@elizaos/core/types/proto.js";
 import { createXAuthProvider, getXAuthMode } from "./client/auth-providers/factory";
 import { Client, type Post, type QueryPostsResponse, SearchMode } from "./client/index";
 import type { XInteractionPayload } from "./types";
@@ -354,13 +355,15 @@ export class ClientBase {
             name: `${post.username}'s X`,
             agentId: this.runtime.agentId,
             messageServerId: createUniqueUuid(this.runtime, post.userId) as UUID,
-            metadata: {
-              ownership: { ownerId: post.userId },
-              x: {
-                username: post.username,
-                id: post.userId,
-              },
+        metadata: {
+          ownership: { ownerId: post.userId } as unknown as WorldOwnership,
+          extra: {
+            x: {
+              username: post.username,
+              id: post.userId,
             },
+          },
+        },
           });
 
           const roomId = createUniqueUuid(this.runtime, post.conversationId as string);
@@ -477,10 +480,12 @@ export class ClientBase {
         agentId: this.runtime.agentId,
         messageServerId: createUniqueUuid(this.runtime, post.userId) as UUID,
         metadata: {
-          ownership: { ownerId: post.userId },
-          x: {
-            username: post.username,
-            id: post.userId,
+          ownership: { ownerId: post.userId } as unknown as WorldOwnership,
+          extra: {
+            x: {
+              username: post.username,
+              id: post.userId,
+            },
           },
         },
       });

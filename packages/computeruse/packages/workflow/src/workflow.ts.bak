@@ -1,0 +1,385 @@
+import { z } from 'zod';
+import { Desktop } from '@mediar-ai/computeruse';
+import type {
+  Workflow,
+  WorkflowConfig,
+  Step,
+  WorkflowContext,
+  WorkflowSuccessContext,
+  WorkflowErrorContext,
+  Logger,
+  ExecutionResponse,
+  ExecutionStatus,
+} from './types';
+import { ConsoleLogger } from './types';
+import { createWorkflowRunner } from './runner';
+
+/**
+ * Workflow builder that accumulates state types
+ * @template TInput - Type of workflow input
+ * @template TState - Accumulated state type from all previous steps
+ */
+class WorkflowBuilder<TInput = any, TState extends Record<string, any> = {}> {
+  private config: WorkflowConfig<TInput>;
+  private steps: Step[] = [];
+  private successHandler?: (context: WorkflowSuccessContext<TInput, TState>) => Promise<void>;
+  private errorHandler?: (context: WorkflowErrorContext<TInput, TState>) => Promise<void>;
+
+  constructor(config: WorkflowConfig<TInput>) {
+    this.config = config;
+  }
+
+  /**
+   * Add a step to the workflow - accumulates state types
+   * @template TStepState - State updates produced by this step
+   */
+  step<TStepState extends Record<string, any> = {}>(
+    step: Step<TInput, any, TState, TStepState>
+  ): WorkflowBuilder<TInput, TState & TStepState> {
+    this.steps.push(step as Step);
+    // Return new builder with accumulated state type
+    return this as any as WorkflowBuilder<TInput, TState & TStepState>;
+  }
+
+  /**
+   * Set success handler with typed state
+   */
+  onSuccess(handler: (context: WorkflowSuccessContext<TInput, TState>) => Promise<void>): this {
+    this.successHandler = handler;
+    return this;
+  }
+
+  /**
+   * Set error handler with typed state
+   */
+  onError(handler: (context: WorkflowErrorContext<TInput, TState>) => Promise<void>): this {
+    this.errorHandler = handler;
+    return this;
+  }
+
+  /**
+   * Build the workflow
+   */
+  build(): Workflow<TInput> {
+    return createWorkflowInstance(
+      this.config,
+      this.steps,
+      this.successHandler as any,
+      this.errorHandler as any
+    );
+  }
+}
+
+/**
+ * Creates a workflow instance
+ */
+function createWorkflowInstance<TInput = any>(
+  config: WorkflowConfig<TInput>,
+  steps: Step[],
+  successHandler?: (context: WorkflowSuccessContext<TInput>) => Promise<void>,
+  errorHandler?: (context: WorkflowErrorContext<TInput>) => Promise<void>
+): Workflow<TInput> {
+  return {
+    config,
+    steps,
+
+    async run(
+      input: TInput,
+      desktop?: Desktop,
+      logger?: Logger,
+      options?: { startFromStep?: string; endAtStep?: string; restoredState?: any }
+    ): Promise<ExecutionResponse> {
+      const log = logger || new ConsoleLogger();
+      const startTime = Date.now();
+
+      log.info('='.repeat(60));
+      log.info(`🚀 Starting workflow: ${config.name}`);
+      if (config.description) {
+        log.info(`   ${config.description}`);
+      }
+      log.info('='.repeat(60));
+      log.info('');
+
+      // Validate input
+      const validationResult = config.input.safeParse(input);
+      if (!validationResult.success) {
+        log.error('❌ Input validation failed:');
+        log.error(JSON.stringify(validationResult.error.format(), null, 2));
+        throw new Error('Input validation failed');
+      }
+
+      const validatedInput = validationResult.data;
+
+      // Get desktop instance (either passed or create new one)
+      const desktopInstance = desktop || new Desktop();
+
+      // Debug logging to see what options are passed
+      log.info(`[DEBUG] workflow.run() options: ${JSON.stringify(options)}`);
+
+      // If step control options are provided, use WorkflowRunner for proper state tracking
+      if (options?.startFromStep || options?.endAtStep || options?.restoredState) {
+        log.info(`[DEBUG] Using WorkflowRunner path with endAtStep: ${options?.endAtStep}`);
+
+        // Create a minimal workflow object for the runner
+        const workflowForRunner: Workflow = {
+          config,
+          steps,
+          async run() { throw new Error('Recursive run not supported'); },
+          getMetadata() {
+            return {
+              name: config.name,
+              description: config.description,
+              version: config.version,
+              input: config.input,
+              steps: steps.map(s => ({
+                id: s.config.id,
+                name: s.config.name,
+                description: s.config.description
+              }))
+            };
+          }
+        };
+        const runner = createWorkflowRunner({
+          workflow: workflowForRunner,
+          inputs: validatedInput,
+          startFromStep: options?.startFromStep,
+          endAtStep: options?.endAtStep,
+          restoredState: options?.restoredState,
+        });
+
+        const runnerResult = await runner.run();
+
+        log.info(`[DEBUG] WorkflowRunner result: ${JSON.stringify(runnerResult)}`);
+
+        // Return runner result with proper lastStepId and lastStepIndex
+        const response = {
+          status: runnerResult.status as ExecutionStatus,
+          message: runnerResult.error || 'Workflow completed',
+          data: runner.getState().context.data,
+          lastStepId: runnerResult.lastStepId,
+          lastStepIndex: runnerResult.lastStepIndex,
+          state: runner.getState(),
+        };
+
+        log.info(`[DEBUG] Returning response with lastStepId: ${response.lastStepId}, lastStepIndex: ${response.lastStepIndex}`);
+        return response;
+      }
+
+      // Initialize context for non-runner execution
+      const context: WorkflowContext<TInput> = {
+        data: {},
+        state: {},
+        variables: validatedInput,
+      };
+
+      // Track last completed step
+      let lastStepId: string | undefined;
+      let lastStepIndex: number | undefined;
+
+      try {
+        // Execute steps sequentially
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+
+          log.info(`[${i + 1}/${steps.length}] ${step.config.name}`);
+
+          await step.run({
+            desktop: desktopInstance,
+            input: validatedInput,
+            context,
+            logger: log,
+          });
+
+          // Track last completed step for state persistence
+          lastStepId = step.config.id;
+          lastStepIndex = i;
+
+          log.info('');
+        }
+
+        const duration = Date.now() - startTime;
+
+        log.info('='.repeat(60));
+        log.success(`✅ Workflow completed successfully! (${duration}ms)`);
+        log.info('='.repeat(60));
+
+        // Call success handler if provided
+        if (successHandler) {
+          await successHandler({
+            input: validatedInput,
+            context,
+            logger: log,
+            duration,
+          });
+        }
+
+        // Return success response with state tracking
+        return {
+          status: 'success',
+          message: `Workflow completed successfully in ${duration}ms`,
+          data: context.data,
+          lastStepId,
+          lastStepIndex,
+          state: { context, lastStepId, lastStepIndex },
+        };
+      } catch (error: any) {
+        const duration = Date.now() - startTime;
+
+        log.info('');
+        log.info('='.repeat(60));
+        log.error(`❌ Workflow failed! (${duration}ms)`);
+        log.info('='.repeat(60));
+
+        // Find which step failed (use lastStepIndex if we have it)
+        const failedStepIndex = lastStepIndex !== undefined ? lastStepIndex :
+          steps.findIndex(s =>
+            s?.config?.name && error.message?.includes(s.config.name)
+          );
+
+        const failedStep = failedStepIndex >= 0 ? steps[failedStepIndex] : steps[steps.length - 1];
+
+        // If we don't have lastStepId yet, set it from failed step
+        if (!lastStepId && failedStep) {
+          lastStepId = failedStep.config.id;
+          lastStepIndex = failedStepIndex >= 0 ? failedStepIndex : steps.length - 1;
+        }
+
+        // Call workflow-level error handler from config
+        // Skip onError if we're doing step control (testing specific steps)
+        const usingStepControl = options?.startFromStep || options?.endAtStep;
+
+        if (config.onError && !usingStepControl) {
+          try {
+            const errorResponse = await config.onError({
+              desktop: desktopInstance,
+              error,
+              step: failedStep,
+              input: validatedInput,
+              context,
+              logger: log,
+            });
+
+            // If workflow onError returns a response, use it
+            if (errorResponse) {
+              return errorResponse;
+            }
+          } catch (handlerError) {
+            log.error(`❌ Workflow error handler failed: ${handlerError}`);
+          }
+        } else if (usingStepControl) {
+          log.info(`⏭️ Skipping onError handler (step control mode)`);
+        }
+
+        // Call legacy error handler if provided (for backward compat)
+        if (errorHandler) {
+          try {
+            await errorHandler({
+              desktop: desktopInstance,
+              error,
+              step: failedStep,
+              input: validatedInput,
+              context,
+              logger: log,
+            });
+          } catch (handlerError) {
+            log.error(`❌ Error handler failed: ${handlerError}`);
+          }
+        }
+
+        // Return error response with state tracking
+        return {
+          status: 'error',
+          message: error.message,
+          error: {
+            category: error.category || 'technical',
+            code: error.code || 'UNKNOWN_ERROR',
+            message: error.message,
+            recoverable: error.recoverable,
+            metadata: error.metadata || {
+              step: failedStep.config.name,
+              stepId: failedStep.config.id,
+              timestamp: new Date().toISOString(),
+            },
+          },
+          data: context.data,
+          lastStepId,
+          lastStepIndex,
+          state: { context, lastStepId, lastStepIndex },
+        };
+      }
+    },
+
+    getMetadata() {
+      return {
+        name: config.name,
+        description: config.description,
+        version: config.version,
+        input: config.input,
+        steps: steps.map(s => s.getMetadata()),
+      };
+    },
+  };
+}
+
+/**
+ * Creates a workflow builder or workflow instance with type-safe state accumulation
+ *
+ * If `steps` are provided in config, returns a Workflow directly.
+ * Otherwise, returns a WorkflowBuilder for chaining with automatic state type tracking.
+ *
+ * @example
+ * ```typescript
+ * // Builder pattern with type-safe state accumulation
+ * const workflow = createWorkflow({
+ *   name: 'Data Processing',
+ *   input: z.object({ sourceFile: z.string() }),
+ * })
+ *   .step(createStep({
+ *     id: 'fetch',
+ *     name: 'Fetch User Data',
+ *     execute: async () => ({
+ *       state: { userId: '123', userName: 'John' }
+ *     })
+ *   }))
+ *   .step(createStep({
+ *     id: 'process',
+ *     name: 'Process Data',
+ *     execute: async ({ context }) => {
+ *       // TypeScript knows context.state has userId and userName!
+ *       const id = context.state.userId;  // string (with IntelliSense)
+ *       const name = context.state.userName;  // string (with IntelliSense)
+ *       return { state: { processedCount: 42 } };
+ *     }
+ *   }))
+ *   .step(createStep({
+ *     id: 'finalize',
+ *     name: 'Finalize',
+ *     execute: async ({ context }) => {
+ *       // TypeScript knows ALL accumulated state
+ *       context.state.userId;  // string
+ *       context.state.userName;  // string
+ *       context.state.processedCount;  // number
+ *     }
+ *   }))
+ *   .build();
+ *
+ * // Direct pattern
+ * const workflow = createWorkflow({
+ *   name: 'SAP Login',
+ *   input: z.object({ username: z.string() }),
+ *   steps: [loginStep, processStep],
+ *   onError: async ({ error }) => ({ status: 'error', ... })
+ * });
+ * ```
+ */
+export function createWorkflow<TInput = any>(
+  config: WorkflowConfig<TInput>
+): WorkflowBuilder<TInput, {}> | Workflow<TInput> {
+  // If steps are provided in config, create workflow directly
+  if (config.steps && config.steps.length > 0) {
+    return createWorkflowInstance(config, config.steps);
+  }
+
+  // Otherwise, return builder for chaining with type-safe state
+  return new WorkflowBuilder<TInput, {}>(config);
+}

@@ -16,6 +16,7 @@ import type { TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 // Import generated prompts
 import { createPollTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 
 const getPollInfo = async (
@@ -58,18 +59,12 @@ const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6�
 const letterEmojis = ["🇦", "🇧", "🇨", "🇩", "🇪", "🇫", "🇬", "🇭", "🇮", "🇯"];
 const yesNoEmojis = ["✅", "❌"];
 
+const spec = requireActionSpec("CREATE_POLL");
+
 export const createPoll: Action = {
-  name: "CREATE_POLL",
-  similes: [
-    "CREATE_POLL",
-    "MAKE_POLL",
-    "START_POLL",
-    "CREATE_VOTE",
-    "MAKE_VOTE",
-    "START_VOTE",
-    "CREATE_SURVEY",
-  ],
-  description: "Create a poll in Discord with emoji reactions for voting.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -211,53 +206,7 @@ export const createPoll: Action = {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "create a poll: What game should we play tonight? Options: Minecraft, Fortnite, Valorant",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create a poll for game selection with those options.",
-          actions: ["CREATE_POLL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "make a vote: Should we have the meeting at 3pm? Yes/No",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Creating a yes/no poll about the meeting time.",
-          actions: ["CREATE_POLL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "start a poll asking what day works best for everyone: Monday, Tuesday, Wednesday, Thursday, Friday",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create a poll to find the best day for everyone.",
-          actions: ["CREATE_POLL"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default createPoll;

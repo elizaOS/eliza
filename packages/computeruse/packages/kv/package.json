@@ -1,0 +1,37 @@
+{
+  "author": "Mediar AI",
+  "dependencies": {
+    "ioredis": "^5.3.2"
+  },
+  "description": "State sharing and KV store for ComputerUse workflows",
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.11.5",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.5",
+    "typescript": "^5.3.3"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "name": "@mediar-ai/kv",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "directory": "packages/kv",
+    "type": "git",
+    "url": "https://github.com/mediar-ai/computeruse"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest"
+  },
+  "types": "dist/index.d.ts",
+  "version": "0.24.20"
+}

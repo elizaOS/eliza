@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-starter"
-version = "1.0.0"
+version = "2.0.0"
 description = "Starter template for elizaOS Python plugins with cross-language support"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["elizaos", "plugin", "ai", "agent"]
 classifiers = [

@@ -14,6 +14,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { extractCompletionTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { createTodoDataService, type TodoData } from "../services/todoDataService";
 
 interface TaskCompletion {
@@ -72,10 +73,12 @@ async function extractTaskCompletion(
   return finalResult;
 }
 
+const spec = requireActionSpec("COMPLETE_TODO");
+
 export const completeTodoAction: Action = {
-  name: "COMPLETE_TODO",
-  similes: ["MARK_COMPLETE", "FINISH_TASK", "DONE", "TASK_DONE", "TASK_COMPLETED"],
-  description: "Marks a todo item as completed.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     if (!message.roomId) {
@@ -204,53 +207,7 @@ export const completeTodoAction: Action = {
     return { success: true, text: responseText };
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I completed my taxes",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✅ Task completed: "Finish taxes" (Priority 2, on time)',
-          actions: ["COMPLETE_TODO"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I did my 50 pushups today",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✅ Daily task completed: "Do 50 pushups"',
-          actions: ["COMPLETE_TODO"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I read three books this month",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '🌟 Congratulations on achieving your aspirational goal: "Read more books"!\n\nThis is a significant accomplishment.',
-          actions: ["COMPLETE_TODO"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default completeTodoAction;

@@ -1,0 +1,21 @@
+{
+  "cpu": [
+    "arm64"
+  ],
+  "engines": {
+    "node": ">= 10"
+  },
+  "files": [
+    "computeruse-mcp-agent.exe"
+  ],
+  "main": "computeruse-mcp-agent.exe",
+  "name": "computeruse-mcp-win32-arm64-msvc",
+  "os": [
+    "win32"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mediar-ai/computeruse"
+  },
+  "version": "0.24.20"
+}

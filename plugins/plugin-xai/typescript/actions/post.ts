@@ -12,11 +12,14 @@ import {
 } from "@elizaos/core";
 import type { XService } from "../services/x.service";
 import { sendPost } from "../utils";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("POST");
 
 export const postAction: Action = {
-  name: "POST",
-  similes: ["POST_TO_X", "POST", "SEND_POST", "SHARE_ON_X"],
-  description: "Post content on X (formerly Twitter)",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const service = runtime.getService("x");
@@ -134,28 +137,5 @@ Post:`;
     }
   },
 
-  examples: [
-    [
-      {
-        name: "{{user1}}",
-        content: { text: "Post about the weather today" },
-      },
-      {
-        name: "{{agent}}",
-        content: { text: "I'll post about today's weather.", action: "POST" },
-      },
-    ],
-    [
-      {
-        name: "{{user1}}",
-        content: {
-          text: "Post: The future of AI is collaborative intelligence",
-        },
-      },
-      {
-        name: "{{agent}}",
-        content: { text: "I'll post that for you.", action: "POST" },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };

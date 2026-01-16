@@ -1,0 +1,115 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  # Windows 10 box configuration
+  config.vm.box = "stromweld/windows-10"
+
+  # VM resources
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 4096
+    vb.cpus = 2
+    vb.gui = true
+    # Enables a bidirectional clipboard between host and guest
+    vb.customize ["modifyvm", :id, "--clipboard", "bidirectional"]
+    vb.customize ["modifyvm", :id, "--monitorcount", "3"]
+  end
+
+  # Network configuration
+  config.vm.network "forwarded_port", guest: 22, host: 2222, id: "ssh"
+
+  # WinRM configuration for initial setup
+  config.vm.communicator = "winrm"
+  config.winrm.username = "vagrant"
+  config.winrm.password = "vagrant"
+
+  # Sync the workspace
+  config.vm.synced_folder "..", "C:/Users/vagrant/computeruse", type: "virtualbox"
+
+  # Combined provisioning script
+  config.vm.provision "shell", name: "full_setup", inline: <<-SHELL, privileged: true
+      Write-Host "Starting VM provisioning..." -ForegroundColor Green
+
+      # Prevent shutdown: inject registry & power settings
+      Write-Host "Configuring power and shutdown settings..." -ForegroundColor Yellow
+      powercfg /change standby-timeout-ac 0
+      powercfg /change hibernate-timeout-ac 0
+      powercfg /change monitor-timeout-ac 0
+      reg add "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v AutoLogonCount /t REG_DWORD /d 999 /f
+      reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power" /v HibernateEnabled /t REG_DWORD /d 0 /f
+
+      # Step 1: Disable the service
+      Start-Process -FilePath sc.exe -ArgumentList "config sppsvc start= disabled" -Wait
+      Start-Sleep -Seconds 2
+
+      # Step 2: Try stopping it up to 3 times
+      for ($i = 1; $i -le 3; $i++) {
+        try {
+          Write-Output "Try #$i: Stopping sppsvc..."
+          Stop-Service sppsvc -Force -ErrorAction Stop
+          Write-Output "sppsvc stopped successfully."
+          break
+        } catch {
+          Write-Warning "Attempt #$i failed: $($_.Exception.Message)"
+          Start-Sleep -Seconds 2
+        }
+      }
+
+      # Step 3: If still running, kill it
+      $sppsvc = Get-Process sppsvc -ErrorAction SilentlyContinue
+      if ($sppsvc) {
+        Write-Warning "sppsvc still running after 3 attempts, killing it..."
+        Stop-Process -Id $sppsvc.Id -Force
+      }
+
+      Write-Host "Power and shutdown settings configured" -ForegroundColor Green
+
+      # Install OpenSSH
+      Write-Host "Installing OpenSSH..." -ForegroundColor Yellow
+      $scriptPath = 'C:/Users/vagrant/computeruse/vagrant/scripts/install-openssh.ps1'
+      PowerShell -ExecutionPolicy Bypass -File $scriptPath
+      Write-Host "OpenSSH installation completed" -ForegroundColor Green
+
+      # Install Scoop and tools
+      Write-Host "Installing Scoop package manager..." -ForegroundColor Yellow
+      # iex "& {$(irm get.scoop.sh)} -RunAsAdmin"
+      Write-Host "Scoop installation completed" -ForegroundColor Green
+
+      # Install Git
+      Write-Host "Installing Git..." -ForegroundColor Yellow
+      scoop install git
+      sleep 1
+      reg import "C:\Users\vagrant\scoop\apps\7zip\current\install-context.reg"
+      reg import "C:\Users\vagrant\scoop\apps\git\current\install-context.reg"
+      reg import "C:\Users\vagrant\scoop\apps\git\current\install-file-associations.reg"
+      Write-Host "Git installation completed" -ForegroundColor Green
+
+      # Install Python
+      Write-Host "Installing Python..." -ForegroundColor Yellow
+      scoop install python
+      sleep 1
+      reg import "C:\Users\vagrant\scoop\apps\python\current\install-pep-514.reg"
+      Write-Host "Python installation completed" -ForegroundColor Green
+
+      # Install NodeJS
+      Write-Host "Installing NodeJS..." -ForegroundColor Yellow
+      scoop install nodejs
+      sleep 1
+      Write-Host "NodeJS installation completed" -ForegroundColor Green
+
+      # Install PSTools
+      Write-Host "Installing PSTools..." -ForegroundColor Yellow
+      scoop bucket add sysinternals
+      scoop install sysinternals/pstools
+      Write-Host "PSTools installation completed" -ForegroundColor Green
+
+      Write-Host "Installing gui-shell Node.js package..." -ForegroundColor Yellow
+      $path = 'C:\\vagrant\\scripts\\gui-shell'
+      cd $path
+      npm install
+      npm install -g .
+      Write-Host "gui-shell installation completed and added to PATH" -ForegroundColor Green
+
+      Write-Host "VM provisioning completed successfully!" -ForegroundColor Green
+    SHELL
+end

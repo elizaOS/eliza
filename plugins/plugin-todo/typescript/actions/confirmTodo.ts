@@ -15,6 +15,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { extractConfirmationTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { createTodoDataService } from "../services/todoDataService";
 
 interface PendingTodoData {
@@ -87,10 +88,12 @@ ${pendingTask.recurring ? `Recurring: ${pendingTask.recurring}` : ""}
   };
 }
 
+const spec = requireActionSpec("CONFIRM_TODO");
+
 export const confirmTodoAction: Action = {
-  name: "CONFIRM_TODO",
-  similes: ["CONFIRM_TASK", "APPROVE_TODO", "APPROVE_TASK", "TODO_CONFIRM"],
-  description: "Confirms or cancels a pending todo creation after user review.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State): Promise<boolean> => {
     const pendingTodo = state?.data?.pendingTodo as PendingTodoData | undefined;
@@ -238,64 +241,7 @@ export const confirmTodoAction: Action = {
     return { success: true, text: successMessage };
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Add a todo to finish my taxes by April 15",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create a one-off todo: 'Finish taxes' with Priority 2, Due April 15.\n\nIs this correct?",
-          actions: ["CREATE_TODO_PREVIEW"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Yes, that looks good",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "✅ Created task: 'Finish taxes' (Priority 2, Due: 4/15/2024)",
-          actions: ["CONFIRM_TODO_SUCCESS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I want to add a daily task to exercise",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll create a daily todo: 'Exercise'.\n\nIs this correct?",
-          actions: ["CREATE_TODO_PREVIEW"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Actually, nevermind",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Okay, I've cancelled the task creation. Let me know if you'd like to create a different task.",
-          actions: ["CONFIRM_TODO_CANCELLED"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default confirmTodoAction;

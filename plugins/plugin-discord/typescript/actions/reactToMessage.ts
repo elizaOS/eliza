@@ -12,6 +12,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { Message, TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import { reactToMessageTemplate } from "../generated/prompts/typescript/prompts.js";
@@ -119,17 +120,12 @@ const emojiMap: Record<string, string> = {
   ":rocket:": "🚀",
 };
 
+const spec = requireActionSpec("REACT_TO_MESSAGE");
+
 export const reactToMessage: Action = {
-  name: "REACT_TO_MESSAGE",
-  similes: [
-    "REACT_TO_MESSAGE",
-    "ADD_REACTION",
-    "REACT_MESSAGE",
-    "ADD_EMOJI",
-    "EMOJI_REACT",
-    "MESSAGE_REACTION",
-  ],
-  description: "Add an emoji reaction to a Discord message.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -365,53 +361,7 @@ export const reactToMessage: Action = {
       });
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "react with 👍 to the last message",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll add a thumbs up reaction to the last message.",
-          actions: ["REACT_TO_MESSAGE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "add a fire emoji to that",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Adding a 🔥 reaction.",
-          actions: ["REACT_TO_MESSAGE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "react to john's message about the meeting with a checkmark",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll find john's message about the meeting and add a ✅ reaction.",
-          actions: ["REACT_TO_MESSAGE"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default reactToMessage;

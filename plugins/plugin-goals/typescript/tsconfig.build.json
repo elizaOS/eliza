@@ -7,6 +7,7 @@
     "inlineSources": true,
     "declaration": true,
     "emitDeclarationOnly": true,
+    "noEmit": false,
     "baseUrl": ".",
     "paths": {
       "@elizaos/core": ["../../../packages/typescript/dist"]

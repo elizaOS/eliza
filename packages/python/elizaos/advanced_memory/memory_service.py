@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import heapq
 import re
 import time
 from uuid import UUID, uuid4
@@ -67,12 +68,20 @@ def _parse_memory_extraction_xml(xml: str) -> list[MemoryExtraction]:
     return out
 
 
+def _top_k_by_confidence(items: list[LongTermMemory], limit: int) -> list[LongTermMemory]:
+    if limit <= 0 or not items:
+        return []
+    if len(items) <= limit:
+        return sorted(items, key=lambda mm: mm.confidence, reverse=True)
+    return heapq.nlargest(limit, items, key=lambda mm: mm.confidence)
+
+
 class MemoryService(Service):
     service_type = "memory"
 
     def __init__(self, runtime=None) -> None:
         super().__init__(runtime=runtime)
-        self._config = MemoryConfig()
+        self._config: MemoryConfig = MemoryConfig()
         # Fallback storage for runtimes without a DB adapter (tests/benchmarks).
         self._session_summaries: dict[str, SessionSummary] = {}
         self._long_term: dict[str, list[LongTermMemory]] = {}
@@ -87,24 +96,38 @@ class MemoryService(Service):
         svc = cls(runtime=runtime)
         # read settings
         settings = runtime.character.settings or {}
-        if (v := settings.get("MEMORY_SUMMARIZATION_THRESHOLD")) is not None:
+        if (v := settings.get("MEMORY_SUMMARIZATION_THRESHOLD")) is not None and isinstance(
+            v, (int, float, str)
+        ):
             svc._config.short_term_summarization_threshold = int(v)
-        if (v := settings.get("MEMORY_RETAIN_RECENT")) is not None:
+        if (v := settings.get("MEMORY_RETAIN_RECENT")) is not None and isinstance(
+            v, (int, float, str)
+        ):
             svc._config.short_term_retain_recent = int(v)
-        if (v := settings.get("MEMORY_SUMMARIZATION_INTERVAL")) is not None:
+        if (v := settings.get("MEMORY_SUMMARIZATION_INTERVAL")) is not None and isinstance(
+            v, (int, float, str)
+        ):
             svc._config.short_term_summarization_interval = int(v)
-        if (v := settings.get("MEMORY_MAX_NEW_MESSAGES")) is not None:
+        if (v := settings.get("MEMORY_MAX_NEW_MESSAGES")) is not None and isinstance(
+            v, (int, float, str)
+        ):
             svc._config.summary_max_new_messages = int(v)
         if (v := settings.get("MEMORY_LONG_TERM_ENABLED")) is not None:
             if str(v).lower() == "false":
                 svc._config.long_term_extraction_enabled = False
             elif str(v).lower() == "true":
                 svc._config.long_term_extraction_enabled = True
-        if (v := settings.get("MEMORY_CONFIDENCE_THRESHOLD")) is not None:
+        if (v := settings.get("MEMORY_CONFIDENCE_THRESHOLD")) is not None and isinstance(
+            v, (int, float, str)
+        ):
             svc._config.long_term_confidence_threshold = float(v)
-        if (v := settings.get("MEMORY_EXTRACTION_THRESHOLD")) is not None:
+        if (v := settings.get("MEMORY_EXTRACTION_THRESHOLD")) is not None and isinstance(
+            v, (int, float, str)
+        ):
             svc._config.long_term_extraction_threshold = int(v)
-        if (v := settings.get("MEMORY_EXTRACTION_INTERVAL")) is not None:
+        if (v := settings.get("MEMORY_EXTRACTION_INTERVAL")) is not None and isinstance(
+            v, (int, float, str)
+        ):
             svc._config.long_term_extraction_interval = int(v)
 
         runtime.logger.info("MemoryService started successfully", src="service:memory")
@@ -129,7 +152,9 @@ class MemoryService(Service):
             if cached is None:
                 return 0
             try:
-                return int(cached)
+                if isinstance(cached, (int, float, str)):
+                    return int(cached)
+                return 0
             except Exception:
                 return 0
         return int(self._extraction_checkpoints.get(key, 0))
@@ -168,7 +193,11 @@ class MemoryService(Service):
                 }
             )
             for m in mems:
-                meta = m.get("metadata") or {}
+                if not isinstance(m, dict):
+                    continue
+                meta = m.get("metadata")
+                if not isinstance(meta, dict):
+                    meta = {}
                 if meta.get("type") != _TABLE_SESSION_SUMMARY:
                     continue
                 try:
@@ -234,7 +263,9 @@ class MemoryService(Service):
             if existing:
                 _ = await runtime.update_memory(mem)
                 return s
-            _ = await runtime.create_memory(mem, _TABLE_SESSION_SUMMARY, unique=False)
+            _ = await runtime.create_memory(
+                mem, _TABLE_SESSION_SUMMARY, unique=False
+            )
             return s
 
         self._session_summaries[str(room_id)] = s
@@ -250,8 +281,18 @@ class MemoryService(Service):
             summary_text = (
                 str(updates["summary"]) if "summary" in updates and isinstance(updates["summary"], str) else existing.summary
             )
-            msg_count = int(updates["message_count"]) if "message_count" in updates else existing.message_count
-            last_off = int(updates["last_message_offset"]) if "last_message_offset" in updates else existing.last_message_offset
+            msg_count_raw = updates.get("message_count")
+            msg_count = (
+                int(msg_count_raw)
+                if isinstance(msg_count_raw, (int, float, str))
+                else existing.message_count
+            )
+            last_off_raw = updates.get("last_message_offset")
+            last_off = (
+                int(last_off_raw)
+                if isinstance(last_off_raw, (int, float, str))
+                else existing.last_message_offset
+            )
             topics = (
                 [str(t) for t in updates["topics"]] if "topics" in updates and isinstance(updates["topics"], list) else existing.topics
             )
@@ -277,9 +318,13 @@ class MemoryService(Service):
             return
         if "summary" in updates and isinstance(updates["summary"], str):
             existing.summary = updates["summary"]
-        if "message_count" in updates:
+        if "message_count" in updates and isinstance(
+            updates["message_count"], (int, float, str)
+        ):
             existing.message_count = int(updates["message_count"])
-        if "last_message_offset" in updates:
+        if "last_message_offset" in updates and isinstance(
+            updates["last_message_offset"], (int, float, str)
+        ):
             existing.last_message_offset = int(updates["last_message_offset"])
         if "topics" in updates and isinstance(updates["topics"], list):
             existing.topics = [str(t) for t in updates["topics"]]
@@ -324,7 +369,9 @@ class MemoryService(Service):
                     "metadata": dict(m.metadata),
                 },
             }
-            _ = await runtime.create_memory(mem, _TABLE_LONG_TERM_MEMORY, unique=False)
+            _ = await runtime.create_memory(
+                mem, _TABLE_LONG_TERM_MEMORY, unique=False
+            )
             return m
 
         self._long_term.setdefault(str(entity_id), []).append(m)
@@ -336,9 +383,11 @@ class MemoryService(Service):
         category: LongTermMemoryCategory | None = None,
         limit: int = 25,
     ) -> list[LongTermMemory]:
+        if limit <= 0:
+            return []
         runtime = self.runtime
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
-            mems = await runtime.get_memories(
+            db_mems = await runtime.get_memories(
                 {
                     "roomId": str(_GLOBAL_LONG_TERM_ROOM_ID),
                     "entityId": str(entity_id),
@@ -347,8 +396,12 @@ class MemoryService(Service):
                 }
             )
             out: list[LongTermMemory] = []
-            for m in mems:
-                meta = m.get("metadata") or {}
+            for m in db_mems:
+                if not isinstance(m, dict):
+                    continue
+                meta = m.get("metadata")
+                if not isinstance(meta, dict):
+                    meta = {}
                 if meta.get("type") != _TABLE_LONG_TERM_MEMORY:
                     continue
                 cat_raw = str(meta.get("category") or "")
@@ -373,14 +426,12 @@ class MemoryService(Service):
                     )
                 except Exception:
                     continue
-            out = sorted(out, key=lambda mm: mm.confidence, reverse=True)
-            return out[:limit]
+            return _top_k_by_confidence(out, limit)
 
-        mems = self._long_term.get(str(entity_id), [])
+        local_mems = self._long_term.get(str(entity_id), [])
         if category is not None:
-            mems = [m for m in mems if m.category == category]
-        mems = sorted(mems, key=lambda mm: mm.confidence, reverse=True)
-        return mems[:limit]
+            local_mems = [m for m in local_mems if m.category == category]
+        return _top_k_by_confidence(local_mems, limit)
 
     async def get_formatted_long_term_memories(self, entity_id: UUID) -> str:
         mems = await self.get_long_term_memories(entity_id, None, 20)

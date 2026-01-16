@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import pytest
 
+from elizaos.advanced_planning.planning_service import ActionPlan, ActionStep
 from elizaos.runtime import AgentRuntime
 from elizaos.types.agent import Character
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import Content, as_uuid
+from elizaos.types.components import ActionDefinition, ActionResult
 from elizaos.types.model import ModelType
 
 
@@ -114,4 +116,80 @@ async def test_advanced_planning_service_creates_comprehensive_plan_and_executes
     state = await runtime.compose_state(msg)
     result = await planning_service.execute_plan(plan, msg, state=state, callback=None)
     assert result.total_steps >= 1
+
+
+@pytest.mark.asyncio
+async def test_advanced_planning_dag_executes_in_dependency_order() -> None:
+    character = Character(name="AdvPlanningDag", bio="Test", advancedPlanning=True)
+    runtime = AgentRuntime(character=character, plugins=[])
+    execution_order: list[str] = []
+
+    async def handler_a(_rt, _msg, _state, _options, _callback, _responses):
+        execution_order.append("STEP_A")
+        return ActionResult(success=True)
+
+    async def handler_b(_rt, _msg, _state, _options, _callback, _responses):
+        execution_order.append("STEP_B")
+        return ActionResult(success=True)
+
+    async def handler_c(_rt, _msg, _state, _options, _callback, _responses):
+        execution_order.append("STEP_C")
+        return ActionResult(success=True)
+
+    runtime.register_action(
+        ActionDefinition(
+            name="STEP_A",
+            description="Step A",
+            handler=handler_a,
+            validate=lambda *_: True,
+        )
+    )
+    runtime.register_action(
+        ActionDefinition(
+            name="STEP_B",
+            description="Step B",
+            handler=handler_b,
+            validate=lambda *_: True,
+        )
+    )
+    runtime.register_action(
+        ActionDefinition(
+            name="STEP_C",
+            description="Step C",
+            handler=handler_c,
+            validate=lambda *_: True,
+        )
+    )
+
+    await runtime.initialize()
+    planning_service = runtime.get_service("planning")
+    assert planning_service is not None
+
+    step_a = uuid4()
+    step_b = uuid4()
+    step_c = uuid4()
+    plan = ActionPlan(
+        id=uuid4(),
+        goal="Run DAG",
+        thought="Run DAG",
+        total_steps=3,
+        current_step=0,
+        steps=[
+            ActionStep(id=step_a, action_name="STEP_A", parameters={}, dependencies=[]),
+            ActionStep(id=step_b, action_name="STEP_B", parameters={}, dependencies=[step_a]),
+            ActionStep(id=step_c, action_name="STEP_C", parameters={}, dependencies=[step_b]),
+        ],
+        execution_model="dag",
+    )
+
+    msg = Memory(
+        id=as_uuid("12345678-1234-1234-1234-123456789130"),
+        entity_id=as_uuid("12345678-1234-1234-1234-123456789131"),
+        room_id=as_uuid("12345678-1234-1234-1234-123456789132"),
+        content=Content(text="run"),
+    )
+    state = await runtime.compose_state(msg)
+    await planning_service.execute_plan(plan, msg, state=state, callback=None)
+
+    assert execution_order == ["STEP_A", "STEP_B", "STEP_C"]
 

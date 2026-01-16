@@ -37,9 +37,11 @@ export class AerodromeLpService extends Service implements IEvmLpService {
   private walletClients: Map<string, WalletClient> = new Map();
   private rpcUrl: string | null = null;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.initializeRpcUrl();
+    if (runtime) {
+      this.initializeRpcUrl();
+    }
   }
 
   private initializeRpcUrl(): void {

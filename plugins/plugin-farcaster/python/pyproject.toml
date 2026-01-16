@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-farcaster"
-version = "1.0.0"
+version = "2.0.0"
 description = "Farcaster plugin for elizaOS - Python implementation for casting and receiving messages"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agent", "farcaster", "social", "elizaos", "neynar", "web3"]
 classifiers = [

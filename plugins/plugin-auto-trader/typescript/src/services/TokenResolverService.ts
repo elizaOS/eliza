@@ -51,6 +51,11 @@ export class TokenResolverService extends Service {
   private cacheExpiry = new Map<string, number>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  private getBirdeyeApiKey(): string | null {
+    const apiKey = this.runtime.getSetting('BIRDEYE_API_KEY');
+    return typeof apiKey === 'string' && apiKey.trim().length > 0 ? apiKey : null;
+  }
+
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     // Pre-populate cache with well-known tokens
@@ -125,7 +130,7 @@ export class TokenResolverService extends Service {
       return cached;
     }
 
-    const apiKey = this.runtime.getSetting('BIRDEYE_API_KEY');
+    const apiKey = this.getBirdeyeApiKey();
     if (!apiKey) {
       logger.warn('[TokenResolverService] No Birdeye API key configured');
       return null;
@@ -185,7 +190,7 @@ export class TokenResolverService extends Service {
    * Search for a token by symbol or name
    */
   public async searchToken(query: string): Promise<TokenInfo | null> {
-    const apiKey = this.runtime.getSetting('BIRDEYE_API_KEY');
+    const apiKey = this.getBirdeyeApiKey();
     if (!apiKey) {
       logger.warn('[TokenResolverService] No Birdeye API key configured');
       return null;
@@ -255,7 +260,7 @@ export class TokenResolverService extends Service {
    * Get trending tokens from Birdeye
    */
   public async getTrendingTokens(limit = 20): Promise<TokenInfo[]> {
-    const apiKey = this.runtime.getSetting('BIRDEYE_API_KEY');
+    const apiKey = this.getBirdeyeApiKey();
     if (!apiKey) {
       return [];
     }

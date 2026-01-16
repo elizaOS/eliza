@@ -1,7 +1,11 @@
+# Import generated module first to set up sys.path for protobuf imports
+import elizaos.types.generated  # noqa: F401
+
 from elizaos.types.agent import (
     Agent,
     AgentStatus,
     Character,
+    CharacterSettings,
     MessageExample,
     TemplateType,
 )
@@ -46,16 +50,15 @@ from elizaos.types.database import (
     SearchOptions,
 )
 from elizaos.types.environment import (
-    ChannelType,
     Component,
     Entity,
     Participant,
     Relationship,
-    Role,
     Room,
     RoomMetadata,
     World,
     WorldMetadata,
+    WorldOwnership,
 )
 from elizaos.types.events import (
     ActionEventPayload,
@@ -83,8 +86,6 @@ from elizaos.types.memory import (
     FragmentMetadata,
     Memory,
     MemoryMetadata,
-    MemoryScope,
-    MemoryType,
     MessageMemory,
     MessageMetadata,
 )
@@ -127,7 +128,6 @@ from elizaos.types.primitives import (
     DEFAULT_UUID,
     UUID,
     Content,
-    ContentType,
     Media,
     MentionContext,
     Metadata,
@@ -137,6 +137,7 @@ from elizaos.types.primitives import (
 from elizaos.types.runtime import (
     IAgentRuntime,
     RuntimeSettings,
+    StreamingModelHandler,
 )
 from elizaos.types.service import (
     Service,
@@ -252,7 +253,7 @@ from elizaos.types.state import (
     ActionPlanStep,
     State,
     StateData,
-    WorkingMemoryEntry,
+    WorkingMemoryItem,
 )
 from elizaos.types.task import (
     Task,
@@ -268,15 +269,12 @@ __all__ = [
     "as_uuid",
     "string_to_uuid",
     "Content",
-    "ContentType",
     "Media",
     "MentionContext",
     "Metadata",
     # Memory
     "Memory",
     "MessageMemory",
-    "MemoryType",
-    "MemoryScope",
     "MemoryMetadata",
     "BaseMetadata",
     "DocumentMetadata",
@@ -290,15 +288,15 @@ __all__ = [
     "AgentStatus",
     "MessageExample",
     "TemplateType",
+    "CharacterSettings",
     # Environment
     "Entity",
     "Component",
     "World",
     "WorldMetadata",
+    "WorldOwnership",
     "Room",
     "RoomMetadata",
-    "ChannelType",
-    "Role",
     "Participant",
     "Relationship",
     # Components
@@ -336,7 +334,7 @@ __all__ = [
     # State
     "State",
     "StateData",
-    "WorkingMemoryEntry",
+    "WorkingMemoryItem",
     "ActionPlan",
     "ActionPlanStep",
     # Events
@@ -411,6 +409,7 @@ __all__ = [
     # Runtime
     "IAgentRuntime",
     "RuntimeSettings",
+    "StreamingModelHandler",
     # Service Interfaces - Token & Wallet
     "TokenBalance",
     "TokenData",

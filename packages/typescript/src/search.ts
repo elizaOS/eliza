@@ -908,26 +908,22 @@ class Tokenizer {
     if (!text) {
       throw new Error("Input text cannot be null or empty");
     }
-    const startTime = Date.now();
-    const originalWords = text.split(/\s+/).filter((word) => word.length > 0);
+    const startTime = includeStats ? Date.now() : 0;
     const cleaned = this.cleanText(text);
     const tokens = cleaned
       .split(/\s+/)
       .filter((token) => this.isValidToken(token))
       .map((token) => (this.stemming ? this.stemWord(token) : token));
-    const stats: TokenizationStats = includeStats
-      ? {
-          originalWordCount: originalWords.length,
-          stopWordsRemoved: originalWords.length - tokens.length, // This might be incorrect if stemming changes token count
-          stemmedWords: this.stemming ? tokens.length : 0,
-          processingTimeMs: Date.now() - startTime,
-        }
-      : {
-          originalWordCount: 0,
-          stopWordsRemoved: 0,
-          stemmedWords: 0,
-          processingTimeMs: 0,
-        };
+    let stats: TokenizationStats | undefined;
+    if (includeStats) {
+      const originalWords = text.split(/\s+/).filter((word) => word.length > 0);
+      stats = {
+        originalWordCount: originalWords.length,
+        stopWordsRemoved: originalWords.length - tokens.length, // This might be incorrect if stemming changes token count
+        stemmedWords: this.stemming ? tokens.length : 0,
+        processingTimeMs: Date.now() - startTime,
+      };
+    }
     return { tokens, stats };
   }
 
@@ -1213,8 +1209,9 @@ export class BM25 {
       const docTermFrequencies = new Map<number, number>(); // TermIndex -> TF for this doc
 
       // Iterate through fields of the document
-      Object.entries(doc).forEach(([field, content]) => {
-        if (typeof content !== "string") return; // Skip non-string fields
+      for (const field in doc) {
+        const content = doc[field];
+        if (typeof content !== "string") continue; // Skip non-string fields
 
         const fieldBoost = this.fieldBoosts[field] || 1;
         const { tokens } = this.tokenizer.tokenize(content);
@@ -1230,19 +1227,18 @@ export class BM25 {
           const termIndexVal = termToIndex.get(term) as number;
 
           // Track which documents contain the term
-          if (!termDocs.has(term)) {
-            termDocs.set(term, new Set<number>());
+          let termDocsTerm = termDocs.get(term);
+          if (!termDocsTerm) {
+            termDocsTerm = new Set<number>();
+            termDocs.set(term, termDocsTerm);
           }
-          const termDocsTerm = termDocs.get(term);
-          if (termDocsTerm) {
-            termDocsTerm.add(docIndex);
-          }
+          termDocsTerm.add(docIndex);
 
           // Increment frequency for this term in this document
           const currentFreq = docTermFrequencies.get(termIndexVal) || 0;
           docTermFrequencies.set(termIndexVal, currentFreq + fieldBoost); // TF weighted by boost
         });
-      });
+      }
 
       // Store the calculated length for this document
       documentLengths[docIndex] = currentDocLength;
@@ -1300,6 +1296,7 @@ export class BM25 {
    * @returns An array of `SearchResult` objects, sorted by descending BM25 score.
    */
   search(query: string, topK = 10): SearchResult[] {
+    if (topK <= 0) return [];
     const { tokens: queryTokens } = this.tokenizer.tokenize(query); // Tokenize the query
     const scores = new Float32Array(this.documentLengths.length).fill(0); // Initialize scores to 0
 
@@ -1337,15 +1334,28 @@ export class BM25 {
     });
 
     // --- Result Generation ---
-    // Create result objects, filter out zero scores, sort, and take top K
-    return Array.from({ length: scores.length }, (_, i) => ({
-      index: i,
-      score: scores[i],
-      // Optionally add: doc: this.getDocument(i) // If you want the full doc in results
-    }))
-      .filter((result) => result.score > 0) // Keep only documents with positive scores
-      .sort((a, b) => b.score - a.score) // Sort by score descending
-      .slice(0, topK); // Limit to topK results
+    // Keep only topK results without sorting the full set.
+    const results: SearchResult[] = [];
+    for (let i = 0; i < scores.length; i++) {
+      const score = scores[i];
+      if (score <= 0) continue;
+      const result = { index: i, score };
+      if (results.length < topK) {
+        results.push(result);
+        if (results.length === topK) {
+          results.sort((a, b) => b.score - a.score);
+        }
+        continue;
+      }
+      if (score <= results[results.length - 1].score) continue;
+      let insertAt = results.length - 1;
+      while (insertAt > 0 && results[insertAt - 1].score < score) {
+        insertAt--;
+      }
+      results.splice(insertAt, 0, result);
+      results.pop();
+    }
+    return results;
   }
 
   /**
@@ -1401,8 +1411,9 @@ export class BM25 {
       let phraseFoundInDoc = false;
 
       // Check each field for the phrase
-      Object.entries(doc).forEach(([field, content]) => {
-        if (typeof content !== "string" || phraseFoundInDoc) return; // Skip non-strings or if already found
+      for (const field in doc) {
+        const content = doc[field];
+        if (typeof content !== "string" || phraseFoundInDoc) continue; // Skip non-strings or if already found
 
         const fieldBoost = this.fieldBoosts[field] || 1;
         // Tokenize the field content using the same settings
@@ -1426,7 +1437,7 @@ export class BM25 {
             break; // Move to next document once found in this one
           }
         }
-      });
+      }
     });
 
     // --- Format and Sort Results ---
@@ -1498,8 +1509,9 @@ export class BM25 {
     const docTermFrequencies = new Map<number, number>(); // TermIndex -> TF for this new doc
 
     // --- Process Fields and Tokens ---
-    Object.entries(doc).forEach(([field, content]) => {
-      if (typeof content !== "string") return;
+    for (const field in doc) {
+      const content = doc[field];
+      if (typeof content !== "string") continue;
 
       const fieldBoost = this.fieldBoosts[field] || 1;
       const { tokens } = this.tokenizer.tokenize(content);
@@ -1534,7 +1546,7 @@ export class BM25 {
         const currentFreq = docTermFrequencies.get(termIndexVal) || 0;
         docTermFrequencies.set(termIndexVal, currentFreq + fieldBoost); // Weighted TF
       });
-    });
+    }
 
     // --- Update Global Structures ---
     // Set the calculated length for the new document
@@ -1645,6 +1657,8 @@ export class BM25 {
    * @param docs - An array of documents to add.
    */
   async addDocuments(docs: Array<Record<string, unknown>>): Promise<void> {
-    await Promise.all(docs.map((doc) => this.addDocument(doc)));
+    for (const doc of docs) {
+      await this.addDocument(doc);
+    }
   }
 }

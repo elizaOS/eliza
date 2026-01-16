@@ -1,4 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { FarcasterService } from "../services/FarcasterService";
 import { FARCASTER_SERVICE_NAME } from "../types";
 
@@ -11,8 +12,10 @@ function getTimeAgo(date: Date): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
+const spec = requireProviderSpec("timelineProvider");
+
 export const farcasterTimelineProvider: Provider = {
-  name: "farcasterTimeline",
+  name: spec.name,
   description: "Provides recent casts from the agent's Farcaster timeline",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {

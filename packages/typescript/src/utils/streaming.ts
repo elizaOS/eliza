@@ -279,6 +279,8 @@ type ResponseStrategy = "pending" | "direct" | "delegated";
  */
 export class ResponseStreamExtractor implements IStreamExtractor {
   private static readonly STREAM_TAGS = ["text"] as const;
+  private static readonly OPEN_TEXT_TAG = "<text>";
+  private static readonly CLOSE_TEXT_TAG = "</text>";
 
   private buffer = "";
   private insideTag = false;
@@ -309,27 +311,23 @@ export class ResponseStreamExtractor implements IStreamExtractor {
 
     // Look for streamable tags
     if (!this.insideTag) {
-      for (const tag of ResponseStreamExtractor.STREAM_TAGS) {
-        const openTag = `<${tag}>`;
-        const closeTag = `</${tag}>`;
-        const idx = this.buffer.indexOf(openTag);
+      const tag = ResponseStreamExtractor.STREAM_TAGS[0];
+      const openTag = ResponseStreamExtractor.OPEN_TEXT_TAG;
+      const closeTag = ResponseStreamExtractor.CLOSE_TEXT_TAG;
+      const idx = this.buffer.indexOf(openTag);
 
-        if (idx !== -1) {
-          // Check if we should stream this tag
-          if (!this.shouldStreamTag(tag)) {
-            // Skip tag entirely - wait for closing tag and remove
-            const closeIdx = this.buffer.indexOf(closeTag);
-            if (closeIdx !== -1) {
-              this.buffer = this.buffer.slice(closeIdx + closeTag.length);
-              continue;
-            }
-            break; // Wait for closing tag
+      if (idx !== -1) {
+        // Check if we should stream this tag
+        if (!this.shouldStreamTag(tag)) {
+          // Skip tag entirely - wait for closing tag and remove
+          const closeIdx = this.buffer.indexOf(closeTag);
+          if (closeIdx !== -1) {
+            this.buffer = this.buffer.slice(closeIdx + closeTag.length);
           }
-
+        } else {
           this.insideTag = true;
           this.currentTag = tag;
           this.buffer = this.buffer.slice(idx + openTag.length);
-          break;
         }
       }
     }

@@ -1,0 +1,268 @@
+name: Publish MCP NPM Packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write              # Required to create GitHub releases
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        settings:
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin_name: computeruse-mcp-agent.exe
+            npm_dir: win32-x64-msvc
+
+          - host: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            bin_name: computeruse-mcp-agent.exe
+            npm_dir: win32-arm64-msvc
+
+    name: stable - ${{ matrix.settings.target }}
+    runs-on: ${{ matrix.settings.host }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup node (Windows ARM64)
+        if: matrix.settings.host == 'windows-11-arm'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup node (default)
+        if: matrix.settings.host != 'windows-11-arm'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ matrix.settings.target }}-cargo-registry
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ matrix.settings.target }}-cargo-index
+
+      - name: Install npm dependencies and build binary
+        run: |
+          cd crates/computeruse-mcp-agent
+          npm install
+          npm run build
+
+      - name: List dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          dumpbin /dependents "crates\computeruse-mcp-agent\npm\${{ matrix.settings.npm_dir }}\${{ matrix.settings.bin_name }}"
+        shell: cmd
+
+      - name: Smoke test binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd crates/computeruse-mcp-agent
+          $process = Start-Process -FilePath "npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }}" -ArgumentList "--transport", "http", "--port", "3999" -PassThru
+          Start-Sleep -Seconds 10
+          try {
+            $response = Invoke-WebRequest -Uri http://localhost:3999/health -UseBasicParsing
+            $response.Content | ConvertFrom-Json | Out-Host
+            if ($response.StatusCode -ne 200) {
+              throw "Health check failed with status: $($response.StatusCode)"
+            }
+            Write-Host "Health check passed"
+          } catch {
+            Write-Error "Failed to connect to health check endpoint: $_"
+            $logPath = Join-Path ${env:USERPROFILE} ".computeruse\computeruse-mcp-agent.log"
+            if (Test-Path $logPath) {
+              Get-Content $logPath | Write-Error
+            }
+            exit 1
+          } finally {
+            # Be tolerant if the process already exited between health check and cleanup
+            try {
+              $p = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
+              if ($null -ne $p -and -not $p.HasExited) {
+                Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              } else {
+                Write-Host "Process already exited (PID $($process.Id)); nothing to stop."
+              }
+            } catch {
+              Write-Host "Stop-Process skipped: $_"
+            }
+          }
+
+      - name: Prepare release archive
+        run: |
+          mkdir -p release
+          cp crates/computeruse-mcp-agent/npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }} release/
+        shell: bash
+
+      - name: Create release archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Push-Location release
+          Compress-Archive -Path "${{ matrix.settings.bin_name }}" -DestinationPath "../computeruse-mcp-agent-${{ matrix.settings.npm_dir }}.zip" -Force
+          Pop-Location
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.settings.npm_dir }}-binary
+          path: crates/computeruse-mcp-agent/npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }}
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.settings.npm_dir }}
+          path: |
+            computeruse-mcp-agent-${{ matrix.settings.npm_dir }}.tar.gz
+            computeruse-mcp-agent-${{ matrix.settings.npm_dir }}.zip
+
+  publish:
+    name: Publish MCP NPM packages
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Move binaries to package locations
+        run: |
+          echo "Contents of artifacts directory:"
+          ls -la artifacts/ || echo "No artifacts directory found"
+
+          for dir in artifacts/*; do
+            echo "Processing directory: $dir"
+            if [ -d "$dir" ] && [ "$(basename $dir)" != "*" ]; then
+              platform=$(echo $(basename "$dir") | sed 's/-binary//')
+              echo "Platform: $platform"
+
+              # Check if directory has files
+              if ls "$dir"/* 1> /dev/null 2>&1; then
+                binary=$(ls "$dir"/*)
+                echo "Found binary: $binary"
+                echo "Creating directory: crates/computeruse-mcp-agent/npm/$platform/"
+                mkdir -p "crates/computeruse-mcp-agent/npm/$platform/"
+                echo "Moving binary to crates/computeruse-mcp-agent/npm/$platform/"
+                mv "$dir"/* "crates/computeruse-mcp-agent/npm/$platform/"
+                echo "Successfully moved binary for $platform"
+              else
+                echo "No files found in $dir"
+              fi
+            else
+              echo "Skipping non-directory or glob pattern: $dir"
+            fi
+          done
+
+          echo "Final structure:"
+          ls -la crates/computeruse-mcp-agent/npm/ || echo "npm directory not created"
+
+      - name: Publish platform packages
+        run: |
+          cd crates/computeruse-mcp-agent/npm
+          for dir in */; do
+            if [ -f "$dir/package.json" ]; then
+              echo "Publishing $dir"
+              cd $dir
+              npm publish --access public || echo "Package already published or failed"
+              cd ..
+            fi
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish main package
+        run: |
+          cd crates/computeruse-mcp-agent
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Update npm dist-tag to latest
+        run: |
+          cd crates/computeruse-mcp-agent
+          VERSION=$(node -p "require('./package.json').version")
+          npm dist-tag add computeruse-mcp-agent@$VERSION latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  github-release:
+    name: Publish GitHub Release for MCP Agent
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -la release-artifacts/
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release-files
+          for dir in release-artifacts/release-*; do
+            if [ -d "$dir" ]; then
+              mv "$dir"/* release-files/ 2>/dev/null || true
+            fi
+          done
+          ls -la release-files/
+
+      - name: Create GitHub Release & Upload MCP Agent Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          append_body: true
+          body: |
+
+            ---
+
+            ## ComputerUse MCP Agent Binaries
+
+            This release contains the ComputerUse MCP Agent standalone binaries for Windows platforms.
+
+            ### Available Downloads:
+            - **Windows x64**: `computeruse-mcp-agent-win32-x64-msvc.zip`
+            - **Windows ARM64**: `computeruse-mcp-agent-win32-arm64-msvc.zip`
+
+            ### Installation (Windows only)
+            1. Download the appropriate archive for your platform
+            2. Extract the binary
+            3. Run the agent: `computeruse-mcp-agent.exe --transport http --port 3000`
+
+            ### NPM Package
+            The MCP agent is also available as an NPM package: `npm install -g @computeruse/computeruse-mcp-agent`
+          files: release-files/*
+          fail_on_unmatched_files: false

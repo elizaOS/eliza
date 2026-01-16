@@ -3,10 +3,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("CURRENT_TIME")
 
 
 async def get_current_time_context(
@@ -45,8 +49,8 @@ async def get_current_time_context(
 
 
 current_time_provider = Provider(
-    name="CURRENT_TIME",
-    description="Provides current time and date information in various formats",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_current_time_context,
-    dynamic=True,
+    dynamic=_spec.get("dynamic", True),
 )

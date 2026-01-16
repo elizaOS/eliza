@@ -1,8 +1,11 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { getElizaGreeting } from "../models/text";
 
+const spec = requireProviderSpec("eliza-greeting");
+
 export const elizaGreetingProvider: Provider = {
-  name: "eliza-greeting",
+  name: spec.name,
 
   get: async (
     _runtime: IAgentRuntime,

@@ -317,6 +317,7 @@ export class MemoryService extends Service {
   }
 
   async getLongTermMemories(entityId: UUID, category?: LongTermMemoryCategory, limit = 10): Promise<LongTermMemory[]> {
+    if (limit <= 0) return [];
     const db = this.getDb();
 
     const conditions: SQL[] = [
@@ -566,6 +567,7 @@ export class MemoryService extends Service {
     limit = 5,
     matchThreshold = 0.7,
   ): Promise<LongTermMemory[]> {
+    if (limit <= 0) return [];
     if (!this.memoryConfig.longTermVectorSearchEnabled) {
       logger.warn(
         { src: "service:memory" },
@@ -576,14 +578,33 @@ export class MemoryService extends Service {
 
     try {
       const candidates = await this.getLongTermMemories(entityId, undefined, 200);
-      const scored = candidates
-        .filter((m) => (m.embedding?.length ?? 0) > 0)
-        .map((m) => ({ memory: m, similarity: cosineSimilarity(m.embedding ?? [], queryEmbedding) }))
-        .filter((x) => x.similarity >= matchThreshold)
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, limit);
-
-      return scored.map((x) => ({ ...x.memory, similarity: x.similarity }));
+      const scored: Array<{ memory: LongTermMemory; similarity: number }> = [];
+      for (const memory of candidates) {
+        if ((memory.embedding?.length ?? 0) === 0) continue;
+        const similarity = cosineSimilarity(
+          memory.embedding ?? [],
+          queryEmbedding,
+        );
+        if (similarity < matchThreshold) continue;
+        if (scored.length < limit) {
+          scored.push({ memory, similarity });
+          scored.sort((a, b) => b.similarity - a.similarity);
+          continue;
+        }
+        if (similarity <= scored[scored.length - 1]?.similarity) continue;
+        let index = 0;
+        while (index < scored.length && scored[index].similarity > similarity) {
+          index += 1;
+        }
+        scored.splice(index, 0, { memory, similarity });
+        if (scored.length > limit) {
+          scored.pop();
+        }
+      }
+      return scored.map((x) => ({
+        ...x.memory,
+        similarity: x.similarity,
+      }));
     } catch (error) {
       logger.warn({ error }, "Vector search failed, falling back to recent memories", { src: "service:memory" });
       return this.getLongTermMemories(entityId, undefined, limit);
@@ -596,8 +617,12 @@ export class MemoryService extends Service {
 
     const grouped = new Map<LongTermMemoryCategory, LongTermMemory[]>();
     for (const memory of memories) {
-      if (!grouped.has(memory.category)) grouped.set(memory.category, []);
-      grouped.get(memory.category)?.push(memory);
+      const existing = grouped.get(memory.category);
+      if (existing) {
+        existing.push(memory);
+      } else {
+        grouped.set(memory.category, [memory]);
+      }
     }
 
     const sections: string[] = [];

@@ -2,8 +2,9 @@
 //!
 //! Contains Service trait, service types, and related interfaces.
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+
+use crate::platform::PlatformService;
 
 use super::primitives::Metadata;
 
@@ -57,8 +58,9 @@ pub struct ServiceDefinition {
 }
 
 /// Service trait for all services
-#[async_trait]
-pub trait Service: Send + Sync {
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+pub trait Service: PlatformService {
     /// Get the service type
     fn service_type(&self) -> &str;
 
@@ -75,7 +77,8 @@ pub trait Service: Send + Sync {
 }
 
 /// Typed service trait for services with specific input/output types
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait TypedService<Input, Output>: Service {
     /// Process an input
     async fn process(&self, input: Input) -> Result<Output, anyhow::Error>;

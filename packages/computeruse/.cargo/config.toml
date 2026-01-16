@@ -1,0 +1,15 @@
+# Project-specific Cargo configuration
+# Global optimizations (sccache, jobs, lld) are in ~/.cargo/config.toml
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[build]
+incremental = true
+
+[env]
+# ComputerUse tests only work with 1 thread
+RUST_TEST_THREADS = "1"

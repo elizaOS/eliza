@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import { createCharacter, type IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
 import { createMcpToolCompatibility, detectModelProvider } from "./index";
 
@@ -17,14 +17,14 @@ interface MockRuntime extends IAgentRuntime {
 function createMockRuntime(modelProvider: string, model: string): MockRuntime {
   const base: Partial<IAgentRuntime> = {
     agentId: "test-agent-id" as IAgentRuntime["agentId"],
-    character: {
+    character: createCharacter({
       name: "Test Agent",
       bio: "Test",
       settings: {
         MODEL_PROVIDER: modelProvider,
         MODEL: model,
       },
-    } as IAgentRuntime["character"],
+    }),
     providers: [],
     actions: [],
     evaluators: [],

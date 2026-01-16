@@ -4,11 +4,35 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import UPDATE_SETTINGS_TEMPLATE
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_action_spec("UPDATE_SETTINGS")
+
+
+def _convert_spec_examples() -> list[list[ActionExample]]:
+    """Convert spec examples to ActionExample format."""
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
 
 
 @dataclass
@@ -19,20 +43,9 @@ class SettingUpdate:
 
 @dataclass
 class UpdateSettingsAction:
-    name: str = "UPDATE_SETTINGS"
-    similes: list[str] = field(
-        default_factory=lambda: [
-            "CHANGE_SETTINGS",
-            "MODIFY_SETTINGS",
-            "CONFIGURE",
-            "SET_PREFERENCE",
-            "UPDATE_CONFIG",
-        ]
-    )
-    description: str = (
-        "Update configuration settings for the agent or world. "
-        "Use this to modify behavior and preferences."
-    )
+    name: str = _spec["name"]
+    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
+    description: str = _spec["description"]
 
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
@@ -139,21 +152,7 @@ class UpdateSettingsAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return [
-            [
-                ActionExample(
-                    name="{{name1}}",
-                    content=Content(text="Change the response language to Spanish."),
-                ),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(
-                        text="I'll update the language setting.",
-                        actions=["UPDATE_SETTINGS"],
-                    ),
-                ),
-            ],
-        ]
+        return _convert_spec_examples()
 
 
 update_settings_action = Action(

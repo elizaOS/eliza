@@ -1,6 +1,6 @@
 import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { generateText } from "ai";
+import { generateText, type LanguageModel } from "ai";
 
 import { createOpenRouterProvider } from "../providers";
 import { getImageGenerationModel, getImageModel } from "../utils/config";
@@ -19,7 +19,7 @@ export async function handleImageDescription(
 
   try {
     const generateParams = {
-      model: openrouter.chat(modelName),
+      model: openrouter.chat(modelName) as LanguageModel,
       messages: [
         {
           role: "user" as const,
@@ -54,7 +54,7 @@ export async function handleImageGeneration(
 
   try {
     const generateParams = {
-      model: openrouter.chat(modelName),
+      model: openrouter.chat(modelName) as LanguageModel,
       prompt: `Generate an image: ${params.prompt}`,
     };
 

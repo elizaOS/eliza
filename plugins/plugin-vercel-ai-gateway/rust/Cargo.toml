@@ -1,8 +1,8 @@
 [package]
 name = "elizaos-plugin-gateway"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
-authors = ["elizaOS Team <team@elizaos.ai>"]
+authors = ["elizaOS Contributors"]
 description = "elizaOS Vercel AI Gateway Plugin - AI Gateway integration for text, embeddings, and images"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"

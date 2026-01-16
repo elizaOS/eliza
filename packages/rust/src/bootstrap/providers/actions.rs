@@ -1,16 +1,21 @@
 //! ACTIONS provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 use crate::generated::action_docs::ALL_ACTION_DOCS_JSON;
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("ACTIONS"));
 
 #[derive(Debug, Clone, Deserialize)]
 struct ActionDocsRoot {
@@ -177,15 +182,15 @@ pub struct ActionsProvider;
 #[async_trait]
 impl Provider for ActionsProvider {
     fn name(&self) -> &'static str {
-        "ACTIONS"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Possible response actions"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        false
+        SPEC.dynamic.unwrap_or(false)
     }
 
     async fn get(

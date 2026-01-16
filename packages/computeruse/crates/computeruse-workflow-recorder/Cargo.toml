@@ -1,0 +1,72 @@
+[package]
+name = "computeruse-workflow-recorder"
+version = { workspace = true }
+edition = "2021"
+description = "A crate for recording user workflows on Windows"
+authors = ["elizaOS Contributors"]
+repository = "https://github.com/mediar-ai/computeruse"
+homepage = "https://github.com/mediar-ai/computeruse"
+documentation = "https://docs.rs/computeruse-workflow-recorder"
+readme = "README.md"
+keywords = ["automation", "workflow", "recording", "windows", "ui"]
+categories = [
+    "accessibility",
+    "development-tools",
+    "development-tools::testing",
+]
+license-file = { workspace = true }
+
+[dependencies]
+computeruse = { workspace = true }
+once_cell = "1.19"
+log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+tokio-stream = "0.1"
+async-stream = "0.3"
+futures = "0.3"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rdev = "0.5.2"
+notify = "8.0"
+arboard = "3.0"
+uuid = { version = "1.0", features = ["v4"] }
+
+[dev-dependencies]
+computeruse = { workspace = true }
+computeruse-mcp-agent = { path = "../computeruse-mcp-agent" }
+rmcp = { version = "0.9", features = ["server"] }         # For MCP types
+tempfile = "3.0"
+criterion = "0.5"                                           # For benchmarking
+sysinfo = { workspace = true }                              # For CPU monitoring
+rand = "0.8"                                                # For random element selection in benchmarks
+
+# Windows-specific dependencies
+[target.'cfg(target_os = "windows")'.dependencies]
+sysinfo = { workspace = true }
+uiautomation = { workspace = true, features = ["event", "pattern"] }
+# uiautomation = { git = "https://github.com/mediar-ai/uiautomation-rs", branch = "main", features = [
+#     "event",
+#     "pattern",
+# ] }
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_DataExchange",
+    "Win32_System_Threading",
+    "Win32_Storage_FileSystem",
+    "Win32_UI_Shell",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Input",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
+
+[lib]
+name = "computeruse_workflow_recorder"
+path = "src/lib.rs"
+
+[[example]]
+name = "record_workflow"
+path = "examples/record_workflow.rs"

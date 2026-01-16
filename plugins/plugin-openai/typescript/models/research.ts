@@ -9,6 +9,7 @@
 
 import type {
   IAgentRuntime,
+  JsonValue,
   ResearchAnnotation,
   ResearchCodeInterpreterCall,
   ResearchFileSearchCall,
@@ -169,8 +170,8 @@ function convertOutputItem(item: ResponsesApiOutputItem): ResearchOutputItem | n
         status: (item.status as "completed" | "failed") ?? "completed",
         serverLabel: item.server_label ?? "",
         toolName: item.tool_name ?? "",
-        arguments: item.arguments ?? {},
-        result: item.result,
+        arguments: (item.arguments ?? {}) as Record<string, JsonValue>,
+        result: item.result as JsonValue,
       } satisfies ResearchMcpToolCall;
 
     case "message":

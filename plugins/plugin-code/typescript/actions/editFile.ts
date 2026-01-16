@@ -8,6 +8,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { CoderService } from "../services/coderService";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 function getInputs(
   options: HandlerOptions | undefined,
@@ -27,10 +28,12 @@ function getInputs(
   return { filepath: inferred, oldStr, newStr };
 }
 
+const spec = requireActionSpec("EDIT_FILE");
+
 export const editFile: Action = {
-  name: "EDIT_FILE",
-  similes: ["REPLACE_IN_FILE", "PATCH_FILE", "MODIFY_FILE"],
-  description: "Replace a substring in a file (single replacement).",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (runtime: IAgentRuntime): Promise<boolean> =>
     runtime.getService<CoderService>("coder") !== null,
   handler: async (
@@ -54,7 +57,7 @@ export const editFile: Action = {
       return { success: false, text: msg };
     }
 
-    const conv = message.roomId || message.agentId;
+    const conv = message.roomId ?? message.agentId ?? runtime.agentId;
     const result = await svc.editFile(conv, filepath, oldStr, newStr);
     if (!result.ok) {
       if (callback) await callback({ content: { text: result.error } });

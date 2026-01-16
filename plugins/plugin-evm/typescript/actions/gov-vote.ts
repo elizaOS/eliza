@@ -1,4 +1,5 @@
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { type Address, encodeFunctionData, type Hex } from "viem";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
 import { WalletProvider } from "../providers/wallet";
@@ -6,6 +7,8 @@ import { voteTemplate } from "../templates";
 import type { SupportedChain, Transaction, VoteParams } from "../types";
 
 export { voteTemplate };
+
+const spec = requireActionSpec("VOTE_PROPOSAL");
 
 export class VoteAction {
   constructor(private walletProvider: WalletProvider) {}
@@ -60,8 +63,8 @@ export class VoteAction {
 }
 
 export const voteAction = {
-  name: "vote",
-  description: "Vote for a DAO governance proposal",
+  name: spec.name,
+  description: spec.description,
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
@@ -140,5 +143,5 @@ export const voteAction = {
       },
     ],
   ],
-  similes: ["VOTE", "GOVERNANCE_VOTE", "CAST_VOTE"],
+  similes: spec.similes ? [...spec.similes] : [],
 };

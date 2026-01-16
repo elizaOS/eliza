@@ -1,0 +1,21 @@
+{
+  "cpu": [
+    "x64"
+  ],
+  "engines": {
+    "node": ">= 10"
+  },
+  "files": [
+    "computeruse.win32-x64-msvc.node"
+  ],
+  "main": "computeruse.win32-x64-msvc.node",
+  "name": "@elizaos/computeruse-win32-x64-msvc",
+  "os": [
+    "win32"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mediar-ai/computeruse"
+  },
+  "version": "0.24.20"
+}

@@ -210,9 +210,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     const limit = params.limit ?? 20;
     const out: Memory[] = [];
     for (const rid of params.roomIds) {
-      const list = this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
-      for (const m of list) {
-        out.push(m);
+      const list =
+        this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
+      for (let i = 0; i < list.length; i++) {
+        out.push(list[i]);
         if (out.length >= limit) return out;
       }
     }
@@ -559,25 +560,43 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
 
   async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
     const rooms = await this.getRoomsByWorld(worldId);
+    const roomKeys = rooms.map((room) => String(room.id));
+    const roomKeySet = new Set(roomKeys);
+
+    const memoryKeysToDelete: string[] = [];
+    for (const key of this.memoriesByRoom.keys()) {
+      const separatorIndex = key.lastIndexOf(":");
+      if (separatorIndex === -1) continue;
+      const roomKey = key.slice(separatorIndex + 1);
+      if (roomKeySet.has(roomKey)) {
+        memoryKeysToDelete.push(key);
+      }
+    }
+    for (const key of memoryKeysToDelete) {
+      this.memoriesByRoom.delete(key);
+    }
+
+    const userStateKeysToDelete: string[] = [];
+    for (const key of this.participantUserState.keys()) {
+      const separatorIndex = key.indexOf(":");
+      if (separatorIndex === -1) continue;
+      const roomKey = key.slice(0, separatorIndex);
+      if (roomKeySet.has(roomKey)) {
+        userStateKeysToDelete.push(key);
+      }
+    }
+    for (const key of userStateKeysToDelete) {
+      this.participantUserState.delete(key);
+    }
+
     for (const room of rooms) {
       const roomKey = String(room.id);
       this.rooms.delete(roomKey);
-      for (const key of this.memoriesByRoom.keys()) {
-        if (key.endsWith(`:${roomKey}`)) {
-          this.memoriesByRoom.delete(key);
-        }
-      }
       this.participantsByRoom.delete(roomKey);
       // remove room membership from roomsByParticipant
       for (const [entityKey, roomSet] of this.roomsByParticipant.entries()) {
         if (roomSet.delete(roomKey) && roomSet.size === 0) {
           this.roomsByParticipant.delete(entityKey);
-        }
-      }
-      // remove participant user states for this room
-      for (const key of this.participantUserState.keys()) {
-        if (key.startsWith(`${roomKey}:`)) {
-          this.participantUserState.delete(key);
         }
       }
     }

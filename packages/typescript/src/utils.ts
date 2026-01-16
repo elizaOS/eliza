@@ -291,6 +291,8 @@ export const formatPosts = ({
   entities: Entity[];
   conversationHeader?: boolean;
 }) => {
+  const entityById = new Map(entities.map((entity) => [entity.id, entity]));
+
   // Group messages by roomId
   const groupedMessages: { [roomId: string]: Memory[] } = {};
   messages.forEach((message) => {
@@ -320,9 +322,7 @@ export const formatPosts = ({
     const messageStrings = roomMessages
       .filter((message: Memory) => message.entityId)
       .map((message: Memory) => {
-        const entity = entities.find(
-          (entity: Entity) => entity.id === message.entityId,
-        );
+        const entity = entityById.get(message.entityId);
         if (!entity) {
           logger.warn(
             { src: "core:utils", entityId: message.entityId },
@@ -364,78 +364,77 @@ export const formatMessages = ({
   messages: Memory[];
   entities: Entity[];
 }) => {
-  const messageStrings = messages
-    .reverse()
-    .filter((message: Memory) => message.entityId)
-    .map((message: Memory) => {
-      const messageText = (message.content as Content).text;
+  const entityById = new Map(entities.map((entity) => [entity.id, entity]));
+  const messageStrings: string[] = [];
 
-      const messageActions = (message.content as Content).actions;
-      const messageThought = (message.content as Content).thought;
-      const foundEntity = entities.find(
-        (entity: Entity) => entity.id === message.entityId,
-      );
-      const foundEntityNames = foundEntity?.names;
-      const formattedName = foundEntityNames?.[0] || "Unknown User";
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (!message.entityId) {
+      continue;
+    }
 
-      const attachments = (message.content as Content).attachments;
+    const messageText = (message.content as Content).text;
+    const messageActions = (message.content as Content).actions;
+    const messageThought = (message.content as Content).thought;
+    const foundEntity = entityById.get(message.entityId);
+    const foundEntityNames = foundEntity?.names;
+    const formattedName = foundEntityNames?.[0] || "Unknown User";
 
-      const attachmentString =
-        attachments && attachments.length > 0
-          ? ` (Attachments: ${attachments
-              .map((media) => {
-                const lines = [`[${media.id} - ${media.title} (${media.url})]`];
-                if (media.text) lines.push(`Text: ${media.text}`);
-                if (media.description)
-                  lines.push(`Description: ${media.description}`);
-                return lines.join("\n");
-              })
-              .join(
-                // Use comma separator only if all attachments are single-line (no text/description)
-                attachments.every((media) => !media.text && !media.description)
-                  ? ", "
-                  : "\n",
-              )})`
-          : null;
+    const attachments = (message.content as Content).attachments;
 
-      const messageTime = new Date(message.createdAt || 0);
-      const hours = messageTime.getHours().toString().padStart(2, "0");
-      const minutes = messageTime.getMinutes().toString().padStart(2, "0");
-      const timeString = `${hours}:${minutes}`;
-
-      const timestamp = formatTimestamp(message.createdAt || 0);
-
-      // const shortId = message.entityId.slice(-5);
-
-      const thoughtString = messageThought
-        ? `(${formattedName}'s internal thought: ${messageThought})`
+    const attachmentString =
+      attachments && attachments.length > 0
+        ? ` (Attachments: ${attachments
+            .map((media) => {
+              const lines = [`[${media.id} - ${media.title} (${media.url})]`];
+              if (media.text) lines.push(`Text: ${media.text}`);
+              if (media.description)
+                lines.push(`Description: ${media.description}`);
+              return lines.join("\n");
+            })
+            .join(
+              // Use comma separator only if all attachments are single-line (no text/description)
+              attachments.every((media) => !media.text && !media.description)
+                ? ", "
+                : "\n",
+            )})`
         : null;
 
-      const timestampString = `${timeString} (${timestamp}) [${message.entityId}]`;
-      const textString = messageText
-        ? `${timestampString} ${formattedName}: ${messageText}`
+    const messageTime = new Date(message.createdAt || 0);
+    const hours = messageTime.getHours().toString().padStart(2, "0");
+    const minutes = messageTime.getMinutes().toString().padStart(2, "0");
+    const timeString = `${hours}:${minutes}`;
+
+    const timestamp = formatTimestamp(message.createdAt || 0);
+
+    const thoughtString = messageThought
+      ? `(${formattedName}'s internal thought: ${messageThought})`
+      : null;
+
+    const timestampString = `${timeString} (${timestamp}) [${message.entityId}]`;
+    const textString = messageText
+      ? `${timestampString} ${formattedName}: ${messageText}`
+      : null;
+    const actionString =
+      messageActions && messageActions.length > 0
+        ? `${
+            textString ? "" : timestampString
+          } (${formattedName}'s actions: ${messageActions.join(", ")})`
         : null;
-      const actionString =
-        messageActions && messageActions.length > 0
-          ? `${
-              textString ? "" : timestampString
-            } (${formattedName}'s actions: ${messageActions.join(", ")})`
-          : null;
 
-      // for each thought, action, text or attachment, add a new line, with text first, then thought, then action, then attachment
-      const messageString = [
-        textString,
-        thoughtString,
-        actionString,
-        attachmentString,
-      ]
-        .filter(Boolean)
-        .join("\n");
+    const messageString = [
+      textString,
+      thoughtString,
+      actionString,
+      attachmentString,
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-      return messageString;
-    })
-    .join("\n");
-  return messageStrings;
+    messageStrings.push(messageString);
+  }
+
+  return messageStrings.join("\n");
 };
 
 export const formatTimestamp = (messageDate: number) => {

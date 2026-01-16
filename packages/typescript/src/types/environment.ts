@@ -1,34 +1,29 @@
+import type {
+  Component as ProtoComponent,
+  Entity as ProtoEntity,
+  Participant as ProtoParticipant,
+  Relationship as ProtoRelationship,
+  Room as ProtoRoom,
+  World as ProtoWorld,
+  WorldMetadata as ProtoWorldMetadata,
+} from "./proto.js";
 import type { ChannelType, Metadata, UUID } from "./primitives";
+import type { WorldSettings } from "./settings";
 
-export interface Component {
-  id: UUID;
-  entityId: UUID;
-  agentId: UUID;
-  roomId: UUID;
-  worldId: UUID;
-  sourceEntityId: UUID;
-  type: string;
-  createdAt: number;
-  data: Metadata;
+export type TimestampValue = number;
+
+export interface Component
+  extends Omit<ProtoComponent, "$typeName" | "$unknown" | "createdAt" | "data"> {
+  createdAt: TimestampValue;
+  data?: Metadata;
 }
 
 /**
  * Represents a user account
  */
-export interface Entity {
-  /** Unique identifier, optional on creation */
-  id?: UUID;
-
-  /** Names of the entity */
-  names: string[];
-
-  /** Additional metadata */
-  metadata: Metadata;
-
-  /** Agent ID this account is related to, for agents should be themselves */
-  agentId: UUID;
-
-  /** Optional array of components */
+export interface Entity
+  extends Omit<ProtoEntity, "$typeName" | "$unknown" | "metadata" | "components"> {
+  metadata?: Metadata;
   components?: Component[];
 }
 
@@ -39,77 +34,48 @@ export interface Entity {
  * - `NONE`: Indicates no specific role or default, minimal permissions.
  * These roles are often used in `World.metadata.roles` to assign roles to entities.
  */
-export enum Role {
-  OWNER = "OWNER",
-  ADMIN = "ADMIN",
-  NONE = "NONE",
+export const Role = {
+  OWNER: "OWNER",
+  ADMIN: "ADMIN",
+  NONE: "NONE",
+} as const;
+
+export type Role = (typeof Role)[keyof typeof Role];
+
+export interface WorldMetadata
+  extends Omit<ProtoWorldMetadata, "$typeName" | "$unknown" | "roles" | "extra"> {
+  type?: string;
+  description?: string;
+  roles?: Record<string, Role>;
+  extra?: Metadata;
+  settings?: WorldSettings;
 }
 
-export type World = {
-  id: UUID;
-  name?: string;
-  agentId: UUID;
-  messageServerId?: UUID;
-  metadata?: {
-    ownership?: {
-      ownerId: string;
-    };
-    roles?: {
-      [entityId: UUID]: Role;
-    };
-    [key: string]: unknown;
-  };
-};
+export interface World
+  extends Omit<ProtoWorld, "$typeName" | "$unknown" | "metadata"> {
+  metadata?: WorldMetadata;
+}
 
-export type Room = {
-  id: UUID;
-  name?: string;
-  agentId?: UUID;
-  source: string;
+export interface Room
+  extends Omit<ProtoRoom, "$typeName" | "$unknown" | "type" | "metadata"> {
   type: ChannelType;
-  channelId?: string;
-  messageServerId?: UUID;
-  worldId?: UUID;
   metadata?: Metadata;
-};
+}
 
-export type RoomMetadata = {
-  [key: string]: unknown;
-};
+export type RoomMetadata = Metadata;
 
 /**
  * Room participant with account details
  */
-export interface Participant {
-  /** Unique identifier */
-  id: UUID;
-
-  /** Associated account */
+export interface Participant
+  extends Omit<ProtoParticipant, "$typeName" | "$unknown" | "entity"> {
   entity: Entity;
 }
 
 /**
  * Represents a relationship between users
  */
-export interface Relationship {
-  /** Unique identifier */
-  id: UUID;
-
-  /** First user ID */
-  sourceEntityId: UUID;
-
-  /** Second user ID */
-  targetEntityId: UUID;
-
-  /** Agent ID */
-  agentId: UUID;
-
-  /** Tags for filtering/categorizing relationships */
-  tags: string[];
-
-  /** Additional metadata about the relationship */
-  metadata: Metadata;
-
-  /** Optional creation timestamp */
-  createdAt?: string;
+export interface Relationship
+  extends Omit<ProtoRelationship, "$typeName" | "$unknown" | "metadata"> {
+  metadata?: Metadata;
 }

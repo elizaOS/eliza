@@ -1,6 +1,69 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, TypeAlias
+
+from elizaos.types.generated.eliza.v1 import model_pb2
+
+if TYPE_CHECKING:
+    from elizaos.types.runtime import IAgentRuntime
+
+LLMMode = model_pb2.LLMMode
+ModelType = model_pb2.ModelType
+
+GenerateTextParams = model_pb2.GenerateTextParams
+GenerateTextOptions = model_pb2.GenerateTextOptions
+GenerateTextResult = model_pb2.GenerateTextResult
+TokenUsage = model_pb2.TokenUsage
+TextStreamChunk = model_pb2.TextStreamChunk
+TokenizeTextParams = model_pb2.TokenizeTextParams
+DetokenizeTextParams = model_pb2.DetokenizeTextParams
+TextEmbeddingParams = model_pb2.TextEmbeddingParams
+ImageGenerationParams = model_pb2.ImageGenerationParams
+ImageDescriptionParams = model_pb2.ImageDescriptionParams
+ImageDescriptionResult = model_pb2.ImageDescriptionResult
+TranscriptionParams = model_pb2.TranscriptionParams
+TextToSpeechParams = model_pb2.TextToSpeechParams
+AudioProcessingParams = model_pb2.AudioProcessingParams
+VideoProcessingParams = model_pb2.VideoProcessingParams
+JSONSchema = model_pb2.JSONSchema
+ObjectGenerationParams = model_pb2.ObjectGenerationParams
+ResponseFormat = model_pb2.ResponseFormat
+
+# Runtime-only types (not in proto)
+ModelTypeName: TypeAlias = str
+TextGenerationModelType: TypeAlias = str
+
+ModelHandler = Callable[[IAgentRuntime, object], Awaitable[object]]
+
+__all__ = [
+    "LLMMode",
+    "ModelType",
+    "ModelTypeName",
+    "TextGenerationModelType",
+    "GenerateTextParams",
+    "GenerateTextOptions",
+    "GenerateTextResult",
+    "TokenUsage",
+    "TextStreamChunk",
+    "TokenizeTextParams",
+    "DetokenizeTextParams",
+    "TextEmbeddingParams",
+    "ImageGenerationParams",
+    "ImageDescriptionParams",
+    "ImageDescriptionResult",
+    "TranscriptionParams",
+    "TextToSpeechParams",
+    "AudioProcessingParams",
+    "VideoProcessingParams",
+    "JSONSchema",
+    "ObjectGenerationParams",
+    "ResponseFormat",
+    "ModelHandler",
+]
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Any
 
@@ -18,6 +81,10 @@ class ModelType(str, Enum):
     TEXT_SMALL = "TEXT_SMALL"
     TEXT_LARGE = "TEXT_LARGE"
     TEXT_COMPLETION = "TEXT_COMPLETION"
+
+    # Streaming text generation models
+    TEXT_SMALL_STREAM = "TEXT_SMALL_STREAM"
+    TEXT_LARGE_STREAM = "TEXT_LARGE_STREAM"
 
     # Reasoning models (note: values are REASONING_*, not TEXT_REASONING_*)
     TEXT_REASONING_SMALL = "REASONING_SMALL"
@@ -79,6 +146,13 @@ class ModelSettings(BaseModel):
     stop_sequences: list[str] | None = Field(
         default=None, alias="stopSequences", description="Stop sequences"
     )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+# Response format specification
+class ResponseFormat(BaseModel):
+    type: str = Field(..., description="Response format type: 'json_object' or 'text'")
 
     model_config = {"populate_by_name": True, "extra": "allow"}
 
@@ -242,6 +316,46 @@ class TextToSpeechParams(BaseModel):
     speed: float | None = Field(default=None, description="Speaking speed")
 
     model_config = {"populate_by_name": True}
+
+
+class AudioProcessingParams(BaseModel):
+    """Parameters for audio processing."""
+
+    audio_url: str = Field(..., alias="audioUrl", description="URL of audio file")
+    processing_type: str = Field(
+        ..., alias="processingType", description="Processing type identifier"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class VideoProcessingParams(BaseModel):
+    """Parameters for video processing."""
+
+    video_url: str = Field(..., alias="videoUrl", description="URL of video file")
+    processing_type: str = Field(
+        ..., alias="processingType", description="Processing type identifier"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class JSONSchema(BaseModel):
+    """JSON schema definition for object generation."""
+
+    type: str = Field(..., description="JSON schema type")
+    properties: dict[str, "JSONSchema"] | None = Field(
+        default=None, description="Nested properties"
+    )
+    required: list[str] | None = Field(
+        default=None, description="Required property names"
+    )
+    items: "JSONSchema" | None = Field(default=None, description="Array item schema")
+    extra: dict[str, object] | None = Field(
+        default=None, description="Additional schema fields"
+    )
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
 
 
 class ObjectGenerationParams(BaseModel):

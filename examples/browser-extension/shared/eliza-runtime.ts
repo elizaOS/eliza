@@ -10,7 +10,7 @@
 import {
   AgentRuntime,
   ChannelType,
-  type Character,
+  createCharacter,
   type Content,
   createMessageMemory,
   LLMMode,
@@ -48,14 +48,14 @@ type RuntimeBundle = {
 };
 
 // Character for the webpage assistant
-const WEBPAGE_ASSISTANT_CHARACTER: Character = {
+const WEBPAGE_ASSISTANT_CHARACTER = createCharacter({
   name: "Webpage Assistant",
   system: `You are a helpful assistant that can answer questions about the webpage the user is currently viewing.
 You have access to the page content and can help the user understand, summarize, or find information on the page.
 Be concise and helpful. If you don't know the answer based on the page content, say so.
 When asked about the page, refer to specific content from it.`,
   bio: "An AI assistant built on elizaOS that helps you chat with and understand webpages.",
-};
+});
 
 // Storage keys
 const STORAGE_KEYS = {

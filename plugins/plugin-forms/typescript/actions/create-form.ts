@@ -7,12 +7,15 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { FormsService } from "../services/forms-service";
 
+const spec = requireActionSpec("CREATE-FORM");
+
 export const createFormAction: Action = {
-  name: "CREATE_FORM",
-  similes: ["START_FORM", "NEW_FORM", "INIT_FORM", "BEGIN_FORM"],
-  description: "Creates a new form from a template or custom definition",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
     const formsService = runtime.getService<FormsService>("forms");

@@ -16,6 +16,7 @@ import {
   extractGoalSelectionTemplate,
   extractGoalUpdateTemplate,
 } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { createGoalDataService, type GoalData } from "../services/goalDataService";
 
 interface GoalSelection {
@@ -126,10 +127,12 @@ async function extractGoalUpdate(
   }
 }
 
+const spec = requireActionSpec("UPDATE_GOAL");
+
 export const updateGoalAction: Action = {
-  name: "UPDATE_GOAL",
-  similes: ["EDIT_GOAL", "MODIFY_GOAL", "CHANGE_GOAL", "REVISE_GOAL"],
-  description: "Updates an existing goal's name or description.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: `${spec.description} Update a goal name or description.`,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     try {
@@ -269,38 +272,7 @@ export const updateGoalAction: Action = {
     }
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Update my French learning goal to be about Spanish instead",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✓ User goal updated: Changed name to "Learn Spanish fluently".',
-          actions: ["UPDATE_GOAL_SUCCESS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Change the description of my marathon goal to include a specific time target",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✓ User goal updated: Changed description to "Complete a marathon in under 4 hours".',
-          actions: ["UPDATE_GOAL_SUCCESS"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default updateGoalAction;

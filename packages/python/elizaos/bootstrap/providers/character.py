@@ -1,11 +1,35 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("CHARACTER")
+
+
+def _to_str_list(value: str | Iterable[str] | None) -> list[str]:
+    """
+    Normalize a value to list[str].
+    
+    Handles str, list, tuple, set, or any Iterable[str].
+    Returns empty list for None.
+    
+    WHY: Character fields can be str | list[str] | tuple[str] depending on
+    how they're defined. This helper ensures consistent handling regardless
+    of the input type, avoiding issues like tuples being treated as scalars.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    # Any other iterable (list, tuple, set, etc.) - convert to list
+    return list(value)
 
 
 async def get_character_context(
@@ -19,56 +43,49 @@ async def get_character_context(
 
     sections.append(f"# Agent: {character.name}")
 
-    if character.bio:
-        bio_text = character.bio if isinstance(character.bio, str) else "\n".join(character.bio)
-        sections.append(f"\n## Bio\n{bio_text}")
+    bio = getattr(character, "bio", None)
+    if bio:
+        bio_list = _to_str_list(bio)
+        sections.append(f"\n## Bio\n{chr(10).join(bio_list)}")
 
-    if character.adjectives:
-        adjectives = (
-            character.adjectives
-            if isinstance(character.adjectives, list)
-            else [character.adjectives]
-        )
-        sections.append(f"\n## Personality Traits\n{', '.join(adjectives)}")
+    adjectives = getattr(character, "adjectives", None)
+    if adjectives:
+        adjectives_list = _to_str_list(adjectives)
+        sections.append(f"\n## Personality Traits\n{', '.join(adjectives_list)}")
 
     # lore is optional and may not exist on all Character instances
     lore = getattr(character, "lore", None)
     if lore:
-        lore_text = lore if isinstance(lore, str) else "\n".join(lore)
-        sections.append(f"\n## Background\n{lore_text}")
+        lore_list = _to_str_list(lore)
+        sections.append(f"\n## Background\n{chr(10).join(lore_list)}")
 
-    if character.topics:
-        topics = character.topics if isinstance(character.topics, list) else [character.topics]
-        sections.append(f"\n## Knowledge Areas\n{', '.join(topics)}")
+    topics = getattr(character, "topics", None)
+    if topics:
+        topics_list = _to_str_list(topics)
+        sections.append(f"\n## Knowledge Areas\n{', '.join(topics_list)}")
 
-    if character.style:
+    style = getattr(character, "style", None)
+    if style:
         style_sections: list[str] = []
-        if character.style.all:
-            all_style = (
-                character.style.all
-                if isinstance(character.style.all, list)
-                else [character.style.all]
-            )
+        style_all = getattr(style, "all", None)
+        if style_all:
+            all_style = _to_str_list(style_all)
             style_sections.append(f"General: {', '.join(all_style)}")
-        if character.style.chat:
-            chat_style = (
-                character.style.chat
-                if isinstance(character.style.chat, list)
-                else [character.style.chat]
-            )
+        style_chat = getattr(style, "chat", None)
+        if style_chat:
+            chat_style = _to_str_list(style_chat)
             style_sections.append(f"Chat: {', '.join(chat_style)}")
-        if character.style.post:
-            post_style = (
-                character.style.post
-                if isinstance(character.style.post, list)
-                else [character.style.post]
-            )
+        style_post = getattr(style, "post", None)
+        if style_post:
+            post_style = _to_str_list(style_post)
             style_sections.append(f"Posts: {', '.join(post_style)}")
         if style_sections:
             sections.append("\n## Communication Style\n" + "\n".join(style_sections))
 
     context_text = "\n".join(sections)
 
+    # Use variables retrieved via getattr above to avoid AttributeError
+    # if these optional attributes are missing from the character object
     return ProviderResult(
         text=context_text,
         values={
@@ -77,16 +94,16 @@ async def get_character_context(
         },
         data={
             "name": character.name,
-            "bio": character.bio,
-            "adjectives": character.adjectives,
-            "topics": character.topics,
+            "bio": bio,
+            "adjectives": adjectives,
+            "topics": topics,
         },
     )
 
 
 character_provider = Provider(
-    name="CHARACTER",
-    description="Provides the agent's character definition and personality information",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_character_context,
-    dynamic=False,
+    dynamic=_spec.get("dynamic", False),
 )

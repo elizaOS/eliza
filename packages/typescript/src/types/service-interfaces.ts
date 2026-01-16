@@ -2,31 +2,37 @@
  * Service Interface Definitions for elizaOS
  *
  * This module provides standardized service interface definitions that plugins implement.
- * Each interface extends the base Service class and defines the contract for a specific
- * capability (e.g., transcription, wallet, browser automation).
- *
- * Plugin developers should implement these interfaces to provide their service functionality.
+ * Data types are proto-generated; runtime classes remain TypeScript.
  */
 
-import type { Content, Metadata, UUID } from "./primitives";
+import type {
+  LpPositionDetails,
+  PoolInfo,
+  TokenBalance,
+  TokenData,
+  TransactionResult,
+  WalletAsset,
+  WalletPortfolio,
+} from "./proto.js";
+import type { JsonValue } from "./proto.js";
+import type { Content, UUID } from "./primitives";
 import { Service, ServiceType } from "./service";
+
+export type {
+  LpPositionDetails,
+  PoolInfo,
+  TokenBalance,
+  TokenData,
+  TransactionResult,
+  WalletAsset,
+  WalletPortfolio,
+};
 
 // ============================================================================
 // Message Bus Service Interface
 // ============================================================================
 
-/**
- * Interface for the message bus service that provides action notifications.
- * This is an optional service that may be registered by plugins.
- */
 export interface IMessageBusService extends Service {
-  /**
-   * Notify that an action has started.
-   * @param roomId The room where the action is occurring.
-   * @param worldId The world ID.
-   * @param content The action content.
-   * @param messageId Optional message ID for tracking.
-   */
   notifyActionStart(
     roomId: UUID,
     worldId: UUID,
@@ -34,13 +40,6 @@ export interface IMessageBusService extends Service {
     messageId?: UUID,
   ): Promise<void>;
 
-  /**
-   * Notify that an action has been updated/completed.
-   * @param roomId The room where the action is occurring.
-   * @param worldId The world ID.
-   * @param content The action content.
-   * @param messageId Optional message ID for tracking.
-   */
   notifyActionUpdate(
     roomId: UUID,
     worldId: UUID,
@@ -53,184 +52,47 @@ export interface IMessageBusService extends Service {
 // Token & Wallet Interfaces
 // ============================================================================
 
-/**
- * A standardized representation of a token holding.
- */
-export interface TokenBalance {
-  /** Token mint address, or a native identifier like 'SOL' or 'ETH' */
-  address: string;
-  /** Raw balance as a string to handle large numbers with precision */
-  balance: string;
-  /** Number of decimal places for this token */
-  decimals: number;
-  /** User-friendly balance, adjusted for decimals */
-  uiAmount?: number;
-  /** Token name */
-  name?: string;
-  /** Token symbol */
-  symbol?: string;
-  /** Token logo URI */
-  logoURI?: string;
-}
-
-/**
- * Generic representation of token data that can be provided by various services.
- */
-export interface TokenData {
-  /** Unique identifier (e.g., contract address or a composite ID) */
-  id: string;
-  /** Token symbol */
-  symbol: string;
-  /** Token name */
-  name: string;
-  /** Contract address */
-  address: string;
-  /** Chain identifier (e.g., 'solana', 'ethereum', 'base') */
-  chain: string;
-  /** Source provider (e.g., 'birdeye', 'coinmarketcap') */
-  sourceProvider: string;
-
-  /** Current price in USD */
-  price?: number;
-  /** 24h price change percentage */
-  priceChange24hPercent?: number;
-  /** 24h price change in USD (absolute) */
-  priceChange24hUSD?: number;
-
-  /** 24h trading volume in USD */
-  volume24hUSD?: number;
-  /** Market capitalization in USD */
-  marketCapUSD?: number;
-
-  /** Liquidity in USD */
-  liquidity?: number;
-  /** Number of token holders */
-  holders?: number;
-
-  /** Token logo URI */
-  logoURI?: string;
-  /** Token decimals */
-  decimals?: number;
-
-  /** When this specific data point was last updated from the source */
-  lastUpdatedAt?: Date;
-
-  /** Optional raw data from the provider */
-  raw?: Record<string, unknown>;
-}
-
-/**
- * Represents a single asset holding within a wallet, including its value.
- */
-export interface WalletAsset extends TokenBalance {
-  /** Current price in USD */
-  priceUsd?: number;
-  /** Total value in USD */
-  valueUsd?: number;
-}
-
-/**
- * Represents the entire portfolio of assets in a wallet.
- */
-export interface WalletPortfolio {
-  /** Total portfolio value in USD */
-  totalValueUsd: number;
-  /** Array of assets in the portfolio */
-  assets: WalletAsset[];
-}
-
-/**
- * Interface for a generic service that provides token data.
- */
 export abstract class ITokenDataService extends Service {
   static override readonly serviceType = ServiceType.TOKEN_DATA;
   public readonly capabilityDescription =
     "Provides standardized access to token market data." as string;
 
-  /**
-   * Fetches detailed information for a single token.
-   * @param address The token's contract address.
-   * @param chain The blockchain the token resides on.
-   * @returns A Promise resolving to TokenData or null if not found.
-   */
   abstract getTokenDetails(
     address: string,
     chain: string,
   ): Promise<TokenData | null>;
 
-  /**
-   * Fetches a list of trending tokens.
-   * @param chain Optional: Filter by a specific blockchain.
-   * @param limit Optional: Number of tokens to return.
-   * @param timePeriod Optional: Time period for trending data (e.g., '24h', '7d').
-   * @returns A Promise resolving to an array of TokenData.
-   */
   abstract getTrendingTokens(
     chain?: string,
     limit?: number,
     timePeriod?: string,
   ): Promise<TokenData[]>;
 
-  /**
-   * Searches for tokens based on a query string.
-   * @param query The search query (e.g., symbol, name, address).
-   * @param chain Optional: Filter by a specific blockchain.
-   * @param limit Optional: Number of results to return.
-   * @returns A Promise resolving to an array of TokenData.
-   */
   abstract searchTokens(
     query: string,
     chain?: string,
     limit?: number,
   ): Promise<TokenData[]>;
 
-  /**
-   * Fetches data for multiple tokens by their addresses on a specific chain.
-   * @param addresses Array of token contract addresses.
-   * @param chain The blockchain the tokens reside on.
-   * @returns A Promise resolving to an array of TokenData.
-   */
   abstract getTokensByAddresses(
     addresses: string[],
     chain: string,
   ): Promise<TokenData[]>;
 }
 
-/**
- * Abstract interface for a Wallet Service.
- * Plugins that provide wallet functionality should implement this service.
- */
 export abstract class IWalletService extends Service {
   static override readonly serviceType = ServiceType.WALLET;
 
   public readonly capabilityDescription =
     "Provides standardized access to wallet balances and portfolios.";
 
-  /**
-   * Retrieves the entire portfolio of assets held by the wallet.
-   * @param owner Optional: The specific wallet address/owner to query.
-   * @returns A promise that resolves to the wallet's portfolio.
-   */
   abstract getPortfolio(owner?: string): Promise<WalletPortfolio>;
 
-  /**
-   * Retrieves the balance of a specific asset in the wallet.
-   * @param assetAddress The mint address or native identifier of the asset.
-   * @param owner Optional: The specific wallet address/owner to query.
-   * @returns A promise that resolves to the user-friendly balance.
-   */
   abstract getBalance(assetAddress: string, owner?: string): Promise<number>;
 
-  /**
-   * Transfers native tokens (SOL/ETH) from a specified keypair to a recipient.
-   * @param from The keypair of the sender.
-   * @param to The public key of the recipient.
-   * @param lamports The amount in smallest units to transfer.
-   * @returns A promise that resolves with the transaction signature.
-   */
   abstract transferSol(
-    from: unknown,
-    to: unknown,
+    from: object,
+    to: object,
     lamports: number,
   ): Promise<string>;
 }
@@ -239,110 +101,21 @@ export abstract class IWalletService extends Service {
 // Liquidity Pool Interfaces
 // ============================================================================
 
-/**
- * A standardized representation of a liquidity pool from any DEX.
- */
-export interface PoolInfo {
-  /** Unique identifier for the pool */
-  id: string;
-  /** User-friendly name for the pool */
-  displayName?: string;
-  /** Identifier for the DEX (e.g., "orca", "raydium") */
-  dex: string;
-  /** First token in the pair */
-  tokenA: {
-    mint: string;
-    symbol?: string;
-    reserve?: string;
-    decimals?: number;
-  };
-  /** Second token in the pair */
-  tokenB: {
-    mint: string;
-    symbol?: string;
-    reserve?: string;
-    decimals?: number;
-  };
-  /** LP token mint address */
-  lpTokenMint?: string;
-  /** Annual Percentage Rate */
-  apr?: number;
-  /** Annual Percentage Yield */
-  apy?: number;
-  /** Total Value Locked in USD */
-  tvl?: number;
-  /** Trading fee percentage */
-  fee?: number;
-  /** DEX-specific extra data */
-  metadata?: Metadata;
-}
-
-/**
- * A standardized representation of a user's position in a liquidity pool.
- */
-export interface LpPositionDetails {
-  /** Pool ID */
-  poolId: string;
-  /** DEX identifier */
-  dex: string;
-  /** LP token balance */
-  lpTokenBalance: TokenBalance;
-  /** Array of underlying token balances */
-  underlyingTokens: TokenBalance[];
-  /** Position value in USD */
-  valueUsd?: number;
-  /** Accrued trading fees */
-  accruedFees?: TokenBalance[];
-  /** Farming rewards */
-  rewards?: TokenBalance[];
-  /** Additional DEX-specific position data */
-  metadata?: Metadata;
-}
-
-/**
- * A standardized result for blockchain transactions.
- */
-export interface TransactionResult {
-  /** Whether the transaction succeeded */
-  success: boolean;
-  /** Transaction ID/signature */
-  transactionId?: string;
-  /** Error message if failed */
-  error?: string;
-  /** Additional transaction data */
-  data?: Record<string, unknown>;
-}
-
-/**
- * Abstract interface for a Liquidity Pool Service.
- * DEX-specific plugins must implement this service.
- */
 export abstract class ILpService extends Service {
   static override readonly serviceType = "lp_pool";
 
   public readonly capabilityDescription =
     "Provides standardized access to DEX liquidity pools.";
 
-  /**
-   * Returns the name of the DEX this service interacts with.
-   */
   abstract getDexName(): string;
 
-  /**
-   * Fetches a list of available liquidity pools from the DEX.
-   * @param tokenAMint Optional: Filter pools by first token mint.
-   * @param tokenBMint Optional: Filter pools by second token mint.
-   */
   abstract getPools(
     tokenAMint?: string,
     tokenBMint?: string,
   ): Promise<PoolInfo[]>;
 
-  /**
-   * Adds liquidity to a specified pool.
-   */
   abstract addLiquidity(params: {
-    userVault: unknown;
+    userVault: object;
     poolId: string;
     tokenAAmountLamports: string;
     tokenBAmountLamports?: string;
@@ -351,30 +124,364 @@ export abstract class ILpService extends Service {
     tickUpperIndex?: number;
   }): Promise<TransactionResult & { lpTokensReceived?: TokenBalance }>;
 
-  /**
-   * Removes liquidity from a specified pool.
-   */
   abstract removeLiquidity(params: {
-    userVault: unknown;
+    userVault: object;
     poolId: string;
     lpTokenAmountLamports: string;
     slippageBps: number;
   }): Promise<TransactionResult & { tokensReceived?: TokenBalance[] }>;
 
-  /**
-   * Fetches the details of a specific LP position for a user.
-   */
   abstract getLpPositionDetails(
     userAccountPublicKey: string,
     poolOrPositionIdentifier: string,
   ): Promise<LpPositionDetails | null>;
 
-  /**
-   * Fetches the latest market data for a list of pools.
-   */
   abstract getMarketDataForPools(
     poolIds: string[],
   ): Promise<Record<string, Partial<PoolInfo>>>;
+}
+
+// ============================================================================
+// Transcription & Audio Interfaces
+// ============================================================================
+
+export abstract class ITranscriptionService extends Service {
+  static override readonly serviceType = ServiceType.TRANSCRIPTION;
+
+  public readonly capabilityDescription =
+    "Audio transcription and speech processing capabilities";
+
+  abstract transcribeAudio(
+    audioPath: string | Buffer,
+    options?: TranscriptionOptions,
+  ): Promise<TranscriptionResult>;
+
+  abstract transcribeVideo(
+    videoPath: string | Buffer,
+    options?: TranscriptionOptions,
+  ): Promise<TranscriptionResult>;
+
+  abstract speechToText(
+    audioStream: NodeJS.ReadableStream | Buffer,
+    options?: SpeechToTextOptions,
+  ): Promise<TranscriptionResult>;
+
+  abstract textToSpeech(
+    text: string,
+    options?: TextToSpeechOptions,
+  ): Promise<Buffer>;
+
+  abstract getSupportedLanguages(): Promise<string[]>;
+
+  abstract getAvailableVoices(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      language: string;
+      gender?: "male" | "female" | "neutral";
+    }>
+  >;
+
+  abstract detectLanguage(audioPath: string | Buffer): Promise<string>;
+}
+
+// ============================================================================
+// Video Interfaces
+// ============================================================================
+
+export abstract class IVideoService extends Service {
+  static override readonly serviceType = ServiceType.VIDEO;
+
+  public readonly capabilityDescription =
+    "Video download, processing, and conversion capabilities";
+
+  abstract getVideoInfo(url: string): Promise<VideoInfo>;
+
+  abstract downloadVideo(
+    url: string,
+    options?: VideoDownloadOptions,
+  ): Promise<string>;
+
+  abstract extractAudio(
+    videoPath: string,
+    outputPath?: string,
+  ): Promise<string>;
+
+  abstract getThumbnail(videoPath: string, timestamp?: number): Promise<string>;
+
+  abstract convertVideo(
+    videoPath: string,
+    outputPath: string,
+    options?: VideoProcessingOptions,
+  ): Promise<string>;
+
+  abstract getAvailableFormats(url: string): Promise<VideoFormat[]>;
+}
+
+// ============================================================================
+// Browser Interfaces
+// ============================================================================
+
+export abstract class IBrowserService extends Service {
+  static override readonly serviceType = ServiceType.BROWSER;
+
+  public readonly capabilityDescription =
+    "Web browser automation and scraping capabilities";
+
+  abstract navigate(
+    url: string,
+    options?: BrowserNavigationOptions,
+  ): Promise<void>;
+
+  abstract screenshot(options?: ScreenshotOptions): Promise<Buffer>;
+
+  abstract extractContent(selector?: string): Promise<ExtractedContent>;
+
+  abstract click(
+    selector: string | ElementSelector,
+    options?: ClickOptions,
+  ): Promise<void>;
+
+  abstract type(
+    selector: string,
+    text: string,
+    options?: TypeOptions,
+  ): Promise<void>;
+
+  abstract waitForElement(selector: string | ElementSelector): Promise<void>;
+
+  abstract evaluate<T = JsonValue>(
+    script: string,
+    ...args: JsonValue[]
+  ): Promise<T>;
+
+  abstract getCurrentUrl(): Promise<string>;
+
+  abstract goBack(): Promise<void>;
+
+  abstract goForward(): Promise<void>;
+
+  abstract refresh(): Promise<void>;
+}
+
+// ============================================================================
+// PDF Interfaces
+// ============================================================================
+
+export abstract class IPdfService extends Service {
+  static override readonly serviceType = ServiceType.PDF;
+
+  public readonly capabilityDescription =
+    "PDF processing, extraction, and generation capabilities";
+
+  abstract extractText(pdfPath: string | Buffer): Promise<PdfExtractionResult>;
+
+  abstract generatePdf(
+    htmlContent: string,
+    options?: PdfGenerationOptions,
+  ): Promise<Buffer>;
+
+  abstract convertToPdf(
+    filePath: string,
+    options?: PdfConversionOptions,
+  ): Promise<Buffer>;
+
+  abstract mergePdfs(pdfPaths: (string | Buffer)[]): Promise<Buffer>;
+
+  abstract splitPdf(pdfPath: string | Buffer): Promise<Buffer[]>;
+}
+
+// ============================================================================
+// Web Search Interfaces
+// ============================================================================
+
+export abstract class IWebSearchService extends Service {
+  static override readonly serviceType = ServiceType.WEB_SEARCH;
+
+  public readonly capabilityDescription =
+    "Web search and content discovery capabilities";
+
+  abstract search(
+    query: string,
+    options?: SearchOptions,
+  ): Promise<SearchResponse>;
+
+  abstract searchNews(
+    query: string,
+    options?: NewsSearchOptions,
+  ): Promise<SearchResponse>;
+
+  abstract searchImages(
+    query: string,
+    options?: ImageSearchOptions,
+  ): Promise<SearchResponse>;
+
+  abstract searchVideos(
+    query: string,
+    options?: VideoSearchOptions,
+  ): Promise<SearchResponse>;
+
+  abstract getSuggestions(query: string): Promise<string[]>;
+
+  abstract getTrendingSearches(region?: string): Promise<string[]>;
+
+  abstract getPageInfo(url: string): Promise<{
+    title: string;
+    description: string;
+    content: string;
+    metadata: Record<string, string>;
+    images: string[];
+    links: string[];
+  }>;
+}
+
+// ============================================================================
+// Email Interfaces
+// ============================================================================
+
+export abstract class IEmailService extends Service {
+  static override readonly serviceType = ServiceType.EMAIL;
+
+  public readonly capabilityDescription =
+    "Email sending, receiving, and management capabilities";
+
+  abstract sendEmail(
+    message: EmailMessage,
+    options?: EmailSendOptions,
+  ): Promise<string>;
+
+  abstract getEmails(options?: EmailSearchOptions): Promise<EmailMessage[]>;
+
+  abstract getEmail(messageId: string): Promise<EmailMessage>;
+
+  abstract deleteEmail(messageId: string): Promise<void>;
+
+  abstract markEmailAsRead(messageId: string, read: boolean): Promise<void>;
+
+  abstract flagEmail(messageId: string, flagged: boolean): Promise<void>;
+
+  abstract moveEmail(messageId: string, folderPath: string): Promise<void>;
+
+  abstract getFolders(): Promise<EmailFolder[]>;
+
+  abstract createFolder(folderName: string, parentPath?: string): Promise<void>;
+
+  abstract getAccountInfo(): Promise<EmailAccount>;
+
+  abstract searchEmails(
+    query: string,
+    options?: EmailSearchOptions,
+  ): Promise<EmailMessage[]>;
+}
+
+// ============================================================================
+// Message Interfaces
+// ============================================================================
+
+export abstract class IMessagingService extends Service {
+  static override readonly serviceType = ServiceType.MESSAGE;
+
+  public readonly capabilityDescription =
+    "Platform messaging and channel management capabilities";
+
+  abstract sendMessage(
+    channelId: UUID,
+    content: MessageContent,
+    options?: MessageSendOptions,
+  ): Promise<UUID>;
+
+  abstract getMessages(
+    channelId: UUID,
+    options?: MessageSearchOptions,
+  ): Promise<MessageInfo[]>;
+
+  abstract getMessage(messageId: UUID): Promise<MessageInfo>;
+
+  abstract editMessage(messageId: UUID, content: MessageContent): Promise<void>;
+
+  abstract deleteMessage(messageId: UUID): Promise<void>;
+
+  abstract addReaction(messageId: UUID, emoji: string): Promise<void>;
+
+  abstract removeReaction(messageId: UUID, emoji: string): Promise<void>;
+
+  abstract pinMessage(messageId: UUID): Promise<void>;
+
+  abstract unpinMessage(messageId: UUID): Promise<void>;
+
+  abstract getChannels(): Promise<MessageChannel[]>;
+
+  abstract getChannel(channelId: UUID): Promise<MessageChannel>;
+
+  abstract createChannel(
+    name: string,
+    type: MessageChannel["type"],
+    options?: {
+      description?: string;
+      participants?: UUID[];
+      private?: boolean;
+    },
+  ): Promise<UUID>;
+
+  abstract searchMessages(
+    query: string,
+    options?: MessageSearchOptions,
+  ): Promise<MessageInfo[]>;
+}
+
+// ============================================================================
+// Post/Social Media Interfaces
+// ============================================================================
+
+export abstract class IPostService extends Service {
+  static override readonly serviceType = ServiceType.POST;
+
+  public readonly capabilityDescription =
+    "Social media posting and content management capabilities";
+
+  abstract createPost(
+    content: PostContent,
+    options?: PostCreateOptions,
+  ): Promise<UUID>;
+
+  abstract getPosts(options?: PostSearchOptions): Promise<PostInfo[]>;
+
+  abstract getPost(postId: UUID): Promise<PostInfo>;
+
+  abstract editPost(postId: UUID, content: PostContent): Promise<void>;
+
+  abstract deletePost(postId: UUID): Promise<void>;
+
+  abstract likePost(postId: UUID, like: boolean): Promise<void>;
+
+  abstract sharePost(postId: UUID, comment?: string): Promise<UUID>;
+
+  abstract savePost(postId: UUID, save: boolean): Promise<void>;
+
+  abstract commentOnPost(
+    postId: UUID,
+    content: PostContent,
+  ): Promise<UUID>;
+
+  abstract getComments(
+    postId: UUID,
+    options?: PostSearchOptions,
+  ): Promise<PostInfo[]>;
+
+  abstract schedulePost(
+    content: PostContent,
+    scheduledAt: Date,
+    options?: PostCreateOptions,
+  ): Promise<UUID>;
+
+  abstract getPostAnalytics(postId: UUID): Promise<PostAnalytics>;
+
+  abstract getTrendingPosts(options?: PostSearchOptions): Promise<PostInfo[]>;
+
+  abstract searchPosts(
+    query: string,
+    options?: PostSearchOptions,
+  ): Promise<PostInfo[]>;
 }
 
 // ============================================================================
@@ -493,80 +600,6 @@ export interface TextToSpeechOptions {
   response_format?: "mp3" | "opus" | "aac" | "flac";
 }
 
-/**
- * Interface for audio transcription and speech services.
- */
-export abstract class ITranscriptionService extends Service {
-  static override readonly serviceType = ServiceType.TRANSCRIPTION;
-
-  public readonly capabilityDescription =
-    "Audio transcription and speech processing capabilities";
-
-  /**
-   * Transcribe audio file to text.
-   * @param audioPath Path to audio file or audio buffer.
-   * @param options Transcription options.
-   */
-  abstract transcribeAudio(
-    audioPath: string | Buffer,
-    options?: TranscriptionOptions,
-  ): Promise<TranscriptionResult>;
-
-  /**
-   * Transcribe video file to text (extracts audio first).
-   * @param videoPath Path to video file or video buffer.
-   * @param options Transcription options.
-   */
-  abstract transcribeVideo(
-    videoPath: string | Buffer,
-    options?: TranscriptionOptions,
-  ): Promise<TranscriptionResult>;
-
-  /**
-   * Real-time speech to text from audio stream.
-   * @param audioStream Audio stream or buffer.
-   * @param options Speech to text options.
-   */
-  abstract speechToText(
-    audioStream: NodeJS.ReadableStream | Buffer,
-    options?: SpeechToTextOptions,
-  ): Promise<TranscriptionResult>;
-
-  /**
-   * Convert text to speech.
-   * @param text Text to convert to speech.
-   * @param options Text to speech options.
-   * @returns Audio buffer.
-   */
-  abstract textToSpeech(
-    text: string,
-    options?: TextToSpeechOptions,
-  ): Promise<Buffer>;
-
-  /**
-   * Get supported languages for transcription.
-   */
-  abstract getSupportedLanguages(): Promise<string[]>;
-
-  /**
-   * Get available voices for text to speech.
-   */
-  abstract getAvailableVoices(): Promise<
-    Array<{
-      id: string;
-      name: string;
-      language: string;
-      gender?: "male" | "female" | "neutral";
-    }>
-  >;
-
-  /**
-   * Detect language of audio file.
-   * @param audioPath Path to audio file or audio buffer.
-   */
-  abstract detectLanguage(audioPath: string | Buffer): Promise<string>;
-}
-
 // ============================================================================
 // Video Interfaces
 // ============================================================================
@@ -663,71 +696,6 @@ export interface VideoProcessingOptions {
   audioCodec?: string;
   /** Video codec */
   videoCodec?: string;
-}
-
-/**
- * Interface for video processing and download services.
- */
-export abstract class IVideoService extends Service {
-  static override readonly serviceType = ServiceType.VIDEO;
-
-  public readonly capabilityDescription =
-    "Video download, processing, and conversion capabilities";
-
-  /**
-   * Get video information without downloading.
-   * @param url Video URL.
-   */
-  abstract getVideoInfo(url: string): Promise<VideoInfo>;
-
-  /**
-   * Download a video from URL.
-   * @param url Video URL.
-   * @param options Download options.
-   * @returns Downloaded file path.
-   */
-  abstract downloadVideo(
-    url: string,
-    options?: VideoDownloadOptions,
-  ): Promise<string>;
-
-  /**
-   * Extract audio from video.
-   * @param videoPath Path to video file or video URL.
-   * @param outputPath Optional output path for audio file.
-   * @returns Audio file path.
-   */
-  abstract extractAudio(
-    videoPath: string,
-    outputPath?: string,
-  ): Promise<string>;
-
-  /**
-   * Generate thumbnail from video.
-   * @param videoPath Path to video file or video URL.
-   * @param timestamp Timestamp in seconds to capture thumbnail.
-   * @returns Thumbnail image path.
-   */
-  abstract getThumbnail(videoPath: string, timestamp?: number): Promise<string>;
-
-  /**
-   * Convert video to different format.
-   * @param videoPath Path to input video file.
-   * @param outputPath Path for output video file.
-   * @param options Processing options.
-   * @returns Converted video path.
-   */
-  abstract convertVideo(
-    videoPath: string,
-    outputPath: string,
-    options?: VideoProcessingOptions,
-  ): Promise<string>;
-
-  /**
-   * Get available formats for a video URL.
-   * @param url Video URL.
-   */
-  abstract getAvailableFormats(url: string): Promise<VideoFormat[]>;
 }
 
 // ============================================================================
@@ -834,97 +802,6 @@ export interface TypeOptions {
   clear?: boolean;
 }
 
-/**
- * Interface for browser automation services.
- */
-export abstract class IBrowserService extends Service {
-  static override readonly serviceType = ServiceType.BROWSER;
-
-  public readonly capabilityDescription =
-    "Web browser automation and scraping capabilities";
-
-  /**
-   * Navigate to a URL.
-   * @param url URL to navigate to.
-   * @param options Navigation options.
-   */
-  abstract navigate(
-    url: string,
-    options?: BrowserNavigationOptions,
-  ): Promise<void>;
-
-  /**
-   * Take a screenshot of the current page.
-   * @param options Screenshot options.
-   * @returns Screenshot buffer.
-   */
-  abstract screenshot(options?: ScreenshotOptions): Promise<Buffer>;
-
-  /**
-   * Extract text and content from the current page.
-   * @param selector Optional CSS selector to extract from.
-   */
-  abstract extractContent(selector?: string): Promise<ExtractedContent>;
-
-  /**
-   * Click on an element.
-   * @param selector CSS selector or element selector.
-   * @param options Click options.
-   */
-  abstract click(
-    selector: string | ElementSelector,
-    options?: ClickOptions,
-  ): Promise<void>;
-
-  /**
-   * Type text into an input field.
-   * @param selector CSS selector for input field.
-   * @param text Text to type.
-   * @param options Typing options.
-   */
-  abstract type(
-    selector: string,
-    text: string,
-    options?: TypeOptions,
-  ): Promise<void>;
-
-  /**
-   * Wait for an element to appear.
-   * @param selector CSS selector or element selector.
-   */
-  abstract waitForElement(selector: string | ElementSelector): Promise<void>;
-
-  /**
-   * Evaluate JavaScript in the browser context.
-   * @param script JavaScript code to evaluate.
-   * @param args Arguments to pass to the script.
-   */
-  abstract evaluate<T = unknown>(
-    script: string,
-    ...args: unknown[]
-  ): Promise<T>;
-
-  /**
-   * Get the current page URL.
-   */
-  abstract getCurrentUrl(): Promise<string>;
-
-  /**
-   * Go back in browser history.
-   */
-  abstract goBack(): Promise<void>;
-
-  /**
-   * Go forward in browser history.
-   */
-  abstract goForward(): Promise<void>;
-
-  /**
-   * Refresh the current page.
-   */
-  abstract refresh(): Promise<void>;
-}
-
 // ============================================================================
 // PDF Interfaces
 // ============================================================================
@@ -977,58 +854,6 @@ export interface PdfConversionOptions {
   outputFormat?: "pdf" | "pdf/a";
   /** Enable compression */
   compression?: boolean;
-}
-
-/**
- * Interface for PDF processing services.
- */
-export abstract class IPdfService extends Service {
-  static override readonly serviceType = ServiceType.PDF;
-
-  public readonly capabilityDescription =
-    "PDF processing, extraction, and generation capabilities";
-
-  /**
-   * Extract text and metadata from a PDF file.
-   * @param pdfPath Path to the PDF file or buffer.
-   */
-  abstract extractText(pdfPath: string | Buffer): Promise<PdfExtractionResult>;
-
-  /**
-   * Generate a PDF from HTML content.
-   * @param htmlContent HTML content to convert.
-   * @param options PDF generation options.
-   * @returns PDF buffer.
-   */
-  abstract generatePdf(
-    htmlContent: string,
-    options?: PdfGenerationOptions,
-  ): Promise<Buffer>;
-
-  /**
-   * Convert a document to PDF format.
-   * @param filePath Path to the document file.
-   * @param options Conversion options.
-   * @returns PDF buffer.
-   */
-  abstract convertToPdf(
-    filePath: string,
-    options?: PdfConversionOptions,
-  ): Promise<Buffer>;
-
-  /**
-   * Merge multiple PDF files into one.
-   * @param pdfPaths Array of PDF file paths or buffers.
-   * @returns Merged PDF buffer.
-   */
-  abstract mergePdfs(pdfPaths: (string | Buffer)[]): Promise<Buffer>;
-
-  /**
-   * Split a PDF into individual pages.
-   * @param pdfPath Path to the PDF file or buffer.
-   * @returns Array of page buffers.
-   */
-  abstract splitPdf(pdfPath: string | Buffer): Promise<Buffer[]>;
 }
 
 // ============================================================================
@@ -1162,81 +987,6 @@ export interface VideoSearchOptions extends SearchOptions {
   resolution?: "high" | "standard" | "any";
   /** Quality filter */
   quality?: "high" | "standard" | "any";
-}
-
-/**
- * Interface for web search services.
- */
-export abstract class IWebSearchService extends Service {
-  static override readonly serviceType = ServiceType.WEB_SEARCH;
-
-  public readonly capabilityDescription =
-    "Web search and content discovery capabilities";
-
-  /**
-   * Perform a general web search.
-   * @param query Search query.
-   * @param options Search options.
-   */
-  abstract search(
-    query: string,
-    options?: SearchOptions,
-  ): Promise<SearchResponse>;
-
-  /**
-   * Search for news articles.
-   * @param query Search query.
-   * @param options News search options.
-   */
-  abstract searchNews(
-    query: string,
-    options?: NewsSearchOptions,
-  ): Promise<SearchResponse>;
-
-  /**
-   * Search for images.
-   * @param query Search query.
-   * @param options Image search options.
-   */
-  abstract searchImages(
-    query: string,
-    options?: ImageSearchOptions,
-  ): Promise<SearchResponse>;
-
-  /**
-   * Search for videos.
-   * @param query Search query.
-   * @param options Video search options.
-   */
-  abstract searchVideos(
-    query: string,
-    options?: VideoSearchOptions,
-  ): Promise<SearchResponse>;
-
-  /**
-   * Get search suggestions for a query.
-   * @param query Partial search query.
-   */
-  abstract getSuggestions(query: string): Promise<string[]>;
-
-  /**
-   * Get trending searches.
-   * @param region Optional region code.
-   */
-  abstract getTrendingSearches(region?: string): Promise<string[]>;
-
-  /**
-   * Get detailed information about a specific URL.
-   * @param url URL to analyze.
-   */
-  abstract getPageInfo(url: string): Promise<{
-    title: string;
-    description: string;
-    content: string;
-    metadata: Record<string, string>;
-    images: string[];
-    links: string[];
-  }>;
 }
 
 // ============================================================================
@@ -1383,93 +1133,6 @@ export interface EmailAccount {
   quotaUsed?: number;
   /** Storage limit in bytes */
   quotaLimit?: number;
-}
-
-/**
- * Interface for email services.
- */
-export abstract class IEmailService extends Service {
-  static override readonly serviceType = ServiceType.EMAIL;
-
-  public readonly capabilityDescription =
-    "Email sending, receiving, and management capabilities";
-
-  /**
-   * Send an email.
-   * @param message Email message to send.
-   * @param options Send options.
-   * @returns Message ID.
-   */
-  abstract sendEmail(
-    message: EmailMessage,
-    options?: EmailSendOptions,
-  ): Promise<string>;
-
-  /**
-   * Get emails from a folder.
-   * @param options Search options.
-   */
-  abstract getEmails(options?: EmailSearchOptions): Promise<EmailMessage[]>;
-
-  /**
-   * Get a specific email by ID.
-   * @param messageId Message ID.
-   */
-  abstract getEmail(messageId: string): Promise<EmailMessage>;
-
-  /**
-   * Delete an email.
-   * @param messageId Message ID.
-   */
-  abstract deleteEmail(messageId: string): Promise<void>;
-
-  /**
-   * Mark an email as read/unread.
-   * @param messageId Message ID.
-   * @param read True to mark as read.
-   */
-  abstract markEmailAsRead(messageId: string, read: boolean): Promise<void>;
-
-  /**
-   * Flag/unflag an email.
-   * @param messageId Message ID.
-   * @param flagged True to flag.
-   */
-  abstract flagEmail(messageId: string, flagged: boolean): Promise<void>;
-
-  /**
-   * Move email to a different folder.
-   * @param messageId Message ID.
-   * @param folderPath Destination folder path.
-   */
-  abstract moveEmail(messageId: string, folderPath: string): Promise<void>;
-
-  /**
-   * Get available folders.
-   */
-  abstract getFolders(): Promise<EmailFolder[]>;
-
-  /**
-   * Create a new folder.
-   * @param folderName Name of the folder.
-   * @param parentPath Optional parent folder path.
-   */
-  abstract createFolder(folderName: string, parentPath?: string): Promise<void>;
-
-  /**
-   * Get account information.
-   */
-  abstract getAccountInfo(): Promise<EmailAccount>;
-
-  /**
-   * Search emails.
-   * @param query Search query.
-   * @param options Search options.
-   */
-  abstract searchEmails(
-    query: string,
-    options?: EmailSearchOptions,
-  ): Promise<EmailMessage[]>;
 }
 
 // ============================================================================
@@ -1675,123 +1338,6 @@ export interface MessageChannel {
   messageCount?: number;
   /** Unread message count */
   unreadCount?: number;
-}
-
-/**
- * Interface for platform messaging services (Discord, Slack, etc).
- * Distinct from IMessageService which handles internal message processing.
- */
-export abstract class IMessagingService extends Service {
-  static override readonly serviceType = ServiceType.MESSAGE;
-
-  public readonly capabilityDescription =
-    "Platform messaging and channel management capabilities";
-
-  /**
-   * Send a message to a channel.
-   * @param channelId Channel ID.
-   * @param content Message content.
-   * @param options Send options.
-   * @returns Message ID.
-   */
-  abstract sendMessage(
-    channelId: UUID,
-    content: MessageContent,
-    options?: MessageSendOptions,
-  ): Promise<UUID>;
-
-  /**
-   * Get messages from a channel.
-   * @param channelId Channel ID.
-   * @param options Search options.
-   */
-  abstract getMessages(
-    channelId: UUID,
-    options?: MessageSearchOptions,
-  ): Promise<MessageInfo[]>;
-
-  /**
-   * Get a specific message by ID.
-   * @param messageId Message ID.
-   */
-  abstract getMessage(messageId: UUID): Promise<MessageInfo>;
-
-  /**
-   * Edit a message.
-   * @param messageId Message ID.
-   * @param content New message content.
-   */
-  abstract editMessage(messageId: UUID, content: MessageContent): Promise<void>;
-
-  /**
-   * Delete a message.
-   * @param messageId Message ID.
-   */
-  abstract deleteMessage(messageId: UUID): Promise<void>;
-
-  /**
-   * Add a reaction to a message.
-   * @param messageId Message ID.
-   * @param emoji Reaction emoji.
-   */
-  abstract addReaction(messageId: UUID, emoji: string): Promise<void>;
-
-  /**
-   * Remove a reaction from a message.
-   * @param messageId Message ID.
-   * @param emoji Reaction emoji.
-   */
-  abstract removeReaction(messageId: UUID, emoji: string): Promise<void>;
-
-  /**
-   * Pin a message.
-   * @param messageId Message ID.
-   */
-  abstract pinMessage(messageId: UUID): Promise<void>;
-
-  /**
-   * Unpin a message.
-   * @param messageId Message ID.
-   */
-  abstract unpinMessage(messageId: UUID): Promise<void>;
-
-  /**
-   * Get available channels.
-   */
-  abstract getChannels(): Promise<MessageChannel[]>;
-
-  /**
-   * Get channel information.
-   * @param channelId Channel ID.
-   */
-  abstract getChannel(channelId: UUID): Promise<MessageChannel>;
-
-  /**
-   * Create a new channel.
-   * @param name Channel name.
-   * @param type Channel type.
-   * @param options Channel options.
-   * @returns New channel ID.
-   */
-  abstract createChannel(
-    name: string,
-    type: MessageChannel["type"],
-    options?: {
-      description?: string;
-      participants?: UUID[];
-      private?: boolean;
-    },
-  ): Promise<UUID>;
-
-  /**
-   * Search messages across channels.
-   * @param query Search query.
-   * @param options Search options.
-   */
-  abstract searchMessages(
-    query: string,
-    options?: MessageSearchOptions,
-  ): Promise<MessageInfo[]>;
 }
 
 // ============================================================================
@@ -2059,125 +1605,4 @@ export interface PostAnalytics {
     hour: number;
     engagement: number;
   }>;
-}
-
-/**
- * Interface for social media posting services.
- */
-export abstract class IPostService extends Service {
-  static override readonly serviceType = ServiceType.POST;
-
-  public readonly capabilityDescription =
-    "Social media posting and content management capabilities";
-
-  /**
-   * Create and publish a new post.
-   * @param content Post content.
-   * @param options Publishing options.
-   * @returns Post ID.
-   */
-  abstract createPost(
-    content: PostContent,
-    options?: PostCreateOptions,
-  ): Promise<UUID>;
-
-  /**
-   * Get posts from timeline or specific user.
-   * @param options Search options.
-   */
-  abstract getPosts(options?: PostSearchOptions): Promise<PostInfo[]>;
-
-  /**
-   * Get a specific post by ID.
-   * @param postId Post ID.
-   */
-  abstract getPost(postId: UUID): Promise<PostInfo>;
-
-  /**
-   * Edit an existing post.
-   * @param postId Post ID.
-   * @param content New post content.
-   */
-  abstract editPost(postId: UUID, content: PostContent): Promise<void>;
-
-  /**
-   * Delete a post.
-   * @param postId Post ID.
-   */
-  abstract deletePost(postId: UUID): Promise<void>;
-
-  /**
-   * Like/unlike a post.
-   * @param postId Post ID.
-   * @param like True to like, false to unlike.
-   */
-  abstract likePost(postId: UUID, like: boolean): Promise<void>;
-
-  /**
-   * Share/repost a post.
-   * @param postId Post ID.
-   * @param comment Optional comment when sharing.
-   * @returns Share ID.
-   */
-  abstract sharePost(postId: UUID, comment?: string): Promise<UUID>;
-
-  /**
-   * Save/unsave a post.
-   * @param postId Post ID.
-   * @param save True to save, false to unsave.
-   */
-  abstract savePost(postId: UUID, save: boolean): Promise<void>;
-
-  /**
-   * Comment on a post.
-   * @param postId Post ID.
-   * @param content Comment content.
-   * @returns Comment ID.
-   */
-  abstract commentOnPost(postId: UUID, content: PostContent): Promise<UUID>;
-
-  /**
-   * Get comments for a post.
-   * @param postId Post ID.
-   * @param options Search options.
-   */
-  abstract getComments(
-    postId: UUID,
-    options?: PostSearchOptions,
-  ): Promise<PostInfo[]>;
-
-  /**
-   * Schedule a post for later publishing.
-   * @param content Post content.
-   * @param scheduledAt When to publish.
-   * @param options Publishing options.
-   * @returns Scheduled post ID.
-   */
-  abstract schedulePost(
-    content: PostContent,
-    scheduledAt: Date,
-    options?: PostCreateOptions,
-  ): Promise<UUID>;
-
-  /**
-   * Get analytics for a post.
-   * @param postId Post ID.
-   */
-  abstract getPostAnalytics(postId: UUID): Promise<PostAnalytics>;
-
-  /**
-   * Get trending posts.
-   * @param options Search options.
-   */
-  abstract getTrendingPosts(options?: PostSearchOptions): Promise<PostInfo[]>;
-
-  /**
-   * Search posts across platforms.
-   * @param query Search query.
-   * @param options Search options.
-   */
-  abstract searchPosts(
-    query: string,
-    options?: PostSearchOptions,
-  ): Promise<PostInfo[]>;
 }

@@ -68,8 +68,8 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
             is_draw=False,
         )
 
-        # If AI plays O, let opponent move first
-        if self.config.ai_player == Player.O:
+        # If AI plays O, let opponent move first (unless interactive mode)
+        if self.config.ai_player == Player.O and self.config.opponent != "none":
             self._current_state = await self._opponent_move(self._current_state)
 
         return self._current_state
@@ -106,8 +106,9 @@ class TicTacToeEnvironment(BaseEnvironment[TicTacToeState, TicTacToeAction]):
             self._current_state = new_state
             return self._current_state, self._calculate_reward(new_state), True
 
-        # Opponent's turn
-        new_state = await self._opponent_move(new_state)
+        # Opponent's turn (skip if interactive mode)
+        if self.config.opponent != "none":
+            new_state = await self._opponent_move(new_state)
         self._current_state = new_state
 
         reward = self._calculate_reward(new_state)

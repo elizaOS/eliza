@@ -1,3 +1,9 @@
+import type {
+  Task as ProtoTask,
+  TaskMetadata as ProtoTaskMetadata,
+  TaskStatus as ProtoTaskStatus,
+} from "./proto.js";
+import type { JsonValue } from "./proto.js";
 import type { Memory } from "./memory";
 import type { UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -17,7 +23,7 @@ export interface TaskWorker {
    */
   execute: (
     runtime: IAgentRuntime,
-    options: { [key: string]: unknown },
+    options: Record<string, JsonValue | object>,
     task: Task,
   ) => Promise<void>;
   /**
@@ -38,7 +44,21 @@ export interface TaskWorker {
  * for presenting task options to a user.
  * The `[key: string]: unknown;` allows for additional, unspecified metadata fields.
  */
-export type TaskMetadata = {
+export interface TaskMetadata
+  extends Omit<ProtoTaskMetadata, "$typeName" | "$unknown" | "values"> {
+  targetEntityId?: string;
+  reason?: string;
+  priority?: "low" | "medium" | "high";
+  message?: string;
+  status?: string;
+  scheduledAt?: string;
+  snoozedAt?: string;
+  originalScheduledAt?: JsonValue;
+  createdAt?: string;
+  completedAt?: string;
+  completionNotes?: string;
+  lastExecuted?: string;
+  updatedAt?: number;
   /** Optional. If the task is recurring, this specifies the interval in milliseconds between updates or executions. */
   updateInterval?: number;
   /** Optional. Describes options or parameters that can be configured for this task, often for UI presentation. */
@@ -47,8 +67,9 @@ export type TaskMetadata = {
     description: string;
   }[];
   /** Allows for other dynamic metadata properties related to the task. */
-  [key: string]: unknown;
-};
+  values?: Record<string, JsonValue | object>;
+  [key: string]: JsonValue | object | undefined;
+}
 
 /**
  * Represents a task to be performed, often in the background or at a later time.
@@ -56,21 +77,28 @@ export type TaskMetadata = {
  * They can be associated with a room, world, and tagged for categorization and retrieval.
  * The `IDatabaseAdapter` handles persistence of task data.
  */
-export interface Task {
-  /** Optional. A Universally Unique Identifier for the task. Generated if not provided. */
+export interface Task
+  extends Omit<
+    ProtoTask,
+    | "$typeName"
+    | "$unknown"
+    | "id"
+    | "roomId"
+    | "worldId"
+    | "entityId"
+    | "metadata"
+    | "createdAt"
+    | "updatedAt"
+    | "dueAt"
+    | "status"
+  > {
   id?: UUID;
-  /** The name of the task, which should correspond to a registered `TaskWorker.name`. */
-  name: string;
-  /** Optional. Timestamp of the last update to this task. */
-  updatedAt?: number;
-  /** Optional. Metadata associated with the task, conforming to `TaskMetadata`. */
-  metadata?: TaskMetadata;
-  /** A human-readable description of what the task does or its purpose. */
-  description: string;
-  /** Optional. The UUID of the room this task is associated with. */
   roomId?: UUID;
-  /** Optional. The UUID of the world this task is associated with. */
   worldId?: UUID;
   entityId?: UUID;
-  tags: string[];
+  metadata?: TaskMetadata;
+  createdAt?: number | bigint;
+  updatedAt?: number | bigint;
+  dueAt?: number | bigint;
+  status?: ProtoTaskStatus;
 }

@@ -1,0 +1,127 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+
+# cursor
+.cursor/commands/
+
+# next.js
+/.next/
+/out/
+.next/
+dist/
+.turbo/
+/.turbo/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+.serena/
+.cursor/
+.vscode/
+
+# local env files
+.env*.local
+.env
+
+# Symlinked env files in apps
+apps/*/.env
+apps/*/.env.local
+
+# act (local GitHub Actions) secrets
+.secrets
+.secrets.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+**/node_modules/**
+
+# Foundry
+/cache/
+packages/contracts/cache/
+out/
+broadcast/
+packages/contracts/dependencies
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Training data and simulation output
+training-data-output/
+training_data/
+training_recording/
+training-data/
+simulation-output/
+trained_models/
+benchmark-results/
+benchmarks/
+
+# Generated output directories
+benchmark-output/
+research-output/
+
+# Data exports
+**/*.jsonl
+**/scored_trajectories.csv
+
+# Debug and storage
+/storage/
+apps/web/debug/
+packages/experimental/honest-demo-output/
+_docs/
+debug/
+
+# Test output directory
+.output/
+
+# Dependency analysis artifacts
+circular-deps.*
+
+# Local metrics and audit files
+.metrics/
+**/MARKETS_FRONTEND_AUDIT.md
+
+# Continuous Claude cache (local only)
+.claude/cache/
+.claude/tsc-cache/
+/thoughts
+
+# START Ruler Generated Files
+/.agent/rules/ruler.md
+/.agent/rules/ruler.md.bak
+/.codex/config.json
+/.codex/config.json.bak
+/.codex/config.toml
+/.codex/config.toml.bak
+/.cursor/mcp.json
+/.cursor/mcp.json.bak
+/.gemini/settings.json
+/.gemini/settings.json.bak
+/.mcp.json
+/.mcp.json.bak
+/AGENTS.md
+/AGENTS.md.bak
+/CLAUDE.md
+/CLAUDE.md.bak
+/opencode.json
+/opencode.json.bak
+# END Ruler Generated Files

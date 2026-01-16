@@ -7,6 +7,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 
 function extractIssueNumber(text: string): number | null {
   const patterns = [/#(\d+)/, /issue\s*#?(\d+)/i, /pr\s*#?(\d+)/i, /pull\s*request\s*#?(\d+)/i];
@@ -21,8 +22,10 @@ function extractIssueNumber(text: string): number | null {
   return null;
 }
 
+const spec = requireProviderSpec("issueContext");
+
 export const issueContextProvider: Provider = {
-  name: "GITHUB_ISSUE_CONTEXT",
+  name: spec.name,
   description:
     "Provides detailed context about a specific GitHub issue or pull request when referenced",
 

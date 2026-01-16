@@ -103,11 +103,10 @@ impl ProviderHandler for AdminChatHistoryProvider {
         }
 
         admin_messages.sort_by_key(|m| m.created_at.unwrap_or(0));
+        let start = admin_messages.len().saturating_sub(10);
         let conversation_history = admin_messages
             .iter()
-            .rev()
-            .take(10)
-            .rev()
+            .skip(start)
             .map(|m| {
                 let sender = if m.entity_id == rt.agent_id {
                     "Agent"

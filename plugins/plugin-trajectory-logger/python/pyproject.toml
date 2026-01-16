@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-trajectory-logger"
-version = "1.2.0"
+version = "2.0.0"
 description = "elizaOS Trajectory Logger Plugin - capture agent interaction trajectories for RL training"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-authors = [{ name = "elizaOS Team", email = "team@elizaos.ai" }]
+authors = [{ name = "elizaOS Contributors" }]
 keywords = ["ai", "agents", "trajectory", "rl", "training", "elizaos"]
 classifiers = [
     "Development Status :: 4 - Beta",

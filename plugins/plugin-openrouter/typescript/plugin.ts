@@ -3,6 +3,7 @@ import {
   type IAgentRuntime,
   type ImageDescriptionParams,
   type ImageGenerationParams,
+  type JsonValue,
   logger,
   ModelType,
   type ObjectGenerationParams,
@@ -62,11 +63,17 @@ export const openrouterPlugin: Plugin = {
       return handleTextLarge(runtime, params);
     },
 
-    [ModelType.OBJECT_SMALL]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
+    [ModelType.OBJECT_SMALL]: async (
+      runtime: IAgentRuntime,
+      params: ObjectGenerationParams
+    ): Promise<Record<string, JsonValue>> => {
       return handleObjectSmall(runtime, params);
     },
 
-    [ModelType.OBJECT_LARGE]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
+    [ModelType.OBJECT_LARGE]: async (
+      runtime: IAgentRuntime,
+      params: ObjectGenerationParams
+    ): Promise<Record<string, JsonValue>> => {
       return handleObjectLarge(runtime, params);
     },
 
@@ -93,9 +100,11 @@ export const openrouterPlugin: Plugin = {
 
   tests: [
     {
+      $typeName: "eliza.v1.TestSuite",
       name: "openrouter_plugin_tests",
       tests: [
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openrouter_test_text_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
@@ -114,6 +123,7 @@ export const openrouterPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openrouter_test_text_large",
           fn: async (runtime: IAgentRuntime) => {
             try {
@@ -132,6 +142,7 @@ export const openrouterPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openrouter_test_object_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
@@ -151,6 +162,7 @@ export const openrouterPlugin: Plugin = {
           },
         },
         {
+          $typeName: "eliza.v1.TestCase",
           name: "openrouter_test_text_embedding",
           fn: async (runtime: IAgentRuntime) => {
             try {

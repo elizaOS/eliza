@@ -97,7 +97,9 @@ export class SessionManager {
       config.anthropicApiKey = process.env.ANTHROPIC_API_KEY;
     }
 
-    const stagehand = new Stagehand(config);
+    // Cast to any to bypass strict model name typing - Stagehand accepts these models at runtime
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stagehand = new Stagehand(config as any);
     await stagehand.init();
 
     const session: BrowserSession = {

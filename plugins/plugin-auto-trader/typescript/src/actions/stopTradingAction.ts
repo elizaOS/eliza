@@ -87,7 +87,7 @@ Your open positions will remain active. You can:
 
       return;
     } catch (error) {
-      logger.error('Error stopping trading:', error);
+      logger.error('Error stopping trading:', error instanceof Error ? error.message : String(error));
 
       if (callback) {
         callback({

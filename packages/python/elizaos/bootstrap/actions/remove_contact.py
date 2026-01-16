@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.generated.spec_helpers import require_action_spec
+from elizaos.prompts import REMOVE_CONTACT_TEMPLATE
 from elizaos.types import (
     Action,
     ActionExample,
@@ -21,33 +23,35 @@ if TYPE_CHECKING:
         State,
     )
 
+# Get text content from centralized specs
+_spec = require_action_spec("REMOVE_CONTACT")
 
-REMOVE_CONTACT_TEMPLATE = """# Remove Contact from Rolodex
 
-Current message: {{message}}
-Sender: {{senderName}} (ID: {{senderId}})
-
-Extract removal information:
-1. Who to remove (name or entity reference)
-2. Confirmation (yes or no)
-
-<response>
-<contactName>Name of the contact to remove</contactName>
-<confirmed>yes or no</confirmed>
-</response>"""
+def _convert_spec_examples() -> list[list[ActionExample]]:
+    """Convert spec examples to ActionExample format."""
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
 
 
 @dataclass
 class RemoveContactAction:
-    name: str = "REMOVE_CONTACT"
-    similes: list[str] = field(
-        default_factory=lambda: [
-            "DELETE_CONTACT",
-            "REMOVE_FROM_ROLODEX",
-            "DELETE_FROM_CONTACTS",
-        ]
-    )
-    description: str = "Removes a contact from the rolodex"
+    name: str = _spec["name"]
+    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
+    description: str = _spec["description"]
 
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
@@ -142,20 +146,7 @@ class RemoveContactAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return [
-            [
-                ActionExample(
-                    name="{{name1}}", content=Content(text="Remove John Doe from my contacts")
-                ),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(
-                        text='To remove John Doe, please confirm by saying "yes, remove John Doe".',
-                        actions=["REMOVE_CONTACT"],
-                    ),
-                ),
-            ],
-        ]
+        return _convert_spec_examples()
 
 
 remove_contact_action = Action(

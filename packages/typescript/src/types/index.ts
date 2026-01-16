@@ -8,6 +8,7 @@ export * from "./knowledge";
 export * from "./memory";
 export * from "./messaging";
 export * from "./model";
+export * from "./payment";
 export * from "./plugin";
 export * from "./primitives";
 export * from "./prompts";
@@ -16,7 +17,7 @@ export * from "./prompts";
 // Use these for new code and cross-language interoperability
 export * as proto from "./proto.js";
 // Re-export proto utilities for JSON conversion
-export { fromJson, type JsonObject, toJson } from "./proto.js";
+export { fromJson, type JsonObject, type JsonValue, toJson } from "./proto.js";
 export * from "./runtime";
 export * from "./service";
 export * from "./service-interfaces";

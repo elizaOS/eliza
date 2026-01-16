@@ -7,6 +7,29 @@ import type {
   Room,
   World,
 } from "./environment";
+import type {
+  ActionLogBody as ProtoActionLogBody,
+  ActionLogContent as ProtoActionLogContent,
+  ActionLogPrompt as ProtoActionLogPrompt,
+  ActionLogResult as ProtoActionLogResult,
+  AgentRunCounts as ProtoAgentRunCounts,
+  AgentRunSummary as ProtoAgentRunSummary,
+  AgentRunSummaryResult as ProtoAgentRunSummaryResult,
+  BaseLogBody as ProtoBaseLogBody,
+  DbRunStatus as ProtoDbRunStatus,
+  EmbeddingLogBody as ProtoEmbeddingLogBody,
+  EmbeddingSearchResult as ProtoEmbeddingSearchResult,
+  EvaluatorLogBody as ProtoEvaluatorLogBody,
+  Log as ProtoLog,
+  LogBody as ProtoLogBody,
+  MemoryRetrievalOptions as ProtoMemoryRetrievalOptions,
+  MemorySearchOptions as ProtoMemorySearchOptions,
+  ModelActionContext as ProtoModelActionContext,
+  ModelLogBody as ProtoModelLogBody,
+  MultiRoomMemoryOptions as ProtoMultiRoomMemoryOptions,
+  VectorDimension as ProtoVectorDimension,
+} from "./proto.js";
+import type { JsonValue } from "./proto.js";
 import type { Memory, MemoryMetadata } from "./memory";
 import type { Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
@@ -28,17 +51,17 @@ export type LogBodyValue =
 /**
  * Base log body type with common properties
  */
-export interface BaseLogBody {
+export interface BaseLogBody
+  extends Omit<ProtoBaseLogBody, "$typeName" | "$unknown" | "metadata"> {
   runId?: string | UUID;
   parentRunId?: string | UUID;
-  status?: string;
   messageId?: UUID;
   roomId?: UUID;
   entityId?: UUID;
-  startTime?: number;
-  endTime?: number;
-  duration?: number;
   source?: string;
+  startTime?: number | bigint;
+  endTime?: number | bigint;
+  duration?: number | bigint;
   metadata?: Record<string, LogBodyValue>;
 }
 
@@ -54,26 +77,39 @@ export interface ActionLogContent {
 /**
  * Action result structure for logging
  */
-export interface ActionLogResult {
-  success?: boolean;
+export interface ActionLogResult
+  extends Omit<
+    ProtoActionLogResult,
+    "$typeName" | "$unknown" | "data" | "error"
+  > {
   data?: Record<string, LogBodyValue>;
-  text?: string;
   error?: string | Error;
 }
 
 /**
  * Prompt tracking for action logs
  */
-export interface ActionLogPrompt {
-  modelType: string;
-  prompt: string;
-  timestamp: number;
+export interface ActionLogPrompt
+  extends Omit<ProtoActionLogPrompt, "$typeName" | "$unknown" | "timestamp"> {
+  timestamp: number | bigint;
 }
 
 /**
  * Log body for action logs
  */
-export interface ActionLogBody extends BaseLogBody {
+export interface ActionLogBody
+  extends Omit<
+      ProtoActionLogBody,
+      | "$typeName"
+      | "$unknown"
+      | "base"
+      | "state"
+      | "responses"
+      | "content"
+      | "result"
+      | "prompts"
+    >,
+    BaseLogBody {
   action?: string;
   actionName?: string;
   actionId?: UUID | string;
@@ -93,44 +129,57 @@ export interface ActionLogBody extends BaseLogBody {
 /**
  * Log body for evaluator logs
  */
-export interface EvaluatorLogBody extends BaseLogBody {
-  evaluator?: string;
+export interface EvaluatorLogBody
+  extends Omit<
+      ProtoEvaluatorLogBody,
+      "$typeName" | "$unknown" | "base" | "state"
+    >,
+    BaseLogBody {
   messageId?: UUID;
-  message?: string;
   state?: Record<string, LogBodyValue>;
 }
 
 /**
  * Action context for model logs
  */
-export interface ModelActionContext {
-  actionName: string;
-  actionId: UUID;
-}
+export type ModelActionContext = Omit<
+  ProtoModelActionContext,
+  "$typeName" | "$unknown"
+>;
 
 /**
  * Log body for model logs
  */
-export interface ModelLogBody extends BaseLogBody {
-  modelType?: string;
-  modelKey?: string;
+export interface ModelLogBody
+  extends Omit<
+      ProtoModelLogBody,
+      | "$typeName"
+      | "$unknown"
+      | "base"
+      | "params"
+      | "response"
+      | "actionContext"
+      | "timestamp"
+      | "executionTime"
+    >,
+    BaseLogBody {
   params?: Record<string, LogBodyValue>;
-  prompt?: string;
-  systemPrompt?: string | null;
-  timestamp?: number;
-  executionTime?: number;
-  provider?: string;
   actionContext?: ModelActionContext;
-  response?: string | Record<string, LogBodyValue>;
+  timestamp?: number | bigint;
+  executionTime?: number | bigint;
+  response?: JsonValue;
 }
 
 /**
  * Log body for embedding logs
  */
-export interface EmbeddingLogBody extends BaseLogBody {
-  status?: string;
-  memoryId?: string;
-  duration?: number;
+export interface EmbeddingLogBody
+  extends Omit<
+      ProtoEmbeddingLogBody,
+      "$typeName" | "$unknown" | "base" | "duration"
+    >,
+    BaseLogBody {
+  duration?: number | bigint;
   error?: string | Error;
 }
 
@@ -147,60 +196,49 @@ export type LogBody =
 /**
  * Represents a log entry
  */
-export interface Log {
-  /** Optional unique identifier */
-  id?: UUID;
-
-  /** Associated entity ID */
+export interface Log
+  extends Omit<
+    ProtoLog,
+    "$typeName" | "$unknown" | "body" | "createdAt" | "entityId" | "roomId"
+  > {
   entityId: UUID;
-
-  /** Associated room ID */
   roomId?: UUID;
-
-  /** Log body - can be any of the log body types */
   body: LogBody;
-
-  /** Log type */
-  type: string;
-
-  /** Log creation timestamp */
   createdAt: Date;
 }
 
 export type RunStatus = "started" | "completed" | "timeout" | "error";
 
-export interface AgentRunCounts {
-  actions: number;
-  modelCalls: number;
-  errors: number;
-  evaluators: number;
+export interface AgentRunCounts
+  extends Omit<ProtoAgentRunCounts, "$typeName" | "$unknown"> {}
+
+export interface AgentRunSummary
+  extends Omit<
+      ProtoAgentRunSummary,
+      | "$typeName"
+      | "$unknown"
+      | "status"
+      | "startedAt"
+      | "endedAt"
+      | "durationMs"
+      | "metadata"
+    > {
+  status: RunStatus | ProtoDbRunStatus;
+  startedAt: number | bigint | null;
+  endedAt: number | bigint | null;
+  durationMs: number | bigint | null;
+  metadata?: Record<string, JsonValue>;
 }
 
-export interface AgentRunSummary {
-  runId: string;
-  status: RunStatus;
-  startedAt: number | null;
-  endedAt: number | null;
-  durationMs: number | null;
-  messageId?: UUID;
-  roomId?: UUID;
-  entityId?: UUID;
-  metadata?: Record<string, unknown>;
-  counts?: AgentRunCounts;
-}
-
-export interface AgentRunSummaryResult {
-  runs: AgentRunSummary[];
-  total: number;
-  hasMore: boolean;
-}
+export interface AgentRunSummaryResult
+  extends Omit<ProtoAgentRunSummaryResult, "$typeName" | "$unknown"> {}
 
 /**
  * Interface for database operations
  */
-export interface IDatabaseAdapter {
+export interface IDatabaseAdapter<DB extends object = object> {
   /** Database instance */
-  db: unknown;
+  db: DB;
 
   /** Initialize database connection */
   initialize(
@@ -218,10 +256,7 @@ export interface IDatabaseAdapter {
   runPluginMigrations?(
     plugins: Array<{
       name: string;
-      schema?: Record<
-        string,
-        string | number | boolean | null | Record<string, unknown>
-      >;
+      schema?: Record<string, JsonValue | object>;
     }>,
     options?: {
       verbose?: boolean;
@@ -242,7 +277,7 @@ export interface IDatabaseAdapter {
   /** Close database connection */
   close(): Promise<void>;
 
-  getConnection(): Promise<unknown>;
+  getConnection(): Promise<DB>;
 
   /**
    * Execute a callback with entity context for Entity RLS
@@ -512,42 +547,45 @@ export interface IDatabaseAdapter {
 /**
  * Result interface for embedding similarity searches
  */
-export interface EmbeddingSearchResult {
-  embedding: number[];
-  levenshtein_score: number;
+export interface EmbeddingSearchResult
+  extends Omit<ProtoEmbeddingSearchResult, "levenshteinScore"> {
+  levenshtein_score?: number;
 }
 
 /**
  * Options for memory retrieval operations
  */
-export interface MemoryRetrievalOptions {
+export interface MemoryRetrievalOptions
+  extends Omit<
+    ProtoMemoryRetrievalOptions,
+    "roomId" | "agentId" | "start" | "end"
+  > {
   roomId: UUID;
-  count?: number;
-  unique?: boolean;
-  start?: number;
-  end?: number;
   agentId?: UUID;
+  start?: number | bigint;
+  end?: number | bigint;
 }
 
 /**
  * Options for memory search operations
  */
-export interface MemorySearchOptions {
-  embedding: number[];
-  match_threshold?: number;
-  count?: number;
+export interface MemorySearchOptions
+  extends Omit<
+    ProtoMemorySearchOptions,
+    "roomId" | "agentId" | "metadata" | "matchThreshold"
+  > {
   roomId: UUID;
   agentId?: UUID;
-  unique?: boolean;
   metadata?: Partial<MemoryMetadata>;
+  match_threshold?: number;
 }
 
 /**
  * Options for multi-room memory retrieval
  */
-export interface MultiRoomMemoryOptions {
+export interface MultiRoomMemoryOptions
+  extends Omit<ProtoMultiRoomMemoryOptions, "roomIds" | "agentId"> {
   roomIds: UUID[];
-  limit?: number;
   agentId?: UUID;
 }
 

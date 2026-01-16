@@ -11,11 +11,14 @@ import {
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 import { type CreateReviewParams, createReviewSchema, formatZodErrors } from "../types";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("REVIEW_PULL_REQUEST");
 
 const examples: ActionExample[][] = [
   [
     {
-      name: "{{user1}}",
+      name: spec.name,
       content: {
         text: "Approve pull request #42 with comment 'LGTM!'",
       },
@@ -47,16 +50,8 @@ const examples: ActionExample[][] = [
 
 export const reviewPullRequestAction: Action = {
   name: "REVIEW_GITHUB_PULL_REQUEST",
-  similes: [
-    "APPROVE_PR",
-    "REQUEST_CHANGES",
-    "COMMENT_ON_PR",
-    "REVIEW_PR",
-    "PR_REVIEW",
-    "CODE_REVIEW",
-  ],
-  description:
-    "Creates a review on a GitHub pull request. Can approve, request changes, or add comments.",
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);

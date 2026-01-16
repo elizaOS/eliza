@@ -1,10 +1,12 @@
 //! UPDATE_ENTITY action implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::{PluginError, PluginResult};
+use crate::generated::spec_helpers::require_action_spec;
 use crate::prompts::UPDATE_ENTITY_TEMPLATE;
 use crate::runtime::{IAgentRuntime, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
@@ -15,19 +17,24 @@ use super::Action;
 /// Action for updating entity information.
 pub struct UpdateEntityAction;
 
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("UPDATE_ENTITY"));
+
 #[async_trait]
 impl Action for UpdateEntityAction {
     fn name(&self) -> &'static str {
-        "UPDATE_ENTITY"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["MODIFY_ENTITY", "CHANGE_ENTITY", "EDIT_ENTITY", "UPDATE_PROFILE", "SET_ENTITY_INFO"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Update information about an entity. \
-         Use this to modify entity profiles, metadata, or attributes."
+        &SPEC.description
     }
 
     async fn validate(&self, _runtime: &dyn IAgentRuntime, message: &Memory) -> bool {

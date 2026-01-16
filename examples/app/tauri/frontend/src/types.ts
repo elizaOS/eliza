@@ -22,8 +22,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   provider: {
     openaiApiKey: "",
     openaiBaseUrl: "https://api.openai.com/v1",
-    openaiSmallModel: "gpt-4o-mini",
-    openaiLargeModel: "gpt-4o",
+    openaiSmallModel: "gpt-5-mini",
+    openaiLargeModel: "gpt-5",
 
     xaiApiKey: "",
     xaiBaseUrl: "https://api.x.ai/v1",

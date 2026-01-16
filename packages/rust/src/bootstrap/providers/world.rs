@@ -1,12 +1,17 @@
 //! WORLD provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("WORLD"));
 
 /// Provider for world/server context.
 pub struct WorldProvider;
@@ -14,15 +19,15 @@ pub struct WorldProvider;
 #[async_trait]
 impl Provider for WorldProvider {
     fn name(&self) -> &'static str {
-        "WORLD"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Provides information about the current world context including settings and members"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(

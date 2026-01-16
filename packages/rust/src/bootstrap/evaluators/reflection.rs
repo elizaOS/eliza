@@ -1,8 +1,10 @@
 //! REFLECTION evaluator implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::{PluginError, PluginResult};
+use crate::generated::spec_helpers::require_evaluator_spec;
 use crate::prompts::REFLECTION_TEMPLATE;
 use crate::runtime::{IAgentRuntime, ModelParams};
 use crate::types::{EvaluatorResult, Memory, ModelType, State};
@@ -10,17 +12,21 @@ use crate::xml::parse_key_value_xml;
 
 use super::Evaluator;
 
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::EvaluatorDoc> =
+    Lazy::new(|| require_evaluator_spec("REFLECTION"));
+
 /// Evaluator for reflection on behavior.
 pub struct ReflectionEvaluator;
 
 #[async_trait]
 impl Evaluator for ReflectionEvaluator {
     fn name(&self) -> &'static str {
-        "REFLECTION"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Reflects on agent behavior and provides feedback for improvement"
+        &SPEC.description
     }
 
     async fn validate(&self, _runtime: &dyn IAgentRuntime, _message: &Memory) -> bool {
@@ -134,4 +140,3 @@ impl Evaluator for ReflectionEvaluator {
             .with_detail("interactionCount", interactions.len() as i64))
     }
 }
-

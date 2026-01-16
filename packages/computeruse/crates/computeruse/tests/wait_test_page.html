@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Wait Test</title>
+</head>
+
+<body>
+    <h1>Wait for it...</h1>
+    <div id="container"></div>
+    <script>
+        setTimeout(() => {
+            const container = document.getElementById('container');
+            const newElement = document.createElement('p');
+            newElement.id = 'delayed-text';
+            newElement.textContent = 'I have arrived!';
+            container.appendChild(newElement);
+        }, 2000); // 2-second delay
+    </script>
+</body>
+
+</html>

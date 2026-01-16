@@ -1,12 +1,17 @@
 //! ROLES provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("ROLES"));
 
 /// Provider for entity roles.
 pub struct RolesProvider;
@@ -14,15 +19,15 @@ pub struct RolesProvider;
 #[async_trait]
 impl Provider for RolesProvider {
     fn name(&self) -> &'static str {
-        "ROLES"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Roles assigned to entities in the current context"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(
@@ -35,9 +40,9 @@ impl Provider for RolesProvider {
 
         // Get world context if available
         let world_id = state
-            .and_then(|s| s.values.get("worldId"))
-            .and_then(|v| v.as_str())
-            .and_then(|s| uuid::Uuid::parse_str(s).ok());
+            .and_then(|s| s.get_value("worldId"))
+            .and_then(|v| v.as_str().map(String::from))
+            .and_then(|s| uuid::Uuid::parse_str(&s).ok());
 
         // Try to get from room if no world in state
         let world_id = if world_id.is_none() {

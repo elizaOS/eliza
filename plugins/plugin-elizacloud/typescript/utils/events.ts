@@ -15,13 +15,6 @@ export function emitModelUsageEvent(
     totalTokens?: number;
   },
 ) {
-  const truncatedPrompt =
-    typeof prompt === "string"
-      ? prompt.length > 200
-        ? `${prompt.slice(0, 200)}…`
-        : prompt
-      : "";
-
   const inputTokens = Number(usage.inputTokens || 0);
   const outputTokens = Number(usage.outputTokens || 0);
   const totalTokens = Number(
@@ -31,9 +24,7 @@ export function emitModelUsageEvent(
   runtime.emitEvent(EventType.MODEL_USED, {
     runtime,
     source: "elizacloud",
-    provider: "elizacloud",
     type,
-    prompt: truncatedPrompt,
     tokens: {
       prompt: inputTokens,
       completion: outputTokens,

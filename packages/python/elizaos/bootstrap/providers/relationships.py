@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("RELATIONSHIPS")
 
 
 def format_relationship(
@@ -57,13 +61,17 @@ async def get_relationships(
     )[:30]
 
     formatted_relationships: list[str] = []
+    entity_cache: dict[object, str] = {}
     for rel in sorted_relationships:
         target_id = rel.get("targetEntityId")
         if not target_id:
             continue
 
-        target_entity = await runtime.get_entity(target_id)
-        target_name = target_entity.name if target_entity else str(target_id)[:8]
+        target_name = entity_cache.get(target_id)
+        if target_name is None:
+            target_entity = await runtime.get_entity(target_id)
+            target_name = target_entity.name if target_entity else str(target_id)[:8]
+            entity_cache[target_id] = target_name
 
         formatted_relationships.append(format_relationship(rel, target_name))
 
@@ -91,8 +99,8 @@ async def get_relationships(
 
 
 relationships_provider = Provider(
-    name="RELATIONSHIPS",
-    description="Relationships between entities observed by the agent",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_relationships,
-    dynamic=True,
+    dynamic=_spec.get("dynamic", True),
 )

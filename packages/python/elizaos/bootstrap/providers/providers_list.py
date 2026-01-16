@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("PROVIDERS")
 
 
 async def get_providers_list(
@@ -48,8 +52,8 @@ async def get_providers_list(
 
 
 providers_list_provider = Provider(
-    name="PROVIDERS",
-    description="Available context providers",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_providers_list,
-    dynamic=False,
+    dynamic=_spec.get("dynamic", False),
 )

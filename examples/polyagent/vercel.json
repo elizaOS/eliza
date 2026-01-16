@@ -1,0 +1,149 @@
+{
+  "functions": {
+    "src/app/api/cron/agent-tick/route.ts": {
+      "maxDuration": 800
+    },
+    "src/app/api/cron/game-tick/route.ts": {
+      "maxDuration": 800
+    },
+    "src/app/api/cron/npc-tick/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/cron/world-facts/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/cron/reputation-sync/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/cron/perp-funding/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/cron/weekly-dataset-upload/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/cron/organization-tick/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/cron/article-tick/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/cron/markets-tick/route.ts": {
+      "maxDuration": 300
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/game-tick",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/markets-tick",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/npc-tick",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/organization-tick",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/article-tick",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/agent-tick",
+      "schedule": "*/3 * * * *"
+    },
+    {
+      "path": "/api/cron/reputation-sync",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/realtime-drain",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/perp-funding",
+      "schedule": "0 */8 * * *"
+    },
+    {
+      "path": "/api/cron/world-facts",
+      "schedule": "0 6,18 * * *"
+    },
+    {
+      "path": "/api/cron/health-check",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/training-check",
+      "schedule": "0 * * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-src 'self' https://auth.privy.io https://privy.babylon.market https://verify.walletconnect.com https://verify.walletconnect.org https://vercel.live https://farcaster.xyz; frame-ancestors 'self' https://farcaster.xyz https://warpcast.com"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
+      ]
+    },
+    {
+      "source": "/api/:path*",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Credentials",
+          "value": "true"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET,DELETE,PATCH,POST,PUT,OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, x-admin-token, x-dev-admin-token"
+        }
+      ]
+    },
+    {
+      "source": "/api/agents/:path*",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET,POST,OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        }
+      ]
+    }
+  ]
+}

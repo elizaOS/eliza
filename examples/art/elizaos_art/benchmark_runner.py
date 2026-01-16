@@ -109,8 +109,10 @@ async def run_game_baseline(
 
     elif game_name == "tic_tac_toe":
         from elizaos_art.games.tic_tac_toe import TicTacToeEnvironment, TicTacToeHeuristicAgent
+        from elizaos_art.games.tic_tac_toe.types import TicTacToeConfig
 
-        env = TicTacToeEnvironment()
+        config = TicTacToeConfig(opponent="random")
+        env = TicTacToeEnvironment(config)
         agent = TicTacToeHeuristicAgent()
         await env.initialize()
 

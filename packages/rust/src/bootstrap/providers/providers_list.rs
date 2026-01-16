@@ -1,12 +1,17 @@
 //! PROVIDERS provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("PROVIDERS"));
 
 /// Provider for listing available providers.
 pub struct ProvidersListProvider;
@@ -14,15 +19,15 @@ pub struct ProvidersListProvider;
 #[async_trait]
 impl Provider for ProvidersListProvider {
     fn name(&self) -> &'static str {
-        "PROVIDERS"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Available context providers"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        false
+        SPEC.dynamic.unwrap_or(false)
     }
 
     async fn get(

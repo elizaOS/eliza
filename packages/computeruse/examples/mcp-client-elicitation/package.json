@@ -1,0 +1,19 @@
+{
+  "name": "mcp-client-elicitation",
+  "version": "1.0.0",
+  "description": "MCP client example with elicitation support",
+  "type": "module",
+  "scripts": {
+    "start": "npx tsx client-stdio.ts",
+    "start:stdio": "npx tsx client-stdio.ts",
+    "start:http": "npx tsx client-http.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

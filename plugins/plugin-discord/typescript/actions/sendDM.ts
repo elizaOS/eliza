@@ -16,6 +16,7 @@ import type { User } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 // Import generated prompts
 import { sendDmTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 
 /**
@@ -126,18 +127,12 @@ const findUser = async (
   }
 };
 
+const spec = requireActionSpec("SEND_DM");
+
 export const sendDM: Action = {
-  name: "SEND_DM",
-  similes: [
-    "SEND_DIRECT_MESSAGE",
-    "DM_USER",
-    "MESSAGE_USER",
-    "PRIVATE_MESSAGE",
-    "SEND_PRIVATE_MESSAGE",
-    "DM",
-    "SEND_MESSAGE_TO_USER",
-  ],
-  description: "Sends a direct message to a specific Discord user.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -262,53 +257,7 @@ export const sendDM: Action = {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Send a DM to @alice saying hello how are you today?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll send a direct message to alice right away.",
-          actions: ["SEND_DM"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Can you message john_doe and tell him the meeting is at 3pm?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll send john_doe a DM about the meeting time.",
-          actions: ["SEND_DM"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "DM user 123456789012345678 with: Thanks for your help!",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll send that thank you message as a DM right now.",
-          actions: ["SEND_DM"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default sendDM;

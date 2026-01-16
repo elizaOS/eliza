@@ -11,11 +11,14 @@ import {
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 import { formatZodErrors, type MergePullRequestParams, mergePullRequestSchema } from "../types";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("MERGE_PULL_REQUEST");
 
 const examples: ActionExample[][] = [
   [
     {
-      name: "{{user1}}",
+      name: spec.name,
       content: {
         text: "Merge pull request #42",
       },
@@ -47,8 +50,8 @@ const examples: ActionExample[][] = [
 
 export const mergePullRequestAction: Action = {
   name: "MERGE_GITHUB_PULL_REQUEST",
-  similes: ["MERGE_PR", "SQUASH_MERGE", "REBASE_MERGE", "COMPLETE_PR", "ACCEPT_PR"],
-  description: "Merges a GitHub pull request using merge, squash, or rebase strategy.",
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);

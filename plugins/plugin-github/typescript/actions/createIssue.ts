@@ -11,6 +11,9 @@ import {
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 import { type CreateIssueParams, createIssueSchema, formatZodErrors } from "../types";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("CREATE_ISSUE");
 
 const examples: ActionExample[][] = [
   [
@@ -47,16 +50,8 @@ const examples: ActionExample[][] = [
 
 export const createIssueAction: Action = {
   name: "CREATE_GITHUB_ISSUE",
-  similes: [
-    "OPEN_ISSUE",
-    "NEW_ISSUE",
-    "FILE_ISSUE",
-    "REPORT_BUG",
-    "CREATE_BUG_REPORT",
-    "SUBMIT_ISSUE",
-  ],
-  description:
-    "Creates a new issue in a GitHub repository. Use this to report bugs, request features, or track tasks.",
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);

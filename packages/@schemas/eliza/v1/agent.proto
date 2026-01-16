@@ -97,6 +97,10 @@ message Character {
   // Secrets as key-value pairs
   map<string, string> secrets = 14;
   optional StyleGuides style = 15;
+  // Enable built-in advanced planning capabilities
+  optional bool advanced_planning = 16;
+  // Enable built-in advanced memory capabilities
+  optional bool advanced_memory = 17;
 }
 
 // Group of message examples (for nested array structure)

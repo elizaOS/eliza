@@ -7,6 +7,7 @@ import "eliza/v1/agent.proto";
 import "eliza/v1/components.proto";
 import "eliza/v1/service.proto";
 import "google/protobuf/struct.proto";
+import "eliza/v1/payment.proto";
 
 // HTTP method enumeration for routes
 enum HttpMethod {
@@ -27,6 +28,7 @@ message RouteManifest {
   optional bool public = 4;
   optional bool is_multipart = 5;
   optional string file_path = 6;
+  optional X402Config x402 = 7;
 }
 
 // JSON Schema type definition for component validation

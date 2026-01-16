@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from elizaos.action_docs import get_canonical_action_example_calls
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 from elizaos.types.components import ActionExample
 
@@ -15,6 +16,9 @@ if TYPE_CHECKING:
         Memory,
         State,
     )
+
+# Get text content from centralized specs
+_spec = require_provider_spec("ACTIONS")
 
 
 def format_action_names(actions: list[Action]) -> str:
@@ -173,7 +177,8 @@ async def get_actions(
     validated_actions: list[Action] = []
 
     for action in runtime.actions:
-        is_valid = await action.validate_fn(runtime, message, state)
+        validate_fn = getattr(action, "validate", None) or getattr(action, "validate_fn", None)
+        is_valid = await validate_fn(runtime, message, state) if validate_fn else True
         if is_valid:
             validated_actions.append(action)
 
@@ -229,8 +234,8 @@ async def get_actions(
 
 
 actions_provider = Provider(
-    name="ACTIONS",
-    description="Possible response actions",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_actions,
-    position=-1,
+    position=_spec.get("position", -1),
 )

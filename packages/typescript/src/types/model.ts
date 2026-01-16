@@ -1,3 +1,24 @@
+import type {
+  AudioProcessingParams as ProtoAudioProcessingParams,
+  DetokenizeTextParams as ProtoDetokenizeTextParams,
+  GenerateTextOptions as ProtoGenerateTextOptions,
+  GenerateTextParams as ProtoGenerateTextParams,
+  GenerateTextResult as ProtoGenerateTextResult,
+  ImageDescriptionParams as ProtoImageDescriptionParams,
+  ImageDescriptionResult as ProtoImageDescriptionResult,
+  ImageGenerationParams as ProtoImageGenerationParams,
+  ImageGenerationResult as ProtoImageGenerationResult,
+  JSONSchema as ProtoJSONSchema,
+  ObjectGenerationParams as ProtoObjectGenerationParams,
+  TextEmbeddingParams as ProtoTextEmbeddingParams,
+  TextStreamChunk as ProtoTextStreamChunk,
+  TextToSpeechParams as ProtoTextToSpeechParams,
+  TokenUsage as ProtoTokenUsage,
+  TokenizeTextParams as ProtoTokenizeTextParams,
+  TranscriptionParams as ProtoTranscriptionParams,
+  VideoProcessingParams as ProtoVideoProcessingParams,
+} from "./proto.js";
+import type { JsonValue } from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 
 export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
@@ -203,102 +224,30 @@ export const MODEL_SETTINGS = {
  * Plugin implementations should filter out unsupported parameters before calling their provider's API.
  * Check your provider's documentation to determine which parameters are supported.
  */
-export type GenerateTextParams = {
-  /** The input string or prompt that the language model will use to generate text. */
-  prompt: string;
-  /** Optional. The maximum number of tokens to generate in the response. */
-  maxTokens?: number;
-  /** Optional. The minimum number of tokens to generate in the response. */
-  minTokens?: number;
-  /** Optional. Controls randomness (0.0-1.0). Lower values are more deterministic, higher are more creative. */
-  temperature?: number;
-  /** Optional. Nucleus sampling parameter (0.0-1.0). Controls diversity via nucleus sampling.
-   * Some providers may not support both `temperature` and `topP` simultaneously.
-   * Plugin implementations should filter based on provider capabilities. */
-  topP?: number;
-  /** Optional. Limits the number of highest-probability tokens considered at each step.
-   * Common in Ollama, vLLM, and other local model providers. Alternative/complement to topP. */
-  topK?: number;
-  /** Optional. Minimum probability threshold (0.0-1.0). Discards tokens with probability below this threshold.
-   * Common in node-llama-cpp. Can improve output quality when using higher temperatures by filtering low-probability tokens. */
-  minP?: number;
-  /** Optional. Random seed for reproducible outputs. Useful for testing and debugging. */
-  seed?: number;
-  /** Optional. Repetition penalty (1.0 = no penalty, >1.0 reduces repetition).
-   * Common in Ollama, vLLM, and some Hugging Face models. */
-  repetitionPenalty?: number;
-  /** Optional. Penalizes new tokens based on their existing frequency in the text so far. */
-  frequencyPenalty?: number;
-  /** Optional. Penalizes new tokens based on whether they appear in the text so far. */
-  presencePenalty?: number;
-  /** Optional. A list of sequences at which the model will stop generating further tokens. */
-  stopSequences?: string[];
-  /** Optional. User identifier for tracking and analytics purposes.
-   *
-   * This parameter is used by LLM providers (e.g., OpenAI) to track and monitor API usage per user.
-   * It helps providers identify abuse patterns, implement rate limiting, and provide usage analytics.
-   *
-   * Behavior:
-   * - If not provided (undefined), will automatically default to the agent's character name
-   * - If explicitly set to empty string (""), it will be preserved (not overridden)
-   * - If explicitly set to null, it will be preserved (not overridden)
-   *
-   * Examples:
-   * - `user: "alice"` - Tracks requests from user "alice"
-   * - `user: ""` - Explicitly sends empty user identifier
-   * - `user: undefined` - Auto-populates with character name (e.g., "MyAgent")
-   *
-   * Plugin implementations should pass this parameter to their provider's API when supported.
-   */
-  user?: string | null;
-  /** Optional. Response format specification. Forces the model to return a specific format (e.g., JSON).
-   * Common formats: 'json_object' (OpenAI), 'text'. Plugin implementations should map this to provider-specific formats. */
+export interface GenerateTextParams
+  extends Omit<
+    ProtoGenerateTextParams,
+    "$typeName" | "$unknown" | "responseFormat" | "stopSequences"
+  > {
   responseFormat?: { type: "json_object" | "text" } | string;
-  /**
-   * Enable or disable streaming mode.
-   * - `true`: Force streaming (requires onStreamChunk or context)
-   * - `false`: Force non-streaming even if callback exists
-   * - `undefined`: Auto (streams if onStreamChunk or context exists)
-   */
-  stream?: boolean;
-  /**
-   * Optional. Callback function for receiving streaming chunks.
-   * When provided, streaming is automatically enabled and chunks are sent to this callback.
-   *
-   * @example
-   * ```typescript
-   * const text = await runtime.useModel(ModelType.TEXT_LARGE, {
-   *   prompt: "Hello",
-   *   onStreamChunk: (chunk) => process.stdout.write(chunk)
-   * });
-   * ```
-   */
+  stopSequences?: string[];
   onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
-};
+  user?: string;
+}
 
 /**
  * Token usage information from a model response.
  * Provides metrics about token consumption for billing and monitoring.
  */
-export interface TokenUsage {
-  /** Number of tokens in the input prompt */
-  promptTokens: number;
-  /** Number of tokens in the generated response */
-  completionTokens: number;
-  /** Total tokens used (promptTokens + completionTokens) */
-  totalTokens: number;
-}
+export interface TokenUsage
+  extends Omit<ProtoTokenUsage, "$typeName" | "$unknown"> {}
 
 /**
  * Represents a single chunk in a text stream.
  * Each chunk contains a piece of the generated text.
  */
-export interface TextStreamChunk {
-  /** The text content of this chunk */
-  text: string;
-  /** Whether this is the final chunk in the stream */
-  done: boolean;
-}
+export interface TextStreamChunk
+  extends Omit<ProtoTextStreamChunk, "$typeName" | "$unknown"> {}
 
 /**
  * Result of a streaming text generation request.
@@ -353,32 +302,30 @@ export interface TextStreamResult {
  * Extends GenerateTextParams with additional configuration for character context.
  */
 export interface GenerateTextOptions
-  extends Omit<GenerateTextParams, "prompt"> {
-  /**
-   * Whether to include character personality in the prompt.
-   */
+  extends Omit<ProtoGenerateTextOptions, "$typeName" | "$unknown" | "modelType"> {
   includeCharacter?: boolean;
-  /**
-   * The model type to use for text generation.
-   */
   modelType?: TextGenerationModelType;
+  minTokens?: number;
+  topP?: number;
+  topK?: number;
+  minP?: number;
+  seed?: number;
+  repetitionPenalty?: number;
+  user?: string;
+  responseFormat?: { type: "json_object" | "text" } | string;
 }
 
 /**
  * Structured response from text generation.
  */
-export interface GenerateTextResult {
-  /** The generated text response from the model */
-  text: string;
-}
+export interface GenerateTextResult
+  extends Omit<ProtoGenerateTextResult, "$typeName" | "$unknown"> {}
 
 /**
  * Parameters for text tokenization models
  */
-export interface TokenizeTextParams {
-  /** The text to tokenize */
-  prompt: string;
-  /** The model type to use for tokenization */
+export interface TokenizeTextParams
+  extends Omit<ProtoTokenizeTextParams, "$typeName" | "$unknown" | "modelType"> {
   modelType: ModelTypeName;
 }
 
@@ -387,84 +334,59 @@ export interface TokenizeTextParams {
  * This is the reverse operation of tokenization.
  * This structure is used with `AgentRuntime.useModel` when the `modelType` is `ModelType.TEXT_TOKENIZER_DECODE`.
  */
-export interface DetokenizeTextParams {
-  /** An array of numerical tokens to be converted back into text. */
-  tokens: number[];
-  /** The model type used for detokenization, ensuring consistency with the original tokenization. */
+export interface DetokenizeTextParams
+  extends Omit<
+    ProtoDetokenizeTextParams,
+    "$typeName" | "$unknown" | "modelType"
+  > {
   modelType: ModelTypeName;
 }
 
 /**
  * Parameters for text embedding models
  */
-export interface TextEmbeddingParams {
-  /** The text to create embeddings for */
-  text: string;
-}
+export interface TextEmbeddingParams
+  extends Omit<ProtoTextEmbeddingParams, "$typeName" | "$unknown"> {}
 
 /**
  * Parameters for image generation models
  */
-export interface ImageGenerationParams {
-  /** The prompt describing the image to generate */
-  prompt: string;
-  /** The dimensions of the image to generate */
-  size?: string;
-  /** Number of images to generate */
-  count?: number;
-}
+export interface ImageGenerationParams
+  extends Omit<ProtoImageGenerationParams, "$typeName" | "$unknown"> {}
 
 /**
  * Parameters for image description models
  */
-export interface ImageDescriptionParams {
-  /** The URL or path of the image to describe */
-  imageUrl: string;
-  /** Optional prompt to guide the description */
-  prompt?: string;
-}
+export interface ImageDescriptionParams
+  extends Omit<ProtoImageDescriptionParams, "$typeName" | "$unknown"> {}
+export interface ImageDescriptionResult
+  extends Omit<ProtoImageDescriptionResult, "$typeName" | "$unknown"> {}
+export interface ImageGenerationResult
+  extends Omit<ProtoImageGenerationResult, "$typeName" | "$unknown"> {}
 
 /**
  * Parameters for transcription models
  */
-export interface TranscriptionParams {
-  /** The URL or path of the audio file to transcribe */
-  audioUrl: string;
-  /** Optional prompt to guide transcription */
-  prompt?: string;
-}
+export interface TranscriptionParams
+  extends Omit<ProtoTranscriptionParams, "$typeName" | "$unknown"> {}
 
 /**
  * Parameters for text-to-speech models
  */
-export interface TextToSpeechParams {
-  /** The text to convert to speech */
-  text: string;
-  /** The voice to use */
-  voice?: string;
-  /** The speaking speed */
-  speed?: number;
-}
+export interface TextToSpeechParams
+  extends Omit<ProtoTextToSpeechParams, "$typeName" | "$unknown"> {}
 
 /**
  * Parameters for audio processing models
  */
-export interface AudioProcessingParams {
-  /** The URL or path of the audio file to process */
-  audioUrl: string;
-  /** The type of audio processing to perform */
-  processingType: string;
-}
+export interface AudioProcessingParams
+  extends Omit<ProtoAudioProcessingParams, "$typeName" | "$unknown"> {}
 
 /**
  * Parameters for video processing models
  */
-export interface VideoProcessingParams {
-  /** The URL or path of the video file to process */
-  videoUrl: string;
-  /** The type of video processing to perform */
-  processingType: string;
-}
+export interface VideoProcessingParams
+  extends Omit<ProtoVideoProcessingParams, "$typeName" | "$unknown"> {}
 
 // ============================================================================
 // Research Model Types (Deep Research)
@@ -647,8 +569,8 @@ export interface ResearchMcpToolCall {
   status: "completed" | "failed";
   serverLabel: string;
   toolName: string;
-  arguments: Record<string, unknown>;
-  result?: unknown;
+  arguments: Record<string, JsonValue>;
+  result?: JsonValue;
 }
 
 /**
@@ -701,34 +623,30 @@ export interface ResearchResult {
 /**
  * Optional JSON schema for validating generated objects
  */
-export type JSONSchema = {
-  type: string;
-  properties?: Record<string, JSONSchema | { type: string }>;
+export interface JSONSchema
+  extends Omit<
+    ProtoJSONSchema,
+    "$typeName" | "$unknown" | "type" | "properties" | "items" | "required"
+  > {
+  type?: string | string[];
+  properties?: Record<string, JSONSchema>;
+  items?: JSONSchema | JSONSchema[];
   required?: string[];
-  items?: JSONSchema;
-  [key: string]: unknown;
-};
+  [key: string]: JsonValue | JSONSchema | JSONSchema[] | undefined;
+}
 
 /**
  * Parameters for object generation models
  * @template T - The expected return type, inferred from schema if provided
  */
-export interface ObjectGenerationParams {
-  /** The prompt describing the object to generate */
-  prompt: string;
-  /** Optional JSON schema for validation */
+export interface ObjectGenerationParams
+  extends Omit<
+    ProtoObjectGenerationParams,
+    "$typeName" | "$unknown" | "modelType" | "schema" | "enumValues" | "stopSequences"
+  > {
   schema?: JSONSchema;
-  /** Type of object to generate */
-  output?: "object" | "array" | "enum";
-  /** For enum type, the allowed values */
-  enumValues?: string[];
-  /** Model type to use */
   modelType?: ModelTypeName;
-  /** Model temperature (0.0 to 1.0) */
-  temperature?: number;
-  /** Maximum number of tokens to generate */
-  maxTokens?: number;
-  /** Sequences that should stop generation */
+  enumValues?: string[];
   stopSequences?: string[];
 }
 
@@ -774,22 +692,22 @@ export interface ModelResultMap {
   [ModelType.TEXT_TOKENIZER_DECODE]: string;
   [ModelType.TEXT_REASONING_SMALL]: string;
   [ModelType.TEXT_REASONING_LARGE]: string;
-  [ModelType.IMAGE]: { url: string }[];
-  [ModelType.IMAGE_DESCRIPTION]: { title: string; description: string };
+  [ModelType.IMAGE]: ImageGenerationResult[];
+  [ModelType.IMAGE_DESCRIPTION]: ImageDescriptionResult;
   [ModelType.TRANSCRIPTION]: string;
   [ModelType.TEXT_TO_SPEECH]: Buffer | ArrayBuffer | Uint8Array;
   [ModelType.AUDIO]:
     | Buffer
     | ArrayBuffer
     | Uint8Array
-    | Record<string, unknown>;
+    | Record<string, JsonValue>;
   [ModelType.VIDEO]:
     | Buffer
     | ArrayBuffer
     | Uint8Array
-    | Record<string, unknown>;
-  [ModelType.OBJECT_SMALL]: Record<string, unknown>;
-  [ModelType.OBJECT_LARGE]: Record<string, unknown>;
+    | Record<string, JsonValue>;
+  [ModelType.OBJECT_SMALL]: Record<string, JsonValue>;
+  [ModelType.OBJECT_LARGE]: Record<string, JsonValue>;
   [ModelType.TEXT_COMPLETION]: string;
   [ModelType.RESEARCH]: ResearchResult;
   // Custom model types should be registered via runtime.registerModel() in plugin init()
@@ -839,8 +757,8 @@ export function isStreamableModelType(
  * serves as a tie-breaker. See `AgentRuntime.registerModel` and `AgentRuntime.getModel`.
  */
 export interface ModelHandler<
-  TParams = Record<string, unknown>,
-  TResult = unknown,
+  TParams = Record<string, JsonValue | object>,
+  TResult = JsonValue | object,
 > {
   /** The function that executes the model, taking runtime and parameters, and returning a Promise. */
   handler: (runtime: IAgentRuntime, params: TParams) => Promise<TResult>;

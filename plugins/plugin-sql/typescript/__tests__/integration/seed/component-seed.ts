@@ -12,7 +12,8 @@ export const componentTestAgentSettings = {
   name: "Component Test Agent",
   username: "component_test_agent",
   system: "Test agent system prompt",
-  bio: "An agent for testing component operations",
+  bio: ["An agent for testing component operations"],
+  templates: {},
   enabled: true,
   status: AgentStatus.ACTIVE,
   createdAt: Date.now(),
@@ -23,6 +24,7 @@ export const componentTestAgentSettings = {
   adjectives: [],
   knowledge: [],
   plugins: [],
+  secrets: {},
   settings: {
     componentTestSetting: "component test value",
   },

@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-plugin-local-ai"
-version = "1.0.0"
+version = "2.0.0"
 description = "elizaOS Local AI Plugin - Local LLM inference using llama.cpp for text, embeddings, vision, and audio"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agents", "llama", "local-ai", "embeddings", "elizaos", "llm", "whisper", "tts"]
 classifiers = [

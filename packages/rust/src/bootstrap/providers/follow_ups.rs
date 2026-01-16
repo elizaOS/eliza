@@ -1,12 +1,17 @@
 //! Follow-ups provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("FOLLOW_UPS"));
 
 /// Provider for follow-up reminders.
 pub struct FollowUpsProvider;
@@ -14,15 +19,15 @@ pub struct FollowUpsProvider;
 #[async_trait]
 impl Provider for FollowUpsProvider {
     fn name(&self) -> &'static str {
-        "FOLLOW_UPS"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Provides information about upcoming follow-ups and reminders"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(

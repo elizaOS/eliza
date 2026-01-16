@@ -20,6 +20,7 @@ import { POLYMARKET_SERVICE_NAME } from "../constants";
 import type { PolymarketService } from "../services/polymarket";
 import type { Market, OpenOrder, OrderBook, Position } from "../types";
 import { initializeClobClient } from "../utils/clobClient";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
   callLLMWithTimeout,
   isLLMError,
@@ -264,19 +265,14 @@ User's current request:
 // Action Definition
 // =============================================================================
 
+const spec = requireActionSpec("GET_TOKEN_INFO");
+
 export const getTokenInfoAction: Action = {
-  name: "POLYMARKET_GET_TOKEN_INFO",
-  similes: [
-    "TOKEN_INFO",
-    "TOKEN_DETAILS",
-    "MARKET_INFO",
-    "SHOW_TOKEN",
-    "ABOUT_TOKEN",
-    "TOKEN_SUMMARY",
-    "PRICE_INFO",
-    "MARKET_SUMMARY",
-  ],
-  description: "Retrieves comprehensive information about a single Polymarket token including market details (question, status, end date), current pricing (bid/ask, spread, midpoint), 24h price history (OHLC, change %), and user's position and active orders for that token. Parameters: tokenId (condition token ID) or conditionId (market condition ID).",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description:
+    `${spec.description} Returns position and active orders for that token. ` +
+    "Parameters: tokenId (condition token ID) or conditionId (market condition ID).",
 
   parameters: [
     {
@@ -403,7 +399,7 @@ export const getTokenInfoAction: Action = {
           endTs: now,
           fidelity: 60, // Hourly data points
         });
-        const priceHistoryData = priceHistoryResponse as PriceHistoryPoint[];
+        const priceHistoryData = (priceHistoryResponse as unknown) as PriceHistoryPoint[];
         priceHistory24h = calculatePriceHistorySummary(priceHistoryData, 24);
       } catch (err) {
         runtime.logger.warn("[getTokenInfoAction] Failed to fetch price history:", err);
@@ -488,7 +484,7 @@ export const getTokenInfoAction: Action = {
       return {
         success: true,
         text: responseText,
-        data: responseContent.data,
+        data: responseContent.data as Record<string, string | number | boolean | string[]>,
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error occurred";

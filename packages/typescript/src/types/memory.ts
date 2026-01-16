@@ -1,3 +1,14 @@
+import type {
+  BaseMetadata as ProtoBaseMetadata,
+  CustomMetadata as ProtoCustomMetadata,
+  DescriptionMetadata as ProtoDescriptionMetadata,
+  DocumentMetadata as ProtoDocumentMetadata,
+  FragmentMetadata as ProtoFragmentMetadata,
+  Memory as ProtoMemory,
+  MemoryMetadata as ProtoMemoryMetadataType,
+  MessageMemory as ProtoMessageMemory,
+  MessageMetadata as ProtoMessageMetadata,
+} from "./proto.js";
 import type { Content, MetadataValue, UUID } from "./primitives";
 
 /**
@@ -14,13 +25,15 @@ export type MemoryTypeAlias = string;
  * - `CUSTOM`: For any other type of memory not covered by the built-in types.
  * This enum is used in `MemoryMetadata` to categorize memories and influences how they are processed or queried.
  */
-export enum MemoryType {
-  DOCUMENT = "document",
-  FRAGMENT = "fragment",
-  MESSAGE = "message",
-  DESCRIPTION = "description",
-  CUSTOM = "custom",
-}
+export const MemoryType = {
+  DOCUMENT: "document",
+  FRAGMENT: "fragment",
+  MESSAGE: "message",
+  DESCRIPTION: "description",
+  CUSTOM: "custom",
+} as const;
+
+export type MemoryType = (typeof MemoryType)[keyof typeof MemoryType];
 /**
  * Defines the scope of a memory, indicating its visibility and accessibility.
  * - `shared`: The memory is accessible to multiple entities or across different contexts (e.g., a public fact).
@@ -41,42 +54,42 @@ export type MemoryScope = "shared" | "private" | "room";
  * - `tags`: Optional array of strings for categorizing or filtering memories.
  * Specific metadata types like `DocumentMetadata` or `MessageMetadata` extend this base.
  */
-export interface BaseMetadata {
+export interface BaseMetadata
+  extends Omit<
+    ProtoBaseMetadata,
+    "$typeName" | "$unknown" | "type" | "scope" | "timestamp"
+  > {
   type: MemoryTypeAlias;
-  source?: string;
-  sourceId?: UUID;
   scope?: MemoryScope;
   timestamp?: number;
-  tags?: string[];
 }
 
-export interface DocumentMetadata extends BaseMetadata {
-  type: MemoryType.DOCUMENT;
+export interface DocumentMetadata
+  extends Omit<ProtoDocumentMetadata, "$typeName" | "$unknown" | "base"> {
+  base?: BaseMetadata;
+  type?: "document";
 }
 
-export interface FragmentMetadata extends BaseMetadata {
-  type: MemoryType.FRAGMENT;
+export interface FragmentMetadata
+  extends Omit<ProtoFragmentMetadata, "$typeName" | "$unknown" | "base"> {
+  base?: BaseMetadata;
   documentId: UUID;
   position: number;
+  type?: "fragment";
 }
 
-export interface MessageMetadata extends BaseMetadata {
-  type: MemoryType.MESSAGE;
-  /**
-   * Optional trajectory step identifier used for benchmark/training traces.
-   * When present, runtimes should bypass state caches and emit trajectory logs.
-   */
+export interface MessageMetadata
+  extends Omit<ProtoMessageMetadata, "$typeName" | "$unknown" | "base"> {
+  base?: BaseMetadata;
+  type?: "message";
   trajectoryStepId?: string;
-
-  /**
-   * Optional benchmark context payload (freeform text).
-   * When present, the CONTEXT_BENCH provider should set `benchmark_has_context=true`.
-   */
   benchmarkContext?: string;
 }
 
-export interface DescriptionMetadata extends BaseMetadata {
-  type: MemoryType.DESCRIPTION;
+export interface DescriptionMetadata
+  extends Omit<ProtoDescriptionMetadata, "$typeName" | "$unknown" | "base"> {
+  base?: BaseMetadata;
+  type?: "description";
 }
 
 // MetadataValue is imported from primitives.ts
@@ -84,63 +97,53 @@ export interface DescriptionMetadata extends BaseMetadata {
 /**
  * Custom metadata with typed dynamic properties
  */
-export interface CustomMetadata extends BaseMetadata {
-  type: MemoryType.CUSTOM;
+export interface CustomMetadata
+  extends Omit<ProtoCustomMetadata, "$typeName" | "$unknown" | "base"> {
+  base?: BaseMetadata;
+  type?: "custom";
   /** Custom metadata values - must be JSON-serializable */
-  [key: string]: MetadataValue | MemoryTypeAlias;
+  [key: string]: MetadataValue | MemoryTypeAlias | BaseMetadata | undefined;
 }
 
-export type MemoryMetadata =
+interface MemoryMetadataBase {
+  type?: MemoryTypeAlias;
+  source?: string;
+  scope?: MemoryScope;
+  timestamp?: number;
+}
+
+export type MemoryMetadata = (
   | DocumentMetadata
   | FragmentMetadata
   | MessageMetadata
   | DescriptionMetadata
-  | CustomMetadata;
+  | CustomMetadata
+) & MemoryMetadataBase;
+
+export type ProtoMemoryMetadata = ProtoMemoryMetadataType;
 
 /**
  * Represents a stored memory/message
  */
-export interface Memory {
-  /** Optional unique identifier */
+export interface Memory
+  extends Omit<
+    ProtoMemory,
+    | "$typeName"
+    | "$unknown"
+    | "id"
+    | "createdAt"
+    | "embedding"
+    | "metadata"
+    | "content"
+  > {
   id?: UUID;
-
-  /** Associated user ID */
-  entityId: UUID;
-
-  /** Associated agent ID */
-  agentId?: UUID;
-
-  /** Optional creation timestamp in milliseconds since epoch */
   createdAt?: number;
-
-  /** Memory content */
-  content: Content;
-
-  /** Optional embedding vector for semantic search */
   embedding?: number[];
-
-  /** Associated room ID */
-  roomId: UUID;
-
-  /** Associated world ID (optional) */
-  worldId?: UUID;
-
-  /** Whether memory is unique (used to prevent duplicates) */
-  unique?: boolean;
-
-  /** Embedding similarity score (set when retrieved via search) */
-  similarity?: number;
-
-  /** Metadata for the memory */
   metadata?: MemoryMetadata;
+  content: Content;
 }
 
 /**
  * Specialized memory type for messages with enhanced type checking
  */
-export interface MessageMemory extends Memory {
-  metadata: MessageMetadata;
-  content: Content & {
-    text: string; // Message memories must have text content
-  };
-}
+export type MessageMemory = Memory;

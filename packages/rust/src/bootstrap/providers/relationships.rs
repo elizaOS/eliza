@@ -1,12 +1,17 @@
 //! RELATIONSHIPS provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("RELATIONSHIPS"));
 
 /// Provider for entity relationships.
 pub struct RelationshipsProvider;
@@ -14,15 +19,15 @@ pub struct RelationshipsProvider;
 #[async_trait]
 impl Provider for RelationshipsProvider {
     fn name(&self) -> &'static str {
-        "RELATIONSHIPS"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Relationships between entities observed by the agent"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(

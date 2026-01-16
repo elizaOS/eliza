@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-swe-bench"
-version = "0.1.0"
+version = "2.0.0"
 description = "SWE-bench benchmark for ElizaOS Python agents"
 readme = "RESEARCH.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "elizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agents", "benchmark", "swe-bench", "software-engineering"]
 classifiers = [

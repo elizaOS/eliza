@@ -6,6 +6,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import type { WorldOwnership } from "@elizaos/core/types/proto.js";
 import type { Post as ClientPost } from "../client";
 
 export interface XContextOptions {
@@ -39,10 +40,12 @@ export async function ensureXContext(
       agentId: runtime.agentId,
       messageServerId: createUniqueUuid(runtime, `server-${userId}`),
       metadata: {
-        ownership: { ownerId: userId },
-        x: {
-          username: username,
-          id: userId,
+        ownership: { ownerId: userId } as unknown as WorldOwnership,
+        extra: {
+          x: {
+            username: username,
+            id: userId,
+          },
         },
       },
     });

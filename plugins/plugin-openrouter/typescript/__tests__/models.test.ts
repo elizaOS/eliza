@@ -11,7 +11,7 @@ async function createTestRuntime(settings: Record<string, string> = {}): Promise
     DatabaseMigrationService,
     plugin: sqlPluginInstance,
   } = await import("@elizaos/plugin-sql");
-  const { AgentRuntime } = await import("@elizaos/core");
+  const { AgentRuntime, createCharacter } = await import("@elizaos/core");
   const { v4: uuidv4 } = await import("uuid");
 
   const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
@@ -27,23 +27,23 @@ async function createTestRuntime(settings: Record<string, string> = {}): Promise
   migrationService.discoverAndRegisterPluginSchemas([sqlPluginInstance]);
   await migrationService.runAllPluginMigrations();
 
-  const character = {
+  const character = createCharacter({
     name: "Test Assistant",
     bio: ["A test assistant for testing purposes"],
     system: "You are a helpful assistant.",
     plugins: [],
-    settings: {
-      secrets: {
-        ...settings,
-        OPENROUTER_API_KEY: settings.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY,
-      },
+    settings: {},
+    secrets: {
+      ...settings,
+      OPENROUTER_API_KEY:
+        settings.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY,
     },
     messageExamples: [],
     postExamples: [],
     topics: ["testing"],
     adjectives: ["helpful"],
     style: { all: [], chat: [], post: [] },
-  };
+  });
 
   // Create the agent in the database first
   await adapter.createAgent({

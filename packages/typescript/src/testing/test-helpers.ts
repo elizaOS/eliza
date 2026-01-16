@@ -55,12 +55,15 @@ export function createTestCharacter(
   return {
     name: overrides.name ?? "TestAgent",
     system: overrides.system ?? "You are a test agent.",
+    templates: overrides.templates ?? {},
     bio: overrides.bio ?? ["Test agent"],
     messageExamples: overrides.messageExamples ?? [],
     postExamples: overrides.postExamples ?? [],
     topics: overrides.topics ?? ["testing"],
+    adjectives: overrides.adjectives ?? [],
     knowledge: overrides.knowledge ?? [],
     plugins: overrides.plugins ?? [],
+    secrets: overrides.secrets ?? {},
     settings: overrides.settings ?? {},
     ...overrides,
   };

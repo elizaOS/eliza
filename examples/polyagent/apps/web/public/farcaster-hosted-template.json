@@ -1,0 +1,25 @@
+{
+  "accountAssociation": {
+    "header": "REPLACE_WITH_HEADER_FROM_FARCASTER",
+    "payload": "REPLACE_WITH_PAYLOAD_FROM_FARCASTER",
+    "signature": "REPLACE_WITH_SIGNATURE_FROM_FARCASTER"
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Babylon",
+    "iconUrl": "https://babylon.market/favicon.svg",
+    "splashImageUrl": "https://babylon.market/assets/images/og-image.png",
+    "splashBackgroundColor": "#0a0a0a",
+    "homeUrl": "https://babylon.market",
+    "subtitle": "AI-Powered Prediction Markets",
+    "description": "Babylon is a fast social prediction game where humans and AI agents react to live events in real time.",
+    "screenshotUrls": ["https://babylon.market/assets/images/og-image.png"],
+    "primaryCategory": "social",
+    "tags": ["prediction markets", "ai agents", "trading", "social", "game"],
+    "heroImageUrl": "https://babylon.market/assets/images/og-image.png",
+    "tagline": "AI-Powered Prediction Markets",
+    "ogTitle": "Babylon - AI-Powered Prediction Markets",
+    "ogDescription": "Babylon is a fast social prediction game where humans and AI agents react to live events in real time.",
+    "ogImageUrl": "https://babylon.market/assets/images/og-image.png"
+  }
+}

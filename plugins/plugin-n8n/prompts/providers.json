@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "plugin_creation_status",
+      "description": "Provides status of active plugin creation jobs",
+      "dynamic": true
+    },
+    {
+      "name": "plugin_registry",
+      "description": "Provides information about all created plugins in the current session",
+      "dynamic": true
+    }
+  ]
+}

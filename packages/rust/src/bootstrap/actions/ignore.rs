@@ -1,13 +1,19 @@
 //! IGNORE action implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_action_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{ActionResult, Memory, State};
 
 use super::Action;
+
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("IGNORE"));
 
 /// Action for ignoring messages.
 pub struct IgnoreAction;
@@ -15,20 +21,18 @@ pub struct IgnoreAction;
 #[async_trait]
 impl Action for IgnoreAction {
     fn name(&self) -> &'static str {
-        "IGNORE"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["STOP_TALKING", "STOP_CHATTING", "STOP_CONVERSATION"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Call this action if ignoring the user. If the user is aggressive, creepy or is \
-         finished with the conversation, use this action. Or, if both you and the user have \
-         already said goodbye, use this action instead of saying bye again. Use IGNORE any \
-         time the conversation has naturally ended. Do not use IGNORE if the user has engaged \
-         directly, or if something went wrong and you need to tell them. Only ignore if the \
-         user should be ignored."
+        &SPEC.description
     }
 
     async fn validate(&self, _runtime: &dyn IAgentRuntime, _message: &Memory) -> bool {
@@ -48,4 +52,3 @@ impl Action for IgnoreAction {
             .with_data("actionName", "IGNORE"))
     }
 }
-

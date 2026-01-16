@@ -1,8 +1,8 @@
 [package]
 name = "elizaos-plugin-groq"
-version = "1.0.4"
+version = "2.0.0"
 edition = "2021"
-authors = ["elizaOS Team"]
+authors = ["elizaOS Contributors"]
 description = "Groq LLM plugin for elizaOS - Rust implementation for fast inference"
 license = "MIT"
 repository = "https://github.com/elizaos-plugins/plugin-groq"

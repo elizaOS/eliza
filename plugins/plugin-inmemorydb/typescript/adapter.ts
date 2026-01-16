@@ -39,15 +39,7 @@ interface StoredMemory {
   worldId?: string;
   unique?: boolean;
   similarity?: number;
-  metadata?: {
-    type?: string;
-    source?: string;
-    sourceId?: string;
-    scope?: string;
-    timestamp?: number;
-    tags?: string[];
-    [key: string]: string | number | boolean | null | undefined | string[];
-  };
+  metadata?: MemoryMetadata;
 }
 
 function toMemory(stored: StoredMemory): Memory {
@@ -460,7 +452,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       metadata: {
         ...(memory.metadata ?? {}),
         type: tableName as MemoryTypeAlias,
-      },
+      } as StoredMemory["metadata"],
     };
 
     await this.storage.set(COLLECTIONS.MEMORIES, id, storedMemory);
@@ -484,7 +476,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       metadata: {
         ...(existing.metadata ?? {}),
         ...(memory.metadata ?? {}),
-      },
+      } as MemoryMetadata,
     };
 
     await this.storage.set(COLLECTIONS.MEMORIES, memory.id, updated);

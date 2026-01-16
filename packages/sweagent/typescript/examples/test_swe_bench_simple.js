@@ -148,7 +148,7 @@ npx sweagent run-batch \\
   --instances.subset lite \\
   --instances.split dev \\
   --instances.slice :3 \\
-  --agent.model.name gpt-4o
+  --agent.model.name gpt-5
 `;
 console.log("   Sample command:");
 console.log(sampleCommand);

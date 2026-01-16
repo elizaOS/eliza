@@ -1,7 +1,10 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { Guild, GuildChannel, Role } from "discord.js";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 import { ServiceType } from "../types";
+
+const spec = requireProviderSpec("guildInfo");
 
 /**
  * Represents a provider for retrieving guild/server information.
@@ -15,7 +18,7 @@ import { ServiceType } from "../types";
  * @returns {Promise<Object>} A promise that resolves to an object containing guild data, values, and text.
  */
 export const guildInfoProvider: Provider = {
-  name: "guildInfo",
+  name: spec.name,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // If message source is not discord, return empty
     if (message.content.source !== "discord") {

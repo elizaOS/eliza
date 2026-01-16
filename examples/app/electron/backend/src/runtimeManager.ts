@@ -1,7 +1,7 @@
 import {
   AgentRuntime,
   ChannelType,
-  type Character,
+  createCharacter,
   type Content,
   createMessageMemory,
   LLMMode,
@@ -26,10 +26,10 @@ type RuntimeBundle = {
   worldId: UUID;
 };
 
-const CHAT_CHARACTER: Character = {
+const CHAT_CHARACTER = createCharacter({
   name: "Eliza",
   bio: "A helpful assistant for simple back-and-forth chat.",
-};
+});
 
 const worldId = stringToUuid("example-electron-world");
 const userId = stringToUuid("example-electron-user");

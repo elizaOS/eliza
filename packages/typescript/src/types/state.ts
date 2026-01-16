@@ -1,4 +1,13 @@
-import type { ActionResult } from "./components";
+import type {
+  ActionPlan as ProtoActionPlan,
+  ActionPlanStep as ProtoActionPlanStep,
+  ProviderCacheEntry as ProtoProviderCacheEntry,
+  State as ProtoState,
+  StateData as ProtoStateData,
+  StateValues as ProtoStateValues,
+  WorkingMemoryItem as ProtoWorkingMemoryItem,
+} from "./proto.js";
+import type { ActionResult, ProviderValue } from "./components";
 import type { Entity, Room, World } from "./environment";
 
 /**
@@ -9,32 +18,33 @@ export type StateValue =
   | number
   | boolean
   | null
+  | ProviderValue
+  | object
   | StateValue[]
   | { [key: string]: StateValue };
 
 /** Single step in an action plan */
-export interface ActionPlanStep {
-  action: string;
+export interface ActionPlanStep
+  extends Omit<ProtoActionPlanStep, "$typeName" | "$unknown" | "result"> {
   status: "pending" | "completed" | "failed";
-  error?: string;
   result?: ActionResult;
 }
 
 /** Multi-step action plan */
-export interface ActionPlan {
-  thought: string;
-  totalSteps: number;
-  currentStep: number;
+export interface ActionPlan
+  extends Omit<ProtoActionPlan, "$typeName" | "$unknown" | "steps" | "metadata"> {
   steps: ActionPlanStep[];
-  /** Optional metadata for plan tracking and extensions */
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, StateValue>;
 }
 
 /**
  * Provider result cache entry
  */
-export interface ProviderCacheEntry {
-  text?: string;
+export interface ProviderCacheEntry
+  extends Omit<
+    ProtoProviderCacheEntry,
+    "$typeName" | "$unknown" | "values" | "data"
+  > {
   values?: Record<string, StateValue>;
   data?: Record<string, StateValue>;
 }
@@ -42,12 +52,12 @@ export interface ProviderCacheEntry {
 /**
  * Working memory entry for multi-step action execution
  */
-export interface WorkingMemoryEntry {
-  /** Name of the action that created this entry */
-  actionName: string;
-  /** Result from the action execution */
+export interface WorkingMemoryEntry
+  extends Omit<
+    ProtoWorkingMemoryItem,
+    "$typeName" | "$unknown" | "result" | "timestamp"
+  > {
   result: ActionResult;
-  /** Timestamp when the entry was created */
   timestamp: number;
 }
 
@@ -60,7 +70,19 @@ export type WorkingMemory = Record<string, WorkingMemoryEntry>;
  * Structured data cached in state by providers and actions.
  * Common properties are typed for better DX while allowing dynamic extension.
  */
-export interface StateData {
+export interface StateData
+  extends Omit<
+    ProtoStateData,
+    | "$typeName"
+    | "$unknown"
+    | "room"
+    | "world"
+    | "entity"
+    | "providers"
+    | "actionPlan"
+    | "actionResults"
+    | "workingMemory"
+  > {
   /** Cached room data from providers */
   room?: Room;
   /** Cached world data from providers */
@@ -76,13 +98,14 @@ export interface StateData {
   /** Working memory for temporary state during multi-step action execution */
   workingMemory?: WorkingMemory;
   /** Allow dynamic properties for plugin extensions */
-  [key: string]: unknown;
+  [key: string]: StateValue | undefined;
 }
 
 /**
  * State values populated by providers
  */
-export interface StateValues {
+export interface StateValues
+  extends Omit<ProtoStateValues, "$typeName" | "$unknown" | "extra"> {
   /** Agent name */
   agentName?: string;
   /** Action names available to the agent */
@@ -90,7 +113,7 @@ export interface StateValues {
   /** Provider names used */
   providers?: string;
   /** Other dynamic values */
-  [key: string]: unknown;
+  [key: string]: StateValue | undefined;
 }
 
 /**
@@ -98,13 +121,9 @@ export interface StateValues {
  * This interface is a container for various pieces of information that define the agent's
  * understanding at a point in time.
  */
-export interface State {
-  /** Key-value store for state variables populated by providers */
+export interface State
+  extends Omit<ProtoState, "$typeName" | "$unknown" | "values" | "data"> {
   values: StateValues;
-  /** Structured data cache with typed properties */
   data: StateData;
-  /** String representation of the current context */
-  text: string;
-  /** Dynamic properties for template expansion */
-  [key: string]: unknown;
+  [key: string]: StateValue | StateValues | StateData | undefined;
 }

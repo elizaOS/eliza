@@ -8,12 +8,15 @@ import {
 } from "@elizaos/core";
 import type { CoderService } from "../services/coderService";
 import type { CommandHistoryEntry, FileOperation } from "../types";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 
 const MAX_OUTPUT_LENGTH = 8000;
 const TRUNCATE_SEGMENT_LENGTH = 4000;
 
+const spec = requireProviderSpec("coderStatusProvider");
+
 export const coderStatusProvider: Provider = {
-  name: "CODER_STATUS",
+  name: spec.name,
   description:
     "Provides current working directory, allowed directory, and recent shell/file operations",
   position: 99,
@@ -33,7 +36,7 @@ export const coderStatusProvider: Provider = {
       };
     }
 
-    const conversationId = message.roomId || message.agentId;
+    const conversationId = message.roomId ?? message.agentId ?? runtime.agentId;
     const history = svc.getCommandHistory(conversationId, 10);
     const cwd = svc.getCurrentDirectory(conversationId);
     const allowedDir = svc.getAllowedDirectory();

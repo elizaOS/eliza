@@ -8,16 +8,19 @@ import type {
   State,
 } from "@elizaos/core";
 import type { CoderService } from "../services/coderService";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 function getArgs(options: HandlerOptions | undefined): string {
   const opt = options as { args?: string } | undefined;
   return opt?.args?.trim() ?? "";
 }
 
+const spec = requireActionSpec("GIT");
+
 export const git: Action = {
-  name: "GIT",
-  similes: ["GIT_COMMAND", "GIT_RUN"],
-  description: "Run a git command (restricted).",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (runtime: IAgentRuntime): Promise<boolean> =>
     runtime.getService<CoderService>("coder") !== null,
   handler: async (
@@ -41,7 +44,7 @@ export const git: Action = {
       return { success: false, text: msg };
     }
 
-    const conv = message.roomId || message.agentId;
+    const conv = message.roomId ?? message.agentId ?? runtime.agentId;
     const result = await svc.git(args, conv);
     const out = result.success ? result.stdout : result.stderr;
     if (callback) await callback({ content: { text: out } });

@@ -1,0 +1,124 @@
+{
+  "compilerOptions": {
+    // Language and Environment
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "jsx": "preserve",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Type Checking
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    // Emit
+    "outDir": "./dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "removeComments": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "noEmit": true,
+    "incremental": true,
+    // Interop Constraints
+    "isolatedModules": true,
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    // Bun-specific
+    "types": [
+      "bun-types"
+    ],
+    "moduleDetection": "force",
+    // Next.js
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    // Path aliases for shared code and Next.js
+    "baseUrl": ".",
+    "paths": {
+      "@babylon/contracts": [
+        "../../packages/contracts/src/index.ts"
+      ],
+      "@babylon/contracts/deployments/*": [
+        "../../packages/contracts/deployments/*"
+      ],
+      "@babylon/contracts/*": [
+        "../../packages/contracts/src/*"
+      ],
+      "@babylon/db": [
+        "../../packages/db/src/index.ts"
+      ],
+      "@babylon/db/*": [
+        "../../packages/db/src/*"
+      ],
+      "@babylon/api": [
+        "../../packages/api/src/index.ts"
+      ],
+      "@babylon/api/*": [
+        "../../packages/api/src/*"
+      ],
+      "@babylon/agents": [
+        "../../packages/agents/src/index.ts"
+      ],
+      "@babylon/agents/*": [
+        "../../packages/agents/src/*"
+      ],
+      "@babylon/shared": [
+        "../../packages/shared/src/index.ts"
+      ],
+      "@babylon/shared/*": [
+        "../../packages/shared/src/*"
+      ],
+      "@/components/*": [
+        "./src/components/*"
+      ],
+      "@/lib/*": [
+        "./src/lib/*"
+      ],
+      "@/hooks/*": [
+        "./src/hooks/*"
+      ],
+      "@/stores/*": [
+        "./src/stores/*"
+      ],
+      "@/app/*": [
+        "./src/app/*"
+      ],
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "allowJs": true
+  },
+  "include": [
+    "src/**/*",
+    "next.config.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "types/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.disabled",
+    "src/**/__tests__/**/*"
+  ]
+}

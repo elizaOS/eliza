@@ -11,14 +11,17 @@ import type {
 import type { RssService } from "../service";
 import type { FeedSubscriptionMetadata } from "../types";
 import { createMessageReply, formatRelativeTime } from "../utils";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("LIST_FEEDS");
 
 export const listFeedsAction: Action = {
-  name: "LIST_RSS_FEEDS",
-  similes: ["SHOW_RSS_FEEDS", "GET_RSS_FEEDS", "RSS_SUBSCRIPTIONS"],
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
   validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     return true;
   },
-  description: "List all subscribed RSS/Atom feeds",
+  description: spec.description,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -73,38 +76,7 @@ export const listFeedsAction: Action = {
     return { success: true };
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "What RSS feeds am I subscribed to?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Let me check your RSS subscriptions",
-          actions: ["LIST_RSS_FEEDS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Show me my feeds",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Here are your RSS feeds",
-          actions: ["LIST_RSS_FEEDS"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default listFeedsAction;

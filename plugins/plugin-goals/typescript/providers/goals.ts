@@ -7,10 +7,13 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { createGoalDataService } from "../services/goalDataService.js";
 
+const spec = requireProviderSpec("goals");
+
 export const goalsProvider: Provider = {
-  name: "GOALS",
+  name: spec.name,
   description: "Provides information about active goals and recent achievements",
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {

@@ -1,4 +1,4 @@
-import type { Plugin } from "@elizaos/core";
+import type { Plugin, TestSuite } from "@elizaos/core";
 import {
   captureImageAction,
   describeSceneAction,
@@ -26,7 +26,7 @@ export const visionPlugin: Plugin = {
     identifyPersonAction,
     trackEntityAction,
   ],
-  tests: testSuites,
+  tests: testSuites as unknown as TestSuite[],
   init: async (_config, _runtime) => {},
 };
 

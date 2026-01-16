@@ -12,6 +12,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { PermissionsBitField, type TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import { channelInfoTemplate } from "../generated/prompts/typescript/prompts.js";
@@ -65,18 +66,12 @@ const getChannelInfo = async (
   return null;
 };
 
+const spec = requireActionSpec("READ_CHANNEL");
+
 export const readChannel: Action = {
-  name: "READ_CHANNEL",
-  similes: [
-    "READ_MESSAGES",
-    "GET_CHANNEL_MESSAGES",
-    "FETCH_MESSAGES",
-    "SHOW_CHANNEL_HISTORY",
-    "GET_CHAT_HISTORY",
-    "READ_CHAT",
-  ],
-  description:
-    "Reads recent messages from a Discord channel and either returns them or provides a summary. Can focus on messages from a specific user.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -339,83 +334,7 @@ export const readChannel: Action = {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Can you read the last 20 messages from this channel?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll read the last 20 messages from this channel for you.",
-          actions: ["READ_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "read the core-devs channel and summarize what shaw talking about",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll read the core-devs channel and summarize shaw's discussion.",
-          actions: ["READ_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Show me what's been said in #general",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Let me fetch the recent messages from #general.",
-          actions: ["READ_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Summarize the recent conversation in this channel",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll summarize the recent conversation in this channel.",
-          actions: ["READ_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Read messages here",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll read the recent messages from this channel.",
-          actions: ["READ_CHANNEL"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default readChannel;

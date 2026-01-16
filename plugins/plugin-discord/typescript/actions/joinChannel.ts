@@ -14,6 +14,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { BaseGuildVoiceChannel, TextChannel } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
@@ -148,24 +149,12 @@ const findChannel = async (
   }
 };
 
+const spec = requireActionSpec("JOIN_CHANNEL");
+
 export const joinChannel: Action = {
-  name: "JOIN_CHANNEL",
-  similes: [
-    "START_LISTENING_CHANNEL",
-    "LISTEN_TO_CHANNEL",
-    "ADD_CHANNEL",
-    "WATCH_CHANNEL",
-    "MONITOR_CHANNEL",
-    "JOIN_TEXT_CHANNEL",
-    "JOIN_VOICE",
-    "JOIN_VC",
-    "JOIN_VOICE_CHAT",
-    "JOIN_VOICE_CHANNEL",
-    "HOP_IN_VOICE",
-    "ENTER_VOICE_CHANNEL",
-  ],
-  description:
-    "Join a Discord channel - either text (to monitor messages) or voice (to participate in voice chat). You have full voice capabilities!",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -366,83 +355,7 @@ export const joinChannel: Action = {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Start listening to #general",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll start listening to the #general channel.",
-          actions: ["JOIN_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "join the dev-voice channel",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll join the dev-voice channel right away!",
-          actions: ["JOIN_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "hop in vc",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Joining your voice channel now!",
-          actions: ["JOIN_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Can you join the announcements channel?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll join the announcements channel and start monitoring messages there.",
-          actions: ["JOIN_CHANNEL"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Please monitor channel 123456789012345678",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll start monitoring that channel for messages.",
-          actions: ["JOIN_CHANNEL"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default joinChannel;

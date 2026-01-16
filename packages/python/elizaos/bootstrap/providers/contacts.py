@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("CONTACTS")
 
 
 async def get_contacts_context(
@@ -67,8 +71,8 @@ async def get_contacts_context(
 
 
 contacts_provider = Provider(
-    name="CONTACTS",
-    description="Provides contact information from the rolodex",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_contacts_context,
-    dynamic=True,
+    dynamic=_spec.get("dynamic", True),
 )

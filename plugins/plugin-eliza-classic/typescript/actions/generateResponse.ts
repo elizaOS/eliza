@@ -9,11 +9,14 @@ import type {
   State,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("generate-response");
 
 export const generateResponseAction: Action = {
-  name: "generate-response",
-  similes: ["ELIZA_RESPOND", "ELIZA_CHAT", "CLASSIC_ELIZA"],
-  description: "Generate an ELIZA response for user input using classic pattern matching.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     return true;
@@ -66,38 +69,7 @@ export const generateResponseAction: Action = {
     }
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I am feeling very anxious today",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll use ELIZA to respond.",
-          actions: ["generate-response"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "My mother always criticizes me",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll use ELIZA to explore that with you.",
-          actions: ["generate-response"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default generateResponseAction;

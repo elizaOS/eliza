@@ -20,16 +20,6 @@ message DefaultUUID {
   string value = 1; // Always "00000000-0000-0000-0000-000000000000"
 }
 
-// Content type enumeration for media attachments
-enum ContentType {
-  CONTENT_TYPE_UNSPECIFIED = 0;
-  CONTENT_TYPE_IMAGE = 1;
-  CONTENT_TYPE_VIDEO = 2;
-  CONTENT_TYPE_AUDIO = 3;
-  CONTENT_TYPE_DOCUMENT = 4;
-  CONTENT_TYPE_LINK = 5;
-}
-
 // Represents a media attachment
 message Media {
   // Unique identifier
@@ -44,8 +34,8 @@ message Media {
   optional string description = 5;
   // Text content
   optional string text = 6;
-  // Content type
-  ContentType content_type = 7;
+  // Content type (e.g. "image", "video", "audio", "document", "link")
+  optional string content_type = 7;
 }
 
 // Platform-provided metadata about mentions
@@ -59,20 +49,6 @@ message MentionContext {
   bool is_thread = 3;
   // Platform-specific mention type for debugging/logging
   optional string mention_type = 4; // "platform_mention" | "reply" | "thread" | "none"
-}
-
-// Channel type enumeration
-enum ChannelType {
-  CHANNEL_TYPE_UNSPECIFIED = 0;
-  CHANNEL_TYPE_PERSONAL = 1; // Personal/self messages
-  CHANNEL_TYPE_DM = 2; // Direct messages between two participants
-  CHANNEL_TYPE_GROUP = 3; // Group messages with multiple participants
-  CHANNEL_TYPE_VOICE_DM = 4; // Voice direct messages
-  CHANNEL_TYPE_VOICE_GROUP = 5; // Voice channels with multiple participants
-  CHANNEL_TYPE_FEED = 6; // Social media feed
-  CHANNEL_TYPE_THREAD = 7; // Threaded conversation
-  CHANNEL_TYPE_WORLD = 8; // World channel
-  CHANNEL_TYPE_FORUM = 9; // Forum discussion
 }
 
 // Represents the content of a memory, message, or other information.
@@ -97,7 +73,7 @@ message Content {
   // Array of media attachments
   repeated Media attachments = 9;
   // Channel type where this content was sent
-  ChannelType channel_type = 10;
+  optional string channel_type = 10;
   // Platform-provided metadata about mentions
   optional MentionContext mention_context = 11;
   // Internal message ID used for streaming coordination

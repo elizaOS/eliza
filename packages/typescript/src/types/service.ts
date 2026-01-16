@@ -1,3 +1,4 @@
+import type { JsonValue } from "./proto.js";
 import type { Metadata } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
@@ -160,8 +161,8 @@ export abstract class Service {
  */
 export interface TypedService<
   ConfigType extends Metadata = Metadata,
-  InputType = Record<string, string | number | boolean>,
-  ResultType = Record<string, string | number | boolean>,
+  InputType = JsonValue,
+  ResultType = JsonValue,
 > extends Service {
   /**
    * The configuration for this service instance
@@ -184,8 +185,8 @@ export interface TypedService<
  */
 export function getTypedService<
   ConfigType extends Metadata = Metadata,
-  InputType = unknown,
-  ResultType = unknown,
+  InputType = JsonValue,
+  ResultType = JsonValue,
 >(
   runtime: IAgentRuntime,
   serviceType: ServiceTypeName,
@@ -201,7 +202,7 @@ export function getTypedService<
 export interface ServiceError {
   code: string;
   message: string;
-  details?: Record<string, unknown> | string | number | boolean | null;
+  details?: Record<string, JsonValue> | string | number | boolean | null;
   cause?: Error;
 }
 
@@ -209,7 +210,7 @@ export interface ServiceError {
  * Safely create a ServiceError from any caught error
  */
 export function createServiceError(
-  error: unknown,
+  error: Error | string | JsonValue,
   code = "UNKNOWN_ERROR",
 ): ServiceError {
   if (error instanceof Error) {

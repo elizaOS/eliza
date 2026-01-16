@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-vending-bench"
-version = "1.0.0"
+version = "2.0.0"
 description = "Vending-Bench benchmark for ElizaOS - Long-term coherence evaluation"
 readme = "../RESEARCH.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "ElizaOS Team", email = "team@elizaos.ai" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = ["ai", "agents", "benchmark", "vending-bench", "coherence", "llm"]
 classifiers = [

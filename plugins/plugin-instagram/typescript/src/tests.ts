@@ -1,11 +1,11 @@
-import type { TestCase, TestSuite } from "@elizaos/core";
+import type { TestCase } from "@elizaos/core";
 import { MAX_DM_LENGTH } from "./constants";
 import { splitMessage } from "./service";
 
 /**
  * Test suite for Instagram plugin
  */
-export class InstagramTestSuite implements TestSuite {
+export class InstagramTestSuite {
   name = "Instagram Plugin Tests";
   tests: TestCase[] = [
     {
@@ -24,6 +24,7 @@ export class InstagramTestSuite implements TestSuite {
       },
     },
     {
+      $typeName: "eliza.v1.TestCase",
       name: "Message splitting - long message",
       fn: async (): Promise<void> => {
         const msg = "a".repeat(MAX_DM_LENGTH + 500);
@@ -52,5 +53,5 @@ export class InstagramTestSuite implements TestSuite {
         }
       },
     },
-  ];
+  ] as TestCase[];
 }

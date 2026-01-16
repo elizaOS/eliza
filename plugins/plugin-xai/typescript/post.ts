@@ -211,12 +211,9 @@ ${
     ? `
 Example posts that capture your voice:
 ${this.runtime.character.messageExamples
-  .map((example: unknown) =>
-    Array.isArray(example)
-      ? (example[1] as { content?: { text?: string } })?.content?.text || ""
-      : String(example)
-  )
-  .filter(Boolean)
+  .flatMap((group) => group.examples)
+  .map((example) => example.content?.text ?? "")
+  .filter((text) => text.length > 0)
   .slice(0, 5)
   .join("\n")}
 `

@@ -107,7 +107,15 @@ const createMockDatabaseAdapter = (): IDatabaseAdapter =>
 const createTestCharacter = (): Character => ({
   name: "TestAgent",
   username: "test_agent",
+  templates: {},
   bio: ["A test agent for action planning tests."],
+  messageExamples: [],
+  postExamples: [],
+  topics: [],
+  adjectives: [],
+  knowledge: [],
+  plugins: [],
+  secrets: {},
   settings: {},
 });
 

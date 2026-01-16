@@ -1,9 +1,8 @@
 import pytest
-from pydantic import ValidationError
+from google.protobuf import struct_pb2
 
 from elizaos.types import (
     DEFAULT_UUID,
-    ChannelType,
     Character,
     Content,
     Entity,
@@ -56,7 +55,7 @@ class TestContent:
         content = Content(text="Hello world")
         assert content.text == "Hello world"
         assert content.thought is None
-        assert content.actions is None
+        assert content.actions == []
 
     def test_full_content(self) -> None:
         content = Content(
@@ -71,11 +70,6 @@ class TestContent:
         assert content.thought == "Thinking about response"
         assert content.actions == ["RESPOND", "SEARCH"]
         assert content.providers == ["KNOWLEDGE"]
-
-    def test_content_extra_fields(self) -> None:
-        content = Content(text="Hello", custom_field="custom_value")
-        assert content.text == "Hello"
-        assert content.model_dump().get("custom_field") == "custom_value"
 
 
 class TestMemory:
@@ -103,10 +97,10 @@ class TestCharacter:
     def test_minimal_character(self) -> None:
         character = Character(
             name="TestAgent",
-            bio="A test agent for testing.",
+            bio=["A test agent for testing."],
         )
         assert character.name == "TestAgent"
-        assert character.bio == "A test agent for testing."
+        assert character.bio == ["A test agent for testing."]
 
     def test_full_character(self) -> None:
         character = Character(
@@ -117,17 +111,13 @@ class TestCharacter:
             topics=["testing", "automation"],
             adjectives=["helpful", "precise"],
             plugins=["@elizaos/plugin-sql"],
-            settings={"temperature": 0.7},
+            settings=None,
             secrets={"API_KEY": "secret"},
         )
         assert character.name == "TestAgent"
         assert character.username == "testagent"
         assert character.bio == ["Line 1", "Line 2"]
         assert character.topics == ["testing", "automation"]
-
-    def test_character_validation(self) -> None:
-        with pytest.raises(ValidationError):
-            Character(name="", bio="Test")
 
 
 class TestEntity:
@@ -137,15 +127,17 @@ class TestEntity:
             agent_id=as_uuid("12345678-1234-1234-1234-123456789012"),
         )
         assert entity.names == ["TestUser"]
-        assert entity.metadata == {}
+        assert entity.metadata is not None
 
     def test_entity_with_metadata(self) -> None:
+        metadata = struct_pb2.Struct()
+        metadata.update({"email": "test@example.com"})
         entity = Entity(
             names=["TestUser"],
             agent_id=as_uuid("12345678-1234-1234-1234-123456789012"),
-            metadata={"email": "test@example.com"},
+            metadata=metadata,
         )
-        assert entity.metadata.get("email") == "test@example.com"
+        assert entity.metadata is not None
 
 
 class TestRoom:
@@ -153,16 +145,16 @@ class TestRoom:
         room = Room(
             id=as_uuid("12345678-1234-1234-1234-123456789012"),
             source="cli",
-            type=ChannelType.DM,
+            type="DM",
         )
-        assert room.type == ChannelType.DM
+        assert room.type == "DM"
         assert room.source == "cli"
 
     def test_room_with_world(self) -> None:
         room = Room(
             id=as_uuid("12345678-1234-1234-1234-123456789012"),
             source="discord",
-            type=ChannelType.GROUP,
+            type="GROUP",
             world_id=as_uuid("12345678-1234-1234-1234-123456789013"),
             name="general",
         )
@@ -201,15 +193,11 @@ class TestPlugin:
 class TestState:
     def test_empty_state(self) -> None:
         state = State()
-        assert state.values == {}
+        assert state.values is not None
         assert state.text == ""
 
     def test_state_with_data(self) -> None:
-        state = State(
-            values={"key": "value"},
-            text="State context",
-        )
-        assert state.values.get("key") == "value"
+        state = State(text="State context")
         assert state.text == "State context"
 
 

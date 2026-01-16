@@ -149,7 +149,11 @@ export class TokenValidationService extends Service {
     const enabledSetting = this.runtime.getSetting('RUGCHECK_ENABLED');
     this.enabled = enabledSetting !== 'false';
 
-    this.birdeyeApiKey = this.runtime.getSetting('BIRDEYE_API_KEY') || null;
+    const apiKeySetting = this.runtime.getSetting('BIRDEYE_API_KEY');
+    this.birdeyeApiKey =
+      typeof apiKeySetting === 'string' && apiKeySetting.trim().length > 0
+        ? apiKeySetting
+        : null;
 
     const minLiquidity = this.runtime.getSetting('MIN_LIQUIDITY_USD');
     if (minLiquidity) {
@@ -171,11 +175,14 @@ export class TokenValidationService extends Service {
       this.requirements.maxBuySellRatio = Number(maxBuySellRatio);
     }
 
-    logger.info(`[${TokenValidationService.serviceType}] Initialized:`, {
-      enabled: this.enabled,
-      hasBirdeyeKey: !!this.birdeyeApiKey,
-      requirements: this.requirements,
-    });
+    logger.info(
+      {
+        enabled: this.enabled,
+        hasBirdeyeKey: !!this.birdeyeApiKey,
+        requirements: this.requirements,
+      },
+      `[${TokenValidationService.serviceType}] Initialized`,
+    );
   }
 
   public async stop(): Promise<void> {
@@ -188,7 +195,7 @@ export class TokenValidationService extends Service {
    */
   public setRequirements(requirements: Partial<TradingRequirements>): void {
     this.requirements = { ...this.requirements, ...requirements };
-    logger.info(`[${TokenValidationService.serviceType}] Requirements updated:`, this.requirements);
+    logger.info(this.requirements as unknown as Record<string, unknown>, `[${TokenValidationService.serviceType}] Requirements updated`);
   }
 
   /**
@@ -223,10 +230,10 @@ export class TokenValidationService extends Service {
         logger.warn(`[${TokenValidationService.serviceType}] Token not found in RugCheck: ${tokenAddress}`);
         return this.createUnknownReport(tokenAddress);
       }
-      logger.error(`[${TokenValidationService.serviceType}] RugCheck API error:`, {
-        status: response.status,
-        tokenAddress,
-      });
+      logger.error(
+        { status: response.status, tokenAddress },
+        `[${TokenValidationService.serviceType}] RugCheck API error`,
+      );
       return null;
     }
 
@@ -302,13 +309,16 @@ export class TokenValidationService extends Service {
       cacheExpiry: Date.now() + CACHE_DURATION_MS,
     };
 
-    logger.info(`[${TokenValidationService.serviceType}] RugCheck report received:`, {
-      token: report.tokenInfo.symbol,
-      riskLevel: report.riskLevel,
-      score: report.score,
-      liquidity: report.liquidity.totalLiquidityUsd,
-      topHoldersPercent: report.holders.topHoldersPercent,
-    });
+    logger.info(
+      {
+        token: report.tokenInfo.symbol,
+        riskLevel: report.riskLevel,
+        score: report.score,
+        liquidity: report.liquidity.totalLiquidityUsd,
+        topHoldersPercent: report.holders.topHoldersPercent,
+      },
+      `[${TokenValidationService.serviceType}] RugCheck report received`,
+    );
 
     return report;
   }
@@ -421,12 +431,15 @@ export class TokenValidationService extends Service {
     // Cache for 5 minutes
     this.activityCache.set(tokenAddress, { data: activity, expiry: Date.now() + 5 * 60 * 1000 });
 
-    logger.info(`[${TokenValidationService.serviceType}] Trading activity for ${tokenAddress}:`, {
-      volume24h: activity.volume24h,
-      buys: activity.buyCount24h,
-      sells: activity.sellCount24h,
-      uniqueTraders: activity.uniqueTraders24h,
-    });
+    logger.info(
+      {
+        volume24h: activity.volume24h,
+        buys: activity.buyCount24h,
+        sells: activity.sellCount24h,
+        uniqueTraders: activity.uniqueTraders24h,
+      },
+      `[${TokenValidationService.serviceType}] Trading activity for ${tokenAddress}`,
+    );
 
     return activity;
   }
@@ -613,11 +626,14 @@ export class TokenValidationService extends Service {
 
     const isValid = rejectionReasons.length === 0;
 
-    logger.info(`[${TokenValidationService.serviceType}] Validation result for ${tokenAddress}:`, {
-      isValid,
-      rejectionReasons,
-      warningsCount: warnings.length,
-    });
+    logger.info(
+      {
+        isValid,
+        rejectionReasons,
+        warningsCount: warnings.length,
+      },
+      `[${TokenValidationService.serviceType}] Validation result for ${tokenAddress}`,
+    );
 
     return {
       isValid,
@@ -659,6 +675,9 @@ export class TokenValidationService extends Service {
       });
       report.cacheExpiry = Date.now() + CACHE_DURATION_MS * 4; // Extend cache for flagged tokens
     }
-    logger.warn(`[${TokenValidationService.serviceType}] Token flagged:`, { tokenAddress, reason });
+    logger.warn(
+      { tokenAddress, reason },
+      `[${TokenValidationService.serviceType}] Token flagged`,
+    );
   }
 }

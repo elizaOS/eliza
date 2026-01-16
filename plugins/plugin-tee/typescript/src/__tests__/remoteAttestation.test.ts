@@ -1,4 +1,3 @@
-import { TEEMode } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PhalaRemoteAttestationProvider } from "../providers/remoteAttestation";
 
@@ -33,17 +32,17 @@ describe("PhalaRemoteAttestationProvider", () => {
 
   describe("constructor", () => {
     it("should initialize with LOCAL mode", () => {
-      const _provider = new PhalaRemoteAttestationProvider(TEEMode.LOCAL);
+      const _provider = new PhalaRemoteAttestationProvider("LOCAL");
       expect(mockConstructorCalls).toContain("http://localhost:8090");
     });
 
     it("should initialize with DOCKER mode", () => {
-      const _provider = new PhalaRemoteAttestationProvider(TEEMode.DOCKER);
+      const _provider = new PhalaRemoteAttestationProvider("DOCKER");
       expect(mockConstructorCalls).toContain("http://host.docker.internal:8090");
     });
 
     it("should initialize with PRODUCTION mode", () => {
-      const _provider = new PhalaRemoteAttestationProvider(TEEMode.PRODUCTION);
+      const _provider = new PhalaRemoteAttestationProvider("PRODUCTION");
       expect(mockConstructorCalls).toContain(undefined);
     });
 
@@ -56,7 +55,7 @@ describe("PhalaRemoteAttestationProvider", () => {
     let provider: PhalaRemoteAttestationProvider;
 
     beforeEach(() => {
-      provider = new PhalaRemoteAttestationProvider(TEEMode.LOCAL);
+      provider = new PhalaRemoteAttestationProvider("LOCAL");
     });
 
     it("should generate attestation successfully", async () => {
@@ -73,7 +72,7 @@ describe("PhalaRemoteAttestationProvider", () => {
       const mockError = new Error("TDX Quote generation failed");
       mockTdxQuote.mockRejectedValueOnce(mockError);
 
-      const errorProvider = new PhalaRemoteAttestationProvider(TEEMode.LOCAL);
+      const errorProvider = new PhalaRemoteAttestationProvider("LOCAL");
       await expect(errorProvider.generateAttestation("test-data")).rejects.toThrow(
         "Failed to generate TDX Quote"
       );

@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.generated.spec_helpers import require_action_spec
+from elizaos.prompts import ADD_CONTACT_TEMPLATE
 from elizaos.types import (
     Action,
     ActionExample,
@@ -21,39 +23,35 @@ if TYPE_CHECKING:
         State,
     )
 
+# Get text content from centralized specs
+_spec = require_action_spec("ADD_CONTACT")
 
-ADD_CONTACT_TEMPLATE = """# Add Contact to Rolodex
 
-Current message: {{message}}
-Sender: {{senderName}} (ID: {{senderId}})
-
-Extract contact information:
-1. Who to add (name or entity reference)
-2. Category (friend, family, colleague, acquaintance, vip, business)
-3. Preferences or notes
-
-<response>
-<contactName>Name of the contact to add</contactName>
-<entityId>ID if known, otherwise leave empty</entityId>
-<categories>comma-separated categories</categories>
-<notes>Any additional notes or preferences</notes>
-<reason>Reason for adding this contact</reason>
-</response>"""
+def _convert_spec_examples() -> list[list[ActionExample]]:
+    """Convert spec examples to ActionExample format."""
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
 
 
 @dataclass
 class AddContactAction:
-    name: str = "ADD_CONTACT"
-    similes: list[str] = field(
-        default_factory=lambda: [
-            "add contact",
-            "save contact",
-            "add to contacts",
-            "add to rolodex",
-            "remember this person",
-        ]
-    )
-    description: str = "Add a new contact to the rolodex with categorization and preferences"
+    name: str = _spec["name"]
+    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
+    description: str = _spec["description"]
 
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
@@ -138,21 +136,7 @@ class AddContactAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return [
-            [
-                ActionExample(
-                    name="{{name1}}",
-                    content=Content(text="Add John Smith to my contacts as a colleague"),
-                ),
-                ActionExample(
-                    name="{{name2}}",
-                    content=Content(
-                        text="I've added John Smith to your contacts as a colleague.",
-                        actions=["ADD_CONTACT"],
-                    ),
-                ),
-            ],
-        ]
+        return _convert_spec_examples()
 
 
 add_contact_action = Action(

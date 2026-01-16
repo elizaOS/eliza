@@ -1,6 +1,7 @@
 import {
   AgentRuntime,
   ChannelType,
+  createCharacter,
   type Character,
   type Content,
   createMessageMemory,
@@ -29,11 +30,11 @@ type RuntimeBundle = {
   worldId: UUID;
 };
 
-const DEMO_CHARACTER: Character = {
+const DEMO_CHARACTER: Character = createCharacter({
   name: "Cool Robot",
   system: "Cool Robot is very concise, to the point and brief robot who keeps responses very brief. No emojis or punctuation. Cool Robot responds very concisely, and never more than a sentence. He doens't use any punction, always all lower case",
   bio: "A nice and friendly robot built on the elizaOS agent framework.",
-};
+});
 
 const STORAGE_KEYS = { userId: "eliza-vrm-demo:userId" } as const;
 

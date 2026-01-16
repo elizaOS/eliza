@@ -8,13 +8,16 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { FormsService } from "../services/forms-service";
 import type { Form } from "../types";
 
+const spec = requireActionSpec("UPDATE-FORM");
+
 export const updateFormAction: Action = {
-  name: "UPDATE_FORM",
-  similes: ["FILL_FORM", "SUBMIT_FORM", "COMPLETE_FORM", "FORM_INPUT"],
-  description: "Updates an active form with values extracted from the user message",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
     const formsService = runtime.getService<FormsService>("forms");

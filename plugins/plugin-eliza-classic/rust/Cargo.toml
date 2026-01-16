@@ -1,7 +1,8 @@
 [package]
 name = "elizaos-plugin-eliza-classic"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
+authors = ["elizaOS Contributors"]
 description = "Classic ELIZA pattern matching plugin for elizaOS - no LLM required"
 license = "MIT"
 repository = "https://github.com/elizaos-plugins/plugin-eliza-classic"

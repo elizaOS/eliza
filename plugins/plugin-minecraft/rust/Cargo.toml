@@ -1,7 +1,8 @@
 [package]
 name = "elizaos-plugin-minecraft"
-version = "0.1.0"
+version = "2.0.0"
 edition = "2021"
+authors = ["elizaOS Contributors"]
 license = "MIT"
 description = "Minecraft automation plugin for ElizaOS (Mineflayer bridge client)"
 

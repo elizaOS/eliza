@@ -1,12 +1,17 @@
 //! FACTS provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, MemoryType, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("FACTS"));
 
 /// Provider for known facts about entities.
 pub struct FactsProvider;
@@ -14,15 +19,15 @@ pub struct FactsProvider;
 #[async_trait]
 impl Provider for FactsProvider {
     fn name(&self) -> &'static str {
-        "FACTS"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Provides known facts about entities learned through conversation"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(

@@ -1,8 +1,8 @@
 [package]
 name = "elizaos-plugin-openrouter"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
-authors = ["elizaOS Team"]
+authors = ["elizaOS Contributors"]
 description = "OpenRouter API client for elizaOS - Rust implementation with text and object generation"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"

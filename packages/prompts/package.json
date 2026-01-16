@@ -3,12 +3,12 @@
   "version": "2.0.0",
   "description": "Shared prompt templates for elizaOS across TypeScript, Python, and Rust",
   "type": "module",
-  "main": "./dist/typescript/index.js",
-  "types": "./dist/typescript/index.d.ts",
+  "main": "./dist/typescript/index.ts",
+  "types": "./dist/typescript/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/typescript/index.d.ts",
-      "import": "./dist/typescript/index.js"
+      "types": "./dist/typescript/index.ts",
+      "import": "./dist/typescript/index.ts"
     },
     "./python": "./dist/python/prompts.py",
     "./rust": "./dist/rust/prompts.rs"

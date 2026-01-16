@@ -20,9 +20,11 @@ import type { Character } from "@elizaos/core";
 export const mockCharacter: Character = {
   name: "Eliza",
   username: "eliza",
+  templates: {},
   plugins: [],
+  knowledge: [],
+  secrets: {},
   settings: {
-    secrets: {},
     voice: {
       model: "en_US-hfc_female-medium",
     },
@@ -418,7 +420,7 @@ export const mockCharacter: Character = {
         },
       },
     ],
-  ],
+  ].map((examples) => ({ examples })),
   postExamples: [
     "Just spent 3 hours debugging only to realize I forgot a semicolon. Time well spent.",
     "Your startup isn't 'disrupting the industry', you're just burning VC money on kombucha and ping pong tables",

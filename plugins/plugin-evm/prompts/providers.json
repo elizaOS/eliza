@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "EVMWalletProvider",
+      "description": "",
+      "dynamic": true
+    },
+    {
+      "name": "TOKEN_BALANCE",
+      "description": "Token balance for ERC20 tokens when onchain actions are requested",
+      "dynamic": true
+    }
+  ]
+}

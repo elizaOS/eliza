@@ -1,0 +1,39 @@
+{
+  "name": "@babylon/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Polyagent API Middleware and Utilities",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "biome lint .",
+    "typecheck": "tsc -b ."
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "graphql": "^16.10.0",
+    "graphql-request": "^7.2.0",
+    "@aws-sdk/client-s3": "^3.943.0",
+    "@aws-sdk/lib-storage": "^3.943.0",
+    "@babylon/contracts": "workspace:*",
+    "@babylon/shared": "workspace:*",
+    "@privy-io/server-auth": "^1.18.4",
+    "@vercel/blob": "^2.0.0",
+    "ioredis": "^5.6.1",
+    "nanoid": "^5.1.6",
+    "viem": "^2.41.2"
+  },
+  "peerDependencies": {
+    "@babylon/db": "workspace:*",
+    "next": "^16.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "swagger-jsdoc": "^6.2.8",
+    "tiktoken": "^1.0.21",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,4 +1,4 @@
-import type { Task as CoreTask, UUID } from "@elizaos/core";
+import type { Task as CoreTask, TaskMetadata, UUID } from "@elizaos/core";
 
 // ============================================================================
 // JSON-safe value types (no `any` / `unknown`)
@@ -85,7 +85,7 @@ export interface OrchestratedTaskMetadata {
   [key: string]: JsonValue;
 }
 
-export interface OrchestratedTask extends CoreTask {
+export interface OrchestratedTask extends Omit<CoreTask, "metadata"> {
   metadata: OrchestratedTaskMetadata;
 }
 

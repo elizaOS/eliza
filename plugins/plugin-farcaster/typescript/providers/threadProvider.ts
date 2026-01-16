@@ -1,4 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { FarcasterService } from "../services/FarcasterService";
 import { FARCASTER_SERVICE_NAME, FARCASTER_SOURCE } from "../types";
 
@@ -11,8 +12,10 @@ const formatTimestamp = (timestamp: number): string => {
   });
 };
 
+const spec = requireProviderSpec("threadProvider");
+
 export const farcasterThreadProvider: Provider = {
-  name: "farcasterThread",
+  name: spec.name,
   description:
     "Provides thread context for Farcaster casts so the agent can reference the full conversation.",
 

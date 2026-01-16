@@ -8,8 +8,11 @@
 
 // Export all core modules
 export * from "./actions";
-// Export bootstrap plugin and capabilities
-export * from "./bootstrap/index";
+// Export generated action/provider/evaluator specs from centralized prompts
+export * from "./generated/action-docs";
+export * from "./generated/spec-helpers";
+// Export capabilities and plugin creation
+export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 export * from "./database";

@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import type { AgentOrchestratorService } from "../services/plugin-agent-orchestrator-service.js";
+import type { AgentOrchestratorService } from "../services/agent-orchestrator-service.js";
 
 function getService(runtime: IAgentRuntime): AgentOrchestratorService | null {
   return runtime.getService("CODE_TASK") as AgentOrchestratorService | null;

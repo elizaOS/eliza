@@ -7,9 +7,10 @@ export function validateSolanaAddress(address: string | undefined): boolean {
     // Handle Base (0x) addresses
     if (address.startsWith('0x')) {
       const isValidBase = /^0x[a-fA-F0-9]{40}$/.test(address);
-      logger.log(`Base address validation: ${address}`, {
-        isValid: isValidBase,
-      });
+      logger.log(
+        { isValid: isValidBase },
+        `Base address validation: ${address}`,
+      );
       return isValidBase;
     }
 
@@ -21,10 +22,10 @@ export function validateSolanaAddress(address: string | undefined): boolean {
 
     const pubKey = new PublicKey(address);
     const isValid = Boolean(pubKey.toBase58());
-    logger.log(`Solana address validation: ${address}`, { isValid });
+    logger.log({ isValid }, `Solana address validation: ${address}`);
     return isValid;
   } catch (error) {
-    logger.error(`Address validation error: ${address}`, { error });
+    logger.error({ error }, `Address validation error: ${address}`);
     return false;
   }
 }

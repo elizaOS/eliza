@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
+
+# Get text content from centralized specs
+_spec = require_provider_spec("CHOICE")
 
 
 def format_choice(index: int, choice: dict[str, str]) -> str:
@@ -66,8 +70,8 @@ async def get_choice_options(
 
 
 choice_provider = Provider(
-    name="CHOICE",
-    description="Available choice options for selection",
+    name=_spec["name"],
+    description=_spec["description"],
     get=get_choice_options,
-    dynamic=True,
+    dynamic=_spec.get("dynamic", True),
 )

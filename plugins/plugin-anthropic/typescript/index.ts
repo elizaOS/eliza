@@ -1,8 +1,11 @@
 import type {
   GenerateTextParams,
   IAgentRuntime,
+  JsonValue,
   ObjectGenerationParams,
   Plugin,
+  TestCase,
+  TestSuite,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { initializeAnthropic, type PluginConfig } from "./init";
@@ -110,9 +113,9 @@ const pluginTests = [
           logger.log({ result }, "Generated object with code blocks");
         },
       },
-    ],
+    ] as TestCase[],
   },
-];
+] as TestSuite[];
 
 type ProcessEnvLike = Record<string, string | undefined>;
 
@@ -164,19 +167,21 @@ export const anthropicPlugin: Plugin = {
     [ModelType.OBJECT_SMALL]: async (
       runtime: IAgentRuntime,
       params: ObjectGenerationParams
-    ): Promise<Record<string, unknown>> => {
-      return handleObjectSmall(runtime, params);
+    ): Promise<Record<string, JsonValue>> => {
+      const result = await handleObjectSmall(runtime, params);
+      return result as unknown as Record<string, JsonValue>;
     },
 
     [ModelType.OBJECT_LARGE]: async (
       runtime: IAgentRuntime,
       params: ObjectGenerationParams
-    ): Promise<Record<string, unknown>> => {
-      return handleObjectLarge(runtime, params);
+    ): Promise<Record<string, JsonValue>> => {
+      const result = await handleObjectLarge(runtime, params);
+      return result as unknown as Record<string, JsonValue>;
     },
   },
 
-  tests: pluginTests,
+  tests: pluginTests as TestSuite[],
 };
 
 export default anthropicPlugin;

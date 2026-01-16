@@ -1,9 +1,11 @@
 //! Relationship extraction evaluator implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_evaluator_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{EvaluatorResult, Memory, State};
 
@@ -11,6 +13,9 @@ use super::Evaluator;
 
 /// Evaluator that extracts relationship information from conversations.
 pub struct RelationshipExtractionEvaluator;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::EvaluatorDoc> =
+    Lazy::new(|| require_evaluator_spec("RELATIONSHIP_EXTRACTION"));
 
 impl RelationshipExtractionEvaluator {
     /// Extract platform identities from text.
@@ -82,11 +87,11 @@ impl RelationshipExtractionEvaluator {
 #[async_trait]
 impl Evaluator for RelationshipExtractionEvaluator {
     fn name(&self) -> &'static str {
-        "RELATIONSHIP_EXTRACTION"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Passively extracts and updates relationship information from conversations"
+        &SPEC.description
     }
 
     async fn validate(&self, _runtime: &dyn IAgentRuntime, message: &Memory) -> bool {

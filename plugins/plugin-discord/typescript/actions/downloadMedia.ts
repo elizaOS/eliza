@@ -17,6 +17,7 @@ import {
   ServiceType,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { mediaUrlTemplate } from "../generated/prompts/typescript/prompts.js";
 
 /**
@@ -52,17 +53,12 @@ const getMediaUrl = async (
   return null;
 };
 
+const spec = requireActionSpec("DOWNLOAD_MEDIA");
+
 export const downloadMedia: Action = {
-  name: "DOWNLOAD_MEDIA",
-  similes: [
-    "DOWNLOAD_VIDEO",
-    "DOWNLOAD_AUDIO",
-    "GET_MEDIA",
-    "DOWNLOAD_PODCAST",
-    "DOWNLOAD_YOUTUBE",
-  ],
-  description:
-    "Downloads a video or audio file from a URL and attaches it to the response message.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -190,53 +186,7 @@ export const downloadMedia: Action = {
 
     return { success: true, ...response };
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Downloading the YouTube video now, one sec",
-          actions: ["DOWNLOAD_MEDIA"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Can you grab this video for me? https://vimeo.com/123456789",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Sure thing, I'll download that Vimeo video for you",
-          actions: ["DOWNLOAD_MEDIA"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I need this video downloaded: https://www.youtube.com/watch?v=abcdefg",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "No problem, I'm on it. I'll have that YouTube video downloaded in a jiffy",
-          actions: ["DOWNLOAD_MEDIA"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default downloadMedia;

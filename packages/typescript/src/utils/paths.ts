@@ -108,7 +108,7 @@ class ElizaPaths {
    * Get the database directory (backward compatible with PGLITE_DATA_DIR)
    */
   getDatabaseDir(): string {
-    return this.getPathWithFallback("databaseDir", "PGLITE_DATA_DIR");
+    return this.getPath("databaseDir", "PGLITE_DATA_DIR");
   }
 
   /**
@@ -163,30 +163,17 @@ class ElizaPaths {
   /**
    * Get a path by config key, using cache
    */
-  private getPath(key: keyof typeof PATH_CONFIGS): string {
-    const cached = this.cache.get(key);
-    if (cached) return cached;
-
-    const config = PATH_CONFIGS[key];
-    const envValue = getEnvVar(config.envKey);
-    const dir = envValue || pathJoin(this.getDataDir(), ...config.subPath);
-
-    this.cache.set(key, dir);
-    return dir;
-  }
-
-  /**
-   * Get a path with an additional fallback environment variable
-   */
-  private getPathWithFallback(
+  private getPath(
     key: keyof typeof PATH_CONFIGS,
-    fallbackEnvKey: string,
+    fallbackEnvKey?: string,
   ): string {
     const cached = this.cache.get(key);
     if (cached) return cached;
 
     const config = PATH_CONFIGS[key];
-    const envValue = getEnvVar(config.envKey) || getEnvVar(fallbackEnvKey);
+    const envValue =
+      getEnvVar(config.envKey) ||
+      (fallbackEnvKey ? getEnvVar(fallbackEnvKey) : undefined);
     const dir = envValue || pathJoin(this.getDataDir(), ...config.subPath);
 
     this.cache.set(key, dir);

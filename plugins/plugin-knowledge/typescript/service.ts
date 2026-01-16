@@ -7,6 +7,7 @@ import {
   type KnowledgeItem,
   logger,
   type Memory,
+  type MemoryMetadata,
   MemoryType,
   type Metadata,
   ModelType,
@@ -14,6 +15,7 @@ import {
   Service,
   splitChunks,
   type UUID,
+  proto,
 } from "@elizaos/core";
 import { validateModelConfig } from "./config";
 import { loadDocsFromPath } from "./docs-loader";
@@ -100,9 +102,17 @@ export class KnowledgeService extends Service {
     }
 
     if (service.runtime.character?.knowledge && service.runtime.character.knowledge.length > 0) {
-      const stringKnowledge = service.runtime.character.knowledge.filter(
-        (item): item is string => typeof item === "string"
-      );
+      const stringKnowledge = service.runtime.character.knowledge
+        .map((item) => {
+          if (typeof item === "string") {
+            return item;
+          }
+          if (item?.item?.case === "path" && typeof item.item.value === "string") {
+            return item.item.value;
+          }
+          return null;
+        })
+        .filter((item): item is string => item !== null);
       await service.processCharacterKnowledge(stringKnowledge).catch((err) => {
         logger.error({ error: err }, "Error processing character knowledge");
       });
@@ -345,7 +355,7 @@ export class KnowledgeService extends Service {
         similarity: fragment.similarity,
         metadata: fragment.metadata,
         worldId: fragment.worldId,
-      }));
+      })) as unknown as KnowledgeItem[];
   }
 
   async enrichConversationMemoryWithRAG(
@@ -516,10 +526,12 @@ export class KnowledgeService extends Service {
         await this._internalAddKnowledge(
           {
             id: knowledgeId,
-            content: {
-              text: item,
-            },
-            metadata,
+            content: ([
+              {
+                text: item,
+              },
+            ] as unknown) as proto.Content,
+            metadata: (metadata as unknown) as proto.MemoryMetadata,
           },
           undefined,
           {
@@ -557,11 +569,10 @@ export class KnowledgeService extends Service {
       entityId: scope?.entityId ?? this.runtime.agentId,
     };
 
-    const documentMetadata: CustomMetadata = {
+    const documentMetadata = {
       ...(item.metadata ?? {}),
       type: MemoryType.CUSTOM,
       documentId: item.id,
-      timestamp: item.metadata?.timestamp ?? Date.now(),
     };
 
     const documentMemory: Memory = {
@@ -570,8 +581,8 @@ export class KnowledgeService extends Service {
       roomId: finalScope.roomId,
       worldId: finalScope.worldId,
       entityId: finalScope.entityId,
-      content: item.content,
-      metadata: documentMetadata,
+      content: item.content as unknown as Content,
+      metadata: documentMetadata as unknown as MemoryMetadata,
       createdAt: Date.now(),
     };
 

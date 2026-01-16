@@ -92,13 +92,13 @@ pub fn basic_providers() -> Vec<Box<dyn Provider>> {
         Box::new(ProvidersListProvider),
         Box::new(AttachmentsProvider),
         Box::new(WorldProvider),
+        Box::new(ChoiceProvider),
     ]
 }
 
 /// Get extended providers (opt-in).
 pub fn extended_providers() -> Vec<Box<dyn Provider>> {
     vec![
-        Box::new(ChoiceProvider),
         Box::new(ContactsProvider),
         Box::new(FactsProvider),
         Box::new(FollowUpsProvider),

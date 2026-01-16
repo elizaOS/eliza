@@ -18,6 +18,7 @@ import {
   checkSimilarityTemplate,
   extractGoalTemplate,
 } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { createGoalDataService } from "../services/goalDataService";
 
 interface GoalInput {
@@ -127,10 +128,12 @@ async function checkForSimilarGoal(
   }
 }
 
+const spec = requireActionSpec("CREATE_GOAL");
+
 export const createGoalAction: Action = {
-  name: "CREATE_GOAL",
-  similes: ["ADD_GOAL", "NEW_GOAL", "SET_GOAL", "TRACK_GOAL"],
-  description: "Creates a new long-term achievable goal for the agent or a user.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
     return true;
@@ -245,53 +248,7 @@ export const createGoalAction: Action = {
     }
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I want to set a goal to learn French fluently",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✅ New goal created: "Learn French fluently"',
-          actions: ["CREATE_GOAL_SUCCESS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Add a goal for me to run a marathon",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✅ New goal created: "Run a marathon"',
-          actions: ["CREATE_GOAL_SUCCESS"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I have a goal to get better at cooking",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: '✅ New goal created: "Get better at cooking"\n\n⚠️ You now have 5 active goals. Consider focusing on completing some of these before adding more.',
-          actions: ["CREATE_GOAL_SUCCESS"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default createGoalAction;

@@ -5,10 +5,7 @@
  * Optional: POSTGRES_URL (defaults to PGLite)
  */
 
-import {
-  AgentRuntime,
-  type Character,
-} from "@elizaos/core";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
 import telegramPlugin from "@elizaos/plugin-telegram";
@@ -22,7 +19,7 @@ async function main() {
     process.exit(1);
   }
 
-  const character: Character = {
+  const character = createCharacter({
     name: "TelegramEliza",
     bio: "A helpful AI assistant on Telegram.",
     system: `You are TelegramEliza, a helpful AI assistant on Telegram.
@@ -39,7 +36,7 @@ Keep responses short - suitable for mobile chat.`,
       TELEGRAM_BOT_TOKEN: telegramBotToken,
       OPENAI_API_KEY: openaiApiKey,
     },
-  };
+  });
 
   console.log("Starting TelegramEliza...");
 

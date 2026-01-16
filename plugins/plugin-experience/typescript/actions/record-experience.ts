@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionExample,
   type ActionResult,
   createUniqueUuid,
   type HandlerCallback,
@@ -9,28 +10,15 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("RECORD_EXPERIENCE");
 
 export const recordExperienceAction: Action = {
-  name: "RECORD_EXPERIENCE",
-  description: "Manually record a learning experience",
-
-  examples: [
-    [
-      {
-        name: "User",
-        content: {
-          text: "Remember that installing dependencies is required for Python scripts",
-        },
-      },
-      {
-        name: "Agent",
-        content: {
-          text: "I'll record that experience. Learning: Need to install dependencies before running Python scripts.",
-          action: "RECORD_EXPERIENCE",
-        },
-      },
-    ],
-  ],
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
+  examples: (spec.examples ?? []) as ActionExample[][],
 
   async validate(_runtime: IAgentRuntime, message: Memory): Promise<boolean> {
     const text = message.content.text?.toLowerCase();

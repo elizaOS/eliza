@@ -6,47 +6,35 @@ use uuid::Uuid;
 
 use crate::error::{PluginError, PluginResult};
 use crate::runtime::{IAgentRuntime, ModelParams};
-use crate::types::{ActionResult, Memory, ModelType, Role, State};
+use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
 use super::Action;
-
-const UPDATE_ROLE_TEMPLATE: &str = r#"# Task: Update entity role in the world.
-
-{{providers}}
-
-# Current Role Assignments:
-{{roles}}
-
-# Instructions:
-Based on the request, determine the role assignment to make.
-Valid roles are: OWNER, ADMIN, MEMBER, GUEST, NONE
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the role change</thought>
-    <entity_id>The entity ID to update</entity_id>
-    <new_role>The new role to assign (OWNER, ADMIN, MEMBER, GUEST, or NONE)</new_role>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."#;
+use once_cell::sync::Lazy;
+use crate::generated::spec_helpers::require_action_spec;
+use crate::prompts::UPDATE_ROLE_TEMPLATE;
 
 /// Action for updating entity roles.
 pub struct UpdateRoleAction;
 
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("UPDATE_ROLE"));
+
 #[async_trait]
 impl Action for UpdateRoleAction {
     fn name(&self) -> &'static str {
-        "UPDATE_ROLE"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["ASSIGN_ROLE", "CHANGE_ROLE", "SET_ROLE", "MODIFY_PERMISSIONS", "GRANT_ROLE"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Update the role of an entity in a world. \
-         Use this to manage permissions and access levels."
+        &SPEC.description
     }
 
     async fn validate(&self, runtime: &dyn IAgentRuntime, message: &Memory) -> bool {
@@ -68,13 +56,10 @@ impl Action for UpdateRoleAction {
             return false;
         };
 
-        if let Some(roles) = world.metadata.get("roles") {
-            if let Some(roles_obj) = roles.as_object() {
-                let agent_id = runtime.agent_id().to_string();
-                if let Some(role) = roles_obj.get(&agent_id) {
-                    let role_str = role.as_str().unwrap_or("NONE");
-                    return role_str == "OWNER" || role_str == "ADMIN";
-                }
+        if let Some(metadata) = world.metadata.as_ref() {
+            let agent_id = runtime.agent_id().to_string();
+            if let Some(role) = metadata.roles.get(&agent_id) {
+                return role == "OWNER" || role == "ADMIN";
             }
         }
 
@@ -156,34 +141,24 @@ impl Action for UpdateRoleAction {
         })?;
 
         // Validate role
-        let new_role: Role = match new_role_str.as_str() {
-            "OWNER" => Role::Owner,
-            "ADMIN" => Role::Admin,
-            "MEMBER" => Role::Member,
-            "GUEST" => Role::Guest,
-            "NONE" => Role::None,
+        match new_role_str.as_str() {
+            "OWNER" | "ADMIN" | "MEMBER" | "GUEST" | "NONE" => {}
             _ => return Err(PluginError::InvalidInput(format!("Invalid role: {}", new_role_str))),
-        };
+        }
 
         // Get old role
         let old_role = world
             .metadata
-            .get("roles")
-            .and_then(|r| r.as_object())
-            .and_then(|o| o.get(&entity_id_str))
-            .and_then(|r| r.as_str())
-            .unwrap_or("NONE")
-            .to_string();
+            .as_ref()
+            .and_then(|m| m.roles.get(&entity_id_str).cloned())
+            .unwrap_or_else(|| "NONE".to_string());
 
         // Update role in world
         let mut updated_world = world.clone();
-        let roles = updated_world
+        let metadata = updated_world
             .metadata
-            .entry("roles".to_string())
-            .or_insert_with(|| serde_json::json!({}));
-        if let Some(roles_obj) = roles.as_object_mut() {
-            roles_obj.insert(entity_id_str.clone(), serde_json::json!(new_role_str));
-        }
+            .get_or_insert_with(Default::default);
+        metadata.roles.insert(entity_id_str.clone(), new_role_str.clone());
         runtime.update_world(&updated_world).await?;
 
         Ok(ActionResult::success(format!(

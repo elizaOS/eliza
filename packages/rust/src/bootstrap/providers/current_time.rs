@@ -1,13 +1,18 @@
 //! CURRENT_TIME provider implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use chrono::Utc;
 
 use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
 
 use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("CURRENT_TIME"));
 
 /// Provider for current time information.
 pub struct CurrentTimeProvider;
@@ -15,15 +20,15 @@ pub struct CurrentTimeProvider;
 #[async_trait]
 impl Provider for CurrentTimeProvider {
     fn name(&self) -> &'static str {
-        "CURRENT_TIME"
+        &SPEC.name
     }
 
     fn description(&self) -> &'static str {
-        "Provides current time and date information in various formats"
+        &SPEC.description
     }
 
     fn is_dynamic(&self) -> bool {
-        true
+        SPEC.dynamic.unwrap_or(true)
     }
 
     async fn get(

@@ -8,6 +8,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { CoderService } from "../services/coderService";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 function getInputs(
   options: HandlerOptions | undefined,
@@ -25,10 +26,12 @@ function getInputs(
   return { filepath: inferred, content };
 }
 
+const spec = requireActionSpec("WRITE_FILE");
+
 export const writeFile: Action = {
-  name: "WRITE_FILE",
-  similes: ["CREATE_FILE", "SAVE_FILE", "OUTPUT_FILE"],
-  description: "Create or overwrite a file with given content.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (runtime: IAgentRuntime): Promise<boolean> =>
     runtime.getService<CoderService>("coder") !== null,
   handler: async (
@@ -52,7 +55,7 @@ export const writeFile: Action = {
       return { success: false, text: msg };
     }
 
-    const conv = message.roomId || message.agentId;
+    const conv = message.roomId ?? message.agentId ?? runtime.agentId;
     const result = await svc.writeFile(conv, filepath, content);
     if (!result.ok) {
       if (callback) await callback({ content: { text: result.error } });

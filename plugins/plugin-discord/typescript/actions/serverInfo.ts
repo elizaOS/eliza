@@ -9,6 +9,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { Guild } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
@@ -82,19 +83,12 @@ const formatServerInfo = (guild: Guild, detailed: boolean = false): string => {
   return basicInfo.join("\n");
 };
 
+const spec = requireActionSpec("SERVER_INFO");
+
 export const serverInfo: Action = {
-  name: "SERVER_INFO",
-  similes: [
-    "SERVER_INFO",
-    "GUILD_INFO",
-    "SERVER_STATS",
-    "SERVER_DETAILS",
-    "ABOUT_SERVER",
-    "SERVER_INFORMATION",
-    "CHECK_SERVER",
-  ],
-  description:
-    "Get information about the current Discord server including member count, creation date, and other statistics.",
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
@@ -181,53 +175,7 @@ export const serverInfo: Action = {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "show server info",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll get the server information for you.",
-          actions: ["SERVER_INFO"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "what are the server stats?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Let me fetch the server statistics.",
-          actions: ["SERVER_INFO"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "give me detailed server information",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll provide detailed information about this server.",
-          actions: ["SERVER_INFO"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default serverInfo;

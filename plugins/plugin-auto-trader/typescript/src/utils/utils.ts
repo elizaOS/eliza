@@ -1,4 +1,6 @@
 import { logger, type IAgentRuntime } from '@elizaos/core';
+// JsonValue is not directly exported from @elizaos/core, define locally
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 import { PublicKey } from '@solana/web3.js';
 
 /**
@@ -21,15 +23,15 @@ export async function fetchWithRetry(
   options: RequestInit = {},
   chain: 'solana' | 'base' = 'solana',
   maxRetries = 3
-): Promise<any> {
+): Promise<JsonValue> {
   let lastError: Error = new Error('No attempts made');
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      logger.log(`API request attempt ${i + 1} for ${chain}:`, {
-        url,
-        attempt: i + 1,
-      });
+      logger.log(
+        { url, attempt: i + 1 },
+        `API request attempt ${i + 1} for ${chain}`,
+      );
 
       const headers = {
         Accept: 'application/json',
@@ -48,14 +50,17 @@ export async function fetchWithRetry(
         throw new Error(`HTTP error! status: ${response.status}, message: ${responseText}`);
       }
 
-      return JSON.parse(responseText);
+      return JSON.parse(responseText) as JsonValue;
     } catch (error) {
-      logger.error(`Request attempt ${i + 1} failed:`, {
-        error: error instanceof Error ? error.message : String(error),
-        url,
-        chain,
-        attempt: i + 1,
-      });
+      logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          url,
+          chain,
+          attempt: i + 1,
+        },
+        `Request attempt ${i + 1} failed`,
+      );
 
       lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -126,7 +131,8 @@ export async function manageAnalyzedTokens(
           history = parsed;
         }
       } catch (e) {
-        logger.warn('Failed to parse token history:', e);
+        const message = e instanceof Error ? e.message : String(e);
+        logger.warn({ error: message }, 'Failed to parse token history');
       }
     }
 
@@ -137,11 +143,14 @@ export async function manageAnalyzedTokens(
 
     if (newToken) {
       history.push(newToken);
-      logger.log('Added new token to analysis history:', {
-        address: newToken.address,
-        symbol: newToken.symbol,
-        historySize: history.length,
-      });
+      logger.log(
+        {
+          address: newToken.address,
+          symbol: newToken.symbol,
+          historySize: history.length,
+        },
+        'Added new token to analysis history',
+      );
     }
 
     // Note: State updates should be handled by the caller
@@ -149,10 +158,13 @@ export async function manageAnalyzedTokens(
 
     return history;
   } catch (error) {
-    logger.error('Failed to manage token history:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      errorStack: error instanceof Error ? error.stack : undefined,
-    });
+    logger.error(
+      {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined,
+      },
+      'Failed to manage token history',
+    );
     return [];
   }
 }

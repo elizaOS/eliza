@@ -2,7 +2,7 @@
 import type { Action, IAgentRuntime, Provider, TestSuite } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 
-export class VisionRuntimeTestSuite implements TestSuite {
+export class VisionRuntimeTestSuite  {
   name = "vision-runtime-tests";
   description = "Real runtime tests for vision plugin functionality";
 

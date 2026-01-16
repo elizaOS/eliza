@@ -1,14 +1,20 @@
 //! UNFOLLOW_ROOM action implementation.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::error::{PluginError, PluginResult};
+use crate::generated::spec_helpers::require_action_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::{ActionResult, Content, Memory, MemoryType, State};
 
 use super::Action;
+
+// Get text content from centralized specs
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ActionDoc> =
+    Lazy::new(|| require_action_spec("UNFOLLOW_ROOM"));
 
 /// Action for unfollowing a room.
 pub struct UnfollowRoomAction;
@@ -16,16 +22,18 @@ pub struct UnfollowRoomAction;
 #[async_trait]
 impl Action for UnfollowRoomAction {
     fn name(&self) -> &'static str {
-        "UNFOLLOW_ROOM"
+        &SPEC.name
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["LEAVE_ROOM", "UNSUBSCRIBE_ROOM", "STOP_WATCHING_ROOM", "EXIT_ROOM"]
+        static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
+            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+        });
+        &SIMILES
     }
 
     fn description(&self) -> &'static str {
-        "Stop following a room and cease receiving updates. \
-         Use this when you no longer want to monitor a room's activity."
+        &SPEC.description
     }
 
     async fn validate(&self, runtime: &dyn IAgentRuntime, message: &Memory) -> bool {

@@ -10,14 +10,17 @@ import type {
 } from "@elizaos/core";
 import type { RssService } from "../service";
 import { createMessageReply, extractUrls } from "../utils";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
+
+const spec = requireActionSpec("UNSUBSCRIBE_FEED");
 
 export const unsubscribeFeedAction: Action = {
-  name: "UNSUBSCRIBE_RSS_FEED",
-  similes: ["REMOVE_RSS_FEED", "UNFOLLOW_RSS_FEED", "DELETE_RSS_FEED"],
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
   validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     return true;
   },
-  description: "Unsubscribe from an RSS/Atom feed",
+  description: spec.description,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -76,38 +79,7 @@ export const unsubscribeFeedAction: Action = {
     return { success };
   },
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Unsubscribe from https://example.com/feed.rss",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I'll unsubscribe from that RSS feed for you",
-          actions: ["UNSUBSCRIBE_RSS_FEED"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Remove this feed: https://news.ycombinator.com/rss",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Removing the RSS feed",
-          actions: ["UNSUBSCRIBE_RSS_FEED"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };
 
 export default unsubscribeFeedAction;

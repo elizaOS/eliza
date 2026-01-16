@@ -5,7 +5,7 @@ import { setVisionModeAction } from "../../action";
 import type { VisionService } from "../../service";
 import { VisionMode } from "../../types";
 
-export class ScreenVisionE2ETestSuite implements TestSuite {
+export class ScreenVisionE2ETestSuite  {
   name = "plugin-vision-screen-e2e";
   description = "E2E tests for screen vision functionality including Florence-2 and OCR";
 

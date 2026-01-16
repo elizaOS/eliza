@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "experienceProvider",
+      "description": "Provides relevant past experiences and learnings for the current context",
+      "dynamic": true
+    }
+  ]
+}

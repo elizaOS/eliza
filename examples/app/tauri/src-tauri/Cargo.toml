@@ -2,7 +2,7 @@
 name = "elizaos-tauri-chat"
 version = "2.0.0"
 description = "ElizaOS simple chat (Tauri + Rust backend)"
-authors = ["elizaOS Team"]
+authors = ["elizaOS Contributors"]
 license = "MIT"
 edition = "2021"
 

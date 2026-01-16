@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
+import { type IAgentRuntime, Service, type Task, type TaskMetadata, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { getConfiguredAgentOrchestratorOptions } from "../config.js";
 import type {
@@ -140,7 +140,7 @@ export class AgentOrchestratorService extends Service {
       ...(roomId ? { roomId } : {}),
     };
 
-    const taskId = await this.runtime.createTask(taskInput);
+    const taskId = await this.runtime.createTask(taskInput as unknown as Task);
 
     const task = await this.getTask(taskId);
     if (!task) throw new Error("Failed to create task");
@@ -162,12 +162,12 @@ export class AgentOrchestratorService extends Service {
   async getTask(taskId: string): Promise<OrchestratedTask | null> {
     const t = await this.runtime.getTask(taskId as UUID);
     if (!t) return null;
-    return t as OrchestratedTask;
+    return t as unknown as OrchestratedTask;
   }
 
   async getTasks(): Promise<OrchestratedTask[]> {
     const tasks = await this.runtime.getTasks({ tags: ["orchestrator"] });
-    return tasks as OrchestratedTask[];
+    return tasks as unknown as OrchestratedTask[];
   }
 
   async getRecentTasks(limit = 20): Promise<OrchestratedTask[]> {
@@ -213,7 +213,7 @@ export class AgentOrchestratorService extends Service {
       metadata.completedAt = now();
     }
 
-    await this.runtime.updateTask(taskId as UUID, { metadata });
+    await this.runtime.updateTask(taskId as UUID, { metadata: metadata as unknown as TaskMetadata });
     this.emit(`task:${status}` as TaskEventType, taskId, { status });
   }
 
@@ -222,8 +222,17 @@ export class AgentOrchestratorService extends Service {
     if (!task) return;
     const metadata = { ...task.metadata };
     metadata.progress = clampProgress(progress);
-    await this.runtime.updateTask(taskId as UUID, { metadata });
+    await this.runtime.updateTask(taskId as UUID, { metadata: metadata as unknown as TaskMetadata });
     this.emit("task:progress", taskId, { progress: metadata.progress });
+  }
+
+  async renameTask(taskId: string, name: string): Promise<void> {
+    const task = await this.getTask(taskId);
+    if (!task) return;
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === task.name) return;
+    await this.runtime.updateTask(taskId as UUID, { name: trimmed });
+    this.emit("task:message", taskId, { message: `Renamed task to: ${trimmed}` });
   }
 
   async appendOutput(taskId: string, output: string): Promise<void> {
@@ -232,7 +241,7 @@ export class AgentOrchestratorService extends Service {
     const metadata = { ...task.metadata };
     const lines = output.split("\n").filter((l) => l.trim().length > 0);
     metadata.output = [...metadata.output, ...lines].slice(-500);
-    await this.runtime.updateTask(taskId as UUID, { metadata });
+    await this.runtime.updateTask(taskId as UUID, { metadata: metadata as unknown as TaskMetadata });
     this.emit("task:output", taskId, { output: lines });
   }
 
@@ -242,7 +251,7 @@ export class AgentOrchestratorService extends Service {
     const step: TaskStep = { id: uuidv4(), description, status: "pending" };
     const metadata = { ...task.metadata };
     metadata.steps = [...metadata.steps, step];
-    await this.runtime.updateTask(taskId as UUID, { metadata });
+    await this.runtime.updateTask(taskId as UUID, { metadata: metadata as unknown as TaskMetadata });
     return step;
   }
 
@@ -266,7 +275,7 @@ export class AgentOrchestratorService extends Service {
       metadata.progress = clampProgress((completed / total) * 100);
     }
 
-    await this.runtime.updateTask(taskId as UUID, { metadata });
+    await this.runtime.updateTask(taskId as UUID, { metadata: metadata as unknown as TaskMetadata });
     this.emit("task:progress", taskId, { progress: metadata.progress });
   }
 
@@ -282,7 +291,7 @@ export class AgentOrchestratorService extends Service {
       metadata.completedAt = now();
     }
     if (!result.success && result.error) metadata.error = result.error;
-    await this.runtime.updateTask(taskId as UUID, { metadata });
+    await this.runtime.updateTask(taskId as UUID, { metadata: metadata as unknown as TaskMetadata });
     this.emit(result.success ? "task:completed" : "task:failed", taskId, {
       success: result.success,
       summary: result.summary,
@@ -299,7 +308,7 @@ export class AgentOrchestratorService extends Service {
       metadata.status = "failed";
       metadata.completedAt = now();
     }
-    await this.runtime.updateTask(taskId as UUID, { metadata });
+    await this.runtime.updateTask(taskId as UUID, { metadata: metadata as unknown as TaskMetadata });
     this.emit(metadata.status === "cancelled" ? "task:cancelled" : "task:failed", taskId, {
       error,
     });
@@ -311,7 +320,7 @@ export class AgentOrchestratorService extends Service {
     const metadata = { ...task.metadata };
     metadata.userStatus = userStatus;
     metadata.userStatusUpdatedAt = now();
-    await this.runtime.updateTask(taskId as UUID, { metadata });
+    await this.runtime.updateTask(taskId as UUID, { metadata: metadata as unknown as TaskMetadata });
     this.emit("task:progress", taskId, { userStatus });
   }
 
@@ -325,7 +334,7 @@ export class AgentOrchestratorService extends Service {
     metadata.subAgentType = nextProviderId;
     metadata.providerLabel = provider?.label ?? metadata.providerLabel ?? nextProviderId;
 
-    await this.runtime.updateTask(taskId as UUID, { metadata });
+    await this.runtime.updateTask(taskId as UUID, { metadata: metadata as unknown as TaskMetadata });
     this.emit("task:message", taskId, { providerId: nextProviderId });
     await this.appendOutput(taskId, `Provider: ${metadata.providerLabel} (${metadata.providerId})`);
   }
@@ -354,7 +363,7 @@ export class AgentOrchestratorService extends Service {
     metadata.status = "cancelled";
     metadata.completedAt = now();
     metadata.error = metadata.error || "Cancelled by user";
-    await this.runtime.updateTask(taskId as UUID, { metadata });
+    await this.runtime.updateTask(taskId as UUID, { metadata: metadata as unknown as TaskMetadata });
     this.emit("task:cancelled", taskId, { status: "cancelled" });
   }
 

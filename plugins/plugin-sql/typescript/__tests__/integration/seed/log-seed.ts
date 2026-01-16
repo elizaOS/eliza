@@ -12,7 +12,8 @@ export const logTestAgentSettings = {
   name: "Log Test Agent",
   username: "log_test_agent",
   system: "Test agent system prompt",
-  bio: "An agent for testing log operations",
+  bio: ["An agent for testing log operations"],
+  templates: {},
   enabled: true,
   status: AgentStatus.ACTIVE,
   createdAt: Date.now(),
@@ -23,6 +24,7 @@ export const logTestAgentSettings = {
   adjectives: [],
   knowledge: [],
   plugins: [],
+  secrets: {},
   settings: {
     logTestSetting: "log test value",
   },

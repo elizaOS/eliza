@@ -4,7 +4,6 @@ import { PrivateKeySchema, loadEnvConfig, type CliOptions } from "./lib";
 
 const baseOpts: CliOptions = {
   execute: false,
-  network: false,
   intervalMs: 1,
   iterations: 1,
   orderSize: 1,

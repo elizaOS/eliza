@@ -1,0 +1,82 @@
+{
+  "compilerOptions": {
+    // Language and Environment
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Type Checking
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    // Emit
+    "outDir": "./dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "removeComments": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "noEmit": true,
+    "incremental": true,
+    // Interop Constraints
+    "isolatedModules": true,
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    // Bun-specific
+    "moduleDetection": "force",
+    // Path aliases - pointing to new location
+    "baseUrl": ".",
+    "paths": {
+      "@babylon/db": ["./packages/db/src/index.ts"],
+      "@babylon/db/*": ["./packages/db/src/*"],
+      "@babylon/agents": ["./packages/agents/src/index.ts"],
+      "@babylon/agents/*": ["./packages/agents/src/*"],
+      "@babylon/api": ["./packages/api/src/index.ts"],
+      "@babylon/api/*": ["./packages/api/src/*"],
+      "@babylon/shared": ["./packages/shared/src/index.ts"],
+      "@babylon/shared/*": ["./packages/shared/src/*"],
+      "@babylon/contracts": ["./packages/contracts/src/index.ts"],
+      "@babylon/contracts/*": ["./packages/contracts/src/*"],
+      "@/shared/constants": ["./apps/web/src/shared/constants.ts"],
+      "@/shared/types": ["./apps/web/src/shared/types.ts"],
+      "@/shared/utils": ["./apps/web/src/shared/utils.ts"],
+      "@/components/*": ["./apps/web/src/components/*"],
+      "@/lib/*": ["./apps/web/src/lib/*"],
+      "@/hooks/*": ["./apps/web/src/hooks/*"],
+      "@/stores/*": ["./apps/web/src/stores/*"],
+      "@/app/*": ["./apps/web/src/app/*"],
+      "@/*": ["./apps/web/src/*"]
+    },
+    "allowJs": true
+  },
+  "include": [
+    "apps/web/src/**/*",
+    "scripts/**/*",
+    "packages/db/src/**/*",
+    "packages/shared/**/*",
+    "apps/web/.next/types/**/*.ts",
+    "apps/web/.next/dev/types/**/*.ts",
+    "apps/web/types/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.disabled",
+    "packages/examples/**/*",
+    "apps/web/src/**/__tests__/**/*"
+  ]
+}

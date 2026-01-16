@@ -25,7 +25,7 @@ export class DatabaseMigrationService {
 
   discoverAndRegisterPluginSchemas(plugins: Plugin[]): void {
     for (const plugin of plugins) {
-      interface PluginWithSchema extends Plugin {
+      type PluginWithSchema = Plugin & {
         schema?: Record<string, unknown>;
       }
       const pluginWithSchema = plugin as PluginWithSchema;

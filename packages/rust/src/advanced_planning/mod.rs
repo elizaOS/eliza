@@ -8,7 +8,9 @@
 
 use crate::runtime::{AgentRuntime, Service};
 use crate::types::components::ActionResult;
-use crate::types::components::{ActionDefinition, ActionHandler, ProviderDefinition, ProviderHandler, ProviderResult};
+use crate::types::components::{
+    ActionDefinition, ActionHandler, ProviderDefinition, ProviderHandler, ProviderResult,
+};
 use crate::types::memory::Memory;
 use crate::types::model::model_type;
 use crate::types::primitives::UUID;
@@ -18,49 +20,16 @@ use crate::xml::parse_key_value_xml;
 use anyhow::Result;
 use regex::Regex;
 use serde_json::Value;
+
+// ActionParameters is a type alias for HashMap<String, Value>.
 use std::any::Any;
-use std::collections::{HashMap, HashSet};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::Mutex;
 use std::sync::{Arc, Weak};
 
-/// Prompt template for classifying messages (ported from TypeScript advanced planning).
-const MESSAGE_CLASSIFIER_TEMPLATE: &str = r#"Analyze this user request and classify it for planning purposes:
-
-"{{text}}"
-
-Classify the request across these dimensions:
-
-1. COMPLEXITY LEVEL:
-- simple: Direct actions that don't require planning
-- medium: Multi-step tasks requiring coordination
-- complex: Strategic initiatives with multiple stakeholders
-- enterprise: Large-scale transformations with full complexity
-
-2. PLANNING TYPE:
-- direct_action: Single action, no planning needed
-- sequential_planning: Multiple steps in sequence
-- strategic_planning: Complex coordination with stakeholders
-
-3. REQUIRED CAPABILITIES:
-- List specific capabilities needed (analysis, communication, project_management, etc.)
-
-4. STAKEHOLDERS:
-- List types of people/groups involved
-
-5. CONSTRAINTS:
-- List limitations or requirements mentioned
-
-6. DEPENDENCIES:
-- List dependencies between tasks or external factors
-
-Respond in this exact format:
-COMPLEXITY: [simple|medium|complex|enterprise]
-PLANNING: [direct_action|sequential_planning|strategic_planning]
-CAPABILITIES: [comma-separated list]
-STAKEHOLDERS: [comma-separated list]
-CONSTRAINTS: [comma-separated list]
-DEPENDENCIES: [comma-separated list]
-CONFIDENCE: [0.0-1.0]"#;
+// Import template from centralized prompts
+use crate::prompts::MESSAGE_CLASSIFIER_TEMPLATE;
 
 /// Create the advanced planning plugin (actions/providers) bound to a runtime.
 pub fn create_advanced_planning_plugin(runtime: Weak<AgentRuntime>) -> Plugin {
@@ -634,6 +603,52 @@ impl PlanningService {
         Ok(plan)
     }
 
+    fn dag_execution_order(steps: &[ActionStep]) -> Result<Vec<usize>> {
+        let mut deps_remaining: HashMap<UUID, usize> = HashMap::new();
+        let mut dependents: HashMap<UUID, Vec<UUID>> = HashMap::new();
+        let mut index_by_id: HashMap<UUID, usize> = HashMap::new();
+        for (idx, step) in steps.iter().enumerate() {
+            deps_remaining.insert(step.id.clone(), step.dependencies.len());
+            index_by_id.insert(step.id.clone(), idx);
+            for dep in &step.dependencies {
+                dependents.entry(dep.clone()).or_default().push(step.id.clone());
+            }
+        }
+
+        let mut ready: BinaryHeap<Reverse<usize>> = BinaryHeap::new();
+        for (idx, step) in steps.iter().enumerate() {
+            if step.dependencies.is_empty() {
+                ready.push(Reverse(idx));
+            }
+        }
+
+        let mut order: Vec<usize> = Vec::with_capacity(steps.len());
+        while let Some(Reverse(idx)) = ready.pop() {
+            order.push(idx);
+            let step_id = steps[idx].id.clone();
+            if let Some(next_steps) = dependents.get(&step_id) {
+                for next_id in next_steps {
+                    if let Some(remaining) = deps_remaining.get_mut(next_id) {
+                        if *remaining > 0 {
+                            *remaining -= 1;
+                            if *remaining == 0 {
+                                if let Some(next_idx) = index_by_id.get(next_id) {
+                                    ready.push(Reverse(*next_idx));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if order.len() != steps.len() {
+            anyhow::bail!("No steps ready to execute - possible circular dependency");
+        }
+
+        Ok(order)
+    }
+
     /// Validate a plan against runtime actions and dependency integrity.
     pub async fn validate_plan(&self, runtime: &AgentRuntime, plan: &ActionPlan) -> (bool, Vec<String>) {
         let mut issues: Vec<String> = Vec::new();
@@ -701,24 +716,12 @@ impl PlanningService {
                 }
             }
             ExecutionModel::Dag => {
-                let mut completed: HashSet<UUID> = HashSet::new();
-                let mut pending: HashSet<UUID> = plan.steps.iter().map(|s| s.id.clone()).collect();
-                while !pending.is_empty() {
+                let order = Self::dag_execution_order(&plan.steps)?;
+                for idx in order {
                     self.check_abort(&plan.id)?;
-                    let ready: Vec<&ActionStep> = plan
-                        .steps
-                        .iter()
-                        .filter(|s| pending.contains(&s.id) && s.dependencies.iter().all(|d| completed.contains(d)))
-                        .collect();
-                    if ready.is_empty() {
-                        anyhow::bail!("No steps ready to execute - possible circular dependency");
-                    }
-                    for step in ready {
-                        let step_results = self.execute_step(runtime, step, message, state).await?;
-                        results.extend(step_results);
-                        pending.remove(&step.id);
-                        completed.insert(step.id.clone());
-                    }
+                    let step = &plan.steps[idx];
+                    let step_results = self.execute_step(runtime, step, message, state).await?;
+                    results.extend(step_results);
                 }
             }
         }
@@ -991,6 +994,62 @@ mod tests {
         assert_eq!(exec.total_steps, 1);
         assert!(exec.completed_steps >= 1);
         Ok(())
+    }
+
+    #[test]
+    fn dag_execution_order_respects_dependencies() -> Result<()> {
+        let step_a = ActionStep {
+            id: UUID::new_v4(),
+            action_name: "A".to_string(),
+            parameters: HashMap::new(),
+            dependencies: Vec::new(),
+            retry_policy: RetryPolicy::default(),
+        };
+        let step_b = ActionStep {
+            id: UUID::new_v4(),
+            action_name: "B".to_string(),
+            parameters: HashMap::new(),
+            dependencies: Vec::new(),
+            retry_policy: RetryPolicy::default(),
+        };
+        let step_c = ActionStep {
+            id: UUID::new_v4(),
+            action_name: "C".to_string(),
+            parameters: HashMap::new(),
+            dependencies: vec![step_b.id.clone()],
+            retry_policy: RetryPolicy::default(),
+        };
+        let steps = vec![step_a, step_b, step_c];
+
+        let order = PlanningService::dag_execution_order(&steps)?;
+        assert_eq!(order, vec![0, 1, 2]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn dag_execution_order_detects_cycles() {
+        let step_a_id = UUID::new_v4();
+        let step_b_id = UUID::new_v4();
+        let steps = vec![
+            ActionStep {
+                id: step_a_id.clone(),
+                action_name: "A".to_string(),
+                parameters: HashMap::new(),
+                dependencies: vec![step_b_id.clone()],
+                retry_policy: RetryPolicy::default(),
+            },
+            ActionStep {
+                id: step_b_id.clone(),
+                action_name: "B".to_string(),
+                parameters: HashMap::new(),
+                dependencies: vec![step_a_id.clone()],
+                retry_policy: RetryPolicy::default(),
+            },
+        ];
+
+        let result = PlanningService::dag_execution_order(&steps);
+        assert!(result.is_err());
     }
 }
 

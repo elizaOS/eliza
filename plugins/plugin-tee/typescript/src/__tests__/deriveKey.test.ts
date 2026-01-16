@@ -1,4 +1,3 @@
-import { TEEMode } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PhalaDeriveKeyProvider } from "../providers/deriveKey";
 
@@ -51,17 +50,17 @@ describe("PhalaDeriveKeyProvider", () => {
 
   describe("constructor", () => {
     it("should initialize with LOCAL mode", () => {
-      const _provider = new PhalaDeriveKeyProvider(TEEMode.LOCAL);
+      const _provider = new PhalaDeriveKeyProvider("LOCAL");
       expect(mockConstructorCalls).toContain("http://localhost:8090");
     });
 
     it("should initialize with DOCKER mode", () => {
-      const _provider = new PhalaDeriveKeyProvider(TEEMode.DOCKER);
+      const _provider = new PhalaDeriveKeyProvider("DOCKER");
       expect(mockConstructorCalls).toContain("http://host.docker.internal:8090");
     });
 
     it("should initialize with PRODUCTION mode", () => {
-      const _provider = new PhalaDeriveKeyProvider(TEEMode.PRODUCTION);
+      const _provider = new PhalaDeriveKeyProvider("PRODUCTION");
       expect(mockConstructorCalls).toContain(undefined);
     });
 
@@ -74,7 +73,7 @@ describe("PhalaDeriveKeyProvider", () => {
     let provider: PhalaDeriveKeyProvider;
 
     beforeEach(() => {
-      provider = new PhalaDeriveKeyProvider(TEEMode.LOCAL);
+      provider = new PhalaDeriveKeyProvider("LOCAL");
     });
 
     it("should derive raw key successfully", async () => {
@@ -103,7 +102,7 @@ describe("PhalaDeriveKeyProvider", () => {
     let provider: PhalaDeriveKeyProvider;
 
     beforeEach(() => {
-      provider = new PhalaDeriveKeyProvider(TEEMode.LOCAL);
+      provider = new PhalaDeriveKeyProvider("LOCAL");
     });
 
     it("should derive Ed25519 keypair successfully", async () => {
@@ -121,7 +120,7 @@ describe("PhalaDeriveKeyProvider", () => {
     let provider: PhalaDeriveKeyProvider;
 
     beforeEach(() => {
-      provider = new PhalaDeriveKeyProvider(TEEMode.LOCAL);
+      provider = new PhalaDeriveKeyProvider("LOCAL");
     });
 
     it("should derive ECDSA keypair successfully", async () => {

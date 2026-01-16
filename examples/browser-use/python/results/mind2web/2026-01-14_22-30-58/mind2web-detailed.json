@@ -1,0 +1,63 @@
+{
+  "results": [
+    {
+      "task_id": "sample_001",
+      "instruction": "Search for 'wireless headphones' on Amazon and filter by price under $50",
+      "website": "amazon.com",
+      "domain": "shopping",
+      "trial_number": 1,
+      "success": true,
+      "element_accuracy": 1.0,
+      "operation_accuracy": 1.0,
+      "step_accuracy": 1.0,
+      "steps_completed": 3,
+      "total_steps": 3,
+      "latency_ms": 0.025033950805664062,
+      "error": null,
+      "agent_trajectory": [
+        {
+          "operation": "CLICK",
+          "element_id": "node_search",
+          "value": ""
+        },
+        {
+          "operation": "TYPE",
+          "element_id": "node_search",
+          "value": "wireless headphones"
+        },
+        {
+          "operation": "CLICK",
+          "element_id": "node_submit",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "task_id": "sample_002",
+      "instruction": "Book a one-way flight from New York to Los Angeles for next Monday",
+      "website": "google.com/flights",
+      "domain": "travel",
+      "trial_number": 1,
+      "success": true,
+      "element_accuracy": 1.0,
+      "operation_accuracy": 1.0,
+      "step_accuracy": 1.0,
+      "steps_completed": 2,
+      "total_steps": 2,
+      "latency_ms": 0.011920928955078125,
+      "error": null,
+      "agent_trajectory": [
+        {
+          "operation": "CLICK",
+          "element_id": "node_from",
+          "value": ""
+        },
+        {
+          "operation": "TYPE",
+          "element_id": "node_from",
+          "value": "New York"
+        }
+      ]
+    }
+  ]
+}

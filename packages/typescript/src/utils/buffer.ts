@@ -80,12 +80,12 @@ export function toHex(buffer: BufferLike): string {
   }
 
   // Browser implementation - buffer is already Uint8Array compatible
-  let hex = "";
+  const hexParts = new Array<string>(buffer.length);
   for (let i = 0; i < buffer.length; i++) {
     const byte = buffer[i].toString(16);
-    hex += byte.length === 1 ? `0${byte}` : byte;
+    hexParts[i] = byte.length === 1 ? `0${byte}` : byte;
   }
-  return hex;
+  return hexParts.join("");
 }
 
 /**
@@ -108,11 +108,11 @@ export function bufferToString(
   }
 
   if (encoding === "base64") {
-    let binaryString = "";
+    const chars = new Array<string>(buffer.length);
     for (let i = 0; i < buffer.length; i++) {
-      binaryString += String.fromCharCode(buffer[i]);
+      chars[i] = String.fromCharCode(buffer[i]);
     }
-    return btoa(binaryString);
+    return btoa(chars.join(""));
   }
 
   // UTF-8 decoding using TextDecoder (standard browser API)
