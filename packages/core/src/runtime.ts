@@ -3042,15 +3042,22 @@ export class AgentRuntime implements IAgentRuntime {
         const finalStreamFields =
           streamFields.length > 0 ? streamFields : schema.some((r) => r.field === 'text') ? ['text'] : [];
 
+        // Generate a messageId for this streaming session
+        // WHY: Consumers use messageId to associate chunks with specific messages
+        const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
         extractor = new ValidationStreamExtractor({
           level: contextLevel,
           schema,
           streamFields: finalStreamFields,
           expectedCodes: perFieldCodes,
           onChunk: (chunk, field) => {
-            options.onStreamChunk!(chunk);
+            // Pass messageId so consumers can associate chunks with messages
+            options.onStreamChunk!(chunk, streamMessageId);
           },
-          onEvent: options.onStreamEvent,
+          onEvent: options.onStreamEvent
+            ? (event) => options.onStreamEvent!(event, streamMessageId)
+            : undefined,
           abortSignal: options.abortSignal,
           hasRichConsumer,
         });

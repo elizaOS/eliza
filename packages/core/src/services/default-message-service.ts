@@ -1204,8 +1204,9 @@ Output ONLY the continuation, starting immediately after the last character abov
           modelSize: 'large',
           preferredEncapsulation: 'xml',
           contextCheckLevel: 0, // Fast mode for continuations - we trust the model
+          // Pass through messageId so consumers can track which message the chunk belongs to
           onStreamChunk: streamingCtx?.onStreamChunk
-            ? (chunk: string) => streamingCtx!.onStreamChunk(chunk)
+            ? (chunk: string, messageId?: string) => streamingCtx!.onStreamChunk(chunk, messageId)
             : undefined,
         },
       });
@@ -2036,8 +2037,9 @@ Output ONLY the continuation, starting immediately after the last character abov
           modelSize: 'large',
           preferredEncapsulation: 'xml',
           contextCheckLevel: 0, // Fast mode for continuations - we trust the model
+          // Pass through messageId so consumers can track which message the chunk belongs to
           onStreamChunk: summaryStreamingContext?.onStreamChunk
-            ? (chunk: string) => summaryStreamingContext!.onStreamChunk(chunk)
+            ? (chunk: string, messageId?: string) => summaryStreamingContext!.onStreamChunk(chunk, messageId)
             : undefined,
         },
       });

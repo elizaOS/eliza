@@ -1072,6 +1072,11 @@ export class ValidationStreamExtractor implements IStreamExtractor {
       // Skip already validated fields
       if (this.validatedFields.has(field)) continue;
 
+      // Skip already invalid fields to prevent duplicate error events
+      // WHY: Once a field is marked invalid, we've already emitted the error.
+      // Re-checking would emit duplicate errors on every push() call.
+      if (this.fieldStates.get(field) === 'invalid') continue;
+
       // Find schema row to check validateField hint
       const schemaField = this.config.schema.find((s) => s.field === field);
 
