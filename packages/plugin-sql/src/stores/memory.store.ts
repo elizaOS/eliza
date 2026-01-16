@@ -137,32 +137,42 @@ export class MemoryStore implements Store {
 
   async getById(id: UUID): Promise<Memory | null> {
     return this.ctx.withRetry(async () => {
-      const result = await this.db
-        .select({
-          memory: memoryTable,
-          embedding: embeddingTable[this.ctx.getEmbeddingDimension()],
-        })
+      // Split query to avoid Drizzle ORM issue with leftJoin on dynamic vector columns
+      const memoryResult = await this.db
+        .select()
         .from(memoryTable)
-        .leftJoin(embeddingTable, eq(memoryTable.id, embeddingTable.memoryId))
         .where(eq(memoryTable.id, id))
         .limit(1);
 
-      if (result.length === 0) return null;
+      if (memoryResult.length === 0) return null;
 
-      const row = result[0];
+      const memory = memoryResult[0];
+
+      // Fetch embedding separately
+      let embedding: number[] | undefined;
+      try {
+        const embeddingCol = this.ctx.getEmbeddingDimension();
+        const embeddingResult = await this.db
+          .select({ embedding: embeddingTable[embeddingCol] })
+          .from(embeddingTable)
+          .where(eq(embeddingTable.memoryId, id))
+          .limit(1);
+
+        embedding = embeddingResult[0]?.embedding ?? undefined;
+      } catch {
+        embedding = undefined;
+      }
+
       return {
-        id: row.memory.id as UUID,
-        createdAt: row.memory.createdAt.getTime(),
-        content:
-          typeof row.memory.content === 'string'
-            ? JSON.parse(row.memory.content)
-            : row.memory.content,
-        entityId: row.memory.entityId as UUID,
-        agentId: row.memory.agentId as UUID,
-        roomId: row.memory.roomId as UUID,
-        unique: row.memory.unique,
-        metadata: row.memory.metadata as MemoryMetadata,
-        embedding: row.embedding ?? undefined,
+        id: memory.id as UUID,
+        createdAt: memory.createdAt.getTime(),
+        content: typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content,
+        entityId: memory.entityId as UUID,
+        agentId: memory.agentId as UUID,
+        roomId: memory.roomId as UUID,
+        unique: memory.unique,
+        metadata: memory.metadata as MemoryMetadata,
+        embedding,
       };
     }, 'MemoryStore.getById');
   }
