@@ -80,9 +80,11 @@ import { MarkableExtractor, createStreamingContext } from '../utils/streaming';
  * @returns Text with {{ escaped to prevent interpretation
  */
 function escapeHandlebars(text: string): string {
-  // Escape {{ to \{{ - Handlebars will output this as literal {{
-  // Also escape {{{ for triple-brace (raw) syntax
-  return text.replace(/\{\{\{/g, '\\{{{').replace(/\{\{/g, '\\{{');
+  // Single-pass replacement to avoid double-escaping triple braces.
+  // WHY: If we do {{{ → \{{{ then {{ → \{{, the {{ inside \{{{ gets matched,
+  // producing \\{{{ instead of \{{{. Using a single regex with alternation
+  // and longest-match-first ordering prevents this.
+  return text.replace(/\{\{\{|\{\{/g, (match) => '\\' + match);
 }
 
 /**
