@@ -5,10 +5,10 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
+use super::types::AutonomyStatus;
 use crate::bootstrap::error::PluginResult;
 use crate::bootstrap::runtime::IAgentRuntime;
 use crate::bootstrap::services::{Service, ServiceType};
-use super::types::AutonomyStatus;
 
 /// Service type constant for autonomy.
 pub const AUTONOMY_SERVICE_TYPE: &str = "AUTONOMY";
@@ -18,7 +18,7 @@ pub const AUTONOMY_SERVICE_TYPE: &str = "AUTONOMY";
 /// This service runs an autonomous loop that triggers agent thinking
 /// in a dedicated room context, separate from user conversations.
 pub struct AutonomyService {
-    is_enabled: bool,  // Whether autonomy is enabled in settings
+    is_enabled: bool, // Whether autonomy is enabled in settings
     is_running: bool,
     is_thinking: bool, // Guard to prevent overlapping think cycles
     is_stopped: bool,  // Flag to indicate service has been stopped
@@ -127,7 +127,11 @@ impl AutonomyService {
     }
 
     /// Create the monologue prompt for autonomous thinking.
-    pub fn create_monologue_prompt(&self, last_thought: Option<&str>, is_first_thought: bool) -> String {
+    pub fn create_monologue_prompt(
+        &self,
+        last_thought: Option<&str>,
+        is_first_thought: bool,
+    ) -> String {
         let header = "You are running in AUTONOMOUS REFLECTION MODE.\n\nYour job: reflect on context, decide what you want to do next, and act if appropriate.\n- Use available actions/tools when they can advance the goal.\n- If you cannot act, state the missing info and the safest next step to obtain it.\n- Keep the response concise, focused on the next action.";
         if is_first_thought {
             return format!(
@@ -199,14 +203,14 @@ impl Service for AutonomyService {
     }
 
     async fn start(&mut self, runtime: Arc<dyn IAgentRuntime>) -> PluginResult<()> {
-        runtime.log_info("autonomy", &format!(
-            "Using autonomous room ID: {}",
-            self.autonomous_room_id
-        ));
+        runtime.log_info(
+            "autonomy",
+            &format!("Using autonomous room ID: {}", self.autonomous_room_id),
+        );
 
         // Note: Full autonomous loop implementation would require async runtime integration
         // This is a simplified version that sets up the service structure
-        
+
         runtime.log_info("autonomy", "Autonomy service initialized");
         Ok(())
     }
@@ -232,10 +236,10 @@ mod tests {
     #[test]
     fn test_service_creation() {
         let service = AutonomyService::new();
-        
+
         assert!(!service.is_loop_running());
         assert_eq!(service.get_loop_interval(), 30000);
-        
+
         // Room ID should be a valid UUID
         let room_id = service.get_autonomous_room_id();
         assert!(!room_id.is_nil());
@@ -244,7 +248,7 @@ mod tests {
     #[test]
     fn test_default_impl() {
         let service = AutonomyService::default();
-        
+
         assert!(!service.is_loop_running());
         assert_eq!(service.get_loop_interval(), 30000);
     }
@@ -252,7 +256,7 @@ mod tests {
     #[test]
     fn test_interval_configuration() {
         let mut service = AutonomyService::new();
-        
+
         // Set valid interval
         service.set_loop_interval(60000);
         assert_eq!(service.get_loop_interval(), 60000);
@@ -261,7 +265,7 @@ mod tests {
     #[test]
     fn test_interval_minimum_enforced() {
         let mut service = AutonomyService::new();
-        
+
         // Try to set interval below minimum (5000ms)
         service.set_loop_interval(1000);
         assert_eq!(service.get_loop_interval(), 5000);
@@ -270,7 +274,7 @@ mod tests {
     #[test]
     fn test_interval_maximum_enforced() {
         let mut service = AutonomyService::new();
-        
+
         // Try to set interval above maximum (600000ms)
         service.set_loop_interval(1000000);
         assert_eq!(service.get_loop_interval(), 600000);
@@ -280,7 +284,7 @@ mod tests {
     fn test_get_status() {
         let service = AutonomyService::new();
         let status = service.get_status();
-        
+
         // Initially: not enabled, not running, not thinking
         assert!(!status.enabled);
         assert!(!status.running);
@@ -298,15 +302,15 @@ mod tests {
     #[test]
     fn test_thinking_guard() {
         let mut service = AutonomyService::new();
-        
+
         // Initially not thinking
         assert!(!service.is_thinking());
-        
+
         // Set thinking
         service.set_thinking(true);
         assert!(service.is_thinking());
         assert!(service.get_status().thinking);
-        
+
         // Clear thinking
         service.set_thinking(false);
         assert!(!service.is_thinking());
@@ -316,12 +320,12 @@ mod tests {
     #[tokio::test]
     async fn test_enable_autonomy() {
         let mut service = AutonomyService::new();
-        
+
         assert!(!service.is_loop_running());
         assert!(!service.is_enabled());
-        
+
         service.enable_autonomy().await;
-        
+
         assert!(service.is_loop_running());
         assert!(service.is_enabled());
         assert!(service.get_status().enabled);
@@ -330,11 +334,11 @@ mod tests {
     #[tokio::test]
     async fn test_disable_autonomy() {
         let mut service = AutonomyService::new();
-        
+
         service.enable_autonomy().await;
         assert!(service.is_loop_running());
         assert!(service.is_enabled());
-        
+
         service.disable_autonomy().await;
         assert!(!service.is_loop_running());
         assert!(!service.is_enabled());
@@ -343,25 +347,25 @@ mod tests {
     #[tokio::test]
     async fn test_enable_disable_cycle() {
         let mut service = AutonomyService::new();
-        
+
         // Initial state
         assert!(!service.is_loop_running());
         assert!(!service.is_enabled());
-        
+
         // Enable
         service.enable_autonomy().await;
         assert!(service.is_loop_running());
         assert!(service.is_enabled());
         assert!(service.get_status().enabled);
         assert!(service.get_status().running);
-        
+
         // Disable
         service.disable_autonomy().await;
         assert!(!service.is_loop_running());
         assert!(!service.is_enabled());
         assert!(!service.get_status().enabled);
         assert!(!service.get_status().running);
-        
+
         // Re-enable
         service.enable_autonomy().await;
         assert!(service.is_loop_running());
@@ -371,22 +375,22 @@ mod tests {
     #[tokio::test]
     async fn test_start_stop_loop() {
         let mut service = AutonomyService::new();
-        
+
         // Initially not running
         assert!(!service.is_loop_running());
-        
+
         // Start loop
         service.start_loop().await;
         assert!(service.is_loop_running());
-        
+
         // Start again should be no-op
         service.start_loop().await;
         assert!(service.is_loop_running());
-        
+
         // Stop loop
         service.stop_loop().await;
         assert!(!service.is_loop_running());
-        
+
         // Stop again should be no-op
         service.stop_loop().await;
         assert!(!service.is_loop_running());
@@ -395,14 +399,14 @@ mod tests {
     #[test]
     fn test_is_thinking_in_progress_alias() {
         let mut service = AutonomyService::new();
-        
+
         // Both methods should return same value
         assert_eq!(service.is_thinking(), service.is_thinking_in_progress());
-        
+
         service.set_thinking(true);
         assert_eq!(service.is_thinking(), service.is_thinking_in_progress());
         assert!(service.is_thinking_in_progress());
-        
+
         service.set_thinking(false);
         assert_eq!(service.is_thinking(), service.is_thinking_in_progress());
         assert!(!service.is_thinking_in_progress());
@@ -411,7 +415,7 @@ mod tests {
     #[test]
     fn test_capability_description() {
         let service = AutonomyService::new();
-        
+
         assert!(service.capability_description().contains("Autonomous"));
         assert!(service.capability_description().contains("thinking"));
     }
@@ -419,9 +423,9 @@ mod tests {
     #[test]
     fn test_create_monologue_prompt_first_thought() {
         let service = AutonomyService::new();
-        
+
         let prompt = service.create_monologue_prompt(None, true);
-        
+
         assert!(prompt.contains("AUTONOMOUS REFLECTION MODE"));
         assert!(prompt.contains("decide what you want to do next"));
     }
@@ -429,9 +433,10 @@ mod tests {
     #[test]
     fn test_create_monologue_prompt_continuation() {
         let service = AutonomyService::new();
-        
-        let prompt = service.create_monologue_prompt(Some("I was thinking about consciousness"), false);
-        
+
+        let prompt =
+            service.create_monologue_prompt(Some("I was thinking about consciousness"), false);
+
         assert!(prompt.contains("Your last autonomous note"));
         assert!(prompt.contains("I was thinking about consciousness"));
     }
@@ -439,21 +444,21 @@ mod tests {
     #[test]
     fn test_is_stopped_initial() {
         let service = AutonomyService::new();
-        
+
         assert!(!service.is_stopped());
     }
 
     #[tokio::test]
     async fn test_stop_service() {
         let mut service = AutonomyService::new();
-        
+
         // Start the loop
         assert!(service.start_loop().await);
         assert!(service.is_loop_running());
-        
+
         // Stop the service completely
         service.stop_service().await;
-        
+
         assert!(service.is_stopped());
         assert!(!service.is_loop_running());
     }
@@ -461,13 +466,13 @@ mod tests {
     #[tokio::test]
     async fn test_cannot_start_after_stop() {
         let mut service = AutonomyService::new();
-        
+
         // Stop the service
         service.stop_service().await;
-        
+
         // Try to start - should fail
         let started = service.start_loop().await;
-        
+
         assert!(!started);
         assert!(!service.is_loop_running());
     }
@@ -475,10 +480,10 @@ mod tests {
     #[tokio::test]
     async fn test_start_loop_returns_false_when_already_running() {
         let mut service = AutonomyService::new();
-        
+
         // First start should succeed
         assert!(service.start_loop().await);
-        
+
         // Second start should return false (already running)
         assert!(!service.start_loop().await);
     }
@@ -486,9 +491,8 @@ mod tests {
     #[tokio::test]
     async fn test_stop_loop_returns_false_when_not_running() {
         let mut service = AutonomyService::new();
-        
+
         // Stop when not running should return false
         assert!(!service.stop_loop().await);
     }
 }
-

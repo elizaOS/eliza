@@ -7,7 +7,6 @@ from typing import Any
 
 import structlog
 
-
 _DEFAULT_REDACT_KEYS: frozenset[str] = frozenset(
     {
         "password",

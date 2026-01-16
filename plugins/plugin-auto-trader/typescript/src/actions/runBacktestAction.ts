@@ -1,40 +1,49 @@
 /**
  * Run Backtest Action
- * 
+ *
  * Provides backtesting information. Note: Full backtesting requires
  * additional infrastructure (historical data service, simulation engine).
  * This action provides guidance on strategy testing.
  */
 
-import type { IAgentRuntime, Memory, Action, HandlerCallback, State } from '@elizaos/core';
-import { AutoTradingManager } from '../services/AutoTradingManager.ts';
+import type {
+  Action,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import type { AutoTradingManager } from "../services/AutoTradingManager.ts";
 
 export const runBacktestAction: Action = {
-  name: 'RUN_BACKTEST',
-  similes: ['BACKTEST', 'TEST_STRATEGY', 'SIMULATE_TRADING'],
-  description: 'Get information about backtesting strategies',
+  name: "RUN_BACKTEST",
+  similes: ["BACKTEST", "TEST_STRATEGY", "SIMULATE_TRADING"],
+  description: "Get information about backtesting strategies",
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
-    const text = message.content.text?.toLowerCase() || '';
-    return ['backtest', 'simulation', 'test strategy', 'simulate'].some(kw => text.includes(kw));
+    const text = message.content.text?.toLowerCase() || "";
+    return ["backtest", "simulation", "test strategy", "simulate"].some((kw) => text.includes(kw));
   },
 
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    _options?: HandlerOptions,
+    callback?: HandlerCallback,
   ) => {
-    const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager | undefined;
+    const tradingManager = runtime.getService("AutoTradingManager") as
+      | AutoTradingManager
+      | undefined;
     const strategies = tradingManager?.getStrategies() || [];
 
-    const strategyList = strategies.map(s => `• **${s.name}** (${s.id})`).join('\n');
+    const strategyList = strategies.map((s) => `• **${s.name}** (${s.id})`).join("\n");
 
     const response = `📊 **Backtesting Information**
 
 **Available Strategies:**
-${strategyList || '• No strategies loaded'}
+${strategyList || "• No strategies loaded"}
 
 **How to Test Strategies:**
 
@@ -63,12 +72,19 @@ ${strategyList || '• No strategies loaded'}
 Would you like to start paper trading with a specific strategy?`;
 
     callback?.({ text: response });
+    return undefined;
   },
 
   examples: [
     [
-      { name: '{{user1}}', content: { text: 'Can you run a backtest for the LLM strategy?' }},
-      { name: '{{agentName}}', content: { text: 'Here is information about testing strategies...' }}
+      {
+        name: "{{user1}}",
+        content: { text: "Can you run a backtest for the LLM strategy?" },
+      },
+      {
+        name: "{{agentName}}",
+        content: { text: "Here is information about testing strategies..." },
+      },
     ],
   ],
 };

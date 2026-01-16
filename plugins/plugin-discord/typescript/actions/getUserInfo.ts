@@ -111,7 +111,7 @@ export const getUserInfo: Action = {
 
     if (!discordService || !discordService.client) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "Discord service is not available.",
           source: "discord",
         });
@@ -121,7 +121,7 @@ export const getUserInfo: Action = {
 
     if (!state) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "State is not available.",
           source: "discord",
         });
@@ -132,7 +132,7 @@ export const getUserInfo: Action = {
     const userInfo = await getUserIdentifier(runtime, message, state);
     if (!userInfo) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I couldn't understand which user you want information about. Please specify a username or mention.",
           source: "discord",
         });
@@ -145,7 +145,7 @@ export const getUserInfo: Action = {
       const serverId = room?.messageServerId;
       if (!serverId) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I couldn't determine the current server.",
             source: "discord",
           });
@@ -199,7 +199,7 @@ export const getUserInfo: Action = {
 
       if (!member) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: `I couldn't find a user with the identifier "${userInfo.userIdentifier}" in this server.`,
             source: "discord",
           });
@@ -215,7 +215,7 @@ export const getUserInfo: Action = {
       };
 
       if (callback) {
-        await callback(response);
+        await callback?.(response);
       }
       return { success: true, text: response.text };
     } catch (error) {
@@ -228,7 +228,7 @@ export const getUserInfo: Action = {
         "Error getting user info"
       );
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I encountered an error while getting user information. Please try again.",
           source: "discord",
         });

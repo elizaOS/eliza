@@ -1,5 +1,6 @@
 import type { AgentRuntime } from "@elizaos/core";
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
+import { Box, type Key, Text, useApp, useInput, useStdout } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatPane } from "./components/ChatPane.js";
 import { HelpOverlay } from "./components/HelpOverlay.js";
@@ -9,7 +10,6 @@ import { getAgentClient } from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
 import { useStore } from "./lib/store.js";
 import { handleTaskSlashCommand } from "./lib/task-slash-command.js";
-import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
 import type { SubAgentType, TaskEvent } from "./types.js";
 
 interface AppProps {
@@ -682,7 +682,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
   );
 
   // Global keyboard shortcuts
-  useInput((char, key) => {
+  useInput((char: string, key: Key) => {
     if (showHelpOverlay) {
       if (
         key.escape ||

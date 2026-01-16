@@ -48,4 +48,3 @@ impl Provider for TimeProvider {
             .with_data("isoString", iso_string))
     }
 }
-

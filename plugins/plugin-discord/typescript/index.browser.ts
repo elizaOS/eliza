@@ -14,4 +14,3 @@ export const discordPlugin: Plugin = {
 };
 
 export default discordPlugin;
-

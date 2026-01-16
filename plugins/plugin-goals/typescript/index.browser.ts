@@ -14,4 +14,3 @@ export const goalsPlugin: Plugin = {
 };
 
 export default goalsPlugin;
-

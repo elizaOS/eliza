@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * E2E Tests for Game Generation
  *
@@ -15,13 +16,13 @@
  * - Files created during tests are cleaned up after
  */
 
+import { execFile, spawn } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
-import { initializeAgent, shutdownAgent } from "../lib/agent.js";
 import type { AgentOrchestratorService } from "@elizaos/plugin-agent-orchestrator";
+import { initializeAgent, shutdownAgent } from "../lib/agent.js";
 import { setCwd } from "../lib/cwd.js";
 import type { SubAgentType } from "../types.js";
 
@@ -63,7 +64,9 @@ async function git(
   opts?: { cwd?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   try {
-    const { stdout, stderr } = await execFileAsync("git", args, { cwd: opts?.cwd });
+    const { stdout, stderr } = await execFileAsync("git", args, {
+      cwd: opts?.cwd,
+    });
     return { stdout: String(stdout), stderr: String(stderr), exitCode: 0 };
   } catch (err) {
     const e = err instanceof Error ? err : new Error(String(err));
@@ -122,8 +125,15 @@ async function getRepoRoot(startDir: string): Promise<string> {
 
 async function createDetachedWorktree(repoRoot: string): Promise<string> {
   const rand = crypto.randomBytes(6).toString("hex");
-  const dir = path.join(repoRoot, ".eliza", "game-e2e", `${Date.now()}-${rand}`);
-  const add = await git(["worktree", "add", "--detach", dir, "HEAD"], { cwd: repoRoot });
+  const dir = path.join(
+    repoRoot,
+    ".eliza",
+    "game-e2e",
+    `${Date.now()}-${rand}`,
+  );
+  const add = await git(["worktree", "add", "--detach", dir, "HEAD"], {
+    cwd: repoRoot,
+  });
   if (add.exitCode !== 0) {
     throw new Error(`git worktree add failed: ${add.stderr}`);
   }
@@ -172,7 +182,10 @@ Requirements:
     const content = await fs.readFile(filepath, "utf-8");
 
     // Check for required elements
-    if (!content.includes("function guess") && !content.includes("const guess")) {
+    if (
+      !content.includes("function guess") &&
+      !content.includes("const guess")
+    ) {
       return { ok: false, error: "Missing guess function" };
     }
     if (!content.includes("secretNumber") && !content.includes("secret")) {
@@ -183,9 +196,15 @@ Requirements:
     }
 
     // Try to compile
-    const tsc = await shell("bunx", ["tsc", "--noEmit", filepath], { cwd: workdir, timeout: 15000 });
+    const tsc = await shell("bunx", ["tsc", "--noEmit", filepath], {
+      cwd: workdir,
+      timeout: 15000,
+    });
     if (tsc.exitCode !== 0) {
-      return { ok: false, error: `TypeScript compilation failed: ${tsc.stderr}` };
+      return {
+        ok: false,
+        error: `TypeScript compilation failed: ${tsc.stderr}`,
+      };
     }
 
     return { ok: true };
@@ -228,10 +247,14 @@ Requirements:
     }
 
     // Try to check syntax with rustc
-    const rustc = await shell("rustc", ["--edition", "2021", "--emit=metadata", "-o", "/dev/null", filepath], {
-      cwd: workdir,
-      timeout: 30000,
-    });
+    const rustc = await shell(
+      "rustc",
+      ["--edition", "2021", "--emit=metadata", "-o", "/dev/null", filepath],
+      {
+        cwd: workdir,
+        timeout: 30000,
+      },
+    );
     // Allow warnings, only fail on errors
     if (rustc.exitCode !== 0 && !rustc.stderr.includes("warning")) {
       return { ok: false, error: `Rust compilation failed: ${rustc.stderr}` };
@@ -305,7 +328,9 @@ const GAME_TESTS: GameTest[] = [
 function getAvailableAgents(): SubAgentType[] {
   const openai = process.env.OPENAI_API_KEY?.trim();
   const anthropic = process.env.ANTHROPIC_API_KEY?.trim();
-  const provider = (process.env.ELIZA_CODE_PROVIDER ?? "").trim().toLowerCase();
+  const _provider = (process.env.ELIZA_CODE_PROVIDER ?? "")
+    .trim()
+    .toLowerCase();
 
   const agents: SubAgentType[] = [];
 
@@ -332,7 +357,10 @@ function getAvailableAgents(): SubAgentType[] {
   return agents;
 }
 
-function selectAgent(preferred: SubAgentType[], available: SubAgentType[]): SubAgentType | null {
+function selectAgent(
+  preferred: SubAgentType[],
+  available: SubAgentType[],
+): SubAgentType | null {
   for (const agent of preferred) {
     if (available.includes(agent)) {
       return agent;
@@ -354,7 +382,12 @@ async function runGameTest(
 
   try {
     // Create task
-    const task = await service.createTask(test.name, test.description, undefined, agent);
+    const task = await service.createTask(
+      test.name,
+      test.description,
+      undefined,
+      agent,
+    );
     const taskId = task.id ?? "";
 
     if (!taskId) {
@@ -386,7 +419,10 @@ async function runGameTest(
         agent,
         language: test.language,
         passed: false,
-        error: result?.error ?? result?.summary ?? "Task did not complete successfully",
+        error:
+          result?.error ??
+          result?.summary ??
+          "Task did not complete successfully",
         filesCreated: result?.filesCreated ?? [],
         executionTime: Date.now() - startTime,
       };
@@ -428,7 +464,9 @@ async function main(): Promise<void> {
 
   const available = getAvailableAgents();
   if (available.length === 0) {
-    console.error("ERROR: No agents available. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.");
+    console.error(
+      "ERROR: No agents available. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.",
+    );
     process.exit(1);
   }
 
@@ -461,13 +499,17 @@ async function main(): Promise<void> {
     try {
       const cwdResult = await setCwd(worktree);
       if (!cwdResult.success) {
-        throw new Error(`Failed to set CWD: ${cwdResult.error ?? cwdResult.path}`);
+        throw new Error(
+          `Failed to set CWD: ${cwdResult.error ?? cwdResult.path}`,
+        );
       }
       process.chdir(cwdResult.path);
 
       // Initialize agent for this test
       const runtime = await initializeAgent();
-      const service = runtime.getService("CODE_TASK") as AgentOrchestratorService | null;
+      const service = runtime.getService(
+        "CODE_TASK",
+      ) as AgentOrchestratorService | null;
 
       if (!service) {
         throw new Error("CodeTaskService not available");

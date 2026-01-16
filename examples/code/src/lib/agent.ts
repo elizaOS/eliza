@@ -1,27 +1,30 @@
 import "dotenv/config";
 import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
-import anthropicPlugin from "@elizaos/plugin-anthropic";
-import goalsPlugin from "@elizaos/plugin-goals";
-import mcpPlugin from "@elizaos/plugin-mcp";
-import openaiPlugin from "@elizaos/plugin-openai";
-import { agentOrchestratorPlugin, configureAgentOrchestratorPlugin } from "@elizaos/plugin-agent-orchestrator";
-import { CoderService } from "@elizaos/plugin-code";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
-import { shellPlugin } from "@elizaos/plugin-shell";
-import todoPlugin from "@elizaos/plugin-todo";
-import trajectoryLoggerPlugin from "@elizaos/plugin-trajectory-logger";
-import { resolveModelProvider } from "./model-provider.js";
-import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
-import { createSubAgent } from "./sub-agents/registry.js";
-import { createTools } from "./sub-agents/tools.js";
-import type { SubAgentTool, ToolResult } from "./sub-agents/types.js";
 import type {
   AgentProvider,
   OrchestratedTask,
   ProviderTaskExecutionContext,
   TaskResult,
 } from "@elizaos/plugin-agent-orchestrator";
+import {
+  agentOrchestratorPlugin,
+  configureAgentOrchestratorPlugin,
+} from "@elizaos/plugin-agent-orchestrator";
+import anthropicPlugin from "@elizaos/plugin-anthropic";
+import { CoderService } from "@elizaos/plugin-code";
+import goalsPlugin from "@elizaos/plugin-goals";
+import mcpPlugin from "@elizaos/plugin-mcp";
+import openaiPlugin from "@elizaos/plugin-openai";
+import { shellPlugin } from "@elizaos/plugin-shell";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import todoPlugin from "@elizaos/plugin-todo";
+import trajectoryLoggerPlugin from "@elizaos/plugin-trajectory-logger";
 import type { CodeTask, CodeTaskMetadata, SubAgentType } from "../types.js";
+import { resolveModelProvider } from "./model-provider.js";
+import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
+import { createSubAgent } from "./sub-agents/registry.js";
+import { createTools } from "./sub-agents/tools.js";
+import type { SubAgentTool, ToolResult } from "./sub-agents/types.js";
 
 /**
  * Eliza Code Character Configuration
@@ -260,7 +263,13 @@ export async function initializeAgent(): Promise<AgentRuntime> {
         ctx: ProviderTaskExecutionContext,
       ): Promise<TaskResult> => {
         if (!runtime) throw new Error("Runtime not initialized");
-        return runSubAgentTask(runtime, "elizaos-native", task, ctx, coderService);
+        return runSubAgentTask(
+          runtime,
+          "elizaos-native",
+          task,
+          ctx,
+          coderService,
+        );
       },
     },
   ];
@@ -347,10 +356,9 @@ async function runSubAgentTask(
   const subAgent = createSubAgent(type);
   const conversationId =
     typeof task.id === "string" && task.id.length > 0 ? task.id : task.name;
-  const tools =
-    coderService
-      ? createCoderTools(coderService, conversationId)
-      : createTools(ctx.workingDirectory);
+  const tools = coderService
+    ? createCoderTools(coderService, conversationId)
+    : createTools(ctx.workingDirectory);
 
   return subAgent.execute(toCodeTask(task), {
     runtime,
@@ -385,8 +393,11 @@ function createCoderTools(
   return [
     {
       name: "read_file",
-      description: "Read the contents of a file (restricted by CODER_ALLOWED_DIRECTORY)",
-      parameters: [{ name: "filepath", description: "Path to file", required: true }],
+      description:
+        "Read the contents of a file (restricted by CODER_ALLOWED_DIRECTORY)",
+      parameters: [
+        { name: "filepath", description: "Path to file", required: true },
+      ],
       execute: async (args) => {
         const filepath = (args.filepath ?? "").trim();
         const res = await coder.readFile(conversationId, filepath);
@@ -399,7 +410,8 @@ function createCoderTools(
     },
     {
       name: "write_file",
-      description: "Create or overwrite a file (restricted by CODER_ALLOWED_DIRECTORY)",
+      description:
+        "Create or overwrite a file (restricted by CODER_ALLOWED_DIRECTORY)",
       parameters: [
         { name: "filepath", description: "Path to file", required: true },
         { name: "content", description: "File content", required: true },
@@ -409,74 +421,120 @@ function createCoderTools(
         const content = args.content ?? "";
         const res = await coder.writeFile(conversationId, filepath, content);
         if (!res.ok) return fail(res.error);
-        return ok(`Wrote ${filepath} (${content.length} chars)`, { filepath, size: content.length });
+        return ok(`Wrote ${filepath} (${content.length} chars)`, {
+          filepath,
+          size: content.length,
+        });
       },
     },
     {
       name: "edit_file",
-      description: "Edit a file by replacing text (restricted by CODER_ALLOWED_DIRECTORY)",
+      description:
+        "Edit a file by replacing text (restricted by CODER_ALLOWED_DIRECTORY)",
       parameters: [
         { name: "filepath", description: "Path to file", required: true },
         { name: "old_str", description: "Text to find", required: true },
-        { name: "new_str", description: "Text to replace with", required: true },
+        {
+          name: "new_str",
+          description: "Text to replace with",
+          required: true,
+        },
       ],
       execute: async (args) => {
         const filepath = (args.filepath ?? "").trim();
         const oldStr = args.old_str ?? "";
         const newStr = args.new_str ?? "";
-        const res = await coder.editFile(conversationId, filepath, oldStr, newStr);
+        const res = await coder.editFile(
+          conversationId,
+          filepath,
+          oldStr,
+          newStr,
+        );
         if (!res.ok) return fail(res.error);
         return ok(`Edited ${filepath}`, { filepath });
       },
     },
     {
       name: "list_files",
-      description: "List files in a directory (restricted by CODER_ALLOWED_DIRECTORY)",
-      parameters: [{ name: "path", description: "Directory path", required: false }],
+      description:
+        "List files in a directory (restricted by CODER_ALLOWED_DIRECTORY)",
+      parameters: [
+        { name: "path", description: "Directory path", required: false },
+      ],
       execute: async (args) => {
         const dir = (args.path ?? ".").trim() || ".";
         const res = await coder.listFiles(conversationId, dir);
         if (!res.ok) return fail(res.error);
-        return ok(`Contents of ${dir}:\n${res.items.join("\n")}`, { path: dir, count: res.items.length });
+        return ok(`Contents of ${dir}:\n${res.items.join("\n")}`, {
+          path: dir,
+          count: res.items.length,
+        });
       },
     },
     {
       name: "search_files",
-      description: "Search for a string across files (restricted by CODER_ALLOWED_DIRECTORY)",
+      description:
+        "Search for a string across files (restricted by CODER_ALLOWED_DIRECTORY)",
       parameters: [
         { name: "pattern", description: "Text to search for", required: true },
-        { name: "path", description: "Directory to search (default: .)", required: false },
-        { name: "max_matches", description: "Max matches (default: 50)", required: false },
+        {
+          name: "path",
+          description: "Directory to search (default: .)",
+          required: false,
+        },
+        {
+          name: "max_matches",
+          description: "Max matches (default: 50)",
+          required: false,
+        },
       ],
       execute: async (args) => {
         const pattern = (args.pattern ?? "").trim();
         const dir = (args.path ?? ".").trim() || ".";
         const maxMatchesRaw = (args.max_matches ?? "").trim();
-        const maxMatchesParsed = maxMatchesRaw ? Number.parseInt(maxMatchesRaw, 10) : 50;
-        const maxMatches = Number.isFinite(maxMatchesParsed) ? maxMatchesParsed : 50;
-        const res = await coder.searchFiles(conversationId, pattern, dir, maxMatches);
+        const maxMatchesParsed = maxMatchesRaw
+          ? Number.parseInt(maxMatchesRaw, 10)
+          : 50;
+        const maxMatches = Number.isFinite(maxMatchesParsed)
+          ? maxMatchesParsed
+          : 50;
+        const res = await coder.searchFiles(
+          conversationId,
+          pattern,
+          dir,
+          maxMatches,
+        );
         if (!res.ok) return fail(res.error);
-        const byFile = new Map<string, Array<{ line: number; content: string }>>();
+        const byFile = new Map<
+          string,
+          Array<{ line: number; content: string }>
+        >();
         for (const m of res.matches) {
           const list = byFile.get(m.file) ?? [];
           list.push({ line: m.line, content: m.content });
           byFile.set(m.file, list);
         }
-        const lines: string[] = [`Search "${pattern}" in ${dir} (${res.matches.length} matches):`];
+        const lines: string[] = [
+          `Search "${pattern}" in ${dir} (${res.matches.length} matches):`,
+        ];
         for (const [file, matches] of byFile) {
           lines.push(`\n${file}`);
           for (const m of matches.slice(0, 5)) {
             lines.push(`  L${m.line}: ${m.content}`);
           }
-          if (matches.length > 5) lines.push(`  ... +${matches.length - 5} more`);
+          if (matches.length > 5)
+            lines.push(`  ... +${matches.length - 5} more`);
         }
         return ok(lines.join("\n"));
       },
     },
     {
       name: "shell",
-      description: "Execute a shell command (restricted by CODER_ALLOWED_DIRECTORY)",
-      parameters: [{ name: "command", description: "Command to run", required: true }],
+      description:
+        "Execute a shell command (restricted by CODER_ALLOWED_DIRECTORY)",
+      parameters: [
+        { name: "command", description: "Command to run", required: true },
+      ],
       execute: async (args) => {
         const command = (args.command ?? "").trim();
         const res = await coder.executeShell(command, conversationId);

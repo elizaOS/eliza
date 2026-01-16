@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -953,7 +952,10 @@ class DefaultMessageService(IMessageService):
             from elizaos.prompts import MESSAGE_HANDLER_TEMPLATE
 
             template = MESSAGE_HANDLER_TEMPLATE
-            if runtime.character.templates and "messageHandlerTemplate" in runtime.character.templates:
+            if (
+                runtime.character.templates
+                and "messageHandlerTemplate" in runtime.character.templates
+            ):
                 template = runtime.character.templates["messageHandlerTemplate"]
             prompt = self._build_canonical_prompt(runtime, message, state, template)
 

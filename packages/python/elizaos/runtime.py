@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import re
 import uuid
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
-from elizaos.logger import Logger, create_logger
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
+from elizaos.logger import Logger, create_logger
 from elizaos.settings import decrypt_secret, get_salt
 from elizaos.types.agent import Character, TemplateType
 from elizaos.types.components import (
@@ -239,7 +238,11 @@ class AgentRuntime(IAgentRuntime):
                 from elizaos.advanced_planning import advanced_planning_plugin
 
                 # Register after bootstrap so core providers/actions are available.
-                insert_at = 1 if self._initial_plugins and self._initial_plugins[0].name == "bootstrap" else 0
+                insert_at = (
+                    1
+                    if self._initial_plugins and self._initial_plugins[0].name == "bootstrap"
+                    else 0
+                )
                 self._initial_plugins.insert(insert_at, advanced_planning_plugin)
 
         # Advanced memory is built into core, but only loaded when enabled on the character.
@@ -248,7 +251,11 @@ class AgentRuntime(IAgentRuntime):
             if not has_adv:
                 from elizaos.advanced_memory import advanced_memory_plugin
 
-                insert_at = 1 if self._initial_plugins and self._initial_plugins[0].name == "bootstrap" else 0
+                insert_at = (
+                    1
+                    if self._initial_plugins and self._initial_plugins[0].name == "bootstrap"
+                    else 0
+                )
                 self._initial_plugins.insert(insert_at, advanced_memory_plugin)
 
         for plugin in self._initial_plugins:
@@ -1312,10 +1319,6 @@ class AgentRuntime(IAgentRuntime):
             return None
         entities = await self._adapter.get_entities_by_ids([entity_id])
         return entities[0] if entities else None
-
-    async def get_entity(self, entity_id: UUID) -> Entity | None:
-        """Alias for get_entity_by_id."""
-        return await self.get_entity_by_id(entity_id)
 
     async def get_room(self, room_id: UUID) -> Room | None:
         if not self._adapter:

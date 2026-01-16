@@ -101,4 +101,3 @@ impl Provider for RecentMessagesProvider {
             .with_data("roomId", room_id.to_string()))
     }
 }
-

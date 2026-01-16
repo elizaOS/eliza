@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { RandomStrategy } from '../../../strategies/RandomStrategy.ts';
-import type { StrategyContextMarketData, AgentState, PortfolioSnapshot } from '../../../types.ts';
-import { TradeType, OrderType } from '../../../types.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RandomStrategy } from "../../../strategies/RandomStrategy.ts";
+import type { AgentState, PortfolioSnapshot, StrategyContextMarketData } from "../../../types.ts";
+import { OrderType, TradeType } from "../../../types.ts";
 
-describe('RandomStrategy', () => {
+describe("RandomStrategy", () => {
   let strategy: RandomStrategy;
   let mockMarketData: StrategyContextMarketData;
   let mockAgentState: AgentState;
@@ -68,14 +68,14 @@ describe('RandomStrategy', () => {
     };
   });
 
-  describe('initialization', () => {
-    it('should have correct default configuration', () => {
-      expect(strategy.id).toBe('random-v1');
-      expect(strategy.name).toBe('Random Trading Strategy');
+  describe("initialization", () => {
+    it("should have correct default configuration", () => {
+      expect(strategy.id).toBe("random-v1");
+      expect(strategy.name).toBe("Random Trading Strategy");
       expect(strategy.isReady()).toBe(true);
     });
 
-    it('should have default parameters', () => {
+    it("should have default parameters", () => {
       const params = (strategy as any).params;
       expect(params.tradeAttemptProbability).toBe(0.1);
       expect(params.buyProbability).toBe(0.5);
@@ -83,8 +83,8 @@ describe('RandomStrategy', () => {
     });
   });
 
-  describe('configure', () => {
-    it('should update parameters when configured', () => {
+  describe("configure", () => {
+    it("should update parameters when configured", () => {
       strategy.configure({
         tradeAttemptProbability: 0.8,
         buyProbability: 0.6,
@@ -97,7 +97,7 @@ describe('RandomStrategy', () => {
       expect(params.maxTradeSizePercentage).toBe(0.2);
     });
 
-    it('should keep default values for unspecified parameters', () => {
+    it("should keep default values for unspecified parameters", () => {
       strategy.configure({
         tradeAttemptProbability: 0.9,
       });
@@ -109,10 +109,10 @@ describe('RandomStrategy', () => {
     });
   });
 
-  describe('decide', () => {
-    it('should return null when trade attempt probability check fails', async () => {
+  describe("decide", () => {
+    it("should return null when trade attempt probability check fails", async () => {
       // Mock Math.random to return value that fails trade attempt check
-      vi.spyOn(Math, 'random').mockReturnValueOnce(0.9); // > 0.5 default probability
+      vi.spyOn(Math, "random").mockReturnValueOnce(0.9); // > 0.5 default probability
 
       const decision = await strategy.decide({
         marketData: mockMarketData,
@@ -123,11 +123,11 @@ describe('RandomStrategy', () => {
       expect(decision).toBeNull();
     });
 
-    it('should return BUY order when conditions are met', async () => {
+    it("should return BUY order when conditions are met", async () => {
       // Mock Math.random sequence:
       // 1st call: 0.05 (< 0.1, passes trade attempt)
       // 2nd call: 0.3 (< 0.5, chooses BUY)
-      vi.spyOn(Math, 'random').mockReturnValueOnce(0.05).mockReturnValueOnce(0.3);
+      vi.spyOn(Math, "random").mockReturnValueOnce(0.05).mockReturnValueOnce(0.3);
 
       const decision = await strategy.decide({
         marketData: mockMarketData,
@@ -142,11 +142,11 @@ describe('RandomStrategy', () => {
       expect(decision?.quantity).toBeLessThanOrEqual(100); // 1% of portfolio
     });
 
-    it('should return SELL order when conditions are met', async () => {
+    it("should return SELL order when conditions are met", async () => {
       // Mock Math.random sequence:
       // 1st call: 0.05 (< 0.1, passes trade attempt)
       // 2nd call: 0.7 (> 0.5, chooses SELL)
-      vi.spyOn(Math, 'random').mockReturnValueOnce(0.05).mockReturnValueOnce(0.7);
+      vi.spyOn(Math, "random").mockReturnValueOnce(0.05).mockReturnValueOnce(0.7);
 
       const decision = await strategy.decide({
         marketData: mockMarketData,
@@ -159,7 +159,7 @@ describe('RandomStrategy', () => {
       expect(decision?.orderType).toBe(OrderType.MARKET);
     });
 
-    it('should calculate trade size based on portfolio value', async () => {
+    it("should calculate trade size based on portfolio value", async () => {
       strategy.configure({
         tradeAttemptProbability: 1.0, // Always trade
         buyProbability: 1.0, // Always buy
@@ -176,7 +176,7 @@ describe('RandomStrategy', () => {
       expect(decision?.quantity).toBe(20); // 20% of 10000 / 100 (price) = 20
     });
 
-    it('should handle edge case with zero portfolio value', async () => {
+    it("should handle edge case with zero portfolio value", async () => {
       strategy.configure({
         tradeAttemptProbability: 1.0,
         buyProbability: 1.0,
@@ -193,7 +193,7 @@ describe('RandomStrategy', () => {
       expect(decision?.quantity).toBe(1);
     });
 
-    it('should include reason in trade order', async () => {
+    it("should include reason in trade order", async () => {
       strategy.configure({
         tradeAttemptProbability: 1.0,
         buyProbability: 1.0,
@@ -205,10 +205,10 @@ describe('RandomStrategy', () => {
         portfolioSnapshot: mockPortfolioSnapshot,
       });
 
-      expect(decision?.reason).toContain('Random');
+      expect(decision?.reason).toContain("Random");
     });
 
-    it('should respect fixed trade quantity when configured', () => {
+    it("should respect fixed trade quantity when configured", () => {
       strategy.configure({
         fixedTradeQuantity: 50,
       });
@@ -218,8 +218,8 @@ describe('RandomStrategy', () => {
     });
   });
 
-  describe('edge cases', () => {
-    it('should handle missing price data', async () => {
+  describe("edge cases", () => {
+    it("should handle missing price data", async () => {
       const decision = await strategy.decide({
         marketData: {
           currentPrice: 100,
@@ -234,7 +234,7 @@ describe('RandomStrategy', () => {
       expect(decision === null || decision !== null).toBe(true);
     });
 
-    it('should handle extreme volatility', async () => {
+    it("should handle extreme volatility", async () => {
       const decision = await strategy.decide({
         marketData: mockMarketData,
         agentState: { ...mockAgentState, volatility: 0.5 }, // 50% volatility

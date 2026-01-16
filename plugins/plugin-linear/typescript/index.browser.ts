@@ -14,4 +14,3 @@ export const linearPlugin: Plugin = {
 };
 
 export default linearPlugin;
-

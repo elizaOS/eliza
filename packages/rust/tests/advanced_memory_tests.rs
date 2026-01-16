@@ -71,4 +71,3 @@ async fn long_term_memory_provider_returns_text_when_memories_exist() -> Result<
     assert!(state.text.contains("What I Know About You"));
     Ok(())
 }
-

@@ -120,4 +120,3 @@ export function runWithTrajectoryContext<T>(
 export function getTrajectoryContext(): TrajectoryContext | undefined {
   return getOrCreateContextManager().active();
 }
-

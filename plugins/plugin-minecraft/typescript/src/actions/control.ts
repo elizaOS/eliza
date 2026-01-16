@@ -9,7 +9,10 @@ import type {
   State,
 } from "@elizaos/core";
 import { z } from "zod";
-import { MinecraftService, MINECRAFT_SERVICE_TYPE } from "../services/minecraft-service.js";
+import {
+  MINECRAFT_SERVICE_TYPE,
+  type MinecraftService,
+} from "../services/minecraft-service.js";
 
 const controlSchema = z.object({
   control: z.string(),
@@ -17,11 +20,17 @@ const controlSchema = z.object({
   durationMs: z.number().int().positive().optional(),
 });
 
-function parseControl(text: string): { control: string; state: boolean; durationMs?: number } | null {
+function parseControl(
+  text: string,
+): { control: string; state: boolean; durationMs?: number } | null {
   const trimmed = text.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     try {
-      const parsed = JSON.parse(trimmed) as { control?: string; state?: boolean; durationMs?: number };
+      const parsed = JSON.parse(trimmed) as {
+        control?: string;
+        state?: boolean;
+        durationMs?: number;
+      };
       return controlSchema.parse(parsed);
     } catch {
       return null;
@@ -41,9 +50,16 @@ export const minecraftControlAction: Action = {
   similes: ["MINECRAFT_CONTROL", "SET_CONTROL_STATE"],
   description:
     "Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
-    return Boolean(service) && Boolean(parseControl(message.content.text ?? ""));
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
+    return (
+      Boolean(service) && Boolean(parseControl(message.content.text ?? ""))
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -52,8 +68,11 @@ export const minecraftControlAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
-    if (!service) return { text: "Minecraft service is not available", success: false };
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
+    if (!service)
+      return { text: "Minecraft service is not available", success: false };
 
     const req = parseControl(message.content.text ?? "");
     if (!req) return { text: "Missing control command", success: false };
@@ -62,7 +81,9 @@ export const minecraftControlAction: Action = {
       await service.request("control", {
         control: req.control,
         state: req.state,
-        ...(typeof req.durationMs === "number" ? { durationMs: req.durationMs } : {}),
+        ...(typeof req.durationMs === "number"
+          ? { durationMs: req.durationMs }
+          : {}),
       });
       const content: Content = {
         text: `Set control ${req.control}=${String(req.state)}${req.durationMs ? ` for ${req.durationMs}ms` : ""}.`,
@@ -83,4 +104,3 @@ export const minecraftControlAction: Action = {
     }
   },
 };
-

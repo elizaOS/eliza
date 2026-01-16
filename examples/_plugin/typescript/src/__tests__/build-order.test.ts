@@ -34,9 +34,7 @@ describe("Build Order Integration Test", () => {
 
     // Verify plugin build outputs exist
     const distFilesAfterPluginBuild = fs.readdirSync(distDir);
-    expect(distFilesAfterPluginBuild.some((file) => file === "index.js")).toBe(
-      true,
-    );
+    expect(distFilesAfterPluginBuild.some((file) => file === "index.js")).toBe(true);
     // .d.ts files may not be generated if there are type errors
 
     // Then run vite build to generate frontend assets (should coexist with plugin outputs)

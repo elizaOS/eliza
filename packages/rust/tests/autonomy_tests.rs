@@ -56,4 +56,3 @@ async fn autonomy_can_be_enabled_via_character_settings() -> Result<()> {
 
     Ok(())
 }
-

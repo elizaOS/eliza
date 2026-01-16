@@ -5,4 +5,3 @@
 //! This module preserves that public path.
 
 pub use crate::bootstrap::error::{PluginError, PluginResult};
-

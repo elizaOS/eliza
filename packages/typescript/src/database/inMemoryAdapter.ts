@@ -38,7 +38,9 @@ function roomTableKey(tableName: string, roomId: UUID): string {
  * It implements the full `IDatabaseAdapter` surface with safe no-op defaults.
  * Persistence is process-local.
  */
-export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, never>> {
+export class InMemoryDatabaseAdapter extends DatabaseAdapter<
+  Record<string, never>
+> {
   db: Record<string, never> = {};
 
   private ready = false;
@@ -183,7 +185,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     worldId?: UUID;
   }): Promise<Memory[]> {
     const roomId = params.roomId ?? DEFAULT_UUID;
-    const all = this.memoriesByRoom.get(roomTableKey(params.tableName, roomId)) ?? [];
+    const all =
+      this.memoriesByRoom.get(roomTableKey(params.tableName, roomId)) ?? [];
     const offset = params.offset ?? 0;
     const count = params.count ?? all.length;
     return all.slice(offset, offset + count);
@@ -210,7 +213,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     const limit = params.limit ?? 20;
     const out: Memory[] = [];
     for (const rid of params.roomIds) {
-      const list = this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
+      const list =
+        this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
       for (const m of list) {
         out.push(m);
         if (out.length >= limit) return out;
@@ -225,7 +229,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     return [];
   }
 
-  async log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string }) {
+  async log(params: {
+    body: LogBody;
+    entityId: UUID;
+    roomId: UUID;
+    type: string;
+  }) {
     const id =
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
@@ -519,7 +528,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
   async updateTask(taskId: UUID, task: Partial<Task>): Promise<void> {
     const existing = this.tasks.get(String(taskId));
     if (!existing) return;
-    this.tasks.set(String(taskId), { ...existing, ...task, id: taskId } as Task);
+    this.tasks.set(String(taskId), {
+      ...existing,
+      ...task,
+      id: taskId,
+    } as Task);
   }
 
   async deleteTask(taskId: UUID): Promise<void> {
@@ -538,7 +551,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     const out: Memory[] = [];
     for (const rid of roomIds) {
       if (params.tableName) {
-        const list = this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
+        const list =
+          this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
         for (const m of list) {
           out.push(m);
           if (out.length >= limit) return out;
@@ -583,4 +597,3 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     }
   }
 }
-

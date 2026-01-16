@@ -17,6 +17,7 @@ export class TEEService extends Service {
   private provider: PhalaDeriveKeyProvider;
   static serviceType = ServiceType.TEE;
   public capabilityDescription = "Trusted Execution Environment for secure key management";
+  public declare config?: Metadata;
 
   constructor(runtime: IAgentRuntime, config?: Partial<TeeServiceConfig>) {
     super(runtime);

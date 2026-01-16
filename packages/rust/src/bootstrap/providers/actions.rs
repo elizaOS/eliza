@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::error::PluginResult;
+use crate::generated::action_docs::ALL_ACTION_DOCS_JSON;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
-use crate::generated::action_docs::ALL_ACTION_DOCS_JSON;
 
 use super::Provider;
 
@@ -54,13 +54,20 @@ fn action_docs_by_name() -> &'static HashMap<String, ActionDoc> {
     CACHE.get_or_init(|| {
         let parsed: serde_json::Value =
             serde_json::from_str(ALL_ACTION_DOCS_JSON).expect("invalid ALL_ACTION_DOCS_JSON");
-        let root: ActionDocsRoot = serde_json::from_value(parsed).expect("invalid action docs root");
-        root.actions.into_iter().map(|a| (a.name.clone(), a)).collect()
+        let root: ActionDocsRoot =
+            serde_json::from_value(parsed).expect("invalid action docs root");
+        root.actions
+            .into_iter()
+            .map(|a| (a.name.clone(), a))
+            .collect()
     })
 }
 
 fn format_schema(schema: &serde_json::Value) -> String {
-    let t = schema.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let t = schema
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
     let mut out = t.to_string();
     if t == "number" {
         let min = schema.get("minimum").and_then(|v| v.as_f64());
@@ -68,8 +75,10 @@ fn format_schema(schema: &serde_json::Value) -> String {
         if min.is_some() || max.is_some() {
             out = format!(
                 "number [{}-{}]",
-                min.map(|v| v.to_string()).unwrap_or_else(|| "∞".to_string()),
-                max.map(|v| v.to_string()).unwrap_or_else(|| "∞".to_string())
+                min.map(|v| v.to_string())
+                    .unwrap_or_else(|| "∞".to_string()),
+                max.map(|v| v.to_string())
+                    .unwrap_or_else(|| "∞".to_string())
             );
         }
     }
@@ -94,7 +103,11 @@ fn format_action_parameters(params: &[ActionParameterDoc]) -> String {
     }
     let mut lines: Vec<String> = Vec::new();
     for p in params {
-        let required_str = if p.required { " (required)" } else { " (optional)" };
+        let required_str = if p.required {
+            " (required)"
+        } else {
+            " (optional)"
+        };
         let schema_str = format_schema(&p.schema);
         let examples_str = if p.examples.is_empty() {
             String::new()
@@ -258,8 +271,9 @@ impl Provider for ActionsProvider {
         Ok(ProviderResult::new(text)
             .with_value("actionNames", names_text)
             .with_value("actionCount", actions.len() as i64)
-            .with_data("actions", serde_json::to_value(&actions_data).unwrap_or_default()))
+            .with_data(
+                "actions",
+                serde_json::to_value(&actions_data).unwrap_or_default(),
+            ))
     }
 }
-
-

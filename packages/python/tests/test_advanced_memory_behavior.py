@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from elizaos.runtime import AgentRuntime
 from elizaos.advanced_memory.types import LongTermMemoryCategory
+from elizaos.runtime import AgentRuntime
 from elizaos.types.agent import Character
 from elizaos.types.components import ProviderResult
-from elizaos.types.primitives import Content
 from elizaos.types.memory import Memory
-from elizaos.types.primitives import as_uuid
+from elizaos.types.primitives import Content, as_uuid
 
 
 @pytest.mark.asyncio
@@ -46,4 +45,3 @@ async def test_memory_provider_formats_long_term_memories() -> None:
     provider = next(p for p in runtime.providers if p.name == "LONG_TERM_MEMORY")
     result: ProviderResult = await provider.get(runtime, msg, await runtime.compose_state(msg))
     assert result.text and "What I Know About You" in result.text
-

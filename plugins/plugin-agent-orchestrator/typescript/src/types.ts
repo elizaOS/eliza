@@ -5,22 +5,13 @@ import type { Task as CoreTask, UUID } from "@elizaos/core";
 // ============================================================================
 
 export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue =
-  | JsonPrimitive
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 // ============================================================================
 // Task model
 // ============================================================================
 
-export type TaskStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "paused"
-  | "cancelled";
+export type TaskStatus = "pending" | "running" | "completed" | "failed" | "paused" | "cancelled";
 
 /**
  * User-controlled lifecycle status (separate from execution status).
@@ -114,10 +105,7 @@ export interface AgentProvider {
   label: string;
   description?: string;
 
-  executeTask: (
-    task: OrchestratedTask,
-    ctx: ProviderTaskExecutionContext,
-  ) => Promise<TaskResult>;
+  executeTask: (task: OrchestratedTask, ctx: ProviderTaskExecutionContext) => Promise<TaskResult>;
 }
 
 export interface AgentOrchestratorPluginOptions {
@@ -170,4 +158,3 @@ export interface TaskEvent {
   taskId: string;
   data?: Record<string, JsonValue>;
 }
-

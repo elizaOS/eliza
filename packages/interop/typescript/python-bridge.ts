@@ -243,7 +243,7 @@ export class PythonPluginBridge extends EventEmitter {
         try {
           const message: IPCResponse = JSON.parse(line);
           this.handleMessage(message);
-        } catch (error) {
+        } catch (_error) {
           logger.error(
             {
               src: "interop:python-bridge",

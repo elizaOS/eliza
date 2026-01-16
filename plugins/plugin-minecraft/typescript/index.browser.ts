@@ -13,4 +13,3 @@ export const minecraftPlugin: Plugin = {
 };
 
 export default minecraftPlugin;
-

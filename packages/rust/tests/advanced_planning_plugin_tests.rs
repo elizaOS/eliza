@@ -30,11 +30,14 @@ async fn advanced_planning_registers_actions_and_provider_when_enabled() -> Resu
     assert!(names.iter().any(|n| n == "CREATE_PLAN"));
 
     // Provider is registered (indirectly verified by state composition including its text)
-    let msg = elizaos::Memory::message(elizaos::UUID::new_v4(), elizaos::UUID::new_v4(), "plan this");
+    let msg = elizaos::Memory::message(
+        elizaos::UUID::new_v4(),
+        elizaos::UUID::new_v4(),
+        "plan this",
+    );
     let state = runtime.compose_state(&msg).await?;
     // Provider outputs "Message classified as:" text
     assert!(state.text.contains("Message classified as:"));
 
     Ok(())
 }
-

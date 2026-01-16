@@ -94,4 +94,3 @@ impl Action for UpdateContactAction {
         .with_data("categories", cat_str))
     }
 }
-

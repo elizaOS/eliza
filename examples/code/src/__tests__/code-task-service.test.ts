@@ -6,15 +6,15 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  type AgentProvider,
   AgentOrchestratorService as CodeTaskService,
   configureAgentOrchestratorPlugin,
-  type AgentProvider,
   type OrchestratedTask,
   type ProviderTaskExecutionContext,
   type TaskResult,
 } from "@elizaos/plugin-agent-orchestrator";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 

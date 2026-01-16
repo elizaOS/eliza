@@ -2,10 +2,10 @@
 //!
 //! Providers that supply autonomous context information.
 
+use crate::bootstrap::providers::Provider;
 use crate::error::PluginResult;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
-use crate::bootstrap::providers::Provider;
 
 /// Admin Chat Provider.
 ///
@@ -90,10 +90,3 @@ impl Provider for AutonomyStatusProvider {
             .with_data("status", "disabled"))
     }
 }
-
-
-
-
-
-
-

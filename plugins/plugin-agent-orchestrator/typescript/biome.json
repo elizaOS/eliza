@@ -1,8 +1,9 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.3/schema.json",
+  "root": false,
+  "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
   "files": {
     "ignoreUnknown": false,
-    "ignore": ["dist/**"]
+    "includes": ["**/*.ts", "**/*.tsx", "**/*.json"]
   },
   "formatter": {
     "enabled": true,
@@ -18,4 +19,3 @@
     }
   }
 }
-

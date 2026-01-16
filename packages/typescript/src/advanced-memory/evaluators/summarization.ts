@@ -1,3 +1,4 @@
+import { logger } from "../../logger.ts";
 import {
   type Evaluator,
   type IAgentRuntime,
@@ -5,13 +6,18 @@ import {
   ModelType,
   type UUID,
 } from "../../types/index.ts";
-import { logger } from "../../logger.ts";
 import { composePromptFromState } from "../../utils.ts";
+import {
+  initialSummarizationTemplate,
+  updateSummarizationTemplate,
+} from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import type { SummaryResult } from "../types.ts";
-import { initialSummarizationTemplate, updateSummarizationTemplate } from "../prompts.ts";
 
-async function getDialogueMessageCount(runtime: IAgentRuntime, roomId: UUID): Promise<number> {
+async function getDialogueMessageCount(
+  runtime: IAgentRuntime,
+  roomId: UUID,
+): Promise<number> {
   const messages = await runtime.getMemories({
     tableName: "messages",
     roomId,
@@ -37,38 +43,56 @@ function parseSummaryXML(xml: string): SummaryResult {
   const topicsMatch = xml.match(/<topics>([\s\S]*?)<\/topics>/);
   const keyPointsMatches = xml.matchAll(/<point>([\s\S]*?)<\/point>/g);
 
-  const summary = summaryMatch ? summaryMatch[1].trim() : "Summary not available";
+  const summary = summaryMatch
+    ? summaryMatch[1].trim()
+    : "Summary not available";
   const topics = topicsMatch
     ? topicsMatch[1]
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean)
     : [];
-  const keyPoints = Array.from(keyPointsMatches).map((match) => match[1].trim());
+  const keyPoints = Array.from(keyPointsMatches).map((match) =>
+    match[1].trim(),
+  );
 
   return { summary, topics, keyPoints };
 }
 
 export const summarizationEvaluator: Evaluator = {
   name: "MEMORY_SUMMARIZATION",
-  description: "Automatically summarizes conversations to optimize context usage",
-  similes: ["CONVERSATION_SUMMARY", "CONTEXT_COMPRESSION", "MEMORY_OPTIMIZATION"],
+  description:
+    "Automatically summarizes conversations to optimize context usage",
+  similes: [
+    "CONVERSATION_SUMMARY",
+    "CONTEXT_COMPRESSION",
+    "MEMORY_OPTIMIZATION",
+  ],
   alwaysRun: true,
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     if (!message.content?.text) return false;
 
     const memoryService = runtime.getService("memory") as MemoryService | null;
     if (!memoryService) return false;
 
     const config = memoryService.getConfig();
-    const currentDialogueCount = await getDialogueMessageCount(runtime, message.roomId);
-    const existingSummary = await memoryService.getCurrentSessionSummary(message.roomId);
+    const currentDialogueCount = await getDialogueMessageCount(
+      runtime,
+      message.roomId,
+    );
+    const existingSummary = await memoryService.getCurrentSessionSummary(
+      message.roomId,
+    );
 
     if (!existingSummary) {
       return currentDialogueCount >= config.shortTermSummarizationThreshold;
     }
-    const newDialogueCount = currentDialogueCount - existingSummary.lastMessageOffset;
+    const newDialogueCount =
+      currentDialogueCount - existingSummary.lastMessageOffset;
     return newDialogueCount >= config.shortTermSummarizationInterval;
   },
 
@@ -83,9 +107,13 @@ export const summarizationEvaluator: Evaluator = {
     const { roomId } = message;
 
     try {
-      logger.info({ src: "evaluator:memory" }, `Starting summarization for room ${roomId}`);
+      logger.info(
+        { src: "evaluator:memory" },
+        `Starting summarization for room ${roomId}`,
+      );
 
-      const existingSummary = await memoryService.getCurrentSessionSummary(roomId);
+      const existingSummary =
+        await memoryService.getCurrentSessionSummary(roomId);
       const lastOffset = existingSummary?.lastMessageOffset || 0;
 
       const allMessages = await runtime.getMemories({
@@ -109,7 +137,10 @@ export const summarizationEvaluator: Evaluator = {
       const newDialogueCount = totalDialogueCount - lastOffset;
 
       if (newDialogueCount === 0) {
-        logger.debug({ src: "evaluator:memory" }, "No new dialogue messages to summarize");
+        logger.debug(
+          { src: "evaluator:memory" },
+          "No new dialogue messages to summarize",
+        );
         return undefined;
       }
 
@@ -127,7 +158,10 @@ export const summarizationEvaluator: Evaluator = {
         (a, b) => (a.createdAt || 0) - (b.createdAt || 0),
       );
 
-      const newDialogueMessages = sortedDialogueMessages.slice(lastOffset, lastOffset + messagesToProcess);
+      const newDialogueMessages = sortedDialogueMessages.slice(
+        lastOffset,
+        lastOffset + messagesToProcess,
+      );
       if (newDialogueMessages.length === 0) {
         logger.debug(
           { src: "evaluator:memory" },
@@ -138,7 +172,8 @@ export const summarizationEvaluator: Evaluator = {
 
       const formattedMessages = newDialogueMessages
         .map((msg) => {
-          const sender = msg.entityId === runtime.agentId ? runtime.character.name : "User";
+          const sender =
+            msg.entityId === runtime.agentId ? runtime.character.name : "User";
           return `${sender}: ${msg.content.text || "[non-text message]"}`;
         })
         .join("\n");
@@ -161,7 +196,10 @@ export const summarizationEvaluator: Evaluator = {
       } else {
         const initialMessages = sortedDialogueMessages
           .map((msg) => {
-            const sender = msg.entityId === runtime.agentId ? runtime.character.name : "User";
+            const sender =
+              msg.entityId === runtime.agentId
+                ? runtime.character.name
+                : "User";
             return `${sender}: ${msg.content.text || "[non-text message]"}`;
           })
           .join("\n");
@@ -202,7 +240,8 @@ export const summarizationEvaluator: Evaluator = {
       if (existingSummary) {
         await memoryService.updateSessionSummary(existingSummary.id, roomId, {
           summary: summaryResult.summary,
-          messageCount: existingSummary.messageCount + newDialogueMessages.length,
+          messageCount:
+            existingSummary.messageCount + newDialogueMessages.length,
           lastMessageOffset: newOffset,
           endTime,
           topics: summaryResult.topics,
@@ -217,7 +256,8 @@ export const summarizationEvaluator: Evaluator = {
         await memoryService.storeSessionSummary({
           agentId: runtime.agentId,
           roomId,
-          entityId: message.entityId !== runtime.agentId ? message.entityId : undefined,
+          entityId:
+            message.entityId !== runtime.agentId ? message.entityId : undefined,
           summary: summaryResult.summary,
           messageCount: totalDialogueCount,
           lastMessageOffset: totalDialogueCount,
@@ -234,11 +274,13 @@ export const summarizationEvaluator: Evaluator = {
       }
     } catch (error) {
       const err = error instanceof Error ? error.message : String(error);
-      logger.error({ src: "evaluator:memory", err }, "Error during summarization");
+      logger.error(
+        { src: "evaluator:memory", err },
+        "Error during summarization",
+      );
     }
     return undefined;
   },
 
   examples: [],
 };
-

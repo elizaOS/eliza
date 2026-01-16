@@ -4,7 +4,15 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-let polymarketPlugin: { name: string; description: string; services?: unknown; providers?: unknown; actions?: unknown; config?: unknown; init?: unknown };
+let polymarketPlugin: {
+  name: string;
+  description: string;
+  services?: unknown;
+  providers?: unknown;
+  actions?: unknown;
+  config?: unknown;
+  init?: unknown;
+};
 
 describe("Polymarket Plugin Integration Tests", () => {
   beforeAll(async () => {

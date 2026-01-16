@@ -14,4 +14,3 @@ pub fn render_template(template: &str, data: &Value) -> Result<String> {
     h.register_template_string("t", template)?;
     Ok(h.render("t", data)?)
 }
-

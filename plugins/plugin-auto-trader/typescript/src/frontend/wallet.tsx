@@ -1,37 +1,37 @@
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { Wallet as WalletIcon, Search, Filter } from 'lucide-react';
-import Loader from './loader.js';
-import { Badge } from './ui/badge.js';
-import { Button } from './ui/button.js';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card.js';
-import { Input } from './ui/input.js';
+import { useQuery } from "@tanstack/react-query";
+import { Filter, Search, Wallet as WalletIcon } from "lucide-react";
+import { useState } from "react";
+import Loader from "./loader.js";
+import { Badge } from "./ui/badge.js";
+import { Button } from "./ui/button.js";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
+import { Input } from "./ui/input.js";
 
 const formatCurrency = (value: number, minimumFractionDigits = 2, maximumFractionDigits = 2) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
     minimumFractionDigits,
     maximumFractionDigits,
   }).format(value);
 };
 
 const formatNumber = (value: number, maximumFractionDigits = 6) => {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat("en-US", {
     maximumFractionDigits,
   }).format(value);
 };
 
 export default function Wallet() {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [showSmallBalances, setShowSmallBalances] = useState(false);
-  const [sortBy, setSortBy] = useState<'value' | 'balance' | 'name'>('value');
+  const [sortBy, setSortBy] = useState<"value" | "balance" | "name">("value");
 
   const query = useQuery({
-    queryKey: ['wallet'],
+    queryKey: ["wallet"],
     queryFn: async () => {
-      const response = await fetch('/api/intel/portfolio', {
-        method: 'GET',
+      const response = await fetch("/api/intel/portfolio", {
+        method: "GET",
       });
       const result = await response.json();
       return result.success ? result.data : null;
@@ -74,15 +74,15 @@ export default function Wallet() {
     })
     .sort((a, b) => {
       switch (sortBy) {
-        case 'value':
+        case "value":
           return (Number(b.valueUsd) || 0) - (Number(a.valueUsd) || 0);
-        case 'balance':
+        case "balance":
           return (
             (Number(b.uiAmount) || Number(b.balance) || 0) -
             (Number(a.uiAmount) || Number(a.balance) || 0)
           );
-        case 'name':
-          return (a.name || a.symbol || '').localeCompare(b.name || b.symbol || '');
+        case "name":
+          return (a.name || a.symbol || "").localeCompare(b.name || b.symbol || "");
         default:
           return 0;
       }
@@ -92,7 +92,7 @@ export default function Wallet() {
   const totalValue = Number(portfolio.totalUsd) || 0;
   const totalTokens = portfolio.items.length;
   const significantTokens = portfolio.items.filter(
-    (asset) => (Number(asset?.valueUsd) || 0) > 50
+    (asset) => (Number(asset?.valueUsd) || 0) > 50,
   ).length;
   const smallTokens = portfolio.items.filter((asset) => (Number(asset?.valueUsd) || 0) <= 1).length;
 
@@ -151,13 +151,13 @@ export default function Wallet() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-            <code className="text-sm font-mono">{portfolio.wallet || 'Unknown'}</code>
+            <code className="text-sm font-mono">{portfolio.wallet || "Unknown"}</code>
             <Button
               size="sm"
               variant="outline"
               onClick={() => {
                 if (portfolio.wallet) {
-                  window.open(`https://solscan.io/account/${portfolio.wallet}`, '_blank');
+                  window.open(`https://solscan.io/account/${portfolio.wallet}`, "_blank");
                 }
               }}
             >
@@ -189,7 +189,7 @@ export default function Wallet() {
 
               {/* Filters */}
               <Button
-                variant={showSmallBalances ? 'default' : 'outline'}
+                variant={showSmallBalances ? "default" : "outline"}
                 size="sm"
                 onClick={() => setShowSmallBalances(!showSmallBalances)}
               >
@@ -200,13 +200,13 @@ export default function Wallet() {
               {/* Sort Options */}
               <div className="flex gap-1">
                 {[
-                  { key: 'value', label: 'Value' },
-                  { key: 'balance', label: 'Balance' },
-                  { key: 'name', label: 'Name' },
+                  { key: "value", label: "Value" },
+                  { key: "balance", label: "Balance" },
+                  { key: "name", label: "Name" },
                 ].map((option) => (
                   <Button
                     key={option.key}
-                    variant={sortBy === option.key ? 'default' : 'outline'}
+                    variant={sortBy === option.key ? "default" : "outline"}
                     size="sm"
                     onClick={() => setSortBy(option.key as any)}
                   >
@@ -229,10 +229,10 @@ export default function Wallet() {
                   key={`${asset.address || asset.symbol}-${idx}`}
                   className={`overflow-hidden hover:shadow-lg transition-all duration-300 ${
                     valueUsd > 100
-                      ? 'ring-2 ring-green-200'
+                      ? "ring-2 ring-green-200"
                       : valueUsd > 10
-                        ? 'ring-1 ring-yellow-200'
-                        : ''
+                        ? "ring-1 ring-yellow-200"
+                        : ""
                   }`}
                 >
                   <CardContent className="p-4">
@@ -249,7 +249,7 @@ export default function Wallet() {
                           />
                         ) : (
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 grid place-items-center text-white text-sm font-bold">
-                            {asset?.symbol?.[0] || '?'}
+                            {asset?.symbol?.[0] || "?"}
                           </div>
                         )}
                         <div>
@@ -287,7 +287,7 @@ export default function Wallet() {
                       {price > 0 && (
                         <div className="pt-2 border-t border-muted">
                           <p className="text-xs text-muted-foreground">
-                            Price:{' '}
+                            Price:{" "}
                             <span className="font-medium">{formatCurrency(price, 6, 6)}</span>
                           </p>
                         </div>
@@ -304,7 +304,7 @@ export default function Wallet() {
                           onClick={() => {
                             window.open(
                               `https://www.birdeye.so/token/${asset.address}?chain=solana`,
-                              '_blank'
+                              "_blank",
                             );
                           }}
                         >
@@ -315,7 +315,7 @@ export default function Wallet() {
                           variant="outline"
                           className="flex-1 text-xs"
                           onClick={() => {
-                            window.open(`https://solscan.io/token/${asset.address}`, '_blank');
+                            window.open(`https://solscan.io/token/${asset.address}`, "_blank");
                           }}
                         >
                           Solscan
@@ -331,14 +331,14 @@ export default function Wallet() {
           {filteredTokens.length === 0 && (
             <div className="text-center py-8">
               <p className="text-muted-foreground">
-                {searchTerm ? 'No tokens match your search' : 'No tokens found'}
+                {searchTerm ? "No tokens match your search" : "No tokens found"}
               </p>
               <p className="text-sm text-muted-foreground mt-2">
                 {searchTerm
-                  ? 'Try adjusting your search terms or filters'
+                  ? "Try adjusting your search terms or filters"
                   : showSmallBalances
-                    ? 'Try enabling small balances filter'
-                    : 'Portfolio tokens will appear here'}
+                    ? "Try enabling small balances filter"
+                    : "Portfolio tokens will appear here"}
               </p>
             </div>
           )}

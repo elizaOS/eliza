@@ -3,9 +3,9 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::bootstrap::runtime::{IAgentRuntime, ModelOutput, ModelParams};
 use crate::error::{PluginError, PluginResult};
 use crate::prompts::IMAGE_GENERATION_TEMPLATE;
-use crate::bootstrap::runtime::{IAgentRuntime, ModelOutput, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
@@ -21,7 +21,14 @@ impl Action for GenerateImageAction {
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["CREATE_IMAGE", "MAKE_IMAGE", "DRAW", "PAINT", "VISUALIZE", "RENDER_IMAGE"]
+        &[
+            "CREATE_IMAGE",
+            "MAKE_IMAGE",
+            "DRAW",
+            "PAINT",
+            "VISUALIZE",
+            "RENDER_IMAGE",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -100,15 +107,16 @@ impl Action for GenerateImageAction {
             }
         };
 
-        Ok(ActionResult::success(format!("Generated image: {}", image_prompt))
-            .with_value("success", true)
-            .with_value("imageGenerated", true)
-            .with_value("imageUrl", image_url.clone())
-            .with_value("imagePrompt", image_prompt.clone())
-            .with_data("actionName", "GENERATE_IMAGE")
-            .with_data("prompt", image_prompt)
-            .with_data("thought", thought)
-            .with_data("imageUrl", image_url))
+        Ok(
+            ActionResult::success(format!("Generated image: {}", image_prompt))
+                .with_value("success", true)
+                .with_value("imageGenerated", true)
+                .with_value("imageUrl", image_url.clone())
+                .with_value("imagePrompt", image_prompt.clone())
+                .with_data("actionName", "GENERATE_IMAGE")
+                .with_data("prompt", image_prompt)
+                .with_data("thought", thought)
+                .with_data("imageUrl", image_url),
+        )
     }
 }
-

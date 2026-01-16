@@ -29,9 +29,11 @@ export const sessionSummaries = pgTable(
     updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
   },
   (table) => ({
-    agentRoomIdx: index("session_summaries_agent_room_idx").on(table.agentId, table.roomId),
+    agentRoomIdx: index("session_summaries_agent_room_idx").on(
+      table.agentId,
+      table.roomId,
+    ),
     entityIdx: index("session_summaries_entity_idx").on(table.entityId),
     startTimeIdx: index("session_summaries_start_time_idx").on(table.startTime),
   }),
 );
-

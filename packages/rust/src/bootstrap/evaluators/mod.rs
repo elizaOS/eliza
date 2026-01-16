@@ -53,4 +53,3 @@ pub fn all_evaluators() -> Vec<Box<dyn Evaluator>> {
     evaluators.extend(extended_evaluators());
     evaluators
 }
-

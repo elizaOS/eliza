@@ -59,10 +59,11 @@ impl Action for RemoveContactAction {
             &format!("Removed contact {}", entity_id),
         );
 
-        Ok(ActionResult::success(format!("Removed {} from contacts.", entity_name))
-            .with_value("contactRemoved", true)
-            .with_data("entityId", entity_id.to_string())
-            .with_data("removed", true))
+        Ok(
+            ActionResult::success(format!("Removed {} from contacts.", entity_name))
+                .with_value("contactRemoved", true)
+                .with_data("entityId", entity_id.to_string())
+                .with_data("removed", true),
+        )
     }
 }
-

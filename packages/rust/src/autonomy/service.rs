@@ -205,7 +205,11 @@ impl AutonomyService {
         };
 
         // Ensure world exists
-        if adapter.get_world(&self.autonomous_world_id).await?.is_none() {
+        if adapter
+            .get_world(&self.autonomous_world_id)
+            .await?
+            .is_none()
+        {
             let world = World {
                 id: self.autonomous_world_id.clone(),
                 name: Some("Autonomy World".to_string()),
@@ -406,9 +410,10 @@ impl AutonomyService {
             AutonomyMode::Task => "task",
             AutonomyMode::Monologue => "monologue",
         };
-        content
-            .extra
-            .insert("autonomyMode".to_string(), Value::String(mode_str.to_string()));
+        content.extra.insert(
+            "autonomyMode".to_string(),
+            Value::String(mode_str.to_string()),
+        );
         let ts_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -417,13 +422,16 @@ impl AutonomyService {
             .extra
             .insert("timestamp".to_string(), Value::Number(Number::from(ts_ms)));
 
-        let mut msg = crate::types::memory::Memory::new(rt.agent_id.clone(), self.autonomous_room_id.clone(), content);
+        let mut msg = crate::types::memory::Memory::new(
+            rt.agent_id.clone(),
+            self.autonomous_room_id.clone(),
+            content,
+        );
         msg.world_id = Some(self.autonomous_world_id.clone());
         msg.agent_id = Some(rt.agent_id.clone());
 
-        let callback: crate::types::components::HandlerCallback = Arc::new(|_content: Content| {
-            Box::pin(async move { Ok(Vec::new()) })
-        });
+        let callback: crate::types::components::HandlerCallback =
+            Arc::new(|_content: Content| Box::pin(async move { Ok(Vec::new()) }));
 
         let service = rt.message_service();
         let _ = service
@@ -449,7 +457,7 @@ impl AutonomyService {
             .filter(|m| {
                 m.entity_id == rt.agent_id
                     && m.content.extra.get("isAutonomous").and_then(Value::as_bool) == Some(true)
-                    && m.content.text.as_deref().unwrap_or("").trim().len() > 0
+                    && !m.content.text.as_deref().unwrap_or("").trim().is_empty()
             })
             .collect();
         candidates.sort_by_key(|m| m.created_at.unwrap_or(0));
@@ -481,4 +489,3 @@ impl Service for AutonomyService {
         Ok(())
     }
 }
-

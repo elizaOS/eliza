@@ -8,18 +8,28 @@ function isBrowser(): boolean {
   );
 }
 
-function getSetting(runtime: IAgentRuntime, key: string, fallback: string): string {
+function getSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  fallback: string,
+): string {
   const value = runtime.getSetting(key);
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
-function getBooleanSetting(runtime: IAgentRuntime, key: string, fallback: boolean): boolean {
+function getBooleanSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  fallback: boolean,
+): boolean {
   const value = runtime.getSetting(key);
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
     const normalized = value.toLowerCase();
-    if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
-    if (normalized === "false" || normalized === "0" || normalized === "no") return false;
+    if (normalized === "true" || normalized === "1" || normalized === "yes")
+      return true;
+    if (normalized === "false" || normalized === "0" || normalized === "no")
+      return false;
   }
   return fallback;
 }
@@ -27,14 +37,18 @@ function getBooleanSetting(runtime: IAgentRuntime, key: string, fallback: boolea
 function getBaseURL(runtime: IAgentRuntime): string {
   // In browsers, always prefer a proxy URL (so secrets never leave the server).
   const browserURL = runtime.getSetting("ELEVENLABS_BROWSER_URL");
-  if (typeof browserURL === "string" && browserURL.length > 0) return browserURL;
+  if (typeof browserURL === "string" && browserURL.length > 0)
+    return browserURL;
   return "https://api.elevenlabs.io/v1";
 }
 
 function getApiKey(runtime: IAgentRuntime): string {
   // By default, do NOT send a real API key from the browser.
   // If you have a local demo and understand the risk, explicitly opt in.
-  if (isBrowser() && !getBooleanSetting(runtime, "ELEVENLABS_ALLOW_BROWSER_API_KEY", false)) {
+  if (
+    isBrowser() &&
+    !getBooleanSetting(runtime, "ELEVENLABS_ALLOW_BROWSER_API_KEY", false)
+  ) {
     return "sk-proxy";
   }
   const key = runtime.getSetting("ELEVENLABS_API_KEY");
@@ -60,10 +74,22 @@ function getVoiceSettings(runtime: IAgentRuntime): VoiceSettings {
     model: getSetting(runtime, "ELEVENLABS_MODEL_ID", "eleven_monolingual_v1"),
     stability: getSetting(runtime, "ELEVENLABS_VOICE_STABILITY", "0.5"),
     latency: getSetting(runtime, "ELEVENLABS_OPTIMIZE_STREAMING_LATENCY", "0"),
-    outputFormat: getSetting(runtime, "ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128"),
-    similarity: getSetting(runtime, "ELEVENLABS_VOICE_SIMILARITY_BOOST", "0.75"),
+    outputFormat: getSetting(
+      runtime,
+      "ELEVENLABS_OUTPUT_FORMAT",
+      "mp3_44100_128",
+    ),
+    similarity: getSetting(
+      runtime,
+      "ELEVENLABS_VOICE_SIMILARITY_BOOST",
+      "0.75",
+    ),
     style: getSetting(runtime, "ELEVENLABS_VOICE_STYLE", "0"),
-    speakerBoost: getBooleanSetting(runtime, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST", true),
+    speakerBoost: getBooleanSetting(
+      runtime,
+      "ELEVENLABS_VOICE_USE_SPEAKER_BOOST",
+      true,
+    ),
   };
 }
 
@@ -79,7 +105,7 @@ async function fetchSpeech(
     style: string;
     speakerBoost: boolean;
     latency: string;
-  }
+  },
 ): Promise<ReadableStream<Uint8Array>> {
   const baseUrl = getBaseURL(runtime);
   const apiKey = getApiKey(runtime);
@@ -115,7 +141,9 @@ async function fetchSpeech(
   return response.body;
 }
 
-async function readStreamToUint8Array(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+async function readStreamToUint8Array(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let totalLength = 0;
@@ -148,7 +176,7 @@ export const elevenLabsPlugin: Plugin = {
   models: {
     [ModelType.TEXT_TO_SPEECH]: async (
       runtime: IAgentRuntime,
-      input: string | { text: string; voice?: string }
+      input: string | { text: string; voice?: string },
     ): Promise<Uint8Array> => {
       const options = typeof input === "string" ? { text: input } : input;
       const settings = getVoiceSettings(runtime);
@@ -168,7 +196,7 @@ export const elevenLabsPlugin: Plugin = {
     },
     [ModelType.TRANSCRIPTION]: async () => {
       throw new Error(
-        "ElevenLabs TRANSCRIPTION is not supported in the browser build. Use a server proxy."
+        "ElevenLabs TRANSCRIPTION is not supported in the browser build. Use a server proxy.",
       );
     },
   },

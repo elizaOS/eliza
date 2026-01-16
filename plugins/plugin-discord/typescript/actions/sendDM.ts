@@ -160,7 +160,7 @@ export const sendDM: Action = {
 
     if (!state) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "State is not available.",
           source: "discord",
         });
@@ -175,7 +175,7 @@ export const sendDM: Action = {
         "Could not parse DM information from message"
       );
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I couldn't understand who you want me to message or what to send. Please specify the recipient and the message content.",
           source: "discord",
         });
@@ -196,7 +196,7 @@ export const sendDM: Action = {
 
       if (!targetUser) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: `I couldn't find a user with the identifier "${dmInfo.recipientIdentifier}". Please make sure the username or ID is correct.`,
             source: "discord",
           });
@@ -207,7 +207,7 @@ export const sendDM: Action = {
       // Check if we can send DMs to this user
       if (targetUser.bot) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I cannot send direct messages to other bots.",
             source: "discord",
           });
@@ -228,7 +228,7 @@ export const sendDM: Action = {
       };
 
       if (callback) {
-        await callback(response);
+        await callback?.(response);
       }
       return { success: true, text: response.text };
     } catch (error) {
@@ -245,14 +245,14 @@ export const sendDM: Action = {
       if (error instanceof Error) {
         if (error.message.includes("Cannot send messages to this user")) {
           if (callback) {
-            await callback({
+            await callback?.({
               text: "I couldn't send a message to that user. They may have DMs disabled or we don't share a server.",
               source: "discord",
             });
           }
         } else {
           if (callback) {
-            await callback({
+            await callback?.({
               text: "I encountered an error while trying to send the direct message. Please make sure I have the necessary permissions.",
               source: "discord",
             });

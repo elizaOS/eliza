@@ -8,22 +8,9 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { starterPlugin } from "../index";
-import {
-  createTestRuntime,
-  cleanupTestRuntime,
-  setupLoggerSpies,
-} from "./test-utils";
+import { cleanupTestRuntime, createTestRuntime, setupLoggerSpies } from "./test-utils";
 
 /**
  * Integration tests demonstrate how multiple components of the plugin work together.
@@ -58,14 +45,12 @@ describe("Integration: HelloWorld Action with StarterService", () => {
     };
 
     // Spy on getService to return our mock service
-    vi.spyOn(runtime, "getService").mockImplementation(
-      (serviceType: string): Service | null => {
-        if (serviceType === "starter") {
-          return mockService as Service;
-        }
-        return null;
-      },
-    );
+    vi.spyOn(runtime, "getService").mockImplementation((serviceType: string): Service | null => {
+      if (serviceType === "starter") {
+        return mockService as Service;
+      }
+      return null;
+    });
   });
 
   afterEach(async () => {
@@ -74,9 +59,7 @@ describe("Integration: HelloWorld Action with StarterService", () => {
 
   it("should handle HelloWorld action with StarterService available", async () => {
     // Find the HelloWorld action
-    const helloWorldAction = starterPlugin.actions?.find(
-      (action) => action.name === "HELLO_WORLD",
-    );
+    const helloWorldAction = starterPlugin.actions?.find((action) => action.name === "HELLO_WORLD");
     expect(helloWorldAction).toBeDefined();
 
     // Create a mock message and state
@@ -107,14 +90,7 @@ describe("Integration: HelloWorld Action with StarterService", () => {
 
     // Execute the action
     if (helloWorldAction) {
-      await helloWorldAction.handler(
-        agentRuntime as Partial<IAgentRuntime> as IAgentRuntime,
-        mockMessage,
-        mockState,
-        {},
-        callbackFn,
-        [],
-      );
+      await helloWorldAction.handler(runtime, mockMessage, mockState, {}, callbackFn, []);
     }
 
     // Verify the callback was called with expected response
@@ -126,7 +102,7 @@ describe("Integration: HelloWorld Action with StarterService", () => {
     }
 
     // Get the service to ensure integration
-    const service = agentRuntime.getService("starter");
+    const service = runtime.getService("starter");
     expect(service).toBeDefined();
     expect(service?.capabilityDescription).toContain("starter service");
   });
@@ -147,19 +123,14 @@ describe("Integration: Plugin initialization and service registration", () => {
 
     // Track registerService calls
     const registerServiceCalls: { service: typeof Service }[] = [];
-    vi.spyOn(runtime, "registerService").mockImplementation(
-      (service: typeof Service) => {
-        registerServiceCalls.push({ service });
-        return Promise.resolve();
-      },
-    );
+    vi.spyOn(runtime, "registerService").mockImplementation((service: typeof Service) => {
+      registerServiceCalls.push({ service });
+      return Promise.resolve();
+    });
 
     // Run a minimal simulation of the plugin initialization process
     if (starterPlugin.init) {
-      await starterPlugin.init(
-        { EXAMPLE_PLUGIN_VARIABLE: "test-value" },
-        runtime,
-      );
+      await starterPlugin.init({ EXAMPLE_PLUGIN_VARIABLE: "test-value" }, runtime);
 
       // Directly start the service that happens during initialization
       // because unit tests don't run the full agent initialization flow

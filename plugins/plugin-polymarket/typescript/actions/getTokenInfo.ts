@@ -5,15 +5,15 @@
  * Combines market details, current pricing, price history, and user-specific data.
  */
 
-import {
-  type Action,
-  type ActionResult,
-  type Content,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  Content,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 import type { ClobClient } from "@polymarket/clob-client";
 import { POLYMARKET_SERVICE_NAME } from "../constants";
@@ -131,7 +131,7 @@ function calculatePricing(orderBook: OrderBook): TokenPricing {
 
 function calculatePriceHistorySummary(
   priceHistory: PriceHistoryPoint[],
-  periodHours: number
+  periodHours: number,
 ): PriceHistorySummary | null {
   if (!priceHistory || priceHistory.length === 0) {
     return null;
@@ -168,7 +168,9 @@ function formatTokenInfo(tokenInfo: TokenInfo): string {
   lines.push(`**Market:** ${tokenInfo.market.question}`);
   const tagsDisplay = tokenInfo.market.tags?.length > 0 ? tokenInfo.market.tags.join(", ") : "N/A";
   lines.push(`• Tags: ${tagsDisplay}`);
-  lines.push(`• Status: ${tokenInfo.market.active ? "Active" : "Inactive"}, ${tokenInfo.market.closed ? "Closed" : "Open"}`);
+  lines.push(
+    `• Status: ${tokenInfo.market.active ? "Active" : "Inactive"}, ${tokenInfo.market.closed ? "Closed" : "Open"}`,
+  );
   if (tokenInfo.market.endDate) {
     lines.push(`• End Date: ${new Date(tokenInfo.market.endDate).toLocaleDateString()}`);
   }
@@ -179,10 +181,14 @@ function formatTokenInfo(tokenInfo: TokenInfo): string {
   lines.push("**Current Pricing:**");
   if (tokenInfo.pricing.bestBid || tokenInfo.pricing.bestAsk) {
     if (tokenInfo.pricing.bestBid) {
-      lines.push(`• Best Bid: $${tokenInfo.pricing.bestBid} (${tokenInfo.pricing.bestBidSize} shares)`);
+      lines.push(
+        `• Best Bid: $${tokenInfo.pricing.bestBid} (${tokenInfo.pricing.bestBidSize} shares)`,
+      );
     }
     if (tokenInfo.pricing.bestAsk) {
-      lines.push(`• Best Ask: $${tokenInfo.pricing.bestAsk} (${tokenInfo.pricing.bestAskSize} shares)`);
+      lines.push(
+        `• Best Ask: $${tokenInfo.pricing.bestAsk} (${tokenInfo.pricing.bestAskSize} shares)`,
+      );
     }
     if (tokenInfo.pricing.midpoint) {
       lines.push(`• Midpoint: $${tokenInfo.pricing.midpoint}`);
@@ -190,7 +196,9 @@ function formatTokenInfo(tokenInfo: TokenInfo): string {
     if (tokenInfo.pricing.spread) {
       lines.push(`• Spread: $${tokenInfo.pricing.spread}`);
     }
-    lines.push(`• Order Book Depth: ${tokenInfo.pricing.bidLevels} bids, ${tokenInfo.pricing.askLevels} asks`);
+    lines.push(
+      `• Order Book Depth: ${tokenInfo.pricing.bidLevels} bids, ${tokenInfo.pricing.askLevels} asks`,
+    );
   } else {
     lines.push("• No order book data available");
   }
@@ -225,7 +233,9 @@ function formatTokenInfo(tokenInfo: TokenInfo): string {
     lines.push(`**Your Active Orders:** (${tokenInfo.userOrders.length})`);
     tokenInfo.userOrders.slice(0, 5).forEach((order) => {
       const sideEmoji = order.side === "BUY" ? "🟢" : "🔴";
-      lines.push(`${sideEmoji} ${order.side} ${order.original_size} @ $${parseFloat(order.price).toFixed(4)} (${order.status})`);
+      lines.push(
+        `${sideEmoji} ${order.side} ${order.original_size} @ $${parseFloat(order.price).toFixed(4)} (${order.status})`,
+      );
     });
     if (tokenInfo.userOrders.length > 5) {
       lines.push(`  ... and ${tokenInfo.userOrders.length - 5} more orders`);
@@ -276,7 +286,8 @@ export const getTokenInfoAction: Action = {
     "PRICE_INFO",
     "MARKET_SUMMARY",
   ],
-  description: "Retrieves comprehensive information about a single Polymarket token including market details (question, status, end date), current pricing (bid/ask, spread, midpoint), 24h price history (OHLC, change %), and user's position and active orders for that token. Parameters: tokenId (condition token ID) or conditionId (market condition ID).",
+  description:
+    "Retrieves comprehensive information about a single Polymarket token including market details (question, status, end date), current pricing (bid/ask, spread, midpoint), 24h price history (OHLC, change %), and user's position and active orders for that token. Parameters: tokenId (condition token ID) or conditionId (market condition ID).",
 
   parameters: [
     {
@@ -302,10 +313,10 @@ export const getTokenInfoAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
     options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     runtime.logger.info("[getTokenInfoAction] Handler called");
 
@@ -324,7 +335,7 @@ export const getTokenInfoAction: Action = {
         runtime,
         state,
         getTokenInfoTemplate,
-        "getTokenInfoAction"
+        "getTokenInfoAction",
       );
 
       if (!isLLMError(llmResult)) {
@@ -343,8 +354,8 @@ export const getTokenInfoAction: Action = {
       ? `token ${tokenId.slice(0, 16)}...`
       : `condition ${conditionId?.slice(0, 16)}...`;
     await sendAcknowledgement(callback, `Fetching info for ${idDisplay}`, {
-      tokenId: tokenId ? tokenId.slice(0, 20) + "..." : undefined,
-      conditionId: conditionId ? conditionId.slice(0, 20) + "..." : undefined,
+      tokenId: tokenId ? `${tokenId.slice(0, 20)}...` : undefined,
+      conditionId: conditionId ? `${conditionId.slice(0, 20)}...` : undefined,
     });
 
     try {
@@ -369,14 +380,19 @@ export const getTokenInfoAction: Action = {
       try {
         orderBook = (await client.getOrderBook(tokenId)) as OrderBook;
       } catch (err) {
-        runtime.logger.error(`[getTokenInfoAction] Failed to fetch order book for token ${tokenId.slice(0, 20)}...`, err);
+        runtime.logger.error(
+          `[getTokenInfoAction] Failed to fetch order book for token ${tokenId.slice(0, 20)}...`,
+          err,
+        );
         throw new Error(`Token not found or invalid. Please check the token ID and try again.`);
       }
 
       // Check if token has any liquidity - if not, it might be invalid
       const hasLiquidity = (orderBook.bids?.length ?? 0) > 0 || (orderBook.asks?.length ?? 0) > 0;
       if (!hasLiquidity && !orderBook.market) {
-        runtime.logger.warn(`[getTokenInfoAction] Token ${tokenId.slice(0, 20)}... has no order book data and no market reference`);
+        runtime.logger.warn(
+          `[getTokenInfoAction] Token ${tokenId.slice(0, 20)}... has no order book data and no market reference`,
+        );
         // Don't throw - continue but warn the user in the response
       }
 
@@ -385,7 +401,10 @@ export const getTokenInfoAction: Action = {
         try {
           market = (await client.getMarket(orderBook.market)) as Market;
         } catch (err) {
-          runtime.logger.warn(`[getTokenInfoAction] Failed to fetch market for ${orderBook.market}:`, err);
+          runtime.logger.warn(
+            `[getTokenInfoAction] Failed to fetch market for ${orderBook.market}:`,
+            err,
+          );
         }
       }
 

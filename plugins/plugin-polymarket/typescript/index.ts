@@ -14,7 +14,9 @@ import {
 import { polymarketProvider } from "./providers";
 import { PolymarketService } from "./services";
 import { researchTaskWorker } from "./workers";
-export { initializeClobClient, initializeClobClientWithCreds, getWalletAddress } from "./utils/clobClient";
+
+export { ACCOUNT_STATE_TTL_MS, DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID } from "./constants";
+export { ResearchStorageService } from "./services";
 export type {
   AccountBalances,
   ApiKeyCreds,
@@ -37,9 +39,12 @@ export type {
   Token,
 } from "./types";
 export { ResearchStatus as ResearchStatusEnum } from "./types";
-export { POLYGON_CHAIN_ID, DEFAULT_CLOB_API_URL, ACCOUNT_STATE_TTL_MS } from "./constants";
-export { ResearchStorageService } from "./services";
-export { researchTaskWorker, RESEARCH_TASK_NAME, TRADE_EVALUATION_TASK_NAME } from "./workers";
+export {
+  getWalletAddress,
+  initializeClobClient,
+  initializeClobClientWithCreds,
+} from "./utils/clobClient";
+export { RESEARCH_TASK_NAME, researchTaskWorker, TRADE_EVALUATION_TASK_NAME } from "./workers";
 
 const configSchema = z.object({
   CLOB_API_URL: z
@@ -53,10 +58,7 @@ const configSchema = z.object({
   CLOB_API_SECRET: z.string().min(1, "CLOB API secret cannot be empty").optional(),
   CLOB_API_PASSPHRASE: z.string().min(1, "CLOB API passphrase cannot be empty").optional(),
   POLYMARKET_ALLOW_CREATE_API_KEY: z.string().optional().default("true"),
-  POLYMARKET_PROVIDER_STRICT: z
-    .string()
-    .optional()
-    .default("true"),
+  POLYMARKET_PROVIDER_STRICT: z.string().optional().default("true"),
   POLYMARKET_PROVIDER_CACHE_TTL_MS: z.string().optional(),
 });
 
@@ -83,7 +85,7 @@ export const polymarketPlugin: Plugin = {
       if (!validatedConfig.POLYMARKET_PRIVATE_KEY && !validatedConfig.EVM_PRIVATE_KEY) {
         logger.warn(
           "No private key configured (POLYMARKET_PRIVATE_KEY or EVM_PRIVATE_KEY). " +
-            "Trading features will be disabled."
+            "Trading features will be disabled.",
         );
       }
 
@@ -99,9 +101,7 @@ export const polymarketPlugin: Plugin = {
         // Check if OpenAI is configured for research
         const openaiKey = runtime.getSetting("OPENAI_API_KEY");
         if (!openaiKey) {
-          logger.warn(
-            "OPENAI_API_KEY not configured. Deep research features will be unavailable."
-          );
+          logger.warn("OPENAI_API_KEY not configured. Deep research features will be unavailable.");
         }
       }
 
@@ -109,7 +109,7 @@ export const polymarketPlugin: Plugin = {
     } catch (error) {
       if (error instanceof z.ZodError) {
         throw new Error(
-          `Invalid Polymarket plugin configuration: ${error.issues.map((e) => e.message).join(", ")}`
+          `Invalid Polymarket plugin configuration: ${error.issues.map((e) => e.message).join(", ")}`,
         );
       }
       throw error;

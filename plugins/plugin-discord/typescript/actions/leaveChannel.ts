@@ -210,7 +210,7 @@ export const leaveChannel: Action = {
         },
         "Discord service not found or not initialized"
       );
-      await callback({
+      await callback?.({
         text: "Discord service is not available.",
         source: "discord",
       });
@@ -239,7 +239,7 @@ export const leaveChannel: Action = {
         const voiceManager = discordService.voiceManager as VoiceManager;
 
         if (!voiceManager) {
-          await callback({
+          await callback?.({
             text: "Voice functionality is not available at the moment.",
             source: "discord",
           });
@@ -254,7 +254,7 @@ export const leaveChannel: Action = {
           const voiceChannel = guildMembersMeVoice?.channel;
 
           if (!voiceChannel || !(voiceChannel instanceof BaseGuildVoiceChannel)) {
-            await callback({
+            await callback?.({
               text: "I'm not currently in a voice channel.",
               source: "discord",
             });
@@ -263,7 +263,7 @@ export const leaveChannel: Action = {
 
           const connection = voiceManager.getVoiceConnection(guild.id);
           if (!connection) {
-            await callback({
+            await callback?.({
               text: "No active voice connection found.",
               source: "discord",
             });
@@ -289,7 +289,7 @@ export const leaveChannel: Action = {
             "messages"
           );
 
-          await callback({
+          await callback?.({
             text: `I've left the voice channel ${voiceChannel.name}.`,
             source: "discord",
           });
@@ -305,7 +305,7 @@ export const leaveChannel: Action = {
           },
           "Could not parse channel information from message"
         );
-        await callback({
+        await callback?.({
           text: "I couldn't understand which channel you want me to leave. Please specify the channel name or ID.",
           source: "discord",
         });
@@ -349,7 +349,7 @@ export const leaveChannel: Action = {
       }
 
       if (!targetChannel) {
-        await callback({
+        await callback?.({
           text: `I couldn't find a channel with the identifier "${channelInfo.channelIdentifier}". Please make sure the channel name or ID is correct.`,
           source: "discord",
         });
@@ -362,7 +362,7 @@ export const leaveChannel: Action = {
         const voiceManager = discordService.voiceManager as VoiceManager;
 
         if (!voiceManager) {
-          await callback({
+          await callback?.({
             text: "Voice functionality is not available at the moment.",
             source: "discord",
           });
@@ -375,7 +375,7 @@ export const leaveChannel: Action = {
         const currentVoiceChannel = guildMembersMeVoice?.channel;
 
         if (!currentVoiceChannel || currentVoiceChannel.id !== voiceChannel.id) {
-          await callback({
+          await callback?.({
             text: `I'm not currently in the voice channel ${voiceChannel.name}.`,
             source: "discord",
           });
@@ -407,7 +407,7 @@ export const leaveChannel: Action = {
           source: message.content.source,
         };
 
-        await callback(response);
+        await callback?.(response);
       } else {
         // Handle text channels
         const textChannel = targetChannel as TextChannel;
@@ -415,7 +415,7 @@ export const leaveChannel: Action = {
         // Check if we're listening to this channel
         const currentChannels = discordService.getAllowedChannels();
         if (!currentChannels.includes(textChannel.id)) {
-          await callback({
+          await callback?.({
             text: `I'm not currently listening to ${textChannel.name} (<#${textChannel.id}>).`,
             source: "discord",
           });
@@ -432,9 +432,9 @@ export const leaveChannel: Action = {
             source: message.content.source,
           };
 
-          await callback(response);
+          await callback?.(response);
         } else {
-          await callback({
+          await callback?.({
             text: `I couldn't remove ${textChannel.name} from my listening list. This channel might be configured in my environment settings and cannot be removed dynamically.`,
             source: "discord",
           });
@@ -450,7 +450,7 @@ export const leaveChannel: Action = {
         },
         "Error leaving channel"
       );
-      await callback({
+      await callback?.({
         text: "I encountered an error while trying to leave the channel. Please try again.",
         source: "discord",
       });

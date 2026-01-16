@@ -19,8 +19,11 @@ fn get_salt_panics_in_production_when_default() {
 
         // Catch the panic while holding the env lock to avoid poisoning and to
         // prevent other tests from racing env access.
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| get_salt()));
-        assert!(result.is_err(), "expected get_salt() to panic in production");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(get_salt));
+        assert!(
+            result.is_err(),
+            "expected get_salt() to panic in production"
+        );
     })
 }
 
@@ -34,4 +37,3 @@ fn get_salt_allows_override_in_production() {
         assert_eq!(salt, "secretsalt");
     })
 }
-

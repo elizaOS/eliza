@@ -66,7 +66,9 @@ class AutonomyService(Service):
 
         # Check if autonomy should auto-start based on runtime configuration
         if autonomy_enabled:
-            self._log("info", "Autonomy enabled (enable_autonomy: True), starting autonomous loop...")
+            self._log(
+                "info", "Autonomy enabled (enable_autonomy: True), starting autonomous loop..."
+            )
             await self.start_loop()
         else:
             self._log(
@@ -365,7 +367,7 @@ Think briefly, then state what you want to do next and take action if needed."""
 
 {context}
 
-Your last autonomous note: "{last_thought or ''}"
+Your last autonomous note: "{last_thought or ""}"
 
 Continue from that note. Decide the next step and act if needed."""
 
@@ -390,7 +392,7 @@ Decide what to do next. Think briefly, then take the most useful action."""
 
 {context}
 
-Your last autonomous note: "{last_thought or ''}"
+Your last autonomous note: "{last_thought or ""}"
 
 Continue the task. Decide the next step and take action now."""
 

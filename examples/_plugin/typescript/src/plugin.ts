@@ -29,9 +29,7 @@ const configSchema = z.object({
     .optional()
     .transform((val) => {
       if (!val) {
-        logger.warn(
-          "Example plugin variable is not provided (this is expected)",
-        );
+        logger.warn("Example plugin variable is not provided (this is expected)");
       }
       return val;
     }),
@@ -138,7 +136,7 @@ export class StarterService extends Service {
   static serviceType = "starter";
   capabilityDescription =
     "This is a starter service which is attached to the agent through the starter plugin.";
-  constructor(protected runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
   }
 
@@ -167,7 +165,7 @@ export const starterPlugin: Plugin = {
   name: "plugin-starter",
   description: "Plugin starter for elizaOS",
   config: {
-    EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
+    EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE ?? null,
   },
   async init(config: Record<string, string>) {
     logger.debug("Plugin initialized");
@@ -182,8 +180,7 @@ export const starterPlugin: Plugin = {
       if (error instanceof z.ZodError) {
         const errorIssues = error.issues;
         const errorMessages =
-          errorIssues?.map((e) => e.message).join(", ") ||
-          "Unknown validation error";
+          errorIssues?.map((e) => e.message).join(", ") || "Unknown validation error";
         throw new Error(`Invalid plugin configuration: ${errorMessages}`);
       }
       throw new Error(
@@ -245,30 +242,21 @@ export const starterPlugin: Plugin = {
       async (params) => {
         logger.debug("MESSAGE_RECEIVED event received");
         // print the keys
-        logger.debug(
-          { keys: Object.keys(params) },
-          "MESSAGE_RECEIVED param keys",
-        );
+        logger.debug({ keys: Object.keys(params) }, "MESSAGE_RECEIVED param keys");
       },
     ],
     VOICE_MESSAGE_RECEIVED: [
       async (params) => {
         logger.debug("VOICE_MESSAGE_RECEIVED event received");
         // print the keys
-        logger.debug(
-          { keys: Object.keys(params) },
-          "VOICE_MESSAGE_RECEIVED param keys",
-        );
+        logger.debug({ keys: Object.keys(params) }, "VOICE_MESSAGE_RECEIVED param keys");
       },
     ],
     WORLD_CONNECTED: [
       async (params) => {
         logger.debug("WORLD_CONNECTED event received");
         // print the keys
-        logger.debug(
-          { keys: Object.keys(params) },
-          "WORLD_CONNECTED param keys",
-        );
+        logger.debug({ keys: Object.keys(params) }, "WORLD_CONNECTED param keys");
       },
     ],
     WORLD_JOINED: [

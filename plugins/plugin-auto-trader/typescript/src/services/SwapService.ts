@@ -1,26 +1,21 @@
-import {
-  Service,
-  type IAgentRuntime,
-  logger,
-  parseJSONObjectFromText,
-} from '@elizaos/core';
+import { type IAgentRuntime, logger, parseJSONObjectFromText, Service } from "@elizaos/core";
 import {
   Connection,
   Keypair,
   PublicKey,
-  VersionedTransaction,
   type TransactionConfirmationStatus,
-} from '@solana/web3.js';
-import bs58 from 'bs58';
-import BigNumber from 'bignumber.js';
+  VersionedTransaction,
+} from "@solana/web3.js";
+import BigNumber from "bignumber.js";
+import bs58 from "bs58";
 
 /**
  * Well-known token addresses on Solana
  */
 export const KNOWN_TOKENS = {
-  SOL: 'So11111111111111111111111111111111111111112',
-  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+  SOL: "So11111111111111111111111111111111111111112",
+  USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  USDT: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
 } as const;
 
 /**
@@ -112,7 +107,7 @@ const CONFIRMATION_CONFIG = {
 
 /**
  * SwapService - Handles token swaps on Solana using Jupiter aggregator
- * 
+ *
  * This service provides:
  * - Token swap execution via Jupiter
  * - Wallet balance queries
@@ -120,24 +115,21 @@ const CONFIRMATION_CONFIG = {
  * - Dynamic slippage calculation
  */
 export class SwapService extends Service {
-  public static readonly serviceType = 'SwapService';
-  public readonly capabilityDescription = 'Executes token swaps on Solana via Jupiter DEX aggregator';
+  public static readonly serviceType = "SwapService";
+  public readonly capabilityDescription =
+    "Executes token swaps on Solana via Jupiter DEX aggregator";
 
   private connection: Connection | null = null;
   private walletKeypair: Keypair | null = null;
 
-  private readonly JUPITER_QUOTE_API = 'https://public.jupiterapi.com/quote';
-  private readonly JUPITER_SWAP_API = 'https://public.jupiterapi.com/swap';
+  private readonly JUPITER_QUOTE_API = "https://public.jupiterapi.com/quote";
+  private readonly JUPITER_SWAP_API = "https://public.jupiterapi.com/swap";
 
   private decimalsCache = new Map<string, number>([
     [KNOWN_TOKENS.SOL, 9],
     [KNOWN_TOKENS.USDC, 6],
     [KNOWN_TOKENS.USDT, 6],
   ]);
-
-  constructor(runtime: IAgentRuntime) {
-    super(runtime);
-  }
 
   public static async start(runtime: IAgentRuntime): Promise<SwapService> {
     logger.info(`[${SwapService.serviceType}] Starting...`);
@@ -149,16 +141,21 @@ export class SwapService extends Service {
   private async initialize(): Promise<void> {
     logger.info(`[${SwapService.serviceType}] Initializing swap service...`);
 
-    const rpcUrl = this.runtime.getSetting('SOLANA_RPC_URL') || 'https://api.mainnet-beta.solana.com';
-    this.connection = new Connection(rpcUrl, 'confirmed');
+    const rpcUrl =
+      this.runtime.getSetting("SOLANA_RPC_URL") || "https://api.mainnet-beta.solana.com";
+    this.connection = new Connection(rpcUrl, "confirmed");
 
-    const privateKeyString = this.runtime.getSetting('SOLANA_PRIVATE_KEY');
+    const privateKeyString = this.runtime.getSetting("SOLANA_PRIVATE_KEY");
     if (privateKeyString) {
       const privateKeyBytes = bs58.decode(privateKeyString);
       this.walletKeypair = Keypair.fromSecretKey(privateKeyBytes);
-      logger.info(`[${SwapService.serviceType}] Wallet configured: ${this.walletKeypair.publicKey.toBase58()}`);
+      logger.info(
+        `[${SwapService.serviceType}] Wallet configured: ${this.walletKeypair.publicKey.toBase58()}`,
+      );
     } else {
-      logger.warn(`[${SwapService.serviceType}] No wallet private key configured - swaps will fail`);
+      logger.warn(
+        `[${SwapService.serviceType}] No wallet private key configured - swaps will fail`,
+      );
     }
 
     logger.info(`[${SwapService.serviceType}] Initialized successfully`);
@@ -197,7 +194,7 @@ export class SwapService extends Service {
     const mintPubkey = new PublicKey(mint);
     const info = await this.connection.getParsedAccountInfo(mintPubkey);
 
-    if (info.value?.data && 'parsed' in info.value.data) {
+    if (info.value?.data && "parsed" in info.value.data) {
       const decimals = info.value.data.parsed.info.decimals as number;
       this.decimalsCache.set(mint, decimals);
       return decimals;
@@ -228,7 +225,7 @@ export class SwapService extends Service {
    */
   private calculateDynamicSlippage(amount: string, quoteData: SwapQuote): number {
     const baseSlippage = 100; // 1% base
-    const priceImpact = Number.parseFloat(quoteData.priceImpactPct || '0');
+    const priceImpact = Number.parseFloat(quoteData.priceImpactPct || "0");
     const amountNum = Number(amount);
 
     let dynamicSlippage = baseSlippage;
@@ -262,7 +259,9 @@ export class SwapService extends Service {
         slippageBps: slippageBps.toString(),
       });
 
-      logger.info(`[SwapService] Quote: ${params.amount} ${params.inputMint.slice(0, 8)}... → ${params.outputMint.slice(0, 8)}...`);
+      logger.info(
+        `[SwapService] Quote: ${params.amount} ${params.inputMint.slice(0, 8)}... → ${params.outputMint.slice(0, 8)}...`,
+      );
 
       const response = await fetch(`${this.JUPITER_QUOTE_API}?${queryParams.toString()}`);
 
@@ -270,7 +269,7 @@ export class SwapService extends Service {
         const errorText = await response.text();
         const parsedError = parseJSONObjectFromText(errorText);
 
-        if (parsedError?.errorCode === 'TOKEN_NOT_TRADABLE') {
+        if (parsedError?.errorCode === "TOKEN_NOT_TRADABLE") {
           logger.error(`[${SwapService.serviceType}] Token not tradable:`, parsedError.error);
           return null;
         }
@@ -282,10 +281,12 @@ export class SwapService extends Service {
         return null;
       }
 
-      const quote = await response.json() as SwapQuote;
+      const quote = (await response.json()) as SwapQuote;
 
       const outputAmount = await this.smallestUnitToAmount(params.outputMint, quote.outAmount);
-      logger.info(`[SwapService] Quote: ${params.amount} → ${outputAmount} (${quote.priceImpactPct}% impact, ${quote.routePlan.length} routes)`);
+      logger.info(
+        `[SwapService] Quote: ${params.amount} → ${outputAmount} (${quote.priceImpactPct}% impact, ${quote.routePlan.length} routes)`,
+      );
       return quote;
     } catch (error) {
       logger.error(`[${SwapService.serviceType}] Quote fetch error:`, error);
@@ -300,21 +301,21 @@ export class SwapService extends Service {
     const errorResult = (error: string): SwapResult => ({
       success: false,
       inputAmount: params.amount.toString(),
-      outputAmount: '0',
+      outputAmount: "0",
       inputMint: params.inputMint,
       outputMint: params.outputMint,
-      priceImpact: '0',
+      priceImpact: "0",
       error,
     });
 
     if (!this.isReady()) {
-      return errorResult('Swap service not ready - wallet not configured');
+      return errorResult("Swap service not ready - wallet not configured");
     }
 
     try {
       const quote = await this.getQuote(params);
       if (!quote) {
-        return errorResult('Failed to get quote from Jupiter');
+        return errorResult("Failed to get quote from Jupiter");
       }
 
       const dynamicSlippage = this.calculateDynamicSlippage(quote.inAmount, quote);
@@ -322,14 +323,14 @@ export class SwapService extends Service {
 
       // Get swap transaction from Jupiter
       const swapResponse = await fetch(this.JUPITER_SWAP_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           quoteResponse: {
             ...quote,
             slippageBps: dynamicSlippage,
           },
-          userPublicKey: this.walletKeypair!.publicKey.toString(),
+          userPublicKey: this.walletKeypair?.publicKey.toString(),
           wrapAndUnwrapSol: true,
           computeUnitPriceMicroLamports: params.priorityFeeMicroLamports ?? 5000000,
           dynamicComputeUnitLimit: true,
@@ -349,36 +350,40 @@ export class SwapService extends Service {
         };
       }
 
-      const swapData = await swapResponse.json() as { swapTransaction: string };
+      const swapData = (await swapResponse.json()) as {
+        swapTransaction: string;
+      };
 
       if (!swapData?.swapTransaction) {
         logger.error(`[${SwapService.serviceType}] No swap transaction returned`);
         return {
-          ...errorResult('No swap transaction returned from Jupiter'),
+          ...errorResult("No swap transaction returned from Jupiter"),
           outputAmount: await this.smallestUnitToAmount(params.outputMint, quote.outAmount),
           priceImpact: quote.priceImpactPct,
         };
       }
 
       // Deserialize and sign the transaction
-      const transactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
+      const transactionBuf = Buffer.from(swapData.swapTransaction, "base64");
       const transaction = VersionedTransaction.deserialize(transactionBuf);
 
       // Get fresh blockhash
-      const latestBlockhash = await this.connection!.getLatestBlockhash('processed');
+      const latestBlockhash = await this.connection?.getLatestBlockhash("processed");
       transaction.message.recentBlockhash = latestBlockhash.blockhash;
 
       // Sign the transaction
       transaction.sign([this.walletKeypair!]);
 
       // Send the transaction
-      const signature = await this.connection!.sendRawTransaction(transaction.serialize(), {
+      const signature = await this.connection?.sendRawTransaction(transaction.serialize(), {
         skipPreflight: true,
         maxRetries: 5,
-        preflightCommitment: 'processed',
+        preflightCommitment: "processed",
       });
 
-      logger.info(`[SwapService] Tx sent: ${signature.slice(0, 16)}... (https://solscan.io/tx/${signature})`);
+      logger.info(
+        `[SwapService] Tx sent: ${signature.slice(0, 16)}... (https://solscan.io/tx/${signature})`,
+      );
 
       // Confirm the transaction
       const confirmed = await this.confirmTransaction(signature);
@@ -393,11 +398,13 @@ export class SwapService extends Service {
           outputMint: params.outputMint,
           priceImpact: quote.priceImpactPct,
           explorerUrl: `https://solscan.io/tx/${signature}`,
-          error: 'Transaction confirmation failed',
+          error: "Transaction confirmation failed",
         };
       }
 
-      logger.info(`[SwapService] Swap complete: ${params.amount} → ${await this.smallestUnitToAmount(params.outputMint, quote.outAmount)}`);
+      logger.info(
+        `[SwapService] Swap complete: ${params.amount} → ${await this.smallestUnitToAmount(params.outputMint, quote.outAmount)}`,
+      );
 
       return {
         success: true,
@@ -411,7 +418,7 @@ export class SwapService extends Service {
       };
     } catch (error) {
       logger.error(`[${SwapService.serviceType}] Swap execution error:`, error);
-      return errorResult(error instanceof Error ? error.message : 'Unknown swap error');
+      return errorResult(error instanceof Error ? error.message : "Unknown swap error");
     }
   }
 
@@ -420,17 +427,23 @@ export class SwapService extends Service {
    */
   private async confirmTransaction(signature: string): Promise<boolean> {
     for (let attempt = 0; attempt < CONFIRMATION_CONFIG.MAX_ATTEMPTS; attempt++) {
-      const status = await this.connection!.getSignatureStatus(signature);
+      const status = await this.connection?.getSignatureStatus(signature);
 
-      const confirmationStatus = status.value?.confirmationStatus as TransactionConfirmationStatus | undefined;
-      if (confirmationStatus === 'confirmed' || confirmationStatus === 'finalized') {
-        logger.info(`[SwapService] Confirmed: ${signature.slice(0, 16)}... (${confirmationStatus})`);
+      const confirmationStatus = status.value?.confirmationStatus as
+        | TransactionConfirmationStatus
+        | undefined;
+      if (confirmationStatus === "confirmed" || confirmationStatus === "finalized") {
+        logger.info(
+          `[SwapService] Confirmed: ${signature.slice(0, 16)}... (${confirmationStatus})`,
+        );
         return true;
       }
 
       const delay = CONFIRMATION_CONFIG.getDelayForAttempt(attempt);
-      logger.debug(`[${SwapService.serviceType}] Waiting ${delay}ms for confirmation (attempt ${attempt + 1})`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      logger.debug(
+        `[${SwapService.serviceType}] Waiting ${delay}ms for confirmation (attempt ${attempt + 1})`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
 
     logger.error(`[${SwapService.serviceType}] Transaction confirmation timed out:`, signature);
@@ -445,15 +458,15 @@ export class SwapService extends Service {
       return { solBalance: 0, tokens: [] };
     }
 
-    const solBalance = await this.connection!.getBalance(this.walletKeypair!.publicKey);
-    const tokenProgramId = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    const solBalance = await this.connection?.getBalance(this.walletKeypair?.publicKey);
+    const tokenProgramId = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
-    const tokenAccounts = await this.connection!.getParsedTokenAccountsByOwner(
-      this.walletKeypair!.publicKey,
-      { programId: tokenProgramId }
+    const tokenAccounts = await this.connection?.getParsedTokenAccountsByOwner(
+      this.walletKeypair?.publicKey,
+      { programId: tokenProgramId },
     );
 
-    const tokens = tokenAccounts.value.map(account => {
+    const tokens = tokenAccounts.value.map((account) => {
       const parsed = account.account.data.parsed.info;
       return {
         mint: parsed.mint as string,
@@ -479,14 +492,18 @@ export class SwapService extends Service {
       return balances.solBalance;
     }
 
-    const token = balances.tokens.find(t => t.mint.toLowerCase() === mint.toLowerCase());
+    const token = balances.tokens.find((t) => t.mint.toLowerCase() === mint.toLowerCase());
     return token?.uiAmount ?? 0;
   }
 
   /**
    * Execute a buy (SOL -> Token)
    */
-  public async buy(tokenMint: string, solAmount: number, slippageBps?: number): Promise<SwapResult> {
+  public async buy(
+    tokenMint: string,
+    solAmount: number,
+    slippageBps?: number,
+  ): Promise<SwapResult> {
     return this.executeSwap({
       inputMint: KNOWN_TOKENS.SOL,
       outputMint: tokenMint,
@@ -498,7 +515,11 @@ export class SwapService extends Service {
   /**
    * Execute a sell (Token -> SOL)
    */
-  public async sell(tokenMint: string, tokenAmount: number, slippageBps?: number): Promise<SwapResult> {
+  public async sell(
+    tokenMint: string,
+    tokenAmount: number,
+    slippageBps?: number,
+  ): Promise<SwapResult> {
     return this.executeSwap({
       inputMint: tokenMint,
       outputMint: KNOWN_TOKENS.SOL,

@@ -109,7 +109,7 @@ export const serverInfo: Action = {
 
     if (!discordService || !discordService.client) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "Discord service is not available.",
           source: "discord",
         });
@@ -119,7 +119,7 @@ export const serverInfo: Action = {
 
     if (!state) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "State is not available.",
           source: "discord",
         });
@@ -133,7 +133,7 @@ export const serverInfo: Action = {
       const serverId = room?.messageServerId;
       if (!serverId) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I couldn't determine the current server.",
             source: "discord",
           });
@@ -160,7 +160,7 @@ export const serverInfo: Action = {
       };
 
       if (callback) {
-        await callback(response);
+        await callback?.(response);
       }
       return { success: true, text: response.text };
     } catch (error) {
@@ -173,7 +173,7 @@ export const serverInfo: Action = {
         "Error getting server info"
       );
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I encountered an error while getting server information. Please try again.",
           source: "discord",
         });

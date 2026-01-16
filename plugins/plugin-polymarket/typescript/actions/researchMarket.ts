@@ -12,25 +12,25 @@
  * Use forceRefresh=true to start new research even if cached results exist.
  */
 
-import {
-  type Action,
-  type ActionResult,
-  type Content,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  Content,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 import { ResearchStorageService } from "../services/researchStorage";
-import { type MarketResearch, ResearchStatus } from "../types";
-import { RESEARCH_TASK_NAME } from "../workers/researchTaskWorker";
 import { researchMarketTemplate } from "../templates";
+import { type MarketResearch, ResearchStatus } from "../types";
 import {
   callLLMWithTimeout,
   isLLMError,
   sendAcknowledgement,
   sendError,
 } from "../utils/llmHelpers";
+import { RESEARCH_TASK_NAME } from "../workers/researchTaskWorker";
 
 interface ResearchParams {
   marketId?: string;
@@ -64,11 +64,7 @@ Provide a thorough, well-sourced analysis that would help someone make an inform
  */
 function formatResearchResults(research: MarketResearch): string {
   const rec = research.result?.recommendation;
-  const recEmoji = rec?.shouldTrade
-    ? rec.confidence > 80
-      ? "🟢"
-      : "🟡"
-    : "🔴";
+  const recEmoji = rec?.shouldTrade ? (rec.confidence > 80 ? "🟢" : "🟡") : "🔴";
 
   let text = `📊 **Research Complete: ${research.marketQuestion}**\n\n`;
 
@@ -104,7 +100,7 @@ function formatResearchResults(research: MarketResearch): string {
 /**
  * Format the full research report (for detailed view)
  */
-function formatFullReport(research: MarketResearch): string {
+function _formatFullReport(research: MarketResearch): string {
   let text = formatResearchResults(research);
 
   if (research.result?.text) {
@@ -145,7 +141,8 @@ export const researchMarketAction: Action = {
     "GET_RESEARCH",
     "CHECK_RESEARCH",
   ],
-  description: "Initiates or retrieves deep research on a Polymarket prediction market using OpenAI's deep research capabilities. Takes 20-40 minutes. Returns cached results if available, status if in progress, or starts new research. Use forceRefresh=true to force new research. Parameters: marketId (condition_id), marketQuestion (the prediction question), forceRefresh (optional boolean), callbackAction (optional: EVALUATE_TRADE or NOTIFY_ONLY).",
+  description:
+    "Initiates or retrieves deep research on a Polymarket prediction market using OpenAI's deep research capabilities. Takes 20-40 minutes. Returns cached results if available, status if in progress, or starts new research. Use forceRefresh=true to force new research. Parameters: marketId (condition_id), marketQuestion (the prediction question), forceRefresh (optional boolean), callbackAction (optional: EVALUATE_TRADE or NOTIFY_ONLY).",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const openaiKey = runtime.getSetting("OPENAI_API_KEY");
@@ -162,7 +159,7 @@ export const researchMarketAction: Action = {
     _message: Memory,
     state?: State,
     options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const storage = new ResearchStorageService(runtime);
 
@@ -171,14 +168,12 @@ export const researchMarketAction: Action = {
       runtime,
       state,
       researchMarketTemplate,
-      "researchMarketAction"
+      "researchMarketAction",
     );
 
     // Extract parameters from LLM result or options
     const marketId =
-      llmResult && !isLLMError(llmResult)
-        ? llmResult.marketId
-        : (options?.marketId as string);
+      llmResult && !isLLMError(llmResult) ? llmResult.marketId : (options?.marketId as string);
     const marketQuestion =
       llmResult && !isLLMError(llmResult)
         ? llmResult.marketQuestion
@@ -188,9 +183,7 @@ export const researchMarketAction: Action = {
       (options?.forceRefresh as boolean) ??
       false;
     const callbackAction =
-      (llmResult && !isLLMError(llmResult)
-        ? llmResult.callbackAction
-        : undefined) ??
+      (llmResult && !isLLMError(llmResult) ? llmResult.callbackAction : undefined) ??
       (options?.callbackAction as "EVALUATE_TRADE" | "NOTIFY_ONLY") ??
       "NOTIFY_ONLY";
 
@@ -198,7 +191,7 @@ export const researchMarketAction: Action = {
       await sendError(
         callback,
         "Missing required information: market ID and question are needed",
-        "Use POLYMARKET_GET_MARKETS to find a market first"
+        "Use POLYMARKET_GET_MARKETS to find a market first",
       );
       return {
         success: false,
@@ -208,11 +201,10 @@ export const researchMarketAction: Action = {
     }
 
     // Send acknowledgement
-    const questionPreview = marketQuestion.length > 50
-      ? marketQuestion.slice(0, 50) + "..."
-      : marketQuestion;
+    const questionPreview =
+      marketQuestion.length > 50 ? `${marketQuestion.slice(0, 50)}...` : marketQuestion;
     await sendAcknowledgement(callback, `Checking research status for market...`, {
-      marketId: marketId.slice(0, 16) + "...",
+      marketId: `${marketId.slice(0, 16)}...`,
       question: questionPreview,
       forceRefresh: forceRefresh ? "yes" : "no",
     });
@@ -221,12 +213,9 @@ export const researchMarketAction: Action = {
     const existingResearch = await storage.getMarketResearch(marketId);
 
     // CASE 1: Research completed and not expired - return cached results
-    if (
-      existingResearch?.status === ResearchStatus.COMPLETED &&
-      !forceRefresh
-    ) {
+    if (existingResearch?.status === ResearchStatus.COMPLETED && !forceRefresh) {
       runtime.logger.info(
-        `[researchMarketAction] Returning cached research for market: ${marketId}`
+        `[researchMarketAction] Returning cached research for market: ${marketId}`,
       );
 
       const responseText = formatResearchResults(existingResearch);
@@ -256,8 +245,7 @@ export const researchMarketAction: Action = {
 
     // CASE 2: Research in progress - return status
     if (existingResearch?.status === ResearchStatus.IN_PROGRESS) {
-      const elapsedMinutes =
-        (await storage.getResearchElapsedMinutes(marketId)) ?? 0;
+      const elapsedMinutes = (await storage.getResearchElapsedMinutes(marketId)) ?? 0;
       const estimatedRemaining = Math.max(30 - elapsedMinutes, 5);
 
       const responseText =
@@ -361,9 +349,7 @@ export const researchMarketAction: Action = {
     // CASE 5: No research or force refresh - start new research
     const researchPrompt = buildResearchPrompt(marketQuestion);
 
-    runtime.logger.info(
-      `[researchMarketAction] Starting new research for market: ${marketId}`
-    );
+    runtime.logger.info(`[researchMarketAction] Starting new research for market: ${marketId}`);
 
     // Create the async task
     const taskId = await runtime.createTask({
@@ -421,34 +407,81 @@ export const researchMarketAction: Action = {
     // Example 1: User requests deep research on specific market
     [
       { name: "{{user1}}", content: { text: "Do deep research on the Bitcoin $100k market" } },
-      { name: "{{user2}}", content: { text: "Starting deep research. This takes 20-40 minutes but provides comprehensive analysis from hundreds of sources.", action: "POLYMARKET_RESEARCH_MARKET" } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Starting deep research. This takes 20-40 minutes but provides comprehensive analysis from hundreds of sources.",
+          action: "POLYMARKET_RESEARCH_MARKET",
+        },
+      },
     ],
     // Example 2: Multi-turn - user considering a trade wants research first
     [
-      { name: "{{user1}}", content: { text: "I'm thinking about betting on the Fed rate decision" } },
-      { name: "{{user2}}", content: { text: "That's a significant market. Would you like me to do deep research on it first, or just show you the current pricing?" } },
-      { name: "{{user1}}", content: { text: "Yes do the research, I want to understand all the factors" } },
-      { name: "{{user2}}", content: { text: "Starting comprehensive research on the Fed rate decision market. I'll analyze economic data, Fed communications, and expert predictions.", action: "POLYMARKET_RESEARCH_MARKET" } },
+      {
+        name: "{{user1}}",
+        content: { text: "I'm thinking about betting on the Fed rate decision" },
+      },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "That's a significant market. Would you like me to do deep research on it first, or just show you the current pricing?",
+        },
+      },
+      {
+        name: "{{user1}}",
+        content: { text: "Yes do the research, I want to understand all the factors" },
+      },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Starting comprehensive research on the Fed rate decision market. I'll analyze economic data, Fed communications, and expert predictions.",
+          action: "POLYMARKET_RESEARCH_MARKET",
+        },
+      },
     ],
     // Example 3: User just wants prices - should NOT do research
     [
       { name: "{{user1}}", content: { text: "What's the current price on the Trump market?" } },
-      { name: "{{user2}}", content: { text: "Let me fetch the current pricing.", action: "POLYMARKET_GET_TOKEN_INFO" } },
+      {
+        name: "{{user2}}",
+        content: { text: "Let me fetch the current pricing.", action: "POLYMARKET_GET_TOKEN_INFO" },
+      },
     ],
     // Example 4: Check research status
     [
       { name: "{{user1}}", content: { text: "Is the research on the election market done yet?" } },
-      { name: "{{user2}}", content: { text: "Let me check the research status.", action: "POLYMARKET_RESEARCH_MARKET" } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Let me check the research status.",
+          action: "POLYMARKET_RESEARCH_MARKET",
+        },
+      },
     ],
     // Example 5: User wants to browse markets - should NOT do research
     [
       { name: "{{user1}}", content: { text: "What markets are available about AI?" } },
-      { name: "{{user2}}", content: { text: "I'll search for AI-related prediction markets.", action: "POLYMARKET_GET_MARKETS" } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "I'll search for AI-related prediction markets.",
+          action: "POLYMARKET_GET_MARKETS",
+        },
+      },
     ],
     // Example 6: Force refresh existing research
     [
-      { name: "{{user1}}", content: { text: "The election research is from last week, can you update it?" } },
-      { name: "{{user2}}", content: { text: "I'll refresh the research with the latest information.", action: "POLYMARKET_RESEARCH_MARKET" } },
+      {
+        name: "{{user1}}",
+        content: { text: "The election research is from last week, can you update it?" },
+      },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "I'll refresh the research with the latest information.",
+          action: "POLYMARKET_RESEARCH_MARKET",
+        },
+      },
     ],
   ],
 };

@@ -5,13 +5,9 @@
  * reactions, and member events.
  */
 
-import type {
-  AgentRuntime,
-  EventPayload,
-  Service,
-} from "@elizaos/core";
-import type { Interaction, Message, GuildMember } from "discord.js";
+import type { AgentRuntime, EventPayload, Service } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { GuildMember, Interaction, Message } from "discord.js";
 
 // Type definitions for Discord events
 interface DiscordSlashCommandPayload extends EventPayload {
@@ -96,18 +92,16 @@ You can also just @mention me in any channel to chat!`,
             ephemeral: true,
           });
       }
-    }
+    },
   );
 
   // Handle reactions (for future use)
   runtime.registerEvent<DiscordReactionPayload>(
     "DISCORD_REACTION_ADDED",
     async ({ reaction, user }) => {
-      logger.debug(
-        `Reaction ${reaction.emoji.name} added by ${user.username}`
-      );
+      logger.debug(`Reaction ${reaction.emoji.name} added by ${user.username}`);
       // Custom reaction handling can be implemented here
-    }
+    },
   );
 
   // Handle new members (for future use)
@@ -116,7 +110,7 @@ You can also just @mention me in any channel to chat!`,
     async ({ member }) => {
       logger.info(`New member joined: ${member.user.username}`);
       // Welcome message logic can be implemented here
-    }
+    },
   );
 
   logger.info("Discord event handlers registered");
@@ -126,7 +120,7 @@ You can also just @mention me in any channel to chat!`,
  * Register slash commands with Discord
  */
 export async function registerSlashCommands(
-  runtime: AgentRuntime
+  runtime: AgentRuntime,
 ): Promise<void> {
   const commands: DiscordSlashCommand[] = [
     { name: "ping", description: "Check if the bot is online" },
@@ -138,7 +132,7 @@ export async function registerSlashCommands(
 
   if (!discordService?.clientReadyPromise) {
     logger.warn(
-      "Discord service not ready. Slash commands won't be registered until connected."
+      "Discord service not ready. Slash commands won't be registered until connected.",
     );
     return;
   }

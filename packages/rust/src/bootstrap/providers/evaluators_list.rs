@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::error::PluginResult;
+use crate::generated::action_docs::ALL_EVALUATOR_DOCS_JSON;
 use crate::runtime::IAgentRuntime;
 use crate::types::{Memory, ProviderResult, State};
-use crate::generated::action_docs::ALL_EVALUATOR_DOCS_JSON;
 
 use super::Provider;
 
@@ -43,8 +43,8 @@ struct EvaluatorMessageDoc {
 fn evaluator_docs_by_name() -> &'static HashMap<String, EvaluatorDoc> {
     static CACHE: OnceLock<HashMap<String, EvaluatorDoc>> = OnceLock::new();
     CACHE.get_or_init(|| {
-        let parsed: serde_json::Value = serde_json::from_str(ALL_EVALUATOR_DOCS_JSON)
-            .expect("invalid ALL_EVALUATOR_DOCS_JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(ALL_EVALUATOR_DOCS_JSON).expect("invalid ALL_EVALUATOR_DOCS_JSON");
         let root: EvaluatorDocsRoot =
             serde_json::from_value(parsed).expect("invalid evaluator docs root");
         root.evaluators
@@ -61,11 +61,7 @@ fn format_evaluator_examples(e: &EvaluatorDoc, max_examples: usize) -> String {
         if !ex.messages.is_empty() {
             b.push_str("\nMessages:");
             for m in &ex.messages {
-                let text = m
-                    .content
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let text = m.content.get("text").and_then(|v| v.as_str()).unwrap_or("");
                 b.push_str(&format!("\n- {}: {}", m.name, text));
             }
         }
@@ -102,8 +98,9 @@ impl Provider for EvaluatorsProvider {
         let docs_by_name = evaluator_docs_by_name();
 
         if evaluators.is_empty() {
-            return Ok(ProviderResult::new("No evaluators available.")
-                .with_value("evaluatorCount", 0i64));
+            return Ok(
+                ProviderResult::new("No evaluators available.").with_value("evaluatorCount", 0i64)
+            );
         }
 
         let evaluator_info: Vec<serde_json::Value> = evaluators
@@ -144,9 +141,13 @@ impl Provider for EvaluatorsProvider {
 
         Ok(ProviderResult::new(text)
             .with_value("evaluatorCount", evaluators.len() as i64)
-            .with_data("evaluatorNames", serde_json::to_value(&names).unwrap_or_default())
-            .with_data("evaluators", serde_json::to_value(&evaluator_info).unwrap_or_default()))
+            .with_data(
+                "evaluatorNames",
+                serde_json::to_value(&names).unwrap_or_default(),
+            )
+            .with_data(
+                "evaluators",
+                serde_json::to_value(&evaluator_info).unwrap_or_default(),
+            ))
     }
 }
-
-

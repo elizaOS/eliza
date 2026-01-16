@@ -1,10 +1,13 @@
-import type { IAgentRuntime, Memory, Provider, ProviderResult, ProviderValue, State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  ProviderValue,
+  State,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  DEFAULT_CLOB_API_URL,
-  POLYGON_CHAIN_ID,
-  POLYMARKET_SERVICE_NAME,
-} from "../constants";
+import { DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID, POLYMARKET_SERVICE_NAME } from "../constants";
 import type { PolymarketService } from "../services/polymarket";
 import type {
   ActivityContext,
@@ -15,7 +18,6 @@ import type {
   OpenOrder,
   OrderDetailsActivityData,
   OrderScoringActivityData,
-  Position,
   PriceHistoryActivityData,
   TradeHistoryActivityData,
 } from "../types";
@@ -188,24 +190,27 @@ function formatActivityContextText(activityContext: ActivityContext): string {
 
 export const polymarketProvider: Provider = {
   name: "POLYMARKET_PROVIDER",
-  description: "Provides current Polymarket account state and trading context from the service cache",
+  description:
+    "Provides current Polymarket account state and trading context from the service cache",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     const clobApiUrl = runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
     const hasPrivateKey = Boolean(
       runtime.getSetting("POLYMARKET_PRIVATE_KEY") ||
         runtime.getSetting("EVM_PRIVATE_KEY") ||
-        runtime.getSetting("WALLET_PRIVATE_KEY")
+        runtime.getSetting("WALLET_PRIVATE_KEY"),
     );
     const hasEnvApiCreds = Boolean(
-      runtime.getSetting("CLOB_API_KEY") && runtime.getSetting("CLOB_API_SECRET")
+      runtime.getSetting("CLOB_API_KEY") && runtime.getSetting("CLOB_API_SECRET"),
     );
     const allowCreateSetting = runtime.getSetting("POLYMARKET_ALLOW_CREATE_API_KEY");
-    const canDeriveOrCreateCreds = hasPrivateKey && allowCreateSetting !== "false" && allowCreateSetting !== false;
+    const canDeriveOrCreateCreds =
+      hasPrivateKey && allowCreateSetting !== "false" && allowCreateSetting !== false;
     const hasApiCreds = hasEnvApiCreds || canDeriveOrCreateCreds;
 
     const strictSetting = runtime.getSetting("POLYMARKET_PROVIDER_STRICT");
-    const strictMode = strictSetting === undefined ? true : parseBooleanSetting(String(strictSetting));
+    const strictMode =
+      strictSetting === undefined ? true : parseBooleanSetting(String(strictSetting));
 
     const featuresAvailable: string[] = ["market_data", "price_feeds", "order_book"];
     if (hasPrivateKey) {
@@ -221,13 +226,13 @@ export const polymarketProvider: Provider = {
     if (strictMode && !hasApiCreds) {
       throw new Error(
         "Polymarket provider strict mode: API credentials required to fetch trading context. " +
-          "Set CLOB_API_KEY/SECRET/PASSPHRASE or enable POLYMARKET_ALLOW_CREATE_API_KEY with a private key."
+          "Set CLOB_API_KEY/SECRET/PASSPHRASE or enable POLYMARKET_ALLOW_CREATE_API_KEY with a private key.",
       );
     }
 
     if (hasApiCreds && strictMode && !hasPrivateKey) {
       throw new Error(
-        "Polymarket provider strict mode: private key required when API credentials are set."
+        "Polymarket provider strict mode: private key required when API credentials are set.",
       );
     }
 

@@ -2,17 +2,15 @@ import type { IAgentRuntime, Plugin, Provider } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { z } from "zod";
 
+export * from "./actions/index.js";
 export * from "./protocol.js";
-export * from "./types.js";
+export * from "./providers/index.js";
 export * from "./services/minecraft-service.js";
-export * from "./services/websocket-client.js";
 export * from "./services/process-manager.js";
 export * from "./services/waypoints-service.js";
-export * from "./actions/index.js";
-export * from "./providers/index.js";
+export * from "./services/websocket-client.js";
+export * from "./types.js";
 
-import { MinecraftService } from "./services/minecraft-service.js";
-import { WaypointsService } from "./services/waypoints-service.js";
 import {
   minecraftAttackAction,
   minecraftChatAction,
@@ -35,12 +33,11 @@ import {
   minecraftWaypointsProvider,
   minecraftWorldStateProvider,
 } from "./providers/index.js";
+import { MinecraftService } from "./services/minecraft-service.js";
+import { WaypointsService } from "./services/waypoints-service.js";
 
 const configSchema = z.object({
-  MC_SERVER_PORT: z
-    .string()
-    .optional()
-    .default("3457"),
+  MC_SERVER_PORT: z.string().optional().default("3457"),
   MC_HOST: z.string().optional().default("127.0.0.1"),
   MC_PORT: z.string().optional().default("25565"),
   MC_USERNAME: z.string().optional(),
@@ -90,8 +87,11 @@ export const minecraftPlugin: Plugin = {
     minecraftWaypointGotoAction,
     minecraftWaypointDeleteAction,
   ],
-  providers: [minecraftStateProvider, minecraftWaypointsProvider, minecraftVisionProvider],
+  providers: [
+    minecraftStateProvider,
+    minecraftWaypointsProvider,
+    minecraftVisionProvider,
+  ],
 };
 
 export default minecraftPlugin;
-

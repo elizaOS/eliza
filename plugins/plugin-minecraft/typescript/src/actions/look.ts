@@ -9,7 +9,10 @@ import type {
   State,
 } from "@elizaos/core";
 import { z } from "zod";
-import { MinecraftService, MINECRAFT_SERVICE_TYPE } from "../services/minecraft-service.js";
+import {
+  MINECRAFT_SERVICE_TYPE,
+  type MinecraftService,
+} from "../services/minecraft-service.js";
 
 const lookSchema = z.object({ yaw: z.number(), pitch: z.number() });
 
@@ -34,9 +37,15 @@ function parseLook(text: string): { yaw: number; pitch: number } | null {
 export const minecraftLookAction: Action = {
   name: "MC_LOOK",
   similes: ["MINECRAFT_LOOK", "TURN_HEAD"],
-  description: "Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+  description:
+    "Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
     return Boolean(service) && Boolean(parseLook(message.content.text ?? ""));
   },
   handler: async (
@@ -46,8 +55,11 @@ export const minecraftLookAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
-    if (!service) return { text: "Minecraft service is not available", success: false };
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
+    if (!service)
+      return { text: "Minecraft service is not available", success: false };
     const req = parseLook(message.content.text ?? "");
     if (!req) return { text: "Missing yaw/pitch", success: false };
 
@@ -72,4 +84,3 @@ export const minecraftLookAction: Action = {
     }
   },
 };
-

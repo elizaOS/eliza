@@ -1,7 +1,9 @@
-import { type UUID } from '@elizaos/core';
-
 // Re-export types using 'export type' for isolatedModules
-export type { TokenSignal, PortfolioStatus, SellSignalMessage } from './index.ts';
+export type {
+  PortfolioStatus,
+  SellSignalMessage,
+  TokenSignal,
+} from "./index.ts";
 
 // Trading-specific types not in index.ts
 export interface RiskLimits {

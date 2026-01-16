@@ -332,10 +332,17 @@ export const sendMessageAction: Action = {
         targetData.identifiers.username.trim() !== ""
           ? {
               ...message,
-              content: { ...message.content, text: targetData.identifiers.username },
+              content: {
+                ...message.content,
+                text: targetData.identifiers.username,
+              },
             }
           : message;
-      const targetEntity = await findEntityByName(runtime, lookupMessage, state);
+      const targetEntity = await findEntityByName(
+        runtime,
+        lookupMessage,
+        state,
+      );
 
       if (!targetEntity) {
         await callback({

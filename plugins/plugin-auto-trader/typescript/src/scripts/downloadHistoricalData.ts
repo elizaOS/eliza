@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
-import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-import { VERIFIED_MEME_COINS, ALL_MEME_COINS } from '../config/memeCoins.ts';
-import { AgentRuntime, ModelType } from '@elizaos/core';
-import * as fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
+import * as fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type { AgentRuntime } from "@elizaos/core";
+import dotenv from "dotenv";
+import { ALL_MEME_COINS, VERIFIED_MEME_COINS } from "../config/memeCoins.ts";
+import { DefaultHistoricalDataService } from "../services/HistoricalDataService.ts";
 
 // Load environment variables
 dotenv.config();
@@ -17,19 +17,19 @@ const __dirname = path.dirname(__filename);
 // Mock runtime for service initialization
 class MockRuntime implements Partial<AgentRuntime> {
   getSetting(key: string): string | undefined {
-    if (key === 'BIRDEYE_API_KEY') {
+    if (key === "BIRDEYE_API_KEY") {
       return process.env.BIRDEYE_API_KEY;
     }
     return undefined;
   }
 
-  useModel(modelType: any, params: any, provider?: string): Promise<any> {
-    throw new Error('Model not needed for data download');
+  useModel(_modelType: any, _params: any, _provider?: string): Promise<any> {
+    throw new Error("Model not needed for data download");
   }
 }
 
 async function downloadAllData() {
-  console.log('🚀 Starting historical data download for all meme coins...');
+  console.log("🚀 Starting historical data download for all meme coins...");
 
   // Initialize service
   const runtime = new MockRuntime() as AgentRuntime;
@@ -44,7 +44,7 @@ async function downloadAllData() {
   console.log(`📅 Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
 
   // Choose which coins to download
-  const useVerifiedOnly = process.argv.includes('--verified');
+  const useVerifiedOnly = process.argv.includes("--verified");
   const coins = useVerifiedOnly ? VERIFIED_MEME_COINS : ALL_MEME_COINS;
 
   console.log(`📊 Downloading data for ${coins.length} coins...`);
@@ -56,7 +56,7 @@ async function downloadAllData() {
   };
 
   // Create cache directory
-  const cacheDir = path.join(__dirname, '../../cache/birdeye');
+  const cacheDir = path.join(__dirname, "../../cache/birdeye");
   if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir, { recursive: true });
   }
@@ -69,7 +69,7 @@ async function downloadAllData() {
     try {
       console.log(`\n${progress} Downloading ${coin.symbol} (${coin.address})...`);
 
-      const data = await dataService.fetchData(coin.address, '1h', startDate, endDate, 'birdeye');
+      const data = await dataService.fetchData(coin.address, "1h", startDate, endDate, "birdeye");
 
       if (data && data.length > 0) {
         results.successful.push(coin.symbol);
@@ -77,9 +77,9 @@ async function downloadAllData() {
         console.log(`✅ Downloaded ${data.length} candles for ${coin.symbol}`);
 
         // Save summary
-        const summaryPath = path.join(cacheDir, 'download_summary.json');
+        const summaryPath = path.join(cacheDir, "download_summary.json");
         const summary = fs.existsSync(summaryPath)
-          ? JSON.parse(fs.readFileSync(summaryPath, 'utf-8'))
+          ? JSON.parse(fs.readFileSync(summaryPath, "utf-8"))
           : { coins: {} };
 
         summary.coins[coin.symbol] = {
@@ -92,7 +92,7 @@ async function downloadAllData() {
 
         fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
       } else {
-        results.failed.push({ symbol: coin.symbol, error: 'No data returned' });
+        results.failed.push({ symbol: coin.symbol, error: "No data returned" });
         console.log(`⚠️ No data available for ${coin.symbol}`);
       }
     } catch (error: any) {
@@ -100,8 +100,8 @@ async function downloadAllData() {
       console.error(`❌ Failed to download ${coin.symbol}: ${error.message}`);
 
       // If rate limited, wait longer
-      if (error.message?.includes('rate limit')) {
-        console.log('⏳ Rate limited, waiting 2 minutes...');
+      if (error.message?.includes("rate limit")) {
+        console.log("⏳ Rate limited, waiting 2 minutes...");
         await new Promise((resolve) => setTimeout(resolve, 120000));
       } else {
         // Normal delay between requests
@@ -111,9 +111,9 @@ async function downloadAllData() {
   }
 
   // Print summary
-  console.log('\n' + '='.repeat(60));
-  console.log('📊 DOWNLOAD SUMMARY');
-  console.log('='.repeat(60));
+  console.log(`\n${"=".repeat(60)}`);
+  console.log("📊 DOWNLOAD SUMMARY");
+  console.log("=".repeat(60));
   console.log(`✅ Successful downloads: ${results.successful.length}/${coins.length}`);
   console.log(`❌ Failed downloads: ${results.failed.length}`);
   console.log(`📈 Total candles downloaded: ${results.totalCandles.toLocaleString()}`);
@@ -129,18 +129,21 @@ async function downloadAllData() {
   }
 
   // Save final report
-  const reportPath = path.join(cacheDir, 'download_report.json');
+  const reportPath = path.join(cacheDir, "download_report.json");
   fs.writeFileSync(
     reportPath,
     JSON.stringify(
       {
         timestamp: Date.now(),
-        dateRange: { start: startDate.toISOString(), end: endDate.toISOString() },
+        dateRange: {
+          start: startDate.toISOString(),
+          end: endDate.toISOString(),
+        },
         results,
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 
   console.log(`\n📁 Report saved to: ${reportPath}`);
@@ -150,23 +153,24 @@ async function downloadAllData() {
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const command = args[0] || 'download';
+const command = args[0] || "download";
 
 switch (command) {
-  case 'download':
+  case "download":
     downloadAllData().catch(console.error);
     break;
-  case 'clear':
-    const cacheDir = path.join(__dirname, '../../cache/birdeye');
+  case "clear": {
+    const cacheDir = path.join(__dirname, "../../cache/birdeye");
     if (fs.existsSync(cacheDir)) {
       fs.rmSync(cacheDir, { recursive: true });
-      console.log('✅ Cache cleared');
+      console.log("✅ Cache cleared");
     }
     break;
+  }
   default:
-    console.log('Usage: npm run download-data [download|clear]');
-    console.log('  download       - Download 6 months of data for all coins');
-    console.log('  download --verified - Download only verified coins (first 30)');
-    console.log('  clear         - Clear cache directory');
+    console.log("Usage: npm run download-data [download|clear]");
+    console.log("  download       - Download 6 months of data for all coins");
+    console.log("  download --verified - Download only verified coins (first 30)");
+    console.log("  clear         - Clear cache directory");
     process.exit(1);
 }

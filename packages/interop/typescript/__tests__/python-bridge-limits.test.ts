@@ -57,4 +57,3 @@ describe("Python Bridge - limits", () => {
     expect(killed).toBe(true);
   });
 });
-

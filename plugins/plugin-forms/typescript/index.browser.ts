@@ -14,4 +14,3 @@ export const formsPlugin: Plugin = {
 };
 
 export default formsPlugin;
-

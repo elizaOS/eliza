@@ -1,18 +1,34 @@
-import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { MinecraftService, MINECRAFT_SERVICE_TYPE } from "../services/minecraft-service.js";
+import {
+  MINECRAFT_SERVICE_TYPE,
+  type MinecraftService,
+} from "../services/minecraft-service.js";
 
 export const minecraftWorldStateProvider: Provider = {
   name: "MC_WORLD_STATE",
-  description: "Minecraft world state: position, health, inventory, nearby entities",
+  description:
+    "Minecraft world state: position, health, inventory, nearby entities",
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
   ): Promise<ProviderResult> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
     if (!service) {
-      return { text: "Minecraft service is not available", values: { connected: false }, data: {} };
+      return {
+        text: "Minecraft service is not available",
+        values: { connected: false },
+        data: {},
+      };
     }
 
     try {
@@ -28,8 +44,12 @@ export const minecraftWorldStateProvider: Provider = {
       const pos = state.position
         ? `(${state.position.x.toFixed(1)}, ${state.position.y.toFixed(1)}, ${state.position.z.toFixed(1)})`
         : "(unknown)";
-      const invCount = Array.isArray(state.inventory) ? state.inventory.length : 0;
-      const entCount = Array.isArray(state.nearbyEntities) ? state.nearbyEntities.length : 0;
+      const invCount = Array.isArray(state.inventory)
+        ? state.inventory.length
+        : 0;
+      const entCount = Array.isArray(state.nearbyEntities)
+        ? state.nearbyEntities.length
+        : 0;
 
       return {
         text: `Minecraft: hp=${state.health ?? "?"} food=${state.food ?? "?"} pos=${pos} invItems=${invCount} nearbyEntities=${entCount}`,
@@ -48,8 +68,11 @@ export const minecraftWorldStateProvider: Provider = {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error(`[Minecraft] Error getting world state: ${msg}`);
-      return { text: "Error getting Minecraft world state", values: { connected: false, error: true }, data: {} };
+      return {
+        text: "Error getting Minecraft world state",
+        values: { connected: false, error: true },
+        data: {},
+      };
     }
   },
 };
-

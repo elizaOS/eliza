@@ -1,4 +1,4 @@
-import { OHLCV } from '../types.ts';
+import type { OHLCV } from "../types.ts";
 
 /**
  * Performance optimization utilities for handling large historical datasets
@@ -28,14 +28,14 @@ export class BatchDataProcessor {
     options?: {
       maxConcurrency?: number;
       onProgress?: (processed: number, total: number) => void;
-    }
+    },
   ): Promise<R[]> {
     const { maxConcurrency = 3, onProgress } = options || {};
     const results: R[] = [];
     const batchSize = processor.batchSize;
 
     let processed = 0;
-    const totalBatches = Math.ceil(data.length / batchSize);
+    const _totalBatches = Math.ceil(data.length / batchSize);
 
     // Process batches with concurrency control
     for (let i = 0; i < data.length; i += batchSize * maxConcurrency) {
@@ -252,7 +252,7 @@ export class DataCache<K, V> {
     // Evict oldest entries if cache is full
     if (this.cache.size >= this.maxSize) {
       const oldestKey = Array.from(this.cache.entries()).sort(
-        (a, b) => a[1].timestamp - b[1].timestamp
+        (a, b) => a[1].timestamp - b[1].timestamp,
       )[0][0];
       this.cache.delete(oldestKey);
     }
@@ -297,7 +297,7 @@ export class PerformanceTracker {
         this.metrics.set(operation, []);
       }
 
-      this.metrics.get(operation)!.push(durationMs);
+      this.metrics.get(operation)?.push(durationMs);
     };
   }
 
@@ -321,8 +321,8 @@ export class PerformanceTracker {
   }
 
   logMetrics(): void {
-    console.log('\n=== Performance Metrics ===');
-    for (const [operation, times] of this.metrics.entries()) {
+    console.log("\n=== Performance Metrics ===");
+    for (const [operation, _times] of this.metrics.entries()) {
       const metrics = this.getMetrics(operation);
       if (metrics) {
         console.log(`${operation}:`);

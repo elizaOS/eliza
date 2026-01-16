@@ -2,7 +2,7 @@
  * Discord Handlers Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { character } from "../character";
 
 describe("Discord Character", () => {
@@ -53,7 +53,7 @@ describe("Environment Validation", () => {
     delete process.env.DISCORD_API_TOKEN;
 
     const missing = ["DISCORD_APPLICATION_ID", "DISCORD_API_TOKEN"].filter(
-      (key) => !process.env[key]
+      (key) => !process.env[key],
     );
 
     expect(missing.length).toBe(2);

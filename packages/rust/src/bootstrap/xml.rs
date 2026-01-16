@@ -127,7 +127,9 @@ fn extract_xml_children(xml: &str) -> Vec<(String, String)> {
         let mut depth: i32 = 1;
         let mut search_start = start_tag_end + 1;
         while depth > 0 && search_start < bytes.len() {
-            let next_open = xml[search_start..].find(&format!("<{}", tag)).map(|off| search_start + off);
+            let next_open = xml[search_start..]
+                .find(&format!("<{}", tag))
+                .map(|off| search_start + off);
             let next_close = match xml[search_start..].find(&close_seq) {
                 Some(off) => search_start + off,
                 None => break,
@@ -172,7 +174,9 @@ fn extract_xml_children(xml: &str) -> Vec<(String, String)> {
 ///
 /// Returns a map keyed by UPPERCASE action name, where each value is a map of parameter name
 /// to JSON string value.
-pub fn parse_action_params(params_xml: &str) -> HashMap<String, HashMap<String, serde_json::Value>> {
+pub fn parse_action_params(
+    params_xml: &str,
+) -> HashMap<String, HashMap<String, serde_json::Value>> {
     let mut out: HashMap<String, HashMap<String, serde_json::Value>> = HashMap::new();
     let trimmed = params_xml.trim();
     if trimmed.is_empty() {
@@ -219,7 +223,10 @@ mod tests {
         "#;
 
         let result = parse_key_value_xml(xml).unwrap();
-        assert_eq!(result.get("thought"), Some(&"Thinking about this".to_string()));
+        assert_eq!(
+            result.get("thought"),
+            Some(&"Thinking about this".to_string())
+        );
         assert_eq!(result.get("text"), Some(&"Hello world".to_string()));
     }
 
@@ -286,4 +293,3 @@ mod tests {
         );
     }
 }
-

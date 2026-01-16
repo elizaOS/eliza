@@ -17,7 +17,7 @@ import {
 import type { AutonomyService } from "@elizaos/core";
 import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
 import openaiPlugin from "@elizaos/plugin-openai";
-import { plugin as inmemorydbPlugin } from "@elizaos/plugin-inmemorydb";
+import inmemorydbPlugin from "@elizaos/plugin-inmemorydb";
 import mcpPlugin from "@elizaos/plugin-mcp";
 import computerusePlugin from "@elizaos/plugin-computeruse";
 import express, { type Request, type Response } from "express";
@@ -257,8 +257,9 @@ export function createApp(): express.Express {
       .slice()
       .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
       .filter((m) => {
-        if (seen.has(m.id)) return false;
-        seen.add(m.id);
+        const id = m.id ?? "";
+        if (seen.has(id)) return false;
+        seen.add(id);
         return true;
       })
       .map((m) => ({

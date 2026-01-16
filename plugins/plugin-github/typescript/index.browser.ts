@@ -14,4 +14,3 @@ export const githubPlugin: Plugin = {
 };
 
 export default githubPlugin;
-

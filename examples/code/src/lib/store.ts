@@ -1,7 +1,6 @@
 import { stringToUuid } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
-import { getCwd, setCwd } from "./cwd.js";
 import type {
   ChatRoom,
   CodeTask,
@@ -11,6 +10,7 @@ import type {
   TaskPaneVisibility,
   TaskUserStatus,
 } from "../types.js";
+import { getCwd, setCwd } from "./cwd.js";
 import {
   createRoomElizaId,
   ensureSessionIdentity,

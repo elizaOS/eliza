@@ -54,18 +54,13 @@ export class ResearchStorageService {
         research.expiresAt &&
         Date.now() > research.expiresAt
       ) {
-        logger.debug(
-          `[ResearchStorage] Research for market ${marketId} has expired`
-        );
+        logger.debug(`[ResearchStorage] Research for market ${marketId} has expired`);
         return { ...research, status: ResearchStatus.EXPIRED };
       }
 
       return research;
     } catch (error) {
-      logger.error(
-        `[ResearchStorage] Error getting research for market ${marketId}:`,
-        error
-      );
+      logger.error(`[ResearchStorage] Error getting research for market ${marketId}:`, error);
       return null;
     }
   }
@@ -86,10 +81,7 @@ export class ResearchStorageService {
 
       return this.getMarketResearch(marketId);
     } catch (error) {
-      logger.error(
-        `[ResearchStorage] Error getting research by token ${tokenId}:`,
-        error
-      );
+      logger.error(`[ResearchStorage] Error getting research by token ${tokenId}:`, error);
       return null;
     }
   }
@@ -100,7 +92,7 @@ export class ResearchStorageService {
   async markResearchInProgress(
     marketId: string,
     marketQuestion: string,
-    taskId: UUID
+    taskId: UUID,
   ): Promise<void> {
     const key = this.getCacheKey(marketId);
     const research: MarketResearch = {
@@ -112,9 +104,7 @@ export class ResearchStorageService {
     };
 
     await this.runtime.setCache(key, research);
-    logger.info(
-      `[ResearchStorage] Marked research IN_PROGRESS for market: ${marketId}`
-    );
+    logger.info(`[ResearchStorage] Marked research IN_PROGRESS for market: ${marketId}`);
   }
 
   /**
@@ -123,14 +113,14 @@ export class ResearchStorageService {
   async storeResearchResult(
     marketId: string,
     result: MarketResearch["result"],
-    researchId: string
+    researchId: string,
   ): Promise<void> {
     const key = this.getCacheKey(marketId);
     const existing = await this.getMarketResearch(marketId);
 
     if (!existing) {
       logger.warn(
-        `[ResearchStorage] Cannot store result - no existing research for market ${marketId}`
+        `[ResearchStorage] Cannot store result - no existing research for market ${marketId}`,
       );
       return;
     }
@@ -145,18 +135,13 @@ export class ResearchStorageService {
     };
 
     await this.runtime.setCache(key, research);
-    logger.info(
-      `[ResearchStorage] Stored COMPLETED research for market: ${marketId}`
-    );
+    logger.info(`[ResearchStorage] Stored COMPLETED research for market: ${marketId}`);
   }
 
   /**
    * Mark research as failed
    */
-  async markResearchFailed(
-    marketId: string,
-    errorMessage: string
-  ): Promise<void> {
+  async markResearchFailed(marketId: string, errorMessage: string): Promise<void> {
     const key = this.getCacheKey(marketId);
     const existing = await this.getMarketResearch(marketId);
 
@@ -172,7 +157,7 @@ export class ResearchStorageService {
 
     await this.runtime.setCache(key, research);
     logger.error(
-      `[ResearchStorage] Marked research FAILED for market ${marketId}: ${errorMessage}`
+      `[ResearchStorage] Marked research FAILED for market ${marketId}: ${errorMessage}`,
     );
   }
 

@@ -64,4 +64,3 @@ impl Provider for CurrentTimeProvider {
             .with_data("unixTimestamp", unix_timestamp))
     }
 }
-

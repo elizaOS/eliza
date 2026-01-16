@@ -1,15 +1,15 @@
+import type { AgentRuntime } from "@elizaos/core";
+import * as talib from "technicalindicators";
 import {
-  TradingStrategy,
-  TradeOrder,
-  TradeType,
+  type AgentState,
+  type OHLCV,
   OrderType,
-  OHLCV,
-  StrategyContextMarketData,
-  AgentState,
-  PortfolioSnapshot,
-} from '../types.ts';
-import { AgentRuntime } from '@elizaos/core';
-import * as talib from 'technicalindicators';
+  type PortfolioSnapshot,
+  type StrategyContextMarketData,
+  type TradeOrder,
+  TradeType,
+  type TradingStrategy,
+} from "../types.ts";
 
 export interface MeanReversionConfig {
   // Bollinger Bands settings
@@ -37,12 +37,11 @@ export interface MeanReversionConfig {
 }
 
 export class MeanReversionStrategy implements TradingStrategy {
-  public readonly id = 'mean-reversion-strategy';
-  public readonly name = 'MeanReversionStrategy';
+  public readonly id = "mean-reversion-strategy";
+  public readonly name = "MeanReversionStrategy";
   public readonly description =
-    'A strategy that trades on mean reversion patterns using Bollinger Bands and RSI';
+    "A strategy that trades on mean reversion patterns using Bollinger Bands and RSI";
   private config: MeanReversionConfig;
-  private runtime?: AgentRuntime;
   private initialized = false;
 
   constructor(config?: Partial<MeanReversionConfig>) {
@@ -93,8 +92,8 @@ export class MeanReversionStrategy implements TradingStrategy {
 
     // Extract price arrays
     const closes = priceData.map((c: OHLCV) => c.close);
-    const highs = priceData.map((c: OHLCV) => c.high);
-    const lows = priceData.map((c: OHLCV) => c.low);
+    const _highs = priceData.map((c: OHLCV) => c.high);
+    const _lows = priceData.map((c: OHLCV) => c.low);
     const volumes = priceData.map((c: OHLCV) => c.volume);
 
     // Calculate indicators
@@ -111,14 +110,14 @@ export class MeanReversionStrategy implements TradingStrategy {
     // Market condition checks
     if (volatility < this.config.minVolatility || volatility > this.config.maxVolatility) {
       console.log(
-        `[${this.name}] Volatility ${volatility.toFixed(4)} outside range [${this.config.minVolatility}, ${this.config.maxVolatility}]`
+        `[${this.name}] Volatility ${volatility.toFixed(4)} outside range [${this.config.minVolatility}, ${this.config.maxVolatility}]`,
       );
       return null;
     }
 
     if (volumeRatio < this.config.minVolumeRatio) {
       console.log(
-        `[${this.name}] Volume ratio ${volumeRatio.toFixed(2)} below minimum ${this.config.minVolumeRatio}`
+        `[${this.name}] Volume ratio ${volumeRatio.toFixed(2)} below minimum ${this.config.minVolumeRatio}`,
       );
       return null;
     }
@@ -140,7 +139,7 @@ export class MeanReversionStrategy implements TradingStrategy {
         return {
           action: TradeType.BUY,
           orderType: OrderType.MARKET,
-          pair: 'SOL/USDC', // This should come from context
+          pair: "SOL/USDC", // This should come from context
           quantity: positionSize,
           reason: `Mean reversion buy: Price ${distanceFromLower.toFixed(2)}% below lower BB, RSI: ${currentRSI.toFixed(2)}`,
           timestamp: Date.now(),
@@ -153,17 +152,17 @@ export class MeanReversionStrategy implements TradingStrategy {
       const rsiCondition = !this.config.rsiConfirmation || currentRSI > this.config.rsiOverbought;
 
       if (rsiCondition) {
-        const currentHolding = portfolioSnapshot.holdings['SOL'] || 0;
+        const currentHolding = portfolioSnapshot.holdings.SOL || 0;
 
         if (currentHolding > 0) {
           console.log(
-            `[${this.name}] SELL SIGNAL - Price at upper BB, RSI: ${currentRSI.toFixed(2)}`
+            `[${this.name}] SELL SIGNAL - Price at upper BB, RSI: ${currentRSI.toFixed(2)}`,
           );
 
           return {
             action: TradeType.SELL,
             orderType: OrderType.MARKET,
-            pair: 'SOL/USDC',
+            pair: "SOL/USDC",
             quantity: currentHolding,
             reason: `Mean reversion sell: Price ${distanceFromUpper.toFixed(2)}% above upper BB, RSI: ${currentRSI.toFixed(2)}`,
             timestamp: Date.now(),
@@ -173,14 +172,14 @@ export class MeanReversionStrategy implements TradingStrategy {
     }
 
     // Exit position if price returns to mean
-    const currentHolding = portfolioSnapshot.holdings['SOL'] || 0;
+    const currentHolding = portfolioSnapshot.holdings.SOL || 0;
     if (currentHolding > 0 && distanceFromMiddle < 0.01) {
       console.log(`[${this.name}] Price returned to mean, exiting position`);
 
       return {
         action: TradeType.SELL,
         orderType: OrderType.MARKET,
-        pair: 'SOL/USDC',
+        pair: "SOL/USDC",
         quantity: currentHolding,
         reason: `Price returned to mean (${distanceFromMiddle.toFixed(2)}% from middle BB)`,
         timestamp: Date.now(),
@@ -191,7 +190,7 @@ export class MeanReversionStrategy implements TradingStrategy {
   }
 
   private calculateBollingerBands(
-    closes: number[]
+    closes: number[],
   ): { upper: number; middle: number; lower: number } | null {
     if (closes.length < this.config.bbPeriod) return null;
 
@@ -231,22 +230,6 @@ export class MeanReversionStrategy implements TradingStrategy {
   private calculatePositionSize(portfolioValue: number, price: number): number {
     const positionValue = portfolioValue * this.config.positionSizePercent;
     return positionValue / price;
-  }
-
-  private calculateConfidence(distance: number, rsi: number, isBuy: boolean): number {
-    let confidence = 0.5;
-
-    // Distance from band adds confidence
-    confidence += Math.min(distance * 2, 0.2);
-
-    // RSI extremes add confidence
-    if (isBuy && rsi < this.config.rsiOversold) {
-      confidence += (this.config.rsiOversold - rsi) / 100;
-    } else if (!isBuy && rsi > this.config.rsiOverbought) {
-      confidence += (rsi - this.config.rsiOverbought) / 100;
-    }
-
-    return Math.min(Math.max(confidence, 0), 1);
   }
 
   updateConfig(config: Partial<MeanReversionConfig>): void {

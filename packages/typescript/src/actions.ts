@@ -97,9 +97,7 @@ function formatActionCallExample(example: {
     .join("\n");
 
   const paramsSection =
-    paramsBlocks.length > 0
-      ? `\n<params>\n${paramsBlocks}\n</params>`
-      : "";
+    paramsBlocks.length > 0 ? `\n<params>\n${paramsBlocks}\n</params>` : "";
 
   return `User: ${example.user}\nAssistant:\n<actions>\n${actionTags}\n</actions>${paramsSection}`;
 }

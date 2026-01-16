@@ -464,7 +464,10 @@ export function encryptAes256Gcm(
     if (aad && aad.length > 0) {
       cipher.setAAD(aad);
     }
-    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const ciphertext = Buffer.concat([
+      cipher.update(plaintext),
+      cipher.final(),
+    ]);
     const tag = cipher.getAuthTag();
     return { ciphertext: new Uint8Array(ciphertext), tag: new Uint8Array(tag) };
   }
@@ -474,7 +477,10 @@ export function encryptAes256Gcm(
   if (aad && aad.length > 0) {
     cipher.setAAD(Buffer.from(aad));
   }
-  const ciphertext = Buffer.concat([cipher.update(Buffer.from(plaintext)), cipher.final()]);
+  const ciphertext = Buffer.concat([
+    cipher.update(Buffer.from(plaintext)),
+    cipher.final(),
+  ]);
   const tag = cipher.getAuthTag();
   return { ciphertext: new Uint8Array(ciphertext), tag: new Uint8Array(tag) };
 }

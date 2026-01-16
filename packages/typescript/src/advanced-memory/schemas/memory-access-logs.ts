@@ -14,7 +14,8 @@ export const memoryAccessLogs = pgTable(
   (table) => ({
     memoryIdIdx: index("memory_access_logs_memory_id_idx").on(table.memoryId),
     agentIdIdx: index("memory_access_logs_agent_id_idx").on(table.agentId),
-    accessedAtIdx: index("memory_access_logs_accessed_at_idx").on(table.accessedAt),
+    accessedAtIdx: index("memory_access_logs_accessed_at_idx").on(
+      table.accessedAt,
+    ),
   }),
 );
-

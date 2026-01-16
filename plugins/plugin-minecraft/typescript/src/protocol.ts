@@ -40,4 +40,3 @@ export interface MinecraftBridgeResponse {
   data?: JsonObject;
   error?: string;
 }
-

@@ -5,7 +5,7 @@
  * Supports any Solana token, not just hardcoded ones.
  */
 
-import { Service, type IAgentRuntime, logger } from '@elizaos/core';
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 
 export interface TokenInfo {
   address: string;
@@ -21,21 +21,21 @@ export interface TokenInfo {
 /** Well-known tokens that don't need API lookup */
 const WELL_KNOWN_TOKENS: Record<string, TokenInfo> = {
   SOL: {
-    address: 'So11111111111111111111111111111111111111112',
-    symbol: 'SOL',
-    name: 'Solana',
+    address: "So11111111111111111111111111111111111111112",
+    symbol: "SOL",
+    name: "Solana",
     decimals: 9,
   },
   USDC: {
-    address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    symbol: 'USDC',
-    name: 'USD Coin',
+    address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    symbol: "USDC",
+    name: "USD Coin",
     decimals: 6,
   },
   USDT: {
-    address: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
-    symbol: 'USDT',
-    name: 'Tether USD',
+    address: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+    symbol: "USDT",
+    name: "Tether USD",
     decimals: 6,
   },
 };
@@ -44,8 +44,8 @@ const WELL_KNOWN_TOKENS: Record<string, TokenInfo> = {
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export class TokenResolverService extends Service {
-  public static readonly serviceType = 'TokenResolverService';
-  public readonly capabilityDescription = 'Resolves token symbols to addresses dynamically';
+  public static readonly serviceType = "TokenResolverService";
+  public readonly capabilityDescription = "Resolves token symbols to addresses dynamically";
 
   private cache = new Map<string, TokenInfo>();
   private cacheExpiry = new Map<string, number>();
@@ -62,7 +62,7 @@ export class TokenResolverService extends Service {
 
   public static async start(runtime: IAgentRuntime): Promise<TokenResolverService> {
     const instance = new TokenResolverService(runtime);
-    logger.info('[TokenResolverService] Started');
+    logger.info("[TokenResolverService] Started");
     return instance;
   }
 
@@ -105,11 +105,11 @@ export class TokenResolverService extends Service {
    */
   public async resolveMany(inputs: string[]): Promise<Map<string, TokenInfo | null>> {
     const results = new Map<string, TokenInfo | null>();
-    
+
     await Promise.all(
       inputs.map(async (input) => {
         results.set(input, await this.resolve(input));
-      })
+      }),
     );
 
     return results;
@@ -125,9 +125,9 @@ export class TokenResolverService extends Service {
       return cached;
     }
 
-    const apiKey = this.runtime.getSetting('BIRDEYE_API_KEY');
+    const apiKey = this.runtime.getSetting("BIRDEYE_API_KEY");
     if (!apiKey) {
-      logger.warn('[TokenResolverService] No Birdeye API key configured');
+      logger.warn("[TokenResolverService] No Birdeye API key configured");
       return null;
     }
 
@@ -135,18 +135,20 @@ export class TokenResolverService extends Service {
       `https://public-api.birdeye.so/defi/token_overview?address=${address}`,
       {
         headers: {
-          'X-API-KEY': apiKey,
-          'x-chain': 'solana',
+          "X-API-KEY": apiKey,
+          "x-chain": "solana",
         },
-      }
+      },
     );
 
     if (!response.ok) {
-      logger.warn(`[TokenResolverService] Failed to resolve address ${address}: ${response.status}`);
+      logger.warn(
+        `[TokenResolverService] Failed to resolve address ${address}: ${response.status}`,
+      );
       return null;
     }
 
-    const data = await response.json() as {
+    const data = (await response.json()) as {
       success: boolean;
       data: {
         address: string;
@@ -185,9 +187,9 @@ export class TokenResolverService extends Service {
    * Search for a token by symbol or name
    */
   public async searchToken(query: string): Promise<TokenInfo | null> {
-    const apiKey = this.runtime.getSetting('BIRDEYE_API_KEY');
+    const apiKey = this.runtime.getSetting("BIRDEYE_API_KEY");
     if (!apiKey) {
-      logger.warn('[TokenResolverService] No Birdeye API key configured');
+      logger.warn("[TokenResolverService] No Birdeye API key configured");
       return null;
     }
 
@@ -195,10 +197,10 @@ export class TokenResolverService extends Service {
       `https://public-api.birdeye.so/defi/v3/search?chain=solana&keyword=${encodeURIComponent(query)}&target=token&sort_by=volume_24h_usd&sort_type=desc&limit=5`,
       {
         headers: {
-          'X-API-KEY': apiKey,
-          'x-chain': 'solana',
+          "X-API-KEY": apiKey,
+          "x-chain": "solana",
         },
-      }
+      },
     );
 
     if (!response.ok) {
@@ -206,7 +208,7 @@ export class TokenResolverService extends Service {
       return null;
     }
 
-    const data = await response.json() as {
+    const data = (await response.json()) as {
       success: boolean;
       data: {
         items: Array<{
@@ -228,9 +230,7 @@ export class TokenResolverService extends Service {
     }
 
     // Find best match - exact symbol match preferred
-    const exactMatch = data.data.items.find(
-      t => t.symbol.toUpperCase() === query.toUpperCase()
-    );
+    const exactMatch = data.data.items.find((t) => t.symbol.toUpperCase() === query.toUpperCase());
     const token = exactMatch || data.data.items[0];
 
     const tokenInfo: TokenInfo = {
@@ -247,7 +247,9 @@ export class TokenResolverService extends Service {
     this.setCache(tokenInfo.address, tokenInfo);
     this.setCache(tokenInfo.symbol.toUpperCase(), tokenInfo);
 
-    logger.info(`[TokenResolverService] Resolved "${query}" → ${tokenInfo.symbol} (${tokenInfo.address.slice(0, 8)}...)`);
+    logger.info(
+      `[TokenResolverService] Resolved "${query}" → ${tokenInfo.symbol} (${tokenInfo.address.slice(0, 8)}...)`,
+    );
     return tokenInfo;
   }
 
@@ -255,7 +257,7 @@ export class TokenResolverService extends Service {
    * Get trending tokens from Birdeye
    */
   public async getTrendingTokens(limit = 20): Promise<TokenInfo[]> {
-    const apiKey = this.runtime.getSetting('BIRDEYE_API_KEY');
+    const apiKey = this.runtime.getSetting("BIRDEYE_API_KEY");
     if (!apiKey) {
       return [];
     }
@@ -264,17 +266,17 @@ export class TokenResolverService extends Service {
       `https://public-api.birdeye.so/defi/tokenlist?sort_by=v24hUSD&sort_type=desc&offset=0&limit=${limit}`,
       {
         headers: {
-          'X-API-KEY': apiKey,
-          'x-chain': 'solana',
+          "X-API-KEY": apiKey,
+          "x-chain": "solana",
         },
-      }
+      },
     );
 
     if (!response.ok) {
       return [];
     }
 
-    const data = await response.json() as {
+    const data = (await response.json()) as {
       success: boolean;
       data: {
         tokens: Array<{
@@ -294,7 +296,7 @@ export class TokenResolverService extends Service {
       return [];
     }
 
-    return data.data.tokens.map(t => ({
+    return data.data.tokens.map((t) => ({
       address: t.address,
       symbol: t.symbol,
       name: t.name,
