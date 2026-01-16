@@ -5,7 +5,7 @@ import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
-import { resolvePgliteDir } from './utils';
+import { resolvePgliteDir } from './utils.node';
 import * as schema from './schema';
 
 /**
