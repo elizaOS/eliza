@@ -1139,8 +1139,8 @@ export class DefaultMessageService implements IMessageService {
       } else {
         responseContent = null;
         runtime.logger.warn(
-          { src: 'service:message', responsePreview: response.substring(0, 300) },
-          'parseKeyValueXml returned null - XML parsing failed'
+          { src: 'service:message' },
+          'dynamicPromptExecFromState returned null - XML parsing failed'
         );
       }
 
