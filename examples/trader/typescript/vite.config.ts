@@ -12,9 +12,6 @@ export default defineConfig({
       buffer: 'buffer',
       stream: 'stream-browserify',
       crypto: 'crypto-browserify',
-      // Stub Node.js modules for browser compatibility
-      'fs/promises': 'rollup-plugin-node-builtins',
-      fs: 'rollup-plugin-node-builtins',
       path: 'path-browserify',
     },
   },
