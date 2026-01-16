@@ -1,23 +1,12 @@
 //! Bluesky Agent - A full-featured AI agent running on Bluesky
 //!
-//! This agent uses the COMPLETE elizaOS runtime pipeline:
-//! - Full message processing through message_service.handle_message()
-//! - State composition with all registered providers
-//! - Action planning and execution
-//! - Response generation via messageHandlerTemplate
-//! - Evaluator execution
-//! - basicCapabilities enabled by default (REPLY, IGNORE, NONE actions)
-//!
-//! NO shortcuts, NO bypassing the pipeline - this is canonical elizaOS.
+//! This agent uses the elizaOS runtime pipeline for message processing.
 
 mod character;
 mod handlers;
 
 use anyhow::{Context, Result};
-use elizaos::{
-    runtime::{AgentRuntime, RuntimeOptions},
-    string_to_uuid,
-};
+use elizaos::runtime::{AgentRuntime, RuntimeOptions};
 use elizaos_plugin_bluesky::{BlueSkyClient, BlueSkyConfig};
 use elizaos_plugin_openai::create_openai_elizaos_plugin;
 use std::sync::Arc;
@@ -76,7 +65,6 @@ async fn main() -> Result<()> {
     let character = create_character();
 
     // Create the runtime with plugins
-    // Note: disable_basic_capabilities is false by default (provides REPLY, IGNORE, NONE actions)
     let runtime = AgentRuntime::new(RuntimeOptions {
         character: Some(character.clone()),
         plugins: vec![create_openai_elizaos_plugin()?],
@@ -91,22 +79,13 @@ async fn main() -> Result<()> {
 
     // Create BlueSky client
     let config = BlueSkyConfig::from_env()?;
-    let mut client = BlueSkyClient::new(config)?;
+    let client = BlueSkyClient::new(config)?;
 
-    // Authenticate
+    // Authenticate (client takes &self for authenticate)
     println!("🔐 Authenticating with Bluesky...");
     client.authenticate().await?;
 
     let client = Arc::new(Mutex::new(client));
-
-    // Ensure the Bluesky world exists
-    let world_id = string_to_uuid("bluesky-world");
-    runtime.ensure_world_exists(
-        &world_id,
-        "Bluesky",
-        &runtime.agent_id(),
-        Some(&world_id),
-    ).await?;
 
     // Get config values for display
     let handle = std::env::var("BLUESKY_HANDLE").unwrap_or_default();
@@ -130,11 +109,9 @@ async fn main() -> Result<()> {
     println!("   Automated posting: {}", enable_posting);
     println!("   DM processing: {}", enable_dms);
     println!("   Dry run mode: {}", dry_run);
-    println!("\n   Using FULL elizaOS pipeline:");
+    println!("\n   Using elizaOS pipeline:");
     println!("   - State composition with providers");
-    println!("   - shouldRespond evaluation");
-    println!("   - Action planning & execution");
-    println!("   - Evaluators");
+    println!("   - Response generation");
     println!("\n   Press Ctrl+C to stop.\n");
 
     // Start polling loop

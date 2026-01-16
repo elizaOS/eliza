@@ -30,7 +30,7 @@ export class RaydiumService extends Service {
       Math.min(2000 * 1.5 ** attempt, 20000),
   };
 
-  constructor(public runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
     this.registry = {};
     console.log("RAYDIUM_SERVICE cstr");

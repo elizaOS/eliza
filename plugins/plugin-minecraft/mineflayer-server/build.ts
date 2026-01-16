@@ -2,6 +2,18 @@
 
 import { $ } from "bun";
 
+// All dependencies should be external - they'll be installed at runtime
+const externalDeps = [
+  "@elizaos/core",
+  "mineflayer",
+  "mineflayer-pathfinder",
+  "minecraft-data",
+  "prismarine-item",
+  "vec3",
+  "ws",
+  "zod",
+];
+
 async function build(): Promise<void> {
   await $`rm -rf dist`;
   const result = await Bun.build({
@@ -11,7 +23,7 @@ async function build(): Promise<void> {
     format: "esm",
     splitting: false,
     sourcemap: "external",
-    external: ["@elizaos/core"],
+    external: externalDeps,
   });
 
   if (!result.success) {

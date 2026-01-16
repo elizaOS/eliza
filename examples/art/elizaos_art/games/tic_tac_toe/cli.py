@@ -18,7 +18,7 @@ from elizaos_art.games.tic_tac_toe.agent import (
     TicTacToeRandomAgent,
 )
 from elizaos_art.games.tic_tac_toe.environment import TicTacToeEnvironment
-from elizaos_art.games.tic_tac_toe.types import TicTacToeAction, TicTacToeConfig, Player
+from elizaos_art.games.tic_tac_toe.types import Player, TicTacToeAction, TicTacToeConfig
 from elizaos_art.trainer import GRPOTrainer
 
 app = typer.Typer(
@@ -112,7 +112,8 @@ def interactive(
     """Play Tic-Tac-Toe interactively."""
 
     async def run() -> None:
-        config = TicTacToeConfig(opponent=opponent, ai_player=Player.O)  # Human is X
+        # Human is X (plays first), AI opponent is O
+        config = TicTacToeConfig(opponent=opponent, ai_player=Player.O)
         env = TicTacToeEnvironment(config)
         await env.initialize()
 

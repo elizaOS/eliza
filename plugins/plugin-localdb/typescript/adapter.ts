@@ -91,7 +91,6 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     super();
     this.storage = storage;
     this.agentId = agentId;
-    this.db = storage;
     this.vectorIndex = new SimpleHNSW(
       async () => {
         const index = this.vectorIndex.getIndex();

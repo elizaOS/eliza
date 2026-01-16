@@ -4,6 +4,12 @@ from elizaos.services.message_service import (
     DefaultMessageService,
     IMessageService,
     MessageProcessingResult,
+    StreamingMessageResult,
 )
 
-__all__ = ["DefaultMessageService", "IMessageService", "MessageProcessingResult"]
+__all__ = [
+    "DefaultMessageService",
+    "IMessageService",
+    "MessageProcessingResult",
+    "StreamingMessageResult",
+]

@@ -15,7 +15,7 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType, Service } from "@elizaos/core";
 import { z } from "zod";
-import { StarterPluginTestSuite } from "./__tests__/e2e/plugin-starter.e2e";
+import { StarterPluginTestSuite } from "./e2e/plugin-starter.e2e";
 
 /**
  * Defines the configuration schema for a plugin, including the validation rules for the plugin name.

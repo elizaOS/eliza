@@ -4,7 +4,7 @@ import contextlib
 import time
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
 
 HandlerCallback = Callable[[Content], Coroutine[Any, Any, list[Memory]]]
+StreamChunkCallback = Callable[[str], Coroutine[Any, Any, None]]
 
 
 @dataclass
@@ -24,6 +25,14 @@ class MessageProcessingResult:
     did_respond: bool
     response_content: Content | None
     response_messages: list[Memory] = field(default_factory=list)
+    state: State | None = None
+
+
+@dataclass
+class StreamingMessageResult:
+    """Result metadata for streaming message processing."""
+
+    response_memory: Memory
     state: State | None = None
 
 
@@ -35,6 +44,21 @@ class IMessageService(ABC):
         message: Memory,
         callback: HandlerCallback | None = None,
     ) -> MessageProcessingResult: ...
+
+    @abstractmethod
+    def handle_message_stream(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+    ) -> AsyncIterator[str | StreamingMessageResult]:
+        """
+        Process a message and stream the response token by token.
+
+        Yields:
+            str: Text chunks as they are generated
+            StreamingMessageResult: Final result with metadata (yielded last)
+        """
+        ...
 
 
 def _parse_actions_from_xml(xml_response: str) -> list[str]:
@@ -848,7 +872,7 @@ class DefaultMessageService(IMessageService):
             "Attempting param repair."
         )
 
-        # Compose a minimal “repair” prompt. Prefer JSON output for robustness.
+        # Compose a minimal "repair" prompt. Prefer JSON output for robustness.
         missing_lines = "\n".join(
             f"- {a}: required params = {', '.join(req)}" for a, req in missing_actions.items()
         )
@@ -897,3 +921,96 @@ class DefaultMessageService(IMessageService):
             merged[action_name].extend(entries)
 
         return merged
+
+    async def _handle_message_stream_impl(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+    ) -> AsyncIterator[str | StreamingMessageResult]:
+        """Internal implementation of streaming message handling."""
+        _ = runtime.start_run(message.room_id)
+
+        try:
+            check_should_respond = runtime.is_check_should_respond_enabled()
+            if not check_should_respond:
+                runtime.logger.debug(
+                    "check_should_respond disabled, always responding (ChatGPT mode)"
+                )
+
+            runtime.logger.debug("Saving incoming message to memory")
+            if message.id:
+                existing_memory = await runtime.get_memory_by_id(message.id)
+                if not existing_memory:
+                    await runtime.create_memory(message, "messages")
+            else:
+                message.id = as_uuid(str(uuid.uuid4()))
+                await runtime.create_memory(message, "messages")
+
+            # Compose state from providers
+            state = await runtime.compose_state(message)
+
+            # Build the prompt using canonical template
+            from elizaos.prompts import MESSAGE_HANDLER_TEMPLATE
+
+            template = MESSAGE_HANDLER_TEMPLATE
+            if runtime.character.templates and "messageHandlerTemplate" in runtime.character.templates:
+                template = runtime.character.templates["messageHandlerTemplate"]
+            prompt = self._build_canonical_prompt(runtime, message, state, template)
+
+            # Collect full response while streaming
+            full_response_parts: list[str] = []
+
+            # Stream response using the streaming model
+            async for chunk in runtime.use_model_stream(
+                ModelType.TEXT_LARGE_STREAM.value,
+                {
+                    "prompt": prompt,
+                    "system": runtime.character.system,
+                    "temperature": 0.7,
+                },
+            ):
+                full_response_parts.append(chunk)
+                yield chunk
+
+            # Build the complete response
+            full_response = "".join(full_response_parts)
+            response_content = Content(text=full_response)
+            response_id = as_uuid(str(uuid.uuid4()))
+            response_memory = Memory(
+                id=response_id,
+                entityId=runtime.agent_id,
+                agentId=runtime.agent_id,
+                roomId=message.room_id,
+                content=response_content,
+                createdAt=int(time.time() * 1000),
+            )
+
+            # Save response memory
+            runtime.logger.debug("Saving response to memory")
+            await runtime.create_memory(response_memory, "messages")
+
+            # Yield final result with metadata
+            yield StreamingMessageResult(
+                response_memory=response_memory,
+                state=state,
+            )
+
+        except Exception as e:
+            runtime.logger.error(f"Error processing streaming message: {e}")
+            raise
+        finally:
+            runtime.end_run()
+
+    def handle_message_stream(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+    ) -> AsyncIterator[str | StreamingMessageResult]:
+        """
+        Process a message and stream the response token by token.
+
+        Yields:
+            str: Text chunks as they are generated
+            StreamingMessageResult: Final result with metadata (yielded last)
+        """
+        return self._handle_message_stream_impl(runtime, message)

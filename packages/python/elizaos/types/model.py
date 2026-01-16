@@ -19,6 +19,10 @@ class ModelType(str, Enum):
     TEXT_LARGE = "TEXT_LARGE"
     TEXT_COMPLETION = "TEXT_COMPLETION"
 
+    # Streaming text generation models
+    TEXT_SMALL_STREAM = "TEXT_SMALL_STREAM"
+    TEXT_LARGE_STREAM = "TEXT_LARGE_STREAM"
+
     # Reasoning models (note: values are REASONING_*, not TEXT_REASONING_*)
     TEXT_REASONING_SMALL = "REASONING_SMALL"
     TEXT_REASONING_LARGE = "REASONING_LARGE"

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Generic, TypeVar
 
 import art
-from art.utils.ruler import ruler_score_group
+from art.rewards import ruler_score_group
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 

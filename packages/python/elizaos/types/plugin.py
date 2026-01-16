@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from elizaos.types.database import IDatabaseAdapter
     from elizaos.types.runtime import IAgentRuntime
     from elizaos.types.service import Service
+
+# Type for streaming model handlers
+StreamingModelHandler = Callable[["IAgentRuntime", dict[str, Any]], AsyncIterator[str]]
 
 
 class RouteRequest(BaseModel):
@@ -144,6 +147,11 @@ class Plugin(BaseModel):
     adapter: IDatabaseAdapter | None = Field(default=None, description="Database adapter")
     models: dict[str, Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]]] | None = Field(
         default=None, description="Model handlers by model type"
+    )
+    streaming_models: dict[str, StreamingModelHandler] | None = Field(
+        default=None,
+        alias="streamingModels",
+        description="Streaming model handlers by model type",
     )
     events: PluginEvents | None = Field(default=None, description="Event handlers by event type")
     routes: list[Route] | None = Field(default=None, description="HTTP routes to register")

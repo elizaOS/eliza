@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "bun";
 
-const outdir = join(import.meta.dir, "..", "dist");
+const outdir = join(import.meta.dir, "dist");
 
 if (existsSync(outdir)) {
   rmSync(outdir, { recursive: true });

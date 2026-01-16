@@ -37,7 +37,7 @@ export const messageHandlerTemplate = `{{agentName}} is replying to you:
 
 export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
 
-export const quotePostTemplate = `# Task: Write a quote post in the voice, style, and perspective of {{agentName}} @{{xUserName}}.
+export const quoteTweetTemplate = `# Task: Write a quote post in the voice, style, and perspective of {{agentName}} @{{xUserName}}.
 
 {{bio}}
 {{postDirections}}
@@ -57,9 +57,9 @@ Your quote post should be:
 
 Your output must ONLY contain the XML block.`;
 
-export const QUOTE_TWEET_TEMPLATE = quotePostTemplate;
+export const QUOTE_TWEET_TEMPLATE = quoteTweetTemplate;
 
-export const replyPostTemplate = `# Task: Write a reply post in the voice, style, and perspective of {{agentName}} @{{xUserName}}.
+export const replyTweetTemplate = `# Task: Write a reply post in the voice, style, and perspective of {{agentName}} @{{xUserName}}.
 
 {{bio}}
 {{postDirections}}
@@ -79,7 +79,7 @@ Your reply should be:
 
 Your output must ONLY contain the XML block.`;
 
-export const REPLY_TWEET_TEMPLATE = replyPostTemplate;
+export const REPLY_TWEET_TEMPLATE = replyTweetTemplate;
 
 export const xActionTemplate = `# INSTRUCTIONS: Determine actions for {{agentName}} (@{{xUserName}}) based on:
 {{bio}}
@@ -121,3 +121,4 @@ Response format should be formatted in a valid JSON block like this:
 The "action" field should be one of the options in [Available Actions] and the "text" field should be the response you want to send. Do not including any thinking or internal reflection in the "text" field. "thought" should be a short description of what the agent is thinking about before responding, inlcuding a brief justification for the response.`;
 
 export const X_MESSAGE_HANDLER_TEMPLATE = xMessageHandlerTemplate;
+

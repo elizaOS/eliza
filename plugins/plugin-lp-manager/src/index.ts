@@ -116,8 +116,8 @@ async function loadSolanaDexes(
                     break;
                 }
             }
-        } catch (error) {
-            logger.warn(`[LP Manager] Failed to load ${dex} DEX:`, error);
+        } catch (error: unknown) {
+            logger.warn(`[LP Manager] Failed to load ${dex} DEX:`, error instanceof Error ? error.message : String(error));
         }
     }
 }
@@ -156,8 +156,8 @@ async function loadEvmDexes(
                     break;
                 }
             }
-        } catch (error) {
-            logger.warn(`[LP Manager] Failed to load ${dex} DEX:`, error);
+        } catch (error: unknown) {
+            logger.warn(`[LP Manager] Failed to load ${dex} DEX:`, error instanceof Error ? error.message : String(error));
         }
     }
 }
@@ -169,7 +169,7 @@ function registerEvmService(runtime: IAgentRuntime, service: unknown): void {
     // We'll register EVM services after a delay to ensure DexInteractionService is ready
     setTimeout(() => {
         const dexService = runtime.getService<DexInteractionService>('dex-interaction');
-        if (dexService && typeof (dexService as Record<string, unknown>).registerDexService === 'function') {
+        if (dexService && typeof (dexService as unknown as Record<string, unknown>).registerDexService === 'function') {
             // EVM services need an adapter to work with the Solana-centric DexInteractionService
             // For now, we just store them and they can be accessed directly
             logger.info(`[LP Manager] EVM service registered: ${(service as { getDexName?: () => string }).getDexName?.()}`);
@@ -209,8 +209,8 @@ const lpManagerPlugin: Plugin = {
                 try {
                     const { registerMockDexServices } = await import('./services/MockLpService.ts');
                     await registerMockDexServices(runtime);
-                } catch (error) {
-                    logger.error(`[LP Manager] Failed to load mock services:`, error);
+                } catch (error: unknown) {
+                    logger.error(`[LP Manager] Failed to load mock services:`, error instanceof Error ? error.message : String(error));
                 }
             }, 3000);
             
@@ -230,7 +230,7 @@ const lpManagerPlugin: Plugin = {
         // Verify services loaded after a delay
         setTimeout(async () => {
             const dexService = runtime.getService<DexInteractionService>('dex-interaction');
-            if (dexService && typeof (dexService as Record<string, unknown>).getLpServices === 'function') {
+            if (dexService && typeof (dexService as unknown as Record<string, unknown>).getLpServices === 'function') {
                 const lpServices = (dexService as DexInteractionService).getLpServices();
                 logger.info(`[LP Manager] ${lpServices.length} LP services registered`);
                 

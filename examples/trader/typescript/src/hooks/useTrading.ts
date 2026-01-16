@@ -1,6 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { AgentRuntime } from '@elizaos/core';
-import type { AutoTradingManager, TradingStatus } from '@elizaos/plugin-auto-trader';
+import type { AutoTradingManager } from '@elizaos/plugin-auto-trader';
+
+interface StatusPosition {
+  id: string;
+  tokenAddress: string;
+  symbol?: string;
+  amount: number;
+  entryPrice: number;
+  currentPrice?: number;
+}
+
+interface Transaction {
+  id: string;
+  timestamp: number;
+  action: string;
+  token: string;
+  quantity: number;
+  price: number;
+  reason?: string;
+}
 
 export interface TradingState {
   isTrading: boolean;
@@ -68,7 +87,7 @@ export function useTrading(runtime: AgentRuntime | null) {
       ...prev,
       isTrading: status.isTrading,
       strategy: status.strategy || null,
-      positions: status.positions.map(p => {
+      positions: status.positions.map((p: StatusPosition) => {
         const currentPrice = p.currentPrice ?? p.entryPrice;
         return {
           id: p.id,
@@ -81,7 +100,7 @@ export function useTrading(runtime: AgentRuntime | null) {
         };
       }),
       performance: status.performance,
-      recentTrades: transactions.map(t => ({
+      recentTrades: transactions.map((t: Transaction) => ({
         id: t.id,
         timestamp: t.timestamp,
         action: t.action as 'BUY' | 'SELL',
@@ -97,7 +116,7 @@ export function useTrading(runtime: AgentRuntime | null) {
   const refreshWallet = useCallback(async () => {
     if (!runtime) return;
 
-    const swapService = runtime.getService('SwapService') as { getWalletAddress(): string | null; getWalletBalances(): Promise<{ solBalance: number }> } | undefined;
+    const swapService = runtime.getService('SwapService') as unknown as { getWalletAddress(): string | null; getWalletBalances(): Promise<{ solBalance: number }> } | undefined;
     if (!swapService) return;
 
     const address = swapService.getWalletAddress();

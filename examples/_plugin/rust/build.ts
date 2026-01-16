@@ -19,6 +19,22 @@ const wasmTarget = "wasm32-unknown-unknown";
 
 console.log("🔨 Building Rust plugin starter...");
 
+// Step 0: Check if wasm32-unknown-unknown target is installed
+console.log("🎯 Checking for WASM target...");
+try {
+  const result = await $`rustup target list --installed`.quiet();
+  if (!result.stdout.toString().includes("wasm32-unknown-unknown")) {
+    console.log("⚠️  wasm32-unknown-unknown target not found. Installing...");
+    await $`rustup target add wasm32-unknown-unknown`;
+    console.log("✅ WASM target installed");
+  }
+} catch {
+  console.error("❌ Rust build skipped - rustup not available or failed to add WASM target");
+  console.log("   Please install manually: rustup target add wasm32-unknown-unknown");
+  console.log("   Skipping Rust WASM build...");
+  process.exit(0);
+}
+
 // Step 1: Check if wasm-bindgen-cli is installed
 console.log("📦 Checking for wasm-bindgen-cli...");
 try {

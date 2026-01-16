@@ -352,6 +352,7 @@ class TextWorldEnvironment:
             score=self._score,
             max_score=self._max_score,
             steps=self._steps,
+            max_steps=self._max_steps,
             won=self._won,
             actions_taken=list(self._action_history),
         )

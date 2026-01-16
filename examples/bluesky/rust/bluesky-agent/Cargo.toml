@@ -14,7 +14,7 @@ path = "src/main.rs"
 elizaos = { path = "../../../../packages/rust" }
 
 # elizaOS Plugins
-elizaos-plugin-openai = { path = "../../../../packages/plugin-openai/rust" }
+elizaos-plugin-openai = { path = "../../../../plugins/plugin-openai/rust" }
 elizaos-plugin-bluesky = { path = "../../../../plugins/plugin-bluesky/rust" }
 
 # Async runtime

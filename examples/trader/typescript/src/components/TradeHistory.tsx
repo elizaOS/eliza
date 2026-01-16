@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface Trade {
   id: string;
   timestamp: number;

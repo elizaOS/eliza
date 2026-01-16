@@ -4,7 +4,8 @@
     "outDir": "../dist/node",
     "declaration": true,
     "declarationDir": "../dist",
-    "emitDeclarationOnly": true
+    "emitDeclarationOnly": true,
+    "noEmit": false
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist", "tests", "**/*.test.ts"]

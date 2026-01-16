@@ -4,7 +4,7 @@
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/node/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos-plugins/plugin-ollama.git"
@@ -12,7 +12,7 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/node/index.d.ts",
       "browser": {
         "types": "./dist/browser/index.d.ts",
         "import": "./dist/browser/index.browser.js",

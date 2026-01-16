@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { AgentRuntime } from '@elizaos/core';
 import { getRuntime, resetRuntime, isRuntimeInitialized } from './runtime';
 import { useTrading } from './hooks/useTrading';

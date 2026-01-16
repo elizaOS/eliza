@@ -3,14 +3,14 @@
   "version": "2.0.0",
   "description": "",
   "type": "module",
-  "main": "typescript/dist/index.js",
-  "types": "typescript/dist/index.d.ts",
+  "main": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/node/index.d.ts",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./typescript/dist/index.d.ts",
-      "import": "./typescript/dist/index.js",
-      "default": "./typescript/dist/index.js"
+      "types": "./typescript/dist/node/index.d.ts",
+      "import": "./typescript/dist/node/index.node.js",
+      "default": "./typescript/dist/node/index.node.js"
     },
     "./rust": {
       "import": "./rust/pkg/node/elizaos_plugin_plugin_ollama.js"

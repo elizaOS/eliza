@@ -70,9 +70,11 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
   private walletClients: Map<number, WalletClient> = new Map();
   private rpcUrls: Map<number, string> = new Map();
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.initializeRpcUrls();
+    if (runtime) {
+      this.initializeRpcUrls();
+    }
   }
 
   private initializeRpcUrls(): void {

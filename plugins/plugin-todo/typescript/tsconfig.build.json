@@ -4,6 +4,7 @@
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
+    "noEmit": false,
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
