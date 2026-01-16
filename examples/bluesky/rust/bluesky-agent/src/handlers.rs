@@ -11,7 +11,7 @@ use elizaos::{
 };
 use elizaos_plugin_bluesky::{
     BlueSkyClient,
-    types::BlueSkyNotification,
+    types::{BlueSkyNotification, CreatePostRequest},
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -97,7 +97,7 @@ pub async fn handle_mention_received(
 
     // Define callback to post response to Bluesky
     let callback: HandlerCallback = Arc::new(move |response_content: Content| {
-        let _client = client.clone();
+        let client = client.clone();
         let notification_uri = notification_uri.clone();
         let notification_cid = notification_cid.clone();
         let author_handle = author_handle.clone();
@@ -129,12 +129,25 @@ pub async fn handle_mention_received(
                 }
             };
 
-            // Log the response (actual posting would require the client)
             info!(
                 text_preview = %&response_text[..response_text.len().min(50)],
                 reply_to = %author_handle,
-                "Generated reply for Bluesky"
+                "Posting reply to Bluesky"
             );
+
+            // Post the reply to Bluesky
+            let request = CreatePostRequest::new(&response_text)
+                .with_reply(notification_uri.clone(), notification_cid.clone());
+            
+            match client.lock().await.send_post(request).await {
+                Ok(post) => {
+                    info!(uri = %post.uri, "Successfully posted reply to Bluesky");
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to post reply to Bluesky");
+                    // Continue to create memory even if posting failed
+                }
+            }
 
             // Create memory for the response
             let mut response_content = Content {
