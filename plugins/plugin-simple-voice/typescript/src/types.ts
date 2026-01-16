@@ -14,15 +14,9 @@ export const DEFAULT_SAM_OPTIONS: SamTTSOptions = {
   mouth: 128,
 };
 
-declare module "@elizaos/core" {
-  interface ServiceTypeRegistry {
-    SAM_TTS: "SAM_TTS";
-  }
-}
-
 export const SAMServiceType = {
   SAM_TTS: "SAM_TTS" as const,
-} satisfies Partial<import("@elizaos/core").ServiceTypeRegistry>;
+};
 
 export interface HardwareBridgeService extends Service {
   sendAudioData(audioBuffer: Uint8Array): Promise<void>;

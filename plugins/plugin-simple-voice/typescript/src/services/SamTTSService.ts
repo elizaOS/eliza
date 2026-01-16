@@ -9,10 +9,10 @@ import {
 
 export class SamTTSService extends Service {
   static serviceType = SAMServiceType.SAM_TTS;
+  protected declare runtime: IAgentRuntime;
 
   constructor(runtime: IAgentRuntime) {
-    super();
-    this.runtime = runtime;
+    super(runtime);
   }
 
   static async start(runtime: IAgentRuntime): Promise<SamTTSService> {
