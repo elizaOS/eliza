@@ -1615,6 +1615,9 @@ Wrap your continuation in <text></text> tags.`;
           thought: thought || '',
         };
 
+        // Track if action callback was called (to avoid double-calling with provider callback)
+        let actionCallbackCalled = false;
+
         await runtime.processActions(
           message,
           [
@@ -1627,7 +1630,13 @@ Wrap your continuation in <text></text> tags.`;
             },
           ],
           accumulatedState,
-          async () => {
+          async (content: Content) => {
+            // Mark that action callback was called with actual content
+            actionCallbackCalled = true;
+            // Call the user's callback with the action's response
+            if (callback) {
+              return callback(content);
+            }
             return [];
           },
           // Pass through optional streaming callback for action execution (used by multi-step mode)
