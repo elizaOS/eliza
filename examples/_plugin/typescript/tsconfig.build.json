@@ -12,6 +12,7 @@
     "node_modules",
     "dist",
     "**/*.test.ts",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "src/__tests__/**/*"
   ]
 }
