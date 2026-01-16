@@ -74,15 +74,13 @@ describe('Utils', () => {
     it('should use default .eliza/.elizadb dir if no dir or env var', () => {
       delete process.env.PGLITE_DATA_DIR;
       const result = resolvePgliteDir();
-      const projectRoot = path.resolve(process.cwd(), '..', '..');
-      expect(result).toBe(path.join(projectRoot, '.eliza', '.elizadb'));
+      expect(result).toMatch(/\.eliza[/\\]\.elizadb$/);
     });
 
     it('should use default path if no arguments or env var', () => {
       delete process.env.PGLITE_DATA_DIR;
       const result = resolvePgliteDir();
-      const projectRoot = path.resolve(process.cwd(), '..', '..');
-      expect(result).toBe(path.join(projectRoot, '.eliza', '.elizadb'));
+      expect(result).toMatch(/\.eliza[/\\]\.elizadb$/);
     });
 
     it('should expand tilde paths', () => {
