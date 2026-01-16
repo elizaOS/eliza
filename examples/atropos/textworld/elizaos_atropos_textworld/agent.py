@@ -423,10 +423,10 @@ Respond with ONLY the action command, nothing else.""",
                 logger.debug("LLM returned empty response, using heuristic")
                 return self._heuristic_fallback(state)
 
-            # Exact match against admissible commands
-            admissible_lower = [c.lower() for c in state.admissible_commands]
-            if action in admissible_lower:
-                return action
+            # Exact match against admissible commands (return original casing)
+            for cmd in state.admissible_commands:
+                if action == cmd.lower():
+                    return cmd
 
             # Fuzzy match: "take the key" should match "take key"
             for cmd in state.admissible_commands:
