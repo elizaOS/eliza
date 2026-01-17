@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AgentBasic } from '../../shared';
 import { createApiClientConfig } from '../../shared';
 import { AgentsService } from '@elizaos/api-client';
+import { loadEnvironment } from '../../../utils/get-config';
 
 // Zod schemas for validation
 export const AgentBasicSchema = z
@@ -21,6 +22,9 @@ export const AgentsListResponseSchema = z.object({
  * Asynchronously fetches a list of basic agent information from the server.
  */
 export async function getAgents(opts: OptionValues): Promise<AgentBasic[]> {
+  // Load environment variables to ensure ELIZA_SERVER_AUTH_TOKEN is available
+  await loadEnvironment();
+
   const config = createApiClientConfig(opts);
   const agentsService = new AgentsService(config);
   const result = await agentsService.listAgents();
