@@ -3,6 +3,7 @@ import { MemoryType, createUniqueUuid } from '@elizaos/core';
 import { validateUuid, logger } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';
+import type { AuthenticatedRequest } from '../../middleware';
 
 /**
  * Agent memory management functionality
@@ -33,7 +34,8 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       const includeEmbedding = req.query.includeEmbedding === 'true';
       const tableName = (req.query.tableName as string) || 'messages';
 
-      const entityId = validateUuid(req.headers['x-entity-id'] as string);
+      // Get entityId from middleware (set by JWT or header based on ENABLE_DATA_ISOLATION)
+      const entityId = (req as AuthenticatedRequest).entityId;
 
       // Convert channelId to agent's unique roomId
       const roomId = createUniqueUuid(runtime, channelId);
@@ -95,8 +97,8 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       const tableName = (req.query.tableName as string) || 'messages';
       const includeEmbedding = req.query.includeEmbedding === 'true';
 
-      // Get entityId from X-Entity-Id header for RLS context
-      const entityId = validateUuid(req.headers['x-entity-id'] as string);
+      // Get entityId from middleware (set by JWT or header based on ENABLE_DATA_ISOLATION)
+      const entityId = (req as AuthenticatedRequest).entityId;
 
       // Handle both roomId and channelId parameters
       let roomIdToUse: UUID | undefined;

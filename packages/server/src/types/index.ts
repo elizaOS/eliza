@@ -2,3 +2,4 @@
 
 export * from './sessions';
 export * from './jobs';
+export * from './jwt';

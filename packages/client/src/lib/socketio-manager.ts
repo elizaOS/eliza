@@ -233,9 +233,10 @@ export class SocketIOManager extends EventAdapter {
   /**
    * Initialize the Socket.io connection to the server
    * @param clientEntityId The client entity ID (central user ID)
+   * @param jwtToken Optional JWT token for authentication
    * @param apiKey Optional API key for server authentication
    */
-  public initialize(clientEntityId: string, apiKey?: string): void {
+  public initialize(clientEntityId: string, jwtToken?: string, apiKey?: string): void {
     this.clientEntityId = clientEntityId;
 
     if (this.socket) {
@@ -248,6 +249,7 @@ export class SocketIOManager extends EventAdapter {
     clientLogger.info('connecting to', fullURL);
     this.socket = io(fullURL, {
       auth: {
+        token: jwtToken,
         apiKey: apiKey,
         entityId: clientEntityId,
       },

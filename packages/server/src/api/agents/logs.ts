@@ -2,6 +2,7 @@ import type { ElizaOS, UUID, Log } from '@elizaos/core';
 import { validateUuid, logger } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';
+import type { AuthenticatedRequest } from '../../middleware';
 
 /**
  * Agent logs management
@@ -30,8 +31,8 @@ export function createAgentLogsRouter(elizaOS: ElizaOS): express.Router {
     }
 
     try {
-      // Get entityId from X-Entity-Id header for RLS context
-      const entityId = validateUuid(req.headers['x-entity-id'] as string) || undefined;
+      // Get entityId from middleware (set by JWT or header based on ENABLE_DATA_ISOLATION)
+      const entityId = (req as AuthenticatedRequest).entityId;
 
       const logs: Log[] = await runtime.getLogs({
         entityId,

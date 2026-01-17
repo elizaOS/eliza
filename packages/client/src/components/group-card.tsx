@@ -33,7 +33,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
   const groupName = generateGroupName(group, group.participants || [], currentClientId);
 
   const handleChatClick = () => {
-    navigate(`/group/${group.id}?messageServerId=${group.server_id}`);
+    navigate(`/group/${group.id}?serverId=${group.server_id}`);
   };
 
   const { data: agentsData } = useAgentsWithDetails();

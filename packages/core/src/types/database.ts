@@ -3,6 +3,7 @@ import type { Component, Entity, Participant, Relationship, Room, World } from '
 import type { Memory, MemoryMetadata } from './memory';
 import type { Metadata, UUID } from './primitives';
 import type { Task } from './task';
+import type { User } from './user';
 
 /**
  * Base log body type with common properties
@@ -425,6 +426,13 @@ export interface IDatabaseAdapter {
     count?: number;
     tableName?: string;
   }): Promise<Memory[]>;
+
+  // User management methods (for JWT authentication with ENABLE_DATA_ISOLATION)
+  getUserByEmail(email: string): Promise<User | null>;
+  getUserByUsername(username: string): Promise<User | null>;
+  getUserById(id: UUID): Promise<User | null>;
+  createUser(user: User): Promise<User>;
+  updateUserLastLogin(userId: UUID): Promise<void>;
 }
 
 /**

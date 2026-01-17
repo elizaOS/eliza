@@ -2906,7 +2906,7 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.countMemories(roomId, unique, tableName);
   }
   async getLogs(params: {
-    entityId?: UUID;
+    entityId: UUID;
     roomId?: UUID;
     type?: string;
     count?: number;
@@ -3179,5 +3179,42 @@ export class AgentRuntime implements IAgentRuntime {
 
   hasElizaOS(): this is IAgentRuntime & { elizaOS: IElizaOS } {
     return this.elizaOS !== undefined;
+  }
+
+  // User management methods (for JWT authentication with ENABLE_DATA_ISOLATION)
+  // These throw if the adapter doesn't implement them (optional methods)
+  async getUserByEmail(email: string): Promise<any | null> {
+    if (!this.adapter.getUserByEmail) {
+      throw new Error('getUserByEmail not implemented by database adapter');
+    }
+    return await this.adapter.getUserByEmail(email);
+  }
+
+  async getUserByUsername(username: string): Promise<any | null> {
+    if (!this.adapter.getUserByUsername) {
+      throw new Error('getUserByUsername not implemented by database adapter');
+    }
+    return await this.adapter.getUserByUsername(username);
+  }
+
+  async getUserById(id: UUID): Promise<any | null> {
+    if (!this.adapter.getUserById) {
+      throw new Error('getUserById not implemented by database adapter');
+    }
+    return await this.adapter.getUserById(id);
+  }
+
+  async createUser(user: any): Promise<any> {
+    if (!this.adapter.createUser) {
+      throw new Error('createUser not implemented by database adapter');
+    }
+    return await this.adapter.createUser(user);
+  }
+
+  async updateUserLastLogin(userId: UUID): Promise<void> {
+    if (!this.adapter.updateUserLastLogin) {
+      throw new Error('updateUserLastLogin not implemented by database adapter');
+    }
+    await this.adapter.updateUserLastLogin(userId);
   }
 }

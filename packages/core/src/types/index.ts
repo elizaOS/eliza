@@ -18,3 +18,4 @@ export * from './testing';
 export * from './settings';
 export * from './elizaos';
 export * from './streaming';
+export * from './user';
