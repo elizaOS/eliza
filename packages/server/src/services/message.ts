@@ -10,6 +10,7 @@ import {
   type Plugin,
   type UUID,
   ElizaOS,
+  EventType,
 } from '@elizaos/core';
 import type { AgentServer } from '../index.js';
 import type {
@@ -931,7 +932,18 @@ export class MessageBusService extends Service {
           },
           'Error sending response to central server'
         );
+        return;
       }
+
+      // Emit MESSAGE_SENT event after successfully sending to central server
+      await this.runtime.emitEvent(EventType.MESSAGE_SENT, {
+        runtime: this.runtime,
+        content,
+        roomId: agentRoomId,
+        worldId: agentWorldId,
+        userId: this.runtime.agentId,
+        agentId: this.runtime.agentId,
+      });
     } catch (error) {
       logger.error(
         {
