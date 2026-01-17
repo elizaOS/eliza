@@ -1,6 +1,20 @@
 import type { OptionValues } from 'commander';
 import type { ApiClientConfig } from '@elizaos/api-client';
 import { getAgentRuntimeUrl } from './url-utils';
+import { loadEnvFilesWithPrecedence } from '@elizaos/core';
+
+/**
+ * Load .env files to ensure environment variables (like ELIZA_SERVER_AUTH_TOKEN)
+ * are available for CLI commands. This ensures consistency with the start command.
+ */
+function loadEnvVars() {
+  try {
+    const cwd = process.cwd();
+    loadEnvFilesWithPrecedence(cwd);
+  } catch (error) {
+    // Silently fail if .env loading fails - environment variables may still be set
+  }
+}
 
 /**
  * Get authentication headers for API requests
@@ -8,6 +22,9 @@ import { getAgentRuntimeUrl } from './url-utils';
  * @returns Headers object with authentication if token is available
  */
 export function getAuthHeaders(opts: OptionValues): Record<string, string> {
+  // Load .env files to ensure environment variables are available
+  loadEnvVars();
+
   // Check for auth token in command options first, then environment variables
   const authToken = opts.authToken || process.env.ELIZA_SERVER_AUTH_TOKEN;
 
@@ -28,6 +45,9 @@ export function getAuthHeaders(opts: OptionValues): Record<string, string> {
  * @returns ApiClientConfig for use with @elizaos/api-client
  */
 export function createApiClientConfig(opts: OptionValues): ApiClientConfig {
+  // Load .env files to ensure environment variables are available
+  loadEnvVars();
+
   const authToken = opts.authToken || process.env.ELIZA_SERVER_AUTH_TOKEN;
 
   return {

@@ -276,12 +276,58 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     // Store new facts - filter for valid new facts with claim text
     const newFacts = factsArray.filter(
       (fact): fact is FactXml & { claim: string } =>
-        fact != null &&
+        fact !== null &&
         fact.already_known === 'false' &&
         fact.in_bio === 'false' &&
         typeof fact.claim === 'string' &&
         fact.claim.trim() !== ''
     );
+
+    // Get room information to obtain worldId for entity connection
+    const room = state?.data?.room ?? (await runtime.getRoom(roomId));
+    if (!room || !room.worldId) {
+      runtime.logger.warn(
+        {
+          src: 'plugin:bootstrap:evaluator:reflection',
+          agentId: runtime.agentId,
+          roomId,
+        },
+        'Room or world ID not found, cannot ensure entity connection'
+      );
+      // Continue without saving facts if we can't get room info
+      return;
+    }
+    const worldId = room.worldId;
+
+    // Ensure the agent entity is connected to the room and world before saving facts
+    try {
+      await runtime.ensureConnection({
+        entityId: agentId,
+        roomId,
+        worldId,
+        name: runtime.character.name,
+        source: runtime.character.id?.toString() ?? 'reflection-evaluator',
+      });
+      runtime.logger.debug(
+        {
+          src: 'plugin:bootstrap:evaluator:reflection',
+          agentId: runtime.agentId,
+          roomId,
+          worldId,
+        },
+        'Entity connection ensured before saving facts'
+      );
+    } catch (error) {
+      runtime.logger.error(
+        {
+          src: 'plugin:bootstrap:evaluator:reflection',
+          agentId: runtime.agentId,
+          error,
+        },
+        'Failed to ensure entity connection, skipping fact save'
+      );
+      return;
+    }
 
     await Promise.all(
       newFacts.map(async (fact) => {
@@ -382,7 +428,6 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       },
       'Error in reflection handler'
     );
-    return;
   }
 }
 
