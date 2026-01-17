@@ -91,6 +91,45 @@ describe('DefaultMessageService', () => {
           return responseText;
         }
       ),
+      dynamicPromptExecFromState: mock(async ({ schema, options }: any) => {
+        // Check which schema is being requested based on field names
+        const fieldNames = schema.map((s: any) => s.field);
+
+        if (fieldNames.includes('action') && fieldNames.includes('reasoning')) {
+          // shouldRespond schema
+          return {
+            name: 'TestAgent',
+            reasoning: 'User asked a question',
+            action: 'RESPOND',
+          };
+        } else if (fieldNames.includes('thought') && fieldNames.includes('actions')) {
+          // message handler schema
+          return {
+            thought: 'Processing message',
+            providers: [],
+            actions: ['REPLY'],
+            text: 'Hello! How can I help you?',
+            simple: false,
+          };
+        } else if (fieldNames.includes('isFinish')) {
+          // multi-step decision schema
+          return {
+            thought: 'Completing the task',
+            providers: [],
+            action: '',
+            isFinish: 'true',
+          };
+        } else if (fieldNames.length === 2 && fieldNames.includes('text')) {
+          // multi-step summary schema
+          return {
+            thought: 'Task completed successfully',
+            text: 'I have completed the requested task.',
+          };
+        }
+
+        // Default fallback
+        return {};
+      }),
       processActions: mock(async () => {}),
       evaluate: mock(async () => {}),
       emitEvent: mock(async () => {}),
@@ -478,6 +517,54 @@ describe('DefaultMessageService', () => {
         }),
         'messages'
       );
+    });
+
+    it('falls back to IGNORE when structured response omits actions', async () => {
+      (mockRuntime.dynamicPromptExecFromState as any).mockImplementation(({ schema }: any) => {
+        const fieldNames = schema.map((s: any) => s.field);
+
+        if (fieldNames.includes('action') && fieldNames.includes('reasoning')) {
+          return {
+            name: 'TestAgent',
+            reasoning: 'User asked a question',
+            action: 'RESPOND',
+          };
+        }
+
+        if (fieldNames.includes('thought') && fieldNames.includes('actions')) {
+          return {
+            thought: 'No action required',
+            providers: [],
+            actions: [],
+            text: '',
+            simple: false,
+          };
+        }
+
+        return {};
+      });
+
+      const message: Memory = {
+        id: '123e4567-e89b-12d3-a456-426614174060' as UUID,
+        content: {
+          text: 'Hello, anyone there?',
+          source: 'client_chat',
+          channelType: ChannelType.DM,
+        } as Content,
+        entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
+        roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
+        agentId: '123e4567-e89b-12d3-a456-426614174001' as UUID,
+        createdAt: Date.now(),
+      };
+
+      const result = await messageService.handleMessage(
+        mockRuntime as IAgentRuntime,
+        message,
+        mockCallback
+      );
+
+      expect(result.responseContent).not.toBeNull();
+      expect(result.responseContent?.actions).toEqual(['IGNORE']);
     });
   });
 

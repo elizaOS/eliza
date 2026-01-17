@@ -1,3 +1,37 @@
+/**
+ * Default message service for processing agent messages.
+ *
+ * This service handles the core message processing loop:
+ * 1. Decide whether to respond (shouldRespond)
+ * 2. Generate response (messageHandler or multiStep)
+ * 3. Execute actions if needed
+ * 4. Stream response to user
+ *
+ * SCHEMA HARDENING FOR VALIDATION LEVELS:
+ * ---------------------------------------
+ * All schemas in this service use explicit `validateField` and `streamField` hints
+ * to ensure correct behavior across all validation levels (0, 1, 2, 3).
+ *
+ * WHY: At validation level 1 (progressive), ALL fields get validation codes by default.
+ * This creates problems:
+ * - Token overhead: Codes for 'thought', 'actions' etc. that we never stream
+ * - False failures: If 'thought' validation fails, whole request retries even though
+ *   we only care about streaming 'text'
+ *
+ * Solution: Explicit hints on each field:
+ * - `validateField: false` on internal fields → skip validation codes
+ * - `streamField: false` on internal fields → don't stream to user
+ * - `streamField: true` on user-facing fields → explicit streaming intent
+ *
+ * Schema Patterns Used:
+ * - shouldRespond: All fields opted out (decision-making, not user-facing)
+ * - messageHandler: Only 'text' is streamed and validated
+ * - continuation: Uses level 0 (trusted) + explicit streamField
+ * - multiStepDecision: All fields opted out (orchestration loop)
+ * - multiStepSummary: Only 'text' is streamed
+ *
+ * @module services/default-message-service
+ */
 import { v4 } from 'uuid';
 import type { IAgentRuntime } from '../types/runtime';
 import type { Memory } from '../types/memory';
@@ -18,7 +52,6 @@ import {
   ContentType,
   asUUID,
   createUniqueUuid,
-  composePromptFromState,
   imageDescriptionTemplate,
   messageHandlerTemplate,
   shouldRespondTemplate,
@@ -31,12 +64,28 @@ import {
   getLocalServerUrl,
   logger,
 } from '../index';
-import {
-  ResponseStreamExtractor,
-  XmlTagExtractor,
-  createStreamingContext,
-} from '../utils/streaming';
-import { runWithStreamingContext, getStreamingContext } from '../streaming-context';
+import { MarkableExtractor, createStreamingContext } from '../utils/streaming';
+// Streaming context import removed - using onStreamChunk directly in dynamicPromptExecFromState
+
+/**
+ * Escape Handlebars syntax in a string to prevent template injection.
+ *
+ * WHY: When embedding LLM-generated text into continuation prompts, the text
+ * goes through Handlebars.compile(). If the LLM output contains {{variable}},
+ * Handlebars will try to substitute it with state values, corrupting the prompt.
+ *
+ * This function escapes {{ to \\{{ so Handlebars outputs literal {{.
+ *
+ * @param text - Text that may contain Handlebars-like syntax
+ * @returns Text with {{ escaped to prevent interpretation
+ */
+function escapeHandlebars(text: string): string {
+  // Single-pass replacement to avoid double-escaping triple braces.
+  // WHY: If we do {{{ → \{{{ then {{ → \{{, the {{ inside \{{{ gets matched,
+  // producing \\{{{ instead of \{{{. Using a single regex with alternation
+  // and longest-match-first ordering prevents this.
+  return text.replace(/\{\{\{|\{\{/g, (match) => '\\' + match);
+}
 
 /**
  * Image description response from the model
@@ -55,7 +104,12 @@ type ResolvedMessageOptions = {
   timeoutDuration: number;
   useMultiStep: boolean;
   maxMultiStepIterations: number;
-  onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void>;
+  /** Streaming callback (uses string for messageId for model compatibility) */
+  onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+  /** Streaming context with retry state methods (used by single-shot mode) */
+  streamingContext?: import('../streaming-context').StreamingContext;
+  /** Streaming extractor for marking completion (used by single-shot mode) */
+  streamingExtractor?: import('../utils/streaming').MarkableExtractor;
 };
 
 /**
@@ -201,24 +255,39 @@ export class DefaultMessageService implements IMessageService {
         }, opts.timeoutDuration);
       });
 
-      // Wrap processing with streaming context for automatic streaming in useModel calls
-      // Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
-      // NOTE: Multi-step mode handles its own streaming contexts per-phase (decision, action, summary)
-      // so we only set up the top-level streaming context for single-shot mode
+      // Set up streaming context for single-shot mode (multi-step handles its own per-phase)
       const useMultiStep =
         opts.useMultiStep ??
         parseBooleanFromText(String(runtime.getSetting('USE_MULTI_STEP') || ''));
 
-      // Single-shot mode: use top-level streaming context with single extractor
-      const streamingContext =
-        opts.onStreamChunk && !useMultiStep
-          ? createStreamingContext(new ResponseStreamExtractor(), opts.onStreamChunk, responseId)
-          : undefined;
+      // WHY: dynamicPromptExecFromState now has ValidationStreamExtractor which handles
+      // XML extraction internally. We pass the user's callback directly - no double extraction.
+      // Old flow: LLM XML → ResponseStreamExtractor → User (BROKEN with new architecture)
+      // New flow: LLM XML → ValidationStreamExtractor (in dynamicPrompt) → User callback
+      //
+      // We use MarkableExtractor for tracking retry state (getStreamedText, isComplete).
+      // WHY MarkableExtractor: We need isComplete() to work for retry/fallback logic.
+      // The extractor is marked complete when dynamicPromptExecFromState succeeds.
+      const streamingExtractor =
+        opts.onStreamChunk && !useMultiStep ? new MarkableExtractor() : undefined;
+      const streamingContext = streamingExtractor
+        ? createStreamingContext(streamingExtractor, opts.onStreamChunk!, responseId)
+        : undefined;
       // Multi-step mode: streaming is handled per-phase in runMultiStepCore
       // (action execution and summary generation each get their own streaming context)
 
-      const processingPromise = runWithStreamingContext(streamingContext, () =>
-        this.processMessage(runtime, message, callback, responseId, runId, startTime, opts)
+      // Pass streaming context and extractor through opts
+      // WHY extractor: So runSingleShotCore can mark it complete on success
+      const optsWithStreaming = { ...opts, streamingContext, streamingExtractor };
+
+      const processingPromise = this.processMessage(
+        runtime,
+        message,
+        callback,
+        responseId,
+        runId,
+        startTime,
+        optsWithStreaming
       );
 
       const result = await Promise.race([processingPromise, timeoutPromise]);
@@ -380,11 +449,6 @@ export class DefaultMessageService implements IMessageService {
         shouldRespondToMessage = responseDecision.shouldRespond;
       } else {
         // Need LLM evaluation for ambiguous case
-        const shouldRespondPrompt = composePromptFromState({
-          state,
-          template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
-        });
-
         runtime.logger.debug(
           {
             src: 'service:message',
@@ -394,13 +458,39 @@ export class DefaultMessageService implements IMessageService {
           'Using LLM evaluation'
         );
 
-        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt: shouldRespondPrompt,
+        const responseObject = await runtime.dynamicPromptExecFromState({
+          state,
+          params: {
+            prompt: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
+          },
+          schema: [
+            // Decision schema - no streaming, no per-field validation needed
+            // WHY: This is internal decision-making, not user-facing output
+            {
+              field: 'name',
+              description: 'The name of the agent responding',
+              validateField: false,
+              streamField: false,
+            },
+            {
+              field: 'reasoning',
+              description: 'Your reasoning for this decision',
+              validateField: false,
+              streamField: false,
+            },
+            {
+              field: 'action',
+              description: 'RESPOND | IGNORE | STOP',
+              validateField: false,
+              streamField: false,
+            },
+          ],
+          options: {
+            modelSize: 'small',
+            preferredEncapsulation: 'xml',
+          },
         });
 
-        runtime.logger.debug({ src: 'service:message', response }, 'LLM evaluation result');
-
-        const responseObject = parseKeyValueXml(response);
         runtime.logger.debug(
           { src: 'service:message', responseObject },
           'Parsed evaluation result'
@@ -930,20 +1020,19 @@ export class DefaultMessageService implements IMessageService {
       runtime.logger.warn({ src: 'service:message' }, 'actionNames data missing from state');
     }
 
-    const prompt = composePromptFromState({
-      state,
-      template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
-    });
-
     let responseContent: Content | null = null;
 
     // Retry if missing required fields
     let retries = 0;
 
+    // Use streaming context from opts for retry state and streaming callback
+    const streamingCtx = opts.streamingContext;
+    // Extractor to mark complete on success (for isComplete() to work)
+    const streamingExtractor = opts.streamingExtractor;
+
     while (retries < opts.maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
       // Check if text extraction is already complete - no point in retrying
-      const ctx = getStreamingContext();
-      if (retries > 0 && ctx?.isComplete?.()) {
+      if (retries > 0 && streamingCtx?.isComplete?.()) {
         // Text was fully extracted (found </text>) - exit loop to use streamedText
         runtime.logger.info(
           { src: 'service:message', retries },
@@ -954,7 +1043,7 @@ export class DefaultMessageService implements IMessageService {
 
       // Check if we have partial streamed text - if so, exit to let continuation handle it
       if (retries > 0) {
-        const partialText = ctx?.getStreamedText?.() || '';
+        const partialText = streamingCtx?.getStreamedText?.() || '';
         if (partialText.length > 0) {
           // Has partial text - exit loop to let continuation logic handle it
           runtime.logger.debug(
@@ -964,91 +1053,108 @@ export class DefaultMessageService implements IMessageService {
           break;
         }
         // No text streamed yet, safe to reset and retry
-        ctx?.reset?.();
+        streamingCtx?.reset?.();
       }
 
-      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
+      const parsedXml = await runtime.dynamicPromptExecFromState({
+        state,
+        params: {
+          prompt: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
+        },
+        schema: [
+          // WHY validateField: false on non-streamed fields?
+          // At validation level 1, each field gets validation codes by default.
+          // If a non-streamed field's code is corrupted, we'd retry unnecessarily.
+          // By opting out, we reduce token overhead AND avoid false failures.
+          {
+            field: 'thought',
+            description: 'Your internal reasoning about the message and what to do',
+            required: true,
+            validateField: false,
+            streamField: false,
+          },
+          {
+            field: 'providers',
+            description: 'List of providers to use for additional context (comma-separated)',
+            validateField: false,
+            streamField: false,
+          },
+          {
+            field: 'actions',
+            description: 'List of actions to take (comma-separated)',
+            required: true,
+            validateField: false,
+            streamField: false,
+          },
+          // WHY streamField: true? This is the user-facing output - stream it!
+          // WHY validateField default? At level 1, we want to validate text integrity
+          {
+            field: 'text',
+            description: 'The text response to send to the user',
+            streamField: true,
+          },
+          {
+            field: 'simple',
+            description: 'Whether this is a simple response (true/false)',
+            validateField: false,
+            streamField: false,
+          },
+        ],
+        options: {
+          modelSize: 'large',
+          preferredEncapsulation: 'xml',
+          requiredFields: ['thought', 'actions'],
+          // Stream through the filtered context callback for real-time output
+          onStreamChunk: streamingCtx?.onStreamChunk,
+        },
       });
 
-      runtime.logger.info(
-        {
-          src: 'service:message',
-          responseLength: response.length,
-          responsePreview: response.substring(0, 500),
-        },
-        'Raw LLM response received'
-      );
-
-      const parsedXml = parseKeyValueXml(response);
-      runtime.logger.info(
-        {
-          src: 'service:message',
-          parsedXml: parsedXml
-            ? {
-                hasThought: !!parsedXml.thought,
-                thoughtPreview:
-                  typeof parsedXml.thought === 'string'
-                    ? parsedXml.thought.substring(0, 100)
-                    : null,
-                hasActions: !!parsedXml.actions,
-                actions: parsedXml.actions,
-                hasText: !!parsedXml.text,
-                textPreview:
-                  typeof parsedXml.text === 'string' ? parsedXml.text.substring(0, 100) : null,
-              }
-            : null,
-        },
-        'Parsed XML content'
-      );
+      runtime.logger.debug({ src: 'service:message', parsedXml }, 'Parsed response content');
 
       if (parsedXml) {
-        const thought = typeof parsedXml.thought === 'string' ? parsedXml.thought : '';
-        const actions = Array.isArray(parsedXml.actions)
-          ? parsedXml.actions.filter((a): a is string => typeof a === 'string')
-          : typeof parsedXml.actions === 'string'
-            ? [parsedXml.actions]
-            : ['IGNORE'];
-        const providers = Array.isArray(parsedXml.providers)
-          ? parsedXml.providers.filter((p): p is string => typeof p === 'string')
-          : [];
-        const text = typeof parsedXml.text === 'string' ? parsedXml.text : '';
-        const simple = typeof parsedXml.simple === 'boolean' ? parsedXml.simple : false;
+        // Mark streaming as complete now that we have a valid response
+        // WHY: This enables isComplete() to return true for retry/fallback logic
+        streamingExtractor?.markComplete();
+        const normalizedActions = (() => {
+          if (Array.isArray(parsedXml.actions)) {
+            return parsedXml.actions;
+          }
+          if (typeof parsedXml.actions === 'string') {
+            return parsedXml.actions
+              .split(',')
+              .map((action) => action.trim())
+              .filter((action) => action.length > 0);
+          }
+          return [];
+        })();
 
         responseContent = {
           ...parsedXml,
-          thought,
-          actions,
-          providers,
-          text,
-          simple,
+          thought: parsedXml.thought || '',
+          actions: normalizedActions.length > 0 ? normalizedActions : ['IGNORE'],
+          providers: parsedXml.providers || [],
+          text: parsedXml.text || '',
+          simple: parsedXml.simple || false,
         };
       } else {
         responseContent = null;
         runtime.logger.warn(
-          { src: 'service:message', responsePreview: response.substring(0, 300) },
-          'parseKeyValueXml returned null - XML parsing failed'
+          { src: 'service:message' },
+          'dynamicPromptExecFromState returned null - XML parsing failed'
         );
       }
 
       retries++;
       if (!responseContent?.thought || !responseContent?.actions) {
         runtime.logger.warn(
-          {
-            src: 'service:message',
-            retries,
-            maxRetries: opts.maxRetries,
-            hasThought: !!responseContent?.thought,
-            hasActions: !!responseContent?.actions,
-            actionsValue: responseContent?.actions,
-          },
+          { src: 'service:message', retries, parsedXml, responseContent },
           'Missing required fields (thought or actions), retrying'
         );
       }
     }
 
     // Intelligent streaming retry logic (inspired by Anthropic's partial response recovery)
-    const streamingCtx = getStreamingContext();
+    // Use streamingCtx from opts (already defined at top of retry loop)
     const streamedText = streamingCtx?.getStreamedText?.() || '';
     const isTextComplete = streamingCtx?.isComplete?.() ?? false;
 
@@ -1088,34 +1194,54 @@ export class DefaultMessageService implements IMessageService {
       streamingCtx?.reset?.();
 
       // Build continuation prompt with full context
+      // WHY escapeHandlebars: Prevent Handlebars template injection if streamedText contains {{...}}
+      const prompt = runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate;
+      const escapedStreamedText = escapeHandlebars(streamedText);
       const continuationPrompt = `${prompt}
 
 [CONTINUATION REQUIRED]
 Your previous response was cut off. The user already received this text:
-"${streamedText}"
+"${escapedStreamedText}"
 
 Continue EXACTLY from where you left off. Do NOT repeat what was already said.
-Output ONLY the continuation, starting immediately after the last character above.
-Wrap your continuation in <text></text> tags.`;
+Output ONLY the continuation, starting immediately after the last character above.`;
 
-      // Use runWithStreamingContext to ensure continuation is streamed to user
-      const continuationResponse = await runWithStreamingContext(streamingCtx, () =>
-        runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: continuationPrompt,
-        })
-      );
+      // Use dynamicPromptExecFromState for continuation with level 0 (fast, trusted)
+      const continuationParsed = await runtime.dynamicPromptExecFromState({
+        state,
+        params: { prompt: continuationPrompt },
+        // WHY contextCheckLevel: 0? Continuations are fast-path - we trust the model
+        // WHY streamField: true? This is user-facing continuation text
+        schema: [
+          {
+            field: 'text',
+            description: 'Continuation of response',
+            required: true,
+            streamField: true,
+          },
+        ],
+        options: {
+          modelSize: 'large',
+          preferredEncapsulation: 'xml',
+          contextCheckLevel: 0, // Fast mode for continuations - we trust the model
+          // Pass through messageId so consumers can track which message the chunk belongs to
+          onStreamChunk: streamingCtx?.onStreamChunk
+            ? (chunk: string, messageId?: string) => streamingCtx!.onStreamChunk(chunk, messageId)
+            : undefined,
+        },
+      });
 
       runtime.logger.debug(
         {
           src: 'service:message',
-          continuationLength: continuationResponse.length,
-          continuationPreview: continuationResponse.substring(0, 200),
+          continuationParsed: continuationParsed
+            ? JSON.stringify(continuationParsed).substring(0, 200)
+            : 'null',
         },
         'Continuation response received'
       );
 
       // Extract continuation text
-      const continuationParsed = parseKeyValueXml(continuationResponse);
       const continuationText =
         typeof continuationParsed?.text === 'string' ? continuationParsed.text : '';
 
@@ -1233,12 +1359,6 @@ Wrap your continuation in <text></text> tags.`;
       ])) as MultiStepState;
       accumulatedState.data.actionResults = traceActionResult;
 
-      const prompt = composePromptFromState({
-        state: accumulatedState,
-        template:
-          runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
-      });
-
       // Retry logic for parsing failures with bounds checking
       const parseRetriesSetting = runtime.getSetting('MULTISTEP_PARSE_RETRIES');
       const rawParseRetries = parseInt(String(parseRetriesSetting ?? '5'), 10);
@@ -1247,7 +1367,6 @@ Wrap your continuation in <text></text> tags.`;
         1,
         Math.min(10, isNaN(rawParseRetries) ? 5 : rawParseRetries)
       );
-      let stepResultRaw: string = '';
       let parsedStep: Record<string, unknown> | null = null;
 
       for (let parseAttempt = 1; parseAttempt <= maxParseRetries; parseAttempt++) {
@@ -1261,8 +1380,58 @@ Wrap your continuation in <text></text> tags.`;
             },
             'Decision step model call attempt'
           );
-          stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-          parsedStep = parseKeyValueXml(stepResultRaw);
+
+          parsedStep = await runtime.dynamicPromptExecFromState({
+            state: accumulatedState,
+            params: {
+              prompt:
+                runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
+            },
+            schema: [
+              // Multi-step decision loop - internal reasoning, no streaming needed
+              // WHY: This is orchestration logic, not user-facing output
+              {
+                field: 'thought',
+                description:
+                  "Your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request",
+                validateField: false,
+                streamField: false,
+              },
+              {
+                field: 'providers',
+                description: 'Comma-separated list of providers to call to gather necessary data',
+                validateField: false,
+                streamField: false,
+              },
+              {
+                field: 'action',
+                description:
+                  'Name of the action to execute after providers return (can be empty if no action is needed)',
+                validateField: false,
+                streamField: false,
+              },
+              // WHY parameters: Actions need input data. Without this field in the schema,
+              // the LLM won't be instructed to output parameters, breaking action execution.
+              {
+                field: 'parameters',
+                description:
+                  'JSON object with parameter names and values for the action (use {} if no parameters needed)',
+                validateField: false,
+                streamField: false,
+              },
+              {
+                field: 'isFinish',
+                description:
+                  'true if the task is fully resolved and no further steps are needed, false otherwise',
+                validateField: false,
+                streamField: false,
+              },
+            ],
+            options: {
+              modelSize: 'large',
+              preferredEncapsulation: 'xml',
+            },
+          });
 
           if (parsedStep) {
             runtime.logger.debug(
@@ -1277,9 +1446,8 @@ Wrap your continuation in <text></text> tags.`;
                 attempt: parseAttempt,
                 maxAttempts: maxParseRetries,
                 iteration: iterationCount,
-                rawResponsePreview: stepResultRaw.substring(0, 200),
               },
-              'Failed to parse XML response'
+              'Failed to parse decision step response'
             );
 
             if (parseAttempt < maxParseRetries) {
@@ -1310,17 +1478,13 @@ Wrap your continuation in <text></text> tags.`;
 
       if (!parsedStep) {
         runtime.logger.warn(
-          {
-            src: 'service:message',
-            iteration: iterationCount,
-            maxParseRetries,
-          },
-          'Failed to parse step result after all retry attempts'
+          { src: 'service:message', iteration: iterationCount },
+          'Failed to parse step result'
         );
         traceActionResult.push({
           data: { actionName: 'parse_error' },
           success: false,
-          error: `Failed to parse step result after ${maxParseRetries} attempts`,
+          error: 'Failed to parse step result',
         });
         break;
       }
@@ -1700,10 +1864,6 @@ Wrap your continuation in <text></text> tags.`;
       'RECENT_MESSAGES',
       'ACTION_STATE',
     ])) as MultiStepState;
-    const summaryPrompt = composePromptFromState({
-      state: accumulatedState,
-      template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
-    });
 
     // Retry logic for summary parsing failures with bounds checking
     const summaryRetriesSetting = runtime.getSetting('MULTISTEP_SUMMARY_PARSE_RETRIES');
@@ -1713,12 +1873,14 @@ Wrap your continuation in <text></text> tags.`;
       1,
       Math.min(10, isNaN(rawSummaryRetries) ? 5 : rawSummaryRetries)
     );
-    let finalOutput: string = '';
     let summary: Record<string, unknown> | null = null;
 
-    // Set up streaming context for summary (uses XmlTagExtractor for <text> extraction)
-    const summaryStreamingContext = opts.onStreamChunk
-      ? createStreamingContext(new XmlTagExtractor('text'), opts.onStreamChunk, responseId)
+    // Set up streaming context for summary
+    // WHY MarkableExtractor: dynamicPromptExecFromState handles XML extraction.
+    // We need isComplete() to work for retry/fallback logic, so use MarkableExtractor.
+    const summaryExtractor = opts.onStreamChunk ? new MarkableExtractor() : undefined;
+    const summaryStreamingContext = summaryExtractor
+      ? createStreamingContext(summaryExtractor, opts.onStreamChunk!, responseId)
       : undefined;
 
     for (let summaryAttempt = 1; summaryAttempt <= maxSummaryRetries; summaryAttempt++) {
@@ -1755,22 +1917,41 @@ Wrap your continuation in <text></text> tags.`;
           summaryStreamingContext.reset?.();
         }
 
-        if (summaryStreamingContext) {
-          // Stream the final summary to the user (extracts <text> content only)
-          finalOutput = await runWithStreamingContext(summaryStreamingContext, () =>
-            runtime.useModel(ModelType.TEXT_LARGE, {
-              prompt: summaryPrompt,
-            })
-          );
-        } else {
-          // No streaming: streaming is disabled
-          finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
-            prompt: summaryPrompt,
-          });
-        }
-        summary = parseKeyValueXml(finalOutput);
+        // Generate summary with streaming through the filtered context callback
+        summary = await runtime.dynamicPromptExecFromState({
+          state: accumulatedState,
+          params: {
+            prompt:
+              runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
+          },
+          schema: [
+            // WHY thought has validateField: false? Internal reasoning doesn't need streaming validation
+            {
+              field: 'thought',
+              description: 'Your internal reasoning about the completed actions and final response',
+              validateField: false,
+              streamField: false,
+            },
+            // WHY text has streamField: true? This is the user-facing summary - stream it!
+            {
+              field: 'text',
+              description: 'The final user-facing message summarizing what was accomplished',
+              required: true,
+              streamField: true,
+            },
+          ],
+          options: {
+            modelSize: 'large',
+            preferredEncapsulation: 'xml',
+            requiredFields: ['text'],
+            // Stream through the filtered context callback (extracts <text> content only)
+            onStreamChunk: summaryStreamingContext?.onStreamChunk,
+          },
+        });
 
         if (summary?.text) {
+          // Mark streaming as complete now that we have a valid summary
+          summaryExtractor?.markComplete();
           runtime.logger.debug(
             { src: 'service:message', attempt: summaryAttempt },
             'Successfully parsed summary'
@@ -1782,10 +1963,9 @@ Wrap your continuation in <text></text> tags.`;
               src: 'service:message',
               attempt: summaryAttempt,
               maxAttempts: maxSummaryRetries,
-              rawResponsePreview: finalOutput.substring(0, 200),
               streamedTextLength: summaryStreamingContext?.getStreamedText?.()?.length ?? 0,
             },
-            'Failed to parse summary XML'
+            'Failed to get summary text'
           );
 
           if (summaryAttempt < maxSummaryRetries) {
@@ -1819,28 +1999,23 @@ Wrap your continuation in <text></text> tags.`;
 
     // Intelligent streaming retry logic for multi-step summary
     const currentStreamedText = summaryStreamingContext?.getStreamedText?.() || '';
-    const isTextComplete = summaryStreamingContext?.isComplete?.() ?? false;
+    const isSummaryTextComplete = summaryStreamingContext?.isComplete?.() ?? false;
 
     // Case B: XML parsing failed OR summary text doesn't exist
     // but <text> extraction is complete - use streamed text
-    if (isTextComplete && currentStreamedText && !summary?.text) {
+    if (isSummaryTextComplete && currentStreamedText && !summary?.text) {
       runtime.logger.info(
         {
           src: 'service:message:multistep',
           streamedTextLength: currentStreamedText.length,
           streamedTextPreview: currentStreamedText.substring(0, 100),
-          hadSummary: !!summary,
         },
         'Summary text extraction complete - using streamed text'
       );
 
-      summary = {
-        ...(summary || {}),
-        text: currentStreamedText,
-        thought: summary?.thought || 'Summary generated via streaming',
-      };
-    } else if (currentStreamedText && !isTextComplete) {
-      // Case C: Text was cut mid-stream - retry with continuation prompt
+      summary = { text: currentStreamedText, thought: 'Summary generated via streaming' };
+    } else if (currentStreamedText && !isSummaryTextComplete) {
+      // Case C: Summary text was cut mid-stream - retry with continuation prompt
       runtime.logger.debug(
         {
           src: 'service:message:multistep',
@@ -1853,25 +2028,47 @@ Wrap your continuation in <text></text> tags.`;
       // Reset extractor for fresh streaming of continuation
       summaryStreamingContext?.reset?.();
 
-      const continuationPrompt = `${summaryPrompt}
+      const summaryPrompt =
+        runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate;
+      // WHY escapeHandlebars: Prevent Handlebars template injection if currentStreamedText contains {{...}}
+      const escapedCurrentStreamedText = escapeHandlebars(currentStreamedText);
+      const summaryContinuationPrompt = `${summaryPrompt}
 
 [CONTINUATION REQUIRED]
 Your previous response was cut off. The user already received this text:
-"${currentStreamedText}"
+"${escapedCurrentStreamedText}"
 
 Continue EXACTLY from where you left off. Do NOT repeat what was already said.
-Output ONLY the continuation, starting immediately after the last character above.
-Wrap your continuation in <text></text> tags.`;
+Output ONLY the continuation, starting immediately after the last character above.`;
 
-      const continuationResponse = await runWithStreamingContext(summaryStreamingContext, () =>
-        runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: continuationPrompt,
-        })
-      );
+      // Use dynamicPromptExecFromState for continuation with level 0 (fast, trusted)
+      const summaryContinuationParsed = await runtime.dynamicPromptExecFromState({
+        state: accumulatedState,
+        params: { prompt: summaryContinuationPrompt },
+        // WHY contextCheckLevel: 0? Summary continuations are fast-path
+        // WHY streamField: true? This is user-facing summary continuation
+        schema: [
+          {
+            field: 'text',
+            description: 'Continuation of summary',
+            required: true,
+            streamField: true,
+          },
+        ],
+        options: {
+          modelSize: 'large',
+          preferredEncapsulation: 'xml',
+          contextCheckLevel: 0, // Fast mode for continuations - we trust the model
+          // Pass through messageId so consumers can track which message the chunk belongs to
+          onStreamChunk: summaryStreamingContext?.onStreamChunk
+            ? (chunk: string, messageId?: string) =>
+                summaryStreamingContext!.onStreamChunk(chunk, messageId)
+            : undefined,
+        },
+      });
 
-      const continuationParsed = parseKeyValueXml(continuationResponse);
       const continuationText =
-        typeof continuationParsed?.text === 'string' ? continuationParsed.text : '';
+        typeof summaryContinuationParsed?.text === 'string' ? summaryContinuationParsed.text : '';
 
       if (continuationText) {
         const fullText = currentStreamedText + continuationText;
@@ -1904,10 +2101,7 @@ Wrap your continuation in <text></text> tags.`;
       };
     } else {
       // Fallback response when summary generation fails
-      runtime.logger.warn(
-        { src: 'service:message', maxSummaryRetries },
-        'No valid summary generated after all attempts, using fallback'
-      );
+      runtime.logger.warn({ src: 'service:message' }, 'No valid summary generated, using fallback');
       responseContent = {
         actions: ['MULTI_STEP_SUMMARY'],
         text: 'I completed the requested actions, but encountered an issue generating the summary.',

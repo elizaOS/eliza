@@ -7,17 +7,15 @@
  * - Global singleton configured at startup
  *
  */
-import type { UUID } from './types';
-
 /**
  * Streaming context containing callbacks for streaming lifecycle.
  */
 export interface StreamingContext {
-  /** Called for each chunk of streamed content */
-  onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>;
+  /** Called for each chunk of streamed content (messageId uses string for compatibility with model params) */
+  onStreamChunk: (chunk: string, messageId?: string) => Promise<void>;
   /** Called when a useModel streaming call completes (allows reset between calls) */
   onStreamEnd?: () => void;
-  messageId?: UUID;
+  messageId?: string;
   /** Optional abort signal to cancel streaming */
   abortSignal?: AbortSignal;
   /**

@@ -5,13 +5,12 @@ interface WorkingMemoryEntry {
   result: ActionResult;
   timestamp: number;
 }
-
 import { createUniqueUuid } from './entities';
 import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
 import { isPlainObject } from './utils/type-guards';
 import { decryptSecret, getSalt } from './index';
-import { ActionStreamFilter } from './utils/streaming';
+import { ActionStreamFilter, ValidationStreamExtractor, type ValidationDiagnosis } from './utils/streaming';
 import { getStreamingContext, runWithStreamingContext } from './streaming-context';
 import { createLogger } from './logger';
 import { DefaultMessageService } from './services/default-message-service';
@@ -48,6 +47,9 @@ import {
   type Service,
   type ServiceTypeName,
   type State,
+  type SchemaRow,
+  type StreamEvent,
+  type RetryBackoffConfig,
   type TaskWorker,
   type Agent,
   type Log,
@@ -70,9 +72,64 @@ import {
 } from './types';
 
 import { BM25 } from './search';
-import { stringToUuid } from './utils';
+import {
+  stringToUuid,
+  parseKeyValueXml,
+  parseJSONObjectFromText,
+  composeRandomUser,
+  upgradeDoubleToTriple,
+  parseBooleanFromText,
+} from './utils';
+import Handlebars from 'handlebars';
 
 const environmentSettings: RuntimeSettings = {};
+
+// Dynamic prompt execution metrics tracking
+interface DynamicPromptMetrics {
+  lowestFailedTokenCount: number | null;
+  highestSuccessTokenCount: number | null;
+  totalAttempts: number;
+  successfulAttempts: number;
+  failedAttempts: number;
+  lastUpdated: number;
+}
+
+/**
+ * Two-level metrics tracking for dynamic prompt execution
+ *
+ * NOTE: These are module-level globals shared across ALL runtime instances in the same process.
+ * In multi-agent scenarios, metrics from different agents will be combined.
+ *
+ * 1. Model+Schema metrics (how a MODEL performs on a SCHEMA type) - PRIMARY
+ *    Key format: "modelId:field1,field2,field3"
+ *    Tracks: How well TEXT_LARGE handles "action,reasoning,name" schema
+ *    Memory: ~200 bytes per entry, unbounded by default
+ *    Control: Set DYNAMIC_PROMPT_MAX_ENTRIES env var to cap entries (recommended: 10000)
+ *
+ * 2. Model-wide metrics (overall model context size estimation) - SECONDARY
+ *    Key format: "modelId"
+ *    Tracks: Overall model token limits and reliability
+ *    Memory: ~200 bytes × number of models (~2 KB max) - negligible
+ *
+ * Environment Variables:
+ *   DYNAMIC_PROMPT_MAX_ENTRIES - Maximum entries before LRU eviction (default: unbounded)
+ *   VALIDATION_LEVEL - Controls validation level and retry behavior:
+ *     - "trusted"/"fast": Level 0, 0 retries (no validation codes)
+ *     - "progressive": Level 1, 2 retries (per-field validation codes)
+ *     - (default): Level 2, 1 retry (checkpoint codes at start)
+ *     - "strict"/"safe": Level 3, 3 retries (checkpoint codes at start + end)
+ */
+const modelSchemaMetrics = new Map<string, DynamicPromptMetrics>();
+const modelMetrics = new Map<string, DynamicPromptMetrics>();
+
+// Disk cache for adaptive prompt decomposition
+// When a prompt fails due to being too large (validation codes fail):
+// 1. Decompose the prompt into smaller chunks that the model can handle
+// 2. Cache the successful chunked version to disk (prompts/{cacheKey}.json)
+// 3. On next run with same state pattern, check cache first
+// 4. If cached decomposed version exists and is fresh, use it instead of retrying full prompt
+// 5. This avoids repeatedly hitting token limits with the same prompt patterns
+// Future implementation - "run again, in half..."
 
 export class Semaphore {
   private permits: number;
@@ -465,13 +522,13 @@ export class AgentRuntime implements IAgentRuntime {
       skipMigrations
         ? Promise.resolve()
         : (async () => {
-            this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Running plugin migrations');
-            await this.runPluginMigrations();
-            this.logger.debug(
-              { src: 'agent', agentId: this.agentId },
-              'Plugin migrations completed'
-            );
-          })(),
+          this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Running plugin migrations');
+          await this.runPluginMigrations();
+          this.logger.debug(
+            { src: 'agent', agentId: this.agentId },
+            'Plugin migrations completed'
+          );
+        })(),
     ]);
 
     const [agentEntity, existingRoom, participants] = await Promise.all([
@@ -668,10 +725,10 @@ export class AgentRuntime implements IAgentRuntime {
     const secrets = this.character.secrets;
     const nestedSecrets =
       typeof settings === 'object' &&
-      settings !== null &&
-      'secrets' in settings &&
-      typeof settings.secrets === 'object' &&
-      settings.secrets !== null
+        settings !== null &&
+        'secrets' in settings &&
+        typeof settings.secrets === 'object' &&
+        settings.secrets !== null
         ? (settings.secrets as Record<string, string | undefined>)
         : undefined;
 
@@ -775,7 +832,7 @@ export class AgentRuntime implements IAgentRuntime {
     responses: Memory[],
     state?: State,
     callback?: HandlerCallback,
-    processOptions?: { onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void> }
+    processOptions?: { onStreamChunk?: (chunk: string, messageId?: string) => Promise<void> }
   ): Promise<void> {
     // Determine if we have multiple actions to execute
     const allActions: string[] = [];
@@ -792,18 +849,18 @@ export class AgentRuntime implements IAgentRuntime {
     // Create action plan if multiple actions
     let actionPlan:
       | {
-          runId: UUID;
-          totalSteps: number;
-          currentStep: number;
-          steps: Array<{
-            action: string;
-            status: 'pending' | 'completed' | 'failed';
-            result?: ActionResult;
-            error?: string;
-          }>;
-          thought: string;
-          startTime: number;
-        }
+        runId: UUID;
+        totalSteps: number;
+        currentStep: number;
+        steps: Array<{
+          action: string;
+          status: 'pending' | 'completed' | 'failed';
+          result?: ActionResult;
+          error?: string;
+        }>;
+        thought: string;
+        startTime: number;
+      }
       | undefined = undefined;
 
     const thought =
@@ -1044,17 +1101,17 @@ export class AgentRuntime implements IAgentRuntime {
         // the filter so content type detection from one call doesn't affect the next.
         let actionStreamingContext:
           | {
-              messageId: UUID;
-              onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>;
-              onStreamEnd: () => void;
-            }
+            messageId: string;
+            onStreamChunk: (chunk: string, messageId?: string) => Promise<void>;
+            onStreamEnd: () => void;
+          }
           | undefined;
         if (processOptions?.onStreamChunk) {
           let currentFilter: ActionStreamFilter | null = null;
 
           actionStreamingContext = {
             messageId: responseMessageId,
-            onStreamChunk: async (chunk: string, msgId?: UUID) => {
+            onStreamChunk: async (chunk: string, msgId?: string) => {
               if (!currentFilter) {
                 currentFilter = new ActionStreamFilter();
               }
@@ -2192,9 +2249,9 @@ export class AgentRuntime implements IAgentRuntime {
         provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
         actionContext: this.currentActionContext
           ? {
-              actionName: this.currentActionContext.actionName,
-              actionId: this.currentActionContext.actionId,
-            }
+            actionName: this.currentActionContext.actionName,
+            actionId: this.currentActionContext.actionId,
+          }
           : undefined,
         response:
           Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -2231,8 +2288,7 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error(errorMsg);
     }
 
-    // Log input parameters (keep debug log if useful)
-    // Skip verbose logging for binary data models (TRANSCRIPTION, IMAGE, AUDIO, VIDEO)
+    // Log input parameters - skip verbose logging for binary data models
     const binaryModels: string[] = [
       ModelType.TRANSCRIPTION,
       ModelType.IMAGE,
@@ -2245,7 +2301,6 @@ export class AgentRuntime implements IAgentRuntime {
         'Model input'
       );
     } else {
-      // For binary models, just log the type and size info
       let sizeInfo = 'unknown size';
       if (Buffer.isBuffer(params)) {
         sizeInfo = `${params.length} bytes`;
@@ -2345,10 +2400,10 @@ export class AgentRuntime implements IAgentRuntime {
         fullText += chunk;
         try {
           if (paramsChunk) await paramsChunk(chunk, msgId);
-        } catch {}
+        } catch { }
         try {
           if (ctxChunk) await ctxChunk(chunk, msgId);
-        } catch {}
+        } catch { }
       }
 
       // Signal stream end to allow context to reset state between useModel calls
@@ -2469,6 +2524,1086 @@ export class AgentRuntime implements IAgentRuntime {
     return {
       text: response as string,
     };
+  }
+
+  /**
+   * Dynamic prompt execution with state injection, schema-based parsing, validation-aware streaming.
+   *
+   * WHY THIS EXISTS:
+   * ----------------
+   * LLMs are powerful but unreliable for structured outputs. They can:
+   * - Silently truncate output when hitting token limits
+   * - Skip fields or produce malformed structures
+   * - Hallucinate or ignore parts of the prompt
+   *
+   * This method addresses these issues by:
+   * 1. **Validation codes**: Injects UUID codes the LLM must echo back. If codes match,
+   *    we know the LLM actually read and followed the prompt. If they don't, we retry.
+   *
+   * 2. **Streaming with safety**: Traditional streaming has no validation - you might stream
+   *    half a broken response. This method enables streaming while detecting truncation
+   *    via ValidationStreamExtractor.
+   *
+   * 3. **Performance tracking**: Tracks success/failure rates per model+schema combination.
+   *    Future: Will use this data for adaptive prompt decomposition.
+   *
+   * VALIDATION LEVELS:
+   * ------------------
+   * Level 0 (Trusted): No validation codes. Maximum speed. Best for:
+   *   - Fast models (GPT-4, Claude-3.5) that rarely fail
+   *   - Non-critical responses where occasional failures are acceptable
+   *   - Real-time streaming UX is critical
+   *
+   * Level 1 (Progressive): Per-field validation codes. Balance of safety + speed. Best for:
+   *   - Important but not critical operations
+   *   - When you want streaming AND safety
+   *   - Use validateField: false on non-critical fields to reduce overhead
+   *
+   * Level 2 (First Checkpoint): Codes at response start. Default. Best for:
+   *   - General use cases
+   *   - Catches "LLM ignored the prompt entirely" failures
+   *   - Reasonable tradeoff of safety vs. speed
+   *
+   * Level 3 (Full): Codes at start AND end. Maximum correctness. Best for:
+   *   - Critical operations (payments, state changes)
+   *   - Unreliable or unfamiliar models
+   *   - When correctness matters more than speed
+   *
+   * STREAMING BEHAVIOR:
+   * -------------------
+   * - Level 0-1: Real-time streaming (respecting validateField hints)
+   * - Level 2-3: Buffered until validation passes
+   *
+   * Simple consumers (just onStreamChunk):
+   *   - Receive text chunks as validated
+   *   - On retry, see "-- that's not right, let me start again:" separator
+   *
+   * Rich consumers (onStreamChunk + onStreamEvent):
+   *   - Receive typed events: chunk, field_validated, retry_start, error, complete
+   *   - Can implement custom UX for retries (spinner, clear content, etc.)
+   *
+   * @param state - State object to inject into the prompt template via Handlebars
+   * @param params - LLM parameters (temperature, maxTokens, etc.) with a prompt template
+   * @param schema - Array of field definitions for structured output (see SchemaRow)
+   * @param options - Configuration options:
+   *   - key: Custom cache key (default: generated from state)
+   *   - modelSize: 'small' or 'large' (default: 'large')
+   *   - model: Override model provider (e.g., 'gpt-4', 'claude-3-opus')
+   *   - preferredEncapsulation: 'json' or 'xml' (default: 'xml')
+   *   - forceFormat: Force 'json' or 'xml' (overrides preferredEncapsulation)
+   *   - requiredFields: Array of field names that must be present in response
+   *   - contextCheckLevel: Validation level 0-3 (default: from VALIDATION_LEVEL env or 2)
+   *   - maxRetries: Number of retries on failure (default: from VALIDATION_LEVEL env var)
+   *   - disableCache: Disable prompt disk caching (default: false)
+   *   - cacheTTL: Cache time-to-live in ms (default: 5 minutes)
+   *   - onStreamChunk: Simple streaming callback - receives text chunks
+   *   - onStreamEvent: Rich streaming callback - receives typed events (retry, validation, etc.)
+   *   - abortSignal: AbortSignal for user-initiated cancellation
+   *
+   * @returns Parsed structured response object, or null on failure
+   *
+   * Environment Variables:
+   *   - VALIDATION_LEVEL: Controls validation level and default retry behavior
+   *     - "trusted" or "fast": Level 0, 0 retries (no validation codes, fastest)
+   *     - "progressive": Level 1, 2 retries (per-field validation codes)
+   *     - (default): Level 2, 1 retry (checkpoint codes at start)
+   *     - "strict" or "safe": Level 3, 3 retries (checkpoint codes at start + end)
+   *   - DYNAMIC_PROMPT_MAX_ENTRIES: Cap metrics memory usage (default: unbounded)
+   *
+   * @example Basic usage
+   * ```typescript
+   * const result = await runtime.dynamicPromptExecFromState({
+   *   state: { userName: 'Alice', context: 'greeting' },
+   *   params: { prompt: 'Generate a greeting for {{userName}}', temperature: 0.7 },
+   *   schema: [
+   *     { field: 'greeting', description: 'The greeting text', required: true },
+   *     { field: 'tone', description: 'The tone of the greeting' }
+   *   ],
+   *   options: { requiredFields: ['greeting'] }
+   * });
+   * ```
+   *
+   * @example Simple streaming (level 0 for speed)
+   * ```typescript
+   * const result = await runtime.dynamicPromptExecFromState({
+   *   state,
+   *   params: { prompt: 'Generate a response' },
+   *   schema: [{ field: 'text', description: 'Response text' }],
+   *   options: {
+   *     contextCheckLevel: 0, // Fastest, no validation
+   *     onStreamChunk: (chunk) => process.stdout.write(chunk)
+   *   }
+   * });
+   * ```
+   *
+   * @example Rich streaming with retry handling
+   * ```typescript
+   * const result = await runtime.dynamicPromptExecFromState({
+   *   state,
+   *   params: { prompt: 'Generate a critical response' },
+   *   schema: [{ field: 'text', description: 'Response', validateField: true }],
+   *   options: {
+   *     contextCheckLevel: 1, // Per-field validation
+   *     onStreamChunk: (chunk) => appendToUI(chunk),
+   *     onStreamEvent: (event) => {
+   *       if (event.type === 'retry_start') {
+   *         showSpinner('Validating...');
+   *         clearPartialContent();
+   *       } else if (event.type === 'error') {
+   *         showError(event.error);
+   *       }
+   *     }
+   *   }
+   * });
+   * ```
+   */
+  async dynamicPromptExecFromState({
+    state,
+    params, // ai sdk params...
+    schema,
+    options = {},
+  }: {
+    state: State;
+    params: Omit<GenerateTextParams, 'prompt'> & {
+      prompt: string | ((ctx: { state: State }) => string);
+    };
+    schema: SchemaRow[];
+    options?: {
+      key?: string; // override default (generated by state)
+      modelSize?: 'small' | 'large';
+      model?: string;
+      preferredEncapsulation?: 'json' | 'xml'; // JSON or XML
+      forceFormat?: 'json' | 'xml'; // force format (overrides preferredEncapsulation)
+      // or should this be inside schema?
+      requiredFields?: string[];
+      /**
+       * Validation level for context checking:
+       * - 0: Trusted - no codes, real-time streaming
+       * - 1: Progressive - per-field codes, emit per validated field
+       * - 2: First checkpoint - start codes only, buffered
+       * - 3: Full - start + end codes, buffered
+       */
+      contextCheckLevel?: 0 | 1 | 2 | 3; // default from VALIDATION_LEVEL env or 2
+      maxRetries?: number; // default 1
+      /** Backoff config for retries: number (fixed ms) or { initialMs, multiplier, maxMs } */
+      retryBackoff?: number | RetryBackoffConfig;
+      disableCache?: boolean; // disable prompt disk caching (default false, cache enabled)
+      cacheTTL?: number; // cache time-to-live in ms (default 5 minutes)
+      /** Callback for streaming chunks - enables real-time output during generation */
+      onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
+      /** Rich event callback for UIs that want retry state, validation progress, errors */
+      onStreamEvent?: (event: StreamEvent, messageId?: string) => void | Promise<void>;
+      /** Cancel mid-stream */
+      abortSignal?: AbortSignal;
+    };
+  }): Promise<Record<string, any> | null> {
+    // Generate keys
+    const modelIdentifier =
+      options.model || (options.modelSize === 'small' ? 'TEXT_SMALL' : 'TEXT_LARGE');
+    // Cache key: unique per state+schema+model (for decomposition strategy caching)
+    const cacheKey = options.key || this._generateCacheKey(state, schema, modelIdentifier);
+    // Primary metrics key: model+schema (how this model does on this schema type)
+    const modelSchemaKey = this._generateModelSchemaKey(schema, modelIdentifier);
+
+    // TODO: Check disk cache for decomposed prompt strategy
+    // if (!options.disableCache) {
+    //   const cacheFile = `prompts/${cacheKey}.json`;
+    //   const cacheTTL = options.cacheTTL ?? 5 * 60 * 1000; // 5 minutes default
+    //   // If we have a cached decomposition strategy that worked before, use it
+    //   // This skips retrying the full prompt and goes straight to chunked version
+    // }
+
+    // Environment Variable: VALIDATION_LEVEL
+    // Controls validation strategy and retry behavior for structured LLM outputs
+    // Options:
+    //   - "trusted" or "fast": Level 0 - no validation codes, 0 retries (fastest, trusts model)
+    //   - "progressive": Level 1 - per-field validation codes, 2 retries (balanced speed + safety)
+    //   - (default/unset): Level 2 - checkpoint codes at start, 1 retry (balanced)
+    //   - "strict" or "safe": Level 3 - checkpoint codes at start + end, 3 retries (maximum correctness)
+    // Why: Some models are more reliable with structured outputs. Use "strict" for critical
+    //      operations or unreliable models, "trusted" for reliable models or non-critical operations.
+    const validationLevelRaw = this.getSetting('VALIDATION_LEVEL');
+    const validationLevel =
+      typeof validationLevelRaw === 'string' ? validationLevelRaw.toLowerCase() : undefined;
+
+    // Map VALIDATION_LEVEL to contextCheckLevel and default retries
+    let defaultContextCheckLevel: 0 | 1 | 2 | 3 = 2;
+    let defaultRetries = 1;
+
+    if (validationLevel === 'trusted' || validationLevel === 'fast') {
+      defaultContextCheckLevel = 0;
+      defaultRetries = 0; // trust the model
+    } else if (validationLevel === 'progressive') {
+      defaultContextCheckLevel = 1;
+      defaultRetries = 2; // moderate retries for progressive validation
+    } else if (validationLevel === 'strict' || validationLevel === 'safe') {
+      defaultContextCheckLevel = 3;
+      defaultRetries = 3; // more retries for correctness
+    }
+    // else: default is level 2, 1 retry
+
+    const maxRetries = options.maxRetries ?? defaultRetries;
+
+    // Environment Variable: DYNAMIC_PROMPT_MAX_ENTRIES
+    // Maximum number of model+schema performance metrics to keep in memory (LRU eviction)
+    // Each entry tracks how well a specific model performs on a specific schema type
+    // Memory usage: ~200 bytes per entry (e.g., 10000 entries ≈ 2 MB)
+    // Why: Prevents unbounded memory growth in long-running servers with diverse schemas.
+    //      Set this if you have many unique schemas or run multiple agents.
+    // Default: unbounded (no limit)
+    // Recommended: 10000 for production servers
+    const maxEntriesSetting = this.getSetting('DYNAMIC_PROMPT_MAX_ENTRIES');
+    const maxEntries = typeof maxEntriesSetting === 'string' ? parseInt(maxEntriesSetting) :
+      typeof maxEntriesSetting === 'number' ? maxEntriesSetting : null;
+
+    // Get or initialize model+schema metrics (PRIMARY - most useful)
+    let modelSchemaMetric = modelSchemaMetrics.get(modelSchemaKey);
+    if (!modelSchemaMetric) {
+      // Check if we need to evict old entries (LRU) - only if maxEntries is set
+      // Why: Prevents unbounded memory growth while keeping most relevant metrics
+      if (maxEntries && modelSchemaMetrics.size >= maxEntries) {
+        this._evictOldestMetric(modelSchemaMetrics);
+      }
+
+      modelSchemaMetric = {
+        lowestFailedTokenCount: null,
+        highestSuccessTokenCount: null,
+        totalAttempts: 0,
+        successfulAttempts: 0,
+        failedAttempts: 0,
+        lastUpdated: Date.now(),
+      };
+      modelSchemaMetrics.set(modelSchemaKey, modelSchemaMetric);
+    }
+
+    // Get or initialize model-wide metrics (SECONDARY - for context size estimation)
+    let modelMetric = modelMetrics.get(modelIdentifier);
+    if (!modelMetric) {
+      modelMetric = {
+        lowestFailedTokenCount: null,
+        highestSuccessTokenCount: null,
+        totalAttempts: 0,
+        successfulAttempts: 0,
+        failedAttempts: 0,
+        lastUpdated: Date.now(),
+      };
+      modelMetrics.set(modelIdentifier, modelMetric);
+    }
+
+    let currentRetry = 0;
+    let lowestFailedTokenCount: number | null = modelSchemaMetric.lowestFailedTokenCount;
+    let highestSuccessTokenCount: number | null = modelSchemaMetric.highestSuccessTokenCount;
+
+    // Extractor is created once and persists across retries (tracks validated fields)
+    let extractor: ValidationStreamExtractor | undefined;
+    // These are set on first iteration
+    let contextLevel: 0 | 1 | 2 | 3 = defaultContextCheckLevel;
+    let perFieldCodes = new Map<string, string>();
+
+    // retries?
+    while (currentRetry <= maxRetries) {
+      const template = params.prompt;
+      // inject state into prompt
+      const templateStr = typeof template === 'function' ? template({ state }) : template;
+      const templateFunction = Handlebars.compile(upgradeDoubleToTriple(templateStr));
+
+      // get any keys that are in state but are not named text, values or data
+      const stateKeys = Object.keys(state);
+      const filteredKeys = stateKeys.filter((key) => !['text', 'values', 'data'].includes(key));
+
+      // this flattens out key/values in text/values/data
+      const filteredState = filteredKeys.reduce((acc: Record<string, any>, key) => {
+        acc[key] = state[key];
+        return acc;
+      }, {});
+
+      // and then we flat state.values again
+      const output = composeRandomUser(templateFunction({ ...filteredState, ...state.values }), 10);
+
+      // process options
+      // defaults to XML
+      let format = 'XML';
+      // forceFormat overrides preferredEncapsulation
+      if (options.forceFormat) {
+        format = options.forceFormat.toUpperCase();
+      } else if (options.preferredEncapsulation === 'json') {
+        format = 'JSON';
+      }
+
+      const estToken = (text: string) => {
+        const words = text
+          .trim()
+          .split(/\s+|\b/)
+          .filter((w) => /\w+/.test(w));
+        // Rough: each word ≈ 1 token, plus some overhead for punctuation etc.
+        return Math.ceil(words.length * 1.3);
+      };
+
+      this.logger.debug(
+        'using format',
+        format,
+        'in prompt',
+        estToken(output).toLocaleString() + ' tokens (est)'
+      );
+
+      const codesSchema = (prefix: string) => {
+        return [
+          {
+            field: prefix + 'initial_code',
+            description: 'please just give the initial UUID code you were given in the prompt',
+          },
+          {
+            field: prefix + 'middle_code',
+            description: 'please just give the middle UUID code you were given in the prompt',
+          },
+          {
+            field: prefix + 'end_code',
+            description: 'please just give the end UUID code you were given in the prompt',
+          },
+        ];
+      };
+
+      // contextCheckLevel controls validation code placement:
+      // 0: Trusted - no validation codes by default (opt-in via validateField: true)
+      // 1: Progressive - per-field codes by default (opt-out via validateField: false)
+      // 2: First checkpoint - start codes only (buffered)
+      // 3: Full - start + end codes (buffered)
+
+      // Set context level and generate codes on first iteration only
+      if (currentRetry === 0) {
+        contextLevel = options.contextCheckLevel ?? defaultContextCheckLevel;
+
+        // Generate per-field validation codes for levels 0-1
+        if (contextLevel <= 1) {
+          for (const row of schema) {
+            // Level 0: default false (opt-in), Level 1: default true (opt-out)
+            const defaultValidate = contextLevel === 1;
+            const needsValidation = row.validateField ?? defaultValidate;
+            if (needsValidation) {
+              perFieldCodes.set(row.field, uuidv4().slice(0, 8));
+            }
+          }
+        }
+      }
+
+      // Checkpoint codes: level 2+ gets first codes, level 3 gets both
+      const first = contextLevel >= 2;
+      const last = contextLevel >= 3;
+
+      // Build extended schema with validation codes
+      const extSchema: Array<{ field: string; description: string; required?: boolean }> = [];
+
+      // Add checkpoint codes at start for levels 2-3
+      if (first) {
+        extSchema.push(...codesSchema('one_'));
+      }
+
+      // Add schema fields with per-field codes for levels 0-1
+      for (const row of schema) {
+        const fieldCode = perFieldCodes.get(row.field);
+        if (fieldCode) {
+          // Add start code before field
+          extSchema.push({
+            field: `code_${row.field}_start`,
+            description: `please output exactly: ${fieldCode}`,
+          });
+        }
+        extSchema.push(row);
+        if (fieldCode) {
+          // Add end code after field
+          extSchema.push({
+            field: `code_${row.field}_end`,
+            description: `please output exactly: ${fieldCode}`,
+          });
+        }
+      }
+
+      // Add checkpoint codes at end for level 3
+      if (last) {
+        extSchema.push(...codesSchema('two_'));
+      }
+
+      // generate prompt
+
+      const isXML = format === 'XML';
+      const CONTAINER_START = isXML ? '<response>' : '{';
+      const CONTAINER_END = isXML ? '</response>' : '}';
+
+      const section_start = isXML ? '<output>' : '# Strict Output instructions';
+      const section_end = isXML ? '</output>' : '';
+
+      let EXAMPLE = CONTAINER_START + '\n';
+      type FieldDesc = { field: string; description: string; required?: boolean };
+      const generateText = (s: FieldDesc | FieldDesc[], lvl: number = 1): string => {
+        const isArray = Array.isArray(s);
+        if (!isArray && typeof s === 'object') {
+          let str = '  '.repeat(lvl);
+          if (s.field && s.description) {
+            if (isXML) {
+              str += '<' + s.field + '>' + s.description + '</' + s.field + '>';
+            } else {
+              // JSON format: quote property names for valid JSON
+              str += '"' + s.field + '": "' + s.description + '"';
+            }
+          } else {
+            this.logger.warn('dynamicPromptExecFromState - no field&desc: ' + JSON.stringify(s));
+          }
+          return str;
+        } else if (isArray) {
+          const items: string[] = [];
+          for (const i of s) {
+            items.push(generateText(i, lvl + 1));
+          }
+          // Join with newline for XML, comma+newline for JSON
+          return items.join(isXML ? '\n' : ',\n') + '\n';
+        } else {
+          this.logger.debug('dynamicPromptExecFromState - unknown type', typeof s, 'value', s);
+          return '';
+        }
+      };
+      EXAMPLE += generateText(extSchema);
+      EXAMPLE += CONTAINER_END + '\n';
+
+      const footerTemplate =
+        section_start +
+        `
+  Do NOT include any thinking, reasoning, or <think> sections in your response.
+  Go directly to the {{FORMAT}} response format without any preamble or explanation.
+
+  Respond using {{FORMAT}} format like this:
+  {{EXAMPLE}}
+
+  IMPORTANT: Your response must ONLY contain the {{CONTAINER_START}}{{CONTAINER_END}} {{FORMAT}} block above. Do not include any text, thinking, or reasoning before or after this {{FORMAT}} block. Start your response immediately with {{CONTAINER_START}} and end with {{CONTAINER_END}}.
+  ` +
+        section_end +
+        '\n';
+      const footer = footerTemplate
+        .replaceAll('{{FORMAT}}', format)
+        .replaceAll('{{CONTAINER_START}}', CONTAINER_START)
+        .replaceAll('{{CONTAINER_END}}', CONTAINER_END)
+        .replaceAll('{{EXAMPLE}}', EXAMPLE);
+      // inject codes
+      const initCode = uuidv4();
+      const midCode = uuidv4();
+      const finalCode = uuidv4();
+
+      // Check for smart retry context from previous failed attempt
+      // WHY: For level 1 retries, we include validated fields to help the LLM succeed
+      const smartRetryContext = (state as any)._smartRetryContext || '';
+      if (smartRetryContext) {
+        // Clear it after use so next retry (if any) builds fresh context
+        delete (state as any)._smartRetryContext;
+      }
+
+      const prompt =
+        'initial code: ' +
+        initCode +
+        '\n' +
+        output +
+        smartRetryContext +
+        'middle code: ' +
+        midCode +
+        '\n' +
+        footer +
+        'end code: ' +
+        finalCode +
+        '\n';
+      const outputTokenEst = estToken(prompt);
+      this.logger.debug(
+        'dynamicPromptExecFromState prompt',
+        outputTokenEst.toLocaleString() + ' tokens (est)'
+      );
+
+      // call useModel
+      const modelType = options.modelSize === 'small' ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
+
+      // Create ValidationStreamExtractor on first iteration if streaming is enabled
+      if (currentRetry === 0 && options.onStreamChunk && !extractor) {
+        const hasRichConsumer = !!options.onStreamEvent;
+
+        // Determine which fields to stream based on schema hints
+        // WHY: Not all fields should be shown to users:
+        //   - 'text' is typically the response (stream by default)
+        //   - 'thought' is internal reasoning (don't stream by default)
+        //   - 'actions' is system field (don't stream by default)
+        // Users can override with streamField: true/false on each SchemaRow
+        const streamFields = schema
+          .filter((row) => {
+            if (row.streamField !== undefined) {
+              // Explicit override - respect it
+              return row.streamField;
+            }
+            // Default: only stream 'text' field
+            return row.field === 'text';
+          })
+          .map((row) => row.field);
+
+        // If no fields to stream, fall back to 'text' if present
+        const finalStreamFields =
+          streamFields.length > 0 ? streamFields : schema.some((r) => r.field === 'text') ? ['text'] : [];
+
+        // Generate a messageId for this streaming session
+        // WHY: Consumers use messageId to associate chunks with specific messages
+        const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        extractor = new ValidationStreamExtractor({
+          level: contextLevel,
+          schema,
+          streamFields: finalStreamFields,
+          expectedCodes: perFieldCodes,
+          onChunk: (chunk, field) => {
+            // Pass messageId so consumers can associate chunks with messages
+            options.onStreamChunk!(chunk, streamMessageId);
+          },
+          onEvent: options.onStreamEvent
+            ? (event) => options.onStreamEvent!(event, streamMessageId)
+            : undefined,
+          abortSignal: options.abortSignal,
+          hasRichConsumer,
+        });
+      }
+
+      const modelParams = {
+        ...params,
+        prompt, // Use the constructed prompt without mutating params
+        providerOptions: {
+          agentName: this.character.name,
+        },
+        // Wire extractor into streaming, or pass through directly
+        ...(extractor
+          ? {
+            onStreamChunk: (chunk: string) => {
+              extractor!.push(chunk);
+            },
+          }
+          : options.onStreamChunk
+            ? { onStreamChunk: options.onStreamChunk }
+            : {}),
+      };
+
+      // Check for cancellation before making request
+      if (options.abortSignal?.aborted) {
+        extractor?.signalError('Cancelled by user');
+        return null;
+      }
+
+      const response = await this.useModel<typeof modelType, string>(
+        modelType,
+        modelParams,
+        options.model // provider override
+      );
+
+      // Extract thoughts from <think> tags before cleaning
+      // Some models include reasoning in <think> blocks - we strip these from the response
+      // but log them for debugging purposes
+      const thinkMatches = response.match(/<think>([\s\S]*?)<\/think>/g);
+      if (thinkMatches) {
+        const thoughts = thinkMatches.map((t) => t.replace(/<\/?think>/g, '').trim()).join('\n\n');
+        this.logger.debug('dynamicPromptExecFromState model thoughts:', thoughts);
+      }
+
+      const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>/g, '');
+
+      let responseContent: Record<string, any> | null = null;
+      try {
+        responseContent = isXML
+          ? parseKeyValueXml(cleanResponse)
+          : parseJSONObjectFromText(cleanResponse);
+        this.logger.debug(
+          'dynamicPromptExecFromState responseContent: ' + JSON.stringify(responseContent)
+        );
+      } catch (e) {
+        this.logger.error('dynamicPromptExecFromState err: ' + String(e));
+      }
+
+      responseContent = this._normalizeStructuredResponse(responseContent);
+
+      // validate response
+      let allGood = true;
+      if (!responseContent) {
+        this.logger.warn('parse problem?', response, '=>', cleanResponse);
+        allGood = false;
+        // could try inverse format...
+      } else {
+        // Validate codes based on context level:
+        // - Levels 0-1: per-field codes (if validateField is set)
+        // - Levels 2-3: checkpoint codes
+
+        if (contextLevel <= 1) {
+          // Validate per-field codes
+          for (const [field, expectedCode] of perFieldCodes) {
+            const startCodeField = `code_${field}_start`;
+            const endCodeField = `code_${field}_end`;
+
+            const startCode = responseContent[startCodeField];
+            const endCode = responseContent[endCodeField];
+
+            if (startCode !== expectedCode || endCode !== expectedCode) {
+              this.logger.warn(
+                `Per-field validation failed for ${field}: expected=${expectedCode}, start=${startCode}, end=${endCode}`
+              );
+              allGood = false;
+            }
+
+            // Strip per-field codes from response
+            delete responseContent[startCodeField];
+            delete responseContent[endCodeField];
+          }
+        } else {
+          // Validate checkpoint codes (levels 2-3)
+          const validationCodes: [string, string][] = [
+            ...(first
+              ? [
+                ['one_initial_code', initCode] as [string, string],
+                ['one_middle_code', midCode] as [string, string],
+                ['one_end_code', finalCode] as [string, string],
+              ]
+              : []),
+            ...(last
+              ? [
+                ['two_initial_code', initCode] as [string, string],
+                ['two_middle_code', midCode] as [string, string],
+                ['two_end_code', finalCode] as [string, string],
+              ]
+              : []),
+          ];
+
+          for (const [field, expected] of validationCodes) {
+            if (responseContent[field] !== expected) {
+              this.logger.warn(`${field} failure`, expected);
+              allGood = false;
+            }
+          }
+
+          // Strip checkpoint codes from response
+          if (first) {
+            delete responseContent.one_initial_code;
+            delete responseContent.one_middle_code;
+            delete responseContent.one_end_code;
+          }
+          if (last) {
+            delete responseContent.two_initial_code;
+            delete responseContent.two_middle_code;
+            delete responseContent.two_end_code;
+          }
+        }
+
+        // Validate required fields if specified
+        if (options.requiredFields && options.requiredFields.length > 0) {
+          const isMissingField = (value: unknown): boolean => {
+            if (value === undefined || value === null) {
+              return true;
+            }
+            if (typeof value === 'string') {
+              return value.trim().length === 0;
+            }
+            if (Array.isArray(value)) {
+              return value.length === 0;
+            }
+            if (typeof value === 'object') {
+              return Object.keys(value as Record<string, unknown>).length === 0;
+            }
+            return false;
+          };
+
+          const missingFields = options.requiredFields.filter((field) => {
+            if (!responseContent || !(field in responseContent)) {
+              return true;
+            }
+            return isMissingField(responseContent[field]);
+          });
+          if (missingFields.length > 0) {
+            this.logger.warn(
+              'dynamicPromptExecFromState missing required fields:',
+              missingFields.join(', ')
+            );
+            allGood = false;
+          }
+        }
+      }
+
+      // Update both model+schema and model-wide metrics
+      // Why: Track at both levels - specific schema performance and overall model reliability
+      modelSchemaMetric.totalAttempts++;
+      modelMetric.totalAttempts++;
+
+      if (allGood && responseContent) {
+        // Success! Flush buffered content for levels 2-3
+        if (extractor) {
+          extractor.flush();
+        }
+
+        highestSuccessTokenCount = this._updateMetricSuccess(
+          modelSchemaMetric,
+          outputTokenEst,
+          highestSuccessTokenCount
+        );
+        this._updateMetricSuccess(
+          modelMetric,
+          outputTokenEst,
+          modelMetric.highestSuccessTokenCount
+        );
+
+        // TODO: Cache successful decomposition strategy if this was chunked
+        // if (!options.disableCache && wasDecomposed) {
+        //   const cacheFile = `prompts/${cacheKey}.json`;
+        //   // Save the chunking strategy that worked
+        //   // { chunks: [...], tokenCounts: [...], strategy: 'half' | 'thirds' }
+        //   // Next time we'll use this strategy directly
+        // }
+
+        this.logger.debug(
+          `dynamicPromptExecFromState success [${modelSchemaKey}]: ${outputTokenEst} tokens`,
+          `(max successful: ${highestSuccessTokenCount})`,
+          `model stats: ${modelMetric.successfulAttempts}/${modelMetric.totalAttempts}`
+        );
+
+        return responseContent;
+      }
+
+      // Failure - track metrics
+      // Why: Track failures to learn token limits and when to apply decomposition
+      lowestFailedTokenCount = this._updateMetricFailure(
+        modelSchemaMetric,
+        outputTokenEst,
+        lowestFailedTokenCount
+      );
+      this._updateMetricFailure(modelMetric, outputTokenEst, modelMetric.lowestFailedTokenCount);
+
+      currentRetry++;
+
+      // Check for cancellation before retrying
+      if (options.abortSignal?.aborted) {
+        extractor?.signalError('Cancelled by user');
+        return null;
+      }
+
+      if (currentRetry <= maxRetries) {
+        // Apply retry backoff delay
+        // WHY: Prevents hammering rate-limited APIs and gives transient failures time to resolve
+        if (options.retryBackoff) {
+          const delayMs = this._calculateBackoffDelay(options.retryBackoff, currentRetry);
+          this.logger.debug(`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+          // Check cancellation again after delay
+          if (options.abortSignal?.aborted) {
+            extractor?.signalError('Cancelled by user');
+            return null;
+          }
+        }
+
+        // Signal retry to extractor (emits events and separator for simple consumers)
+        let smartRetryContext: string | undefined;
+        if (extractor) {
+          const { validatedFields } = extractor.signalRetry(currentRetry);
+          const diagnosis = extractor.diagnose();
+
+          this.logger.warn(
+            `dynamicPromptExecFromState retry ${currentRetry}/${maxRetries} [${modelSchemaKey}]`,
+            `validated=${validatedFields.join(',') || 'none'}`,
+            `missing=${diagnosis.missingFields.join(',') || 'none'}`,
+            `invalid=${diagnosis.invalidFields.join(',') || 'none'}`,
+            `incomplete=${diagnosis.incompleteFields.join(',') || 'none'}`
+          );
+
+          // For level 1, build smart retry context with validated fields
+          // WHY: If some fields validated, we can include them in retry to help the LLM
+          if (contextLevel === 1 && validatedFields.length > 0) {
+            const validatedContent = extractor.getValidatedFields();
+            const validatedParts: string[] = [];
+            for (const [field, content] of validatedContent) {
+              // Truncate long content to avoid bloating the prompt
+              const truncated = content.length > 500 ? content.slice(0, 500) + '...' : content;
+              validatedParts.push(`<${field}>${truncated}</${field}>`);
+            }
+            if (validatedParts.length > 0) {
+              smartRetryContext = `\n\n[RETRY CONTEXT]\nYou previously produced these valid fields that you should keep:\n${validatedParts.join('\n')}\n\nPlease complete the remaining fields: ${diagnosis.missingFields.concat(diagnosis.invalidFields, diagnosis.incompleteFields).join(', ') || 'all fields'}`;
+            }
+          }
+
+          extractor.reset();
+        } else {
+          this.logger.warn(
+            `dynamicPromptExecFromState retry ${currentRetry}/${maxRetries} after failure [${modelSchemaKey}]`,
+            allGood ? 'Parse failure' : 'Validation codes failed or missing required fields'
+          );
+        }
+
+        // Inject smart retry context into next iteration's prompt if available
+        // WHY: Helps LLM understand what it got right and focus on what it missed
+        if (smartRetryContext) {
+          // We'll append this to the prompt in the next iteration
+          // Store in a variable that persists across loop iterations
+          (state as any)._smartRetryContext = smartRetryContext;
+        }
+
+        // TODO: Implement adaptive decomposition
+        // if (outputTokenEst > lowestFailedTokenCount) {
+        //   // This prompt is too large, needs decomposition
+        //   // Run again, in half...
+        //   // Split prompt/state into chunks
+        //   // Try each chunk separately
+        //   // Cache the successful chunking strategy
+        // }
+      }
+    }
+
+    // Max retries exceeded - signal error
+    if (extractor) {
+      const diagnosis = extractor.diagnose();
+      extractor.signalError(
+        `Failed after ${maxRetries} retries. Missing: ${diagnosis.missingFields.join(', ') || 'none'}, ` +
+        `Invalid: ${diagnosis.invalidFields.join(', ') || 'none'}, ` +
+        `Incomplete: ${diagnosis.incompleteFields.join(', ') || 'none'}`
+      );
+    }
+
+    this.logger.error(
+      `dynamicPromptExecFromState failed after ${maxRetries} retries`,
+      `model+schema [${modelSchemaKey}]: ${modelSchemaMetric.successfulAttempts}/${modelSchemaMetric.totalAttempts} successful`,
+      `model overall [${modelIdentifier}]: ${modelMetric.successfulAttempts}/${modelMetric.totalAttempts} successful`,
+      `lowest failed: ${lowestFailedTokenCount} tokens`
+    );
+    return null;
+  }
+
+  private _evictOldestMetric(metricsMap: Map<string, DynamicPromptMetrics>): void {
+    // Find and remove the least recently used entry
+    // Why: Prevents unbounded memory growth in long-running agents
+    let oldestKey: string | null = null;
+    let oldestTime = Date.now();
+    for (const [key, metric] of metricsMap.entries()) {
+      if (metric.lastUpdated < oldestTime) {
+        oldestTime = metric.lastUpdated;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) {
+      metricsMap.delete(oldestKey);
+      this.logger.debug(`Evicted old metric: ${oldestKey}`);
+    }
+  }
+
+  /**
+   * Calculate backoff delay for retry attempts.
+   *
+   * WHY: Immediate retries can overwhelm rate-limited APIs and hit transient failures
+   * repeatedly. Backoff gives the system time to recover between attempts.
+   *
+   * Supports two modes:
+   * - Fixed delay: number (same delay every time)
+   * - Exponential backoff: { initialMs, multiplier, maxMs }
+   *
+   * @param config - Backoff configuration (number or RetryBackoffConfig)
+   * @param retryCount - Current retry attempt (1-indexed)
+   * @returns Delay in milliseconds to wait before retry
+   */
+  /**
+   * Calculate retry backoff delay.
+   *
+   * WHY: When retries happen, immediate retries often fail again. Backoff gives:
+   * - Rate-limited APIs time to reset their counters
+   * - Transient network issues time to resolve
+   * - Overloaded services time to recover
+   *
+   * Supports two modes:
+   * - Fixed delay: `retryBackoff: 1000` → always 1s between retries
+   * - Exponential: `retryBackoff: { initialMs: 1000, multiplier: 2, maxMs: 30000 }`
+   *   → 1s, 2s, 4s, 8s, ... capped at 30s
+   *
+   * @param config - Fixed delay (number) or exponential config
+   * @param retryCount - Current retry attempt (1-indexed)
+   * @returns Delay in milliseconds
+   */
+  private _calculateBackoffDelay(
+    config: number | RetryBackoffConfig,
+    retryCount: number
+  ): number {
+    // Simple fixed delay - same wait every time
+    // WHY: Sometimes you just want a consistent pause, e.g., 500ms between retries
+    if (typeof config === 'number') {
+      return config;
+    }
+
+    // Exponential backoff: initial * multiplier^(retry-1), capped at max
+    // WHY: Exponential backoff is the gold standard for distributed systems.
+    // Early retries are fast (catch transient glitches), later retries are slower
+    // (respect persistently failing services).
+    //
+    // Example with defaults (1000, 2, 30000):
+    //   Retry 1: 1000ms (1s)
+    //   Retry 2: 2000ms (2s)
+    //   Retry 3: 4000ms (4s)
+    //   Retry 4: 8000ms (8s)
+    //   Retry 5+: capped at 30000ms (30s) - don't wait forever
+    const { initialMs = 1000, multiplier = 2, maxMs = 30000 } = config;
+    const delay = initialMs * Math.pow(multiplier, retryCount - 1);
+    return Math.min(delay, maxMs);
+  }
+
+  private _updateMetricSuccess(
+    metric: DynamicPromptMetrics,
+    tokenCount: number,
+    currentMax: number | null
+  ): number {
+    // Update metrics for successful execution
+    // Why: Centralizes metric updates and tracks the highest successful token count
+    metric.successfulAttempts++;
+    const newMax = currentMax === null ? tokenCount : Math.max(currentMax, tokenCount);
+    metric.highestSuccessTokenCount = newMax;
+    metric.lastUpdated = Date.now();
+    return newMax;
+  }
+
+  private _updateMetricFailure(
+    metric: DynamicPromptMetrics,
+    tokenCount: number,
+    currentMin: number | null
+  ): number {
+    // Update metrics for failed execution
+    // Why: Centralizes metric updates and tracks the lowest failed token count
+    // (helps determine when to start chunking)
+    metric.failedAttempts++;
+    const newMin = currentMin === null ? tokenCount : Math.min(currentMin, tokenCount);
+    metric.lowestFailedTokenCount = newMin;
+    metric.lastUpdated = Date.now();
+    return newMin;
+  }
+
+  private _normalizeStructuredResponse(content: Record<string, any> | null): Record<string, any> | null {
+    if (!content) {
+      return content;
+    }
+
+    const normalized: Record<string, any> = { ...content };
+
+    const toList = (value: unknown): string[] => {
+      if (Array.isArray(value)) {
+        return value
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : String(entry ?? '')))
+          .filter((entry) => entry.length > 0);
+      }
+
+      if (typeof value === 'string') {
+        return value
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0);
+      }
+
+      if (value == null) {
+        return [];
+      }
+
+      const coerced = String(value).trim();
+      return coerced.length > 0 ? [coerced] : [];
+    };
+
+    const ensureListField = (field: string) => {
+      if (!(field in normalized)) {
+        return;
+      }
+
+      const listValue = toList(normalized[field]);
+      if (listValue.length > 0) {
+        normalized[field] = listValue;
+      } else {
+        delete normalized[field];
+      }
+    };
+
+    ensureListField('actions');
+    ensureListField('providers');
+    ensureListField('evaluators');
+
+    if ('simple' in normalized) {
+      const value = normalized.simple;
+      normalized.simple =
+        typeof value === 'boolean'
+          ? value
+          : parseBooleanFromText(typeof value === 'string' ? value : String(value));
+    }
+
+    return normalized;
+  }
+
+  private _generateCacheKey(state: State, schema: SchemaRow[], modelIdentifier: string): string {
+    // Generate a unique key from state content + schema + model
+    // Why: Used for decomposition strategy caching - each unique state+schema combo
+    // gets its own cached chunking strategy
+    const schemaSignature = schema
+      .map((s) => s.field)
+      .sort()
+      .join(',');
+
+    // Use a hash of the state text/values for cache uniqueness
+    // Why: We use the text and a sample of values to create a reasonably unique key
+    // without hashing the entire state (which could be large)
+    const stateHash = stringToUuid(
+      JSON.stringify({
+        text: state.text?.substring(0, 200),
+        valuesKeys: Object.keys(state.values || {})
+          .sort()
+          .join(','),
+      })
+    );
+
+    return `${modelIdentifier}:${schemaSignature}:${stateHash}`;
+  }
+
+  private _generateModelSchemaKey(schema: SchemaRow[], modelIdentifier: string): string {
+    // Generate a key for model+schema metrics (PRIMARY)
+    // Why: Tracks how well a specific model performs on a specific schema type
+    // across all state variations - this is the most useful metric for knowing
+    // which models work best for which output structures
+    // Example: "TEXT_LARGE:action,reasoning,name" or "gpt-4:actions,text,thought"
+    const schemaSignature = schema
+      .map((s) => s.field)
+      .sort()
+      .join(',');
+    return `${modelIdentifier}:${schemaSignature}`;
+  }
+
+  /**
+   * Get metrics for model+schema combinations or model-wide stats
+   * @param type - 'modelSchema' (how model does on schema) or 'model' (overall model stats)
+   * @param key - Optional key to get specific metrics, or undefined for all
+   * @returns Metrics object(s) with success/failure tracking
+   */
+  getDynamicPromptMetrics(
+    type: 'modelSchema' | 'model' = 'modelSchema',
+    key?: string
+  ): DynamicPromptMetrics | Map<string, DynamicPromptMetrics> | null {
+    const metricsMap = type === 'modelSchema' ? modelSchemaMetrics : modelMetrics;
+    if (key) {
+      return metricsMap.get(key) || null;
+    }
+    return metricsMap;
+  }
+
+  /**
+   * Clear metrics
+   * @param type - 'modelSchema' or 'model' or 'all'
+   * @param key - Optional key to clear specific metrics, or undefined to clear all
+   */
+  clearDynamicPromptMetrics(type: 'modelSchema' | 'model' | 'all' = 'all', key?: string): void {
+    if (type === 'all') {
+      if (key) {
+        modelSchemaMetrics.delete(key);
+        modelMetrics.delete(key);
+      } else {
+        modelSchemaMetrics.clear();
+        modelMetrics.clear();
+      }
+    } else {
+      const metricsMap = type === 'modelSchema' ? modelSchemaMetrics : modelMetrics;
+      if (key) {
+        metricsMap.delete(key);
+      } else {
+        metricsMap.clear();
+      }
+    }
   }
 
   registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void;
@@ -2598,13 +3733,13 @@ export class AgentRuntime implements IAgentRuntime {
       // Deep merge secrets to preserve runtime-generated secrets
       const mergedSecrets =
         typeof existingAgent.settings?.secrets === 'object' ||
-        typeof agent.settings?.secrets === 'object'
+          typeof agent.settings?.secrets === 'object'
           ? {
-              ...(typeof existingAgent.settings?.secrets === 'object'
-                ? existingAgent.settings.secrets
-                : {}),
-              ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
-            }
+            ...(typeof existingAgent.settings?.secrets === 'object'
+              ? existingAgent.settings.secrets
+              : {}),
+            ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
+          }
           : undefined;
 
       if (mergedSecrets) {
