@@ -740,6 +740,25 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
+  unregisterAction(actionName: string): boolean {
+    const index = this.actions.findIndex((a) => a.name === actionName);
+
+    if (index !== -1) {
+      this.actions.splice(index, 1);
+      this.logger.debug(
+        { src: 'agent', agentId: this.agentId, actionName },
+        'Action unregistered'
+      );
+      return true;
+    } else {
+      this.logger.warn(
+        { src: 'agent', agentId: this.agentId, actionName },
+        'Action not found, cannot unregister'
+      );
+      return false;
+    }
+  }
+
   registerEvaluator(evaluator: Evaluator) {
     this.evaluators.push(evaluator);
   }

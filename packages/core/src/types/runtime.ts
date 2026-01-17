@@ -102,6 +102,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   registerAction(action: Action): void;
 
+  unregisterAction(actionName: string): boolean;
+
   registerEvaluator(evaluator: Evaluator): void;
 
   ensureConnections(entities: Entity[], rooms: Room[], source: string, world: World): Promise<void>;
