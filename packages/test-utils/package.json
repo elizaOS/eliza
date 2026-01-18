@@ -39,7 +39,7 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "^4.1.13"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@elizaos/config": "workspace:*",
@@ -60,7 +60,7 @@
     "access": "public"
   },
   "resolutions": {
-    "zod": "4.1.13"
+    "zod": "4.3.5"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

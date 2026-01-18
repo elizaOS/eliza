@@ -1675,16 +1675,19 @@ export default function Chat({
         ) : (
           /* Resizable panel layout for desktop mode */
           <ResizablePanelGroup
-            direction="horizontal"
+            orientation="horizontal"
             className="h-full flex-1 overflow-hidden"
-            onLayout={(sizes) => {
-              if (sizes.length >= 2 && showSidebar && !chatState.isMobile) {
-                setMainPanelSize(sizes[0]);
-                setSidebarPanelSize(sizes[1]);
+            onLayoutChange={(layout: { [panelId: string]: number }) => {
+              const mainSize = layout['main-panel'];
+              const sideSize = layout['sidebar-panel'];
+              if (mainSize !== undefined && sideSize !== undefined && showSidebar && !chatState.isMobile) {
+                setMainPanelSize(mainSize);
+                setSidebarPanelSize(sideSize);
               }
             }}
           >
             <ResizablePanel
+              id="main-panel"
               defaultSize={showSidebar && !chatState.isMobile ? mainPanelSize : 100}
               minSize={chatState.isMobile ? 100 : 50}
             >
@@ -1790,7 +1793,7 @@ export default function Chat({
                 !chatState.isMobile && (
                   <>
                     <ResizableHandle withHandle />
-                    <ResizablePanel defaultSize={sidebarPanelSize} minSize={15} maxSize={85}>
+                    <ResizablePanel id="sidebar-panel" defaultSize={sidebarPanelSize} minSize={15} maxSize={85}>
                       <AgentSidebar
                         agentId={sidebarAgentId}
                         agentName={sidebarAgentName}

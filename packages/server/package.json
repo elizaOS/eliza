@@ -47,7 +47,7 @@
     "@elizaos/client": "workspace:*",
     "@elizaos/config": "workspace:*",
     "@types/bcrypt": "^6.0.0",
-    "@types/node": "^24.10.1",
+    "@types/node": "^25.0.9",
     "bun-fetch-mock": "^1.0.0",
     "prettier": "^3.7.4",
     "tsx": "^4.21.0",
