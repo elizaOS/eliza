@@ -1,0 +1,50 @@
+<!-- Based on Pixel Art GUI Elements by Mounir Tohami (https://mounirtohami.itch.io/pixel-art-gui-elements) -->
+<svg width="50" height="50" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_15_980)">
+<rect x="4" y="2" width="42" height="46" fill="#B86F50"/>
+<rect x="2" y="4" width="46" height="42" fill="#B86F50"/>
+<rect x="3" y="3" width="44" height="44" fill="#B86F50"/>
+<rect x="4" y="4" width="42" height="42" fill="#743F39"/>
+<rect x="2" y="46" width="1" height="1" fill="#181425"/>
+<rect width="1" height="1" transform="matrix(1 0 0 -1 46 48)" fill="#181425"/>
+<rect width="1" height="1" transform="matrix(1 0 0 -1 2 4)" fill="#181425"/>
+<rect x="46" y="2" width="1" height="1" fill="#181425"/>
+<rect x="1" y="4" width="1" height="42" fill="#181425"/>
+<rect x="48" y="4" width="1" height="42" fill="#181425"/>
+<rect x="46" y="1" width="1" height="42" transform="rotate(90 46 1)" fill="#181425"/>
+<rect x="46" y="48" width="1" height="42" transform="rotate(90 46 48)" fill="#181425"/>
+<rect x="3" y="47" width="1" height="1" fill="#181425"/>
+<rect width="1" height="1" transform="matrix(1 0 0 -1 47 47)" fill="#181425"/>
+<rect width="1" height="1" transform="matrix(1 0 0 -1 3 3)" fill="#181425"/>
+<rect x="47" y="3" width="1" height="1" fill="#181425"/>
+<rect x="4" y="4" width="1" height="1" fill="#181425"/>
+<rect x="4" y="45" width="1" height="1" fill="#181425"/>
+<rect x="45" y="4" width="1" height="1" fill="#181425"/>
+<rect x="45" y="45" width="1" height="1" fill="#181425"/>
+<rect x="3" y="5" width="1" height="40" fill="#181425"/>
+<rect x="46" y="5" width="1" height="40" fill="#181425"/>
+<rect x="45" y="46" width="1" height="40" transform="rotate(90 45 46)" fill="#181425"/>
+<rect x="45" y="3" width="1" height="40" transform="rotate(90 45 3)" fill="#181425"/>
+<rect x="10" y="45" width="3" height="5" fill="#181425"/>
+<rect x="11" y="46" width="1" height="3" fill="#B86F50"/>
+<rect x="10" width="3" height="5" fill="#181425"/>
+<rect x="11" y="1" width="1" height="3" fill="#B86F50"/>
+<rect x="37" width="3" height="5" fill="#181425"/>
+<rect x="38" y="1" width="1" height="3" fill="#B86F50"/>
+<rect x="37" y="45" width="3" height="5" fill="#181425"/>
+<rect x="38" y="46" width="1" height="3" fill="#B86F50"/>
+<rect x="5" y="10" width="3" height="5" transform="rotate(90 5 10)" fill="#181425"/>
+<rect x="4" y="11" width="1" height="3" transform="rotate(90 4 11)" fill="#B86F50"/>
+<rect x="50" y="10" width="3" height="5" transform="rotate(90 50 10)" fill="#181425"/>
+<rect x="49" y="11" width="1" height="3" transform="rotate(90 49 11)" fill="#B86F50"/>
+<rect x="50" y="37" width="3" height="5" transform="rotate(90 50 37)" fill="#181425"/>
+<rect x="49" y="38" width="1" height="3" transform="rotate(90 49 38)" fill="#B86F50"/>
+<rect x="5" y="37" width="3" height="5" transform="rotate(90 5 37)" fill="#181425"/>
+<rect x="4" y="38" width="1" height="3" transform="rotate(90 4 38)" fill="#B86F50"/>
+</g>
+<defs>
+<clipPath id="clip0_15_980">
+<rect width="50" height="50" fill="white"/>
+</clipPath>
+</defs>
+</svg>
