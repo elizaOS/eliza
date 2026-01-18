@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@polyagent/shared';
 import { Activity, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { memo } from 'react';
 import { useAgentActivity } from '@/hooks/useAgentActivity';

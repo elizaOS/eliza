@@ -10,7 +10,7 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
  * @dev Separates app-level bans from network-level bans for granular moderation
  * 
  * Key Features:
- * - Network bans: Block agent from ALL Babylon apps
+ * - Network bans: Block agent from ALL Polyagent apps
  * - App-specific bans: Block agent from specific apps only
  * - Governance-controlled ban/unban operations
  * - Event-driven cache updates for performance

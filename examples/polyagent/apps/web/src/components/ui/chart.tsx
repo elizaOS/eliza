@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, type JsonValue } from '@babylon/shared';
+import { cn, type JsonValue } from '@polyagent/shared';
 import * as React from 'react';
 import * as RechartsPrimitive from 'recharts';
 

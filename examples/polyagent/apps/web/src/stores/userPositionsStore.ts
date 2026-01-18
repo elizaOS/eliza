@@ -20,13 +20,13 @@
  * ```
  */
 
-import type { PerpPosition, UserPredictionPosition } from '@babylon/shared';
+import type { PerpPosition, UserPredictionPosition } from '@polyagent/shared';
 import { useCallback, useEffect, useRef } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
 // Re-export types for convenience
-export type { PerpPosition, UserPredictionPosition } from '@babylon/shared';
+export type { PerpPosition, UserPredictionPosition } from '@polyagent/shared';
 
 interface PerpStats {
   totalPositions: number;

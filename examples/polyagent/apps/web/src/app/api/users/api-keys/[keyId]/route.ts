@@ -5,9 +5,9 @@
  * @access Authenticated (own keys only)
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
-import { asUser, eq, userApiKeys } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { authenticate, successResponse, withErrorHandling } from '@polyagent/api';
+import { asUser, eq, userApiKeys } from '@polyagent/db';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

@@ -1,5 +1,5 @@
-import { getContractAddresses } from '@babylon/contracts';
-import { CHAIN, logger } from '@babylon/shared';
+import { getContractAddresses } from '@polyagent/contracts';
+import { CHAIN, logger } from '@polyagent/shared';
 import { useCallback, useState } from 'react';
 import { encodeFunctionData, pad } from 'viem';
 import { useSmartWallet } from '@/hooks/useSmartWallet';

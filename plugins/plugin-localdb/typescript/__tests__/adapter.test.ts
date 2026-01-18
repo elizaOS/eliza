@@ -383,12 +383,12 @@ describe("LocalDatabaseAdapter", () => {
 
   describe("relationship operations", () => {
     const sourceId = "00000000-0000-0000-0000-000000000050" as UUID;
-    const targetId = "00000000-0000-0000-0000-000000000051" as UUID;
+    const target = "00000000-0000-0000-0000-000000000051" as UUID;
 
     it("should create a relationship", async () => {
       const result = await adapter.createRelationship({
         sourceEntityId: sourceId,
-        targetEntityId: targetId,
+        targetEntityId: target,
         tags: ["friend"],
       });
       expect(result).toBe(true);
@@ -397,13 +397,13 @@ describe("LocalDatabaseAdapter", () => {
     it("should get relationship", async () => {
       await adapter.createRelationship({
         sourceEntityId: sourceId,
-        targetEntityId: targetId,
+        targetEntityId: target,
         tags: ["friend"],
       });
 
       const relationship = await adapter.getRelationship({
         sourceEntityId: sourceId,
-        targetEntityId: targetId,
+        targetEntityId: target,
       });
       expect(relationship).not.toBeNull();
       expect(relationship?.tags).toContain("friend");
@@ -412,7 +412,7 @@ describe("LocalDatabaseAdapter", () => {
     it("should get relationships for entity", async () => {
       await adapter.createRelationship({
         sourceEntityId: sourceId,
-        targetEntityId: targetId,
+        targetEntityId: target,
         tags: ["friend"],
       });
 

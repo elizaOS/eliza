@@ -1,4 +1,4 @@
-import { CHAIN, RPC_URL } from '@babylon/shared';
+import { CHAIN, RPC_URL } from '@polyagent/shared';
 import { useCallback, useEffect, useState } from 'react';
 import type { Address } from 'viem';
 import { createPublicClient, http } from 'viem';

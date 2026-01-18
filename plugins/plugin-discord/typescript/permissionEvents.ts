@@ -48,7 +48,7 @@ export function hasElevatedPermissions(permissions: string[]): boolean {
 export async function fetchAuditEntry(
   guild: Guild,
   actionType: AuditLogEvent,
-  targetId: string,
+  target: string,
   runtime: IAgentRuntime
 ): Promise<AuditInfo | null> {
   try {
@@ -57,7 +57,7 @@ export async function fetchAuditEntry(
 
     for (const entry of logs.entries.values()) {
       // Match by target and ensure entry is recent (within 10 seconds)
-      if (entry.targetId === targetId && now - entry.createdTimestamp < 10000) {
+      if (entry.target?.id === target && now - entry.createdTimestamp < 10000) {
         return {
           executorId: entry.executor?.id ?? "unknown",
           executorTag: entry.executor?.tag ?? "Unknown",

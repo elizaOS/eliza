@@ -21,9 +21,9 @@ import {
   validateEnvironment,
 } from '../../packages/contracts/src/deployment/env-detection';
 
-const POSTGRES_CONTAINER = 'babylon-postgres';
-const REDIS_CONTAINER = 'babylon-redis';
-const MINIO_CONTAINER = 'babylon-minio';
+const POSTGRES_CONTAINER = 'polyagent-postgres';
+const REDIS_CONTAINER = 'polyagent-redis';
+const MINIO_CONTAINER = 'polyagent-minio';
 
 /**
  * Valid Docker service names for the development environment
@@ -149,7 +149,7 @@ if (!existsSync(envPath) && isLocalnet) {
     // Replace placeholder values with localnet defaults
     envContent = envContent.replace(
       /DATABASE_URL=.*/,
-      'DATABASE_URL="postgresql://babylon:babylon_dev_password@localhost:5433/babylon"'
+      'DATABASE_URL="postgresql://polyagent:polyagent_dev_password@localhost:5433/polyagent"'
     );
     envContent = envContent.replace(
       /REDIS_URL=.*/,
@@ -169,7 +169,7 @@ if (!existsSync(envPath) && isLocalnet) {
     );
   } else {
     // Fallback to minimal template if .env.example is missing
-    envContent = `DATABASE_URL="postgresql://babylon:babylon_dev_password@localhost:5433/babylon"
+    envContent = `DATABASE_URL="postgresql://polyagent:polyagent_dev_password@localhost:5433/polyagent"
 REDIS_URL="redis://localhost:6380"
 DEPLOYMENT_ENV=localnet
 NEXT_PUBLIC_CHAIN_ID=31337
@@ -293,7 +293,7 @@ if (minioRunning.trim() !== MINIO_CONTAINER) {
 // 9. Run database migrations and seed
 // Force local database URL for local development (overrides .env.local if present)
 const LOCAL_DATABASE_URL =
-  'postgresql://babylon:babylon_dev_password@localhost:5433/babylon';
+  'postgresql://polyagent:polyagent_dev_password@localhost:5433/polyagent';
 process.env.DATABASE_URL = LOCAL_DATABASE_URL;
 process.env.DIRECT_DATABASE_URL = LOCAL_DATABASE_URL; // Also override DIRECT_DATABASE_URL to prevent Neon connection
 
@@ -346,7 +346,7 @@ let needsSeed = false;
 try {
   // Use a simple query via bun shell to avoid connection state issues
   const countResult =
-    await $`docker exec babylon-postgres psql -U babylon -d babylon -t -c "SELECT count(*) FROM \"User\";"`.quiet();
+    await $`docker exec polyagent-postgres psql -U polyagent -d polyagent -t -c "SELECT count(*) FROM \"User\";"`.quiet();
   userCount = parseInt(countResult.text().trim(), 10);
   if (isNaN(userCount)) userCount = 0;
   console.info(`✅ Database connected (${userCount} users)`);

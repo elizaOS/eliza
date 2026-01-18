@@ -57,7 +57,7 @@ function isTestEnvironment(): boolean {
 }
 
 function getConnectionUrl(): string {
-  return process.env.DATABASE_URL || 'postgresql://localhost:5432/babylon';
+  return process.env.DATABASE_URL || 'postgresql://localhost:5432/polyagent';
 }
 
 function createPostgresClient(): ReturnType<typeof postgres> {
@@ -116,7 +116,7 @@ function getPostgresClient(): ReturnType<typeof postgres> | null {
 
   if (!globalForDb.postgresClient) {
     const url = getConnectionUrl();
-    if (!url || url === 'postgresql://localhost:5432/babylon') {
+    if (!url || url === 'postgresql://localhost:5432/polyagent') {
       if (isTestEnvironment()) {
         throw new Error('DATABASE_URL is required in test environment');
       }
@@ -238,7 +238,7 @@ export async function initializeJsonMode(
  * Useful for testing.
  */
 export async function initializeMemoryMode(): Promise<void> {
-  await initJsonStorage('/tmp/babylon-memory', { autoSave: false });
+  await initJsonStorage('/tmp/polyagent-memory', { autoSave: false });
   currentStorageMode = 'memory';
   jsonClient = createJsonClient();
   logger.info('[DB] Initialized memory storage mode');

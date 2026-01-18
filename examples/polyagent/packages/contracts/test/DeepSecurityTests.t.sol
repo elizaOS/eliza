@@ -7,7 +7,7 @@ import "./DiamondTestSetup.sol";
 import "../core/PredictionMarketFacet.sol";
 import "../identity/ERC8004IdentityRegistry.sol";
 import "../identity/ERC8004ReputationSystem.sol";
-import "../src/game/BabylonGameOracle.sol";
+import "../src/game/PolyagentGameOracle.sol";
 import "../src/compute/ComputeRegistry.sol";
 import "../src/compute/IComputeRegistry.sol";
 import "../src/compute/ComputeStaking.sol";
@@ -22,7 +22,7 @@ contract DeepSecurityTests is DiamondTestSetup {
     PredictionMarketFacet internal predictionMarket;
     ERC8004IdentityRegistry internal identityRegistry;
     ERC8004ReputationSystem internal reputationSystem;
-    BabylonGameOracle internal babylonOracle;
+    PolyagentGameOracle internal polyagentOracle;
     ComputeRegistry internal computeRegistry;
     BanManager internal banManager;
 
@@ -35,7 +35,7 @@ contract DeepSecurityTests is DiamondTestSetup {
         predictionMarket = PredictionMarketFacet(address(diamond));
         identityRegistry = new ERC8004IdentityRegistry();
         reputationSystem = new ERC8004ReputationSystem(address(identityRegistry));
-        babylonOracle = new BabylonGameOracle(owner);
+        polyagentOracle = new PolyagentGameOracle(owner);
         computeRegistry = new ComputeRegistry(owner);
         banManager = new BanManager(owner, owner);
         
@@ -187,11 +187,11 @@ contract DeepSecurityTests is DiamondTestSetup {
         bytes32 commitment = keccak256(abi.encode(true, salt));
         
         vm.prank(owner);
-        bytes32 sessionId1 = babylonOracle.commitBabylonGame("q1", 1, "Test?", commitment, "test");
+        bytes32 sessionId1 = polyagentOracle.commitPolyagentGame("q1", 1, "Test?", commitment, "test");
         
         // Should work (different question ID) but with different session
         vm.prank(owner);
-        bytes32 sessionId2 = babylonOracle.commitBabylonGame("q2", 2, "Test2?", commitment, "test");
+        bytes32 sessionId2 = polyagentOracle.commitPolyagentGame("q2", 2, "Test2?", commitment, "test");
         
         assertTrue(sessionId1 != sessionId2, "Sessions should be unique");
     }
@@ -294,7 +294,7 @@ contract DeepSecurityTests is DiamondTestSetup {
         // Non-owner cannot pause
         vm.prank(attacker);
         vm.expectRevert();
-        babylonOracle.pause();
+        polyagentOracle.pause();
     }
 
     // ========================================
@@ -533,7 +533,7 @@ contract DeepSecurityTests is DiamondTestSetup {
         bytes32 commitment = keccak256(abi.encode(outcome, salt));
         
         vm.prank(owner);
-        bytes32 sessionId = babylonOracle.commitBabylonGame(
+        bytes32 sessionId = polyagentOracle.commitPolyagentGame(
             questionId,
             questionNum,
             "Fuzz question?",
@@ -544,7 +544,7 @@ contract DeepSecurityTests is DiamondTestSetup {
         // Verify cannot reveal with wrong salt
         vm.prank(owner);
         vm.expectRevert("Commitment mismatch");
-        babylonOracle.revealBabylonGame(
+        polyagentOracle.revealPolyagentGame(
             sessionId,
             outcome,
             bytes32(uint256(salt) + 1), // wrong salt
@@ -555,10 +555,10 @@ contract DeepSecurityTests is DiamondTestSetup {
         
         // Correct reveal should work
         vm.prank(owner);
-        babylonOracle.revealBabylonGame(sessionId, outcome, salt, "", new address[](0), 0);
+        polyagentOracle.revealPolyagentGame(sessionId, outcome, salt, "", new address[](0), 0);
         
         // Verify outcome
-        (bool resultOutcome, bool finalized) = babylonOracle.getOutcome(sessionId);
+        (bool resultOutcome, bool finalized) = polyagentOracle.getOutcome(sessionId);
         assertEq(resultOutcome, outcome, "Outcome mismatch");
         assertTrue(finalized, "Should be finalized");
     }

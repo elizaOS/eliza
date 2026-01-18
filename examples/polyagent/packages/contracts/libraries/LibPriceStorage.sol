@@ -5,7 +5,7 @@ pragma solidity ^0.8.27;
 /// @notice Storage library for price data
 /// @dev Uses diamond storage pattern for upgradeability
 library LibPriceStorage {
-    bytes32 constant PRICE_STORAGE_POSITION = keccak256("babylon.price.storage");
+    bytes32 constant PRICE_STORAGE_POSITION = keccak256("polyagent.price.storage");
 
     /// @notice Packed price tick data (fits in single storage slot)
     struct PriceTick {

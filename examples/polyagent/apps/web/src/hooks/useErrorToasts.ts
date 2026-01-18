@@ -1,4 +1,4 @@
-import type { InteractionError } from '@babylon/shared';
+import type { InteractionError } from '@polyagent/shared';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useInteractionStore } from '@/stores/interactionStore';

@@ -5,7 +5,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 
 export async function callClaudeDirect(params: {
   prompt: string;

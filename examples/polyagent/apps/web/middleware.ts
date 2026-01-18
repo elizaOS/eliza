@@ -13,12 +13,12 @@ const ALLOWED_PATHS = new Set([
  * Production and staging origins for CORS requests
  */
 const PRODUCTION_ORIGINS = [
-  'https://babylon.market',
-  'https://www.babylon.market',
-  'https://app.babylon.market',
-  'https://privy.babylon.market',
-  'https://staging.babylon.market',
-  'https://app.staging.babylon.market',
+  'https://polyagent.market',
+  'https://www.polyagent.market',
+  'https://app.polyagent.market',
+  'https://privy.polyagent.market',
+  'https://staging.polyagent.market',
+  'https://app.staging.polyagent.market',
 ] as const;
 
 /**

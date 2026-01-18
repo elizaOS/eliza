@@ -5,7 +5,7 @@
  * @access Public (with credentials)
  *
  * @description
- * Secure authentication endpoint for autonomous Babylon agents. Provides
+ * Secure authentication endpoint for autonomous Polyagent agents. Provides
  * session-based authentication without requiring user Privy tokens. Agent
  * credentials are validated against environment variables, and successful
  * authentication returns a time-limited session token.
@@ -75,7 +75,7 @@
  * ```
  *
  * @see {@link /lib/auth/agent-auth} Agent authentication implementation
- * @see {@link /examples/babylon-typescript-agent} Example agent usage
+ * @see {@link /examples/polyagent-typescript-agent} Example agent usage
  */
 
 import {
@@ -86,8 +86,8 @@ import {
   successResponse,
   verifyAgentCredentials,
   withErrorHandling,
-} from '@babylon/api';
-import { AgentAuthSchema, logger } from '@babylon/shared';
+} from '@polyagent/api';
+import { AgentAuthSchema, logger } from '@polyagent/shared';
 import { randomBytes } from 'crypto';
 import type { NextRequest } from 'next/server';
 

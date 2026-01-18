@@ -13,7 +13,7 @@ import {
   getIdentityRegistryAddress,
   identityRegistryAbi,
   logger,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import {
   type Address,
   createPublicClient,

@@ -29,7 +29,7 @@
  * @packageDocumentation
  */
 
-import { DistributedLockService } from '@babylon/api';
+import { DistributedLockService } from '@polyagent/api';
 import { randomBytes } from 'crypto';
 
 /**

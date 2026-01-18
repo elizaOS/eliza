@@ -4,7 +4,7 @@ import {
   getIdentityRegistryAddress,
   identityRegistryAbi,
   WALLET_ERROR_MESSAGES,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import { useCallback } from 'react';
 import { encodeFunctionData } from 'viem';
 import { useSmartWallet } from '@/hooks/useSmartWallet';
@@ -35,7 +35,7 @@ export interface AgentProfileMetadata {
 interface UpdateAgentProfileInput {
   /** Profile metadata to update */
   metadata: AgentProfileMetadata;
-  /** Optional custom endpoint URL (defaults to babylon.market/agent/{address}) */
+  /** Optional custom endpoint URL (defaults to polyagent.market/agent/{address}) */
   endpoint?: string;
 }
 
@@ -87,7 +87,7 @@ export function useUpdateAgentProfileTx() {
 
       const targetEndpoint =
         endpoint ??
-        `https://babylon.market/agent/${smartWalletAddress.toLowerCase()}`;
+        `https://polyagent.market/agent/${smartWalletAddress.toLowerCase()}`;
 
       const metadataJson = JSON.stringify({
         ...metadata,

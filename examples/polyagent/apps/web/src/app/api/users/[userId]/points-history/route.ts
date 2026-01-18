@@ -15,9 +15,9 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, desc, eq, pointsTransactions } from '@babylon/db';
-import { UserIdParamSchema } from '@babylon/shared';
+} from '@polyagent/api';
+import { db, desc, eq, pointsTransactions } from '@polyagent/db';
+import { UserIdParamSchema } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 
 /**

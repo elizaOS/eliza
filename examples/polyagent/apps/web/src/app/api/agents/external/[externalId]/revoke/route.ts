@@ -8,9 +8,9 @@
  * authentication.
  */
 
-import { agentRegistry } from '@babylon/agents';
-import { authenticate, isAuthenticationError, isUserAdmin } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { agentRegistry } from '@polyagent/agents';
+import { authenticate, isAuthenticationError, isUserAdmin } from '@polyagent/api';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

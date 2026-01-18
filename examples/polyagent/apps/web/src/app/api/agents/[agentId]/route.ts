@@ -174,9 +174,9 @@
  * @see {@link /src/app/agents/[agentId]/page.tsx} Agent detail page
  */
 
-import { agentService, getAgentConfig } from '@babylon/agents';
-import { authenticateUser } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import { agentService, getAgentConfig } from '@polyagent/agents';
+import { authenticateUser } from '@polyagent/api';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

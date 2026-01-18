@@ -10,7 +10,7 @@
  * - Grouping by scenario for GRPO
  */
 
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@polyagent/shared';
 import type {
   ARTTrajectory,
   ChatMessage,

@@ -4,7 +4,7 @@
  * File system operations for deployment management.
  * These functions require Node.js and are NOT compatible with browser/edge runtime.
  *
- * @remarks Import from '@babylon/contracts/deployment/validation-node' for Node.js scripts only.
+ * @remarks Import from '@polyagent/contracts/deployment/validation-node' for Node.js scripts only.
  */
 
 import * as fs from 'fs';
@@ -93,7 +93,7 @@ export async function updateEnvFile(
     NEXT_PUBLIC_PERPETUAL_MARKET_FACET: contracts.perpetualMarketFacet,
     NEXT_PUBLIC_REFERRAL_SYSTEM_FACET: contracts.referralSystemFacet,
     NEXT_PUBLIC_BAN_MANAGER: contracts.banManager,
-    NEXT_PUBLIC_BABYLON_ORACLE: contracts.babylonOracle,
+    NEXT_PUBLIC_POLYAGENT_ORACLE: contracts.polyagentOracle,
     NEXT_PUBLIC_TEST_TOKEN: contracts.testToken,
   };
 

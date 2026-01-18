@@ -1,5 +1,5 @@
 /**
- * Chain Configuration for Babylon
+ * Chain Configuration for Polyagent
  *
  * Supports multiple environments: localnet, testnets, and mainnets.
  * Environment variables can be NEXT_PUBLIC_ prefixed (for Next.js) or plain.

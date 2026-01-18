@@ -87,7 +87,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "frame-src 'self' https://auth.privy.io https://privy.babylon.market https://verify.walletconnect.com https://verify.walletconnect.org https://vercel.live https://farcaster.xyz; frame-ancestors 'self' https://farcaster.xyz https://warpcast.com"
+          "value": "frame-src 'self' https://auth.privy.io https://privy.polyagent.market https://verify.walletconnect.com https://verify.walletconnect.org https://vercel.live https://farcaster.xyz; frame-ancestors 'self' https://farcaster.xyz https://warpcast.com"
         },
         {
           "key": "X-Content-Type-Options",

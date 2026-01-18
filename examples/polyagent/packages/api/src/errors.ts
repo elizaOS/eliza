@@ -21,9 +21,9 @@ export class ApiError extends Error {
 }
 
 /**
- * Base error class for Babylon API errors
+ * Base error class for Polyagent API errors
  */
-export abstract class BabylonError extends Error {
+export abstract class PolyagentError extends Error {
   public readonly code: string;
   public readonly statusCode: number;
   public readonly isOperational: boolean;
@@ -53,7 +53,7 @@ export abstract class BabylonError extends Error {
 /**
  * Authentication error
  */
-export class AuthenticationError extends BabylonError {
+export class AuthenticationError extends PolyagentError {
   constructor(
     message = 'Authentication required',
     context?: Record<string, JsonValue>
@@ -65,7 +65,7 @@ export class AuthenticationError extends BabylonError {
 /**
  * Authorization error
  */
-export class AuthorizationError extends BabylonError {
+export class AuthorizationError extends PolyagentError {
   public readonly resource?: string;
   public readonly action?: string;
 
@@ -102,7 +102,7 @@ export function isAuthorizationError(
 /**
  * Bad Request Error (400)
  */
-export class BadRequestError extends BabylonError {
+export class BadRequestError extends PolyagentError {
   constructor(
     message: string,
     code?: string,
@@ -115,7 +115,7 @@ export class BadRequestError extends BabylonError {
 /**
  * Unauthorized Error (401)
  */
-export class UnauthorizedError extends BabylonError {
+export class UnauthorizedError extends PolyagentError {
   constructor(
     message = 'Unauthorized',
     code?: string,
@@ -128,7 +128,7 @@ export class UnauthorizedError extends BabylonError {
 /**
  * Forbidden Error (403)
  */
-export class ForbiddenError extends BabylonError {
+export class ForbiddenError extends PolyagentError {
   constructor(
     message = 'Forbidden',
     code?: string,
@@ -141,7 +141,7 @@ export class ForbiddenError extends BabylonError {
 /**
  * Not Found Error (404)
  */
-export class NotFoundError extends BabylonError {
+export class NotFoundError extends PolyagentError {
   constructor(
     resource = 'Resource',
     code?: string,
@@ -154,7 +154,7 @@ export class NotFoundError extends BabylonError {
 /**
  * Conflict Error (409)
  */
-export class ConflictError extends BabylonError {
+export class ConflictError extends PolyagentError {
   constructor(
     message: string,
     code?: string,
@@ -167,7 +167,7 @@ export class ConflictError extends BabylonError {
 /**
  * Validation Error (422)
  */
-export class ValidationError extends BabylonError {
+export class ValidationError extends PolyagentError {
   public readonly errors?: Record<string, string[]>;
 
   constructor(
@@ -184,7 +184,7 @@ export class ValidationError extends BabylonError {
 /**
  * Rate Limit Error (429)
  */
-export class RateLimitError extends BabylonError {
+export class RateLimitError extends PolyagentError {
   public readonly reset?: number;
 
   constructor(
@@ -201,7 +201,7 @@ export class RateLimitError extends BabylonError {
 /**
  * Internal Server Error (500)
  */
-export class InternalServerError extends BabylonError {
+export class InternalServerError extends PolyagentError {
   constructor(
     message = 'Internal server error',
     code?: string,
@@ -214,7 +214,7 @@ export class InternalServerError extends BabylonError {
 /**
  * Service Unavailable Error (503)
  */
-export class ServiceUnavailableError extends BabylonError {
+export class ServiceUnavailableError extends PolyagentError {
   constructor(
     message = 'Service temporarily unavailable',
     code?: string,
@@ -230,7 +230,7 @@ export class ServiceUnavailableError extends BabylonError {
  * @description Error thrown for domain-specific business logic violations.
  * Allows custom error codes and context for specific business rules.
  */
-export class BusinessLogicError extends BabylonError {
+export class BusinessLogicError extends PolyagentError {
   constructor(
     message: string,
     code: string,
@@ -290,16 +290,16 @@ export const ErrorCodes = {
 } as const;
 
 /**
- * Type guard to check if an error is a Babylon error
+ * Type guard to check if an error is a Polyagent error
  *
- * @description Determines if an error is an instance of BabylonError,
+ * @description Determines if an error is an instance of PolyagentError,
  * allowing type-safe error handling.
  *
  * @param {unknown} error - Error to check
- * @returns {boolean} True if error is a BabylonError
+ * @returns {boolean} True if error is a PolyagentError
  */
-export function isBabylonError(error: unknown): error is BabylonError {
-  return error instanceof BabylonError;
+export function isPolyagentError(error: unknown): error is PolyagentError {
+  return error instanceof PolyagentError;
 }
 
 /**
@@ -312,7 +312,7 @@ export function isBabylonError(error: unknown): error is BabylonError {
  * @returns {boolean} True if error is operational
  */
 export function isOperationalError(error: unknown): boolean {
-  if (isBabylonError(error)) {
+  if (isPolyagentError(error)) {
     return error.isOperational;
   }
   return false;
@@ -336,14 +336,14 @@ export interface ErrorResponse {
 /**
  * Create a standardized error response object
  *
- * @description Converts a BabylonError to a standardized ErrorResponse
+ * @description Converts a PolyagentError to a standardized ErrorResponse
  * format suitable for API responses. Includes validation violations if present
  * and context in development mode.
  *
- * @param {BabylonError} error - Babylon error to convert
+ * @param {PolyagentError} error - Polyagent error to convert
  * @returns {ErrorResponse} Standardized error response
  */
-export function createErrorResponse(error: BabylonError): ErrorResponse {
+export function createErrorResponse(error: PolyagentError): ErrorResponse {
   return {
     error: {
       message: error.message,

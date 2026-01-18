@@ -1,7 +1,7 @@
 /**
  * Simple Logger for Deployment Utilities
  *
- * Minimal logger to avoid circular dependency with @babylon/shared
+ * Minimal logger to avoid circular dependency with @polyagent/shared
  */
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';

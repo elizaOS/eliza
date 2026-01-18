@@ -19,24 +19,24 @@ import "../oracles/MockOracle.sol";
 import "../libraries/LibDiamond.sol";
 
 // Oracle system - Game as Prediction Oracle
-import {BabylonGameOracle} from "../src/game/BabylonGameOracle.sol";
+import {PolyagentGameOracle} from "../src/game/PolyagentGameOracle.sol";
 import {BanManager} from "../src/moderation/BanManager.sol";
 
-/// @title DeployBabylon
-/// @notice Deployment script for Babylon prediction market on Base L2
-/// @dev Consolidated architecture: Diamond + BabylonGameOracle
+/// @title DeployPolyagent
+/// @notice Deployment script for Polyagent prediction market on Base L2
+/// @dev Consolidated architecture: Diamond + PolyagentGameOracle
 /// 
 /// Architecture:
 /// - Diamond: PredictionMarketFacet handles LMSR trading
-/// - BabylonGameOracle: IPredictionOracle interface for game outcomes
+/// - PolyagentGameOracle: IPredictionOracle interface for game outcomes
 /// - GameOracleFacet: Bridges oracle outcomes to Diamond markets
 /// 
 /// Flow:
-/// 1. Game engine commits/reveals outcomes to BabylonGameOracle
-/// 2. BabylonGameOracle stores outcomes on-chain
+/// 1. Game engine commits/reveals outcomes to PolyagentGameOracle
+/// 2. PolyagentGameOracle stores outcomes on-chain
 /// 3. GameOracleFacet reads outcomes and resolves Diamond markets
-/// 4. External contracts can query BabylonGameOracle directly
-contract DeployBabylon is Script {
+/// 4. External contracts can query PolyagentGameOracle directly
+contract DeployPolyagent is Script {
     // Deployed contracts - Diamond system
     Diamond public diamond;
     DiamondCutFacet public diamondCutFacet;
@@ -58,7 +58,7 @@ contract DeployBabylon is Script {
     MockOracle public mockOracle;
     
     // Game Oracle - The game IS the prediction oracle
-    BabylonGameOracle public babylonOracle;
+    PolyagentGameOracle public polyagentOracle;
     
     // Moderation
     BanManager public banManager;
@@ -75,7 +75,7 @@ contract DeployBabylon is Script {
         // Set fee recipient (can be changed later)
         feeRecipient = vm.envOr("FEE_RECIPIENT", deployer);
 
-        console.log("Deploying Babylon to Base L2...");
+        console.log("Deploying Polyagent to Base L2...");
         console.log("Deployer:", deployer);
         console.log("Fee Recipient:", feeRecipient);
 
@@ -318,14 +318,14 @@ contract DeployBabylon is Script {
             console.log("\n10. Skipping Oracle Mocks (Mainnet - use real oracles)");
         }
         
-        // 11. Deploy Babylon Game Oracle - THE GAME IS THE PREDICTION ORACLE
-        console.log("\n11. Deploying Babylon Game Oracle (IPredictionOracle)...");
-        babylonOracle = new BabylonGameOracle(deployer); // Deployer is game server initially
-        console.log("BabylonGameOracle:", address(babylonOracle));
+        // 11. Deploy Polyagent Game Oracle - THE GAME IS THE PREDICTION ORACLE
+        console.log("\n11. Deploying Polyagent Game Oracle (IPredictionOracle)...");
+        polyagentOracle = new PolyagentGameOracle(deployer); // Deployer is game server initially
+        console.log("PolyagentGameOracle:", address(polyagentOracle));
         
-        // 12. Configure GameOracleFacet to use BabylonGameOracle
+        // 12. Configure GameOracleFacet to use PolyagentGameOracle
         console.log("\n12. Configuring GameOracleFacet...");
-        GameOracleFacet(address(diamond)).setGameOracle(address(babylonOracle));
+        GameOracleFacet(address(diamond)).setGameOracle(address(polyagentOracle));
         console.log("GameOracle set in Diamond");
         
         // 13. Deploy BanManager (standalone moderation)
@@ -354,7 +354,7 @@ contract DeployBabylon is Script {
         console.log("ReputationSystem:", address(reputationSystem));
         
         console.log("\n--- Game Oracle (IPredictionOracle) ---");
-        console.log("BabylonGameOracle:", address(babylonOracle));
+        console.log("PolyagentGameOracle:", address(polyagentOracle));
         console.log("  -> External contracts query: oracle.getOutcome(sessionId)");
         console.log("  -> Diamond resolves via: GameOracleFacet.resolveFromGameOracle()");
         

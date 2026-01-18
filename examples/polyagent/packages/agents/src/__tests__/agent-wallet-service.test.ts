@@ -27,7 +27,7 @@ const mockDb = {
 };
 
 // Mock the db module
-mock.module('@babylon/db', () => ({
+mock.module('@polyagent/db', () => ({
   db: mockDb,
   users: { id: 'id' },
   eq: (a: unknown, b: unknown) => ({ a, b }),

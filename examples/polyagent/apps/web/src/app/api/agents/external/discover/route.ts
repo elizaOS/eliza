@@ -9,10 +9,10 @@
  * @see src/lib/services/agent-registry.service.ts
  */
 
-import type { AgentRegistration, TrustLevel } from '@babylon/agents';
-import { AgentStatus, AgentType, agentRegistry } from '@babylon/agents';
-import { checkRateLimitAsync, RATE_LIMIT_CONFIGS } from '@babylon/api';
-import { logger } from '@babylon/shared';
+import type { AgentRegistration, TrustLevel } from '@polyagent/agents';
+import { AgentStatus, AgentType, agentRegistry } from '@polyagent/agents';
+import { checkRateLimitAsync, RATE_LIMIT_CONFIGS } from '@polyagent/api';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

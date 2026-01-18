@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, GROQ_MODELS } from '@babylon/shared';
+import { cn, GROQ_MODELS } from '@polyagent/shared';
 import { Copy, ExternalLink, Info } from 'lucide-react';
 import { memo } from 'react';
 import { toast } from 'sonner';

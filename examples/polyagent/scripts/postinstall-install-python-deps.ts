@@ -23,7 +23,7 @@ const PYTHON_PROJECTS: PythonProject[] = [
   },
   {
     name: 'LangGraph Agent Example',
-    path: join(process.cwd(), 'packages/examples/babylon-langgraph-agent'),
+    path: join(process.cwd(), 'packages/examples/polyagent-langgraph-agent'),
     useUv: true, // Uses uv - has uv.lock
   },
 ];

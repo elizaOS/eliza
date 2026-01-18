@@ -36,7 +36,11 @@ export const autonomyStatusProvider: Provider = {
     }
 
     // Get autonomy settings and service status
-    const autonomyEnabled = runtime.getSetting('AUTONOMY_ENABLED');
+    const autonomyEnabledSetting = runtime.getSetting('AUTONOMY_ENABLED');
+    const autonomyEnabled =
+      autonomyEnabledSetting === true ||
+      autonomyEnabledSetting === 'true' ||
+      runtime.enableAutonomy === true;
     const serviceRunning =
       (autonomyService as AutonomyService).isLoopRunning?.() || false;
     const interval =
@@ -66,7 +70,7 @@ export const autonomyStatusProvider: Provider = {
     return {
       text: `[AUTONOMY_STATUS]\nCurrent status: ${statusIcon} ${status}\nThinking interval: ${intervalText < 60 ? `${intervalText} seconds` : intervalUnit}\n[/AUTONOMY_STATUS]`,
       data: {
-        autonomyEnabled: !!autonomyEnabled,
+        autonomyEnabled,
         serviceRunning,
         interval,
         intervalSeconds: intervalText,

@@ -6,8 +6,8 @@
  * pattern for buying and selling shares in prediction markets.
  */
 
-import { getContractAddresses, getRpcUrl } from '@babylon/contracts';
-import { CHAIN, logger } from '@babylon/shared';
+import { getContractAddresses, getRpcUrl } from '@polyagent/contracts';
+import { CHAIN, logger } from '@polyagent/shared';
 import {
   type Address,
   createPublicClient,

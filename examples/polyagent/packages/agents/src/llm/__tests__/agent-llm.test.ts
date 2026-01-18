@@ -134,7 +134,7 @@ describe('Agent LLM Provider', () => {
           return new Response(
             JSON.stringify({
               models: [
-                { name: 'babylon-trader:latest', size: 1000000 },
+                { name: 'polyagent-trader:latest', size: 1000000 },
                 { name: 'qwen2.5:7b-instruct', size: 2000000 },
               ],
             }),
@@ -144,7 +144,7 @@ describe('Agent LLM Provider', () => {
 
         if (url.includes('/api/chat')) {
           const body = JSON.parse(options.body as string);
-          expect(body.model).toBe('babylon-trader:latest');
+          expect(body.model).toBe('polyagent-trader:latest');
           return new Response(
             JSON.stringify({
               message: { content: 'Trader response' },
@@ -254,7 +254,7 @@ describe('Agent LLM Provider', () => {
         expect(url).toBe('https://my-model.hf.space/v1/chat/completions');
 
         const body = JSON.parse(options.body as string);
-        expect(body.model).toBe('babylon-trader');
+        expect(body.model).toBe('polyagent-trader');
         expect(body.messages).toHaveLength(2);
         expect(body.temperature).toBe(0.7);
         expect(body.max_tokens).toBe(1000);
@@ -352,7 +352,7 @@ describe('Agent LLM Provider', () => {
         expect(options.method).toBe('POST');
 
         const body = JSON.parse(options.body as string);
-        expect(body.model).toBe('babylon-trader');
+        expect(body.model).toBe('polyagent-trader');
         expect(body.messages).toHaveLength(2);
         expect(body.temperature).toBe(0.8);
 

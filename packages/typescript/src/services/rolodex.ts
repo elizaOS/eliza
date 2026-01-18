@@ -647,15 +647,15 @@ export class RolodexService extends Service {
       }>,
     };
 
-    const targetIds = relationships.map((rel) =>
+    const targets = relationships.map((rel) =>
       rel.sourceEntityId === entityId ? rel.targetEntityId : rel.sourceEntityId,
     );
     const entities = await Promise.all(
-      targetIds.map((targetId) => this.runtime.getEntityById(targetId)),
+      targets.map((target) => this.runtime.getEntityById(target)),
     );
     const analyticsResults = await Promise.all(
-      targetIds.map((targetId, index) =>
-        entities[index] ? this.analyzeRelationship(entityId, targetId) : null,
+      targets.map((target, index) =>
+        entities[index] ? this.analyzeRelationship(entityId, target) : null,
       ),
     );
 

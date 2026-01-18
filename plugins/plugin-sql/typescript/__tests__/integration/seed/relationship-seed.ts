@@ -71,14 +71,14 @@ export const relationshipTestRelationships: Relationship[] = [
 // Helper function to create a relationship with custom tags and metadata
 export const createTestRelationship = (
   sourceId: UUID,
-  targetId: UUID,
+  target: UUID,
   tags: string[] = [],
   metadata: Metadata = {}
 ): Relationship => {
   return {
     id: uuidv4() as UUID,
     sourceEntityId: sourceId,
-    targetEntityId: targetId,
+    targetEntityId: target,
     agentId: relationshipTestAgentId,
     tags,
     metadata,

@@ -1,4 +1,4 @@
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 
 interface RelayResult {
@@ -23,7 +23,7 @@ export async function relayCronToStaging(
   }
 
   const stagingBaseUrl =
-    process.env.CRON_STAGING_URL || 'https://staging.babylon.market';
+    process.env.CRON_STAGING_URL || 'https://staging.polyagent.market';
   const stagingHost = stagingBaseUrl.replace(/^https?:\/\//, '');
   // Access headers safely - handle both NextRequest and plain Headers objects
   const headers = request.headers as

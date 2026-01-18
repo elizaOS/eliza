@@ -13,6 +13,11 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./typescript/dist/index.d.ts",
+      "browser": {
+        "types": "./typescript/dist/browser/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
+      },
       "node": {
         "types": "./typescript/dist/node/index.d.ts",
         "import": "./typescript/dist/node/index.node.js",

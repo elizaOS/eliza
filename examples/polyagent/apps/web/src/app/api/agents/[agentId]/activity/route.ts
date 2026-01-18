@@ -9,8 +9,8 @@
  * Used for the real-time Activity feed in the agent detail page.
  */
 
-import { agentService } from '@babylon/agents';
-import { authenticateUser } from '@babylon/api';
+import { agentService } from '@polyagent/agents';
+import { authenticateUser } from '@polyagent/api';
 import {
   agentTrades,
   comments,
@@ -20,7 +20,7 @@ import {
   inArray,
   markets,
   posts,
-} from '@babylon/db';
+} from '@polyagent/db';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

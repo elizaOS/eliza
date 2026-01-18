@@ -12,7 +12,7 @@ import {
   type UserAgentConfig,
   userAgentConfigs,
   users,
-} from '@babylon/db';
+} from '@polyagent/db';
 
 /** User with agent configuration attached */
 export type UserWithAgentConfig = User & {

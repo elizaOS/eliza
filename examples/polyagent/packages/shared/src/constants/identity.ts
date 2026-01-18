@@ -1,5 +1,5 @@
 /**
- * Identity-related constants and utilities for Babylon
+ * Identity-related constants and utilities for Polyagent
  *
  * Provides ERC-8004 identity registry functionality including
  * parsed ABIs and address resolution.

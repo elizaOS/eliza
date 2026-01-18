@@ -6,8 +6,8 @@
  * Supports automatic stale lock recovery.
  */
 
-import { and, db, eq, generationLocks, lte } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { and, db, eq, generationLocks, lte } from '@polyagent/db';
+import { logger } from '@polyagent/shared';
 import { randomBytes } from 'crypto';
 
 export interface LockOptions {

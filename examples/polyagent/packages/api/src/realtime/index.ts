@@ -1,4 +1,4 @@
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { streamAdd } from '../redis';
 import type { JsonValue } from '../types';

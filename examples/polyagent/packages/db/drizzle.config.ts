@@ -8,7 +8,7 @@ const isLocalDev =
 
 // Local development database URL (matches docker-compose setup)
 const LOCAL_DATABASE_URL =
-  'postgresql://babylon:babylon_dev_password@localhost:5433/babylon';
+  'postgresql://polyagent:polyagent_dev_password@localhost:5433/polyagent';
 
 // Use local URL for development, production URL only when explicitly set
 const databaseUrl = isLocalDev

@@ -74,7 +74,7 @@ import {
   optionalAuth,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@polyagent/api';
 import {
   comments,
   count,
@@ -85,8 +85,8 @@ import {
   reactions,
   sql,
   users,
-} from '@babylon/db';
-import { logger, UsernameParamSchema } from '@babylon/shared';
+} from '@polyagent/db';
+import { logger, UsernameParamSchema } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 
 /**

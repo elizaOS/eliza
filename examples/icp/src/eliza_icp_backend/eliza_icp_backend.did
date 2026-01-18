@@ -45,7 +45,8 @@ type OpenAIConfig = record {
 type InferenceMode = variant {
     ElizaClassic;   // Pattern-based (instant, free, fully on-chain)
     OpenAI;         // HTTP outcalls (fast, costs cycles + API key)
-    OnChainLLM;     // Inter-canister (slower, fully decentralized)
+    OnChainLLM;     // Self-hosted llama_cpp_canister (slower, fully decentralized)
+    DfinityLLM;     // DFINITY LLM canister (fast, FREE, Llama 3.1 8B / Qwen3 32B)
 };
 
 type OnChainLLMConfig = record {
@@ -57,6 +58,19 @@ type OnChainLLMConfig = record {
     system_prompt: opt text;
 };
 
+// DFINITY LLM Models (managed by DFINITY, free to use!)
+type DfinityLLMModel = variant {
+    Llama3_1_8B;    // Fast, general purpose
+    Qwen3_32B;      // Larger, more capable
+    Llama4Scout;    // Newer model
+};
+
+type DfinityLLMConfig = record {
+    model: DfinityLLMModel;
+    system_prompt: opt text;
+    enabled: bool;
+};
+
 type InferenceStatus = record {
     current_mode: InferenceMode;
     eliza_classic_ready: bool;
@@ -64,6 +78,8 @@ type InferenceStatus = record {
     onchain_llm_configured: bool;
     onchain_llm_canister_id: opt text;
     onchain_llm_model: opt text;
+    dfinity_llm_enabled: bool;
+    dfinity_llm_model: opt text;
 };
 
 // ========== Agent Types ==========
@@ -134,6 +150,8 @@ service : {
     get_inference_mode: () -> (InferenceMode) query;
     configure_onchain_llm: (OnChainLLMConfig) -> (variant { Ok; Err: CanisterError });
     is_onchain_llm_ready: () -> (bool) query;
+    configure_dfinity_llm: (DfinityLLMConfig) -> (variant { Ok; Err: CanisterError });
+    is_dfinity_llm_ready: () -> (bool) query;
     get_inference_status: () -> (InferenceStatus) query;
     check_onchain_llm_health: () -> (variant { Ok: bool; Err: CanisterError });
     

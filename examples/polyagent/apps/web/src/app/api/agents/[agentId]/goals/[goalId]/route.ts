@@ -121,8 +121,8 @@
  * ```
  */
 
-import { authenticate } from '@babylon/api';
-import { db } from '@babylon/db';
+import { authenticate } from '@polyagent/api';
+import { db } from '@polyagent/db';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

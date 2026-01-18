@@ -37,5 +37,8 @@ getrandom = { version = "0.2", features = ["custom"] }
 # ELIZA Classic plugin - no API keys needed, pure pattern matching
 elizaos-plugin-eliza-classic = { path = "../../../../plugins/plugin-eliza-classic/rust" }
 
+# DFINITY LLM canister client - Llama 3.1 8B, Qwen3 32B on ICP
+ic-llm = "1.1"
+
 [dev-dependencies]
 candid_parser = "0.1"

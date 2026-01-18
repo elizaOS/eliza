@@ -1,10 +1,10 @@
-import type { AgentTemplate } from '@babylon/agents/client';
+import type { AgentTemplate } from '@polyagent/agents/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { createNameMatchRegex, generateAgentName } from '@/utils/nameGenerator';
 
-const STORAGE_KEY = 'babylon_agent_draft';
+const STORAGE_KEY = 'polyagent_agent_draft';
 
 // Debounce delay for name replacement in prompts (ms)
 const NAME_REPLACEMENT_DEBOUNCE_MS = 300;

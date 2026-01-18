@@ -21,10 +21,14 @@ import {
   agentTrades,
   and,
   balanceTransactions,
+  count,
   db,
   desc,
   eq,
+  isNotNull,
   lt,
+  positions,
+  sql,
   type User,
   type UserAgentConfig,
   userAgentConfigs,
@@ -970,6 +974,93 @@ export class AgentServiceV2 {
           : 0,
       avgTradeSize,
     };
+  }
+
+  async updatePerformanceMetricsForAgents(
+    agentUserIds: string[]
+  ): Promise<void> {
+    if (agentUserIds.length === 0) return;
+
+    const uniqueIds = Array.from(new Set(agentUserIds));
+
+    for (const agentUserId of uniqueIds) {
+      const tradeAgg = await db
+        .select({
+          totalTrades: count(),
+          profitableTrades: sql<number>`count(*) filter (where ${agentTrades.pnl} > 0)`,
+          realizedPnL: sql<number>`coalesce(sum(${agentTrades.pnl}), 0)`,
+          avgTradeSize: sql<number>`coalesce(avg(${agentTrades.amount}), 0)`,
+          averageROI: sql<number>`coalesce(avg(case when ${agentTrades.amount} > 0 and ${agentTrades.pnl} is not null then ${agentTrades.pnl} / ${agentTrades.amount} else null end), 0)`,
+          lastTradeAt: sql<Date | null>`max(${agentTrades.executedAt})`,
+        })
+        .from(agentTrades)
+        .where(eq(agentTrades.agentUserId, agentUserId));
+
+      const openAgg = await db
+        .select({
+          unrealizedPnL: sql<number>`coalesce(sum(${positions.pnl}), 0)`,
+        })
+        .from(positions)
+        .where(
+          and(
+            eq(positions.userId, agentUserId),
+            eq(positions.status, 'active'),
+            isNotNull(positions.pnl)
+          )
+        );
+
+      const tradeRow = tradeAgg[0];
+      const openRow = openAgg[0];
+
+      const totalTrades = Number(tradeRow?.totalTrades ?? 0);
+      const profitableTrades = Number(tradeRow?.profitableTrades ?? 0);
+      const realizedPnL = Number(tradeRow?.realizedPnL ?? 0);
+      const unrealizedPnL = Number(openRow?.unrealizedPnL ?? 0);
+      const lifetimePnL = realizedPnL + unrealizedPnL;
+      const winRate = totalTrades > 0 ? profitableTrades / totalTrades : 0;
+      const avgTradeSize = Number(tradeRow?.avgTradeSize ?? 0);
+      const averageROI = Number(tradeRow?.averageROI ?? 0);
+      const lastTradeAt = tradeRow?.lastTradeAt ?? null;
+
+      await db
+        .insert(agentPerformanceMetrics)
+        .values({
+          id: await generateSnowflakeId(),
+          userId: agentUserId,
+          totalTrades,
+          profitableTrades,
+          winRate,
+          averageROI,
+          lastActivityAt: lastTradeAt ?? null,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: agentPerformanceMetrics.userId,
+          set: {
+            totalTrades,
+            profitableTrades,
+            winRate,
+            averageROI,
+            lastActivityAt: lastTradeAt ?? null,
+            updatedAt: new Date(),
+          },
+        });
+
+      await db
+        .update(users)
+        .set({
+          lifetimePnL: lifetimePnL.toFixed(2),
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, agentUserId));
+
+      // Store avg trade size for analytics if needed later (in logs for now)
+      logger.debug(
+        'Updated agent performance metrics',
+        { agentUserId, totalTrades, avgTradeSize, winRate, lifetimePnL },
+        'AgentPerformance'
+      );
+    }
   }
 
   async getChatHistory(

@@ -4,7 +4,7 @@
  * Provides helpers to apply rate limiting and duplicate detection to API routes
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { NextResponse } from 'next/server';
 import {
   checkDuplicate,

@@ -1,8 +1,8 @@
 {
-  "name": "@babylon/contracts",
+  "name": "@polyagent/contracts",
   "version": "0.1.0",
   "private": true,
-  "description": "Smart contract types and deployment information for Babylon",
+  "description": "Smart contract types and deployment information for Polyagent",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -47,7 +47,7 @@
     "security:full": "bun run test:all && bun run test:fuzz && bun run test:invariant"
   },
   "dependencies": {
-    "@babylon/shared": "workspace:*"
+    "@polyagent/shared": "workspace:*"
   },
   "peerDependencies": {
     "ethers": "^6.16.0",

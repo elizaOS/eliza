@@ -10,12 +10,12 @@
 export const swaggerDefinition = {
   openapi: '3.0.0',
   info: {
-    title: 'Babylon API',
+    title: 'Polyagent API',
     version: '1.0.0',
-    description: 'API documentation for Babylon social conspiracy game',
+    description: 'API documentation for Polyagent social conspiracy game',
     contact: {
       name: 'API Support',
-      url: 'https://github.com/Polyagent/babylon',
+      url: 'https://github.com/Polyagent/polyagent',
     },
   },
   servers: [
@@ -28,7 +28,7 @@ export const swaggerDefinition = {
       ? []
       : [
           {
-            url: 'https://babylon.game',
+            url: 'https://polyagent.game',
             description: 'Production server',
           },
         ]),

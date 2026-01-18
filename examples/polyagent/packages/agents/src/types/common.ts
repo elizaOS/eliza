@@ -1,5 +1,5 @@
 /**
- * Common Type Definitions for @babylon/agents
+ * Common Type Definitions for @polyagent/agents
  *
  * Shared types for common patterns
  */

@@ -14,7 +14,7 @@
  * No manual funding is required.
  */
 
-import { loadDeployment } from '@babylon/contracts';
+import { loadDeployment } from '@polyagent/contracts';
 import { $ } from 'bun';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';

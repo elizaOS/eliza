@@ -1,5 +1,5 @@
 /**
- * Shared utilities for @babylon/agents
+ * Shared utilities for @polyagent/agents
  *
  * @packageDocumentation
  */

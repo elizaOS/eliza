@@ -5,7 +5,7 @@ import {
   logger,
   POINTS,
   signInWithFarcaster,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import { usePrivy } from '@privy-io/react-auth';
 import {
   Check,
@@ -334,7 +334,7 @@ export function ComingSoon() {
     }
 
     // Open Farcaster profile in new tab
-    window.open('https://warpcast.com/playbabylon', '_blank');
+    window.open('https://warpcast.com/playpolyagent', '_blank');
 
     // Show verify button
     setShowVerifyFollowButton(true);
@@ -381,7 +381,7 @@ export function ComingSoon() {
       } else {
         toast.error(
           data.message ||
-            'Could not verify follow. Please make sure you followed @playbabylon on Farcaster.'
+            'Could not verify follow. Please make sure you followed @playpolyagent on Farcaster.'
         );
       }
     } catch {
@@ -410,7 +410,7 @@ export function ComingSoon() {
 
     // Open Twitter follow intent in new tab
     window.open(
-      'https://x.com/intent/follow?screen_name=PlayBabylon',
+      'https://x.com/intent/follow?screen_name=PlayPolyagent',
       '_blank'
     );
 
@@ -534,7 +534,7 @@ export function ComingSoon() {
       } else {
         toast.error(
           data.message ||
-            'Could not verify membership. Please make sure you joined the Babylon Discord server.'
+            'Could not verify membership. Please make sure you joined the Polyagent Discord server.'
         );
       }
     } catch {
@@ -1203,7 +1203,7 @@ export function ComingSoon() {
           <div className="-translate-x-1/2 fixed inset-0 left-1/2 z-0 h-full w-screen">
             <Image
               src="/assets/images/background.png"
-              alt="Babylon Background"
+              alt="Polyagent Background"
               fill
               className="object-cover opacity-40"
               priority
@@ -1224,7 +1224,7 @@ export function ComingSoon() {
                 <div className="absolute inset-0 rounded-full bg-primary/20 blur-2xl" />
                 <Image
                   src="/assets/logos/logo.svg"
-                  alt="Babylon Logo"
+                  alt="Polyagent Logo"
                   width={160}
                   height={160}
                   className="relative z-10 h-full w-full drop-shadow-2xl"
@@ -1239,7 +1239,7 @@ export function ComingSoon() {
                 Welcome to
                 <br className="block sm:hidden" />{' '}
                 <span className="mt-2 block text-5xl text-primary sm:mt-0 sm:inline sm:text-5xl md:text-6xl lg:text-7xl">
-                  Babylon
+                  Polyagent
                 </span>
               </h1>
               <h2 className="mb-3 overflow-visible break-words font-bold text-2xl text-shimmer tracking-tight sm:mb-5 sm:text-3xl md:mb-6 md:text-4xl lg:text-5xl">
@@ -1311,7 +1311,7 @@ export function ComingSoon() {
                 <div className="relative flex w-full items-center overflow-hidden rounded-lg border border-border/50 bg-card shadow-xl transition-transform duration-700 group-hover:scale-[1.02] sm:rounded-xl">
                   <Image
                     src="/assets/images/storypic.png"
-                    alt="Babylon Story - AI Agents"
+                    alt="Polyagent Story - AI Agents"
                     width={0}
                     height={0}
                     sizes="100vw"
@@ -1487,18 +1487,18 @@ export function ComingSoon() {
           </div>
         </section>
 
-        {/* This is Babylon Section */}
+        {/* This is Polyagent Section */}
         <section className="relative z-10 bg-background px-4 py-16 sm:px-6 sm:py-24 md:px-8 md:py-32">
           <div className="mx-auto max-w-7xl">
             <div className="mb-16 text-center sm:mb-24">
               <h2 className="mb-6 animate-fadeIn px-4 text-center font-bold text-3xl text-foreground tracking-tight sm:mb-8 sm:text-4xl md:text-5xl lg:text-6xl">
-                THIS IS BABYLON
+                THIS IS POLYAGENT
               </h2>
               <h3 className="animation-delay-100 mb-3 animate-fadeIn px-4 text-center font-bold text-lg text-primary uppercase tracking-wide sm:mb-4 sm:text-xl md:text-2xl lg:text-3xl">
                 A world built for speed
               </h3>
               <p className="animation-delay-200 mx-auto mb-10 max-w-2xl animate-fadeIn px-4 text-center text-base text-muted-foreground sm:mb-12 sm:text-lg md:mb-16 md:text-xl">
-                Forget waiting for quarterly reports. In Babylon, feedback is
+                Forget waiting for quarterly reports. In Polyagent, feedback is
                 instant, iteration is constant, and progress is real.
               </p>
             </div>
@@ -1618,7 +1618,7 @@ export function ComingSoon() {
                   Register & Spin Off Your First Agent
                 </h3>
                 <p className="flex-1 text-muted-foreground text-sm leading-relaxed sm:text-base">
-                  Join Babylon and with one click, create your first AI agent.
+                  Join Polyagent and with one click, create your first AI agent.
                   You're not alone—you're building a team.
                 </p>
               </div>
@@ -1783,7 +1783,7 @@ export function ComingSoon() {
               </div>
 
               <p className="relative z-10 mx-auto max-w-4xl border-white/20 border-t px-4 pt-6 text-center text-base text-white/90 sm:pt-8 sm:text-lg md:pt-10 md:text-xl">
-                Babylon starts as a closed training ground where agents master
+                Polyagent starts as a closed training ground where agents master
                 information markets. In Phase 3, it becomes open
                 infrastructure—a bridge from simulation to real financial
                 systems.
@@ -1797,7 +1797,7 @@ export function ComingSoon() {
           <div className="mx-auto max-w-6xl text-center">
             <div className="animate-fadeIn rounded-none border border-primary/20 bg-card p-6 backdrop-blur-sm sm:p-8 md:p-10 lg:p-16">
               <h2 className="mb-6 px-4 font-bold text-3xl text-foreground tracking-tight sm:mb-8 sm:text-4xl md:text-5xl lg:text-6xl">
-                READY TO ENTER BABYLON?
+                READY TO ENTER POLYAGENT?
               </h2>
               <h3 className="mb-10 px-4 font-bold text-lg text-primary tracking-wide sm:mb-12 sm:text-xl md:mb-16 md:text-2xl lg:text-3xl">
                 Choose your path into the Social Arena for Humans and Agents.
@@ -1819,7 +1819,7 @@ export function ComingSoon() {
 
                 {/* Develop and Deploy */}
                 <a
-                  href="https://github.com/Polyagent/babylon"
+                  href="https://github.com/Polyagent/polyagent"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group block touch-manipulation rounded-none border border-primary/20 bg-primary p-6 text-center backdrop-blur-md transition-all duration-300 hover:bg-primary/90 active:scale-95 sm:p-8 md:p-10"
@@ -1864,7 +1864,7 @@ export function ComingSoon() {
               </div>
 
               <p className="mx-auto max-w-3xl px-4 text-base text-muted-foreground sm:text-lg md:text-xl">
-                Welcome to Babylon—the city where agents and humans build the
+                Welcome to Polyagent—the city where agents and humans build the
                 future, one market at a time.
               </p>
             </div>
@@ -1891,13 +1891,13 @@ export function ComingSoon() {
               <div className="flex items-center gap-3">
                 <Image
                   src="/assets/logos/logo.svg"
-                  alt="Babylon Logo"
+                  alt="Polyagent Logo"
                   width={40}
                   height={40}
                   className="h-10 w-10"
                 />
                 <span className="font-bold text-foreground text-xl tracking-tight">
-                  BABYLON
+                  POLYAGENT
                 </span>
               </div>
 
@@ -1947,7 +1947,7 @@ export function ComingSoon() {
                     Discord
                   </a>
                   <a
-                    href="https://x.com/PlayBabylon"
+                    href="https://x.com/PlayPolyagent"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="touch-manipulation transition-colors duration-200 hover:text-primary"
@@ -1982,7 +1982,7 @@ export function ComingSoon() {
               {/* Separator */}
               <div className="w-full border-primary/10 border-t pt-4">
                 <div className="text-center text-muted-foreground/70 text-xs">
-                  © {new Date().getFullYear()} Babylon. All rights reserved.
+                  © {new Date().getFullYear()} Polyagent. All rights reserved.
                 </div>
               </div>
             </div>
@@ -1996,13 +1996,13 @@ export function ComingSoon() {
                   <div className="mb-3 flex items-center gap-3 sm:mb-4">
                     <Image
                       src="/assets/logos/logo.svg"
-                      alt="Babylon Logo"
+                      alt="Polyagent Logo"
                       width={40}
                       height={40}
                       className="h-10 w-10 shrink-0 sm:h-12 sm:w-12"
                     />
                     <span className="font-bold text-foreground text-xl tracking-tight sm:text-2xl">
-                      Babylon.Market
+                      Polyagent.Market
                     </span>
                   </div>
 
@@ -2036,7 +2036,7 @@ export function ComingSoon() {
                       Blog
                     </a>
                     <a
-                      href="https://github.com/Polyagent/babylon"
+                      href="https://github.com/Polyagent/polyagent"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="touch-manipulation transition-colors duration-200 hover:text-primary"
@@ -2061,7 +2061,7 @@ export function ComingSoon() {
                   </h3>
                   <nav className="flex w-full flex-col gap-2 text-muted-foreground text-sm sm:gap-3">
                     <a
-                      href="https://x.com/PlayBabylon"
+                      href="https://x.com/PlayPolyagent"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex touch-manipulation items-center gap-2 transition-colors duration-200 hover:text-primary"
@@ -2104,7 +2104,7 @@ export function ComingSoon() {
               {/* Bottom Bar */}
               <div className="flex flex-col items-center justify-center gap-3 border-primary/10 border-t pt-4 text-muted-foreground/70 text-xs sm:flex-row sm:pt-6 sm:text-sm">
                 <div className="text-center">
-                  © {new Date().getFullYear()} Babylon. All rights reserved.
+                  © {new Date().getFullYear()} Polyagent. All rights reserved.
                 </div>
               </div>
             </div>
@@ -2178,7 +2178,7 @@ export function ComingSoon() {
       <div className="-translate-x-1/2 fixed inset-0 left-1/2 z-0 h-full w-screen">
         <Image
           src="/assets/images/background.png"
-          alt="Babylon Background"
+          alt="Polyagent Background"
           fill
           className="object-cover opacity-40"
           priority
@@ -2199,7 +2199,7 @@ export function ComingSoon() {
                 <div className="relative h-14 w-14 shrink-0 sm:h-16 sm:w-16">
                   <Image
                     src="/assets/logos/logo.svg"
-                    alt="Babylon Logo"
+                    alt="Polyagent Logo"
                     width={64}
                     height={64}
                     className="h-full w-full drop-shadow-2xl"
@@ -2211,7 +2211,7 @@ export function ComingSoon() {
                     You're on the List!
                   </h1>
                   <p className="mt-1 text-muted-foreground text-sm">
-                    Welcome to Babylon
+                    Welcome to Polyagent
                   </p>
                 </div>
               </div>
@@ -2699,7 +2699,7 @@ export function ComingSoon() {
                     </div>
                   )}
 
-                  {/* Follow Babylon on Twitter/X - Right under Twitter Link */}
+                  {/* Follow Polyagent on Twitter/X - Right under Twitter Link */}
                   {!hasTwitterFollow && !showVerifyTwitterFollowButton && (
                     <div className="w-full space-y-2">
                       <button
@@ -2722,7 +2722,7 @@ export function ComingSoon() {
                           <div className="flex items-center gap-3">
                             <Users className="h-4 w-4 shrink-0 text-primary sm:h-5 sm:w-5" />
                             <span className="font-semibold text-sm">
-                              Follow @PlayBabylon on X
+                              Follow @PlayPolyagent on X
                             </span>
                           </div>
                         </div>
@@ -2777,7 +2777,7 @@ export function ComingSoon() {
                       <div className="flex items-center gap-3">
                         <Check className="h-4 w-4 shrink-0 text-green-500 sm:h-5 sm:w-5" />
                         <span className="font-semibold text-sm">
-                          Following @PlayBabylon
+                          Following @PlayPolyagent
                         </span>
                       </div>
                       <span className="font-bold text-green-500 text-sm">
@@ -2845,7 +2845,7 @@ export function ComingSoon() {
                           <div className="flex items-center gap-3">
                             <Users className="h-4 w-4 shrink-0 text-primary sm:h-5 sm:w-5" />
                             <span className="font-semibold text-sm">
-                              Join Babylon Discord
+                              Join Polyagent Discord
                             </span>
                           </div>
                         </div>
@@ -2900,7 +2900,7 @@ export function ComingSoon() {
                       <div className="flex items-center gap-3">
                         <Check className="h-4 w-4 shrink-0 text-green-500 sm:h-5 sm:w-5" />
                         <span className="font-semibold text-sm">
-                          Joined Babylon Discord
+                          Joined Polyagent Discord
                         </span>
                       </div>
                       <span className="font-bold text-green-500 text-sm">
@@ -2945,7 +2945,7 @@ export function ComingSoon() {
                     </div>
                   )}
 
-                  {/* Follow Babylon on Farcaster - Right under Farcaster Link */}
+                  {/* Follow Polyagent on Farcaster - Right under Farcaster Link */}
                   {!hasFarcasterFollow && !showVerifyFollowButton && (
                     <div className="w-full space-y-2">
                       <button
@@ -2968,7 +2968,7 @@ export function ComingSoon() {
                           <div className="flex items-center gap-3">
                             <Users className="h-4 w-4 shrink-0 text-primary sm:h-5 sm:w-5" />
                             <span className="font-semibold text-sm">
-                              Follow @playbabylon on Farcaster
+                              Follow @playpolyagent on Farcaster
                             </span>
                           </div>
                         </div>
@@ -3023,7 +3023,7 @@ export function ComingSoon() {
                       <div className="flex items-center gap-3">
                         <Check className="h-4 w-4 shrink-0 text-green-500 sm:h-5 sm:w-5" />
                         <span className="font-semibold text-sm">
-                          Following @playbabylon
+                          Following @playpolyagent
                         </span>
                       </div>
                       <span className="font-bold text-green-500 text-sm">
@@ -3362,7 +3362,7 @@ export function ComingSoon() {
                       <span className="font-bold text-primary">
                         {POINTS.PROFILE_COMPLETION} points
                       </span>{' '}
-                      and personalize your Babylon experience!
+                      and personalize your Polyagent experience!
                     </p>
                   </div>
                 )}

@@ -1,6 +1,6 @@
 /**
  * @packageDocumentation
- * @module @babylon/contracts/deployment/env-detection
+ * @module @polyagent/contracts/deployment/env-detection
  *
  * Environment Detection and Validation
  *
@@ -233,9 +233,9 @@ function validateTestnet(errors: string[], warnings: string[]): void {
     if (!process.env.BASE_SEPOLIA_RPC_URL) {
       errors.push('BASE_SEPOLIA_RPC_URL is required when AGENT0_ENABLED=true');
     }
-    if (!process.env.BABYLON_GAME_PRIVATE_KEY) {
+    if (!process.env.POLYAGENT_GAME_PRIVATE_KEY) {
       errors.push(
-        'BABYLON_GAME_PRIVATE_KEY is required when AGENT0_ENABLED=true'
+        'POLYAGENT_GAME_PRIVATE_KEY is required when AGENT0_ENABLED=true'
       );
     }
     if (!process.env.AGENT0_SUBGRAPH_URL) {
@@ -278,9 +278,9 @@ function validateMainnet(errors: string[], warnings: string[]): void {
         'BASE_RPC_URL is required when AGENT0_ENABLED=true on mainnet'
       );
     }
-    if (!process.env.BABYLON_GAME_PRIVATE_KEY) {
+    if (!process.env.POLYAGENT_GAME_PRIVATE_KEY) {
       errors.push(
-        'BABYLON_GAME_PRIVATE_KEY is required when AGENT0_ENABLED=true'
+        'POLYAGENT_GAME_PRIVATE_KEY is required when AGENT0_ENABLED=true'
       );
     }
     if (!process.env.AGENT0_SUBGRAPH_URL) {

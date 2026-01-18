@@ -112,8 +112,8 @@ if (process.env.AGENT0_ENABLED === 'true') {
     console.warn('⚠️  BASE_SEPOLIA_RPC_URL not set', undefined, 'Script');
   }
 
-  if (!process.env.BABYLON_GAME_PRIVATE_KEY) {
-    console.warn('⚠️  BABYLON_GAME_PRIVATE_KEY not set', undefined, 'Script');
+  if (!process.env.POLYAGENT_GAME_PRIVATE_KEY) {
+    console.warn('⚠️  POLYAGENT_GAME_PRIVATE_KEY not set', undefined, 'Script');
     console.info('   Agent0 integration may not work', undefined, 'Script');
   }
 
@@ -139,11 +139,11 @@ await $`docker info`.quiet();
 
 // Start PostgreSQL
 const postgresRunning =
-  await $`docker ps --filter name=babylon-postgres --format "{{.Names}}"`
+  await $`docker ps --filter name=polyagent-postgres --format "{{.Names}}"`
     .quiet()
     .text();
 
-if (postgresRunning.trim() !== 'babylon-postgres') {
+if (postgresRunning.trim() !== 'polyagent-postgres') {
   console.info('Starting PostgreSQL...', undefined, 'Script');
   await $`docker-compose up -d postgres`;
   await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -154,11 +154,11 @@ if (postgresRunning.trim() !== 'babylon-postgres') {
 
 // Start Redis (optional)
 const redisRunning =
-  await $`docker ps --filter name=babylon-redis --format "{{.Names}}"`
+  await $`docker ps --filter name=polyagent-redis --format "{{.Names}}"`
     .quiet()
     .text();
 
-if (redisRunning.trim() !== 'babylon-redis') {
+if (redisRunning.trim() !== 'polyagent-redis') {
   await $`docker-compose up -d redis`
     .then(() => {
       console.info('✅ Redis started', undefined, 'Script');

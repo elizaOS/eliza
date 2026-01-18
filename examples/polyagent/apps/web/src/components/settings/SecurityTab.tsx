@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import {
   AlertCircle,
@@ -283,7 +283,7 @@ export function SecurityTab() {
             className="flex items-center gap-2 text-[#0066FF] text-sm hover:underline"
           >
             <ExternalLink className="h-4 w-4" />
-            Babylon Security Best Practices
+            Polyagent Security Best Practices
           </a>
         </div>
         <p className="mt-3 text-muted-foreground text-xs">

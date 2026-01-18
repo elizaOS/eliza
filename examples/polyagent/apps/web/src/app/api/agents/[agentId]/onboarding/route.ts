@@ -9,10 +9,10 @@
  * itself and its capabilities to the user.
  */
 
-import { agentRuntimeManager, agentService } from '@babylon/agents';
-import { authenticateUser, withErrorHandling } from '@babylon/api';
-import { db } from '@babylon/db';
-import { GROQ_MODELS, logger } from '@babylon/shared';
+import { agentRuntimeManager, agentService } from '@polyagent/agents';
+import { authenticateUser, withErrorHandling } from '@polyagent/api';
+import { db } from '@polyagent/db';
+import { GROQ_MODELS, logger } from '@polyagent/shared';
 import {
   composePromptFromState,
   type Memory,
@@ -109,7 +109,7 @@ export const POST = withErrorHandling(
 
     // Compose state with ACTIONS provider to get actionsWithDescriptions
     // Use strict filtering (3rd param = true) to ONLY run the specified providers
-    // This prevents all Babylon A2A providers from running unnecessarily
+    // This prevents all Polyagent A2A providers from running unnecessarily
     const state = await runtime.composeState(
       onboardingMessage,
       ['ACTIONS'],

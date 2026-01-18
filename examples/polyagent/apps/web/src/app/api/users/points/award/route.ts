@@ -75,7 +75,7 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from '@polyagent/api';
 import {
   balanceTransactions,
   Decimal,
@@ -84,13 +84,13 @@ import {
   eq,
   sql,
   users,
-} from '@babylon/db';
+} from '@polyagent/db';
 import {
   AwardPointsSchema,
   generateSnowflakeId,
   logger,
   UserIdParamSchema,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 
 export const POST = withErrorHandling(async (request: NextRequest) => {

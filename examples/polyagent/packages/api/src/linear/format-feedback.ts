@@ -1,4 +1,4 @@
-import { FEEDBACK_TYPE_CONFIG, type FeedbackType } from '@babylon/shared';
+import { FEEDBACK_TYPE_CONFIG, type FeedbackType } from '@polyagent/shared';
 
 export type { FeedbackType };
 

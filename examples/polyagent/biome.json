@@ -22,7 +22,7 @@
       "!**/venv",
       "!**/*.md",
       "!**/*.mdx",
-      "!**/babylon-platform-artchitecture",
+      "!**/polyagent-platform-artchitecture",
       "!**/genesis.json",
       "!**/drizzle/migrations",
       "!packages/training/book/mermaid-init.js",

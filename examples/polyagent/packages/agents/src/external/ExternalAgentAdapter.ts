@@ -16,7 +16,7 @@
  * @packageDocumentation
  */
 
-import { db } from '@babylon/db';
+import { db } from '@polyagent/db';
 import { createDecipheriv } from 'crypto';
 import { logger } from '../shared/logger';
 import type { AgentCard } from '../types/agent-registry';

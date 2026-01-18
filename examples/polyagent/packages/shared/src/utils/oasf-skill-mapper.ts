@@ -1,7 +1,7 @@
 /**
  * OASF (Open Agentic Schema Framework) Skill Mapping Utility
  *
- * @description Maps Babylon NPC types and characteristics to OASF taxonomy skills/domains
+ * @description Maps Polyagent NPC types and characteristics to OASF taxonomy skills/domains
  * for agent discovery and capability matching. Integrates with Agent0 SDK v0.31.0 for
  * standardized agent capability representation.
  *
@@ -85,7 +85,7 @@ export const OASFDomainCategories = {
 
 /**
  * NPC Type to OASF Skills Mapping
- * Maps Babylon NPC types to relevant OASF skill paths
+ * Maps Polyagent NPC types to relevant OASF skill paths
  */
 export const NPCTypeSkillMap: Record<string, string[]> = {
   // Trading & Finance NPCs
@@ -159,7 +159,7 @@ export const NPCTypeSkillMap: Record<string, string[]> = {
 
 /**
  * NPC Type to OASF Domains Mapping
- * Maps Babylon NPC types to relevant OASF domain paths
+ * Maps Polyagent NPC types to relevant OASF domain paths
  */
 export const NPCTypeDomainMap: Record<string, string[]> = {
   // Trading & Finance NPCs

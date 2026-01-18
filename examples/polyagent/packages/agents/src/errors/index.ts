@@ -1,5 +1,5 @@
 /**
- * Error Classes for @babylon/agents
+ * Error Classes for @polyagent/agents
  *
  * Provides structured error handling with proper context and metadata for
  * all error scenarios including validation, authentication, authorization,
@@ -9,14 +9,14 @@
  */
 
 /**
- * Base error class for all Babylon errors
+ * Base error class for all Polyagent errors
  *
  * Provides structured error handling with timestamps, context, and proper
  * error codes for API responses.
  */
 import type { JsonValue } from '../types/common';
 
-export abstract class BabylonError extends Error {
+export abstract class PolyagentError extends Error {
   public readonly timestamp: Date;
   public readonly context?: Record<string, JsonValue>;
 
@@ -55,7 +55,7 @@ export abstract class BabylonError extends Error {
  *
  * Thrown when input parameters fail validation checks.
  */
-export class ValidationError extends BabylonError {
+export class ValidationError extends PolyagentError {
   constructor(
     message: string,
     public readonly fields?: string[],
@@ -74,7 +74,7 @@ export class ValidationError extends BabylonError {
  *
  * Thrown when authentication fails due to missing, invalid, or expired tokens.
  */
-export class AuthenticationError extends BabylonError {
+export class AuthenticationError extends PolyagentError {
   constructor(
     message: string,
     public readonly reason:
@@ -92,7 +92,7 @@ export class AuthenticationError extends BabylonError {
  *
  * Thrown when a user lacks permission to perform a requested action.
  */
-export class AuthorizationError extends BabylonError {
+export class AuthorizationError extends PolyagentError {
   constructor(
     message: string,
     public readonly resource: string,
@@ -107,7 +107,7 @@ export class AuthorizationError extends BabylonError {
  *
  * Thrown when a requested resource does not exist.
  */
-export class NotFoundError extends BabylonError {
+export class NotFoundError extends PolyagentError {
   constructor(
     resource: string,
     identifier?: string | number,
@@ -130,7 +130,7 @@ export class NotFoundError extends BabylonError {
  *
  * Thrown when an operation conflicts with existing state.
  */
-export class ConflictError extends BabylonError {
+export class ConflictError extends PolyagentError {
   constructor(
     message: string,
     public readonly conflictingResource?: string
@@ -147,7 +147,7 @@ export class ConflictError extends BabylonError {
  *
  * Thrown when database operations fail.
  */
-export class DatabaseError extends BabylonError {
+export class DatabaseError extends PolyagentError {
   constructor(
     message: string,
     public readonly operation: string,
@@ -168,7 +168,7 @@ export class DatabaseError extends BabylonError {
  *
  * Thrown when external service calls fail.
  */
-export class ExternalServiceError extends BabylonError {
+export class ExternalServiceError extends PolyagentError {
   constructor(
     service: string,
     message: string,
@@ -190,7 +190,7 @@ export class ExternalServiceError extends BabylonError {
 /**
  * Rate limit error for rate limiting
  */
-export class RateLimitError extends BabylonError {
+export class RateLimitError extends PolyagentError {
   constructor(
     public readonly limit: number,
     public readonly windowMs: number,
@@ -211,7 +211,7 @@ export class RateLimitError extends BabylonError {
 /**
  * Business logic error for domain-specific errors
  */
-export class BusinessLogicError extends BabylonError {
+export class BusinessLogicError extends PolyagentError {
   constructor(
     message: string,
     code: string,
@@ -224,7 +224,7 @@ export class BusinessLogicError extends BabylonError {
 /**
  * Bad request error for malformed requests
  */
-export class BadRequestError extends BabylonError {
+export class BadRequestError extends PolyagentError {
   constructor(message: string, details?: Record<string, JsonValue>) {
     super(message, 'BAD_REQUEST', 400, true, details);
   }
@@ -233,7 +233,7 @@ export class BadRequestError extends BabylonError {
 /**
  * Internal server error for unexpected failures
  */
-export class InternalServerError extends BabylonError {
+export class InternalServerError extends PolyagentError {
   constructor(
     message = 'An unexpected error occurred',
     details?: Record<string, JsonValue>
@@ -245,7 +245,7 @@ export class InternalServerError extends BabylonError {
 /**
  * Service unavailable error for temporary outages
  */
-export class ServiceUnavailableError extends BabylonError {
+export class ServiceUnavailableError extends PolyagentError {
   constructor(
     message = 'Service temporarily unavailable',
     public readonly retryAfter?: number

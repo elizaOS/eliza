@@ -110,7 +110,12 @@ async def _get_autonomy_status(
     if autonomous_room_id and message.room_id == autonomous_room_id:
         return ProviderResult(text="")
 
-    autonomy_enabled = runtime.enable_autonomy
+    setting_value = runtime.get_setting("AUTONOMY_ENABLED")
+    autonomy_enabled = (
+        setting_value is True
+        or (isinstance(setting_value, str) and setting_value.strip().lower() == "true")
+        or runtime.enable_autonomy is True
+    )
     service_running = autonomy_service.is_loop_running()
     interval = autonomy_service.get_loop_interval()
 

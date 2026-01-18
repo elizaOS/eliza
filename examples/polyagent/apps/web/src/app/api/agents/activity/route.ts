@@ -9,7 +9,7 @@
  * Used for the "My Moves" dashboard showing aggregate agent activity.
  */
 
-import { authenticateUser } from '@babylon/api';
+import { authenticateUser } from '@polyagent/api';
 import {
   agentTrades,
   comments,
@@ -20,7 +20,7 @@ import {
   markets,
   posts,
   users,
-} from '@babylon/db';
+} from '@polyagent/db';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

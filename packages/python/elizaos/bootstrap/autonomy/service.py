@@ -64,9 +64,12 @@ class AutonomyService(Service):
 
         self._log("info", f"Using autonomous room ID: {self._autonomous_room_id}")
 
-        autonomy_enabled = self._runtime.enable_autonomy
+        autonomy_enabled = self._is_autonomy_enabled()
 
-        self._log("debug", f"Runtime enable_autonomy value: {autonomy_enabled}")
+        self._log(
+            "debug",
+            f"Autonomy enabled (setting or runtime): {autonomy_enabled}",
+        )
 
         await self._ensure_autonomous_context()
 
@@ -181,7 +184,7 @@ class AutonomyService(Service):
                 break
 
             try:
-                should_be_running = self._runtime.enable_autonomy
+                should_be_running = self._is_autonomy_enabled()
 
                 if should_be_running and not self._is_running:
                     self._log("info", "Runtime indicates autonomy should be enabled, starting...")
@@ -419,9 +422,7 @@ class AutonomyService(Service):
             await self.stop_loop()
 
     def get_status(self) -> AutonomyStatus:
-        enabled = False
-        if self._runtime:
-            enabled = self._runtime.enable_autonomy
+        enabled = self._is_autonomy_enabled()
 
         return AutonomyStatus(
             enabled=enabled,
@@ -447,3 +448,12 @@ class AutonomyService(Service):
     @property
     def capability_description(self) -> str:
         return "Autonomous operation loop for continuous agent thinking and actions"
+
+    def _is_autonomy_enabled(self) -> bool:
+        if not self._runtime:
+            return False
+        setting_value = self._runtime.get_setting("AUTONOMY_ENABLED")
+        setting_enabled = setting_value is True or (
+            isinstance(setting_value, str) and setting_value.strip().lower() == "true"
+        )
+        return setting_enabled or self._runtime.enable_autonomy is True

@@ -20,8 +20,8 @@ mock.module('../agent-auth', () => ({
   verifyAgentSession: mockVerifyAgentSession,
 }));
 
-// Mock @babylon/db with Drizzle-style API
-mock.module('@babylon/db', () => ({
+// Mock @polyagent/db with Drizzle-style API
+mock.module('@polyagent/db', () => ({
   db: {
     select: mockSelect,
   },

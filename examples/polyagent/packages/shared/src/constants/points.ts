@@ -17,11 +17,11 @@ export const POINTS = {
   INITIAL_SIGNUP: 1000,
   PROFILE_COMPLETION: 200, // Username + Profile Image + Bio (consolidated)
   FARCASTER_LINK: 300,
-  FARCASTER_FOLLOW: 100, // Follow Babylon on Farcaster
+  FARCASTER_FOLLOW: 100, // Follow Polyagent on Farcaster
   TWITTER_LINK: 300,
-  TWITTER_FOLLOW: 100, // Follow Babylon on Twitter/X
+  TWITTER_FOLLOW: 100, // Follow Polyagent on Twitter/X
   DISCORD_LINK: 300, // Link Discord account
-  DISCORD_JOIN: 100, // Join Babylon Discord server
+  DISCORD_JOIN: 100, // Join Polyagent Discord server
   WALLET_CONNECT: 300,
   SHARE_ACTION: 500,
   SHARE_TO_TWITTER: 500,

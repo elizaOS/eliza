@@ -4,8 +4,8 @@ pragma solidity ^0.8.27;
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 import {IDiamondCut} from "../libraries/LibDiamond.sol";
 
-/// @title Babylon Diamond
-/// @notice Main diamond proxy contract for Babylon prediction market
+/// @title Polyagent Diamond
+/// @notice Main diamond proxy contract for Polyagent prediction market
 /// @dev Implements EIP-2535 Diamond Standard for upgradeability
 contract Diamond {
     constructor(address _diamondCutFacet, address /* _diamondLoupeFacet */) payable {

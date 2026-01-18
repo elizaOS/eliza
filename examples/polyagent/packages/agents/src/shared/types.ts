@@ -1,5 +1,5 @@
 /**
- * Shared Type Definitions for @babylon/agents
+ * Shared Type Definitions for @polyagent/agents
  *
  * Common types used throughout the agents package.
  *

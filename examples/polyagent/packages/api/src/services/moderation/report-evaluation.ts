@@ -16,8 +16,8 @@ import {
   posts,
   reports,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@polyagent/db';
+import { logger } from '@polyagent/shared';
 import { callClaudeDirect } from '../claude-service';
 
 /**

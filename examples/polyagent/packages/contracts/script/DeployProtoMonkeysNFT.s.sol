@@ -18,7 +18,7 @@ import "../src/nft/ProtoMonkeysNFT.sol";
  *
  * Required environment variables:
  * - NFT_SIGNER_ADDRESS: Address authorized to sign mint messages
- * - NFT_BASE_URI: Base URI for token metadata (e.g., https://babylon.market/api/nft/metadata/)
+ * - NFT_BASE_URI: Base URI for token metadata (e.g., https://polyagent.market/api/nft/metadata/)
  *
  * Optional:
  * - PRIVATE_KEY: Deployer's private key (if not using hardware wallet)

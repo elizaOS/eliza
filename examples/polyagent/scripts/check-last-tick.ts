@@ -4,8 +4,8 @@
  * Check when the last agent tick ran
  */
 
-import { db } from '@babylon/db';
-import { agentLogs, games, users } from '@babylon/db/schema';
+import { db } from '@polyagent/db';
+import { agentLogs, games, users } from '@polyagent/db/schema';
 import { desc, eq, sql } from 'drizzle-orm';
 
 async function checkLastTick() {

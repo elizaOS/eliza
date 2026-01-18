@@ -1,9 +1,9 @@
 {
-  "name": "@babylon/db",
+  "name": "@polyagent/db",
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "Babylon Database Layer - Drizzle ORM",
+  "description": "Polyagent Database Layer - Drizzle ORM",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -30,7 +30,7 @@
     "db:check": "tsx ../../node_modules/drizzle-kit/bin.cjs check"
   },
   "dependencies": {
-    "@babylon/shared": "workspace:*",
+    "@polyagent/shared": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "postgres": "^3.4.7"
   },

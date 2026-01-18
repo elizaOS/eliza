@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-This directory contains the rate limiting and duplicate detection system for the Babylon platform.
+This directory contains the rate limiting and duplicate detection system for the Polyagent platform.
 
 ## Features
 
@@ -21,7 +21,7 @@ import {
   checkRateLimitAndDuplicates,
   RATE_LIMIT_CONFIGS,
   DUPLICATE_DETECTION_CONFIGS 
-} from '@babylon/api';
+} from '@polyagent/api';
 ```
 
 ### Apply Rate Limiting Only

@@ -31,7 +31,7 @@ async function main() {
   try {
     const response = await callAgentLLM({
       prompt:
-        'You are testing the Babylon trading agent LLM. Respond with exactly: "LLM call successful"',
+        'You are testing the Polyagent trading agent LLM. Respond with exactly: "LLM call successful"',
       system: 'You are a test agent. Follow instructions exactly.',
       temperature: 0.1,
       maxTokens: 50,

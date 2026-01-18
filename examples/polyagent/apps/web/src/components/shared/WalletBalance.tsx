@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, formatCurrency } from '@babylon/shared';
+import { cn, formatCurrency } from '@polyagent/shared';
 import { TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { memo, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';

@@ -2,7 +2,7 @@
  * Smart Contract Type Definitions
  *
  * Complete TypeScript interfaces for blockchain contract interactions.
- * These types provide type safety when interacting with Babylon's smart contracts.
+ * These types provide type safety when interacting with Polyagent's smart contracts.
  *
  * @packageDocumentation
  */
@@ -102,11 +102,11 @@ export interface FeedbackResult {
 /**
  * Contract addresses for a deployment environment.
  *
- * Contains addresses for all deployed Babylon smart contracts on a specific network.
+ * Contains addresses for all deployed Polyagent smart contracts on a specific network.
  *
  * Architecture:
  * - Diamond: Upgradeable proxy with facets for prediction markets, perps, etc.
- * - BabylonGameOracle: The game IS the prediction oracle (IPredictionOracle)
+ * - PolyagentGameOracle: The game IS the prediction oracle (IPredictionOracle)
  * - GameOracleFacet: Bridges oracle outcomes to Diamond markets
  */
 export interface DeploymentContracts {
@@ -120,7 +120,7 @@ export interface DeploymentContracts {
   predictionMarketFacet: string;
   /** Oracle facet address (Chainlink/Mock) */
   oracleFacet: string;
-  /** GameOracle facet address (bridges BabylonGameOracle to Diamond) */
+  /** GameOracle facet address (bridges PolyagentGameOracle to Diamond) */
   gameOracleFacet?: string;
   /** LiquidityPool facet address */
   liquidityPoolFacet: string;
@@ -134,8 +134,8 @@ export interface DeploymentContracts {
   identityRegistry: string;
   /** ERC-8004 Reputation System address */
   reputationSystem: string;
-  /** Babylon Game Oracle address - THE GAME IS THE PREDICTION ORACLE */
-  babylonOracle?: string;
+  /** Polyagent Game Oracle address - THE GAME IS THE PREDICTION ORACLE */
+  polyagentOracle?: string;
   /** Ban Manager address (optional) */
   banManager?: string;
   /** Chainlink Oracle mock address (testnet only) */

@@ -292,11 +292,11 @@ async function handler(
     }
 
     let sourceId: UUID;
-    let targetId: UUID;
+    let target: UUID;
 
     try {
       sourceId = resolveEntity(relationship.sourceEntityId, entities);
-      targetId = resolveEntity(relationship.targetEntityId, entities);
+      target = resolveEntity(relationship.targetEntityId, entities);
     } catch (error) {
       console.warn("Failed to resolve relationship entities:", error);
       console.warn("relationship:\n", relationship);
@@ -304,7 +304,7 @@ async function handler(
     }
 
     const existingRelationship = existingRelationships.find((r) => {
-      return r.sourceEntityId === sourceId && r.targetEntityId === targetId;
+      return r.sourceEntityId === sourceId && r.targetEntityId === target;
     });
 
     // Parse tags from comma-separated string
@@ -336,7 +336,7 @@ async function handler(
     } else {
       await runtime.createRelationship({
         sourceEntityId: sourceId,
-        targetEntityId: targetId,
+        targetEntityId: target,
         tags,
         metadata: {
           interactions: 1,

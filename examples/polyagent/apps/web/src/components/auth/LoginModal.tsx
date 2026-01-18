@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useRef } from 'react';
 

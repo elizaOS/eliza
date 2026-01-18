@@ -9,7 +9,7 @@
  * - Vercel cache effectiveness
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 
 interface CacheMetrics {
   hits: number;

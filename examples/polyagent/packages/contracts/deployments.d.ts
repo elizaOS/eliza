@@ -1,4 +1,4 @@
-declare module '@babylon/contracts/deployments/local' {
+declare module '@polyagent/contracts/deployments/local' {
   interface Contracts {
     diamond: string;
     diamondCutFacet: string;
@@ -11,7 +11,7 @@ declare module '@babylon/contracts/deployments/local' {
     priceStorageFacet: string;
     identityRegistry: string;
     reputationSystem: string;
-    babylonOracle: string;
+    polyagentOracle: string;
     banManager?: string;
     chainlinkOracle?: string;
     mockOracle?: string;
@@ -31,7 +31,7 @@ declare module '@babylon/contracts/deployments/local' {
   export default deployment;
 }
 
-declare module '@babylon/contracts/deployments/base-sepolia' {
+declare module '@polyagent/contracts/deployments/base-sepolia' {
   interface Contracts {
     diamond: string;
     diamondCutFacet: string;
@@ -44,7 +44,7 @@ declare module '@babylon/contracts/deployments/base-sepolia' {
     priceStorageFacet: string;
     identityRegistry: string;
     reputationSystem: string;
-    babylonOracle?: string;
+    polyagentOracle?: string;
     banManager?: string;
     chainlinkOracle?: string;
     mockOracle?: string;
@@ -64,7 +64,7 @@ declare module '@babylon/contracts/deployments/base-sepolia' {
   export default deployment;
 }
 
-declare module '@babylon/contracts/deployments/base' {
+declare module '@polyagent/contracts/deployments/base' {
   interface Contracts {
     diamond: string;
     diamondCutFacet: string;
@@ -77,7 +77,7 @@ declare module '@babylon/contracts/deployments/base' {
     priceStorageFacet: string;
     identityRegistry: string;
     reputationSystem: string;
-    babylonOracle?: string;
+    polyagentOracle?: string;
     banManager?: string;
   }
 

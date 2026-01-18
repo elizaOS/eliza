@@ -1,4 +1,4 @@
-import { CHAIN, WALLET_ERROR_MESSAGES } from '@babylon/shared';
+import { CHAIN, WALLET_ERROR_MESSAGES } from '@polyagent/shared';
 import { useFundWallet } from '@privy-io/react-auth';
 import { useCallback, useRef } from 'react';
 import { toast } from 'sonner';

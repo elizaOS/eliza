@@ -1,4 +1,4 @@
-import { logger, WALLET_ERROR_MESSAGES } from '@babylon/shared';
+import { logger, WALLET_ERROR_MESSAGES } from '@polyagent/shared';
 import { useWallets } from '@privy-io/react-auth';
 import type { SmartWalletClientType } from '@privy-io/react-auth/smart-wallets';
 import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';

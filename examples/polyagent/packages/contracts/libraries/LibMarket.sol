@@ -5,7 +5,7 @@ pragma solidity ^0.8.27;
 /// @notice Storage library for prediction markets
 /// @dev Uses diamond storage pattern for upgradeability
 library LibMarket {
-    bytes32 constant MARKET_STORAGE_POSITION = keccak256("babylon.market.storage");
+    bytes32 constant MARKET_STORAGE_POSITION = keccak256("polyagent.market.storage");
 
     struct Market {
         bytes32 id;

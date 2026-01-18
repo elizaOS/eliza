@@ -1,5 +1,5 @@
 /**
- * Shared Constants for Babylon Game
+ * Shared Constants for Polyagent Game
  *
  * Centralized constants to eliminate magic strings across codebase
  */
@@ -15,7 +15,7 @@ export const ACTOR_TIERS = {
 } as const;
 
 /**
- * ActorTier type is exported from @babylon/shared/types to avoid duplication
+ * ActorTier type is exported from @polyagent/shared/types to avoid duplication
  */
 
 /**
@@ -58,7 +58,7 @@ export const POST_TYPES = {
 } as const;
 
 /**
- * PostType is exported from @babylon/shared/types to avoid duplication
+ * PostType is exported from @polyagent/shared/types to avoid duplication
  */
 
 /**

@@ -1,4 +1,4 @@
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { usePredictionMarketStream } from '@/hooks/usePredictionMarketStream';

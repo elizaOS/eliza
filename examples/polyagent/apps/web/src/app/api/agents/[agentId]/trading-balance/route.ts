@@ -11,10 +11,10 @@
  * which is used for agent operations (chat, tick, posting).
  */
 
-import { agentService } from '@babylon/agents';
-import { authenticateUser } from '@babylon/api';
-import { balanceTransactions, db, desc, eq, users } from '@babylon/db';
-import { BABYLON_POINTS_SYMBOL, logger } from '@babylon/shared';
+import { agentService } from '@polyagent/agents';
+import { authenticateUser } from '@polyagent/api';
+import { balanceTransactions, db, desc, eq, users } from '@polyagent/db';
+import { POLYAGENT_POINTS_SYMBOL, logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -120,14 +120,14 @@ export async function POST(
     if (action === 'deposit') {
       await agentService.depositTradingBalance(agentId, user.id, amount);
       logger.info(
-        `Deposited ${BABYLON_POINTS_SYMBOL}${amount} trading balance to agent ${agentId}`,
+        `Deposited ${POLYAGENT_POINTS_SYMBOL}${amount} trading balance to agent ${agentId}`,
         undefined,
         'AgentsAPI'
       );
     } else {
       await agentService.withdrawTradingBalance(agentId, user.id, amount);
       logger.info(
-        `Withdrew ${BABYLON_POINTS_SYMBOL}${amount} trading balance from agent ${agentId}`,
+        `Withdrew ${POLYAGENT_POINTS_SYMBOL}${amount} trading balance from agent ${agentId}`,
         undefined,
         'AgentsAPI'
       );
@@ -158,7 +158,7 @@ export async function POST(
         lifetimePnL: Number(agentResult[0]?.lifetimePnL ?? 0),
       },
       userBalance: Number(userResult[0]?.virtualBalance ?? 0),
-      message: `${action === 'deposit' ? 'Deposited' : 'Withdrew'} ${BABYLON_POINTS_SYMBOL}${amount.toFixed(2)} successfully`,
+      message: `${action === 'deposit' ? 'Deposited' : 'Withdrew'} ${POLYAGENT_POINTS_SYMBOL}${amount.toFixed(2)} successfully`,
     });
   } catch (error) {
     const message =

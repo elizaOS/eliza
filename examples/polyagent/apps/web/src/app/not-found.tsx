@@ -11,7 +11,7 @@ export default function NotFound() {
       </h1>
       <p className="text-base text-white/70">
         The route you requested no longer exists or never did. Return to the
-        Babylon dashboard and keep trading.
+        Polyagent dashboard and keep trading.
       </p>
       <Link
         href="/"

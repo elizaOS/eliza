@@ -1,11 +1,11 @@
-import type { OnboardingProfilePayload } from '@babylon/shared';
+import type { OnboardingProfilePayload } from '@polyagent/shared';
 import {
   CAPABILITIES_HASH,
   CHAIN,
   getIdentityRegistryAddress,
   identityRegistryAbi,
   WALLET_ERROR_MESSAGES,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import { useCallback } from 'react';
 import {
   type Address,
@@ -86,7 +86,7 @@ export function useRegisterAgentTx() {
         );
       }
 
-      const agentEndpoint = `https://babylon.market/agent/${smartWalletAddress.toLowerCase()}`;
+      const agentEndpoint = `https://polyagent.market/agent/${smartWalletAddress.toLowerCase()}`;
       const metadataUri = JSON.stringify({
         name: profile.displayName ?? profile.username,
         username: profile.username,

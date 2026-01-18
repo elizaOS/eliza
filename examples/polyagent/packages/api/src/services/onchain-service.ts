@@ -1,4 +1,4 @@
-import { getContractAddresses, getRpcUrl } from '@babylon/contracts';
+import { getContractAddresses, getRpcUrl } from '@polyagent/contracts';
 import {
   and,
   balanceTransactions,
@@ -9,13 +9,13 @@ import {
   referrals,
   sql,
   users,
-} from '@babylon/db';
+} from '@polyagent/db';
 import type {
   AgentCapabilities,
   AuthenticatedUser,
   JsonValue,
   StringRecord,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import {
   BusinessLogicError,
   generateSnowflakeId,
@@ -26,7 +26,7 @@ import {
   POINTS,
   reputationSystemAbi,
   ValidationError,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import {
   type Account,
   type Address,
@@ -514,13 +514,13 @@ export async function processOnchainRegistration({
     }
     registrationAddress = deployerAccount.address;
     const baseEndpoint =
-      endpoint || `https://babylon.market/agent/${user.userId}`;
+      endpoint || `https://polyagent.market/agent/${user.userId}`;
     agentEndpoint = `${baseEndpoint}?agentId=${user.userId}`;
   } else {
     registrationAddress = walletAddress! as Address;
     agentEndpoint =
       endpoint ||
-      `https://babylon.market/agent/${walletAddress!.toLowerCase()}`;
+      `https://polyagent.market/agent/${walletAddress!.toLowerCase()}`;
   }
 
   const capabilitiesHash =

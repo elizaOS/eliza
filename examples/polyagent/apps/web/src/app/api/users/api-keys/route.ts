@@ -12,9 +12,9 @@ import {
   hashApiKey,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { asUser, generateSnowflakeId, userApiKeys } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@polyagent/api';
+import { asUser, generateSnowflakeId, userApiKeys } from '@polyagent/db';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 

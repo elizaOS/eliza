@@ -8,13 +8,13 @@ import {IPredictionOracle} from "../src/prediction-markets/IPredictionOracle.sol
 /**
  * @title GameOracleFacet
  * @notice Diamond facet for game-based prediction oracle integration
- * @dev Connects Diamond prediction markets to BabylonGameOracle
+ * @dev Connects Diamond prediction markets to PolyagentGameOracle
  * 
  * Architecture:
- * - Game engine commits/reveals outcomes to BabylonGameOracle
- * - BabylonGameOracle stores outcomes on-chain (IPredictionOracle)
+ * - Game engine commits/reveals outcomes to PolyagentGameOracle
+ * - PolyagentGameOracle stores outcomes on-chain (IPredictionOracle)
  * - This facet reads outcomes and resolves Diamond markets
- * - External contracts can query BabylonGameOracle directly
+ * - External contracts can query PolyagentGameOracle directly
  * 
  * The game IS the prediction oracle - this facet just bridges
  * the oracle outcomes to the Diamond market system.
@@ -22,10 +22,10 @@ import {IPredictionOracle} from "../src/prediction-markets/IPredictionOracle.sol
 contract GameOracleFacet {
     // ============ Storage ============
     
-    bytes32 constant GAME_ORACLE_STORAGE = keccak256("babylon.gameoracle.storage");
+    bytes32 constant GAME_ORACLE_STORAGE = keccak256("polyagent.gameoracle.storage");
     
     struct GameOracleStorage {
-        address gameOracle;  // BabylonGameOracle address
+        address gameOracle;  // PolyagentGameOracle address
         mapping(bytes32 => bytes32) marketToSession;  // marketId => oracle sessionId
         mapping(bytes32 => bytes32) sessionToMarket;  // sessionId => marketId
     }
@@ -53,7 +53,7 @@ contract GameOracleFacet {
     // ============ Admin Functions ============
     
     /**
-     * @notice Set the game oracle address (BabylonGameOracle)
+     * @notice Set the game oracle address (PolyagentGameOracle)
      * @param _oracle Address of the IPredictionOracle implementation
      */
     function setGameOracle(address _oracle) external {
@@ -78,7 +78,7 @@ contract GameOracleFacet {
     /**
      * @notice Link a Diamond market to an oracle session
      * @param _marketId Diamond market ID
-     * @param _sessionId Oracle session ID (from BabylonGameOracle)
+     * @param _sessionId Oracle session ID (from PolyagentGameOracle)
      * @dev Called after market creation to enable oracle-based resolution
      */
     function linkMarketToSession(bytes32 _marketId, bytes32 _sessionId) external {
@@ -115,7 +115,7 @@ contract GameOracleFacet {
      * @dev Anyone can call - resolution is trustless based on oracle state
      * 
      * Flow:
-     * 1. Game engine reveals outcome to BabylonGameOracle
+     * 1. Game engine reveals outcome to PolyagentGameOracle
      * 2. Anyone calls this function
      * 3. Function queries oracle for finalized outcome
      * 4. Market is resolved with outcome (0=NO, 1=YES)

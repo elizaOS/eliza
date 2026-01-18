@@ -11,7 +11,7 @@
  * @returns {Promise<NextResponse>} JSON response with template data
  */
 
-import { getTemplate } from '@babylon/agents';
+import { getTemplate } from '@polyagent/agents';
 import { NextResponse } from 'next/server';
 
 /**

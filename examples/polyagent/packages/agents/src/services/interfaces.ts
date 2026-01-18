@@ -1,5 +1,5 @@
 /**
- * Service Interfaces for @babylon/agents
+ * Service Interfaces for @polyagent/agents
  *
  * Defines contracts for services that can be injected from the application layer,
  * allowing the agents package to be decoupled from specific implementations.
@@ -265,15 +265,15 @@ export interface IServiceContainer {
  */
 declare global {
   // eslint-disable-next-line no-var
-  var __babylon_agents_services__: IServiceContainer | undefined;
+  var __polyagent_agents_services__: IServiceContainer | undefined;
 }
 
 /**
  * Set the service container (merges with existing services)
  */
 export function setServiceContainer(container: IServiceContainer): void {
-  globalThis.__babylon_agents_services__ = {
-    ...globalThis.__babylon_agents_services__,
+  globalThis.__polyagent_agents_services__ = {
+    ...globalThis.__polyagent_agents_services__,
     ...container,
   };
 }
@@ -282,7 +282,7 @@ export function setServiceContainer(container: IServiceContainer): void {
  * Get the full service container
  */
 export function getServiceContainer(): IServiceContainer {
-  return globalThis.__babylon_agents_services__ ?? {};
+  return globalThis.__polyagent_agents_services__ ?? {};
 }
 
 /**
@@ -291,5 +291,5 @@ export function getServiceContainer(): IServiceContainer {
 export function getService<K extends keyof IServiceContainer>(
   key: K
 ): IServiceContainer[K] {
-  return globalThis.__babylon_agents_services__?.[key];
+  return globalThis.__polyagent_agents_services__?.[key];
 }

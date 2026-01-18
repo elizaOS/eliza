@@ -1,7 +1,7 @@
 'use client';
 
-import type { PerpPosition, UserPredictionPosition } from '@babylon/shared';
-import { logger } from '@babylon/shared';
+import type { PerpPosition, UserPredictionPosition } from '@polyagent/shared';
+import { logger } from '@polyagent/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
@@ -19,7 +19,7 @@ function toNumber(value: unknown, fallback = 0): number {
 }
 
 // Re-export for convenience
-export type { UserPredictionPosition } from '@babylon/shared';
+export type { UserPredictionPosition } from '@polyagent/shared';
 
 interface PerpStats {
   totalPositions: number;

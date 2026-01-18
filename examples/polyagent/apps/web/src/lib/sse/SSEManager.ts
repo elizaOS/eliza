@@ -23,7 +23,7 @@
  * ```
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 
 // ============================================================================
 // Types

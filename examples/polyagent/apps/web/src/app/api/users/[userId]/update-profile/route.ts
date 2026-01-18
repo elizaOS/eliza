@@ -89,7 +89,7 @@
  *
  */
 
-import type { JsonValue } from '@babylon/api';
+import type { JsonValue } from '@polyagent/api';
 import {
   AuthorizationError,
   authenticate,
@@ -104,10 +104,10 @@ import {
   successResponse,
   updateProfileBackendSigned,
   withErrorHandling,
-} from '@babylon/api';
-import { and, db, eq, ne, sql, users } from '@babylon/db';
-import type { StringRecord } from '@babylon/shared';
-import { logger, UpdateUserSchema, UserIdParamSchema } from '@babylon/shared';
+} from '@polyagent/api';
+import { and, db, eq, ne, sql, users } from '@polyagent/db';
+import type { StringRecord } from '@polyagent/shared';
+import { logger, UpdateUserSchema, UserIdParamSchema } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import type { Address } from 'viem';
 import { trackServerEvent } from '@/lib/posthog/server';
@@ -249,7 +249,7 @@ export const POST = withErrorHandling(
           'POST /api/users/[userId]/update-profile'
         );
 
-        const endpoint = `https://babylon.market/agent/${currentUser!.walletAddress!.toLowerCase()}`;
+        const endpoint = `https://polyagent.market/agent/${currentUser!.walletAddress!.toLowerCase()}`;
         const metadata = {
           name: normalizedDisplayName!,
           username: normalizedUsername!,

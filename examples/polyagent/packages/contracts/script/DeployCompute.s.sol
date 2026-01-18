@@ -10,7 +10,7 @@ import "../src/moderation/BanManager.sol";
 
 /**
  * @title DeployCompute
- * @notice Deploys the Babylon Compute Marketplace contracts
+ * @notice Deploys the Polyagent Compute Marketplace contracts
  * @dev Run with: forge script script/DeployCompute.s.sol --rpc-url $RPC_URL --broadcast
  */
 contract DeployCompute is Script {
@@ -18,7 +18,7 @@ contract DeployCompute is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
 
-        console.log("Deploying Babylon Compute Marketplace");
+        console.log("Deploying Polyagent Compute Marketplace");
         console.log("Deployer:", deployer);
 
         vm.startBroadcast(deployerPrivateKey);

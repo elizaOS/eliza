@@ -13,7 +13,7 @@
  * - Works with any Redis server via standard protocol
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { getRedisClient, isRedisAvailable } from '../redis';
 
 /**

@@ -4,8 +4,8 @@
  * Includes retry logic with exponential backoff for transient failures.
  */
 
-import { db } from '@babylon/db';
-import { FeedbackTypeSchema, logger } from '@babylon/shared';
+import { db } from '@polyagent/db';
+import { FeedbackTypeSchema, logger } from '@polyagent/shared';
 import { z } from 'zod';
 import { createLinearIssue } from './client';
 import { formatFeedbackForLinear } from './format-feedback';

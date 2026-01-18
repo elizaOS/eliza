@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -186,7 +186,7 @@ export function ApiKeysTab() {
         </h2>
         <p className="text-muted-foreground text-sm">
           Generate and manage API keys for MCP authentication. Use these keys to
-          connect external AI agents (Cursor, Claude, OpenAI) to your Babylon
+          connect external AI agents (Cursor, Claude, OpenAI) to your Polyagent
           account.
         </p>
       </div>
@@ -330,7 +330,7 @@ export function ApiKeysTab() {
           <p>
             3. Use the key in the{' '}
             <code className="rounded bg-background px-1">
-              X-Babylon-Api-Key
+              X-Polyagent-Api-Key
             </code>{' '}
             header when making MCP requests
           </p>

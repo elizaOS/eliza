@@ -17,6 +17,7 @@ import {
   type Content,
   type ContentValue,
   EventType,
+  type Entity,
   type IAgentRuntime,
   type Memory,
   type UUID,
@@ -66,47 +67,114 @@ export class AutonomyService extends Service {
 
   private async getTargetRoomContextText(): Promise<string> {
     const targetRoomId = this.getTargetRoomId();
-    if (!targetRoomId) return "(no target room configured)";
-
-    const [memoriesTable, messagesTable] = await Promise.all([
-      this.runtime.getMemories({
-        roomId: targetRoomId,
-        count: 15,
-        tableName: "memories",
-      }),
-      this.runtime.getMemories({
-        roomId: targetRoomId,
-        count: 15,
-        tableName: "messages",
-      }),
-    ]);
-    const byId = new Map<string, Memory>();
-    for (const m of [...memoriesTable, ...messagesTable]) {
-      const id = m.id;
-      if (!id) continue;
-      const createdAt = m.createdAt ?? 0;
-      const existing = byId.get(id);
-      if (!existing || createdAt < (existing.createdAt ?? 0)) {
-        byId.set(id, m);
+    const participantRooms = await this.runtime.getRoomsForParticipant(
+      this.runtime.agentId,
+    );
+    const orderedRoomIds: UUID[] = [];
+    if (targetRoomId) {
+      orderedRoomIds.push(targetRoomId);
+    }
+    for (const roomId of participantRooms) {
+      if (!orderedRoomIds.includes(roomId)) {
+        orderedRoomIds.push(roomId);
       }
     }
+    if (orderedRoomIds.length === 0) {
+      return "(no rooms configured)";
+    }
 
-    const lines = Array.from(byId.values())
-      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
-      .map((m) => {
-        const role = m.entityId === this.runtime.agentId ? "Agent" : "User";
-        const text = typeof m.content.text === "string" ? m.content.text : "";
-        return `${role}: ${text}`;
-      })
-      .filter((l) => l.trim().length > 0);
+    const rooms = await this.runtime.getRoomsByIds(orderedRoomIds);
+    if (!rooms) {
+      return "(no rooms found)";
+    }
 
-    return lines.length > 0 ? lines.join("\n") : "(no recent messages)";
+    const roomNameById = new Map<UUID, string>();
+    for (const room of rooms) {
+      roomNameById.set(room.id, room.name ?? String(room.id));
+    }
+
+    const messageRoomIds = orderedRoomIds.filter(
+      (roomId) => roomId !== this.autonomousRoomId,
+    );
+    const perRoomLimit = 10;
+    const [messages, autonomyMemories] = await Promise.all([
+      messageRoomIds.length > 0
+        ? this.runtime.getMemoriesByRoomIds({
+            tableName: "messages",
+            roomIds: messageRoomIds,
+            limit: perRoomLimit * messageRoomIds.length,
+          })
+        : Promise.resolve([]),
+      this.runtime.getMemories({
+        roomId: this.autonomousRoomId,
+        count: perRoomLimit,
+        tableName: "memories",
+      }),
+    ]);
+
+    const entityIds = new Set<UUID>();
+    for (const memory of messages) {
+      if (memory.entityId === this.runtime.agentId) {
+        continue;
+      }
+      entityIds.add(memory.entityId);
+    }
+    const entityNames = await this.buildEntityNameLookup(entityIds);
+
+    const messagesByRoom = new Map<UUID, Memory[]>();
+    const sortedMessages = [...messages].sort(
+      (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
+    );
+    for (const memory of sortedMessages) {
+      if (memory.entityId === this.runtime.agentId) {
+        continue;
+      }
+      const bucket = messagesByRoom.get(memory.roomId) ?? [];
+      if (bucket.length >= perRoomLimit) {
+        continue;
+      }
+      bucket.push(memory);
+      messagesByRoom.set(memory.roomId, bucket);
+    }
+
+    const roomSections = messageRoomIds.map((roomId) => {
+      const roomName = roomNameById.get(roomId) ?? String(roomId);
+      const roomMessages = messagesByRoom.get(roomId) ?? [];
+      if (roomMessages.length === 0) {
+        return `Room: ${roomName}\n(no recent messages)`;
+      }
+      const lines = roomMessages
+        .slice()
+        .reverse()
+        .map((memory) => {
+          const author =
+            entityNames.get(memory.entityId) ?? String(memory.entityId);
+          const text =
+            typeof memory.content.text === "string" ? memory.content.text : "";
+          return `${author}: ${text}`;
+        })
+        .filter((line) => line.trim().length > 0);
+      return `Room: ${roomName}\n${lines.join("\n")}`;
+    });
+
+    const autonomyThoughts = autonomyMemories
+      .filter((memory) => memory.entityId === this.runtime.agentId)
+      .map((memory) =>
+        typeof memory.content.text === "string" ? memory.content.text : "",
+      )
+      .filter((text) => text.trim().length > 0);
+    const autonomySection =
+      autonomyThoughts.length > 0
+        ? ["Autonomous thoughts:", ...autonomyThoughts].join("\n")
+        : "Autonomous thoughts: (none)";
+
+    return [...roomSections, autonomySection].join("\n\n");
   }
 
   constructor() {
     super();
-    // Default interval of 30 seconds
-    this.intervalMs = 30000;
+    // Default interval of 5 seconds
+    this.intervalMs = 5000;
     // Generate unique room ID for autonomous thoughts
     this.autonomousRoomId = stringToUuid(uuidv4());
     this.autonomousWorldId = stringToUuid(
@@ -330,6 +398,31 @@ export class AutonomyService extends Service {
    */
   isThinkingInProgress(): boolean {
     return this.isThinking;
+  }
+
+  private async buildEntityNameLookup(
+    entityIds: Set<UUID>,
+  ): Promise<Map<UUID, string>> {
+    const entries = await Promise.all(
+      Array.from(entityIds).map(async (entityId) => {
+        if (!this.runtime.getEntityById) {
+          return [entityId, String(entityId)] as const;
+        }
+        const entity = await this.runtime.getEntityById(entityId);
+        return [entityId, this.readEntityName(entity, entityId)] as const;
+      }),
+    );
+    return new Map(entries);
+  }
+
+  private readEntityName(entity: Entity | null, entityId: UUID): string {
+    if (entity && Array.isArray(entity.names) && entity.names.length > 0) {
+      const first = entity.names[0];
+      if (typeof first === "string" && first.trim().length > 0) {
+        return first;
+      }
+    }
+    return String(entityId);
   }
 
   /**

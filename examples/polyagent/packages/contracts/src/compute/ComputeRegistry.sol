@@ -8,7 +8,7 @@ import "./IComputeRegistry.sol";
 
 /**
  * @title ComputeRegistry
- * @notice Registry for compute providers in the Babylon network
+ * @notice Registry for compute providers in the Polyagent network
  * @dev Providers stake ETH to register and can be slashed for bad behavior
  */
 contract ComputeRegistry is IComputeRegistry, Ownable, ReentrancyGuard, Pausable {

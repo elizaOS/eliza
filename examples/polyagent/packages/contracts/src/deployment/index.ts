@@ -1,6 +1,6 @@
 /**
  * @packageDocumentation
- * @module @babylon/contracts/deployment
+ * @module @polyagent/contracts/deployment
  *
  * Deployment Utilities
  *
@@ -9,7 +9,7 @@
  * and validating contract deployments on-chain.
  *
  * @remarks For Node.js-only functions like `saveDeployment` and `updateEnvFile`,
- * import directly from `@babylon/contracts/deployment/validation-node`.
+ * import directly from `@polyagent/contracts/deployment/validation-node`.
  */
 
 export * from './addresses';

@@ -10,7 +10,7 @@
  *
  * @example
  * ```typescript
- * import { verifyCronAuth } from '@babylon/api';
+ * import { verifyCronAuth } from '@polyagent/api';
  *
  * export async function POST(request: NextRequest) {
  *   if (!verifyCronAuth(request)) {
@@ -21,7 +21,7 @@
  * ```
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { isValidCronSecret } from './dev-credentials';
 import { AuthorizationError } from './errors';

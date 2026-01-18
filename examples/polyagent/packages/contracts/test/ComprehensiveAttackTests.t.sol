@@ -7,7 +7,7 @@ import "./DiamondTestSetup.sol";
 import "../core/PredictionMarketFacet.sol";
 import "../identity/ERC8004IdentityRegistry.sol";
 import "../identity/ERC8004ReputationSystem.sol";
-import "../src/game/BabylonGameOracle.sol";
+import "../src/game/PolyagentGameOracle.sol";
 
 /**
  * @title ComprehensiveAttackTests
@@ -18,7 +18,7 @@ contract ComprehensiveAttackTests is DiamondTestSetup {
     PredictionMarketFacet internal predictionMarket;
     ERC8004IdentityRegistry internal identityRegistry;
     ERC8004ReputationSystem internal reputationSystem;
-    BabylonGameOracle internal babylonOracle;
+    PolyagentGameOracle internal polyagentOracle;
 
     address internal attacker = address(0xBAD);
     address internal victim = address(0xF00D);
@@ -29,7 +29,7 @@ contract ComprehensiveAttackTests is DiamondTestSetup {
         predictionMarket = PredictionMarketFacet(address(diamond));
         identityRegistry = new ERC8004IdentityRegistry();
         reputationSystem = new ERC8004ReputationSystem(address(identityRegistry));
-        babylonOracle = new BabylonGameOracle(owner);
+        polyagentOracle = new PolyagentGameOracle(owner);
         
         // Fund attacker and victim
         vm.deal(attacker, 100 ether);
@@ -257,13 +257,13 @@ contract ComprehensiveAttackTests is DiamondTestSetup {
     }
 
     // ========================================
-    // BABYLON GAME ORACLE ATTACKS
+    // POLYAGENT GAME ORACLE ATTACKS
     // ========================================
 
     function test_attack_oracleUnauthorizedCommit() public {
         vm.prank(attacker);
         vm.expectRevert("Only game server");
-        babylonOracle.commitBabylonGame(
+        polyagentOracle.commitPolyagentGame(
             "q1",
             1,
             "Will it rain?",
@@ -277,12 +277,12 @@ contract ComprehensiveAttackTests is DiamondTestSetup {
         
         // First commit
         vm.prank(owner);
-        babylonOracle.commitBabylonGame("q1", 1, "Test?", commitment, "test");
+        polyagentOracle.commitPolyagentGame("q1", 1, "Test?", commitment, "test");
         
         // Try duplicate
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(BabylonGameOracle.QuestionAlreadyCommitted.selector, "q1"));
-        babylonOracle.commitBabylonGame("q1", 1, "Test?", commitment, "test");
+        vm.expectRevert(abi.encodeWithSelector(PolyagentGameOracle.QuestionAlreadyCommitted.selector, "q1"));
+        polyagentOracle.commitPolyagentGame("q1", 1, "Test?", commitment, "test");
     }
 
     function test_attack_oracleInvalidReveal() public {
@@ -290,12 +290,12 @@ contract ComprehensiveAttackTests is DiamondTestSetup {
         bytes32 commitment = keccak256(abi.encode(true, salt));
         
         vm.prank(owner);
-        bytes32 sessionId = babylonOracle.commitBabylonGame("q1", 1, "Test?", commitment, "test");
+        bytes32 sessionId = polyagentOracle.commitPolyagentGame("q1", 1, "Test?", commitment, "test");
         
         // Try reveal with wrong salt
         vm.prank(owner);
         vm.expectRevert("Commitment mismatch");
-        babylonOracle.revealBabylonGame(
+        polyagentOracle.revealPolyagentGame(
             sessionId,
             true,
             bytes32(uint256(99999)), // wrong salt
@@ -310,16 +310,16 @@ contract ComprehensiveAttackTests is DiamondTestSetup {
         bytes32 commitment = keccak256(abi.encode(true, salt));
         
         vm.prank(owner);
-        bytes32 sessionId = babylonOracle.commitBabylonGame("q1", 1, "Test?", commitment, "test");
+        bytes32 sessionId = polyagentOracle.commitPolyagentGame("q1", 1, "Test?", commitment, "test");
         
         // First reveal
         vm.prank(owner);
-        babylonOracle.revealBabylonGame(sessionId, true, salt, "", new address[](0), 0);
+        polyagentOracle.revealPolyagentGame(sessionId, true, salt, "", new address[](0), 0);
         
         // Try second reveal
         vm.prank(owner);
         vm.expectRevert("Already finalized");
-        babylonOracle.revealBabylonGame(sessionId, false, salt, "", new address[](0), 0);
+        polyagentOracle.revealPolyagentGame(sessionId, false, salt, "", new address[](0), 0);
     }
 
     function test_attack_oracleUnauthorizedReveal() public {
@@ -327,26 +327,26 @@ contract ComprehensiveAttackTests is DiamondTestSetup {
         bytes32 commitment = keccak256(abi.encode(true, salt));
         
         vm.prank(owner);
-        bytes32 sessionId = babylonOracle.commitBabylonGame("q1", 1, "Test?", commitment, "test");
+        bytes32 sessionId = polyagentOracle.commitPolyagentGame("q1", 1, "Test?", commitment, "test");
         
         // Attacker tries to reveal
         vm.prank(attacker);
         vm.expectRevert("Only game server");
-        babylonOracle.revealBabylonGame(sessionId, true, salt, "", new address[](0), 0);
+        polyagentOracle.revealPolyagentGame(sessionId, true, salt, "", new address[](0), 0);
     }
 
     function test_attack_oracleEmptyQuestionId() public {
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(BabylonGameOracle.InvalidQuestionId.selector));
-        babylonOracle.commitBabylonGame("", 1, "Test?", bytes32(0), "test");
+        vm.expectRevert(abi.encodeWithSelector(PolyagentGameOracle.InvalidQuestionId.selector));
+        polyagentOracle.commitPolyagentGame("", 1, "Test?", bytes32(0), "test");
     }
 
     function test_attack_oracleRevealNonexistent() public {
         bytes32 fakeSessionId = bytes32(uint256(999));
         
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(BabylonGameOracle.SessionNotFound.selector, fakeSessionId));
-        babylonOracle.revealBabylonGame(fakeSessionId, true, bytes32(0), "", new address[](0), 0);
+        vm.expectRevert(abi.encodeWithSelector(PolyagentGameOracle.SessionNotFound.selector, fakeSessionId));
+        polyagentOracle.revealPolyagentGame(fakeSessionId, true, bytes32(0), "", new address[](0), 0);
     }
 
     function test_attack_oracleWrongOutcomeReveal() public {
@@ -354,12 +354,12 @@ contract ComprehensiveAttackTests is DiamondTestSetup {
         bytes32 commitment = keccak256(abi.encode(true, salt)); // Committed to TRUE
         
         vm.prank(owner);
-        bytes32 sessionId = babylonOracle.commitBabylonGame("q1", 1, "Test?", commitment, "test");
+        bytes32 sessionId = polyagentOracle.commitPolyagentGame("q1", 1, "Test?", commitment, "test");
         
         // Try reveal with wrong outcome (false instead of true)
         vm.prank(owner);
         vm.expectRevert("Commitment mismatch");
-        babylonOracle.revealBabylonGame(sessionId, false, salt, "", new address[](0), 0);
+        polyagentOracle.revealPolyagentGame(sessionId, false, salt, "", new address[](0), 0);
     }
 
     // ========================================
@@ -545,12 +545,12 @@ contract ComprehensiveAttackTests is DiamondTestSetup {
         bytes32 commitment = keccak256(abi.encode(outcome, salt));
         
         vm.prank(owner);
-        bytes32 sessionId = babylonOracle.commitBabylonGame("fuzz_q", 1, "Fuzz?", commitment, "test");
+        bytes32 sessionId = polyagentOracle.commitPolyagentGame("fuzz_q", 1, "Fuzz?", commitment, "test");
         
         vm.prank(owner);
-        babylonOracle.revealBabylonGame(sessionId, outcome, salt, "", new address[](0), 0);
+        polyagentOracle.revealPolyagentGame(sessionId, outcome, salt, "", new address[](0), 0);
         
-        (bool resultOutcome, bool finalized) = babylonOracle.getOutcome(sessionId);
+        (bool resultOutcome, bool finalized) = polyagentOracle.getOutcome(sessionId);
         assertEq(resultOutcome, outcome);
         assertTrue(finalized);
     }
