@@ -4,7 +4,7 @@
  * Pure utility functions for formatting dates, times, and numbers.
  */
 
-import { BABYLON_POINTS_SYMBOL } from '../constants/currency';
+import { POLYAGENT_POINTS_SYMBOL } from '../constants/currency';
 
 /**
  * Clamp number between min and max values
@@ -200,8 +200,8 @@ interface FormatCurrencyOptions {
 /**
  * Format number as currency
  *
- * @description Formats a number as Babylon points currency with specified decimal places.
- * Uses the ƀ symbol to represent Babylon points (not USD or Bitcoin).
+ * @description Formats a number as Polyagent points currency with specified decimal places.
+ * Uses the ƀ symbol to represent Polyagent points (not USD or Bitcoin).
  * Optionally includes thousands separators for better readability of large values.
  *
  * @param {number} amount - Amount to format
@@ -235,16 +235,16 @@ export function formatCurrency(
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
-    return `${BABYLON_POINTS_SYMBOL}${sign}${formatted}`;
+    return `${POLYAGENT_POINTS_SYMBOL}${sign}${formatted}`;
   }
 
-  return `${BABYLON_POINTS_SYMBOL}${sign}${absoluteAmount.toFixed(decimals)}`;
+  return `${POLYAGENT_POINTS_SYMBOL}${sign}${absoluteAmount.toFixed(decimals)}`;
 }
 
 /**
  * Format number as compact currency with K/M/B suffixes
  *
- * @description Formats a number as Babylon points currency with K/M/B suffixes
+ * @description Formats a number as Polyagent points currency with K/M/B suffixes
  * for large values. Uses the ƀ symbol. Handles non-finite values gracefully.
  *
  * @param {number} value - Amount to format
@@ -264,7 +264,7 @@ export function formatCurrency(
 export function formatCompactCurrency(value: number, decimals = 2): string {
   // Handle non-finite values (uses toFixed to avoid trailing dot when decimals=0)
   if (!Number.isFinite(value)) {
-    return `${BABYLON_POINTS_SYMBOL}${(0).toFixed(decimals)}`;
+    return `${POLYAGENT_POINTS_SYMBOL}${(0).toFixed(decimals)}`;
   }
 
   // Handle negative numbers: sign should come before the symbol
@@ -273,16 +273,16 @@ export function formatCompactCurrency(value: number, decimals = 2): string {
   const sign = isNegative ? '-' : '';
 
   if (abs >= 1_000_000_000) {
-    return `${sign}${BABYLON_POINTS_SYMBOL}${(abs / 1_000_000_000).toFixed(decimals)}B`;
+    return `${sign}${POLYAGENT_POINTS_SYMBOL}${(abs / 1_000_000_000).toFixed(decimals)}B`;
   }
   if (abs >= 1_000_000) {
-    return `${sign}${BABYLON_POINTS_SYMBOL}${(abs / 1_000_000).toFixed(decimals)}M`;
+    return `${sign}${POLYAGENT_POINTS_SYMBOL}${(abs / 1_000_000).toFixed(decimals)}M`;
   }
   if (abs >= 1_000) {
-    return `${sign}${BABYLON_POINTS_SYMBOL}${(abs / 1_000).toFixed(decimals)}K`;
+    return `${sign}${POLYAGENT_POINTS_SYMBOL}${(abs / 1_000).toFixed(decimals)}K`;
   }
 
-  return `${sign}${BABYLON_POINTS_SYMBOL}${abs.toFixed(decimals)}`;
+  return `${sign}${POLYAGENT_POINTS_SYMBOL}${abs.toFixed(decimals)}`;
 }
 
 /**

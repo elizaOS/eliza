@@ -5,8 +5,8 @@
  * Diagnose why agents aren't trading
  */
 
-import { db } from '@babylon/db';
-import { agentRegistries, games, users } from '@babylon/db/schema';
+import { db } from '@polyagent/db';
+import { agentRegistries, games, users } from '@polyagent/db/schema';
 import { desc, eq, inArray } from 'drizzle-orm';
 
 async function checkAgentStatus() {

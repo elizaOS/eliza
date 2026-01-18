@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, getDisplayReferralUrl, getReferralUrl } from '@babylon/shared';
+import { cn, getDisplayReferralUrl, getReferralUrl } from '@polyagent/shared';
 import {
   Bell,
   Check,
@@ -283,7 +283,7 @@ function MobileHeaderContent() {
             >
               <Image
                 src="/assets/logos/logo.svg"
-                alt="Babylon Logo"
+                alt="Polyagent Logo"
                 width={28}
                 height={28}
                 className="h-7 w-7"

@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@polyagent/shared';
 import type { LucideIcon } from 'lucide-react';
 
 /**

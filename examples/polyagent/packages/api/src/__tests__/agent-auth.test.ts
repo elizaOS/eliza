@@ -18,7 +18,7 @@ describe('Agent Authentication', () => {
     // Reset env
     process.env.NODE_ENV = 'test';
     process.env.CRON_SECRET = 'test-secret';
-    process.env.BABYLON_AGENT_ID = 'test-agent';
+    process.env.POLYAGENT_AGENT_ID = 'test-agent';
   });
 
   afterEach(() => {
@@ -49,10 +49,10 @@ describe('Agent Authentication', () => {
     });
 
     it('uses default test agent ID in non-production', () => {
-      delete process.env.BABYLON_AGENT_ID;
+      delete process.env.POLYAGENT_AGENT_ID;
       process.env.NODE_ENV = 'development';
       const result = verifyAgentCredentials(
-        'babylon-agent-alice',
+        'polyagent-agent-alice',
         'test-secret'
       );
       expect(result).toBe(true);

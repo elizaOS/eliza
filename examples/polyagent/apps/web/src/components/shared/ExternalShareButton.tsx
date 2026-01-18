@@ -15,7 +15,7 @@
  * ```
  */
 
-import { trackExternalShare } from '@babylon/shared';
+import { trackExternalShare } from '@polyagent/shared';
 import { Check, Link as LinkIcon, Share2, Twitter } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';

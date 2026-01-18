@@ -9,8 +9,8 @@
  * @see src/lib/services/agent-registry.service.ts
  */
 
-import { agentRegistry } from '@babylon/agents';
-import { db } from '@babylon/db';
+import { agentRegistry } from '@polyagent/agents';
+import { db } from '@polyagent/db';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';

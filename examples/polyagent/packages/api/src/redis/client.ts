@@ -14,7 +14,7 @@
  * Falls back gracefully if Redis is not configured.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import type IORedis from 'ioredis';
 
 // Type for ioredis instance

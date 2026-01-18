@@ -68,6 +68,8 @@ thread_local! {
     static INFERENCE_MODE: RefCell<InferenceMode> = const { RefCell::new(InferenceMode::ElizaClassic) };
     // On-chain LLM configuration (for llama_cpp_canister)
     static ONCHAIN_LLM_CONFIG: RefCell<Option<OnChainLLMConfig>> = const { RefCell::new(None) };
+    // DFINITY LLM configuration (managed by DFINITY, free, Llama 3.1 8B / Qwen3 32B)
+    static DFINITY_LLM_CONFIG: RefCell<Option<DfinityLLMConfig>> = const { RefCell::new(None) };
 }
 
 // ========== Lifecycle Hooks ==========
@@ -168,7 +170,7 @@ fn is_openai_ready() -> bool {
 
 // ========== Inference Mode Configuration ==========
 
-/// Set the inference mode (ElizaClassic, OpenAI, or OnChainLLM)
+/// Set the inference mode (ElizaClassic, OpenAI, OnChainLLM, or DfinityLLM)
 #[update]
 fn set_inference_mode(mode: InferenceMode) -> Result<(), CanisterError> {
     ensure_initialized()?;
@@ -191,6 +193,15 @@ fn set_inference_mode(mode: InferenceMode) -> Result<(), CanisterError> {
                     "On-chain LLM is not configured. Call configure_onchain_llm first.".to_string(),
                 ));
             }
+        }
+        InferenceMode::DfinityLLM => {
+            // DFINITY LLM is always available (it's free and managed by DFINITY)
+            // Auto-configure if not already set
+            DFINITY_LLM_CONFIG.with(|c| {
+                if c.borrow().is_none() {
+                    *c.borrow_mut() = Some(DfinityLLMConfig::default());
+                }
+            });
         }
         InferenceMode::ElizaClassic => {
             // Always available
@@ -237,12 +248,37 @@ fn is_onchain_llm_ready() -> bool {
     })
 }
 
+/// Configure the DFINITY LLM canister (Llama 3.1 8B, Qwen3 32B, etc.)
+/// This is FREE and managed by DFINITY - no API keys needed!
+#[update]
+fn configure_dfinity_llm(config: DfinityLLMConfig) -> Result<(), CanisterError> {
+    ensure_initialized()?;
+    
+    ic_cdk::println!(
+        "DFINITY LLM configured: model={}, enabled={}",
+        config.model,
+        config.enabled
+    );
+    
+    DFINITY_LLM_CONFIG.with(|c| *c.borrow_mut() = Some(config));
+    Ok(())
+}
+
+/// Check if DFINITY LLM is enabled
+#[query]
+fn is_dfinity_llm_ready() -> bool {
+    DFINITY_LLM_CONFIG.with(|c| {
+        c.borrow().as_ref().map(|cfg| cfg.enabled).unwrap_or(true) // Default to true - always available!
+    })
+}
+
 /// Get full inference status
 #[query]
 fn get_inference_status() -> InferenceStatus {
     let current_mode = INFERENCE_MODE.with(|m| m.borrow().clone());
     let openai_configured = is_openai_ready();
     let onchain_config = ONCHAIN_LLM_CONFIG.with(|c| c.borrow().clone());
+    let dfinity_config = DFINITY_LLM_CONFIG.with(|c| c.borrow().clone());
     
     InferenceStatus {
         current_mode,
@@ -251,6 +287,8 @@ fn get_inference_status() -> InferenceStatus {
         onchain_llm_configured: onchain_config.as_ref().map(|c| c.is_configured()).unwrap_or(false),
         onchain_llm_canister_id: onchain_config.as_ref().map(|c| c.canister_id.to_text()),
         onchain_llm_model: onchain_config.as_ref().map(|c| c.model_name.clone()),
+        dfinity_llm_enabled: dfinity_config.as_ref().map(|c| c.enabled).unwrap_or(true), // Always available by default
+        dfinity_llm_model: dfinity_config.as_ref().map(|c| c.model.to_string()),
     }
 }
 
@@ -683,6 +721,15 @@ async fn generate_response_with_context(
         .collect();
     
     match mode {
+        InferenceMode::DfinityLLM => {
+            // Try DFINITY LLM (Llama 3.1 8B / Qwen3 32B - fast, free, managed by DFINITY)
+            if let Some(response) = try_dfinity_llm_response(&system_prompt, user_message, &history).await {
+                return response;
+            }
+            // Fall back to ELIZA Classic
+            ic_cdk::println!("DFINITY LLM failed, falling back to ELIZA Classic");
+            generate_pattern_response(character, user_message)
+        }
         InferenceMode::OpenAI => {
             // Try OpenAI
             if let Some(response) = try_openai_response(&system_prompt, user_message, &history, character).await {
@@ -763,6 +810,74 @@ async fn try_onchain_llm_response(
             ic_cdk::println!("On-chain LLM error: {}", e);
             // Try to clean up even on error
             let _ = client.cleanup().await;
+            None
+        }
+    }
+}
+
+/// Try to generate response using DFINITY LLM canister
+/// This is FREE and managed by DFINITY - Llama 3.1 8B / Qwen3 32B
+async fn try_dfinity_llm_response(
+    system_prompt: &str,
+    user_message: &str,
+    _history: &[(String, String)],
+) -> Option<String> {
+    use ic_llm::{ChatMessage, Model};
+    
+    // Get config (or use defaults - DFINITY LLM is always available)
+    let config = DFINITY_LLM_CONFIG.with(|c| c.borrow().clone())
+        .unwrap_or_default();
+    
+    if !config.enabled {
+        return None;
+    }
+    
+    // Map our model enum to ic_llm Model
+    let model = match config.model {
+        DfinityLLMModel::Llama3_1_8B => Model::Llama3_1_8B,
+        DfinityLLMModel::Qwen3_32B => Model::Qwen3_32B,
+        DfinityLLMModel::Llama4Scout => Model::Llama4Scout,
+    };
+    
+    // Build messages - DFINITY LLM supports up to 10 messages
+    // For simplicity, we'll just use system + user message
+    // (History could be added but requires AssistantMessage construction)
+    let mut messages: Vec<ChatMessage> = Vec::new();
+    
+    // Add system message
+    let system_content = config.system_prompt.as_ref()
+        .map(|s| s.clone())
+        .unwrap_or_else(|| system_prompt.to_string());
+    messages.push(ChatMessage::System { content: system_content });
+    
+    // Add current user message
+    messages.push(ChatMessage::User { content: user_message.to_string() });
+    
+    ic_cdk::println!(
+        "Calling DFINITY LLM ({}) with {} messages",
+        config.model,
+        messages.len()
+    );
+    
+    // Call DFINITY LLM - returns Response directly, not Result
+    // Response has structure: { message: AssistantMessage { content: Option<String>, .. }, .. }
+    let response = ic_llm::chat(model)
+        .with_messages(messages)
+        .send()
+        .await;
+    
+    // Extract content from response message
+    match response.message.content {
+        Some(content) if !content.is_empty() => {
+            ic_cdk::println!("DFINITY LLM response received: {} chars", content.len());
+            Some(content)
+        }
+        Some(_) => {
+            ic_cdk::println!("DFINITY LLM returned empty response");
+            None
+        }
+        None => {
+            ic_cdk::println!("DFINITY LLM returned no content");
             None
         }
     }

@@ -5,13 +5,13 @@
  * This keeps the API route thin and the business logic portable.
  */
 
-import { db, type JsonValue } from '@babylon/db';
+import { db, type JsonValue } from '@polyagent/db';
 import {
   type FeedbackType,
   GameFeedbackSchema,
   generateSnowflakeId,
   logger,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import type { z } from 'zod';
 
 /**

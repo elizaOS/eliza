@@ -64,13 +64,13 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, users } from '@babylon/db';
+} from '@polyagent/api';
+import { db, users } from '@polyagent/db';
 import {
   convertBalanceToStrings,
   logger,
   UserIdParamSchema,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

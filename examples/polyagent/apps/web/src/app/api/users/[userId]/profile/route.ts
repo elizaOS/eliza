@@ -118,8 +118,8 @@ import {
   optionalAuth,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { logger, UserIdParamSchema } from '@babylon/shared';
+} from '@polyagent/api';
+import { logger, UserIdParamSchema } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 
 /**

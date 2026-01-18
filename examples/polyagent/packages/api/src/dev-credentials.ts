@@ -12,7 +12,7 @@
  * - In production, this module is essentially a no-op
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { createHash } from 'crypto';
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -56,7 +56,7 @@ export interface DevCredentials {
  */
 function deriveSecret(seed: string, purpose: string): string {
   const hash = createHash('sha256')
-    .update(`babylon-dev:${seed}:${purpose}`)
+    .update(`polyagent-dev:${seed}:${purpose}`)
     .digest('hex');
   return `dev_${purpose}_${hash.substring(0, 32)}`;
 }

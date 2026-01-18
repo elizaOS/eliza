@@ -148,13 +148,13 @@ import {
   InternalServerError,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, sql, users } from '@babylon/db';
+} from '@polyagent/api';
+import { db, eq, sql, users } from '@polyagent/db';
 import {
   checkForAdminEmail,
   logger,
   type PrivyUserWithEmails,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import type { User as PrivyUser } from '@privy-io/server-auth';
 import type { NextRequest } from 'next/server';
 

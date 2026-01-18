@@ -99,9 +99,9 @@
  * ```
  */
 
-import { authenticate } from '@babylon/api';
-import { db } from '@babylon/db';
-import { generateSnowflakeId } from '@babylon/shared';
+import { authenticate } from '@polyagent/api';
+import { db } from '@polyagent/db';
+import { generateSnowflakeId } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

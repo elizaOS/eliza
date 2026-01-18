@@ -1,4 +1,4 @@
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@polyagent/shared';
 import { type UUID } from '@elizaos/core';
 import type { Experience } from '../types';
 import { ExperienceType } from '../types';

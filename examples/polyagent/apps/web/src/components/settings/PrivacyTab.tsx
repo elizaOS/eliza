@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import {
   AlertCircle,
   Download,
@@ -53,7 +53,7 @@ export function PrivacyTab() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `babylon-data-export-${Date.now()}.json`;
+    a.download = `polyagent-data-export-${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);

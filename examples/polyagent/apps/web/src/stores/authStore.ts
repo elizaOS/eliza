@@ -115,7 +115,7 @@ export const useAuthStore = create<AuthState>()(
         }),
     }),
     {
-      name: 'babylon-auth',
+      name: 'polyagent-auth',
       version: 2, // Increment this to invalidate old cached data
     }
   )

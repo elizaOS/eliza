@@ -6,7 +6,7 @@
  * Provides high-level functions for broadcasting to channels and chat rooms.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { publishEvent, type RealtimeChannel } from '../realtime';
 import type { JsonValue } from '../types';
 

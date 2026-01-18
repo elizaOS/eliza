@@ -402,6 +402,18 @@
       animation: pulse 0.5s infinite;
     }
 
+    .mode-btn.local-only {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .mode-note {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+
     .header-right {
       display: flex;
       align-items: center;
@@ -454,9 +466,11 @@
         <div class="header-right">
           <div class="mode-switcher" id="mode-switcher">
             <button class="mode-btn" data-mode="ElizaClassic" id="mode-classic" disabled>Classic</button>
+            <button class="mode-btn" data-mode="DfinityLLM" id="mode-dfinity" disabled>DFINITY</button>
             <button class="mode-btn" data-mode="OpenAI" id="mode-openai" disabled>GPT-4o</button>
             <button class="mode-btn" data-mode="OnChainLLM" id="mode-onchain" disabled>On-Chain</button>
           </div>
+          <span class="mode-note" id="mode-note" hidden>DFINITY LLM: mainnet only</span>
           <div class="status">
             <span class="status-dot offline" id="status-dot"></span>
             <span class="status-text" id="status-text">Connecting...</span>

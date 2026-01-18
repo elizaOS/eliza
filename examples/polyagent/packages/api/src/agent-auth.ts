@@ -1,12 +1,12 @@
 /**
  * Agent Authentication Utilities
  *
- * @description Provides session management and verification for Babylon agents.
+ * @description Provides session management and verification for Polyagent agents.
  * Supports pluggable session stores (Redis, in-memory, etc.).
  * Sessions expire after 24 hours and are automatically cleaned up.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 
 /**
  * Agent session information
@@ -32,7 +32,7 @@ const agentSessions = new Map<string, AgentSession>();
 // Session duration: 24 hours
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
 const SESSION_PREFIX = 'agent:session:';
-const DEFAULT_TEST_AGENT_ID = 'babylon-agent-alice';
+const DEFAULT_TEST_AGENT_ID = 'polyagent-agent-alice';
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Configurable session store - defaults to in-memory
@@ -102,7 +102,7 @@ export function verifyAgentCredentials(
   agentSecret: string
 ): boolean {
   const configuredAgentId =
-    process.env.BABYLON_AGENT_ID ??
+    process.env.POLYAGENT_AGENT_ID ??
     (!isProduction ? DEFAULT_TEST_AGENT_ID : undefined);
 
   // Use separate AGENT_SECRET, fallback to CRON_SECRET for backwards compatibility
@@ -140,7 +140,7 @@ export function verifyAgentCredentials(
 
   if (!configuredAgentId) {
     logger.error(
-      'BABYLON_AGENT_ID must be configured in production environments',
+      'POLYAGENT_AGENT_ID must be configured in production environments',
       undefined,
       'AgentAuth'
     );

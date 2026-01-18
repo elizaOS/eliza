@@ -125,8 +125,8 @@ export async function requireUserByIdentifier(
 export interface TargetLookupResult {
   /** The user if found, null otherwise */
   user: User | null;
-  /** The resolved target ID (user.id) */
-  targetId: string | null;
+  /** The resolved target (user.id) */
+  target: string | null;
 }
 
 /**
@@ -135,12 +135,12 @@ export interface TargetLookupResult {
  * @description Searches for a user by identifier.
  *
  * @param {string} identifier - The user ID, privyId, or username
- * @returns {Promise<TargetLookupResult>} Result containing user and resolved targetId
+ * @returns {Promise<TargetLookupResult>} Result containing user and resolved target
  *
  * @example
  * ```typescript
- * const { user, targetId } = await findTargetByIdentifier('alice');
- * if (!targetId) {
+ * const { user, target } = await findTargetByIdentifier('alice');
+ * if (!target) {
  *   throw new NotFoundError('User', undefined, { identifier });
  * }
  * ```
@@ -153,13 +153,13 @@ export async function findTargetByIdentifier(
   if (user) {
     return {
       user,
-      targetId: user.id,
+      target: user.id,
     };
   }
 
   return {
     user: null,
-    targetId: null,
+    target: null,
   };
 }
 
@@ -169,23 +169,23 @@ export async function findTargetByIdentifier(
  * @description Searches for a user and throws NotFoundError if not found.
  *
  * @param {string} identifier - The user ID, privyId, or username
- * @returns {Promise<TargetLookupResult>} Result containing user and resolved targetId
+ * @returns {Promise<TargetLookupResult>} Result containing user and resolved target
  * @throws {NotFoundError} If user is not found
  *
  * @example
  * ```typescript
- * const { user, targetId } = await requireTargetByIdentifier('alice');
- * // targetId is guaranteed to be non-null here
+ * const { user, target } = await requireTargetByIdentifier('alice');
+ * // target is guaranteed to be non-null here
  * ```
  */
 export async function requireTargetByIdentifier(
   identifier: string
-): Promise<TargetLookupResult & { targetId: string }> {
+): Promise<TargetLookupResult & { target: string }> {
   const result = await findTargetByIdentifier(identifier);
 
-  if (!result.targetId) {
+  if (!result.target) {
     throw new NotFoundError('User', undefined, { identifier });
   }
 
-  return result as TargetLookupResult & { targetId: string };
+  return result as TargetLookupResult & { target: string };
 }

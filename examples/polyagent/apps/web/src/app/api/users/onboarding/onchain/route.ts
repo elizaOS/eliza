@@ -55,7 +55,7 @@
  * ```
  */
 
-import type { JsonValue } from '@babylon/api';
+import type { JsonValue } from '@polyagent/api';
 import {
   authenticate,
   BusinessLogicError,
@@ -63,9 +63,9 @@ import {
   processOnchainRegistration,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@polyagent/api';
+import { db, eq, users } from '@polyagent/db';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 
 interface OnchainRequestBody {

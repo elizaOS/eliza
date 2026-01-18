@@ -14,7 +14,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { del as vercelBlobDel, put as vercelBlobPut } from '@vercel/blob';
 
 // Storage configuration
@@ -25,9 +25,9 @@ const useVercelBlob =
 
 // MinIO configuration (local development)
 const MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || 'http://localhost:9000';
-const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY || 'babylon';
-const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY || 'babylon_dev_password';
-const MINIO_BUCKET = process.env.MINIO_BUCKET || 'babylon-uploads';
+const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY || 'polyagent';
+const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY || 'polyagent_dev_password';
+const MINIO_BUCKET = process.env.MINIO_BUCKET || 'polyagent-uploads';
 
 // Vercel Blob configuration (production)
 // Token is automatically available in Vercel environment as BLOB_READ_WRITE_TOKEN
@@ -73,7 +73,7 @@ class S3StorageClient {
         logger.warn('Vercel Blob token not found, falling back to MinIO');
         this.useVercel = false;
       } else {
-        this.bucket = 'babylon-uploads';
+        this.bucket = 'polyagent-uploads';
         this.publicUrl = null; // Vercel Blob provides its own URLs
         logger.info('Storage: Using Vercel Blob (production)');
       }
@@ -182,7 +182,7 @@ class S3StorageClient {
       // Extract key from URL if full URL is provided
       let key = url;
       if (url.startsWith('http')) {
-        // URL format: http://localhost:9000/babylon-uploads/folder/file.jpg
+        // URL format: http://localhost:9000/polyagent-uploads/folder/file.jpg
         // Extract: folder/file.jpg
         const urlParts = url.split(`/${this.bucket}/`);
         key = urlParts.length > 1 ? urlParts[1] || url : url;

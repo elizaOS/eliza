@@ -316,6 +316,8 @@ export async function POST(_req: NextRequest) {
       errorCount: errors,
     });
 
+    await agentService.updatePerformanceMetricsForAgents(userIds);
+
     return NextResponse.json({
       success: true,
       eligible: eligibleAgents.length,

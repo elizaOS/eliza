@@ -9,7 +9,7 @@
  *
  * @remarks
  * This provider is exclusively for autonomous agents. Core game systems
- * (MarketDecisionEngine, etc.) use BabylonLLMClient with Groq/Claude/OpenAI.
+ * (MarketDecisionEngine, etc.) use PolyagentLLMClient with Groq/Claude/OpenAI.
  *
  * @example
  * ```typescript
@@ -112,7 +112,7 @@ async function callHuggingFace(params: AgentLLMParams): Promise<string> {
 
   if (apiFormat === 'openai') {
     requestBody = JSON.stringify({
-      model: params.archetype ? `babylon-${params.archetype}` : 'default',
+      model: params.archetype ? `polyagent-${params.archetype}` : 'default',
       messages,
       temperature: params.temperature ?? 0.7,
       max_tokens: params.maxTokens ?? 2048,
@@ -192,8 +192,8 @@ async function callPhala(params: AgentLLMParams): Promise<string> {
     },
     body: JSON.stringify({
       model: params.archetype
-        ? `babylon-${params.archetype}`
-        : 'babylon-default',
+        ? `polyagent-${params.archetype}`
+        : 'polyagent-default',
       messages: [
         ...(params.system ? [{ role: 'system', content: params.system }] : []),
         { role: 'user', content: params.prompt },

@@ -6,8 +6,8 @@ import type {
   UserBalanceData,
   UserBalanceDataAPI,
   UserProfileStats,
-} from '@babylon/shared';
-import { cn, parseUserBalanceData } from '@babylon/shared';
+} from '@polyagent/shared';
+import { cn, parseUserBalanceData } from '@polyagent/shared';
 import { HelpCircle, TrendingDown, TrendingUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';

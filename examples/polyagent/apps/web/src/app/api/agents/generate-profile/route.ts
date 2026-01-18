@@ -86,13 +86,13 @@
  * ```
  */
 
-import { callGroqDirect } from '@babylon/agents';
+import { callGroqDirect } from '@polyagent/agents';
 import {
   authenticateUser,
   checkRateLimitAndDuplicates,
   RATE_LIMIT_CONFIGS,
-} from '@babylon/api';
-import { logger } from '@babylon/shared';
+} from '@polyagent/api';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

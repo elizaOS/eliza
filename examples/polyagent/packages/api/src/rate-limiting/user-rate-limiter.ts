@@ -6,7 +6,7 @@
  * Falls back to in-memory storage when Redis is unavailable.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { randomUUID } from 'crypto';
 import { getRedisClient, isRedisAvailable } from '../redis/client';
 

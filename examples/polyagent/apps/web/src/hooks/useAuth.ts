@@ -1,6 +1,6 @@
 'use client';
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import {
   type ConnectedWallet,
   type User as PrivyUser,
@@ -421,7 +421,7 @@ export function useAuth(): UseAuthReturn {
           // 409 = account already linked to another user - don't retry
           failedLinkAttempts.add(farcasterKey);
           toast.error('Farcaster Account Already Linked', {
-            description: `The Farcaster account @${farcaster.username || farcaster.displayName} is already linked to another Babylon account.`,
+            description: `The Farcaster account @${farcaster.username || farcaster.displayName} is already linked to another Polyagent account.`,
             duration: 6000,
           });
           logger.info(
@@ -470,7 +470,7 @@ export function useAuth(): UseAuthReturn {
           // 409 = account already linked to another user - don't retry
           failedLinkAttempts.add(twitterKey);
           toast.error('Twitter Account Already Linked', {
-            description: `The Twitter account @${twitter.username} is already linked to another Babylon account.`,
+            description: `The Twitter account @${twitter.username} is already linked to another Polyagent account.`,
             duration: 6000,
           });
           logger.info(
@@ -631,7 +631,7 @@ export function useAuth(): UseAuthReturn {
 
       // Clear any stale localStorage cache
       if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem('babylon-auth');
+        const stored = localStorage.getItem('polyagent-auth');
         if (stored) {
           const parsed = JSON.parse(stored);
           if (
@@ -647,7 +647,7 @@ export function useAuth(): UseAuthReturn {
               },
               'useAuth'
             );
-            localStorage.removeItem('babylon-auth');
+            localStorage.removeItem('polyagent-auth');
           }
         }
       }
@@ -684,7 +684,7 @@ export function useAuth(): UseAuthReturn {
 
       // Explicitly remove the persisted auth storage
       // This ensures localStorage is cleared even if clearAuth() doesn't trigger storage update
-      localStorage.removeItem('babylon-auth');
+      localStorage.removeItem('polyagent-auth');
 
       // Clear any Privy localStorage keys that might persist
       // Privy's logout() should handle this, but we'll be thorough

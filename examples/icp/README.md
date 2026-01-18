@@ -37,6 +37,7 @@ Deploy an elizaOS AI agent as a canister on the Internet Computer (ICP). This ex
 - **Decentralized Execution**: Your AI agent runs on the Internet Computer with no traditional servers
 - **Persistent Memory**: Conversation history and memories survive canister upgrades using stable structures
 - **OpenAI Integration**: HTTP outcalls to OpenAI via a secure gateway (API keys never stored on-chain)
+- **DFINITY LLM Integration**: Free Llama 3.1 8B / Qwen3 32B via the DFINITY LLM canister
 - **VetKeys Support**: Secure cryptographic key derivation for encryption and signing
 - **elizaOS Compatible**: Types and patterns match the main elizaOS Rust implementation
 - **elizaOS Sync Runtime**: Uses the new `sync` feature for environments without tokio
@@ -488,15 +489,28 @@ dfx canister call eliza_icp_backend configure_onchain_llm "(record {
 dfx canister call eliza_icp_backend set_inference_mode '(variant { OnChainLLM })'
 ```
 
-### Three Inference Modes
+### Four Inference Modes
 
 | Mode | Command | Speed | Quality |
 |------|---------|-------|---------|
 | Classic | `set_inference_mode '(variant { ElizaClassic })'` | ~2s | Pattern matching |
 | OpenAI | `set_inference_mode '(variant { OpenAI })'` | ~5s | Best (GPT-4o) |
 | On-Chain | `set_inference_mode '(variant { OnChainLLM })'` | ~50s | Good (fully decentralized) |
+| DFINITY LLM | `set_inference_mode '(variant { DfinityLLM })'` | ~3-8s | Llama 3.1 8B / Qwen3 32B (FREE, managed by DFINITY) |
 
 See `ON_CHAIN_LLM_PLAN.md` for detailed architecture and configuration options.
+
+## DFINITY LLM (Recommended for speed)
+
+DFINITY provides a managed LLM canister (Llama 3.1 8B / Qwen3 32B). It is **fast and free**.
+
+**Note**: This is currently available on **mainnet** only. Local replicas will fall back to ELIZA Classic if the call fails.
+
+### Switch to DFINITY LLM
+
+```bash
+dfx canister call eliza_icp_backend set_inference_mode '(variant { DfinityLLM })'
+```
 
 ## Resources
 

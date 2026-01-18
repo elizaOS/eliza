@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 
-import { db, eq, like, userAgentConfigs, users } from '@babylon/db';
+import { db, eq, like, userAgentConfigs, users } from '@polyagent/db';
 import { ethers } from 'ethers';
 import { agentRegistry } from '../services/agent-registry.service';
 import { getAgentConfig } from '../shared/agent-config';
@@ -57,7 +57,7 @@ export async function createTestAgent(
     autonomousCommenting = true,
     autonomousDMs = false,
     autonomousGroupChats = false,
-    systemPrompt = 'You are an autonomous trading agent on Babylon prediction markets. Make smart trading decisions based on market analysis.',
+    systemPrompt = 'You are an autonomous trading agent on Polyagent prediction markets. Make smart trading decisions based on market analysis.',
     modelTier = 'lite',
   } = config;
 
@@ -150,7 +150,7 @@ export async function createTestAgent(
           name: agent.displayName || agent.username || 'Test Agent',
           systemPrompt:
             agentConfig?.systemPrompt ||
-            'You are a helpful AI agent on Babylon prediction market.',
+            'You are a helpful AI agent on Polyagent prediction market.',
           capabilities: {
             strategies: [
               'prediction_markets',
@@ -169,7 +169,7 @@ export async function createTestAgent(
             ],
             version: '1.0.0',
             x402Support: true,
-            platform: 'babylon',
+            platform: 'polyagent',
             userType: 'user_controlled',
             skills: [],
             domains: [],

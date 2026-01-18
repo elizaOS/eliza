@@ -61,9 +61,9 @@
  * @see {@link https://sdk.ag0.xyz/} Agent0 SDK documentation
  */
 
-import type { AgentCard } from '@babylon/agents';
-import { agentRegistry } from '@babylon/agents';
-import { logger } from '@babylon/shared';
+import type { AgentCard } from '@polyagent/agents';
+import { agentRegistry } from '@polyagent/agents';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 

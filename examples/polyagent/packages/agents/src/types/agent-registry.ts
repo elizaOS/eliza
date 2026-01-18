@@ -1,11 +1,11 @@
 /**
- * Agent Registry Type Definitions for @babylon/agents
+ * Agent Registry Type Definitions for @polyagent/agents
  *
  * Agent types for ERC-8004, Agent0, and A2A Protocol
  */
 
 // Import and re-export AgentCapabilities from shared
-import type { AgentCapabilities } from '@babylon/shared';
+import type { AgentCapabilities } from '@polyagent/shared';
 export type { AgentCapabilities };
 
 /**

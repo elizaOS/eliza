@@ -1,6 +1,6 @@
 'use client';
 
-import { BABYLON_POINTS_SYMBOL, logger } from '@babylon/shared';
+import { POLYAGENT_POINTS_SYMBOL, logger } from '@polyagent/shared';
 import type {
   AreaSeriesOptions,
   ChartOptions,
@@ -245,7 +245,7 @@ export function formatChartTime(timestamp: number): Time {
  * Format price for display.
  */
 export function formatChartPrice(value: number, includeSymbol = false): string {
-  const prefix = includeSymbol ? BABYLON_POINTS_SYMBOL : '';
+  const prefix = includeSymbol ? POLYAGENT_POINTS_SYMBOL : '';
 
   if (value === 0) return `${prefix}0`;
   if (value >= 1_000_000_000)

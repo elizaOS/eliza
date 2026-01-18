@@ -1,12 +1,12 @@
 /**
- * Babylon API Package
+ * Polyagent API Package
  *
  * Provides API middleware and utilities for authentication, authorization,
  * and common API patterns.
  */
 
 // Re-export auth types from shared
-export type { AuthenticatedUser } from '@babylon/shared';
+export type { AuthenticatedUser } from '@polyagent/shared';
 // Logger
 export {
   extractErrorMessage,
@@ -14,7 +14,7 @@ export {
   Logger,
   type LogLevel,
   logger,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 // Admin Audit Logging
 export {
   type AdminAuditContext,
@@ -102,7 +102,7 @@ export {
   ApiError,
   AuthenticationError as AuthError,
   AuthorizationError,
-  BabylonError,
+  PolyagentError,
   BadRequestError,
   BusinessLogicError,
   ConflictError,
@@ -135,7 +135,7 @@ export {
 export { cronMetrics, recordCronExecution } from './monitoring/cron-metrics';
 export * from './monitoring/monitored-cache';
 export * from './monitoring/monitored-storage';
-// Performance monitoring (moved from @babylon/shared)
+// Performance monitoring (moved from @polyagent/shared)
 export { performanceMonitor } from './monitoring/performance-monitor';
 // Profile utilities
 export {
@@ -221,7 +221,7 @@ export {
   type PostActivityData,
   type TradeActivityData,
 } from './sse/event-broadcaster';
-// Storage utilities (moved from @babylon/shared)
+// Storage utilities (moved from @polyagent/shared)
 export {
   getStorageClient,
   type UploadOptions,
@@ -247,7 +247,7 @@ export {
 // Server-side utilities (require Node.js crypto)
 export {
   budgetTokens,
-  // Token counter utilities (moved from @babylon/shared)
+  // Token counter utilities (moved from @polyagent/shared)
   countTokens,
   countTokensSync,
   generateApiKey,

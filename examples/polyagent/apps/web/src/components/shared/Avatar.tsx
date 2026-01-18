@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, sanitizeId } from '@babylon/shared';
+import { cn, sanitizeId } from '@polyagent/shared';
 import { useEffect, useState } from 'react';
 
 /**

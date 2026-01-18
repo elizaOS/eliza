@@ -58,7 +58,7 @@ export const ONBOARDING_STEP_INFO: Record<
   { title: string; description: string; points: number }
 > = {
   welcome: {
-    title: 'Welcome to Babylon!',
+    title: 'Welcome to Polyagent!',
     description: 'Learn how to navigate the game and start trading.',
     points: ONBOARDING_STEP_POINTS.welcome,
   },

@@ -4,8 +4,8 @@
  * Core service for collecting agent interaction trajectories for RL training
  */
 
-import { db, llmCallLogs, trajectories } from '@babylon/db';
-import type { JsonValue } from '@babylon/shared';
+import { db, llmCallLogs, trajectories } from '@polyagent/db';
+import type { JsonValue } from '@polyagent/shared';
 import type { UUID } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../../../shared/logger';

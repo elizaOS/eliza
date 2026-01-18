@@ -416,7 +416,7 @@ export const compositeAction: Action = {
         roomId: message.roomId,
         content: {
           type: "message_tracking",
-          sentTo: sendResult.data.targetId,
+          sentTo: sendResult.data.target,
           sentAt: Date.now(),
           messageContent: sendResult.data.messageContent,
         },

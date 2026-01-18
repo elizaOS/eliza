@@ -28,8 +28,8 @@ import {
   notInArray,
   ROLE_PERMISSIONS,
   users,
-} from '@babylon/db';
-import { checkForAdminEmail, logger } from '@babylon/shared';
+} from '@polyagent/db';
+import { checkForAdminEmail, logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import type { AuthenticatedUser } from './auth-middleware';
 import { authenticate, getPrivyClient } from './auth-middleware';

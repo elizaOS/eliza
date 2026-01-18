@@ -278,7 +278,7 @@ class PluginCreationClient:
                 "lint:check": "bunx @biomejs/biome check .",
             },
             "dependencies": {
-                "@elizaos/core": "^1.0.0",
+                "@elizaos/core": "^2.0.0",
                 **(job.specification.dependencies or {}),
             },
             "devDependencies": {

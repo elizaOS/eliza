@@ -1,12 +1,12 @@
 /**
- * JSON Storage Backend for @babylon/db
+ * JSON Storage Backend for @polyagent/db
  *
  * Provides a file-based storage implementation that mirrors the PostgreSQL interface.
  * Used for simulation, training data generation, and debugging.
  *
  * Usage:
  * ```typescript
- * import { initJsonStorage, db } from '@babylon/db';
+ * import { initJsonStorage, db } from '@polyagent/db';
  *
  * // Initialize JSON mode
  * await initJsonStorage('./simulation-data');

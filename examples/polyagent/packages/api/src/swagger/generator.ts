@@ -17,7 +17,7 @@ import { swaggerDefinition } from './config';
  * @example
  * ```typescript
  * const spec = generateOpenApiSpec();
- * console.log(spec.info.title); // 'Babylon API'
+ * console.log(spec.info.title); // 'Polyagent API'
  * ```
  */
 export function generateOpenApiSpec() {

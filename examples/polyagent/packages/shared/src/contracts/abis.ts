@@ -1,9 +1,9 @@
 /**
  * Contract ABIs for ERC-8004 and Prediction Market interactions
  *
- * These ABIs are shared across the Babylon codebase for interacting with
+ * These ABIs are shared across the Polyagent codebase for interacting with
  * on-chain contracts. ERC-8004 operations should primarily use the Agent0 SDK
- * (@babylon/agents/agent0), but these ABIs are available for direct contract
+ * (@polyagent/agents/agent0), but these ABIs are available for direct contract
  * interactions when needed.
  */
 

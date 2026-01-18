@@ -6,7 +6,7 @@
  * information.
  */
 
-import { db, eq, type User, users } from '@babylon/db';
+import { db, eq, type User, users } from '@polyagent/db';
 import type { AuthenticatedUser } from '../auth-middleware';
 
 /**

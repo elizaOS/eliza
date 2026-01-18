@@ -448,12 +448,12 @@ wss.on("connection", (ws) => {
           return;
         }
         case "attack": {
-          const targetId = typeof data.entityId === "number" ? data.entityId : null;
-          if (targetId === null) {
+          const target = typeof data.entityId === "number" ? data.entityId : null;
+          if (target === null) {
             send(ws, fail(request, "Missing data.entityId"));
             return;
           }
-          const entity = bot.entities[targetId];
+          const entity = bot.entities[target];
           if (!entity) {
             send(ws, fail(request, "Entity not found"));
             return;

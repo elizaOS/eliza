@@ -199,7 +199,7 @@ export interface OptimisticUpdate<T> {
 export interface PendingInteraction<T = JsonValue> {
   id: string;
   type: 'like' | 'comment' | 'share' | 'favorite';
-  targetId: string;
+  target: string;
   timestamp: number;
   optimisticData: T;
 }
@@ -301,7 +301,7 @@ export type InteractionStore = InteractionStoreState & InteractionStoreActions;
 // ============================================================================
 
 export interface LikeButtonProps {
-  targetId: string;
+  target: string;
   targetType: 'post' | 'comment';
   initialLiked?: boolean;
   initialCount?: number;

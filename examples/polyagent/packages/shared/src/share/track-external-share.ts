@@ -57,7 +57,7 @@ const DEFAULT_RESULT: TrackExternalShareResult = {
  *   platform: 'twitter',
  *   contentType: 'post',
  *   contentId: '123',
- *   url: 'https://babylon.market/post/123',
+ *   url: 'https://polyagent.market/post/123',
  *   userId: 'user-123'
  * });
  * ```

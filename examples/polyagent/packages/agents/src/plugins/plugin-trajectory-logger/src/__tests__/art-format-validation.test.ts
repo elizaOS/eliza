@@ -145,7 +145,7 @@ const mockDb = {
   },
 };
 
-mock.module('@babylon/db', () => ({
+mock.module('@polyagent/db', () => ({
   db: mockDb,
 }));
 
@@ -175,7 +175,7 @@ describe('ART Format Validation', () => {
   afterAll(async () => {
     // Cleanup
     if (testTrajectoryIds.length > 0) {
-      const { db } = await import('@babylon/db');
+      const { db } = await import('@polyagent/db');
       await db.trajectory.deleteMany({
         where: { trajectoryId: { in: testTrajectoryIds } },
       });

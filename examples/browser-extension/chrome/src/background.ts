@@ -96,8 +96,8 @@ async function appendChatStart(url: string, messageId: string, userText: string)
 
 async function updateAssistantText(url: string, messageId: string, text: string): Promise<void> {
   const history = await getChatHistory(url);
-  const targetId = `${messageId}:assistant`;
-  const idx = history.findIndex((m) => m.id === targetId);
+  const target = `${messageId}:assistant`;
+  const idx = history.findIndex((m) => m.id === target);
   if (idx >= 0) {
     history[idx] = { ...history[idx], text };
     await setChatHistory(url, history);

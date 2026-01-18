@@ -12,19 +12,19 @@ export function getBaseUrl(): string {
   if (typeof window !== 'undefined') {
     return window.location.origin;
   }
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://babylon.market';
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://polyagent.market';
 }
 
 /**
  * Generate a shareable referral URL for a user
  *
  * @param usernameOrCode - The user's username or referral code
- * @returns Full shareable referral URL (e.g., https://babylon.market?ref=babylon)
+ * @returns Full shareable referral URL (e.g., https://polyagent.market?ref=polyagent)
  *
  * @example
  * ```typescript
- * const url = getReferralUrl('babylon')
- * // Returns: "https://babylon.market?ref=babylon"
+ * const url = getReferralUrl('polyagent')
+ * // Returns: "https://polyagent.market?ref=polyagent"
  * ```
  */
 export function getReferralUrl(usernameOrCode: string): string {
@@ -40,13 +40,13 @@ export function getReferralUrl(usernameOrCode: string): string {
  *
  * @example
  * ```typescript
- * const display = getDisplayReferralUrl('babylon')
- * // Returns: "localhost:3000?ref=babylon"
+ * const display = getDisplayReferralUrl('polyagent')
+ * // Returns: "localhost:3000?ref=polyagent"
  * ```
  */
 export function getDisplayReferralUrl(usernameOrCode: string): string {
   const host =
-    typeof window !== 'undefined' ? window.location.host : 'babylon.market';
+    typeof window !== 'undefined' ? window.location.host : 'polyagent.market';
   return `${host}?ref=${usernameOrCode}`;
 }
 
@@ -54,13 +54,13 @@ export function getDisplayReferralUrl(usernameOrCode: string): string {
  * Generate referral share text for social media
  *
  * @param usernameOrCode - The user's username or referral code
- * @param customMessage - Optional custom message (default: "Join me on Babylon! 🎮")
+ * @param customMessage - Optional custom message (default: "Join me on Polyagent! 🎮")
  * @returns Formatted text with referral URL for sharing
  *
  * @example
  * ```typescript
- * const text = getReferralShareText('babylon')
- * // Returns: "Join me on Babylon! 🎮\n\nhttps://babylon.market?ref=babylon"
+ * const text = getReferralShareText('polyagent')
+ * // Returns: "Join me on Polyagent! 🎮\n\nhttps://polyagent.market?ref=polyagent"
  * ```
  */
 export function getReferralShareText(
@@ -69,7 +69,7 @@ export function getReferralShareText(
 ): string {
   const message =
     customMessage ||
-    'Join me in Babylon, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.';
+    'Join me in Polyagent, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.';
   const url = getReferralUrl(usernameOrCode);
   return `${message}\n\n${url}`;
 }

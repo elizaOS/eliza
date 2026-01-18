@@ -18,7 +18,7 @@ contract ProtoMonkeysNFTAttackTest is Test {
     address public attacker;
     address public victim;
 
-    string public constant BASE_URI = "https://babylon.market/api/nft/metadata/";
+    string public constant BASE_URI = "https://polyagent.market/api/nft/metadata/";
 
     function setUp() public {
         owner = address(this);

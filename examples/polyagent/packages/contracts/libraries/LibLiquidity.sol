@@ -5,7 +5,7 @@ pragma solidity ^0.8.27;
 /// @notice Storage library for liquidity pools
 /// @dev Uses diamond storage pattern for upgradeability
 library LibLiquidity {
-    bytes32 constant LIQUIDITY_STORAGE_POSITION = keccak256("babylon.liquidity.storage");
+    bytes32 constant LIQUIDITY_STORAGE_POSITION = keccak256("polyagent.liquidity.storage");
 
     /// @notice Liquidity pool for a market
     struct LiquidityPool {

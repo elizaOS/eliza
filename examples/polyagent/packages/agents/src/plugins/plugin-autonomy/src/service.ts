@@ -20,8 +20,9 @@ export class AutonomyService extends Service {
   static serviceName = 'Autonomy';
 
   private isRunning = false;
+  private isThinking = false;
   private loopInterval?: NodeJS.Timeout;
-  private intervalMs = 1000; // Default 1 second for continuous operation
+  private intervalMs = 5000; // Default 5 seconds for continuous operation
   private autonomousRoomId: UUID; // Dedicated room for autonomous thoughts
   private autonomousWorldId: UUID; // World ID for autonomous context
 
@@ -58,7 +59,7 @@ export class AutonomyService extends Service {
     );
 
     // Check current autonomy setting
-    const autonomyEnabled = this.runtime.getSetting('AUTONOMY_ENABLED');
+    const autonomyEnabled = this.isAutonomyEnabled();
     const autoStart = this.runtime.getSetting('AUTONOMY_AUTO_START');
 
     // Ensure the autonomous room exists with proper world context
@@ -70,7 +71,7 @@ export class AutonomyService extends Service {
         id: worldId,
         name: 'Autonomy World',
         agentId: this.runtime.agentId,
-        serverId: asUUID('00000000-0000-0000-0000-000000000000'), // Default server ID
+        messageServerId: asUUID('00000000-0000-0000-0000-000000000000'), // Default server ID
         metadata: {
           type: 'autonomy',
           description: 'World for autonomous agent thinking',
@@ -124,7 +125,7 @@ export class AutonomyService extends Service {
     );
 
     // Start disabled by default - autonomy should only run when explicitly enabled from frontend
-    if (autonomyEnabled === true || autonomyEnabled === 'true') {
+    if (autonomyEnabled) {
       console.log('[Autonomy] Autonomy is enabled in settings, starting...');
       await this.startLoop();
     } else {
@@ -142,9 +143,7 @@ export class AutonomyService extends Service {
    */
   private setupSettingsMonitoring(): void {
     setInterval(async () => {
-      const autonomyEnabled = this.runtime.getSetting('AUTONOMY_ENABLED');
-      const shouldBeRunning =
-        autonomyEnabled === true || autonomyEnabled === 'true';
+      const shouldBeRunning = this.isAutonomyEnabled();
 
       if (shouldBeRunning && !this.isRunning) {
         console.log(
@@ -212,7 +211,16 @@ export class AutonomyService extends Service {
     }
 
     this.loopInterval = setTimeout(async () => {
-      await this.performAutonomousThink();
+      if (this.isThinking) {
+        this.scheduleNextThink();
+        return;
+      }
+      this.isThinking = true;
+      try {
+        await this.performAutonomousThink();
+      } finally {
+        this.isThinking = false;
+      }
       // Schedule next iteration if still running
       this.scheduleNextThink();
     }, this.intervalMs);
@@ -524,13 +532,22 @@ Generate your next thought (1-2 sentences):`;
     interval: number;
     autonomousRoomId: UUID;
   } {
-    const enabled = this.runtime.getSetting('AUTONOMY_ENABLED');
+    const enabled = this.isAutonomyEnabled();
     return {
-      enabled: enabled === true || enabled === 'true',
+      enabled,
       running: this.isRunning,
       interval: this.intervalMs,
       autonomousRoomId: this.autonomousRoomId,
     };
+  }
+
+  private isAutonomyEnabled(): boolean {
+    const settingValue = this.runtime.getSetting('AUTONOMY_ENABLED');
+    return (
+      settingValue === true ||
+      settingValue === 'true' ||
+      this.runtime.enableAutonomy === true
+    );
   }
 
   async stop(): Promise<void> {

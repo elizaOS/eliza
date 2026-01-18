@@ -21,7 +21,7 @@ contract ProtoMonkeysNFTTest is Test {
     address public user3;
 
     // Test constants
-    string public constant BASE_URI = "https://babylon.market/api/nft/metadata/";
+    string public constant BASE_URI = "https://polyagent.market/api/nft/metadata/";
     uint256 public constant DEFAULT_DEADLINE = 1 hours;
 
     // Events to test

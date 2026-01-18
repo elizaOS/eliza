@@ -1,4 +1,4 @@
-import type { JsonValue } from '@babylon/shared';
+import type { JsonValue } from '@polyagent/shared';
 import type { IAgentRuntime, Plugin } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import { experienceEvaluator } from './evaluators/experienceEvaluator';

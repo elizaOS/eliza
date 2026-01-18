@@ -60,7 +60,7 @@ export const UpdateCommentSchema = z.object({
  * Like/unlike schema (for posts or comments)
  */
 export const LikeSchema = z.object({
-  targetId: SnowflakeIdSchema,
+  target: SnowflakeIdSchema,
   targetType: z.enum(['post', 'comment']),
 });
 

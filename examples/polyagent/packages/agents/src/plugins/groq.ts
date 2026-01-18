@@ -1,5 +1,5 @@
 /**
- * Groq Plugin for Babylon Agents
+ * Groq Plugin for Polyagent Agents
  *
  * Provides access to Groq's fast LLM inference for agent decision-making.
  * Supports both small and large models with automatic trajectory logging.
@@ -8,7 +8,7 @@
  */
 
 import { createGroq } from '@ai-sdk/groq';
-import { GROQ_MODELS } from '@babylon/shared';
+import { GROQ_MODELS } from '@polyagent/shared';
 import type {
   IAgentRuntime,
   ModelTypeName,
@@ -190,7 +190,7 @@ async function generateGroqObject(
 
 export const groqPlugin: Plugin = {
   name: 'groq',
-  description: 'Groq plugin for Babylon agents',
+  description: 'Groq plugin for Polyagent agents',
   config: {
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     GROQ_SMALL_MODEL: GROQ_MODELS.FREE.modelId,

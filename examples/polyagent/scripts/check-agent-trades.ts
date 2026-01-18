@@ -5,8 +5,8 @@
  * Uses safe parameterized queries via Drizzle ORM
  */
 
-import { db } from '@babylon/db';
-import { agentTrades, users } from '@babylon/db/schema';
+import { db } from '@polyagent/db';
+import { agentTrades, users } from '@polyagent/db/schema';
 import { desc, eq, sql } from 'drizzle-orm';
 
 async function checkAgentTrades() {

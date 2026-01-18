@@ -5,7 +5,7 @@ pragma solidity ^0.8.27;
 /// @notice Storage library for perpetual futures markets
 /// @dev Uses diamond storage pattern for upgradeability
 library LibPerpetual {
-    bytes32 constant PERPETUAL_STORAGE_POSITION = keccak256("babylon.perpetual.storage");
+    bytes32 constant PERPETUAL_STORAGE_POSITION = keccak256("polyagent.perpetual.storage");
 
     /// @notice Market side (long or short)
     enum Side {

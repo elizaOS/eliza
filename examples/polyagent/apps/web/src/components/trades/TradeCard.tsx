@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, formatCompactCurrency } from '@babylon/shared';
+import { cn, formatCompactCurrency } from '@polyagent/shared';
 import {
   ArrowDownRight,
   ArrowUpRight,

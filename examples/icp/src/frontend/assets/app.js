@@ -60,6 +60,7 @@ const idlFactory = ({ IDL }) => {
     ElizaClassic: IDL.Null,
     OpenAI: IDL.Null,
     OnChainLLM: IDL.Null,
+    DfinityLLM: IDL.Null,
   });
   
   const InferenceStatus = IDL.Record({
@@ -69,6 +70,8 @@ const idlFactory = ({ IDL }) => {
     onchain_llm_configured: IDL.Bool,
     onchain_llm_canister_id: IDL.Opt(IDL.Text),
     onchain_llm_model: IDL.Opt(IDL.Text),
+    dfinity_llm_enabled: IDL.Bool,
+    dfinity_llm_model: IDL.Opt(IDL.Text),
   });
   
   return IDL.Service({
@@ -108,7 +111,9 @@ const errorText = document.getElementById('error-text');
 const modeClassicBtn = document.getElementById('mode-classic');
 const modeOpenAIBtn = document.getElementById('mode-openai');
 const modeOnChainBtn = document.getElementById('mode-onchain');
-const modeButtons = [modeClassicBtn, modeOpenAIBtn, modeOnChainBtn];
+const modeDfinityBtn = document.getElementById('mode-dfinity');
+const modeNote = document.getElementById('mode-note');
+const modeButtons = [modeClassicBtn, modeOpenAIBtn, modeOnChainBtn, modeDfinityBtn];
 
 // Backend canister ID - hardcoded for this deployment
 // Note: canisterId in URL is for frontend asset routing, NOT the backend
@@ -142,6 +147,10 @@ function getHost() {
   
   // Production: use IC gateway
   return 'https://ic0.app';
+}
+
+function isLocalHost(host) {
+  return host.includes('127.0.0.1') || host.includes('localhost');
 }
 
 // Initialize the ICP agent
@@ -190,7 +199,9 @@ async function initAgent() {
     try {
       inferenceStatus = await actor.get_inference_status();
       // Extract the mode variant name
-      if (inferenceStatus.current_mode.OpenAI !== undefined) {
+      if (inferenceStatus.current_mode.DfinityLLM !== undefined) {
+        inferenceMode = 'DfinityLLM';
+      } else if (inferenceStatus.current_mode.OpenAI !== undefined) {
         inferenceMode = 'OpenAI';
       } else if (inferenceStatus.current_mode.OnChainLLM !== undefined) {
         inferenceMode = 'OnChainLLM';
@@ -212,13 +223,25 @@ async function initAgent() {
     
     // Update status text
     updateStatusText();
+
+    // If on local replica, mark DFINITY as mainnet-only
+    if (isLocalHost(host)) {
+      if (modeNote) modeNote.hidden = false;
+      if (modeDfinityBtn) {
+        modeDfinityBtn.classList.add('local-only');
+        modeDfinityBtn.title = 'DFINITY LLM is available on mainnet only';
+      }
+    }
     messageInput.placeholder = 'Send a message...';
     messageInput.disabled = false;
     sendButton.disabled = false;
     
     // Add welcome message based on mode
     let welcomeMsg;
-    if (inferenceMode === 'OpenAI') {
+    if (inferenceMode === 'DfinityLLM') {
+      const model = inferenceStatus?.dfinity_llm_model?.[0] || 'Llama 3.1 8B';
+      welcomeMsg = `Hello! I'm ${agentName}, powered by ${model} on the DFINITY LLM canister. This is FREE and managed by DFINITY. How can I help you?`;
+    } else if (inferenceMode === 'OpenAI') {
       welcomeMsg = `Hello! I'm ${agentName}, powered by GPT-4o running on the Internet Computer. How can I help you today?`;
     } else if (inferenceMode === 'OnChainLLM') {
       const model = inferenceStatus?.onchain_llm_model?.[0] || 'Qwen';
@@ -313,27 +336,44 @@ document.getElementById('error-close-btn').addEventListener('click', hideError);
 function updateModeSwitcher() {
   // Reset all buttons
   modeButtons.forEach(btn => {
-    btn.classList.remove('active', 'switching');
-    btn.disabled = true;
+    if (btn) {
+      btn.classList.remove('active', 'switching');
+      btn.disabled = true;
+    }
   });
-  
+
   // Enable buttons based on what's available
   if (inferenceStatus) {
-    modeClassicBtn.disabled = !inferenceStatus.eliza_classic_ready;
-    modeOpenAIBtn.disabled = !inferenceStatus.openai_configured;
-    modeOnChainBtn.disabled = !inferenceStatus.onchain_llm_configured;
-    
+    if (modeClassicBtn) modeClassicBtn.disabled = !inferenceStatus.eliza_classic_ready;
+    if (modeOpenAIBtn) modeOpenAIBtn.disabled = !inferenceStatus.openai_configured;
+    if (modeOnChainBtn) modeOnChainBtn.disabled = !inferenceStatus.onchain_llm_configured;
+    if (modeDfinityBtn) {
+      const host = getHost();
+      const local = isLocalHost(host);
+      // DFINITY LLM is mainnet-only; disable on local replicas
+      modeDfinityBtn.disabled = local || !inferenceStatus.dfinity_llm_enabled;
+      if (local) {
+        modeDfinityBtn.classList.add('local-only');
+      }
+    }
+
     // Show model name on on-chain button
-    if (inferenceStatus.onchain_llm_model?.[0]) {
+    if (modeOnChainBtn && inferenceStatus.onchain_llm_model?.[0]) {
       modeOnChainBtn.textContent = inferenceStatus.onchain_llm_model[0];
     }
+    
+    // Show model name on DFINITY button
+    if (modeDfinityBtn && inferenceStatus.dfinity_llm_model?.[0]) {
+      modeDfinityBtn.textContent = inferenceStatus.dfinity_llm_model[0];
+    }
   }
-  
+
   // Highlight active mode
   const modeMap = {
     'ElizaClassic': modeClassicBtn,
     'OpenAI': modeOpenAIBtn,
     'OnChainLLM': modeOnChainBtn,
+    'DfinityLLM': modeDfinityBtn,
   };
   const activeBtn = modeMap[inferenceMode];
   if (activeBtn) {
@@ -344,24 +384,34 @@ function updateModeSwitcher() {
 // Switch inference mode
 async function switchMode(newMode) {
   if (isLoading || !actor || inferenceMode === newMode) return;
-  
+  if (newMode === 'DfinityLLM') {
+    const host = getHost();
+    if (isLocalHost(host)) {
+      showError('DFINITY LLM is available on mainnet only.');
+      return;
+    }
+  }
+
   // Find the button and show switching state
   const modeMap = {
     'ElizaClassic': modeClassicBtn,
     'OpenAI': modeOpenAIBtn,
     'OnChainLLM': modeOnChainBtn,
+    'DfinityLLM': modeDfinityBtn,
   };
   const targetBtn = modeMap[newMode];
-  
+
   try {
     // Disable all buttons during switch
     modeButtons.forEach(btn => {
-      btn.disabled = true;
-      btn.classList.remove('active');
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.remove('active');
+      }
     });
-    targetBtn.classList.add('switching');
+    if (targetBtn) targetBtn.classList.add('switching');
     statusText.textContent = `Switching to ${newMode}...`;
-    
+
     // Build the mode variant for Candid
     let modeVariant;
     if (newMode === 'ElizaClassic') {
@@ -370,6 +420,8 @@ async function switchMode(newMode) {
       modeVariant = { OpenAI: null };
     } else if (newMode === 'OnChainLLM') {
       modeVariant = { OnChainLLM: null };
+    } else if (newMode === 'DfinityLLM') {
+      modeVariant = { DfinityLLM: null };
     }
     
     const result = await actor.set_inference_mode(modeVariant);
@@ -393,6 +445,7 @@ async function switchMode(newMode) {
       'ElizaClassic': 'ELIZA Classic (pattern matching)',
       'OpenAI': 'GPT-4o (OpenAI)',
       'OnChainLLM': `On-Chain LLM (${inferenceStatus?.onchain_llm_model?.[0] || 'local model'})`,
+      'DfinityLLM': `DFINITY LLM (${inferenceStatus?.dfinity_llm_model?.[0] || 'Llama 3.1 8B'}) - FREE!`,
     };
     addMessage('assistant', `Switched to ${modeNames[newMode]}. How can I help you?`);
     
@@ -410,7 +463,8 @@ function updateStatusText() {
   const modeBadges = {
     'ElizaClassic': '(Classic)',
     'OpenAI': '(GPT-4o)',
-    'OnChainLLM': `(On-Chain${inferenceStatus?.onchain_llm_model?.[0] ? ` ${inferenceStatus.onchain_llm_model[0]}` : ''})`
+    'OnChainLLM': `(On-Chain${inferenceStatus?.onchain_llm_model?.[0] ? ` ${inferenceStatus.onchain_llm_model[0]}` : ''})`,
+    'DfinityLLM': `(DFINITY${inferenceStatus?.dfinity_llm_model?.[0] ? ` ${inferenceStatus.dfinity_llm_model[0]}` : ' Llama 3.1'})`
   };
   const modelBadge = modeBadges[inferenceMode] || '(Classic)';
   statusText.textContent = `${agentName} Online ${modelBadge}`;
@@ -420,6 +474,7 @@ function updateStatusText() {
 modeClassicBtn.addEventListener('click', () => switchMode('ElizaClassic'));
 modeOpenAIBtn.addEventListener('click', () => switchMode('OpenAI'));
 modeOnChainBtn.addEventListener('click', () => switchMode('OnChainLLM'));
+if (modeDfinityBtn) modeDfinityBtn.addEventListener('click', () => switchMode('DfinityLLM'));
 
 // Handle form submit
 async function handleSubmit(e) {

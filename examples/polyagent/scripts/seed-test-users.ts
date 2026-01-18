@@ -10,7 +10,7 @@
  *   bun run scripts/seed-test-users.ts
  */
 
-import { closeDatabase, db, generateSnowflakeId } from '@babylon/db';
+import { closeDatabase, db, generateSnowflakeId } from '@polyagent/db';
 
 const TEST_USERS = [
   {

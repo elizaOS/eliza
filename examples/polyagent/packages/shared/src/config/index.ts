@@ -1,5 +1,5 @@
 /**
- * Canonical Public Configuration for Babylon
+ * Canonical Public Configuration for Polyagent
  *
  * Environment-aware configuration for contract addresses and endpoints.
  * Import this instead of reading from environment variables.
@@ -21,7 +21,7 @@ export interface CoreContractAddresses {
 }
 
 export interface LocalContractAddresses extends CoreContractAddresses {
-  babylonOracle: Address;
+  polyagentOracle: Address;
 }
 
 export interface NetworkConfig {

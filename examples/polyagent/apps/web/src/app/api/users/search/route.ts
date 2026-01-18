@@ -105,14 +105,14 @@
  * @see {@link /src/components/MentionAutocomplete} Autocomplete UI
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
+import { authenticate, successResponse, withErrorHandling } from '@polyagent/api';
 import {
   asUser,
   getBlockedByUserIds,
   getBlockedUserIds,
   getMutedUserIds,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@polyagent/db';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 
 /**

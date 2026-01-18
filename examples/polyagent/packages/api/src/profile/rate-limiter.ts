@@ -15,8 +15,8 @@ import {
   gte,
   profileUpdateLogs,
   sql,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@polyagent/db';
+import { generateSnowflakeId, logger } from '@polyagent/shared';
 
 interface RateLimitConfig {
   maxUpdatesPerDay: number;

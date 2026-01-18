@@ -13,8 +13,8 @@ import {
   hasBlocked,
   notifications,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@polyagent/db';
+import { generateSnowflakeId, logger } from '@polyagent/shared';
 
 export type NotificationType =
   | 'comment'
@@ -408,12 +408,12 @@ export async function notifyMention(
  */
 export async function notifyNewAccount(userId: string): Promise<void> {
   const message =
-    '🎉 Welcome to Babylon! Edit your profile details to earn free points and unlock rewards.';
+    '🎉 Welcome to Polyagent! Edit your profile details to earn free points and unlock rewards.';
 
   await createNotification({
     userId,
     type: 'system',
-    title: 'Welcome to Babylon',
+    title: 'Welcome to Polyagent',
     message,
   });
 }

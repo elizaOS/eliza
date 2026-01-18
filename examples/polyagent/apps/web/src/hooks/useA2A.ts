@@ -1,7 +1,7 @@
 /**
  * React hook for A2A (Agent-to-Agent) protocol utilities.
  *
- * Provides access to both custom Babylon methods and official A2A protocol
+ * Provides access to both custom Polyagent methods and official A2A protocol
  * functionality. The A2A protocol enables agents to communicate and coordinate
  * with each other through standardized message passing.
  *

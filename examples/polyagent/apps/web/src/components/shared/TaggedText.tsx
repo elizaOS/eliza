@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@polyagent/shared';
 
 /**
  * Tagged text component for parsing and highlighting social tags.

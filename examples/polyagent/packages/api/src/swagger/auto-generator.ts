@@ -43,7 +43,7 @@ interface OpenAPISpec {
  *
  * @example
  * ```typescript
- * import { generateAutoSpec } from '@babylon/api';
+ * import { generateAutoSpec } from '@polyagent/api';
  *
  * const spec = generateAutoSpec();
  * console.log(spec.paths); // All documented paths

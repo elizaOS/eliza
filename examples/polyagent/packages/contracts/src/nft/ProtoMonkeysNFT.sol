@@ -9,8 +9,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 /**
  * @title ProtoMonkeysNFT
- * @author Babylon Team
- * @notice ERC-721 NFT collection with signature-gated minting for Babylon's top 100 users
+ * @author Polyagent Team
+ * @notice ERC-721 NFT collection with signature-gated minting for Polyagent's top 100 users
  * @dev Uses ECDSA signatures for off-chain eligibility verification
  *
  * The mint flow:

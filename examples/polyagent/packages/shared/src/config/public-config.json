@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "description": "Canonical public configuration for Babylon",
+  "description": "Canonical public configuration for Polyagent",
 
   "networks": {
     "local": {
@@ -13,7 +13,7 @@
         "reputationSystem": "0x9A676e781A523b5d0C0e43731313A708CB607508",
         "predictionMarketFacet": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
         "oracleFacet": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
-        "babylonOracle": "0xc6e7DF5E7b4f2A278906862b61205850344D4e7d"
+        "polyagentOracle": "0xc6e7DF5E7b4f2A278906862b61205850344D4e7d"
       }
     },
     "baseSepolia": {
@@ -54,17 +54,17 @@
     "staging": {
       "network": "baseSepolia",
       "endpoints": {
-        "apiBaseUrl": "https://staging.babylon.market/api",
-        "a2aEndpoint": "wss://staging.babylon.market/ws/a2a",
-        "mcpEndpoint": "https://staging.babylon.market/mcp"
+        "apiBaseUrl": "https://staging.polyagent.market/api",
+        "a2aEndpoint": "wss://staging.polyagent.market/ws/a2a",
+        "mcpEndpoint": "https://staging.polyagent.market/mcp"
       }
     },
     "production": {
       "network": "base",
       "endpoints": {
-        "apiBaseUrl": "https://babylon.market/api",
-        "a2aEndpoint": "wss://babylon.market/ws/a2a",
-        "mcpEndpoint": "https://babylon.market/mcp"
+        "apiBaseUrl": "https://polyagent.market/api",
+        "a2aEndpoint": "wss://polyagent.market/ws/a2a",
+        "mcpEndpoint": "https://polyagent.market/mcp"
       }
     }
   }

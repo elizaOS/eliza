@@ -11,7 +11,7 @@ import "../core/ReferralSystemFacet.sol";
 import "../libraries/LibDiamond.sol";
 import "../identity/ERC8004IdentityRegistry.sol";
 import "../identity/ERC8004ReputationSystem.sol";
-import "../src/game/BabylonGameOracle.sol";
+import "../src/game/PolyagentGameOracle.sol";
 
 /// @title FuzzTests
 /// @notice Comprehensive fuzz testing for all contracts
@@ -25,7 +25,7 @@ contract FuzzTests is Test {
     ReferralSystemFacet referralSystemFacet;
     ERC8004IdentityRegistry identityRegistry;
     ERC8004ReputationSystem reputationSystem;
-    BabylonGameOracle babylonOracle;
+    PolyagentGameOracle polyagentOracle;
 
     address owner;
     address user1;
@@ -62,7 +62,7 @@ contract FuzzTests is Test {
         reputationSystem = new ERC8004ReputationSystem(address(identityRegistry));
 
         // Deploy oracle
-        babylonOracle = new BabylonGameOracle(gameServer);
+        polyagentOracle = new PolyagentGameOracle(gameServer);
     }
 
     function _setupDiamondFacets() internal {
@@ -254,7 +254,7 @@ contract FuzzTests is Test {
         assertEq(storedRating, rating);
     }
 
-    // ============ BabylonGameOracle Fuzz Tests ============
+    // ============ PolyagentGameOracle Fuzz Tests ============
 
     /// @notice Fuzz test for commitment generation and verification
     function testFuzz_OracleCommitReveal(bool outcome, bytes32 salt) public {
@@ -264,7 +264,7 @@ contract FuzzTests is Test {
         string memory questionId = string(abi.encodePacked("fuzz-q-", uint256(salt)));
         
         vm.prank(gameServer);
-        bytes32 sessionId = babylonOracle.commitBabylonGame(
+        bytes32 sessionId = polyagentOracle.commitPolyagentGame(
             questionId,
             1,
             "Fuzz test question?",
@@ -272,13 +272,13 @@ contract FuzzTests is Test {
             "test"
         );
 
-        assertTrue(babylonOracle.commitments(commitment));
+        assertTrue(polyagentOracle.commitments(commitment));
 
         address[] memory winners = new address[](0);
         vm.prank(gameServer);
-        babylonOracle.revealBabylonGame(sessionId, outcome, salt, "", winners, 0);
+        polyagentOracle.revealPolyagentGame(sessionId, outcome, salt, "", winners, 0);
 
-        (bool storedOutcome, bool finalized) = babylonOracle.getOutcome(sessionId);
+        (bool storedOutcome, bool finalized) = polyagentOracle.getOutcome(sessionId);
         assertTrue(finalized);
         assertEq(storedOutcome, outcome);
     }

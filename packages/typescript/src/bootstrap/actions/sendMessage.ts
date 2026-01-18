@@ -446,7 +446,7 @@ export const sendMessageAction: Action = {
         values: {
           success: true,
           targetType: "user",
-          targetId: targetEntity.id ?? null,
+          target: targetEntity.id ?? null,
           targetName: targetEntity.names[0] ?? null,
           source,
           messageSent: true,
@@ -454,7 +454,7 @@ export const sendMessageAction: Action = {
         data: {
           actionName: "SEND_MESSAGE",
           targetType: "user",
-          targetId: targetEntity.id ?? null,
+          target: targetEntity.id ?? null,
           targetName: targetEntity.names[0] ?? null,
           source,
           messageContent: messageText ?? null,
@@ -556,7 +556,7 @@ export const sendMessageAction: Action = {
         values: {
           success: true,
           targetType: "room",
-          targetId: targetRoom.id ?? null,
+          target: targetRoom.id ?? null,
           targetName: targetRoom.name ?? null,
           source,
           messageSent: true,
@@ -564,7 +564,7 @@ export const sendMessageAction: Action = {
         data: {
           actionName: "SEND_MESSAGE",
           targetType: "room",
-          targetId: targetRoom.id ?? null,
+          target: targetRoom.id ?? null,
           targetName: targetRoom.name ?? null,
           source,
           messageContent: messageText ?? null,

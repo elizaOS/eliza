@@ -16,7 +16,7 @@ import { users } from './users';
  * NFT Collection - Stores metadata for each NFT in the collection
  *
  * This table caches NFT metadata from IPFS for faster queries.
- * Each record represents one NFT in the Babylon Top 100 collection.
+ * Each record represents one NFT in the Polyagent Top 100 collection.
  */
 export const nftCollection = pgTable(
   'NftCollection',

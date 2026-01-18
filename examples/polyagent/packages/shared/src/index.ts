@@ -1,13 +1,13 @@
 /**
- * @babylon/shared
+ * @polyagent/shared
  *
- * Shared types, constants, and utilities for Babylon.
+ * Shared types, constants, and utilities for Polyagent.
  * This package exports only client-safe code that can run in the browser.
  *
- * For server-only utilities, import from @babylon/api:
- * - Storage: import { getStorageClient } from '@babylon/api'
- * - Monitoring: import { performanceMonitor } from '@babylon/api'
- * - Token counting: import { countTokens, countTokensSync } from '@babylon/api'
+ * For server-only utilities, import from @polyagent/api:
+ * - Storage: import { getStorageClient } from '@polyagent/api'
+ * - Monitoring: import { performanceMonitor } from '@polyagent/api'
+ * - Token counting: import { countTokens, countTokensSync } from '@polyagent/api'
  */
 
 // =============================================================================
@@ -118,9 +118,9 @@ export * from './share';
 export * from './config';
 
 // =============================================================================
-// NOT EXPORTED (Server-only modules - import from @babylon/api):
+// NOT EXPORTED (Server-only modules - import from @polyagent/api):
 // =============================================================================
-// - Token counting: import { countTokens, countTokensSync } from '@babylon/api'
-// - Storage: import { getStorageClient } from '@babylon/api'
-// - Monitoring: import { performanceMonitor } from '@babylon/api'
-// - Rate limiting (user-level): import { checkRateLimit, RATE_LIMIT_CONFIGS } from '@babylon/api'
+// - Token counting: import { countTokens, countTokensSync } from '@polyagent/api'
+// - Storage: import { getStorageClient } from '@polyagent/api'
+// - Monitoring: import { performanceMonitor } from '@polyagent/api'
+// - Rate limiting (user-level): import { checkRateLimit, RATE_LIMIT_CONFIGS } from '@polyagent/api'

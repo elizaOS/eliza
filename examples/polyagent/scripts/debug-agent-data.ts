@@ -4,8 +4,8 @@
  * Debug script to check agent data and trade records
  */
 
-import { db } from '@babylon/db';
-import { agentTrades, perpPositions, users } from '@babylon/db/schema';
+import { db } from '@polyagent/db';
+import { agentTrades, perpPositions, users } from '@polyagent/db/schema';
 import { desc, eq, sql } from 'drizzle-orm';
 
 async function debugAgentData() {

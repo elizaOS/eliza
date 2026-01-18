@@ -58,7 +58,7 @@
  * @see GDPR Article 20 - Right to data portability
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@babylon/api';
+import { authenticate, successResponse, withErrorHandling } from '@polyagent/api';
 import {
   agentPerformanceMetrics,
   balanceTransactions,
@@ -77,8 +77,8 @@ import {
   referrals,
   tradingFees,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from '@polyagent/db';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -402,7 +402,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Content-Disposition': `attachment; filename="babylon-data-export-${userId}-${Date.now()}.json"`,
+      'Content-Disposition': `attachment; filename="polyagent-data-export-${userId}-${Date.now()}.json"`,
     },
   });
 });

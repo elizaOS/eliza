@@ -1,4 +1,4 @@
-import { cn } from '@babylon/shared';
+import { cn } from '@polyagent/shared';
 
 /**
  * Props for the VerifiedBadge component.

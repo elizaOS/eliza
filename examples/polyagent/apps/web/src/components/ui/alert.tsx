@@ -1,4 +1,4 @@
-import { cn } from '@babylon/shared';
+import { cn } from '@polyagent/shared';
 import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
 

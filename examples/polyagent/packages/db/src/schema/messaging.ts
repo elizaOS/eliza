@@ -413,4 +413,4 @@ export type GroupType = 'user' | 'npc' | 'agent';
 export type GroupMemberRole = 'owner' | 'admin' | 'member';
 export type GroupInviteStatus = 'pending' | 'accepted' | 'declined';
 export type MessageType = 'user' | 'system';
-// TierLevel is exported from @babylon/shared - use that canonical definition
+// TierLevel is exported from @polyagent/shared - use that canonical definition

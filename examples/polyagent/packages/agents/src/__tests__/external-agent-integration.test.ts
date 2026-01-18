@@ -32,7 +32,7 @@ const mockFetchFn = mock<
 global.fetch = mockFetchFn;
 
 // Mock database
-mock.module('@babylon/db', () => ({
+mock.module('@polyagent/db', () => ({
   db: {
     externalAgentConnection: {
       findMany: mock(() => Promise.resolve([])),

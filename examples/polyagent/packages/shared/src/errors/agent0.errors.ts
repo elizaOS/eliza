@@ -1,7 +1,7 @@
 /**
  * Agent0 Integration Error Classes
  *
- * Structured error types for Agent0 SDK operations extending BabylonError system
+ * Structured error types for Agent0 SDK operations extending PolyagentError system
  */
 
 import { ExternalServiceError, RateLimitError } from './base.errors';

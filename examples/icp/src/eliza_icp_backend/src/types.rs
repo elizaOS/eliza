@@ -182,11 +182,62 @@ pub enum InferenceMode {
     OpenAI,
     /// On-chain LLM via llama_cpp_canister (slower, costs cycles only, fully decentralized)
     OnChainLLM,
+    /// DFINITY LLM canister - Llama 3.1 8B / Qwen3 32B (fast, free, managed by DFINITY)
+    DfinityLLM,
 }
 
 impl Default for InferenceMode {
     fn default() -> Self {
         InferenceMode::ElizaClassic
+    }
+}
+
+// ========== DFINITY LLM Configuration ==========
+
+/// Available models on the DFINITY LLM canister
+#[derive(Debug, Clone, CandidType, Serialize, Deserialize, PartialEq)]
+pub enum DfinityLLMModel {
+    /// Llama 3.1 8B - fast, general purpose
+    Llama3_1_8B,
+    /// Qwen3 32B - larger, more capable
+    Qwen3_32B,
+    /// Llama 4 Scout - newer model
+    Llama4Scout,
+}
+
+impl Default for DfinityLLMModel {
+    fn default() -> Self {
+        DfinityLLMModel::Llama3_1_8B
+    }
+}
+
+impl std::fmt::Display for DfinityLLMModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DfinityLLMModel::Llama3_1_8B => write!(f, "Llama 3.1 8B"),
+            DfinityLLMModel::Qwen3_32B => write!(f, "Qwen3 32B"),
+            DfinityLLMModel::Llama4Scout => write!(f, "Llama 4 Scout"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, CandidType, Serialize, Deserialize)]
+pub struct DfinityLLMConfig {
+    /// Which model to use
+    pub model: DfinityLLMModel,
+    /// System prompt to set the AI's behavior
+    pub system_prompt: Option<String>,
+    /// Whether this mode is enabled
+    pub enabled: bool,
+}
+
+impl Default for DfinityLLMConfig {
+    fn default() -> Self {
+        Self {
+            model: DfinityLLMModel::Llama3_1_8B,
+            system_prompt: None,
+            enabled: true, // Available by default - it's free!
+        }
     }
 }
 
@@ -237,6 +288,9 @@ pub struct InferenceStatus {
     pub onchain_llm_configured: bool,
     pub onchain_llm_canister_id: Option<String>,
     pub onchain_llm_model: Option<String>,
+    /// DFINITY LLM canister (always available - it's free!)
+    pub dfinity_llm_enabled: bool,
+    pub dfinity_llm_model: Option<String>,
 }
 
 // ========== OpenAI Configuration ==========

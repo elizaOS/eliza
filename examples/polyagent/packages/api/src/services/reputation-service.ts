@@ -5,13 +5,13 @@
  * outcomes. Winners get +10 reputation, losers get -5 reputation.
  */
 
-import { db, eq, inArray, positions, users } from '@babylon/db';
+import { db, eq, inArray, positions, users } from '@polyagent/db';
 import {
   getCurrentRpcUrl,
   logger,
   REPUTATION_SYSTEM_ABI,
   REPUTATION_SYSTEM_BASE_SEPOLIA,
-} from '@babylon/shared';
+} from '@polyagent/shared';
 import {
   type Address,
   createPublicClient,

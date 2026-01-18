@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@polyagent/shared';
 import type { MarketTab } from '@/types/markets';
 
 // Re-export for backwards compatibility

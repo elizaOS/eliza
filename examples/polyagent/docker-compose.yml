@@ -1,14 +1,14 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: babylon-postgres
+    container_name: polyagent-postgres
     restart: unless-stopped
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_USER: babylon
-      POSTGRES_PASSWORD: babylon_dev_password
-      POSTGRES_DB: babylon
+      POSTGRES_USER: polyagent
+      POSTGRES_PASSWORD: polyagent_dev_password
+      POSTGRES_DB: polyagent
       PGDATA: /var/lib/postgresql/data/pgdata
     command: >
       postgres
@@ -39,19 +39,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U babylon"]
+      test: ["CMD-SHELL", "pg_isready -U polyagent"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   pgbouncer:
     image: edoburu/pgbouncer:latest
-    container_name: babylon-pgbouncer
+    container_name: polyagent-pgbouncer
     restart: unless-stopped
     ports:
       - "6432:5432"
     environment:
-      DATABASE_URL: "postgresql://babylon:babylon_dev_password@postgres:5432/babylon"
+      DATABASE_URL: "postgresql://polyagent:polyagent_dev_password@postgres:5432/polyagent"
       POOL_MODE: transaction
       # Client-side settings (what connects to PgBouncer)
       MAX_CLIENT_CONN: 10000
@@ -78,14 +78,14 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "babylon"]
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "polyagent"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: babylon-redis
+    container_name: polyagent-redis
     restart: unless-stopped
     ports:
       - "6380:6379"
@@ -111,14 +111,14 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: babylon-minio
+    container_name: polyagent-minio
     restart: unless-stopped
     ports:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: babylon
-      MINIO_ROOT_PASSWORD: babylon_dev_password
+      MINIO_ROOT_USER: polyagent
+      MINIO_ROOT_PASSWORD: polyagent_dev_password
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"

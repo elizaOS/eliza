@@ -38,7 +38,7 @@ contract ERC8004IdentityRegistry is ERC721, Ownable {
     event Agent0Linked(uint256 indexed tokenId, uint256 indexed agent0ChainId, uint256 indexed agent0TokenId);
     event Agent0Unlinked(uint256 indexed tokenId);
 
-    constructor() ERC721("BabylonAgent", "BAGENT") Ownable(msg.sender) {}
+    constructor() ERC721("PolyagentAgent", "BAGENT") Ownable(msg.sender) {}
 
     /// @notice Register a new AI agent
     /// @param _name Agent name

@@ -1,7 +1,7 @@
 /**
  * Agent Authentication Utilities
  *
- * @description Provides session management and verification for Babylon agents.
+ * @description Provides session management and verification for Polyagent agents.
  * Supports both Redis-backed sessions (production) and in-memory sessions (development).
  * Sessions expire after 24 hours and are automatically cleaned up. Used for authenticating
  * external agents and cron jobs.
@@ -46,7 +46,7 @@ const agentSessions = new Map<string, AgentSession>();
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
 const SESSION_PREFIX = 'agent:session:';
 const useRedis = isRedisAvailable() && redis !== null;
-const DEFAULT_TEST_AGENT_ID = 'babylon-agent-alice';
+const DEFAULT_TEST_AGENT_ID = 'polyagent-agent-alice';
 const isProduction = process.env.NODE_ENV === 'production';
 
 /**
@@ -86,7 +86,7 @@ export function cleanupExpiredSessions(): void {
  * Verify agent credentials against environment configuration
  *
  * @description Verifies agent credentials by comparing against environment
- * variables (BABYLON_AGENT_ID and CRON_SECRET). Used during initial authentication
+ * variables (POLYAGENT_AGENT_ID and CRON_SECRET). Used during initial authentication
  * before creating a session.
  *
  * @param {string} agentId - Agent ID to verify
@@ -106,7 +106,7 @@ export function verifyAgentCredentials(
 ): boolean {
   // Get configured agent credentials from environment
   const configuredAgentId =
-    process.env.BABYLON_AGENT_ID ??
+    process.env.POLYAGENT_AGENT_ID ??
     (!isProduction ? DEFAULT_TEST_AGENT_ID : undefined);
   const configuredAgentSecret = process.env.CRON_SECRET;
 
@@ -121,7 +121,7 @@ export function verifyAgentCredentials(
 
   if (!configuredAgentId) {
     logger.error(
-      'BABYLON_AGENT_ID must be configured in production environments',
+      'POLYAGENT_AGENT_ID must be configured in production environments',
       undefined,
       'AgentAuth'
     );

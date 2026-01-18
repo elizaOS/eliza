@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@babylon/shared';
+import { cn } from '@polyagent/shared';
 import { Shield, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 

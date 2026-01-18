@@ -1,5 +1,5 @@
 /**
- * Type definitions for Babylon Agent System
+ * Type definitions for Polyagent Agent System
  */
 
 import type { Character } from '@elizaos/core';

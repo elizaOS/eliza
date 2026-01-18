@@ -1,5 +1,5 @@
 /**
- * A2A Protocol Type Definitions for @babylon/agents
+ * A2A Protocol Type Definitions for @polyagent/agents
  *
  * Agent-to-Agent communication types following JSON-RPC 2.0 spec
  */

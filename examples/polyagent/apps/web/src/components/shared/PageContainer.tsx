@@ -1,4 +1,4 @@
-import { cn } from '@babylon/shared';
+import { cn } from '@polyagent/shared';
 import type { ReactNode } from 'react';
 import { forwardRef } from 'react';
 

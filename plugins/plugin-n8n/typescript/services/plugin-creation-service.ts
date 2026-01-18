@@ -402,7 +402,7 @@ export class PluginCreationService extends Service {
         dev: "tsc --watch",
       },
       dependencies: {
-        "@elizaos/core": "^1.0.0",
+        "@elizaos/core": "^2.0.0",
         ...job.specification.dependencies,
       },
       devDependencies: {

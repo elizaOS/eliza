@@ -1,5 +1,5 @@
 /**
- * NFT Types for Babylon Top 100 Collection
+ * NFT Types for Polyagent Top 100 Collection
  *
  * These types define the structure for NFT data throughout the application,
  * including gallery display, mint flow, and API responses.
@@ -62,7 +62,7 @@ export interface NftOwnerInfo {
 }
 
 /**
- * Linked Babylon user info
+ * Linked Polyagent user info
  */
 export interface NftUserInfo {
   id: string;

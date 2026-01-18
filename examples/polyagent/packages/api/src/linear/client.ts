@@ -2,7 +2,7 @@
  * Linear GraphQL API client for creating issues from feedback.
  */
 
-import { logger } from '@babylon/shared';
+import { logger } from '@polyagent/shared';
 import { GraphQLClient } from 'graphql-request';
 
 const LINEAR_API_URL = 'https://api.linear.app/graphql';

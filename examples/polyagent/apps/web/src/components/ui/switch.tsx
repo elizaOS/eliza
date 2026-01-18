@@ -1,4 +1,4 @@
-import { cn } from '@babylon/shared';
+import { cn } from '@polyagent/shared';
 import * as SwitchPrimitives from '@radix-ui/react-switch';
 import * as React from 'react';
 

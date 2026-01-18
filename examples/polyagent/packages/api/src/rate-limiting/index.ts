@@ -22,7 +22,7 @@ export {
   duplicateContentError,
   rateLimitError,
 } from './middleware';
-// Rate limiting (moved from @babylon/shared)
+// Rate limiting (moved from @polyagent/shared)
 // Redis-backed for production serverless, with in-memory fallback
 export {
   checkRateLimit,

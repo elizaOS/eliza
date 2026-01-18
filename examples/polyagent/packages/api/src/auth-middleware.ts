@@ -6,8 +6,8 @@
  * helper functions for authentication, optional authentication, and error responses.
  */
 
-import { db, eq, users } from '@babylon/db';
-import type { AuthenticatedUser } from '@babylon/shared';
+import { db, eq, users } from '@polyagent/db';
+import type { AuthenticatedUser } from '@polyagent/shared';
 import { PrivyClient } from '@privy-io/server-auth';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
@@ -15,8 +15,8 @@ import { verifyAgentSession } from './agent-auth';
 import { AuthenticationError, isAuthenticationError } from './errors';
 
 // Re-export types from shared for backwards compatibility
-export type { AuthenticatedUser } from '@babylon/shared';
-export { extractErrorMessage } from '@babylon/shared';
+export type { AuthenticatedUser } from '@polyagent/shared';
+export { extractErrorMessage } from '@polyagent/shared';
 
 // Re-export from errors for backwards compatibility
 export { AuthenticationError, isAuthenticationError };

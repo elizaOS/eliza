@@ -17,7 +17,7 @@ describe('JSON Storage Backend', () => {
   beforeEach(async () => {
     // Use random suffix to avoid state collision
     await initializeJsonMode(
-      '/tmp/babylon-test-' +
+      '/tmp/polyagent-test-' +
         Date.now() +
         '-' +
         Math.random().toString(36).slice(2)
@@ -345,7 +345,7 @@ describe('JSON Storage Backend', () => {
 
 describe('Question Arc Plans in JSON Mode', () => {
   beforeEach(async () => {
-    await initializeJsonMode('/tmp/babylon-arc-test-' + Date.now());
+    await initializeJsonMode('/tmp/polyagent-arc-test-' + Date.now());
   });
 
   afterEach(() => {
@@ -398,7 +398,7 @@ describe('Complex Queries in JSON Mode', () => {
   beforeEach(async () => {
     // Use random suffix to avoid state collision
     await initializeJsonMode(
-      '/tmp/babylon-complex-test-' +
+      '/tmp/polyagent-complex-test-' +
         Date.now() +
         '-' +
         Math.random().toString(36).slice(2)
@@ -622,7 +622,7 @@ describe('Snapshot Operations', () => {
 
   beforeEach(async () => {
     testDir =
-      '/tmp/babylon-snapshot-test-' +
+      '/tmp/polyagent-snapshot-test-' +
       Date.now() +
       '-' +
       Math.random().toString(36).slice(2);

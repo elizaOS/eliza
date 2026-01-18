@@ -9,7 +9,7 @@ import {LibDiamond} from "../libraries/LibDiamond.sol";
 /// @notice Facet for referral tracking and rewards
 /// @dev Implements multi-tier referral system with commission tracking
 contract ReferralSystemFacet is ReentrancyGuard {
-    bytes32 constant REFERRAL_STORAGE_POSITION = keccak256("babylon.referral.storage");
+    bytes32 constant REFERRAL_STORAGE_POSITION = keccak256("polyagent.referral.storage");
 
     struct ReferralData {
         address referrer; // Who referred this user

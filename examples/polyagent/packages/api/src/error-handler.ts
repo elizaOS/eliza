@@ -2,12 +2,12 @@
  * Global error handler and middleware for API routes
  */
 
-import { DatabaseError } from '@babylon/db';
-import { logger } from '@babylon/shared';
+import { DatabaseError } from '@polyagent/db';
+import { logger } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
-import { ApiError, BabylonError, isAuthenticationError } from './errors';
+import { ApiError, PolyagentError, isAuthenticationError } from './errors';
 import type { JsonValue } from './types';
 
 /**
@@ -143,7 +143,7 @@ export function errorHandler(
 
   // Handle client errors (4xx) at lower log level - these are expected behavior
   if (
-    error instanceof BabylonError &&
+    error instanceof PolyagentError &&
     error.statusCode >= 400 &&
     error.statusCode < 500
   ) {
@@ -169,7 +169,7 @@ export function errorHandler(
   // Skip tracking authentication errors, validation errors, and 4xx client errors as they're expected behavior
   const userId = request.headers.get('x-user-id') || null;
   const isClientError =
-    error instanceof BabylonError &&
+    error instanceof PolyagentError &&
     error.statusCode >= 400 &&
     error.statusCode < 500;
   if (
@@ -191,7 +191,7 @@ export function errorHandler(
     error instanceof Error &&
     !(error instanceof ZodError) &&
     !(
-      error instanceof BabylonError &&
+      error instanceof PolyagentError &&
       error.isOperational &&
       error.statusCode < 500
     ) &&
@@ -215,14 +215,14 @@ export function errorHandler(
     if (userId) {
       context.user = { id: userId };
     }
-    if (error instanceof BabylonError && error.context) {
+    if (error instanceof PolyagentError && error.context) {
       context.error = { context: error.context, code: error.code };
     }
     options.captureError(error, context);
   }
 
-  // Handle Babylon errors (our custom errors)
-  if (error instanceof BabylonError) {
+  // Handle Polyagent errors (our custom errors)
+  if (error instanceof PolyagentError) {
     const errorData: Record<string, JsonValue> = { error: error.message };
     if (error.context?.details) {
       errorData.details = error.context.details as JsonValue;

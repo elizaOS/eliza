@@ -4,7 +4,7 @@
  * API Fetch Options
  *
  * @description Extended fetch options with authentication and retry configuration.
- * Extends standard RequestInit with Babylon-specific options for cookie-based
+ * Extends standard RequestInit with Polyagent-specific options for cookie-based
  * authentication and 401 retry logic.
  *
  * With HTTP-only cookies enabled in Privy, authentication is handled via the

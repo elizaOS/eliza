@@ -1,6 +1,6 @@
 'use client';
 
-import { logger, privyConfig } from '@babylon/shared';
+import { logger, privyConfig } from '@polyagent/shared';
 import { type PrivyClientConfig, PrivyProvider } from '@privy-io/react-auth';
 import { SmartWalletsProvider } from '@privy-io/react-auth/smart-wallets';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

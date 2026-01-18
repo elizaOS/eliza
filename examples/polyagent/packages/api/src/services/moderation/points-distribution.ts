@@ -15,8 +15,8 @@ import {
   pointsTransactions,
   reports,
   users,
-} from '@babylon/db';
-import { generateSnowflakeId, logger } from '@babylon/shared';
+} from '@polyagent/db';
+import { generateSnowflakeId, logger } from '@polyagent/shared';
 
 /**
  * PointsService interface for dependency injection

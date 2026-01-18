@@ -7,13 +7,13 @@
  *
  * @example Frontend usage:
  * ```tsx
- * import { GROQ_MODELS } from '@babylon/shared';
+ * import { GROQ_MODELS } from '@polyagent/shared';
  * <span>{GROQ_MODELS.FREE.displayName}</span> // "Groq 8B"
  * ```
  *
  * @example Backend usage:
  * ```ts
- * import { GROQ_MODELS } from '@babylon/shared';
+ * import { GROQ_MODELS } from '@polyagent/shared';
  * const modelId = usePro ? GROQ_MODELS.PRO.modelId : GROQ_MODELS.FREE.modelId;
  * ```
  */

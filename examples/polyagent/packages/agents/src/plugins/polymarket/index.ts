@@ -1,8 +1,8 @@
 /**
- * Polymarket Plugin for Babylon Agent Manager
+ * Polymarket Plugin for Polyagent Agent Manager
  *
  * This plugin integrates the Polymarket prediction markets trading capabilities
- * into Babylon agents. It wraps the @elizaos/plugin-polymarket plugin and
+ * into Polyagent agents. It wraps the @elizaos/plugin-polymarket plugin and
  * provides agent-specific configuration.
  *
  * Features:
@@ -97,16 +97,16 @@ export async function waitForPolymarketService(
 }
 
 /**
- * Babylon Polymarket Plugin
+ * Polyagent Polymarket Plugin
  *
- * Provides Polymarket trading capabilities for Babylon agents.
+ * Provides Polymarket trading capabilities for Polyagent agents.
  * This is a wrapper around the core @elizaos/plugin-polymarket
  * with agent-specific configuration and initialization.
  */
-export const babylonPolymarketPlugin: Plugin = {
-  name: 'babylon-polymarket',
+export const polyagentPolymarketPlugin: Plugin = {
+  name: 'polyagent-polymarket',
   description:
-    'Polymarket prediction markets integration for Babylon agents. Enables autonomous trading, market research, and position management.',
+    'Polymarket prediction markets integration for Polyagent agents. Enables autonomous trading, market research, and position management.',
 
   config: {
     // Core Polymarket config (inherited from env)
@@ -125,7 +125,7 @@ export const babylonPolymarketPlugin: Plugin = {
   },
 
   async init(config: Record<string, string>, runtime?: IAgentRuntime) {
-    logger.info('[BabylonPolymarket] Initializing Polymarket plugin...');
+    logger.info('[PolyagentPolymarket] Initializing Polymarket plugin...');
 
     // Initialize the base polymarket plugin
     if (polymarketPlugin.init) {
@@ -133,7 +133,7 @@ export const babylonPolymarketPlugin: Plugin = {
     }
 
     logger.info(
-      '[BabylonPolymarket] Polymarket plugin initialized successfully'
+      '[PolyagentPolymarket] Polymarket plugin initialized successfully'
     );
   },
 
@@ -163,4 +163,4 @@ export const babylonPolymarketPlugin: Plugin = {
   evaluators: [],
 };
 
-export default babylonPolymarketPlugin;
+export default polyagentPolymarketPlugin;

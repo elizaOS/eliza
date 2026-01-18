@@ -1,5 +1,5 @@
 /**
- * Entity Types for @babylon/agents
+ * Entity Types for @polyagent/agents
  *
  * Types for entities that can be mentioned in messages
  */

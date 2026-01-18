@@ -110,15 +110,15 @@ export function findExternalWallet(
  */
 export const WALLET_ERROR_MESSAGES = {
   NO_EMBEDDED_WALLET:
-    'Your Babylon smart wallet is required for this action. Please wait for it to finish preparing.',
+    'Your Polyagent smart wallet is required for this action. Please wait for it to finish preparing.',
   EXTERNAL_WALLET_ONLY:
-    'You are connected with an external wallet. Please switch to your Babylon smart wallet to continue.',
+    'You are connected with an external wallet. Please switch to your Polyagent smart wallet to continue.',
   NO_WALLET: 'Please connect a wallet to continue.',
   SPONSOR_FAILED:
-    'Unable to sponsor this transaction. Make sure your Babylon smart wallet is active.',
+    'Unable to sponsor this transaction. Make sure your Polyagent smart wallet is active.',
   USER_REJECTED: 'Transaction was cancelled in your wallet.',
   INSUFFICIENT_FUNDS:
-    'Insufficient funds to cover gas. Use your Babylon smart wallet for sponsored transactions.',
+    'Insufficient funds to cover gas. Use your Polyagent smart wallet for sponsored transactions.',
 } as const;
 
 /**

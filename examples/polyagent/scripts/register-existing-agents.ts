@@ -8,9 +8,9 @@
  * the agent-tick cron job.
  */
 
-import { agentRegistry } from '@babylon/agents';
-import { db } from '@babylon/db';
-import { agentRegistries, users } from '@babylon/db/schema';
+import { agentRegistry } from '@polyagent/agents';
+import { db } from '@polyagent/db';
+import { agentRegistries, users } from '@polyagent/db/schema';
 import { eq } from 'drizzle-orm';
 
 async function registerExistingAgents() {
@@ -98,14 +98,14 @@ async function registerExistingAgents() {
           name: agentName,
           systemPrompt:
             agent.agentSystem ||
-            `You are ${agentName}, an autonomous AI agent on Babylon prediction market platform.`,
+            `You are ${agentName}, an autonomous AI agent on Polyagent prediction market platform.`,
           capabilities: {
             strategies,
             markets: ['prediction', 'perpetual', 'spot'],
             actions: actions.length > 0 ? actions : ['analyze_market'],
             version: '1.0.0',
             x402Support: true,
-            platform: 'babylon',
+            platform: 'polyagent',
             userType: 'user_controlled',
             skills: [],
             domains: [],

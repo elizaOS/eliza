@@ -82,9 +82,9 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
-import { db, eq, users } from '@babylon/db';
-import { logger, UserIdParamSchema } from '@babylon/shared';
+} from '@polyagent/api';
+import { db, eq, users } from '@polyagent/db';
+import { logger, UserIdParamSchema } from '@polyagent/shared';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 
