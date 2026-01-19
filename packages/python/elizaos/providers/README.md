@@ -1,40 +1,114 @@
-```markdown
-RLM Provider (prototype)
+# RLM Provider (Prototype)
 
-This directory contains a minimal RLM provider and client adapter for the Eliza Python core.
+This directory contains a **minimal Recursive Language Model (RLM) provider**
+for the **Eliza Python core**.
 
-Files:
-- providers/rlm_client.py - adapter that initializes and calls the AgentRLM RLM() object.
-- providers/rlm_provider.py - thin provider that maps Eliza params to the client.
-- providers/__init__.py - convenience exports.
+The goal of this provider is to make RLM usable as an **optional reasoning
+backend**, while Eliza remains responsible for memory, planning, tools,
+and agent autonomy.
 
+This implementation is intentionally lightweight and designed for
+early feedback and iteration.
 
-### RLM dependency
+---
 
-This provider integrates with an external Recursive Language Model (RLM)
-implementation inspired by the MIT CSAIL research by Alex Zhang et al.
+## Files
 
-Reference implementation:
+- `rlm_client.py`  
+  Thin adapter responsible for initializing and calling the RLM backend.
+  Handles safe fallback behavior when RLM is not installed.
+
+- `rlm_provider.py`  
+  Provider implementation that maps Eliza runtime parameters to the
+  RLM client interface.
+
+- `__init__.py`  
+  Convenience exports for provider registration.
+
+---
+
+## RLM Dependency
+
+This provider integrates with an **external Recursive Language Model (RLM)**
+implementation inspired by MIT CSAIL research by **Alex Zhang et al.**
+
+Reference implementation (upstream research repo):  
 https://github.com/alexzhang13/rlm
 
-This repository provides an application-layer integration and does not
-vendor or modify the original RLM implementation.
+Important notes:
 
+- This repository **does not vendor, fork, or modify** the original RLM code.
+- RLM is treated as an **optional dependency**.
+- If RLM is not installed or importable, the provider safely returns
+  stub responses instead of failing.
 
-Configuration (environment variables / config):
-- ELIZA_RLM_BACKEND: backend name (default "gemini")
-- ELIZA_RLM_ENV: environment string (default "local")
-- ELIZA_RLM_MAX_ITERATIONS, ELIZA_RLM_MAX_DEPTH, ELIZA_RLM_VERBOSE: control RLM initialization.
-- You can also pass config dict when constructing RLMClient or RLMProvider.
+This keeps the Eliza core decoupled from research-specific dependencies.
 
+---
 
-Reference implementation:
-https://github.com/alexzhang13/rlm
+## Configuration
 
-Notes:
-- The first PR should include these files with RLM calls guarded; if AgentRLM is not installed, the client returns a harmless stub response.
-- Follow-up work:
-  - Implement remote HTTP mode (if AgentRLM exposes a server).
-  - Implement streaming and token accounting.
-  - Add tests exercising real AgentRLM when available and CI helpers to set PYTHONPATH.
-```
+The RLM provider can be configured via environment variables or
+a config dictionary passed at initialization.
+
+### Environment variables
+
+- `ELIZA_RLM_BACKEND`  
+  Backend name (default: `gemini`)
+
+- `ELIZA_RLM_ENV`  
+  Runtime environment string (default: `local`)
+
+- `ELIZA_RLM_MAX_ITERATIONS`  
+  Maximum recursive iterations (default: `4`)
+
+- `ELIZA_RLM_MAX_DEPTH`  
+  Maximum recursion depth (default: `1`)
+
+- `ELIZA_RLM_VERBOSE`  
+  Enable verbose/debug output (`true` / `false`, default: `false`)
+
+### Programmatic configuration
+
+You may also pass a configuration dictionary when constructing
+`RLMClient` or `RLMProvider` to override environment defaults.
+
+---
+
+## Design Notes
+
+- Eliza owns **conversation state, memory, planning, and tools**
+- RLM only receives normalized messages and returns a response
+- No system prompts are injected automatically
+- No global mutable state is introduced
+- All inference is guarded to avoid runtime or CI failures
+
+This design keeps the provider **safe, optional, and non-invasive**.
+
+---
+
+## Status & Next Steps
+
+This provider is an **early-stage prototype**.
+
+Included in the initial PR:
+- Provider and client skeleton
+- Safe stub behavior when RLM is unavailable
+- Clear abstraction boundaries
+
+Planned follow-up work:
+- Remote HTTP inference mode (if RLM server is exposed)
+- Streaming support
+- Token accounting and metadata
+- Optional system-prompt handling
+- Expanded tests once RLM is available in CI
+
+---
+
+## Scope
+
+This provider is intended as an **application-layer integration**
+and **not** a reimplementation of the original RLM research framework.
+
+For full research context, benchmarks, and REPL tooling, refer to
+the upstream RLM repository linked above.
