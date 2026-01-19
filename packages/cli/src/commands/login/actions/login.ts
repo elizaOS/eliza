@@ -137,7 +137,7 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
     spinner.succeed('Authentication successful!');
 
     // Step 6: Write API key to .env file
-    await writeApiKeyToEnv(authResult.apiKey);
+    await writeApiKeyToEnv(authResult.apiKey, options.envFilePath);
 
     // Step 7: Display success message
     displaySuccessMessage(authResult);
@@ -159,13 +159,15 @@ function displayManualInstructions(authUrl: string): void {
 
 /**
  * Write API key to project .env file
+ * @param apiKey The API key to write
+ * @param envFilePath Optional path to the .env file (defaults to current directory)
  */
-async function writeApiKeyToEnv(apiKey: string): Promise<void> {
+async function writeApiKeyToEnv(apiKey: string, envFilePath?: string): Promise<void> {
   const spinner = ora('Saving API key to .env file...').start();
 
   try {
-    // Check for .env file in current directory
-    const envPath = path.join(process.cwd(), '.env');
+    // Use provided path or default to .env in current directory
+    const envPath = envFilePath || path.join(process.cwd(), '.env');
     let envVars: Record<string, string> = {};
 
     // Read existing .env file if it exists
