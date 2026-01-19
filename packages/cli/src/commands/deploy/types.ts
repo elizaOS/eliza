@@ -125,15 +125,6 @@ export interface QuotaInfo {
 }
 
 /**
- * Image upload response data
- */
-export interface ImageUploadData {
-  imageId: string;
-  digest: string;
-  size: number;
-}
-
-/**
  * Container data from API
  */
 export interface ContainerData {

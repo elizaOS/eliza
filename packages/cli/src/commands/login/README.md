@@ -66,7 +66,7 @@ sequenceDiagram
 The command writes the following variable to your project's `.env` file:
 
 ```bash
-ELIZAOS_CLOUD_API_KEY=eliza_<random_hex_string>
+ELIZAOS_API_KEY=eliza_<random_hex_string>
 ```
 
 You can also set a default cloud URL:
