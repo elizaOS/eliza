@@ -1264,6 +1264,7 @@ export async function promptAndStoreElizaCloudKey(envFilePath: string): Promise<
         cloudUrl,
         browser: true,
         timeout: '300',
+        envFilePath, // Pass the target .env path so it writes to the correct location
       });
 
       // After login, the API key should be in the .env file
