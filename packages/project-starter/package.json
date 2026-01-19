@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/project-starter",
   "description": "Project starter for elizaOS",
-  "version": "1.7.2-beta.0",
+  "version": "1.7.2-alpha.11",
   "type": "module",
   "main": "dist/src/index.js",
   "module": "dist/src/index.js",
@@ -39,7 +39,7 @@
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.10",
-    "zod": "^4.1.13"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/react": "^19.1.16",
