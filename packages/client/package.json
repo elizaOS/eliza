@@ -102,7 +102,7 @@
     "react-force-graph-2d": "^1.27.1",
     "react-joyride": "^2.9.3",
     "react-json-pretty": "^2.2.0",
-    "react-resizable-panels": "^4.4.1",
+    "react-resizable-panels": "^3.0.6",
     "react-router": "^7.3.0",
     "react-router-dom": "^7.3.0",
     "semver": "^7.7.1",

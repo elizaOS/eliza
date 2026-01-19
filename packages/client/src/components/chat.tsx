@@ -1675,14 +1675,12 @@ export default function Chat({
         ) : (
           /* Resizable panel layout for desktop mode */
           <ResizablePanelGroup
-            orientation="horizontal"
+            direction="horizontal"
             className="h-full flex-1 overflow-hidden"
-            onLayoutChange={(layout: { [panelId: string]: number }) => {
-              const mainSize = layout['main-panel'];
-              const sideSize = layout['sidebar-panel'];
-              if (mainSize !== undefined && sideSize !== undefined && showSidebar && !chatState.isMobile) {
-                setMainPanelSize(mainSize);
-                setSidebarPanelSize(sideSize);
+            onLayout={(sizes) => {
+              if (sizes.length >= 2 && showSidebar && !chatState.isMobile) {
+                setMainPanelSize(sizes[0]);
+                setSidebarPanelSize(sizes[1]);
               }
             }}
           >
