@@ -1,24 +1,71 @@
 {
   "$schema": "https://turborepo.org/schema.json",
+  "globalDependencies": ["tsconfig.json", "tsconfig.build.template.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
+      // WHY explicit inputs:
+      // By default, Turbo hashes ALL files to determine cache validity.
+      // This causes unnecessary rebuilds when unrelated files change (README, tests, etc).
+      // Listing only build-relevant files improves cache hit rates significantly.
+      "inputs": [
+        "src/**",
+        "package.json",
+        "tsconfig*.json",
+        "build.ts",
+        "tsup.config.ts",
+        "vite.config.ts",
+        "postcss.config.js",
+        "tailwind.config.ts",
+        "bunfig.toml",
+        "tsconfig.build.json",
+        "../../build-utils.ts"
+      ],
       "outputs": ["dist/**"]
     },
     "@elizaos/client#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
+      "inputs": [
+        "src/**",
+        "package.json",
+        "tsconfig*.json",
+        "vite.config.ts",
+        "postcss.config.js",
+        "tailwind.config.ts",
+        "bunfig.toml",
+        "index.html",
+        "../../build-utils.ts"
+      ],
       "outputs": ["dist/**"]
     },
     "@elizaos/cli#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
+      "inputs": [
+        "src/**",
+        "package.json",
+        "tsconfig*.json",
+        "build.ts",
+        "tsconfig.build.json",
+        "bunfig.toml",
+        "../../build-utils.ts"
+      ],
       "outputs": ["dist/**"]
     },
     "@elizaos/server#build": {
       "dependsOn": ["@elizaos/client#build", "^build"],
       "env": ["LOG_LEVEL"],
+      "inputs": [
+        "src/**",
+        "package.json",
+        "tsconfig*.json",
+        "build.ts",
+        "tsconfig.build.json",
+        "bunfig.toml",
+        "../../build-utils.ts"
+      ],
       "outputs": ["dist/**"]
     },
     "lint": {
