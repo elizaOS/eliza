@@ -79,7 +79,10 @@ describe('Plugin Environment Variable Filtering', () => {
         },
       };
 
-      fs.writeFileSync(path.join(nodeModulesPath, 'package.json'), JSON.stringify(packageJson, null, 2));
+      fs.writeFileSync(
+        path.join(nodeModulesPath, 'package.json'),
+        JSON.stringify(packageJson, null, 2)
+      );
 
       const result = scanPluginsForEnvDeclarations(tempDir);
 
@@ -103,7 +106,10 @@ describe('Plugin Environment Variable Filtering', () => {
         },
       };
 
-      fs.writeFileSync(path.join(nodeModulesPath, 'package.json'), JSON.stringify(packageJson, null, 2));
+      fs.writeFileSync(
+        path.join(nodeModulesPath, 'package.json'),
+        JSON.stringify(packageJson, null, 2)
+      );
 
       const result = scanPluginsForEnvDeclarations(tempDir);
 
@@ -342,7 +348,11 @@ describe('Plugin Environment Variable Filtering', () => {
           agentConfig: {
             pluginType: 'elizaos:plugin:1.0.0',
             pluginParameters: {
-              OPENROUTER_API_KEY: { type: 'string', description: 'OpenRouter API key', required: true },
+              OPENROUTER_API_KEY: {
+                type: 'string',
+                description: 'OpenRouter API key',
+                required: true,
+              },
             },
           },
         })

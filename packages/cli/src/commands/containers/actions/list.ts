@@ -57,7 +57,9 @@ export async function listContainersAction(options: ContainersOptions) {
 
     if (!containerResponse.ok) {
       const errorData = await containerResponse.json().catch(() => ({}));
-      throw new Error(errorData.error || `Failed to fetch containers: ${containerResponse.statusText}`);
+      throw new Error(
+        errorData.error || `Failed to fetch containers: ${containerResponse.statusText}`
+      );
     }
 
     const result = await containerResponse.json();
@@ -83,7 +85,9 @@ export async function listContainersAction(options: ContainersOptions) {
       console.log('                    BILLING SUMMARY                        ');
       console.log('═══════════════════════════════════════════════════════════');
       console.log(`  Billing Model:          ${billing.model.toUpperCase()}`);
-      console.log(`  Cost per Container:     $${billing.dailyCostPerContainer.toFixed(2)}/day (~$${billing.monthlyEquivalent.toFixed(2)}/month)`);
+      console.log(
+        `  Cost per Container:     $${billing.dailyCostPerContainer.toFixed(2)}/day (~$${billing.monthlyEquivalent.toFixed(2)}/month)`
+      );
       console.log(`  Running Containers:     ${billing.runningContainers}`);
       console.log(`  Current Daily Burn:     $${billing.currentDailyBurn.toFixed(2)}/day`);
       console.log(`  Credit Balance:         $${credits.balance.toFixed(2)}`);

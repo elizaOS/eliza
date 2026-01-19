@@ -1157,10 +1157,7 @@ export async function storeElizaCloudKey(key: string, envFilePath: string): Prom
  */
 export async function hasExistingElizaCloudKey(envFilePath: string): Promise<boolean> {
   // Check environment variable first
-  if (
-    process.env.ELIZAOS_API_KEY &&
-    isValidElizaCloudKey(process.env.ELIZAOS_API_KEY)
-  ) {
+  if (process.env.ELIZAOS_API_KEY && isValidElizaCloudKey(process.env.ELIZAOS_API_KEY)) {
     return true;
   }
 

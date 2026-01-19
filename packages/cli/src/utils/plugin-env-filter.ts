@@ -47,9 +47,9 @@ function parsePackageJson(packageJsonPath: string): ParsedPackageJson | null {
     const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     const isPlugin = Boolean(
       pkg.agentConfig?.pluginType ||
-        pkg.eliza?.type === 'plugin' ||
-        pkg.name?.startsWith('@elizaos/plugin-') ||
-        pkg.keywords?.includes('elizaos-plugin')
+      pkg.eliza?.type === 'plugin' ||
+      pkg.name?.startsWith('@elizaos/plugin-') ||
+      pkg.keywords?.includes('elizaos-plugin')
     );
     const declarations = pkg.agentConfig?.pluginParameters ?? null;
     return { isPlugin, declarations };
