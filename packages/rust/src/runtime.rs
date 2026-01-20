@@ -1448,10 +1448,15 @@ impl AgentRuntime {
         use crate::types::model::model_type;
         use uuid::Uuid;
 
-        let model_type_str = match options.model_size {
-            Some(ModelSize::Small) => model_type::TEXT_SMALL,
-            Some(ModelSize::Large) => model_type::TEXT_LARGE,
-            None => model_type::TEXT_LARGE,
+        // Determine model type - check options.model first, then model_size, then default
+        let model_type_str = if let Some(ref model) = options.model {
+            model.as_str()
+        } else {
+            match options.model_size {
+                Some(ModelSize::Small) => model_type::TEXT_SMALL,
+                Some(ModelSize::Large) => model_type::TEXT_LARGE,
+                None => model_type::TEXT_LARGE,
+            }
         };
 
         let schema_key = schema.iter().map(|s| s.field.as_str()).collect::<Vec<_>>().join(",");

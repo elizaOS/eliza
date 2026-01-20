@@ -6,6 +6,7 @@ import re
 import uuid
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from elizaos.logger import Logger, create_logger
@@ -35,7 +36,7 @@ from elizaos.types.runtime import (
     TargetInfo,
 )
 from elizaos.types.service import Service
-from elizaos.types.state import State, StateData
+from elizaos.types.state import RetryBackoffConfig, SchemaRow, State, StateData
 from elizaos.types.task import TaskWorker
 from elizaos.utils import compose_prompt_from_state as _compose_prompt_from_state
 from elizaos.utils import get_current_time_ms as _get_current_time_ms
@@ -1883,17 +1884,16 @@ class AgentRuntime(IAgentRuntime):
         Returns:
             Parsed structured response as dict, or None on failure
         """
-        from elizaos.types.state import SchemaRow, RetryBackoffConfig
-
         if options is None:
             options = DynamicPromptOptions()
 
-        # Determine model type
-        model_type_str = (
-            ModelType.TEXT_SMALL.value
-            if options.model_size == "small"
-            else ModelType.TEXT_LARGE.value
-        )
+        # Determine model type - check options.model first, then model_size, then default
+        if options.model:
+            model_type_str = options.model
+        elif options.model_size == "small":
+            model_type_str = ModelType.TEXT_SMALL.value
+        else:
+            model_type_str = ModelType.TEXT_LARGE.value
 
         schema_key = ",".join(s.field for s in schema)
         model_schema_key = f"{model_type_str}:{schema_key}"
@@ -2104,17 +2104,53 @@ end code: {final_code}
         return None
 
     def _parse_xml_to_dict(self, xml_text: str) -> dict[str, Any] | None:
-        """Parse XML-like response to dict."""
-        result: dict[str, Any] = {}
+        """Parse XML-like response to dict using ElementTree for nested XML support."""
+        def element_to_dict(element: ET.Element) -> dict[str, Any] | str:
+            """Recursively convert an XML element to a dict."""
+            children = list(element)
+            if not children:
+                # Leaf node - return trimmed text
+                return (element.text or "").strip()
+            
+            # Has children - build nested dict
+            result: dict[str, Any] = {}
+            for child in children:
+                child_value = element_to_dict(child)
+                if child.tag in result:
+                    # Handle duplicate tags by converting to list
+                    existing = result[child.tag]
+                    if isinstance(existing, list):
+                        existing.append(child_value)
+                    else:
+                        result[child.tag] = [existing, child_value]
+                else:
+                    result[child.tag] = child_value
+            return result
 
-        # Simple XML tag extraction using regex
-        pattern = r"<(\w+)>([\s\S]*?)</\1>"
-        matches = re.findall(pattern, xml_text)
+        try:
+            # Try to find and parse the response element
+            # First try to find <response>...</response>
+            response_match = re.search(r"<response>([\s\S]*?)</response>", xml_text)
+            if response_match:
+                xml_content = f"<response>{response_match.group(1)}</response>"
+            else:
+                # Try to wrap content if it looks like XML tags
+                xml_content = f"<root>{xml_text}</root>"
 
-        for tag_name, content in matches:
-            result[tag_name] = content.strip()
-
-        return result if result else None
+            root = ET.fromstring(xml_content)
+            result = element_to_dict(root)
+            
+            if isinstance(result, dict) and result:
+                return result
+            return None
+        except ET.ParseError:
+            # Fall back to regex for malformed XML
+            result: dict[str, Any] = {}
+            pattern = r"<(\w+)>([\s\S]*?)</\1>"
+            matches = re.findall(pattern, xml_text)
+            for tag_name, content in matches:
+                result[tag_name] = content.strip()
+            return result if result else None
 
 
 @dataclass
@@ -2141,8 +2177,3 @@ class DynamicPromptOptions:
 
     retry_backoff: "RetryBackoffConfig | None" = None
     """Retry backoff configuration"""
-
-
-# Import for type hints
-from dataclasses import dataclass
-from elizaos.types.state import SchemaRow, RetryBackoffConfig
