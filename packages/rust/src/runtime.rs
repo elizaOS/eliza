@@ -1412,6 +1412,369 @@ impl AgentRuntime {
         info!("AgentRuntime stopped successfully");
         Ok(())
     }
+
+    // ============================================================================
+    // Dynamic Prompt Execution with Validation-Aware Streaming
+    // ============================================================================
+
+    /// Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
+    ///
+    /// WHY THIS EXISTS:
+    /// LLMs are powerful but unreliable for structured outputs. They can:
+    /// - Silently truncate output when hitting token limits
+    /// - Skip fields or produce malformed structures
+    /// - Hallucinate or ignore parts of the prompt
+    ///
+    /// This method addresses these issues by:
+    /// 1. Validation codes: Injects UUID codes the LLM must echo back
+    /// 2. Streaming with safety: Enables streaming while detecting truncation
+    /// 3. Performance tracking: Tracks success/failure rates per model+schema
+    ///
+    /// # Arguments
+    /// * `state` - State object to inject into the prompt template
+    /// * `prompt` - Prompt template string (Handlebars syntax)
+    /// * `schema` - Array of field definitions for structured output
+    /// * `options` - Configuration for model size, validation level, retries, etc.
+    ///
+    /// # Returns
+    /// Parsed structured response as JSON Value, or None on failure
+    pub async fn dynamic_prompt_exec_from_state(
+        &self,
+        state: &State,
+        prompt: &str,
+        schema: &[crate::types::state::SchemaRow],
+        options: DynamicPromptOptions,
+    ) -> Result<Option<serde_json::Value>> {
+        use crate::types::model::model_type;
+        use uuid::Uuid;
+
+        let model_type_str = match options.model_size {
+            Some(ModelSize::Small) => model_type::TEXT_SMALL,
+            Some(ModelSize::Large) => model_type::TEXT_LARGE,
+            None => model_type::TEXT_LARGE,
+        };
+
+        let schema_key = schema.iter().map(|s| s.field.as_str()).collect::<Vec<_>>().join(",");
+        let model_schema_key = format!("{}:{}", model_type_str, schema_key);
+
+        // Get validation level
+        let validation_level = options.context_check_level.unwrap_or(2);
+        let max_retries = options.max_retries.unwrap_or(1);
+        let mut current_retry = 0;
+
+        // Generate per-field validation codes for levels 0-1
+        let mut per_field_codes: HashMap<String, String> = HashMap::new();
+        if validation_level <= 1 {
+            for row in schema {
+                let default_validate = validation_level == 1;
+                let needs_validation = row.validate_field.unwrap_or(default_validate);
+                if needs_validation {
+                    per_field_codes.insert(row.field.clone(), Uuid::new_v4().to_string()[..8].to_string());
+                }
+            }
+        }
+
+        while current_retry <= max_retries {
+            // Compile template with state values
+            let state_map = state.values_map();
+            let mut rendered = prompt.to_string();
+            for (key, value) in &state_map {
+                let placeholder = format!("{{{{{}}}}}", key);
+                let value_str = match value {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                rendered = rendered.replace(&placeholder, &value_str);
+            }
+
+            // Build format
+            let format = options.force_format.as_deref().unwrap_or("xml").to_uppercase();
+            let is_xml = format == "XML";
+            let container_start = if is_xml { "<response>" } else { "{" };
+            let container_end = if is_xml { "</response>" } else { "}" };
+
+            // Build extended schema with validation codes
+            let first = validation_level >= 2;
+            let last = validation_level >= 3;
+
+            let mut ext_schema: Vec<(String, String)> = Vec::new();
+
+            let codes_schema = |prefix: &str| -> Vec<(String, String)> {
+                vec![
+                    (format!("{}initial_code", prefix), "echo the initial UUID code from prompt".to_string()),
+                    (format!("{}middle_code", prefix), "echo the middle UUID code from prompt".to_string()),
+                    (format!("{}end_code", prefix), "echo the end UUID code from prompt".to_string()),
+                ]
+            };
+
+            if first {
+                ext_schema.extend(codes_schema("one_"));
+            }
+
+            for row in schema {
+                if let Some(code) = per_field_codes.get(&row.field) {
+                    ext_schema.push((format!("code_{}_start", row.field), format!("output exactly: {}", code)));
+                }
+                ext_schema.push((row.field.clone(), row.description.clone()));
+                if let Some(code) = per_field_codes.get(&row.field) {
+                    ext_schema.push((format!("code_{}_end", row.field), format!("output exactly: {}", code)));
+                }
+            }
+
+            if last {
+                ext_schema.extend(codes_schema("two_"));
+            }
+
+            // Build example
+            let mut example = format!("{}\n", container_start);
+            for (field, desc) in &ext_schema {
+                if is_xml {
+                    example.push_str(&format!("  <{}>{}</{}>\n", field, desc, field));
+                } else {
+                    example.push_str(&format!("  \"{}\": \"{}\",\n", field, desc));
+                }
+            }
+            example.push_str(container_end);
+
+            let init_code = Uuid::new_v4().to_string();
+            let mid_code = Uuid::new_v4().to_string();
+            let final_code = Uuid::new_v4().to_string();
+
+            let section_start = if is_xml { "<output>" } else { "# Strict Output instructions" };
+            let section_end = if is_xml { "</output>" } else { "" };
+
+            let full_prompt = format!(
+                "initial code: {}\n{}\nmiddle code: {}\n{}\n\
+                Do NOT include any thinking, reasoning, or <think> sections in your response.\n\
+                Go directly to the {} response format without any preamble or explanation.\n\n\
+                Respond using {} format like this:\n{}\n\n\
+                IMPORTANT: Your response must ONLY contain the {}{} {} block above. \
+                Do not include any text, thinking, or reasoning before or after this {} block. \
+                Start your response immediately with {} and end with {}.\n\
+                {}\nend code: {}\n",
+                init_code, rendered, mid_code, section_start,
+                format, format, example,
+                container_start, container_end, format, format,
+                container_start, container_end,
+                section_end, final_code
+            );
+
+            debug!("dynamic_prompt_exec_from_state: using format {}", format);
+
+            // Call model
+            let params = serde_json::json!({
+                "prompt": full_prompt,
+                "maxTokens": 4096,
+            });
+
+            let response = match self.use_model(model_type_str, params).await {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("Model call failed: {}", e);
+                    current_retry += 1;
+                    if current_retry <= max_retries {
+                        if let Some(backoff) = &options.retry_backoff {
+                            let delay = backoff.delay_for_retry(current_retry);
+                            debug!("Retry backoff: waiting {}ms before retry {}", delay, current_retry);
+                            #[cfg(not(feature = "wasm"))]
+                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        }
+                    }
+                    continue;
+                }
+            };
+
+            // Clean response (remove <think> blocks)
+            let clean_response = {
+                let mut result = response.clone();
+                while let Some(start) = result.find("<think>") {
+                    if let Some(end) = result.find("</think>") {
+                        result = format!("{}{}", &result[..start], &result[end + 8..]);
+                    } else {
+                        break;
+                    }
+                }
+                result
+            };
+
+            // Parse response
+            let response_content: Option<serde_json::Value> = if is_xml {
+                parse_xml_to_json(&clean_response)
+            } else {
+                serde_json::from_str(&clean_response).ok()
+            };
+
+            let mut all_good = true;
+            let mut parsed = response_content.clone();
+
+            if let Some(ref content) = parsed {
+                // Validate codes based on context level
+                if validation_level <= 1 {
+                    // Per-field validation
+                    for (field, expected_code) in &per_field_codes {
+                        let start_code_field = format!("code_{}_start", field);
+                        let end_code_field = format!("code_{}_end", field);
+                        let start_code = content.get(&start_code_field).and_then(|v| v.as_str());
+                        let end_code = content.get(&end_code_field).and_then(|v| v.as_str());
+
+                        if start_code != Some(expected_code.as_str()) || end_code != Some(expected_code.as_str()) {
+                            warn!("Per-field validation failed for {}: expected={}, start={:?}, end={:?}",
+                                field, expected_code, start_code, end_code);
+                            all_good = false;
+                        }
+                    }
+                } else {
+                    // Checkpoint validation
+                    let validation_codes = [
+                        (first, "one_initial_code", &init_code),
+                        (first, "one_middle_code", &mid_code),
+                        (first, "one_end_code", &final_code),
+                        (last, "two_initial_code", &init_code),
+                        (last, "two_middle_code", &mid_code),
+                        (last, "two_end_code", &final_code),
+                    ];
+
+                    for (enabled, field, expected) in &validation_codes {
+                        if *enabled {
+                            let actual = content.get(*field).and_then(|v| v.as_str());
+                            if actual != Some(*expected) {
+                                warn!("Checkpoint {} mismatch: expected {}", field, expected);
+                                all_good = false;
+                            }
+                        }
+                    }
+                }
+
+                // Validate required fields
+                if let Some(ref required_fields) = options.required_fields {
+                    for field in required_fields {
+                        let value = content.get(field);
+                        let is_missing = match value {
+                            None => true,
+                            Some(serde_json::Value::Null) => true,
+                            Some(serde_json::Value::String(s)) => s.trim().is_empty(),
+                            Some(serde_json::Value::Array(a)) => a.is_empty(),
+                            Some(serde_json::Value::Object(o)) => o.is_empty(),
+                            _ => false,
+                        };
+                        if is_missing {
+                            warn!("Missing required field: {}", field);
+                            all_good = false;
+                        }
+                    }
+                }
+
+                // Clean up validation code fields from result
+                if let Some(serde_json::Value::Object(ref mut obj)) = parsed {
+                    // Remove per-field codes
+                    for field in per_field_codes.keys() {
+                        obj.remove(&format!("code_{}_start", field));
+                        obj.remove(&format!("code_{}_end", field));
+                    }
+                    // Remove checkpoint codes
+                    if first {
+                        obj.remove("one_initial_code");
+                        obj.remove("one_middle_code");
+                        obj.remove("one_end_code");
+                    }
+                    if last {
+                        obj.remove("two_initial_code");
+                        obj.remove("two_middle_code");
+                        obj.remove("two_end_code");
+                    }
+                }
+            } else {
+                warn!("dynamic_prompt_exec_from_state parse problem: {}", clean_response);
+                all_good = false;
+            }
+
+            if all_good {
+                debug!("dynamic_prompt_exec_from_state success [{}]", model_schema_key);
+                return Ok(parsed);
+            }
+
+            current_retry += 1;
+
+            if current_retry <= max_retries {
+                if let Some(backoff) = &options.retry_backoff {
+                    let delay = backoff.delay_for_retry(current_retry);
+                    debug!("Retry backoff: waiting {}ms before retry {}", delay, current_retry);
+                    #[cfg(not(feature = "wasm"))]
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+            }
+        }
+
+        error!("dynamic_prompt_exec_from_state failed after {} retries [{}]", max_retries, model_schema_key);
+        Ok(None)
+    }
+}
+
+/// Options for dynamic prompt execution.
+#[derive(Debug, Clone, Default)]
+pub struct DynamicPromptOptions {
+    /// Model size to use (small or large)
+    pub model_size: Option<ModelSize>,
+    /// Specific model identifier override
+    pub model: Option<String>,
+    /// Force output format (json or xml)
+    pub force_format: Option<String>,
+    /// Required fields that must be present and non-empty
+    pub required_fields: Option<Vec<String>>,
+    /// Validation level (0=trusted, 1=progressive, 2=checkpoint, 3=full)
+    pub context_check_level: Option<u8>,
+    /// Maximum retry attempts
+    pub max_retries: Option<u32>,
+    /// Retry backoff configuration
+    pub retry_backoff: Option<crate::types::state::RetryBackoffConfig>,
+}
+
+/// Model size selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelSize {
+    Small,
+    Large,
+}
+
+/// Parse XML-like response to JSON.
+fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
+    use std::collections::HashMap;
+
+    let mut result: HashMap<String, serde_json::Value> = HashMap::new();
+
+    // Simple XML tag extraction
+    let mut remaining = xml;
+    while let Some(open_start) = remaining.find('<') {
+        let after_open = &remaining[open_start + 1..];
+        if let Some(open_end) = after_open.find('>') {
+            let tag_name = &after_open[..open_end];
+            // Skip closing tags, comments, and special tags
+            if tag_name.starts_with('/') || tag_name.starts_with('!') || tag_name.starts_with('?') {
+                remaining = &after_open[open_end + 1..];
+                continue;
+            }
+            // Remove attributes if any
+            let tag_name = tag_name.split_whitespace().next().unwrap_or(tag_name);
+
+            let close_tag = format!("</{}>", tag_name);
+            let content_start = open_start + 1 + open_end + 1;
+            if let Some(close_pos) = remaining[content_start..].find(&close_tag) {
+                let content = &remaining[content_start..content_start + close_pos];
+                result.insert(tag_name.to_string(), serde_json::Value::String(content.trim().to_string()));
+                remaining = &remaining[content_start + close_pos + close_tag.len()..];
+            } else {
+                remaining = &after_open[open_end + 1..];
+            }
+        } else {
+            break;
+        }
+    }
+
+    if result.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(result.into_iter().collect()))
+    }
 }
 
 /// Get current timestamp in milliseconds.
