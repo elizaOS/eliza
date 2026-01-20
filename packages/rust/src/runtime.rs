@@ -1986,9 +1986,10 @@ fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
 
     // Try to find and parse a <response> wrapper, otherwise parse root
     let content = if let Some(start) = xml.find("<response>") {
-        if let Some(end) = xml.rfind("</response>") {
-            // Use rfind to handle potential nested content
-            &xml[start + 10..end]
+        // Search for closing tag AFTER the opening tag to avoid panic on malformed input
+        let content_start = start + 10; // Length of "<response>"
+        if let Some(end) = xml[content_start..].find("</response>") {
+            &xml[content_start..content_start + end]
         } else {
             xml
         }
