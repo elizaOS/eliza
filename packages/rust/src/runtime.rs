@@ -1466,6 +1466,7 @@ impl AgentRuntime {
         let validation_level = options.context_check_level.unwrap_or(2);
         let max_retries = options.max_retries.unwrap_or(1);
         let mut current_retry = 0;
+        let mut last_error: Option<String> = None;
 
         // Generate per-field validation codes for levels 0-1
         let mut per_field_codes: HashMap<String, String> = HashMap::new();
@@ -1579,7 +1580,9 @@ impl AgentRuntime {
             let response = match self.use_model(model_type_str, params).await {
                 Ok(r) => r,
                 Err(e) => {
-                    error!("Model call failed: {}", e);
+                    let err_msg = format!("Model call failed: {}", e);
+                    error!("{}", err_msg);
+                    last_error = Some(err_msg);
                     current_retry += 1;
                     if current_retry <= max_retries {
                         if let Some(backoff) = &options.retry_backoff {
@@ -1714,7 +1717,11 @@ impl AgentRuntime {
             }
         }
 
-        error!("dynamic_prompt_exec_from_state failed after {} retries [{}]", max_retries, model_schema_key);
+        if let Some(err) = &last_error {
+            error!("dynamic_prompt_exec_from_state failed after {} retries [{}]: {}", max_retries, model_schema_key, err);
+        } else {
+            error!("dynamic_prompt_exec_from_state failed after {} retries [{}]: validation errors", max_retries, model_schema_key);
+        }
         Ok(None)
     }
 }

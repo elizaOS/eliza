@@ -3684,9 +3684,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
           if (options.retryBackoff) {
             const delayMs = this.calculateBackoffDelay(options.retryBackoff, currentRetry);
             this.logger.debug(`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`);
-            await new Promise((resolve) => setTimeout(resolve, delayMs));
 
-            if (options.abortSignal?.aborted) {
+            // Abortable sleep - check signal during wait, not just after
+            const aborted = await this.abortableSleep(delayMs, options.abortSignal);
+            if (aborted) {
               extractor?.signalError("Cancelled by user");
               return null;
             }
@@ -3839,9 +3840,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         if (options.retryBackoff) {
           const delayMs = this.calculateBackoffDelay(options.retryBackoff, currentRetry);
           this.logger.debug(`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`);
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
 
-          if (options.abortSignal?.aborted) {
+          // Abortable sleep - check signal during wait, not just after
+          const aborted = await this.abortableSleep(delayMs, options.abortSignal);
+          if (aborted) {
             extractor?.signalError("Cancelled by user");
             return null;
           }
@@ -3884,8 +3886,18 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     // Max retries exceeded
     if (extractor) {
       const diagnosis = extractor.diagnose();
+      const diagnosticParts: string[] = [];
+      if (diagnosis.missingFields.length > 0) {
+        diagnosticParts.push(`missing: ${diagnosis.missingFields.join(", ")}`);
+      }
+      if (diagnosis.invalidFields.length > 0) {
+        diagnosticParts.push(`invalid: ${diagnosis.invalidFields.join(", ")}`);
+      }
+      if (diagnosis.incompleteFields.length > 0) {
+        diagnosticParts.push(`incomplete: ${diagnosis.incompleteFields.join(", ")}`);
+      }
       extractor.signalError(
-        `Failed after ${maxRetries} retries. Missing: ${diagnosis.missingFields.join(", ") || "none"}`,
+        `Failed after ${maxRetries} retries. ${diagnosticParts.length > 0 ? diagnosticParts.join("; ") : "unknown error"}`,
       );
     }
 
@@ -3906,6 +3918,28 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     const { initialMs = 1000, multiplier = 2, maxMs = 30000 } = config;
     const delay = initialMs * Math.pow(multiplier, retryCount - 1);
     return Math.min(delay, maxMs);
+  }
+
+  /**
+   * Sleep for a duration that can be interrupted by an abort signal.
+   * Returns true if aborted, false if sleep completed normally.
+   */
+  private abortableSleep(ms: number, signal?: AbortSignal): Promise<boolean> {
+    if (signal?.aborted) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve(false);
+      }, ms);
+
+      const onAbort = () => {
+        clearTimeout(timeout);
+        resolve(true);
+      };
+
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
   }
 
   /**
