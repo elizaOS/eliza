@@ -1427,8 +1427,12 @@ impl AgentRuntime {
     ///
     /// This method addresses these issues by:
     /// 1. Validation codes: Injects UUID codes the LLM must echo back
-    /// 2. Streaming with safety: Enables streaming while detecting truncation
-    /// 3. Performance tracking: Tracks success/failure rates per model+schema
+    /// 2. Retry with backoff: Automatic retries on validation failure
+    /// 3. Structured parsing: XML/JSON response parsing with nested support
+    ///
+    /// NOTE: Streaming is not supported in the Rust implementation.
+    /// For real-time streaming with validation, use the TypeScript implementation
+    /// which includes `ValidationStreamExtractor` for incremental output.
     ///
     /// # Arguments
     /// * `state` - State object to inject into the prompt template
@@ -1462,11 +1466,29 @@ impl AgentRuntime {
         let schema_key = schema.iter().map(|s| s.field.as_str()).collect::<Vec<_>>().join(",");
         let model_schema_key = format!("{}:{}", model_type_str, schema_key);
 
-        // Get validation level
-        let validation_level = options.context_check_level.unwrap_or(2);
-        let max_retries = options.max_retries.unwrap_or(1);
+        // Get validation level from settings or options (mirrors TypeScript behavior)
+        let (default_context_level, default_retries) = {
+            let validation_setting = self.get_setting("VALIDATION_LEVEL").await;
+            match validation_setting.as_deref().map(|s| s.to_lowercase()).as_deref() {
+                Some("trusted") | Some("fast") => (0u8, 0u32),
+                Some("progressive") => (1, 2),
+                Some("strict") | Some("safe") => (3, 3),
+                Some(other) => {
+                    warn!(
+                        "Unrecognized VALIDATION_LEVEL \"{}\". Valid values: trusted, fast, progressive, strict, safe. Falling back to default (level 2).",
+                        other
+                    );
+                    (2, 1)
+                }
+                None => (2, 1),
+            }
+        };
+
+        let validation_level = options.context_check_level.unwrap_or(default_context_level);
+        let max_retries = options.max_retries.unwrap_or(default_retries);
         let mut current_retry = 0;
         let mut last_error: Option<String> = None;
+        let mut smart_retry_context: Option<String> = None;
 
         // Generate per-field validation codes for levels 0-1
         let mut per_field_codes: HashMap<String, String> = HashMap::new();
@@ -1481,7 +1503,13 @@ impl AgentRuntime {
         }
 
         while current_retry <= max_retries {
-            // Compile template with state values
+            // Simple template substitution: replaces {{key}} with state values.
+            // NOTE: Unlike TypeScript (which uses full Handlebars), this does NOT support:
+            // - Conditionals ({{#if}}/{{#unless}})
+            // - Loops ({{#each}})
+            // - Nested access ({{user.name}})
+            // - Helpers or partials
+            // For complex templates, pre-render in TypeScript or use a Rust Handlebars crate.
             let state_map = state.values_map();
             let mut rendered = prompt.to_string();
             for (key, value) in &state_map {
@@ -1491,6 +1519,11 @@ impl AgentRuntime {
                     other => other.to_string(),
                 };
                 rendered = rendered.replace(&placeholder, &value_str);
+            }
+
+            // Append smart retry context if available from previous retry
+            if let Some(ref ctx) = smart_retry_context {
+                rendered.push_str(ctx);
             }
 
             // Build format
@@ -1707,6 +1740,66 @@ impl AgentRuntime {
 
             current_retry += 1;
 
+            // Build smart retry context for level 1 (per-field validation)
+            // Note: Since state is immutable in Rust, we store context for the next iteration
+            if validation_level == 1 {
+                if let Some(ref content) = response_content {
+                    // Find validated fields (those with correct codes)
+                    let mut validated_fields: Vec<String> = Vec::new();
+                    for (field, expected_code) in &per_field_codes {
+                        let start_code_field = format!("code_{}_start", field);
+                        let end_code_field = format!("code_{}_end", field);
+                        let start_code = content.get(&start_code_field).and_then(|v| v.as_str());
+                        let end_code = content.get(&end_code_field).and_then(|v| v.as_str());
+
+                        if start_code == Some(expected_code.as_str()) && end_code == Some(expected_code.as_str()) {
+                            validated_fields.push(field.clone());
+                        }
+                    }
+
+                    if !validated_fields.is_empty() {
+                        // Build retry context with validated fields
+                        let mut validated_parts: Vec<String> = Vec::new();
+                        for field in &validated_fields {
+                            if let Some(val) = content.get(field) {
+                                let content_str = match val {
+                                    serde_json::Value::String(s) => s.clone(),
+                                    _ => val.to_string(),
+                                };
+                                let truncated = if content_str.len() > 500 {
+                                    format!("{}...", &content_str[..500])
+                                } else {
+                                    content_str
+                                };
+                                validated_parts.push(format!("<{}>{}</{}>", field, truncated, field));
+                            }
+                        }
+
+                        if !validated_parts.is_empty() {
+                            // Find missing/invalid fields
+                            let all_fields: std::collections::HashSet<_> = schema.iter().map(|r| r.field.clone()).collect();
+                            let validated_set: std::collections::HashSet<_> = validated_fields.iter().cloned().collect();
+                            let missing: Vec<_> = all_fields.difference(&validated_set).cloned().collect();
+
+                            // Build smart retry context and append to next prompt iteration
+                            // (stored in smart_retry_context variable for use in next loop)
+                            smart_retry_context = Some(format!(
+                                "\n\n[RETRY CONTEXT]\nYou previously produced these valid fields:\n{}\n\nPlease complete: {}",
+                                validated_parts.join("\n"),
+                                if missing.is_empty() { "all fields".to_string() } else { missing.join(", ") }
+                            ));
+                        }
+                    }
+
+                    warn!(
+                        "dynamic_prompt_exec_from_state retry {}/{} validated={}",
+                        current_retry,
+                        max_retries,
+                        if validated_fields.is_empty() { "none".to_string() } else { validated_fields.join(",") }
+                    );
+                }
+            }
+
             if current_retry <= max_retries {
                 if let Some(backoff) = &options.retry_backoff {
                     let delay = backoff.delay_for_retry(current_retry);
@@ -1752,44 +1845,172 @@ pub enum ModelSize {
     Large,
 }
 
-/// Parse XML-like response to JSON.
+/// Parse XML-like response to JSON with support for nested structures.
+///
+/// This parser handles:
+/// - Simple tags: `<tag>content</tag>` → `{"tag": "content"}`
+/// - Nested tags: `<parent><child>x</child></parent>` → `{"parent": {"child": "x"}}`
+/// - Multiple same-name tags: converted to arrays
+/// - Attributes are ignored (stripped)
+/// - Comments and processing instructions are skipped
 fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
-    use std::collections::HashMap;
+    use serde_json::{Map, Value};
 
-    let mut result: HashMap<String, serde_json::Value> = HashMap::new();
+    /// Recursively parse XML content into a JSON value
+    fn parse_element(content: &str) -> Value {
+        // Safety limits to prevent DoS on malformed XML
+        const MAX_TAGS: usize = 10000;
+        const MAX_NESTING_ITERATIONS: usize = 10000;
 
-    // Simple XML tag extraction
-    let mut remaining = xml;
-    while let Some(open_start) = remaining.find('<') {
-        let after_open = &remaining[open_start + 1..];
-        if let Some(open_end) = after_open.find('>') {
-            let tag_name = &after_open[..open_end];
-            // Skip closing tags, comments, and special tags
-            if tag_name.starts_with('/') || tag_name.starts_with('!') || tag_name.starts_with('?') {
-                remaining = &after_open[open_end + 1..];
-                continue;
+        let trimmed = content.trim();
+        
+        // Check if content has any child tags
+        if !trimmed.contains('<') {
+            return Value::String(trimmed.to_string());
+        }
+
+        let mut result: Map<String, Value> = Map::new();
+        let mut remaining = trimmed;
+        let mut tag_count = 0;
+
+        while let Some(open_start) = remaining.find('<') {
+            // Safety: prevent infinite loop on malformed XML
+            tag_count += 1;
+            if tag_count > MAX_TAGS {
+                break;
             }
-            // Remove attributes if any
-            let tag_name = tag_name.split_whitespace().next().unwrap_or(tag_name);
 
-            let close_tag = format!("</{}>", tag_name);
-            let content_start = open_start + 1 + open_end + 1;
-            if let Some(close_pos) = remaining[content_start..].find(&close_tag) {
-                let content = &remaining[content_start..content_start + close_pos];
-                result.insert(tag_name.to_string(), serde_json::Value::String(content.trim().to_string()));
-                remaining = &remaining[content_start + close_pos + close_tag.len()..];
+            let after_open = &remaining[open_start + 1..];
+            
+            if let Some(open_end) = after_open.find('>') {
+                let tag_content = &after_open[..open_end];
+                
+                // Skip closing tags, comments, and processing instructions
+                if tag_content.starts_with('/')
+                    || tag_content.starts_with('!')
+                    || tag_content.starts_with('?')
+                {
+                    remaining = &after_open[open_end + 1..];
+                    continue;
+                }
+
+                // Extract tag name (strip attributes)
+                let tag_name = tag_content
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or(tag_content)
+                    .trim_end_matches('/'); // Handle self-closing tags
+
+                // Handle self-closing tags
+                if tag_content.ends_with('/') {
+                    result.insert(tag_name.to_string(), Value::String(String::new()));
+                    remaining = &after_open[open_end + 1..];
+                    continue;
+                }
+
+                // Find matching closing tag (handles nesting)
+                let close_tag = format!("</{}>", tag_name);
+                let open_tag_start = format!("<{}", tag_name);
+                let content_start_idx = open_start + 1 + open_end + 1;
+                
+                // Count nesting depth to find correct closing tag
+                let mut depth = 1;
+                let mut search_pos = 0;
+                let search_content = &remaining[content_start_idx..];
+                let mut close_pos = None;
+                let mut nesting_iterations = 0;
+
+                while depth > 0 {
+                    // Safety: prevent infinite loop in nesting search
+                    nesting_iterations += 1;
+                    if nesting_iterations > MAX_NESTING_ITERATIONS {
+                        break;
+                    }
+
+                    let next_open = search_content[search_pos..].find(&open_tag_start);
+                    let next_close = search_content[search_pos..].find(&close_tag);
+
+                    match (next_open, next_close) {
+                        (Some(o), Some(c)) if o < c => {
+                            // Check if it's actually an opening tag (not just a prefix match)
+                            let after_tag = &search_content[search_pos + o + open_tag_start.len()..];
+                            if after_tag.starts_with('>') || after_tag.starts_with(' ') || after_tag.starts_with('/') {
+                                depth += 1;
+                            }
+                            search_pos += o + 1;
+                        }
+                        (_, Some(c)) => {
+                            depth -= 1;
+                            if depth == 0 {
+                                close_pos = Some(search_pos + c);
+                            } else {
+                                search_pos += c + 1;
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+
+                if let Some(pos) = close_pos {
+                    let inner_content = &search_content[..pos];
+                    let child_value = parse_element(inner_content);
+
+                    // Handle duplicate tags by converting to array
+                    if let Some(existing) = result.get_mut(tag_name) {
+                        match existing {
+                            Value::Array(arr) => arr.push(child_value),
+                            _ => {
+                                let old = existing.take();
+                                *existing = Value::Array(vec![old, child_value]);
+                            }
+                        }
+                    } else {
+                        result.insert(tag_name.to_string(), child_value);
+                    }
+
+                    remaining = &search_content[pos + close_tag.len()..];
+                } else {
+                    remaining = &after_open[open_end + 1..];
+                }
             } else {
-                remaining = &after_open[open_end + 1..];
+                break;
             }
+        }
+
+        if result.is_empty() {
+            Value::String(trimmed.to_string())
         } else {
-            break;
+            Value::Object(result)
         }
     }
 
-    if result.is_empty() {
-        None
+    // Try to find and parse a <response> wrapper, otherwise parse root
+    let content = if let Some(start) = xml.find("<response>") {
+        if let Some(end) = xml.rfind("</response>") {
+            // Use rfind to handle potential nested content
+            &xml[start + 10..end]
+        } else {
+            xml
+        }
     } else {
-        Some(serde_json::Value::Object(result.into_iter().collect()))
+        xml
+    };
+
+    match parse_element(content) {
+        Value::Object(map) if !map.is_empty() => {
+            // If result is {"response": {...}}, unwrap the nested object
+            // This handles cases where wrapper extraction didn't work (whitespace, etc.)
+            if map.len() == 1 {
+                if let Some(inner) = map.get("response") {
+                    if let Value::Object(inner_map) = inner {
+                        return Some(Value::Object(inner_map.clone()));
+                    }
+                }
+            }
+            Some(Value::Object(map))
+        }
+        Value::Object(_) => None,
+        other => Some(other),
     }
 }
 

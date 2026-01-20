@@ -1862,7 +1862,7 @@ class AgentRuntime(IAgentRuntime):
         schema: list["SchemaRow"],
         options: "DynamicPromptOptions | None" = None,
     ) -> dict[str, Any] | None:
-        """Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
+        """Dynamic prompt execution with state injection, schema-based parsing, and validation.
 
         WHY THIS EXISTS:
         LLMs are powerful but unreliable for structured outputs. They can:
@@ -1872,8 +1872,12 @@ class AgentRuntime(IAgentRuntime):
 
         This method addresses these issues by:
         1. Validation codes: Injects UUID codes the LLM must echo back
-        2. Streaming with safety: Enables streaming while detecting truncation
-        3. Performance tracking: Tracks success/failure rates per model+schema
+        2. Retry with backoff: Automatic retries on validation failure
+        3. Structured parsing: XML/JSON response parsing with nested support
+
+        NOTE: Streaming is not supported in the Python implementation.
+        For real-time streaming with validation, use the TypeScript implementation
+        which includes ValidationStreamExtractor for incremental output.
 
         Args:
             state: State object to inject into the prompt template
@@ -1898,9 +1902,31 @@ class AgentRuntime(IAgentRuntime):
         schema_key = ",".join(s.field for s in schema)
         model_schema_key = f"{model_type_str}:{schema_key}"
 
-        # Get validation level
-        validation_level = options.context_check_level if options.context_check_level is not None else 2
-        max_retries = options.max_retries if options.max_retries is not None else 1
+        # Get validation level from settings or options (mirrors TypeScript behavior)
+        default_context_level = 2
+        default_retries = 1
+        
+        validation_setting = self.get_setting("VALIDATION_LEVEL")
+        if validation_setting:
+            level_str = str(validation_setting).lower()
+            if level_str in ("trusted", "fast"):
+                default_context_level = 0
+                default_retries = 0
+            elif level_str == "progressive":
+                default_context_level = 1
+                default_retries = 2
+            elif level_str in ("strict", "safe"):
+                default_context_level = 3
+                default_retries = 3
+            else:
+                self.logger.warning(
+                    f'Unrecognized VALIDATION_LEVEL "{level_str}". '
+                    f'Valid values: trusted, fast, progressive, strict, safe. '
+                    f'Falling back to default (level 2).'
+                )
+
+        validation_level = options.context_check_level if options.context_check_level is not None else default_context_level
+        max_retries = options.max_retries if options.max_retries is not None else default_retries
         current_retry = 0
 
         # Generate per-field validation codes for levels 0-1
@@ -1914,20 +1940,71 @@ class AgentRuntime(IAgentRuntime):
 
         while current_retry <= max_retries:
             # Compile template with state values
+            # Callable signature: def my_prompt(ctx: dict) -> str:
+            #   return f"Hello {ctx['state'].values.get('name')}"
             if callable(prompt):
                 template_str = prompt({"state": state})
             else:
                 template_str = prompt
 
-            # Simple template substitution (Handlebars-like)
+            # Template substitution (Handlebars-like)
+            # Mirrors TypeScript behavior: { ...filteredState, ...state.values }
             rendered = template_str
-            if hasattr(state, "values") and state.values:
-                for key in dir(state.values):
-                    if not key.startswith("_"):
-                        value = getattr(state.values, key, None)
-                        if value is not None:
-                            placeholder = f"{{{{{key}}}}}"
-                            rendered = rendered.replace(placeholder, str(value))
+            
+            # Helper to extract dict from protobuf message or dict-like object
+            def extract_fields(obj: Any) -> dict[str, Any]:
+                """Extract fields from protobuf message, dict, or object."""
+                if obj is None:
+                    return {}
+                # If it's already a dict, return it
+                if isinstance(obj, dict):
+                    return obj
+                # Try MessageToDict for protobuf messages (most reliable)
+                if hasattr(obj, "DESCRIPTOR"):
+                    try:
+                        from google.protobuf.json_format import MessageToDict
+                        return MessageToDict(obj, preserving_proto_field_name=True)
+                    except Exception:
+                        pass
+                # Fallback: try ListFields() for protobuf messages
+                if hasattr(obj, "ListFields"):
+                    result = {}
+                    for field_desc, value in obj.ListFields():
+                        result[field_desc.name] = value
+                    return result
+                # Fallback: try __dict__ for regular objects
+                if hasattr(obj, "__dict__"):
+                    return {k: v for k, v in obj.__dict__.items() if not k.startswith("_") and v is not None}
+                return {}
+            
+            # Build context dict combining state properties and state.values
+            context: dict[str, Any] = {}
+            
+            # Add state-level properties (like filteredState in TypeScript)
+            # Exclude 'text', 'values', 'data' like TypeScript does
+            state_fields = extract_fields(state)
+            for key, value in state_fields.items():
+                if key not in ("text", "values", "data"):
+                    context[key] = value
+            
+            # Add state.data properties
+            if hasattr(state, "data"):
+                data_fields = extract_fields(state.data)
+                context.update(data_fields)
+            
+            # Add state.values (these take precedence, like in TypeScript)
+            if hasattr(state, "values"):
+                values_fields = extract_fields(state.values)
+                context.update(values_fields)
+            
+            # Add smart retry context if present
+            if "_smartRetryContext" in context:
+                rendered += str(context.pop("_smartRetryContext"))
+            
+            # Perform substitution
+            for key, value in context.items():
+                placeholder = f"{{{{{key}}}}}"
+                rendered = rendered.replace(placeholder, str(value))
 
             # Build format
             format_type = (options.force_format or "xml").upper()
@@ -2028,6 +2105,8 @@ end code: {final_code}
                 try:
                     response_content = json.loads(clean_response)
                 except json.JSONDecodeError:
+                    # JSON parse failed - response_content remains None
+                    # This triggers retry logic below via the all_good = False path
                     pass
 
             all_good = True
@@ -2095,6 +2174,45 @@ end code: {final_code}
                 return response_content
 
             current_retry += 1
+
+            # Build smart retry context for level 1 (per-field validation)
+            if validation_level == 1 and response_content:
+                # Find validated fields (those with correct codes)
+                validated_fields: list[str] = []
+                for field, expected_code in per_field_codes.items():
+                    start_code = response_content.get(f"code_{field}_start")
+                    end_code = response_content.get(f"code_{field}_end")
+                    if start_code == expected_code and end_code == expected_code:
+                        validated_fields.append(field)
+
+                if validated_fields:
+                    # Build retry context with validated fields
+                    validated_parts: list[str] = []
+                    for field in validated_fields:
+                        content = response_content.get(field, "")
+                        if content:
+                            truncated = content[:500] + "..." if len(str(content)) > 500 else str(content)
+                            validated_parts.append(f"<{field}>{truncated}</{field}>")
+
+                    if validated_parts:
+                        # Find missing/invalid fields
+                        all_fields = {row.field for row in schema}
+                        missing = [f for f in all_fields if f not in validated_fields]
+                        smart_retry_context = (
+                            f"\n\n[RETRY CONTEXT]\n"
+                            f"You previously produced these valid fields:\n"
+                            f"{chr(10).join(validated_parts)}\n\n"
+                            f"Please complete: {', '.join(missing) if missing else 'all fields'}"
+                        )
+                        # Store in state for next iteration
+                        if hasattr(state, "values"):
+                            state.values["_smartRetryContext"] = smart_retry_context
+
+                self.logger.warn(
+                    f"dynamic_prompt_exec_from_state retry {current_retry}/{max_retries} "
+                    f"validated={','.join(validated_fields) or 'none'}"
+                )
+
             if current_retry <= max_retries and options.retry_backoff:
                 delay = options.retry_backoff.delay_for_retry(current_retry)
                 self.logger.debug(f"Retry backoff: waiting {delay}ms before retry {current_retry}")
@@ -2144,12 +2262,35 @@ end code: {final_code}
                 return result
             return None
         except ET.ParseError:
-            # Fall back to regex for malformed XML
-            result: dict[str, Any] = {}
-            pattern = r"<(\w+)>([\s\S]*?)</\1>"
-            matches = re.findall(pattern, xml_text)
-            for tag_name, content in matches:
-                result[tag_name] = content.strip()
+            # Fall back to regex for malformed XML with recursive nested tag parsing
+            def parse_nested(text: str) -> dict[str, Any]:
+                """Recursively parse nested XML tags."""
+                result: dict[str, Any] = {}
+                pattern = r"<([\w-]+)>([\s\S]*?)</\1>"
+                matches = re.findall(pattern, text)
+                for tag_name, content in matches:
+                    content_stripped = content.strip()
+                    # Check if content has nested tags
+                    if re.search(r"<[\w-]+>", content_stripped):
+                        # Recursively parse nested content
+                        nested = parse_nested(content_stripped)
+                        if nested:
+                            result[tag_name] = nested
+                        else:
+                            result[tag_name] = content_stripped
+                    else:
+                        result[tag_name] = content_stripped
+                return result
+
+            # First try to unwrap <response> wrapper and parse inner content
+            response_match = re.search(r"<response>([\s\S]*)</response>", xml_text)
+            if response_match:
+                inner_result = parse_nested(response_match.group(1))
+                if inner_result:
+                    return inner_result
+
+            # Otherwise parse the whole text
+            result = parse_nested(xml_text)
             return result if result else None
 
 
