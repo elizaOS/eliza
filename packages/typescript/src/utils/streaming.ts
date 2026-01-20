@@ -500,3 +500,458 @@ export class ActionStreamFilter implements IStreamExtractor {
     return result.content;
   }
 }
+
+// ============================================================================
+// MarkableExtractor - Passthrough with external completion control
+// ============================================================================
+
+/**
+ * Passthrough extractor that can be marked complete externally.
+ *
+ * WHY: When using ValidationStreamExtractor inside dynamicPromptExecFromState,
+ * extraction/completion is handled internally. But the outer streaming context
+ * still needs to know when streaming is complete for retry/fallback logic.
+ *
+ * This extractor passes through all content and provides a markComplete() method
+ * that the caller can invoke when the underlying operation completes successfully.
+ *
+ * @example
+ * ```ts
+ * const extractor = new MarkableExtractor();
+ * const ctx = createStreamingContext(extractor, callback);
+ *
+ * const result = await dynamicPromptExecFromState({ ... });
+ * if (result) {
+ *   extractor.markComplete(); // Signal success
+ * }
+ *
+ * if (ctx.isComplete()) {
+ *   // Now returns true after markComplete()
+ * }
+ * ```
+ */
+export class MarkableExtractor implements IStreamExtractor {
+  private _done = false;
+
+  get done(): boolean {
+    return this._done;
+  }
+
+  push(chunk: string): string {
+    validateChunkSize(chunk);
+    return chunk; // Pass through everything
+  }
+
+  flush(): string {
+    return "";
+  }
+
+  reset(): void {
+    this._done = false;
+  }
+
+  /**
+   * Mark the extractor as complete.
+   * WHY: Called by the outer code when the underlying operation completes
+   * successfully. This allows isComplete() to return true for retry/fallback logic.
+   */
+  markComplete(): void {
+    this._done = true;
+  }
+}
+
+// ============================================================================
+// ValidationStreamExtractor - Validation-aware streaming
+// ============================================================================
+
+import type {
+  SchemaRow,
+  StreamEvent,
+  StreamEventType,
+} from "../types/state";
+import type { IStreamingRetryState } from "../types/streaming";
+
+/**
+ * Extractor state machine for validation-aware streaming.
+ */
+export type ExtractorState =
+  | "streaming" // Normal operation - actively receiving chunks
+  | "validating" // Stream ended, checking validation codes
+  | "retrying" // Validation failed, preparing for retry
+  | "complete" // Successfully finished
+  | "failed"; // Unrecoverable error
+
+/**
+ * Per-field state tracking for progressive validation.
+ */
+export type FieldState =
+  | "pending" // Haven't seen this field yet
+  | "partial" // Found opening tag but no closing tag
+  | "complete" // Found both tags, content extracted
+  | "invalid"; // Validation codes didn't match
+
+/**
+ * Configuration for ValidationStreamExtractor.
+ */
+export interface ValidationStreamExtractorConfig {
+  /** Validation level (0-3) */
+  level: 0 | 1 | 2 | 3;
+  /** Schema rows with field definitions */
+  schema: SchemaRow[];
+  /** Which fields to stream to the consumer */
+  streamFields: string[];
+  /** Expected validation codes per field */
+  expectedCodes: Map<string, string>;
+  /** Callback for streaming chunks */
+  onChunk: (chunk: string, field?: string) => void;
+  /** Rich event callback for sophisticated consumers */
+  onEvent?: (event: StreamEvent) => void;
+  /** Abort signal for cancellation */
+  abortSignal?: AbortSignal;
+  /** Whether the consumer has an onEvent handler */
+  hasRichConsumer?: boolean;
+}
+
+/**
+ * Diagnosis result for error analysis.
+ */
+export interface ValidationDiagnosis {
+  /** Fields that were never started */
+  missingFields: string[];
+  /** Fields with wrong validation codes */
+  invalidFields: string[];
+  /** Fields that started but didn't complete */
+  incompleteFields: string[];
+}
+
+/**
+ * Validation-aware stream extractor for dynamicPromptExecFromState.
+ *
+ * WHY THIS EXISTS:
+ * LLMs can silently truncate output when they hit token limits. This is catastrophic
+ * for structured outputs - you might get half a JSON object. Traditional streaming
+ * has no validation - you might stream half a broken response.
+ *
+ * This extractor bridges the gap: it enables streaming while detecting truncation.
+ * It uses "validation codes" - random UUIDs that the LLM must echo. If the echoed
+ * code matches, we know that part wasn't truncated.
+ *
+ * VALIDATION LEVELS:
+ * - Level 0 (Trusted): No codes, stream immediately. Fast but no safety.
+ * - Level 1 (Progressive): Per-field codes, emit as each field validates.
+ * - Level 2 (First Checkpoint): Code at start only, buffer until validated.
+ * - Level 3 (Full): Codes at start AND end, maximum safety.
+ */
+export class ValidationStreamExtractor implements IStreamExtractor {
+  private buffer = "";
+  private fieldContents: Map<string, string> = new Map();
+  private validatedFields: Set<string> = new Set();
+  private emittedContent: Map<string, string> = new Map();
+  private fieldStates: Map<string, FieldState> = new Map();
+  private state: ExtractorState = "streaming";
+
+  constructor(private readonly config: ValidationStreamExtractorConfig) {
+    for (const field of config.streamFields) {
+      this.fieldStates.set(field, "pending");
+    }
+  }
+
+  get done(): boolean {
+    return this.state === "complete" || this.state === "failed";
+  }
+
+  push(chunk: string): string {
+    // Check for cancellation
+    if (this.config.abortSignal?.aborted) {
+      if (this.state === "streaming") {
+        this.state = "failed";
+        this.emitEvent({ type: "error", error: "Cancelled by user", timestamp: Date.now() });
+      }
+      return "";
+    }
+
+    if (this.state !== "streaming") return "";
+
+    validateChunkSize(chunk);
+    this.buffer += chunk;
+
+    // Extract field contents from buffer
+    this.extractFieldContents();
+
+    // For levels 0-1, check if we can emit validated content
+    if (this.config.level <= 1) {
+      this.checkPerFieldEmission();
+    }
+
+    return ""; // We emit via callbacks, not return value
+  }
+
+  flush(): string {
+    // For levels 2-3, emit all buffered content when validation passes
+    if (this.config.level >= 2) {
+      for (const field of this.config.streamFields) {
+        const content = this.fieldContents.get(field) || "";
+        if (content) {
+          this.emitFieldContent(field, content);
+        }
+      }
+    }
+    this.state = "complete";
+    this.emitEvent({ type: "complete", timestamp: Date.now() });
+    return "";
+  }
+
+  reset(): void {
+    this.buffer = "";
+    this.fieldContents.clear();
+    this.validatedFields.clear();
+    this.emittedContent.clear();
+    for (const field of this.config.streamFields) {
+      this.fieldStates.set(field, "pending");
+    }
+    this.state = "streaming";
+  }
+
+  /**
+   * Signal a retry attempt. Returns info about validated fields for smart retry prompts.
+   */
+  signalRetry(retryCount: number): { validatedFields: string[] } {
+    this.state = "retrying";
+
+    // Emit separator for simple consumers
+    if (!this.config.hasRichConsumer) {
+      this.config.onChunk("\n-- that's not right, let me start again:\n");
+    }
+
+    this.emitEvent({ type: "retry_start", retryCount, timestamp: Date.now() });
+
+    return { validatedFields: Array.from(this.validatedFields) };
+  }
+
+  /**
+   * Signal an unrecoverable error.
+   */
+  signalError(message: string): void {
+    this.state = "failed";
+    this.emitEvent({ type: "error", error: message, timestamp: Date.now() });
+  }
+
+  /**
+   * Get fields that passed validation (for smart retry context).
+   */
+  getValidatedFields(): Map<string, string> {
+    const result = new Map<string, string>();
+    for (const field of this.validatedFields) {
+      const content = this.fieldContents.get(field);
+      if (content) {
+        result.set(field, content);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Diagnose what went wrong for error reporting.
+   */
+  diagnose(): ValidationDiagnosis {
+    const missingFields: string[] = [];
+    const invalidFields: string[] = [];
+    const incompleteFields: string[] = [];
+
+    for (const row of this.config.schema) {
+      const state = this.fieldStates.get(row.field);
+      switch (state) {
+        case "pending":
+          missingFields.push(row.field);
+          break;
+        case "invalid":
+          invalidFields.push(row.field);
+          break;
+        case "partial":
+          incompleteFields.push(row.field);
+          break;
+      }
+    }
+
+    return { missingFields, invalidFields, incompleteFields };
+  }
+
+  /**
+   * Get current extractor state.
+   */
+  getState(): ExtractorState {
+    return this.state;
+  }
+
+  // Private helpers
+
+  private extractFieldContents(): void {
+    for (const row of this.config.schema) {
+      const field = row.field;
+      const openTag = `<${field}>`;
+      const closeTag = `</${field}>`;
+
+      const openIdx = this.buffer.indexOf(openTag);
+      if (openIdx === -1) continue;
+
+      const contentStart = openIdx + openTag.length;
+      const closeIdx = this.buffer.indexOf(closeTag, contentStart);
+
+      if (closeIdx !== -1) {
+        // Complete field found
+        const content = this.buffer.substring(contentStart, closeIdx);
+        this.fieldContents.set(field, content);
+        this.fieldStates.set(field, "complete");
+      } else if (this.fieldStates.get(field) !== "complete") {
+        // Partial field - still streaming
+        this.fieldStates.set(field, "partial");
+        // Store partial content for streaming
+        const partialContent = this.buffer.substring(contentStart);
+        this.fieldContents.set(field, partialContent);
+      }
+    }
+  }
+
+  private checkPerFieldEmission(): void {
+    for (const field of this.config.streamFields) {
+      const state = this.fieldStates.get(field);
+      if (state === "invalid") continue; // Skip already invalid fields
+
+      const content = this.fieldContents.get(field);
+      if (!content) continue;
+
+      // Check validation codes if required
+      const expectedCode = this.config.expectedCodes.get(field);
+      if (expectedCode) {
+        const startCodeValid = this.checkValidationCode(field, "start", expectedCode);
+        const endCodeValid = this.checkValidationCode(field, "end", expectedCode);
+
+        if (state === "complete") {
+          if (startCodeValid && endCodeValid) {
+            this.validatedFields.add(field);
+            this.emitFieldContent(field, content);
+            this.emitEvent({ type: "field_validated", field, timestamp: Date.now() });
+          } else if (startCodeValid && !endCodeValid) {
+            // Start valid but end invalid
+            this.fieldStates.set(field, "invalid");
+            this.emitEvent({
+              type: "error",
+              field,
+              error: `End validation code mismatch for ${field}`,
+              timestamp: Date.now(),
+            });
+          } else {
+            this.fieldStates.set(field, "invalid");
+            this.emitEvent({
+              type: "error",
+              field,
+              error: `Validation codes mismatch for ${field}`,
+              timestamp: Date.now(),
+            });
+          }
+        }
+      } else {
+        // No validation codes - stream immediately (level 0 default)
+        if (this.config.level === 0) {
+          this.emitFieldContent(field, content);
+        }
+      }
+    }
+  }
+
+  private checkValidationCode(
+    field: string,
+    position: "start" | "end",
+    expectedCode: string,
+  ): boolean {
+    const codeField = `code_${field}_${position}`;
+    const openTag = `<${codeField}>`;
+    const closeTag = `</${codeField}>`;
+
+    const openIdx = this.buffer.indexOf(openTag);
+    if (openIdx === -1) return false;
+
+    const contentStart = openIdx + openTag.length;
+    const closeIdx = this.buffer.indexOf(closeTag, contentStart);
+    if (closeIdx === -1) return false;
+
+    const actualCode = this.buffer.substring(contentStart, closeIdx).trim();
+    return actualCode === expectedCode;
+  }
+
+  private emitFieldContent(field: string, content: string): void {
+    const previouslyEmitted = this.emittedContent.get(field) || "";
+    const newContent = content.substring(previouslyEmitted.length);
+
+    if (newContent) {
+      this.config.onChunk(newContent, field);
+      this.emitEvent({ type: "chunk", field, chunk: newContent, timestamp: Date.now() });
+      this.emittedContent.set(field, content);
+    }
+  }
+
+  private emitEvent(event: StreamEvent): void {
+    if (this.config.onEvent) {
+      this.config.onEvent(event);
+    }
+  }
+}
+
+// ============================================================================
+// Streaming Context Helpers
+// ============================================================================
+
+import type { StreamingContext } from "../streaming-context";
+
+/**
+ * Creates a streaming retry state from an extractor.
+ */
+export function createStreamingRetryState(
+  extractor: IStreamExtractor,
+): IStreamingRetryState & { _appendText: (text: string) => void } {
+  let streamedText = "";
+
+  return {
+    getStreamedText: () => {
+      const buffered = extractor.flush?.() ?? "";
+      if (buffered) {
+        streamedText += buffered;
+      }
+      return streamedText;
+    },
+    isComplete: () => extractor.done,
+    reset: () => {
+      extractor.reset?.();
+      streamedText = "";
+    },
+    _appendText: (text: string) => {
+      streamedText += text;
+    },
+  };
+}
+
+/**
+ * Creates a complete streaming context with retry state management.
+ */
+export function createStreamingContext(
+  extractor: IStreamExtractor,
+  onStreamChunk: (chunk: string, messageId?: string) => Promise<void>,
+  messageId?: string,
+): StreamingContext & IStreamingRetryState {
+  const retryState = createStreamingRetryState(extractor);
+
+  return {
+    onStreamChunk: async (chunk: string, msgId?: string) => {
+      if (extractor.done) return;
+      const textToStream = extractor.push(chunk);
+      if (textToStream) {
+        retryState._appendText(textToStream);
+        await onStreamChunk(textToStream, msgId);
+      }
+    },
+    messageId,
+    reset: retryState.reset,
+    getStreamedText: retryState.getStreamedText,
+    isComplete: retryState.isComplete,
+  };
+}
