@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/project-tee-starter",
   "description": "Project starter for elizaOS with TEE capabilities",
-  "version": "1.7.2-alpha.4",
+  "version": "1.7.3-alpha.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -37,7 +37,7 @@
     "@elizaos/plugin-bootstrap": "workspace:*",
     "@elizaos/plugin-redpill": "^1.2.1",
     "@elizaos/plugin-sql": "workspace:*",
-    "@phala/dstack-sdk": "^0.1.11",
+    "@phala/dstack-sdk": "^0.5.7",
     "@solana/web3.js": "^1.98.2",
     "@tanstack/react-query": "^5.67.2",
     "clsx": "^2.1.1",
@@ -46,11 +46,11 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.10",
     "viem": "^2.30.1",
-    "zod": "^4.1.13"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
-    "@types/jsdom": "^21.1.7",
-    "@types/node": "^24.10.1",
+    "@types/jsdom": "^27.0.0",
+    "@types/node": "^25.0.9",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^5.1.1",
