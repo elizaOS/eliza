@@ -500,13 +500,16 @@ class DefaultMessageService(IMessageService):
                 ),
             ]
 
+            from elizaos.runtime import DynamicPromptOptions
             parsed_response = await runtime.dynamic_prompt_exec_from_state(
                 state=state,
-                template=template,
+                prompt=template,
                 schema=schema,
-                model_size="large",
-                preferred_encapsulation="xml",
-                required_fields=["thought", "actions"],
+                options=DynamicPromptOptions(
+                    model_size="large",
+                    force_format="xml",
+                    required_fields=["thought", "actions"],
+                ),
             )
 
             # Extract parsed fields
@@ -796,10 +799,12 @@ class DefaultMessageService(IMessageService):
 
             decision_result = await runtime.dynamic_prompt_exec_from_state(
                 state=state,
-                template=decision_template,
+                prompt=decision_template,
                 schema=decision_schema,
-                model_size="large",
-                preferred_encapsulation="xml",
+                options=DynamicPromptOptions(
+                    model_size="large",
+                    force_format="xml",
+                ),
             )
 
             thought = str(decision_result.get("thought", "")) if decision_result else ""
@@ -883,11 +888,13 @@ class DefaultMessageService(IMessageService):
 
         summary_result = await runtime.dynamic_prompt_exec_from_state(
             state=state,
-            template=summary_template,
+            prompt=summary_template,
             schema=summary_schema,
-            model_size="large",
-            preferred_encapsulation="xml",
-            required_fields=["text"],
+            options=DynamicPromptOptions(
+                model_size="large",
+                force_format="xml",
+                required_fields=["text"],
+            ),
         )
 
         final_thought = str(summary_result.get("thought", "")) if summary_result else ""
