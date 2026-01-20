@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import type { Metadata } from '@elizaos/core';
 import { agentTable } from './agent';
 
 /**
@@ -17,7 +18,7 @@ export const worldTable = pgTable('worlds', {
     .notNull()
     .references(() => agentTable.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  metadata: jsonb('metadata'),
+  metadata: jsonb('metadata').$type<Metadata>(),
   messageServerId: uuid('message_server_id'),
   createdAt: timestamp('created_at')
     .default(sql`now()`)

@@ -213,11 +213,7 @@ describe('Secrets Environment Variable Filtering', () => {
       process.env.OPENROUTER_API_KEY = 'sk-or-project-key-from-dotenv';
 
       // Set filter to only allow project's intended vars
-      const allowedVars = new Set([
-        'OPENROUTER_API_KEY',
-        'POSTGRES_URL',
-        'LOG_LEVEL',
-      ]);
+      const allowedVars = new Set(['OPENROUTER_API_KEY', 'POSTGRES_URL', 'LOG_LEVEL']);
       setAllowedEnvVars(allowedVars);
 
       const character: Character = {
