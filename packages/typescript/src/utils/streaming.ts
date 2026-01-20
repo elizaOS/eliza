@@ -665,7 +665,7 @@ export class ValidationStreamExtractor implements IStreamExtractor {
     if (this.config.abortSignal?.aborted) {
       if (this.state === "streaming") {
         this.state = "failed";
-        this.emitEvent({ type: "error", error: "Cancelled by user", timestamp: Date.now() });
+        this.emitEvent({ eventType: "error", error: "Cancelled by user", timestamp: Date.now() });
       }
       return "";
     }
@@ -697,7 +697,7 @@ export class ValidationStreamExtractor implements IStreamExtractor {
       }
     }
     this.state = "complete";
-    this.emitEvent({ type: "complete", timestamp: Date.now() });
+    this.emitEvent({ eventType: "complete", timestamp: Date.now() });
     return "";
   }
 
@@ -723,7 +723,7 @@ export class ValidationStreamExtractor implements IStreamExtractor {
       this.config.onChunk("\n-- that's not right, let me start again:\n");
     }
 
-    this.emitEvent({ type: "retry_start", retryCount, timestamp: Date.now() });
+    this.emitEvent({ eventType: "retry_start", retryCount, timestamp: Date.now() });
 
     return { validatedFields: Array.from(this.validatedFields) };
   }
@@ -733,7 +733,7 @@ export class ValidationStreamExtractor implements IStreamExtractor {
    */
   signalError(message: string): void {
     this.state = "failed";
-    this.emitEvent({ type: "error", error: message, timestamp: Date.now() });
+    this.emitEvent({ eventType: "error", error: message, timestamp: Date.now() });
   }
 
   /**
@@ -830,12 +830,12 @@ export class ValidationStreamExtractor implements IStreamExtractor {
           if (startCodeValid && endCodeValid) {
             this.validatedFields.add(field);
             this.emitFieldContent(field, content);
-            this.emitEvent({ type: "field_validated", field, timestamp: Date.now() });
+            this.emitEvent({ eventType: "field_validated", field, timestamp: Date.now() });
           } else if (startCodeValid && !endCodeValid) {
             // Start valid but end invalid
             this.fieldStates.set(field, "invalid");
             this.emitEvent({
-              type: "error",
+              eventType: "error",
               field,
               error: `End validation code mismatch for ${field}`,
               timestamp: Date.now(),
@@ -843,7 +843,7 @@ export class ValidationStreamExtractor implements IStreamExtractor {
           } else {
             this.fieldStates.set(field, "invalid");
             this.emitEvent({
-              type: "error",
+              eventType: "error",
               field,
               error: `Validation codes mismatch for ${field}`,
               timestamp: Date.now(),
@@ -885,7 +885,7 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 
     if (newContent) {
       this.config.onChunk(newContent, field);
-      this.emitEvent({ type: "chunk", field, chunk: newContent, timestamp: Date.now() });
+      this.emitEvent({ eventType: "chunk", field, chunk: newContent, timestamp: Date.now() });
       this.emittedContent.set(field, content);
     }
   }

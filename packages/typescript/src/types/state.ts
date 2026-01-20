@@ -230,8 +230,8 @@ export type StreamEventType =
  * (spinners, clear partial content, error messages).
  */
 export interface StreamEvent {
-  /** Event type */
-  type: StreamEventType;
+  /** Event type (named eventType for cross-language consistency with Rust/Python) */
+  eventType: StreamEventType;
   /** Field name (for chunk and field_validated events) */
   field?: string;
   /** Content chunk (for chunk events) */
