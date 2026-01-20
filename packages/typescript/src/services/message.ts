@@ -1286,7 +1286,7 @@ export class DefaultMessageService implements IMessageService {
         actions: finalActions.length > 0 ? finalActions : ["IGNORE"],
         providers,
         text: String(parsedXml.text || ""),
-        simple: parsedXml.simple || false,
+        simple: parsedXml.simple === true || parsedXml.simple === "true",
       };
     } else {
       // dynamicPromptExecFromState returned null - use streamed text if available
