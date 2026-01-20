@@ -10,14 +10,14 @@ use crate::prompts::{
 };
 use crate::types::memory::Memory;
 use crate::types::primitives::{Content, UUID};
-use crate::types::state::State;
+use crate::types::state::{SchemaRow, State};
 use crate::types::{HandlerCallback, HandlerOptions};
 use crate::template::render_template;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Options for message processing
 #[derive(Default, Clone)]
@@ -164,22 +164,36 @@ impl IMessageService for DefaultMessageService {
             }
         };
 
-        // shouldRespond gate (parity with TS/Python)
+        // shouldRespond gate (parity with TS/Python) - use dynamicPromptExecFromState
         if check_should_respond {
-            let should_prompt = build_should_respond_prompt(&character_name, message, &state)?;
-            let decision_xml = runtime
-                .use_model(
-                    "TEXT_SMALL",
-                    serde_json::json!({
-                        "prompt": should_prompt,
-                        "system": system_prompt,
-                        "temperature": 0.0
-                    }),
+            // Use dynamicPromptExecFromState for structured decision output
+            let schema = vec![
+                SchemaRow::new("name", "The name of the agent responding")
+                    .with_validate_field(false)
+                    .with_stream_field(false),
+                SchemaRow::new("reasoning", "Your reasoning for this decision")
+                    .with_validate_field(false)
+                    .with_stream_field(false),
+                SchemaRow::new("action", "RESPOND | IGNORE | STOP")
+                    .with_validate_field(false)
+                    .with_stream_field(false),
+            ];
+
+            let decision_result = runtime
+                .dynamic_prompt_exec_from_state(
+                    &state,
+                    SHOULD_RESPOND_TEMPLATE,
+                    schema,
+                    crate::runtime::DynamicPromptOptions {
+                        model_size: Some("small".to_string()),
+                        preferred_encapsulation: Some("xml".to_string()),
+                        ..Default::default()
+                    },
                 )
                 .await?;
 
-            let decision = crate::xml::parse_key_value_xml(&decision_xml)
-                .and_then(|m| m.get("action").cloned())
+            let decision = decision_result
+                .and_then(|m| m.get("action").and_then(|v| v.as_str()).map(String::from))
                 .unwrap_or_else(|| "RESPOND".to_string());
 
             let decision_upper = decision.trim().to_uppercase();
@@ -204,42 +218,64 @@ impl IMessageService for DefaultMessageService {
             return run_multi_step(runtime, message, &state, callback, max_iters).await;
         }
 
-        // Build the canonical prompt (MESSAGE_HANDLER_TEMPLATE parity)
-        let prompt = build_canonical_prompt(&character_name, message, &state)?;
+        // Use dynamicPromptExecFromState for structured message response
+        let schema = vec![
+            SchemaRow::new("thought", "Your internal reasoning about the message and what to do")
+                .with_required(true)
+                .with_validate_field(false)
+                .with_stream_field(false),
+            SchemaRow::new("providers", "List of providers to use for additional context (comma-separated)")
+                .with_validate_field(false)
+                .with_stream_field(false),
+            SchemaRow::new("actions", "List of actions to take (comma-separated)")
+                .with_required(true)
+                .with_validate_field(false)
+                .with_stream_field(false),
+            SchemaRow::new("text", "The text response to send to the user")
+                .with_stream_field(true),
+            SchemaRow::new("simple", "Whether this is a simple response (true/false)")
+                .with_validate_field(false)
+                .with_stream_field(false),
+        ];
 
-        // Generate response using the model (calls registered model handler)
-        let raw_response = runtime
-            .use_model(
-                "TEXT_LARGE",
-                serde_json::json!({
-                    "prompt": prompt,
-                    "system": system_prompt,
-                    "temperature": 0.7
-                }),
+        let parsed = runtime
+            .dynamic_prompt_exec_from_state(
+                &state,
+                MESSAGE_HANDLER_TEMPLATE,
+                schema,
+                crate::runtime::DynamicPromptOptions {
+                    model_size: Some("large".to_string()),
+                    preferred_encapsulation: Some("xml".to_string()),
+                    required_fields: Some(vec!["thought".to_string(), "actions".to_string()]),
+                    ..Default::default()
+                },
             )
             .await?;
 
-        // Parse XML response. If the backend returned plain text (no XML),
-        // treat it as a simple REPLY (TypeScript/Python parity).
-        let parsed = crate::xml::parse_key_value_xml(&raw_response);
-
         let thought = parsed
             .as_ref()
-            .and_then(|m| m.get("thought").cloned())
-            .unwrap_or_default();
+            .and_then(|m| m.get("thought").and_then(|v| v.as_str()))
+            .unwrap_or_default()
+            .to_string();
         let actions_raw = parsed
             .as_ref()
-            .and_then(|m| m.get("actions").cloned())
-            .unwrap_or_else(|| "REPLY".to_string());
+            .and_then(|m| m.get("actions").and_then(|v| v.as_str()))
+            .unwrap_or("REPLY")
+            .to_string();
         let providers_raw = parsed
             .as_ref()
-            .and_then(|m| m.get("providers").cloned())
-            .unwrap_or_default();
+            .and_then(|m| m.get("providers").and_then(|v| v.as_str()))
+            .unwrap_or_default()
+            .to_string();
         let mut text = parsed
             .as_ref()
-            .and_then(|m| m.get("text").cloned())
-            .unwrap_or_else(|| raw_response.clone());
-        let params_xml = parsed.as_ref().and_then(|m| m.get("params").cloned());
+            .and_then(|m| m.get("text").and_then(|v| v.as_str()))
+            .unwrap_or_default()
+            .to_string();
+        let params_xml = parsed
+            .as_ref()
+            .and_then(|m| m.get("params").and_then(|v| v.as_str()))
+            .map(String::from);
 
         let mut actions = split_csv(&actions_raw);
         if actions.is_empty() {
@@ -624,34 +660,51 @@ async fn run_multi_step(
             }
         };
 
-        let ctx = serde_json::json!({
-            "recentMessages": iter_state.get_value("recentMessages").unwrap_or(Value::String(String::new())),
-            "actionsWithDescriptions": iter_state.get_value("actionsWithDescriptions").unwrap_or(Value::String(String::new())),
-            "providersWithDescriptions": iter_state.get_value("providersWithDescriptions").unwrap_or(Value::String(String::new())),
-            "actionResults": format_action_results(&trace_results),
-        });
+        // Add action results to state for template rendering
+        let mut iter_state = iter_state;
+        iter_state.values.insert("actionResults".to_string(), Value::String(format_action_results(&trace_results)));
 
-        let decision_prompt = render_template(MULTI_STEP_DECISION_TEMPLATE, &ctx)?;
-        let raw = runtime
-            .use_model(
-                "TEXT_LARGE",
-                serde_json::json!({
-                    "prompt": decision_prompt,
-                    "system": system_prompt,
-                    "temperature": 0.7
-                }),
+        // Use dynamicPromptExecFromState for multi-step decision
+        let schema = vec![
+            SchemaRow::new("thought", "Your reasoning for the selected providers and/or action")
+                .with_validate_field(false)
+                .with_stream_field(false),
+            SchemaRow::new("providers", "Comma-separated list of providers to call")
+                .with_validate_field(false)
+                .with_stream_field(false),
+            SchemaRow::new("action", "Name of the action to execute (can be empty)")
+                .with_validate_field(false)
+                .with_stream_field(false),
+            SchemaRow::new("parameters", "JSON object with parameter names and values")
+                .with_validate_field(false)
+                .with_stream_field(false),
+            SchemaRow::new("isFinish", "true if task is complete, false otherwise")
+                .with_validate_field(false)
+                .with_stream_field(false),
+        ];
+
+        let parsed = runtime
+            .dynamic_prompt_exec_from_state(
+                &iter_state,
+                MULTI_STEP_DECISION_TEMPLATE,
+                schema,
+                crate::runtime::DynamicPromptOptions {
+                    model_size: Some("large".to_string()),
+                    preferred_encapsulation: Some("xml".to_string()),
+                    ..Default::default()
+                },
             )
             .await?;
 
-        let parsed = crate::xml::parse_key_value_xml(&raw)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse multi-step XML"))?;
-        let thought = parsed.get("thought").cloned().unwrap_or_default();
-        let action = parsed.get("action").cloned().unwrap_or_default();
+        let parsed = parsed.ok_or_else(|| anyhow::anyhow!("Failed to parse multi-step result"))?;
+        let thought = parsed.get("thought").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let action = parsed.get("action").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         let is_finish = parsed
             .get("isFinish")
+            .and_then(|v| v.as_str())
             .map(|s| s.trim().eq_ignore_ascii_case("true"))
             .unwrap_or(false);
-        last_thought = thought;
+        last_thought = thought.clone();
 
         if is_finish {
             break;
@@ -677,30 +730,38 @@ async fn run_multi_step(
         }
     };
 
-    let ctx = serde_json::json!({
-        "recentMessages": state.get_value("recentMessages").unwrap_or(Value::String(String::new())),
-        "actionResults": format_action_results(&trace_results),
-        "recentMessage": last_thought,
-        "bio": "",
-        "system": "",
-        "messageDirections": "",
-    });
+    // Add context to state for final summary
+    let mut final_state = state.clone();
+    final_state.values.insert("actionResults".to_string(), Value::String(format_action_results(&trace_results)));
+    final_state.values.insert("recentMessage".to_string(), Value::String(last_thought));
 
-    let summary_prompt = render_template(MULTI_STEP_SUMMARY_TEMPLATE, &ctx)?;
-    let raw = runtime
-        .use_model(
-            "TEXT_LARGE",
-            serde_json::json!({
-                "prompt": summary_prompt,
-                "system": system_prompt,
-                "temperature": 0.7
-            }),
+    // Use dynamicPromptExecFromState for final summary
+    let schema = vec![
+        SchemaRow::new("thought", "Your internal reasoning about the summary")
+            .with_validate_field(false)
+            .with_stream_field(false),
+        SchemaRow::new("text", "The final summary message to send to the user")
+            .with_required(true)
+            .with_stream_field(true),
+    ];
+
+    let parsed = runtime
+        .dynamic_prompt_exec_from_state(
+            &final_state,
+            MULTI_STEP_SUMMARY_TEMPLATE,
+            schema,
+            crate::runtime::DynamicPromptOptions {
+                model_size: Some("large".to_string()),
+                preferred_encapsulation: Some("xml".to_string()),
+                required_fields: Some(vec!["text".to_string()]),
+                ..Default::default()
+            },
         )
         .await?;
-    let parsed = crate::xml::parse_key_value_xml(&raw)
-        .ok_or_else(|| anyhow::anyhow!("Failed to parse summary XML"))?;
-    let final_text = parsed.get("text").cloned().unwrap_or(raw);
-    let final_thought = parsed.get("thought").cloned().unwrap_or_default();
+
+    let parsed = parsed.ok_or_else(|| anyhow::anyhow!("Failed to parse summary result"))?;
+    let final_text = parsed.get("text").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let final_thought = parsed.get("thought").and_then(|v| v.as_str()).unwrap_or_default().to_string();
 
     let response_content = Content {
         thought: Some(final_thought),
