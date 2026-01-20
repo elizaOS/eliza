@@ -3909,13 +3909,35 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }
 
   /**
-   * Convert double-brace bindings to triple-brace (non-escaping).
+   * Convert double-brace Handlebars bindings to triple-brace (non-escaping).
+   *
+   * Handlebars uses:
+   * - `{{var}}` for HTML-escaped output
+   * - `{{{var}}}` for raw/unescaped output
+   *
+   * This function upgrades simple variable bindings to triple-brace so that
+   * special characters in state values don't get HTML-encoded in prompts.
+   *
+   * The regex preserves Handlebars helpers and special syntax:
+   * - `{{#if}}`, `{{/if}}` - block helpers (start with # or /)
+   * - `{{! comment }}` - comments (start with !)
+   * - `{{> partial}}` - partials (start with >)
+   * - `{{{already_raw}}}` - already triple-braced
+   * - `{{else}}` - else blocks
    */
   private upgradeDoubleToTriple(tpl: string): string {
-    return tpl.replace(
-      /(?<!\{)\{\{(?!#|\/|!|>|\{|else\b)(\s*)(\S+?)(\s*)\}\}(?!\})/g,
-      "{{{$1$2$3}}}",
-    );
+    // Pattern breakdown:
+    // (?<!\{)      - not preceded by { (avoids matching inside {{{ )
+    // \{\{         - match opening {{
+    // (?!...)      - not followed by Handlebars special chars: # / ! > { else
+    // (\s*)        - capture leading whitespace
+    // (\S+?)       - capture variable name (non-greedy, non-whitespace)
+    // (\s*)        - capture trailing whitespace
+    // \}\}         - match closing }}
+    // (?!\})       - not followed by } (avoids matching {{{ }}}
+    const DOUBLE_BRACE_VAR = /(?<!\{)\{\{(?!#|\/|!|>|\{|else\b)(\s*)(\S+?)(\s*)\}\}(?!\})/g;
+
+    return tpl.replace(DOUBLE_BRACE_VAR, "{{{$1$2$3}}}");
   }
 
   /**
