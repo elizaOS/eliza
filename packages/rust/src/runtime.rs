@@ -1527,11 +1527,15 @@ impl AgentRuntime {
 
             // Build example
             let mut example = format!("{}\n", container_start);
-            for (field, desc) in &ext_schema {
+            let ext_schema_len = ext_schema.len();
+            for (i, (field, desc)) in ext_schema.iter().enumerate() {
+                let is_last = i == ext_schema_len - 1;
                 if is_xml {
                     example.push_str(&format!("  <{}>{}</{}>\n", field, desc, field));
                 } else {
-                    example.push_str(&format!("  \"{}\": \"{}\",\n", field, desc));
+                    // No trailing comma on last field for valid JSON
+                    let comma = if is_last { "" } else { "," };
+                    example.push_str(&format!("  \"{}\": \"{}\"{}\n", field, desc, comma));
                 }
             }
             example.push_str(container_end);
