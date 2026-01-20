@@ -31,12 +31,13 @@ function formatActionsWithParams(actions: Action[]): string {
       ) {
         const validParams = Object.entries(
           action.parameters as Record<string, ActionParameter>
-        ).filter(([, paramDef]) =>
-          paramDef !== null &&
-          paramDef !== undefined &&
-          typeof paramDef === 'object' &&
-          'type' in paramDef &&
-          typeof (paramDef as ActionParameter).type === 'string'
+        ).filter(
+          ([, paramDef]) =>
+            paramDef !== null &&
+            paramDef !== undefined &&
+            typeof paramDef === 'object' &&
+            'type' in paramDef &&
+            typeof (paramDef as ActionParameter).type === 'string'
         );
 
         if (validParams.length === 0) {

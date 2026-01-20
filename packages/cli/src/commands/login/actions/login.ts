@@ -6,7 +6,7 @@ import { writeEnvFile, parseEnvFile } from '../../env/utils/file-operations';
 import type { LoginOptions, SessionStatusResponse } from '../types';
 import { generateSessionId, openBrowser, pollAuthStatus } from '../utils';
 
-const ELIZAOS_CLOUD_API_KEY = 'ELIZAOS_CLOUD_API_KEY';
+const ELIZAOS_API_KEY_ENV = 'ELIZAOS_API_KEY';
 
 /**
  * Validates an elizaOS Cloud API key format
@@ -137,7 +137,7 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
     spinner.succeed('Authentication successful!');
 
     // Step 6: Write API key to .env file
-    await writeApiKeyToEnv(authResult.apiKey);
+    await writeApiKeyToEnv(authResult.apiKey, options.envFilePath);
 
     // Step 7: Display success message
     displaySuccessMessage(authResult);
@@ -159,13 +159,15 @@ function displayManualInstructions(authUrl: string): void {
 
 /**
  * Write API key to project .env file
+ * @param apiKey The API key to write
+ * @param envFilePath Optional path to the .env file (defaults to current directory)
  */
-async function writeApiKeyToEnv(apiKey: string): Promise<void> {
+async function writeApiKeyToEnv(apiKey: string, envFilePath?: string): Promise<void> {
   const spinner = ora('Saving API key to .env file...').start();
 
   try {
-    // Check for .env file in current directory
-    const envPath = path.join(process.cwd(), '.env');
+    // Use provided path or default to .env in current directory
+    const envPath = envFilePath || path.join(process.cwd(), '.env');
     let envVars: Record<string, string> = {};
 
     // Read existing .env file if it exists
@@ -179,7 +181,7 @@ async function writeApiKeyToEnv(apiKey: string): Promise<void> {
     }
 
     // Update or add API key
-    envVars[ELIZAOS_CLOUD_API_KEY] = apiKey;
+    envVars[ELIZAOS_API_KEY_ENV] = apiKey;
 
     // Write back to .env file
     await writeEnvFile(envPath, envVars);
@@ -188,7 +190,7 @@ async function writeApiKeyToEnv(apiKey: string): Promise<void> {
   } catch (error) {
     spinner.fail('Failed to save API key to .env file');
     console.log(colors.yellow('\n⚠️  Please manually add this key to your .env file:'));
-    console.log(colors.dim(`${ELIZAOS_CLOUD_API_KEY}=${apiKey}\n`));
+    console.log(colors.dim(`${ELIZAOS_API_KEY_ENV}=${apiKey}\n`));
     throw error;
   }
 }
