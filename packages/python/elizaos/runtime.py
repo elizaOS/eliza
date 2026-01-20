@@ -1963,11 +1963,14 @@ class AgentRuntime(IAgentRuntime):
 
             # Build example
             example_lines = [container_start]
-            for field, desc in ext_schema:
+            for i, (field, desc) in enumerate(ext_schema):
+                is_last = i == len(ext_schema) - 1
                 if is_xml:
                     example_lines.append(f"  <{field}>{desc}</{field}>")
                 else:
-                    example_lines.append(f'  "{field}": "{desc}",')
+                    # No trailing comma on last field for valid JSON
+                    comma = "" if is_last else ","
+                    example_lines.append(f'  "{field}": "{desc}"{comma}')
             example_lines.append(container_end)
             example = "\n".join(example_lines)
 

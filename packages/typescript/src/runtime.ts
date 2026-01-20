@@ -3545,11 +3545,14 @@ export class AgentRuntime implements IAgentRuntime {
       const CONTAINER_END = isXML ? "</response>" : "}";
 
       let EXAMPLE = CONTAINER_START + "\n";
-      for (const s of extSchema) {
+      for (let i = 0; i < extSchema.length; i++) {
+        const s = extSchema[i];
+        const isLast = i === extSchema.length - 1;
         if (isXML) {
           EXAMPLE += `  <${s.field}>${s.description}</${s.field}>\n`;
         } else {
-          EXAMPLE += `  "${s.field}": "${s.description}",\n`;
+          // No trailing comma on last field for valid JSON
+          EXAMPLE += `  "${s.field}": "${s.description}"${isLast ? "" : ","}\n`;
         }
       }
       EXAMPLE += CONTAINER_END + "\n";
@@ -3605,10 +3608,13 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
           })
           .map((row) => row.field);
 
+        // Only use fallback if no explicit streamField settings exist
+        // Don't override explicit streamField: false on "text" field
+        const hasExplicitStreamSettings = schema.some((r) => r.streamField !== undefined);
         const finalStreamFields =
           streamFields.length > 0
             ? streamFields
-            : schema.some((r) => r.field === "text")
+            : !hasExplicitStreamSettings && schema.some((r) => r.field === "text")
               ? ["text"]
               : [];
 
@@ -3655,11 +3661,43 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         return null;
       }
 
-      const response = await this.useModel<typeof modelType, string>(
-        modelType,
-        modelParams,
-        options.model,
-      );
+      let response: string;
+      try {
+        response = await this.useModel<typeof modelType, string>(
+          modelType,
+          modelParams,
+          options.model,
+        );
+      } catch (modelError) {
+        this.logger.error(`Model call failed: ${String(modelError)}`);
+        currentRetry++;
+
+        if (options.abortSignal?.aborted) {
+          extractor?.signalError("Cancelled by user");
+          return null;
+        }
+
+        if (currentRetry <= maxRetries) {
+          // Apply retry backoff for model errors
+          if (options.retryBackoff) {
+            const delayMs = this.calculateBackoffDelay(options.retryBackoff, currentRetry);
+            this.logger.debug(`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`);
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+            if (options.abortSignal?.aborted) {
+              extractor?.signalError("Cancelled by user");
+              return null;
+            }
+          }
+
+          // Signal retry to extractor if it exists
+          if (extractor) {
+            extractor.signalRetry(currentRetry);
+            extractor.reset();
+          }
+        }
+        continue;
+      }
 
       // Clean response (remove <think> blocks)
       const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>/g, "");
