@@ -661,9 +661,9 @@ export class ValidationStreamExtractor implements IStreamExtractor {
   }
 
   push(chunk: string): string {
-    // Check for cancellation
+    // Check for cancellation - transition to failed for any non-terminal state
     if (this.config.abortSignal?.aborted) {
-      if (this.state === "streaming") {
+      if (this.state !== "complete" && this.state !== "failed") {
         this.state = "failed";
         this.emitEvent({ eventType: "error", error: "Cancelled by user", timestamp: Date.now() });
       }
@@ -687,6 +687,11 @@ export class ValidationStreamExtractor implements IStreamExtractor {
   }
 
   flush(): string {
+    // Don't overwrite failed state (e.g., from abort)
+    if (this.state === "failed") {
+      return "";
+    }
+
     // For levels 2-3, emit all buffered content when validation passes
     if (this.config.level >= 2) {
       for (const field of this.config.streamFields) {
@@ -786,6 +791,9 @@ export class ValidationStreamExtractor implements IStreamExtractor {
   // Private helpers
 
   private extractFieldContents(): void {
+    // Pre-compute all field tags for boundary detection
+    const allOpenTags = this.config.schema.map((row) => `<${row.field}>`);
+
     for (const row of this.config.schema) {
       const field = row.field;
       const openTag = `<${field}>`;
@@ -805,8 +813,19 @@ export class ValidationStreamExtractor implements IStreamExtractor {
       } else if (this.fieldStates.get(field) !== "complete") {
         // Partial field - still streaming
         this.fieldStates.set(field, "partial");
-        // Store partial content for streaming
-        const partialContent = this.buffer.substring(contentStart);
+
+        // Find the end boundary for partial content:
+        // Either the next field's opening tag or end of buffer
+        let partialEnd = this.buffer.length;
+        for (const otherTag of allOpenTags) {
+          if (otherTag === openTag) continue; // Skip self
+          const otherIdx = this.buffer.indexOf(otherTag, contentStart);
+          if (otherIdx !== -1 && otherIdx < partialEnd) {
+            partialEnd = otherIdx;
+          }
+        }
+
+        const partialContent = this.buffer.substring(contentStart, partialEnd);
         this.fieldContents.set(field, partialContent);
       }
     }
@@ -851,10 +870,16 @@ export class ValidationStreamExtractor implements IStreamExtractor {
           }
         }
       } else {
-        // No validation codes - stream immediately (level 0 default)
+        // No validation codes for this field
         if (this.config.level === 0) {
+          // Level 0: Stream immediately as content arrives (no validation)
+          this.emitFieldContent(field, content);
+        } else if (state === "complete") {
+          // Levels 1-3: Stream when field is complete (even without per-field validation)
+          // Per-field validation is optional; fields without codes stream on completion
           this.emitFieldContent(field, content);
         }
+        // For partial state at levels 1-3: wait until complete before streaming
       }
     }
   }
@@ -881,6 +906,19 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 
   private emitFieldContent(field: string, content: string): void {
     const previouslyEmitted = this.emittedContent.get(field) || "";
+
+    // Defensive check: if content shrinks (shouldn't happen, indicates extraction bug),
+    // reset and emit the full new content rather than producing invalid substring
+    if (content.length < previouslyEmitted.length) {
+      // Content shrunk unexpectedly - reset tracking and emit full content
+      this.emittedContent.set(field, content);
+      if (content) {
+        this.config.onChunk(content, field);
+        this.emitEvent({ eventType: "chunk", field, chunk: content, timestamp: Date.now() });
+      }
+      return;
+    }
+
     const newContent = content.substring(previouslyEmitted.length);
 
     if (newContent) {
@@ -908,7 +946,7 @@ import type { StreamingContext } from "../streaming-context";
  */
 export function createStreamingRetryState(
   extractor: IStreamExtractor,
-): IStreamingRetryState & { _appendText: (text: string) => void } {
+): IStreamingRetryState & { appendText: (text: string) => void } {
   let streamedText = "";
 
   return {
@@ -924,7 +962,8 @@ export function createStreamingRetryState(
       extractor.reset?.();
       streamedText = "";
     },
-    _appendText: (text: string) => {
+    /** Append text to the streamed content buffer */
+    appendText: (text: string) => {
       streamedText += text;
     },
   };
@@ -945,7 +984,7 @@ export function createStreamingContext(
       if (extractor.done) return;
       const textToStream = extractor.push(chunk);
       if (textToStream) {
-        retryState._appendText(textToStream);
+        retryState.appendText(textToStream);
         await onStreamChunk(textToStream, msgId);
       }
     },

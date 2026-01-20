@@ -81,7 +81,6 @@ import {
 import type { IMessageService } from "./types/message-service";
 import {
   stringToUuid,
-  composePromptFromState,
   parseKeyValueXml,
   parseJSONObjectFromText,
 } from "./utils";
@@ -3342,6 +3341,10 @@ export class AgentRuntime implements IAgentRuntime {
   /**
    * Performance metrics for dynamic prompt execution.
    * Tracks success/failure rates per model+schema combination.
+   *
+   * Uses LRU-style eviction to prevent unbounded growth:
+   * - Max 100 entries (sufficient for typical model+schema combinations)
+   * - Entries older than 1 hour are pruned on access
    */
   private static dynamicPromptMetrics = new Map<
     string,
@@ -3354,6 +3357,54 @@ export class AgentRuntime implements IAgentRuntime {
       lastUpdated: number;
     }
   >();
+
+  private static readonly METRICS_MAX_ENTRIES = 100;
+  private static readonly METRICS_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+  /**
+   * Get or create metrics entry with LRU eviction.
+   */
+  private static getOrCreateMetrics(key: string) {
+    const now = Date.now();
+
+    // Prune stale entries periodically (when we access)
+    if (AgentRuntime.dynamicPromptMetrics.size > AgentRuntime.METRICS_MAX_ENTRIES / 2) {
+      for (const [k, v] of AgentRuntime.dynamicPromptMetrics) {
+        if (now - v.lastUpdated > AgentRuntime.METRICS_TTL_MS) {
+          AgentRuntime.dynamicPromptMetrics.delete(k);
+        }
+      }
+    }
+
+    // Evict oldest if still at max capacity
+    if (AgentRuntime.dynamicPromptMetrics.size >= AgentRuntime.METRICS_MAX_ENTRIES) {
+      let oldestKey: string | null = null;
+      let oldestTime = Infinity;
+      for (const [k, v] of AgentRuntime.dynamicPromptMetrics) {
+        if (v.lastUpdated < oldestTime) {
+          oldestTime = v.lastUpdated;
+          oldestKey = k;
+        }
+      }
+      if (oldestKey) {
+        AgentRuntime.dynamicPromptMetrics.delete(oldestKey);
+      }
+    }
+
+    let metric = AgentRuntime.dynamicPromptMetrics.get(key);
+    if (!metric) {
+      metric = {
+        lowestFailedTokenCount: null,
+        highestSuccessTokenCount: null,
+        totalAttempts: 0,
+        successfulAttempts: 0,
+        failedAttempts: 0,
+        lastUpdated: now,
+      };
+      AgentRuntime.dynamicPromptMetrics.set(key, metric);
+    }
+    return metric;
+  }
 
   /**
    * Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
@@ -3397,6 +3448,26 @@ export class AgentRuntime implements IAgentRuntime {
       abortSignal?: AbortSignal;
     };
   }): Promise<Record<string, unknown> | null> {
+    // Validate schema input
+    if (!schema || schema.length === 0) {
+      this.logger.error("dynamicPromptExecFromState: schema must have at least one entry");
+      return null;
+    }
+
+    // Validate field names are valid identifiers
+    const invalidFields = schema.filter((row) => {
+      if (!row.field || typeof row.field !== "string") return true;
+      // Field names should be valid identifiers: start with letter/underscore, contain only alphanumeric/underscore
+      return !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(row.field);
+    });
+
+    if (invalidFields.length > 0) {
+      this.logger.error(
+        `dynamicPromptExecFromState: invalid field names in schema: ${invalidFields.map((f) => f.field || "(empty)").join(", ")}`,
+      );
+      return null;
+    }
+
     // Generate keys for metrics
     const modelIdentifier =
       options.model || (options.modelSize === "small" ? "TEXT_SMALL" : "TEXT_LARGE");
@@ -3421,24 +3492,20 @@ export class AgentRuntime implements IAgentRuntime {
     } else if (validationLevel === "strict" || validationLevel === "safe") {
       defaultContextCheckLevel = 3;
       defaultRetries = 3;
+    } else if (validationLevel !== undefined) {
+      // Warn about unrecognized validation level
+      this.logger.warn(
+        `Unrecognized VALIDATION_LEVEL "${validationLevel}". ` +
+          `Valid values: trusted, fast, progressive, strict, safe. ` +
+          `Falling back to default (level 2).`,
+      );
     }
 
     const maxRetries = options.maxRetries ?? defaultRetries;
     let currentRetry = 0;
 
-    // Initialize metrics
-    let metric = AgentRuntime.dynamicPromptMetrics.get(modelSchemaKey);
-    if (!metric) {
-      metric = {
-        lowestFailedTokenCount: null,
-        highestSuccessTokenCount: null,
-        totalAttempts: 0,
-        successfulAttempts: 0,
-        failedAttempts: 0,
-        lastUpdated: Date.now(),
-      };
-      AgentRuntime.dynamicPromptMetrics.set(modelSchemaKey, metric);
-    }
+    // Initialize metrics with LRU eviction
+    const metric = AgentRuntime.getOrCreateMetrics(modelSchemaKey);
 
     // Extractor is created once and persists across retries
     let extractor: ValidationStreamExtractor | undefined;
@@ -3472,6 +3539,21 @@ export class AgentRuntime implements IAgentRuntime {
         format = "JSON";
       }
 
+      /**
+       * Rough token count estimate for logging/debugging purposes only.
+       *
+       * NOTE: This is a heuristic approximation, not an accurate tokenizer.
+       * Modern LLMs use subword tokenization (BPE, WordPiece, SentencePiece)
+       * where actual token counts vary significantly by model and content.
+       *
+       * The 1.3x multiplier accounts for:
+       * - Subword splitting of longer/uncommon words
+       * - Punctuation and special characters as separate tokens
+       * - Whitespace handling differences
+       *
+       * For accurate counts, use model-specific tokenizers (e.g., tiktoken).
+       * This estimate is sufficient for logging and rough capacity planning.
+       */
       const estToken = (text: string) => {
         const words = text
           .trim()
@@ -3561,11 +3643,8 @@ export class AgentRuntime implements IAgentRuntime {
       const midCode = uuidv4();
       const finalCode = uuidv4();
 
-      // Check for smart retry context
+      // Check for smart retry context (set by previous retry iteration)
       const smartRetryContext = (state as Record<string, unknown>)._smartRetryContext || "";
-      if (smartRetryContext) {
-        delete (state as Record<string, unknown>)._smartRetryContext;
-      }
 
       const section_start = isXML ? "<output>" : "# Strict Output instructions";
       const section_end = isXML ? "</output>" : "";
@@ -3594,6 +3673,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         finalCode +
         "\n";
 
+      // Token estimate used for:
+      // 1. Debug logging of prompt size
+      // 2. Metrics tracking: highestSuccessTokenCount / lowestFailedTokenCount
+      //    (useful for identifying token-count-related failure patterns)
       const outputTokenEst = estToken(prompt);
       this.logger.debug(`dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`);
 
@@ -3660,6 +3743,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       // Check for cancellation before request
       if (options.abortSignal?.aborted) {
         extractor?.signalError("Cancelled by user");
+        delete (state as Record<string, unknown>)._smartRetryContext;
         return null;
       }
 
@@ -3676,6 +3760,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
         if (options.abortSignal?.aborted) {
           extractor?.signalError("Cancelled by user");
+          delete (state as Record<string, unknown>)._smartRetryContext;
           return null;
         }
 
@@ -3689,6 +3774,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
             const aborted = await this.abortableSleep(delayMs, options.abortSignal);
             if (aborted) {
               extractor?.signalError("Cancelled by user");
+              delete (state as Record<string, unknown>)._smartRetryContext;
               return null;
             }
           }
@@ -3819,6 +3905,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
           `dynamicPromptExecFromState success [${modelSchemaKey}]: ${outputTokenEst} tokens`,
         );
 
+        // Clean up smart retry context from state
+        delete (state as Record<string, unknown>)._smartRetryContext;
         return responseContent;
       }
 
@@ -3832,6 +3920,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
       if (options.abortSignal?.aborted) {
         extractor?.signalError("Cancelled by user");
+        delete (state as Record<string, unknown>)._smartRetryContext;
         return null;
       }
 
@@ -3845,6 +3934,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
           const aborted = await this.abortableSleep(delayMs, options.abortSignal);
           if (aborted) {
             extractor?.signalError("Cancelled by user");
+            delete (state as Record<string, unknown>)._smartRetryContext;
             return null;
           }
         }
@@ -3905,6 +3995,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       `dynamicPromptExecFromState failed after ${maxRetries} retries [${modelSchemaKey}]`,
       `${metric.successfulAttempts}/${metric.totalAttempts} successful`,
     );
+
+    // Clean up smart retry context from state
+    delete (state as Record<string, unknown>)._smartRetryContext;
     return null;
   }
 
@@ -3976,22 +4069,31 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
   /**
    * Normalize structured response (handle nested response objects).
+   *
+   * Some LLMs wrap their output in extra `{response: {...}}` layers.
+   * This recursively unwraps them up to a reasonable depth limit.
    */
   private normalizeStructuredResponse(
     responseContent: Record<string, unknown> | null,
+    depth = 0,
   ): Record<string, unknown> | null {
     if (!responseContent) return null;
 
-    // If there's a nested 'response' object with the actual fields, flatten it
+    // Safety limit to prevent infinite recursion on pathological input
+    const MAX_UNWRAP_DEPTH = 3;
+    if (depth >= MAX_UNWRAP_DEPTH) return responseContent;
+
+    // If there's a nested 'response' object with the actual fields, unwrap it
     if (
       "response" in responseContent &&
       typeof responseContent.response === "object" &&
       responseContent.response !== null
     ) {
       const nested = responseContent.response as Record<string, unknown>;
-      // Check if nested has the expected fields
-      if (Object.keys(nested).length > 0 && !("response" in nested)) {
-        return nested;
+      // Only unwrap if nested has fields (not empty)
+      if (Object.keys(nested).length > 0) {
+        // Recursively unwrap in case of multiple nesting levels
+        return this.normalizeStructuredResponse(nested, depth + 1);
       }
     }
     return responseContent;

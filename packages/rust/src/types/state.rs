@@ -178,7 +178,9 @@ pub struct StreamEvent {
     /// Content chunk (for chunk events)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chunk: Option<String>,
-    /// Retry attempt number (for retry_start events)
+    /// Retry attempt number (for retry_start events).
+    /// Uses u32 as retry counts are inherently non-negative (1-indexed).
+    /// Python's int is unbounded but will only receive positive values.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_count: Option<u32>,
     /// Error message (for error events)
