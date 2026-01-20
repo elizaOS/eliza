@@ -2171,6 +2171,12 @@ end code: {final_code}
 
             if all_good and response_content:
                 self.logger.debug(f"dynamic_prompt_exec_from_state success [{model_schema_key}]")
+                # Clean up smart retry context from state
+                if hasattr(state, "values") and "_smartRetryContext" in getattr(state.values, "__dict__", state.values if isinstance(state.values, dict) else {}):
+                    try:
+                        del state.values["_smartRetryContext"]
+                    except (KeyError, TypeError):
+                        pass
                 return response_content
 
             current_retry += 1
@@ -2219,6 +2225,12 @@ end code: {final_code}
                 await asyncio.sleep(delay / 1000.0)
 
         self.logger.error(f"dynamic_prompt_exec_from_state failed after {max_retries} retries [{model_schema_key}]")
+        # Clean up smart retry context from state
+        if hasattr(state, "values") and "_smartRetryContext" in getattr(state.values, "__dict__", state.values if isinstance(state.values, dict) else {}):
+            try:
+                del state.values["_smartRetryContext"]
+            except (KeyError, TypeError):
+                pass
         return None
 
     def _parse_xml_to_dict(self, xml_text: str) -> dict[str, Any] | None:
