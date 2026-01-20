@@ -65,7 +65,10 @@ pub use events::{
 };
 
 // From state
-pub use state::{ActionPlan, ActionPlanStep, State, StateData, WorkingMemoryItem};
+pub use state::{
+    ActionPlan, ActionPlanStep, RetryBackoffConfig, SchemaRow, State, StateData, StreamEvent,
+    StreamEventType, WorkingMemoryItem,
+};
 
 // From database
 pub use database::{

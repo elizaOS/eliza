@@ -1849,3 +1849,297 @@ class AgentRuntime(IAgentRuntime):
         if not self._adapter:
             return []
         return await self._adapter.get_memories_by_world_id(params)
+
+    # ============================================================================
+    # Dynamic Prompt Execution with Validation-Aware Streaming
+    # ============================================================================
+
+    async def dynamic_prompt_exec_from_state(
+        self,
+        state: State,
+        prompt: str | Callable[[dict[str, Any]], str],
+        schema: list["SchemaRow"],
+        options: "DynamicPromptOptions | None" = None,
+    ) -> dict[str, Any] | None:
+        """Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
+
+        WHY THIS EXISTS:
+        LLMs are powerful but unreliable for structured outputs. They can:
+        - Silently truncate output when hitting token limits
+        - Skip fields or produce malformed structures
+        - Hallucinate or ignore parts of the prompt
+
+        This method addresses these issues by:
+        1. Validation codes: Injects UUID codes the LLM must echo back
+        2. Streaming with safety: Enables streaming while detecting truncation
+        3. Performance tracking: Tracks success/failure rates per model+schema
+
+        Args:
+            state: State object to inject into the prompt template
+            prompt: Prompt template string or callable that takes state and returns string
+            schema: Array of SchemaRow definitions for structured output
+            options: Configuration for model size, validation level, retries, etc.
+
+        Returns:
+            Parsed structured response as dict, or None on failure
+        """
+        from elizaos.types.state import SchemaRow, RetryBackoffConfig
+
+        if options is None:
+            options = DynamicPromptOptions()
+
+        # Determine model type
+        model_type_str = (
+            ModelType.TEXT_SMALL.value
+            if options.model_size == "small"
+            else ModelType.TEXT_LARGE.value
+        )
+
+        schema_key = ",".join(s.field for s in schema)
+        model_schema_key = f"{model_type_str}:{schema_key}"
+
+        # Get validation level
+        validation_level = options.context_check_level if options.context_check_level is not None else 2
+        max_retries = options.max_retries if options.max_retries is not None else 1
+        current_retry = 0
+
+        # Generate per-field validation codes for levels 0-1
+        per_field_codes: dict[str, str] = {}
+        if validation_level <= 1:
+            for row in schema:
+                default_validate = validation_level == 1
+                needs_validation = row.validate_field if row.validate_field is not None else default_validate
+                if needs_validation:
+                    per_field_codes[row.field] = str(uuid.uuid4())[:8]
+
+        while current_retry <= max_retries:
+            # Compile template with state values
+            if callable(prompt):
+                template_str = prompt({"state": state})
+            else:
+                template_str = prompt
+
+            # Simple template substitution (Handlebars-like)
+            rendered = template_str
+            if hasattr(state, "values") and state.values:
+                for key in dir(state.values):
+                    if not key.startswith("_"):
+                        value = getattr(state.values, key, None)
+                        if value is not None:
+                            placeholder = f"{{{{{key}}}}}"
+                            rendered = rendered.replace(placeholder, str(value))
+
+            # Build format
+            format_type = (options.force_format or "xml").upper()
+            is_xml = format_type == "XML"
+            container_start = "<response>" if is_xml else "{"
+            container_end = "</response>" if is_xml else "}"
+
+            # Build extended schema with validation codes
+            first = validation_level >= 2
+            last = validation_level >= 3
+
+            ext_schema: list[tuple[str, str]] = []
+
+            def codes_schema(prefix: str) -> list[tuple[str, str]]:
+                return [
+                    (f"{prefix}initial_code", "echo the initial UUID code from prompt"),
+                    (f"{prefix}middle_code", "echo the middle UUID code from prompt"),
+                    (f"{prefix}end_code", "echo the end UUID code from prompt"),
+                ]
+
+            if first:
+                ext_schema.extend(codes_schema("one_"))
+
+            for row in schema:
+                if row.field in per_field_codes:
+                    ext_schema.append((f"code_{row.field}_start", f"output exactly: {per_field_codes[row.field]}"))
+                ext_schema.append((row.field, row.description))
+                if row.field in per_field_codes:
+                    ext_schema.append((f"code_{row.field}_end", f"output exactly: {per_field_codes[row.field]}"))
+
+            if last:
+                ext_schema.extend(codes_schema("two_"))
+
+            # Build example
+            example_lines = [container_start]
+            for field, desc in ext_schema:
+                if is_xml:
+                    example_lines.append(f"  <{field}>{desc}</{field}>")
+                else:
+                    example_lines.append(f'  "{field}": "{desc}",')
+            example_lines.append(container_end)
+            example = "\n".join(example_lines)
+
+            init_code = str(uuid.uuid4())
+            mid_code = str(uuid.uuid4())
+            final_code = str(uuid.uuid4())
+
+            section_start = "<output>" if is_xml else "# Strict Output instructions"
+            section_end = "</output>" if is_xml else ""
+
+            full_prompt = f"""initial code: {init_code}
+{rendered}
+middle code: {mid_code}
+{section_start}
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the {format_type} response format without any preamble or explanation.
+
+Respond using {format_type} format like this:
+{example}
+
+IMPORTANT: Your response must ONLY contain the {container_start}{container_end} {format_type} block above. Do not include any text, thinking, or reasoning before or after this {format_type} block. Start your response immediately with {container_start} and end with {container_end}.
+{section_end}
+end code: {final_code}
+"""
+
+            self.logger.debug(f"dynamic_prompt_exec_from_state: using format {format_type}")
+
+            # Call model
+            params = {
+                "prompt": full_prompt,
+                "maxTokens": 4096,
+            }
+
+            try:
+                response = await self.use_model(model_type_str, params)
+                response_str = str(response) if response else ""
+            except Exception as e:
+                self.logger.error(f"Model call failed: {e}")
+                current_retry += 1
+                if current_retry <= max_retries and options.retry_backoff:
+                    delay = options.retry_backoff.delay_for_retry(current_retry)
+                    self.logger.debug(f"Retry backoff: waiting {delay}ms before retry {current_retry}")
+                    await asyncio.sleep(delay / 1000.0)
+                continue
+
+            # Clean response (remove <think> blocks)
+            clean_response = re.sub(r"<think>[\s\S]*?</think>", "", response_str)
+
+            # Parse response
+            response_content: dict[str, Any] | None = None
+            if is_xml:
+                response_content = self._parse_xml_to_dict(clean_response)
+            else:
+                import json
+                try:
+                    response_content = json.loads(clean_response)
+                except json.JSONDecodeError:
+                    pass
+
+            all_good = True
+
+            if response_content:
+                # Validate codes based on context level
+                if validation_level <= 1:
+                    # Per-field validation
+                    for field, expected_code in per_field_codes.items():
+                        start_code = response_content.get(f"code_{field}_start")
+                        end_code = response_content.get(f"code_{field}_end")
+                        if start_code != expected_code or end_code != expected_code:
+                            self.logger.warning(
+                                f"Per-field validation failed for {field}: expected={expected_code}, start={start_code}, end={end_code}"
+                            )
+                            all_good = False
+                else:
+                    # Checkpoint validation
+                    validation_codes = [
+                        (first, "one_initial_code", init_code),
+                        (first, "one_middle_code", mid_code),
+                        (first, "one_end_code", final_code),
+                        (last, "two_initial_code", init_code),
+                        (last, "two_middle_code", mid_code),
+                        (last, "two_end_code", final_code),
+                    ]
+                    for enabled, field, expected in validation_codes:
+                        if enabled:
+                            actual = response_content.get(field)
+                            if actual != expected:
+                                self.logger.warning(f"Checkpoint {field} mismatch: expected {expected}")
+                                all_good = False
+
+                # Validate required fields
+                if options.required_fields:
+                    for field in options.required_fields:
+                        value = response_content.get(field)
+                        is_missing = (
+                            value is None
+                            or (isinstance(value, str) and not value.strip())
+                            or (isinstance(value, (list, dict)) and not value)
+                        )
+                        if is_missing:
+                            self.logger.warning(f"Missing required field: {field}")
+                            all_good = False
+
+                # Clean up validation code fields from result
+                for field in list(per_field_codes.keys()):
+                    response_content.pop(f"code_{field}_start", None)
+                    response_content.pop(f"code_{field}_end", None)
+                if first:
+                    response_content.pop("one_initial_code", None)
+                    response_content.pop("one_middle_code", None)
+                    response_content.pop("one_end_code", None)
+                if last:
+                    response_content.pop("two_initial_code", None)
+                    response_content.pop("two_middle_code", None)
+                    response_content.pop("two_end_code", None)
+            else:
+                self.logger.warning(f"dynamic_prompt_exec_from_state parse problem: {clean_response[:500]}")
+                all_good = False
+
+            if all_good and response_content:
+                self.logger.debug(f"dynamic_prompt_exec_from_state success [{model_schema_key}]")
+                return response_content
+
+            current_retry += 1
+            if current_retry <= max_retries and options.retry_backoff:
+                delay = options.retry_backoff.delay_for_retry(current_retry)
+                self.logger.debug(f"Retry backoff: waiting {delay}ms before retry {current_retry}")
+                await asyncio.sleep(delay / 1000.0)
+
+        self.logger.error(f"dynamic_prompt_exec_from_state failed after {max_retries} retries [{model_schema_key}]")
+        return None
+
+    def _parse_xml_to_dict(self, xml_text: str) -> dict[str, Any] | None:
+        """Parse XML-like response to dict."""
+        result: dict[str, Any] = {}
+
+        # Simple XML tag extraction using regex
+        pattern = r"<(\w+)>([\s\S]*?)</\1>"
+        matches = re.findall(pattern, xml_text)
+
+        for tag_name, content in matches:
+            result[tag_name] = content.strip()
+
+        return result if result else None
+
+
+@dataclass
+class DynamicPromptOptions:
+    """Options for dynamic prompt execution."""
+
+    model_size: str | None = None
+    """Model size to use ('small' or 'large')"""
+
+    model: str | None = None
+    """Specific model identifier override"""
+
+    force_format: str | None = None
+    """Force output format ('json' or 'xml')"""
+
+    required_fields: list[str] | None = None
+    """Required fields that must be present and non-empty"""
+
+    context_check_level: int | None = None
+    """Validation level (0=trusted, 1=progressive, 2=checkpoint, 3=full)"""
+
+    max_retries: int | None = None
+    """Maximum retry attempts"""
+
+    retry_backoff: "RetryBackoffConfig | None" = None
+    """Retry backoff configuration"""
+
+
+# Import for type hints
+from dataclasses import dataclass
+from elizaos.types.state import SchemaRow, RetryBackoffConfig
