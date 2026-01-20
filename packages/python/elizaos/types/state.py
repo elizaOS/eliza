@@ -135,7 +135,7 @@ class StreamEvent:
     timestamp: int = field(default_factory=lambda: int(time.time() * 1000))
     """Timestamp of the event (milliseconds since epoch)"""
 
-    field_name: Optional[str] = None
+    field: Optional[str] = None
     """Field name (for chunk and field_validated events)"""
 
     chunk: Optional[str] = None
@@ -148,14 +148,14 @@ class StreamEvent:
     """Error message (for error events)"""
 
     @classmethod
-    def chunk_event(cls, field_name: str, chunk: str) -> "StreamEvent":
+    def chunk_event(cls, field: str, chunk: str) -> "StreamEvent":
         """Create a chunk event."""
-        return cls(event_type=StreamEventType.CHUNK, field_name=field_name, chunk=chunk)
+        return cls(event_type=StreamEventType.CHUNK, field=field, chunk=chunk)
 
     @classmethod
-    def field_validated_event(cls, field_name: str) -> "StreamEvent":
+    def field_validated_event(cls, field: str) -> "StreamEvent":
         """Create a field_validated event."""
-        return cls(event_type=StreamEventType.FIELD_VALIDATED, field_name=field_name)
+        return cls(event_type=StreamEventType.FIELD_VALIDATED, field=field)
 
     @classmethod
     def retry_start_event(cls, retry_count: int) -> "StreamEvent":

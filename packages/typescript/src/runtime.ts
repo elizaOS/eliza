@@ -3598,7 +3598,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       this.logger.debug(`dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`);
 
       // Create ValidationStreamExtractor on first iteration if streaming
-      if (currentRetry === 0 && options.onStreamChunk && !extractor) {
+      // Only use ValidationStreamExtractor for XML format - it parses XML tags
+      // JSON streaming should bypass this extractor (or use a JSON-specific one later)
+      if (currentRetry === 0 && options.onStreamChunk && !extractor && isXML) {
         const hasRichConsumer = !!options.onStreamEvent;
 
         const streamFields = schema
