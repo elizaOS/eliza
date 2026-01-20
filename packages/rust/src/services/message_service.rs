@@ -169,24 +169,24 @@ impl IMessageService for DefaultMessageService {
             // Use dynamicPromptExecFromState for structured decision output
             let schema = vec![
                 SchemaRow::new("name", "The name of the agent responding")
-                    .with_validate_field(false)
-                    .with_stream_field(false),
+                    .validate(false)
+                    .stream(false),
                 SchemaRow::new("reasoning", "Your reasoning for this decision")
-                    .with_validate_field(false)
-                    .with_stream_field(false),
+                    .validate(false)
+                    .stream(false),
                 SchemaRow::new("action", "RESPOND | IGNORE | STOP")
-                    .with_validate_field(false)
-                    .with_stream_field(false),
+                    .validate(false)
+                    .stream(false),
             ];
 
             let decision_result = runtime
                 .dynamic_prompt_exec_from_state(
                     &state,
                     SHOULD_RESPOND_TEMPLATE,
-                    schema,
+                    &schema,
                     crate::runtime::DynamicPromptOptions {
-                        model_size: Some("small".to_string()),
-                        preferred_encapsulation: Some("xml".to_string()),
+                        model_size: Some(crate::runtime::ModelSize::Small),
+                        force_format: Some("xml".to_string()),
                         ..Default::default()
                     },
                 )
@@ -221,31 +221,31 @@ impl IMessageService for DefaultMessageService {
         // Use dynamicPromptExecFromState for structured message response
         let schema = vec![
             SchemaRow::new("thought", "Your internal reasoning about the message and what to do")
-                .with_required(true)
-                .with_validate_field(false)
-                .with_stream_field(false),
+                .required()
+                .validate(false)
+                .stream(false),
             SchemaRow::new("providers", "List of providers to use for additional context (comma-separated)")
-                .with_validate_field(false)
-                .with_stream_field(false),
+                .validate(false)
+                .stream(false),
             SchemaRow::new("actions", "List of actions to take (comma-separated)")
-                .with_required(true)
-                .with_validate_field(false)
-                .with_stream_field(false),
+                .required()
+                .validate(false)
+                .stream(false),
             SchemaRow::new("text", "The text response to send to the user")
-                .with_stream_field(true),
+                .stream(true),
             SchemaRow::new("simple", "Whether this is a simple response (true/false)")
-                .with_validate_field(false)
-                .with_stream_field(false),
+                .validate(false)
+                .stream(false),
         ];
 
         let parsed = runtime
             .dynamic_prompt_exec_from_state(
                 &state,
                 MESSAGE_HANDLER_TEMPLATE,
-                schema,
+                &schema,
                 crate::runtime::DynamicPromptOptions {
-                    model_size: Some("large".to_string()),
-                    preferred_encapsulation: Some("xml".to_string()),
+                    model_size: Some(crate::runtime::ModelSize::Large),
+                    force_format: Some("xml".to_string()),
                     required_fields: Some(vec!["thought".to_string(), "actions".to_string()]),
                     ..Default::default()
                 },
@@ -667,30 +667,30 @@ async fn run_multi_step(
         // Use dynamicPromptExecFromState for multi-step decision
         let schema = vec![
             SchemaRow::new("thought", "Your reasoning for the selected providers and/or action")
-                .with_validate_field(false)
-                .with_stream_field(false),
+                .validate(false)
+                .stream(false),
             SchemaRow::new("providers", "Comma-separated list of providers to call")
-                .with_validate_field(false)
-                .with_stream_field(false),
+                .validate(false)
+                .stream(false),
             SchemaRow::new("action", "Name of the action to execute (can be empty)")
-                .with_validate_field(false)
-                .with_stream_field(false),
+                .validate(false)
+                .stream(false),
             SchemaRow::new("parameters", "JSON object with parameter names and values")
-                .with_validate_field(false)
-                .with_stream_field(false),
+                .validate(false)
+                .stream(false),
             SchemaRow::new("isFinish", "true if task is complete, false otherwise")
-                .with_validate_field(false)
-                .with_stream_field(false),
+                .validate(false)
+                .stream(false),
         ];
 
         let parsed = runtime
             .dynamic_prompt_exec_from_state(
                 &iter_state,
                 MULTI_STEP_DECISION_TEMPLATE,
-                schema,
+                &schema,
                 crate::runtime::DynamicPromptOptions {
-                    model_size: Some("large".to_string()),
-                    preferred_encapsulation: Some("xml".to_string()),
+                    model_size: Some(crate::runtime::ModelSize::Large),
+                    force_format: Some("xml".to_string()),
                     ..Default::default()
                 },
             )
@@ -738,21 +738,21 @@ async fn run_multi_step(
     // Use dynamicPromptExecFromState for final summary
     let schema = vec![
         SchemaRow::new("thought", "Your internal reasoning about the summary")
-            .with_validate_field(false)
-            .with_stream_field(false),
+            .validate(false)
+            .stream(false),
         SchemaRow::new("text", "The final summary message to send to the user")
-            .with_required(true)
-            .with_stream_field(true),
+            .required()
+            .stream(true),
     ];
 
     let parsed = runtime
         .dynamic_prompt_exec_from_state(
             &final_state,
             MULTI_STEP_SUMMARY_TEMPLATE,
-            schema,
+            &schema,
             crate::runtime::DynamicPromptOptions {
-                model_size: Some("large".to_string()),
-                preferred_encapsulation: Some("xml".to_string()),
+                model_size: Some(crate::runtime::ModelSize::Large),
+                force_format: Some("xml".to_string()),
                 required_fields: Some(vec!["text".to_string()]),
                 ..Default::default()
             },
