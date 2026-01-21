@@ -2299,7 +2299,8 @@ end code: {final_code}
                 return result
 
             # First try to unwrap <response> wrapper and parse inner content
-            response_match = re.search(r"<response>([\s\S]*)</response>", xml_text)
+            # Use lazy *? to avoid matching too much if multiple response tags exist
+            response_match = re.search(r"<response>([\s\S]*?)</response>", xml_text)
             if response_match:
                 inner_result = parse_nested(response_match.group(1))
                 if inner_result:
