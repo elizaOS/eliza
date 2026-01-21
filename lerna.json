@@ -1,7 +1,8 @@
 {
   "version": "2.0.0-alpha.1",
   "packages": [
-    "packages/*"
+    "packages/*",
+    "plugins/*"
   ],
   "npmClient": "bun",
   "command": {
