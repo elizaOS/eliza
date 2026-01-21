@@ -13,7 +13,12 @@ export function createAdvancedPlanningPlugin(): Plugin {
     name: "advanced-planning",
     description: "Built-in advanced planning and execution capabilities",
     providers: [messageClassifierProvider],
-    actions: [analyzeInputAction, processAnalysisAction, executeFinalAction, createPlanAction],
+    actions: [
+      analyzeInputAction,
+      processAnalysisAction,
+      executeFinalAction,
+      createPlanAction,
+    ],
     services: [PlanningService],
     evaluators: [],
   };
@@ -21,4 +26,3 @@ export function createAdvancedPlanningPlugin(): Plugin {
 
 export { PlanningService } from "./services/planning-service.ts";
 export * from "./types.ts";
-

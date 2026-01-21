@@ -36,15 +36,15 @@ import {
   trendingTags,
   userActorFollows,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
+} from "@babylon/db";
+import { logger } from "@babylon/shared";
 import {
   CACHE_KEYS,
   DEFAULT_TTLS,
   getCacheOrFetch,
   invalidateCache,
   invalidateCachePattern,
-} from './cache-service';
+} from "./cache-service";
 
 /**
  * Cached Database Service Class
@@ -67,9 +67,9 @@ class CachedDatabaseService {
    */
   async getRecentPosts(
     limit = 100,
-    cursorOrOffset?: string | number
+    cursorOrOffset?: string | number,
   ): Promise<Post[]> {
-    const isCursor = typeof cursorOrOffset === 'string';
+    const isCursor = typeof cursorOrOffset === "string";
     const cacheKey = isCursor
       ? `${limit}:cursor:${cursorOrOffset}`
       : `${limit}:offset:${cursorOrOffset || 0}`;
@@ -80,7 +80,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.POSTS_LIST,
         ttl: DEFAULT_TTLS.POSTS_LIST,
-      }
+      },
     );
   }
 
@@ -90,9 +90,9 @@ class CachedDatabaseService {
   async getPostsByActor(
     authorId: string,
     limit = 100,
-    cursorOrOffset?: string | number
+    cursorOrOffset?: string | number,
   ): Promise<Post[]> {
-    const isCursor = typeof cursorOrOffset === 'string';
+    const isCursor = typeof cursorOrOffset === "string";
     const cacheKey = isCursor
       ? `${authorId}:${limit}:cursor:${cursorOrOffset}`
       : `${authorId}:${limit}:offset:${cursorOrOffset || 0}`;
@@ -103,7 +103,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.POSTS_BY_ACTOR,
         ttl: DEFAULT_TTLS.POSTS_BY_ACTOR,
-      }
+      },
     );
   }
 
@@ -115,9 +115,9 @@ class CachedDatabaseService {
     userId: string,
     followedIds: string[],
     limit = 100,
-    cursorOrOffset?: string | number
+    cursorOrOffset?: string | number,
   ): Promise<Post[]> {
-    const isCursor = typeof cursorOrOffset === 'string';
+    const isCursor = typeof cursorOrOffset === "string";
     const cacheKey = isCursor
       ? `${userId}:${limit}:cursor:${cursorOrOffset}`
       : `${userId}:${limit}:offset:${cursorOrOffset || 0}`;
@@ -132,18 +132,16 @@ class CachedDatabaseService {
           .where(and(inArray(users.id, followedIds), eq(users.isTest, true)));
 
         // NPC/Actor support removed
-        const testAuthorIds = new Set([
-          ...testUsers.map((u) => u.id),
-        ]);
+        const testAuthorIds = new Set([...testUsers.map((u) => u.id)]);
 
         // Remove test users from followedIds
         const nonTestFollowedIds = followedIds.filter(
-          (id) => !testAuthorIds.has(id)
+          (id) => !testAuthorIds.has(id),
         );
 
         const cursor = isCursor ? (cursorOrOffset as string) : undefined;
         const offset =
-          !isCursor && typeof cursorOrOffset === 'number' ? cursorOrOffset : 0;
+          !isCursor && typeof cursorOrOffset === "number" ? cursorOrOffset : 0;
 
         const now = new Date();
 
@@ -174,7 +172,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.POSTS_FOLLOWING,
         ttl: DEFAULT_TTLS.POSTS_FOLLOWING,
-      }
+      },
     );
   }
 
@@ -197,7 +195,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.USER,
         ttl: DEFAULT_TTLS.USER,
-      }
+      },
     );
   }
 
@@ -207,7 +205,7 @@ class CachedDatabaseService {
   async getUsersByIds(userIds: string[]) {
     // For bulk operations, we still cache individual users
     const usersResult = await Promise.all(
-      userIds.map((id) => this.getUserById(id))
+      userIds.map((id) => this.getUserById(id)),
     );
 
     return usersResult.filter((u) => u !== null);
@@ -237,7 +235,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.USER_BALANCE,
         ttl: DEFAULT_TTLS.USER_BALANCE,
-      }
+      },
     );
   }
 
@@ -306,9 +304,9 @@ class CachedDatabaseService {
         };
       },
       {
-        namespace: 'user:profile:stats',
+        namespace: "user:profile:stats",
         ttl: 60, // Cache for 1 minute
-      }
+      },
     );
   }
 
@@ -325,7 +323,7 @@ class CachedDatabaseService {
    */
   async getActorsByIds(actorIds: string[]) {
     const actorsResult = await Promise.all(
-      actorIds.map((id) => this.getActorById(id))
+      actorIds.map((id) => this.getActorById(id)),
     );
 
     return actorsResult.filter((a) => a !== null);
@@ -343,7 +341,7 @@ class CachedDatabaseService {
    * Get active markets with caching
    */
   async getActiveMarkets() {
-    const cacheKey = 'active';
+    const cacheKey = "active";
 
     return getCacheOrFetch(
       cacheKey,
@@ -358,7 +356,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.MARKETS_LIST,
         ttl: DEFAULT_TTLS.MARKETS_LIST,
-      }
+      },
     );
   }
 
@@ -395,7 +393,7 @@ class CachedDatabaseService {
       {
         namespace: CACHE_KEYS.TRENDING_TAGS,
         ttl: DEFAULT_TTLS.TRENDING_TAGS,
-      }
+      },
     );
   }
 
@@ -403,10 +401,10 @@ class CachedDatabaseService {
    * Invalidate cache for posts
    */
   async invalidatePostsCache() {
-    logger.info('Invalidating posts cache', undefined, 'CachedDatabaseService');
+    logger.info("Invalidating posts cache", undefined, "CachedDatabaseService");
     await Promise.all([
-      invalidateCachePattern('*', { namespace: CACHE_KEYS.POSTS_LIST }),
-      invalidateCachePattern('*', { namespace: CACHE_KEYS.POSTS_FOLLOWING }),
+      invalidateCachePattern("*", { namespace: CACHE_KEYS.POSTS_LIST }),
+      invalidateCachePattern("*", { namespace: CACHE_KEYS.POSTS_FOLLOWING }),
     ]);
   }
 
@@ -415,9 +413,9 @@ class CachedDatabaseService {
    */
   async invalidateActorPostsCache(actorId: string) {
     logger.info(
-      'Invalidating actor posts cache',
+      "Invalidating actor posts cache",
       { actorId },
-      'CachedDatabaseService'
+      "CachedDatabaseService",
     );
     await invalidateCachePattern(`${actorId}:*`, {
       namespace: CACHE_KEYS.POSTS_BY_ACTOR,
@@ -428,15 +426,15 @@ class CachedDatabaseService {
    * Invalidate cache for user
    */
   async invalidateUserCache(userId: string) {
-    logger.info('Invalidating user cache', { userId }, 'CachedDatabaseService');
+    logger.info("Invalidating user cache", { userId }, "CachedDatabaseService");
     await Promise.all([
       invalidateCache(userId, { namespace: CACHE_KEYS.USER }),
       invalidateCache(userId, { namespace: CACHE_KEYS.USER_BALANCE }),
-      invalidateCache(userId, { namespace: 'user:profile:stats' }),
+      invalidateCache(userId, { namespace: "user:profile:stats" }),
       invalidateCachePattern(`${userId}:*`, {
         namespace: CACHE_KEYS.POSTS_FOLLOWING,
       }),
-      invalidateCachePattern('*', { namespace: 'user:follows' }), // Invalidate follows cache
+      invalidateCachePattern("*", { namespace: "user:follows" }), // Invalidate follows cache
     ]);
   }
 
@@ -445,18 +443,18 @@ class CachedDatabaseService {
    */
   async invalidateMarketsCache() {
     logger.info(
-      'Invalidating markets cache',
+      "Invalidating markets cache",
       undefined,
-      'CachedDatabaseService'
+      "CachedDatabaseService",
     );
-    await invalidateCachePattern('*', { namespace: CACHE_KEYS.MARKETS_LIST });
+    await invalidateCachePattern("*", { namespace: CACHE_KEYS.MARKETS_LIST });
   }
 
   /**
    * Invalidate all caches (use sparingly!)
    */
   async invalidateAllCaches() {
-    logger.warn('Invalidating all caches', undefined, 'CachedDatabaseService');
+    logger.warn("Invalidating all caches", undefined, "CachedDatabaseService");
     await Promise.all([
       this.invalidatePostsCache(),
       this.invalidateMarketsCache(),

@@ -35,12 +35,12 @@ export function getStaticAssetUrl(path: string, cdnBaseUrl?: string): string {
   }
 
   // Ensure path starts with /
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
   // Use provided CDN URL or environment variable
   const staticAssetsUrl =
     cdnBaseUrl ||
-    (typeof process !== 'undefined'
+    (typeof process !== "undefined"
       ? process.env.NEXT_PUBLIC_STATIC_ASSETS_URL
       : undefined);
 
@@ -66,17 +66,17 @@ export function getStaticAssetUrl(path: string, cdnBaseUrl?: string): string {
  */
 export function getFallbackProfileImageUrl(
   id: string,
-  cdnBaseUrl?: string
+  cdnBaseUrl?: string,
 ): string {
   // Hash the id to get a number between 1-100
   const hash = Array.from(id).reduce(
     (acc, char) => acc + char.charCodeAt(0),
-    0
+    0,
   );
   const profileNum = (hash % 100) + 1;
   return getStaticAssetUrl(
     `/assets/user-profiles/profile-${profileNum}.jpg`,
-    cdnBaseUrl
+    cdnBaseUrl,
   );
 }
 
@@ -98,7 +98,7 @@ export function getProfileImageUrl(
   profileImageUrl: string | null | undefined,
   userId: string | null | undefined,
   isActor = true,
-  cdnBaseUrl?: string
+  cdnBaseUrl?: string,
 ): string | null {
   // If profile image URL is provided (uploaded image from CDN), use it
   if (profileImageUrl) {
@@ -133,7 +133,7 @@ export function getProfileImageUrl(
 export function getOrganizationImageUrl(
   imageUrl: string | null | undefined,
   orgId: string | null | undefined,
-  cdnBaseUrl?: string
+  cdnBaseUrl?: string,
 ): string | null {
   // If image URL is provided, use it
   if (imageUrl) {
@@ -167,8 +167,8 @@ export function getOrganizationImageUrl(
 export function getBannerImageUrl(
   bannerUrl: string | null | undefined,
   entityId: string | null | undefined,
-  entityType: 'actor' | 'organization' | 'user' = 'actor',
-  cdnBaseUrl?: string
+  entityType: "actor" | "organization" | "user" = "actor",
+  cdnBaseUrl?: string,
 ): string | null {
   // If banner URL is provided, use it
   if (bannerUrl) {
@@ -182,16 +182,16 @@ export function getBannerImageUrl(
 
   // For actors/organizations, try to use static banner image
   if (entityId) {
-    if (entityType === 'actor') {
+    if (entityType === "actor") {
       return getStaticAssetUrl(
         `/images/actor-banners/${entityId}.jpg`,
-        cdnBaseUrl
+        cdnBaseUrl,
       );
     }
-    if (entityType === 'organization') {
+    if (entityType === "organization") {
       return getStaticAssetUrl(
         `/images/org-banners/${entityId}.jpg`,
-        cdnBaseUrl
+        cdnBaseUrl,
       );
     }
   }

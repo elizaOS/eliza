@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
-import { EntitySearchAutocomplete } from '@/components/explore/EntitySearchAutocomplete';
-import { LatestNewsPanel } from '@/components/feed/LatestNewsPanel';
-import { MarketsPanel } from '@/components/feed/MarketsPanel';
-import { TrendingPanel } from '@/components/feed/TrendingPanel';
+import { useEffect, useRef, useState } from "react";
+import { EntitySearchAutocomplete } from "@/components/explore/EntitySearchAutocomplete";
+import { LatestNewsPanel } from "@/components/feed/LatestNewsPanel";
+import { MarketsPanel } from "@/components/feed/MarketsPanel";
+import { TrendingPanel } from "@/components/feed/TrendingPanel";
 
 /**
  * Widget sidebar component for desktop layouts.
@@ -24,7 +24,7 @@ import { TrendingPanel } from '@/components/feed/TrendingPanel';
  * @returns Widget sidebar element (hidden on screens < XL)
  */
 export function WidgetSidebar() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
 
@@ -37,7 +37,7 @@ export function WidgetSidebar() {
     if (window.innerWidth < 1280) return;
 
     let lastScrollTop = 0;
-    let direction: 'up' | 'down' = 'down';
+    let direction: "up" | "down" = "down";
     let translateY = 0;
     let ticking = false;
 
@@ -48,9 +48,9 @@ export function WidgetSidebar() {
 
       // Determine scroll direction
       if (scrollTop > lastScrollTop) {
-        direction = 'down';
+        direction = "down";
       } else if (scrollTop < lastScrollTop) {
-        direction = 'up';
+        direction = "up";
       }
       lastScrollTop = scrollTop;
 
@@ -58,19 +58,19 @@ export function WidgetSidebar() {
       const fitsInViewport = sidebarHeight <= viewportHeight;
 
       // Check if NFT promo banner is visible (not dismissed)
-      const bannerDismissed = localStorage.getItem('nft-banner-dismissed');
+      const bannerDismissed = localStorage.getItem("nft-banner-dismissed");
       const bannerOffset = bannerDismissed ? 0 : 40;
 
       if (fitsInViewport) {
         // Sidebar fits - simple sticky to top (below banner)
-        inner.style.position = 'fixed';
+        inner.style.position = "fixed";
         inner.style.top = `${bannerOffset}px`;
-        inner.style.transform = '';
+        inner.style.transform = "";
       } else {
         // Sidebar is taller than viewport
         const effectiveViewportHeight = viewportHeight - bannerOffset;
 
-        if (direction === 'down') {
+        if (direction === "down") {
           // Scrolling down - sidebar bottom should stick to viewport bottom
           const maxTranslate = sidebarHeight - effectiveViewportHeight;
 
@@ -78,7 +78,7 @@ export function WidgetSidebar() {
           // As we scroll down, increase translateY until maxTranslate
           translateY = Math.min(scrollTop, maxTranslate);
 
-          inner.style.position = 'fixed';
+          inner.style.position = "fixed";
           inner.style.top = `${bannerOffset}px`;
           inner.style.transform = `translateY(-${translateY}px)`;
         } else {
@@ -86,7 +86,7 @@ export function WidgetSidebar() {
           const maxTranslate = sidebarHeight - effectiveViewportHeight;
           translateY = Math.min(scrollTop, maxTranslate);
 
-          inner.style.position = 'fixed';
+          inner.style.position = "fixed";
           inner.style.top = `${bannerOffset}px`;
           inner.style.transform = `translateY(-${translateY}px)`;
         }
@@ -106,9 +106,9 @@ export function WidgetSidebar() {
       if (window.innerWidth < 1280) {
         // Reset styles below breakpoint
         if (inner) {
-          inner.style.position = '';
-          inner.style.top = '';
-          inner.style.transform = '';
+          inner.style.position = "";
+          inner.style.top = "";
+          inner.style.transform = "";
         }
         return;
       }
@@ -118,12 +118,12 @@ export function WidgetSidebar() {
     // Initialize
     updateSidebar();
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleResize, { passive: true });
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleResize, { passive: true });
 
     return () => {
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleResize);
     };
   }, []);
 

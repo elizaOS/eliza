@@ -17,8 +17,8 @@ import {
   ServiceType,
   type State,
 } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { mediaUrlTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 /**
  * Get a media URL from the user through text input using the provided runtime and state.

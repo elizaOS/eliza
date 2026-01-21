@@ -27,7 +27,7 @@ class BrowserService:
             # Try to connect first (server might already be running)
             logger.info("Checking for existing browser server...")
             existing_server_works = False
-            
+
             try:
                 await self._client.connect()
                 # Give it a moment then check if still connected
@@ -43,24 +43,24 @@ class BrowserService:
                         logger.debug(f"Existing server health check failed: {e}")
             except Exception as e:
                 logger.debug(f"Could not connect to existing server: {e}")
-            
+
             if not existing_server_works:
                 # Disconnect from any stale server
                 self._client.disconnect()
                 await asyncio.sleep(0.5)
-                
+
                 # Recreate client with fresh connection
                 self._client = BrowserWebSocketClient(f"ws://localhost:{self.config.server_port}")
-                
+
                 # Start our own server
                 logger.info("Starting new browser server...")
                 await self._process_manager.start()
                 self._owns_server = True
-                
+
                 # Connect to our server
                 await self._client.connect()
                 await self._wait_for_ready()
-            
+
             self._initialized = True
             logger.info("Browser service initialized successfully")
         except Exception as e:
@@ -76,12 +76,12 @@ class BrowserService:
             await self.destroy_session(session_id)
 
         self._client.disconnect()
-        
+
         # Stop server if we started it
         if self._owns_server:
             self._process_manager.stop()
             self._owns_server = False
-            
+
         self._initialized = False
 
     async def create_session(self, session_id: str) -> BrowserSession:

@@ -3,15 +3,15 @@ import {
   agentPerformanceMetrics,
   agentTrades,
   db,
-  eq,
   desc,
+  eq,
   users,
-} from '@babylon/db';
-import { NextResponse, type NextRequest } from 'next/server';
+} from "@babylon/db";
+import { type NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   _request: NextRequest,
-  context: { params: { agentId: string } }
+  context: { params: { agentId: string } },
 ) {
   const { agentId } = context.params;
 
@@ -32,7 +32,7 @@ export async function GET(
 
     const agent = agentRows[0];
     if (!agent) {
-      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
     const [metricsRows, tradesRows, highlightsRows] = await Promise.all([
@@ -71,7 +71,7 @@ export async function GET(
 
     const pnlSeries: Array<{ time: number; value: number }> = [];
     const sortedTrades = [...tradesRows].sort(
-      (a, b) => a.executedAt.getTime() - b.executedAt.getTime()
+      (a, b) => a.executedAt.getTime() - b.executedAt.getTime(),
     );
     let cumulative = 0;
     for (const trade of sortedTrades) {
@@ -108,10 +108,10 @@ export async function GET(
       pnlSeries,
     });
   } catch (error) {
-    console.error('Failed to fetch public agent profile:', error);
+    console.error("Failed to fetch public agent profile:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch agent profile' },
-      { status: 500 }
+      { error: "Failed to fetch agent profile" },
+      { status: 500 },
     );
   }
 }

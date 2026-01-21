@@ -131,4 +131,3 @@ impl Provider for FactsProvider {
             .with_data("facts", facts_list))
     }
 }
-

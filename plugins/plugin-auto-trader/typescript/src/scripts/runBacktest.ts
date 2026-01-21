@@ -1,15 +1,8 @@
 #!/usr/bin/env node
 
-// Missing services - commented out until implemented
-// import { SimulationService } from '../services/SimulationService.ts';
-// import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
-// import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-// import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
-// import { OptimizedRuleBasedStrategy } from '../strategies/OptimizedRuleBasedStrategy.ts';
-import fs from 'fs/promises';
-import path from 'path';
-import os from 'os';
-import dotenv from 'dotenv';
+import os from "node:os";
+import path from "node:path";
+import dotenv from "dotenv";
 
 dotenv.config();
 
@@ -27,17 +20,15 @@ interface BacktestResult {
   worstTrade: number;
 }
 
-const baseCacheDir = process.env.ELIZA_DATA_DIR || path.join(os.homedir(), '.eliza');
-const CACHE_DIR = path.join(baseCacheDir, 'cache/auto_trader_historical_data');
+const baseCacheDir =
+  process.env.ELIZA_DATA_DIR || path.join(os.homedir(), ".eliza");
+const _CACHE_DIR = path.join(baseCacheDir, "cache/auto_trader_historical_data");
 
 class BacktestRunner {
-  private simulationService: never;
-  private strategyRegistry: never;
-  private historicalDataService: never;
-  private performanceReporting: never;
-
   constructor() {
-    throw new Error('BacktestRunner requires SimulationService, StrategyRegistryService, HistoricalDataService, and PerformanceReportingService which are not yet implemented');
+    throw new Error(
+      "BacktestRunner requires SimulationService, StrategyRegistryService, HistoricalDataService, and PerformanceReportingService which are not yet implemented",
+    );
     /* Commented out until services are implemented
     // Create a minimal runtime object that satisfies service requirements
     const services = new Map<string, any>();
@@ -65,7 +56,7 @@ class BacktestRunner {
   }
 
   async initialize() {
-    throw new Error('Services not implemented');
+    throw new Error("Services not implemented");
     /* Commented out until services are implemented
     console.log('Initializing backtesting environment...\n');
 
@@ -169,11 +160,10 @@ class BacktestRunner {
       return null;
     }
     */
-    return null;
   }
 
   async runAllBacktests(): Promise<BacktestResult[]> {
-    throw new Error('Services not implemented');
+    throw new Error("Services not implemented");
     /* Commented out until services are implemented
     const tokens = await this.getAvailableTokens();
     console.log(`Found ${tokens.length} tokens with historical data\n`);
@@ -336,7 +326,6 @@ class BacktestRunner {
 
     return results;
     */
-    return [];
   }
 }
 
@@ -348,13 +337,13 @@ async function main() {
     await runner.initialize();
     await runner.runAllBacktests();
   } catch (error) {
-    console.error('Fatal error during backtesting:', error);
+    console.error("Fatal error during backtesting:", error);
     process.exit(1);
   }
 }
 
 // Run the backtesting
 main().catch((error) => {
-  console.error('Unhandled error:', error);
+  console.error("Unhandled error:", error);
   process.exit(1);
 });

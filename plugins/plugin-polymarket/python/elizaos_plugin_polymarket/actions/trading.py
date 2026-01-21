@@ -92,9 +92,11 @@ async def get_active_orders(
                 params if params else None
             )
         elif callable(get_orders):
-            orders_obj = cast(Callable[..., object], get_orders)(**params) if params else cast(
-                Callable[..., object], get_orders
-            )()
+            orders_obj = (
+                cast(Callable[..., object], get_orders)(**params)
+                if params
+                else cast(Callable[..., object], get_orders)()
+            )
         else:
             raise PolymarketError(
                 PolymarketErrorCode.API_ERROR,

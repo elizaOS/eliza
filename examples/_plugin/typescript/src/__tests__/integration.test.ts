@@ -4,7 +4,6 @@ import type {
   IAgentRuntime,
   Memory,
   Service,
-  ServiceTypeName,
   State,
   UUID,
 } from "@elizaos/core";
@@ -20,8 +19,8 @@ import {
 } from "vitest";
 import { starterPlugin } from "../index";
 import {
-  createTestRuntime,
   cleanupTestRuntime,
+  createTestRuntime,
   setupLoggerSpies,
 } from "./test-utils";
 

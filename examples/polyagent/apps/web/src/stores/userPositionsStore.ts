@@ -20,13 +20,13 @@
  * ```
  */
 
-import type { PerpPosition, UserPredictionPosition } from '@polyagent/shared';
-import { useCallback, useEffect, useRef } from 'react';
-import { create } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
+import type { PerpPosition, UserPredictionPosition } from "@polyagent/shared";
+import { useCallback, useEffect, useRef } from "react";
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 
 // Re-export types for convenience
-export type { PerpPosition, UserPredictionPosition } from '@polyagent/shared';
+export type { PerpPosition, UserPredictionPosition } from "@polyagent/shared";
 
 interface PerpStats {
   totalPositions: number;
@@ -57,7 +57,7 @@ interface UserPositionsState {
   subscribe: (userId: string, intervalMs: number) => () => void;
   updatePerpPosition: (
     positionId: string,
-    updates: Partial<PerpPosition>
+    updates: Partial<PerpPosition>,
   ) => void;
   removePerpPosition: (positionId: string) => void;
 }
@@ -75,10 +75,10 @@ const DEFAULT_STATS: PerpStats = {
  * Helper to safely convert API values to numbers.
  */
 function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
+  if (typeof value === "number" && Number.isFinite(value)) {
     return value;
   }
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
   }
@@ -92,7 +92,7 @@ interface ApiPerpPositionPayload {
   userId?: string;
   ticker: string;
   organizationId?: string;
-  side: PerpPosition['side'];
+  side: PerpPosition["side"];
   entryPrice: NumericLike;
   currentPrice: NumericLike;
   size: NumericLike;
@@ -110,7 +110,7 @@ interface ApiPredictionPositionPayload {
   id: string;
   marketId: string;
   question: string;
-  side: UserPredictionPosition['side'];
+  side: UserPredictionPosition["side"];
   shares: NumericLike;
   avgPrice: NumericLike;
   currentPrice: NumericLike;
@@ -128,7 +128,7 @@ interface ApiPredictionPositionPayload {
 function normalizePerpPosition(raw: ApiPerpPositionPayload): PerpPosition {
   return {
     id: raw.id,
-    userId: raw.userId ?? '',
+    userId: raw.userId ?? "",
     ticker: raw.ticker,
     organizationId: raw.organizationId ?? raw.ticker,
     side: raw.side,
@@ -150,7 +150,7 @@ function normalizePerpPosition(raw: ApiPerpPositionPayload): PerpPosition {
  * Normalize API prediction position to UserPredictionPosition type
  */
 function normalizePredictionPosition(
-  raw: ApiPredictionPositionPayload
+  raw: ApiPredictionPositionPayload,
 ): UserPredictionPosition {
   const shares = toNumber(raw.shares);
   const avgPrice = toNumber(raw.avgPrice);
@@ -231,7 +231,7 @@ export const useUserPositionsStore = create<UserPositionsState>((set, get) => ({
 
       try {
         const response = await fetch(
-          `/api/markets/positions/${encodeURIComponent(requestedUserId)}`
+          `/api/markets/positions/${encodeURIComponent(requestedUserId)}`,
         );
 
         if (!response.ok) {
@@ -250,11 +250,11 @@ export const useUserPositionsStore = create<UserPositionsState>((set, get) => ({
         const predictions = data?.predictions ?? {};
 
         const normalizedPerps = (perpetuals.positions ?? []).map(
-          (p: ApiPerpPositionPayload) => normalizePerpPosition(p)
+          (p: ApiPerpPositionPayload) => normalizePerpPosition(p),
         );
 
         const normalizedPredictions = (predictions.positions ?? []).map(
-          (p: ApiPredictionPositionPayload) => normalizePredictionPosition(p)
+          (p: ApiPredictionPositionPayload) => normalizePredictionPosition(p),
         );
 
         // Calculate stats
@@ -262,11 +262,11 @@ export const useUserPositionsStore = create<UserPositionsState>((set, get) => ({
           totalPositions: normalizedPerps.length,
           totalPnL: normalizedPerps.reduce(
             (sum: number, p: PerpPosition) => sum + (p.unrealizedPnL ?? 0),
-            0
+            0,
           ),
           totalFunding: normalizedPerps.reduce(
             (sum: number, p: PerpPosition) => sum + (p.fundingPaid ?? 0),
-            0
+            0,
           ),
         };
 
@@ -281,7 +281,7 @@ export const useUserPositionsStore = create<UserPositionsState>((set, get) => ({
         // Only set error if user hasn't changed
         if (get().userId === requestedUserId) {
           const errorMessage =
-            err instanceof Error ? err.message : 'Failed to fetch positions';
+            err instanceof Error ? err.message : "Failed to fetch positions";
           set({ error: errorMessage });
         }
       } finally {
@@ -384,7 +384,7 @@ export const useUserPositionsStore = create<UserPositionsState>((set, get) => ({
   updatePerpPosition: (positionId: string, updates: Partial<PerpPosition>) => {
     const state = get();
     const updatedPositions = state.perpPositions.map((p) =>
-      p.id === positionId ? { ...p, ...updates } : p
+      p.id === positionId ? { ...p, ...updates } : p,
     );
     // Recalculate stats to keep them consistent with updated positions
     set({
@@ -393,11 +393,11 @@ export const useUserPositionsStore = create<UserPositionsState>((set, get) => ({
         totalPositions: updatedPositions.length,
         totalPnL: updatedPositions.reduce(
           (sum, p) => sum + (p.unrealizedPnL ?? 0),
-          0
+          0,
         ),
         totalFunding: updatedPositions.reduce(
           (sum, p) => sum + (p.fundingPaid ?? 0),
-          0
+          0,
         ),
       },
     });
@@ -407,7 +407,7 @@ export const useUserPositionsStore = create<UserPositionsState>((set, get) => ({
   removePerpPosition: (positionId: string) => {
     const state = get();
     const updatedPositions = state.perpPositions.filter(
-      (p) => p.id !== positionId
+      (p) => p.id !== positionId,
     );
     set({
       perpPositions: updatedPositions,
@@ -416,11 +416,11 @@ export const useUserPositionsStore = create<UserPositionsState>((set, get) => ({
         totalPositions: updatedPositions.length,
         totalPnL: updatedPositions.reduce(
           (sum, p) => sum + (p.unrealizedPnL ?? 0),
-          0
+          0,
         ),
         totalFunding: updatedPositions.reduce(
           (sum, p) => sum + (p.fundingPaid ?? 0),
-          0
+          0,
         ),
       },
     });
@@ -536,7 +536,7 @@ export function usePredictionPositions(userId?: string | null) {
  */
 export function useUserPositionsPolling(
   userId?: string | null,
-  intervalMs = 30000
+  intervalMs = 30000,
 ) {
   const subscribe = useUserPositionsStore((state) => state.subscribe);
   const intervalRef = useRef(intervalMs);
@@ -569,7 +569,7 @@ export async function refreshUserPositions(userId: string) {
  * Returns undefined if not found.
  */
 export function getPerpPositionById(
-  positionId: string
+  positionId: string,
 ): PerpPosition | undefined {
   return useUserPositionsStore
     .getState()

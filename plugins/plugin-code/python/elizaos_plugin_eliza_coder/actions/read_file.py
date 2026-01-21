@@ -15,7 +15,9 @@ class ReadFileAction:
     async def validate(self, _message: Message, _state: dict) -> bool:
         return True
 
-    async def handler(self, message: Message, _state: dict, service: CoderService | None = None) -> ActionResult:
+    async def handler(
+        self, message: Message, _state: dict, service: CoderService | None = None
+    ) -> ActionResult:
         if service is None:
             return ActionResult(False, "Coder service is not available.", "missing_service")
 
@@ -33,4 +35,3 @@ class ReadFileAction:
         if not ok:
             return ActionResult(False, out, "read_failed")
         return ActionResult(True, out)
-

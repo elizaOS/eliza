@@ -1,5 +1,5 @@
-import { cn } from '@polyagent/shared';
-import type React from 'react';
+import { cn } from "@polyagent/shared";
+import type React from "react";
 
 /**
  * Avatar component container.
@@ -17,7 +17,7 @@ import type React from 'react';
  * </Avatar>
  * ```
  */
-export type AvatarProps = React.ComponentPropsWithoutRef<'div'>;
+export type AvatarProps = React.ComponentPropsWithoutRef<"div">;
 
 export const Avatar = ({ children, className, ...props }: AvatarProps) => {
   return (
@@ -36,7 +36,7 @@ export const Avatar = ({ children, className, ...props }: AvatarProps) => {
  * @returns Avatar image element
  */
 export interface AvatarImageProps
-  extends React.ComponentPropsWithoutRef<'img'> {
+  extends React.ComponentPropsWithoutRef<"img"> {
   src?: string;
   alt?: string;
 }
@@ -58,7 +58,7 @@ export const AvatarImage = ({
  * @param props - AvatarFallback component props
  * @returns Avatar fallback element
  */
-export type AvatarFallbackProps = React.ComponentPropsWithoutRef<'div'>;
+export type AvatarFallbackProps = React.ComponentPropsWithoutRef<"div">;
 
 export const AvatarFallback = ({
   children,

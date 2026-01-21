@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * PostHog identifier component for identifying users to PostHog analytics.
@@ -15,16 +15,16 @@
  *
  * @returns null (does not render anything)
  */
-import { useEffect, useRef } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { posthog } from '@/lib/posthog';
+import { useEffect, useRef } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { posthog } from "@/lib/posthog";
 
 export function PostHogIdentifier() {
   const { user, authenticated } = useAuth();
   const identifiedUserId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!posthog || typeof window === 'undefined') return;
+    if (!posthog || typeof window === "undefined") return;
 
     // Identify user when authenticated
     if (authenticated && user?.id && user.id !== identifiedUserId.current) {
@@ -71,7 +71,7 @@ export function PostHogIdentifier() {
       };
       if (
         posthogWithPeople.people &&
-        typeof posthogWithPeople.people.set === 'function'
+        typeof posthogWithPeople.people.set === "function"
       ) {
         const peopleProperties: Record<string, string | boolean> = {
           authenticated: true,

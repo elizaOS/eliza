@@ -1,4 +1,4 @@
-import { Graphics as PixiGraphics } from "pixi.js";
+import type { Graphics as PixiGraphics } from "pixi.js";
 
 const ANIMATION_DURATION = 500;
 const RADIUS_TILES = 0.25;

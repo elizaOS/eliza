@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn, formatCompactCurrency } from '@polyagent/shared';
+import { cn, formatCompactCurrency } from "@polyagent/shared";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -8,15 +8,15 @@ import {
   Send,
   TrendingDown,
   TrendingUp,
-} from 'lucide-react';
-import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
-import { useRouter } from 'next/navigation';
-import { Avatar } from '@/components/shared/Avatar';
+} from "lucide-react";
+import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { useRouter } from "next/navigation";
+import { Avatar } from "@/components/shared/Avatar";
 
 /**
  * Trade type discriminator for trade card display.
  */
-type TradeType = 'balance' | 'npc' | 'position' | 'perp' | 'transfer';
+type TradeType = "balance" | "npc" | "position" | "perp" | "transfer";
 
 /**
  * Base trade structure shared across all trade types.
@@ -38,7 +38,7 @@ interface BaseTrade {
  * Balance transaction trade structure.
  */
 interface BalanceTrade extends BaseTrade {
-  type: 'balance';
+  type: "balance";
   amount: string;
   balanceBefore: string;
   balanceAfter: string;
@@ -51,7 +51,7 @@ interface BalanceTrade extends BaseTrade {
  * NPC trade structure for automated trading.
  */
 interface NPCTrade extends BaseTrade {
-  type: 'npc';
+  type: "npc";
   marketType: string;
   ticker: string | null;
   marketId: string | null;
@@ -67,7 +67,7 @@ interface NPCTrade extends BaseTrade {
  * Prediction position trade structure.
  */
 interface PositionTrade extends BaseTrade {
-  type: 'position';
+  type: "position";
   market: {
     id: string;
     question: string;
@@ -84,14 +84,14 @@ interface PositionTrade extends BaseTrade {
  * Perpetual position trade structure.
  */
 interface PerpTrade extends BaseTrade {
-  type: 'perp';
+  type: "perp";
   ticker: string;
   organization: {
     id: string;
     name: string;
     ticker: string;
   } | null;
-  side: 'long' | 'short';
+  side: "long" | "short";
   entryPrice: string;
   currentPrice: string;
   size: string;
@@ -105,7 +105,7 @@ interface PerpTrade extends BaseTrade {
  * Points transfer trade structure.
  */
 interface TransferTrade extends BaseTrade {
-  type: 'transfer';
+  type: "transfer";
   otherParty: {
     id: string;
     username: string | null;
@@ -116,7 +116,7 @@ interface TransferTrade extends BaseTrade {
   amount: number;
   pointsBefore: number;
   pointsAfter: number;
-  direction: 'sent' | 'received';
+  direction: "sent" | "received";
   message?: string;
 }
 
@@ -165,7 +165,7 @@ export function TradeCard({ trade }: TradeCardProps) {
   if (!trade.user) return null;
 
   const displayName =
-    trade.user.displayName || trade.user.username || 'Anonymous';
+    trade.user.displayName || trade.user.username || "Anonymous";
 
   const formatTime = (timestamp: Date | string) => {
     const date = new Date(timestamp);
@@ -179,32 +179,32 @@ export function TradeCard({ trade }: TradeCardProps) {
     if (days > 0) return `${days}d ago`;
     if (hours > 0) return `${hours}h ago`;
     if (minutes > 0) return `${minutes}m ago`;
-    return 'Just now';
+    return "Just now";
   };
 
   /** Use shared formatCompactCurrency for currency formatting */
   const formatCurrency = (value: string | number) => {
-    const num = typeof value === 'string' ? Number.parseFloat(value) : value;
+    const num = typeof value === "string" ? Number.parseFloat(value) : value;
     return formatCompactCurrency(Number.isNaN(num) ? 0 : num);
   };
 
   const handleProfileClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    router.push(`/profile/${trade.user!.id}`);
+    router.push(`/profile/${trade.user?.id}`);
   };
 
   const handleAssetClick = (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (trade.type === 'npc') {
-      if (trade.marketType === 'perp' && trade.ticker) {
+    if (trade.type === "npc") {
+      if (trade.marketType === "perp" && trade.ticker) {
         router.push(`/markets/perps/${trade.ticker}`);
-      } else if (trade.marketType === 'prediction' && trade.marketId) {
+      } else if (trade.marketType === "prediction" && trade.marketId) {
         router.push(`/markets/predictions/${trade.marketId}`);
       }
-    } else if (trade.type === 'position' && trade.market) {
+    } else if (trade.type === "position" && trade.market) {
       router.push(`/markets/predictions/${trade.market.id}`);
-    } else if (trade.type === 'perp') {
+    } else if (trade.type === "perp") {
       router.push(`/markets/perps/${trade.ticker}`);
     }
   };
@@ -245,35 +245,35 @@ export function TradeCard({ trade }: TradeCardProps) {
           </div>
 
           {/* Trade Details */}
-          {trade.type === 'balance' && (
+          {trade.type === "balance" && (
             <BalanceTradeContent
               trade={trade}
               onAssetClick={handleAssetClick}
               formatCurrency={formatCurrency}
             />
           )}
-          {trade.type === 'npc' && (
+          {trade.type === "npc" && (
             <NPCTradeContent
               trade={trade}
               onAssetClick={handleAssetClick}
               formatCurrency={formatCurrency}
             />
           )}
-          {trade.type === 'position' && (
+          {trade.type === "position" && (
             <PositionTradeContent
               trade={trade}
               onAssetClick={handleAssetClick}
               formatCurrency={formatCurrency}
             />
           )}
-          {trade.type === 'perp' && (
+          {trade.type === "perp" && (
             <PerpTradeContent
               trade={trade}
               onAssetClick={handleAssetClick}
               formatCurrency={formatCurrency}
             />
           )}
-          {trade.type === 'transfer' && (
+          {trade.type === "transfer" && (
             <TransferTradeContent trade={trade} router={router} />
           )}
         </div>
@@ -293,7 +293,7 @@ function BalanceTradeContent({
 }) {
   const amount = Number.parseFloat(trade.amount);
   const isPositive = amount >= 0;
-  const actionText = trade.transactionType.replace('_', ' ').toUpperCase();
+  const actionText = trade.transactionType.replace("_", " ").toUpperCase();
 
   return (
     <div className="space-y-1">
@@ -306,11 +306,11 @@ function BalanceTradeContent({
         <span className="text-muted-foreground text-sm">{actionText}</span>
         <span
           className={cn(
-            'font-semibold text-base',
-            isPositive ? 'text-green-600' : 'text-red-600'
+            "font-semibold text-base",
+            isPositive ? "text-green-600" : "text-red-600",
           )}
         >
-          {isPositive ? '+' : ''}
+          {isPositive ? "+" : ""}
           {formatCurrency(amount)}
         </span>
       </div>
@@ -335,7 +335,7 @@ function NPCTradeContent({
   onAssetClick: (e: React.MouseEvent) => void;
   formatCurrency: (value: string | number) => string;
 }) {
-  const isLong = trade.side === 'long' || trade.side === 'YES';
+  const isLong = trade.side === "long" || trade.side === "YES";
   const action = trade.action.toUpperCase();
 
   return (
@@ -343,10 +343,10 @@ function NPCTradeContent({
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={cn(
-            'rounded px-2 py-1 font-medium text-xs',
+            "rounded px-2 py-1 font-medium text-xs",
             isLong
-              ? 'bg-green-500/20 text-green-500'
-              : 'bg-red-500/20 text-red-500'
+              ? "bg-green-500/20 text-green-500"
+              : "bg-red-500/20 text-red-500",
           )}
         >
           {action}
@@ -362,8 +362,8 @@ function NPCTradeContent({
         {trade.side && (
           <span
             className={cn(
-              'font-medium text-xs',
-              isLong ? 'text-green-600' : 'text-red-600'
+              "font-medium text-xs",
+              isLong ? "text-green-600" : "text-red-600",
             )}
           >
             {trade.side}
@@ -392,17 +392,17 @@ function PositionTradeContent({
   onAssetClick: (e: React.MouseEvent) => void;
   formatCurrency: (value: string | number) => string;
 }) {
-  const isYes = trade.side === 'YES';
+  const isYes = trade.side === "YES";
 
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
         <span
           className={cn(
-            'rounded px-2 py-1 font-medium text-xs',
+            "rounded px-2 py-1 font-medium text-xs",
             isYes
-              ? 'bg-green-500/20 text-green-500'
-              : 'bg-red-500/20 text-red-500'
+              ? "bg-green-500/20 text-green-500"
+              : "bg-red-500/20 text-red-500",
           )}
         >
           {trade.side}
@@ -434,7 +434,7 @@ function PerpTradeContent({
   onAssetClick: (e: React.MouseEvent) => void;
   formatCurrency: (value: string | number) => string;
 }) {
-  const isLong = trade.side === 'long';
+  const isLong = trade.side === "long";
   const pnl = Number.parseFloat(trade.unrealizedPnL);
   const isPnLPositive = pnl >= 0;
   const isClosed = trade.closedAt !== null;
@@ -449,10 +449,10 @@ function PerpTradeContent({
         )}
         <span
           className={cn(
-            'rounded px-2 py-1 font-medium text-xs',
+            "rounded px-2 py-1 font-medium text-xs",
             isLong
-              ? 'bg-green-500/20 text-green-500'
-              : 'bg-red-500/20 text-red-500'
+              ? "bg-green-500/20 text-green-500"
+              : "bg-red-500/20 text-red-500",
           )}
         >
           {trade.side.toUpperCase()}
@@ -479,11 +479,11 @@ function PerpTradeContent({
           <span className="text-muted-foreground">PnL:</span>
           <span
             className={cn(
-              'font-semibold',
-              isPnLPositive ? 'text-green-600' : 'text-red-600'
+              "font-semibold",
+              isPnLPositive ? "text-green-600" : "text-red-600",
             )}
           >
-            {isPnLPositive ? '+' : ''}
+            {isPnLPositive ? "+" : ""}
             {formatCurrency(pnl)}
           </span>
         </div>
@@ -499,9 +499,9 @@ function TransferTradeContent({
   trade: TransferTrade;
   router: AppRouterInstance;
 }) {
-  const isSent = trade.direction === 'sent';
+  const isSent = trade.direction === "sent";
   const otherPartyName =
-    trade.otherParty?.displayName || trade.otherParty?.username || 'Unknown';
+    trade.otherParty?.displayName || trade.otherParty?.username || "Unknown";
 
   const handleOtherPartyClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -519,7 +519,7 @@ function TransferTradeContent({
           <Coins className="h-4 w-4 text-green-500" />
         )}
         <span className="text-muted-foreground text-sm">
-          {isSent ? 'Sent points to' : 'Received points from'}
+          {isSent ? "Sent points to" : "Received points from"}
         </span>
         <span
           className="cursor-pointer font-medium hover:underline"
@@ -531,11 +531,11 @@ function TransferTradeContent({
       <div className="flex items-center gap-2">
         <span
           className={cn(
-            'font-semibold text-base',
-            isSent ? 'text-red-600' : 'text-green-600'
+            "font-semibold text-base",
+            isSent ? "text-red-600" : "text-green-600",
           )}
         >
-          {isSent ? '-' : '+'}
+          {isSent ? "-" : "+"}
           {Math.abs(trade.amount)} pts
         </span>
         <span className="text-muted-foreground text-xs">

@@ -9,6 +9,7 @@ from web_browser_utils import ScreenshotMode
 @dataclass
 class ClientConfig:
     """Configuration for the web_browser client"""
+
     port: int = int(os.getenv("WEB_BROWSER_PORT", "8009"))
     autoscreenshot: bool = os.getenv("WEB_BROWSER_AUTOSCREENSHOT", "1") == "1"
     screenshot_mode: ScreenshotMode = ScreenshotMode(
@@ -19,6 +20,7 @@ class ClientConfig:
 @dataclass
 class ServerConfig:
     """Configuration for the web_browser server"""
+
     port: int = int(os.getenv("WEB_BROWSER_PORT", "8009"))
     window_width: int = int(os.getenv("WEB_BROWSER_WINDOW_WIDTH", 1024))
     window_height: int = int(os.getenv("WEB_BROWSER_WINDOW_HEIGHT", 768))

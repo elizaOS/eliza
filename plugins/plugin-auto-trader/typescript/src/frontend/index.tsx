@@ -1,13 +1,13 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createRoot } from 'react-dom/client';
-import Sentiment from './sentiment.js';
-import Statistics from './statistics.js';
-import Trending from './trending.js';
-import Tweets from './tweets.js';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.js';
-import Wallet from './wallet.js';
-import Signals from './signals.js';
-import './index.css';
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createRoot } from "react-dom/client";
+import Sentiment from "./sentiment.js";
+import Signals from "./signals.js";
+import Statistics from "./statistics.js";
+import Trending from "./trending.js";
+import Tweets from "./tweets.js";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.js";
+import Wallet from "./wallet.js";
+import "./index.css";
 
 const queryClient = new QueryClient();
 
@@ -50,4 +50,7 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  createRoot(rootElement).render(<App />);
+}

@@ -16,7 +16,7 @@
 // =============================================================================
 
 // Import types for internal use in this file
-import type { UserPredictionPosition as SharedUserPredictionPosition } from '@polyagent/shared';
+import type { UserPredictionPosition as SharedUserPredictionPosition } from "@polyagent/shared";
 
 export type {
   DailyPriceSnapshot,
@@ -29,7 +29,7 @@ export type {
   PredictionPosition,
   TradingStats,
   UserPredictionPosition,
-} from '@polyagent/shared';
+} from "@polyagent/shared";
 
 // Local alias for internal use
 type UserPredictionPosition = SharedUserPredictionPosition;
@@ -40,7 +40,7 @@ export {
   calculateMarkPrice,
   calculateUnrealizedPnL,
   shouldLiquidate,
-} from '@polyagent/shared';
+} from "@polyagent/shared";
 
 // =============================================================================
 // Market Types
@@ -82,7 +82,7 @@ export interface PerpMarket {
 export interface PredictionMarket {
   id: number | string;
   text: string;
-  status: 'active' | 'resolved' | 'cancelled';
+  status: "active" | "resolved" | "cancelled";
   createdDate?: string;
   resolutionDate?: string;
   resolvedOutcome?: boolean;
@@ -116,17 +116,17 @@ export interface PredictionMarketWithPosition extends PredictionMarket {
  * Note: API responses use lowercase 'long' | 'short' (matches PerpPositionFromAPI in @polyagent/shared).
  * This is consistent with the PerpPosition type and UI conventions.
  */
-export type TradeSide = 'long' | 'short';
+export type TradeSide = "long" | "short";
 
 /**
  * Side of a prediction market position.
  */
-export type PredictionSide = 'YES' | 'NO';
+export type PredictionSide = "YES" | "NO";
 
 /**
  * Market category type for PnL displays and filters.
  */
-export type MarketCategory = 'perps' | 'predictions';
+export type MarketCategory = "perps" | "predictions";
 
 // =============================================================================
 // UI Types
@@ -135,17 +135,17 @@ export type MarketCategory = 'perps' | 'predictions';
 /**
  * Tab options for the markets page.
  */
-export type MarketTab = 'dashboard' | 'perps' | 'predictions';
+export type MarketTab = "dashboard" | "perps" | "predictions";
 
 /**
  * Sort options for prediction markets list.
  */
-export type PredictionSort = 'trending' | 'newest' | 'ending-soon' | 'volume';
+export type PredictionSort = "trending" | "newest" | "ending-soon" | "volume";
 
 /**
  * Sort options for perp markets list.
  */
-export type PerpSort = 'volume' | 'change' | 'name' | 'price';
+export type PerpSort = "volume" | "change" | "name" | "price";
 
 // =============================================================================
 // API Response Types
@@ -212,14 +212,14 @@ export interface DisplayPerpPosition {
 /**
  * Supported time ranges for market charts and history queries.
  */
-export type MarketTimeRange = '1H' | '4H' | '1D' | '1W' | 'ALL';
+export type MarketTimeRange = "1H" | "4H" | "1D" | "1W" | "ALL";
 
 export const MARKET_TIME_RANGES: MarketTimeRange[] = [
-  '1H',
-  '4H',
-  '1D',
-  '1W',
-  'ALL',
+  "1H",
+  "4H",
+  "1D",
+  "1W",
+  "ALL",
 ];
 
 /**
@@ -252,7 +252,7 @@ export interface PredictionHistoryPoint {
  * SSE event for prediction market trades.
  */
 export interface PredictionTradeSSE {
-  type: 'prediction_trade';
+  type: "prediction_trade";
   marketId: string;
   userId: string;
   side: PredictionSide;
@@ -265,7 +265,7 @@ export interface PredictionTradeSSE {
  * SSE event for prediction market resolution.
  */
 export interface PredictionResolutionSSE {
-  type: 'prediction_resolution';
+  type: "prediction_resolution";
   marketId: string;
   outcome: boolean;
   timestamp: string;

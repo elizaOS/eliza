@@ -49,7 +49,7 @@
  * - other (unknown intent, may still have data)
  */
 
-import type { FormIntent } from './types.ts';
+import type { FormIntent } from "./types";
 
 /**
  * Quick intent detection using English keywords.
@@ -83,29 +83,43 @@ export function quickIntentDetect(text: string): FormIntent | null {
 
   // Restore - resume a saved form
   // WHY these phrases: Natural ways to continue interrupted work
-  if (/\b(resume|continue|pick up where|go back to|get back to)\b/.test(lower)) {
-    return 'restore';
+  if (
+    /\b(resume|continue|pick up where|go back to|get back to)\b/.test(lower)
+  ) {
+    return "restore";
   }
 
   // Submit - complete and submit the form
   // WHY "all set" included: Common natural confirmation phrase
-  if (/\b(submit|done|finish|send it|that'?s all|i'?m done|complete|all set)\b/.test(lower)) {
-    return 'submit';
+  if (
+    /\b(submit|done|finish|send it|that'?s all|i'?m done|complete|all set)\b/.test(
+      lower,
+    )
+  ) {
+    return "submit";
   }
 
   // Stash - save for later without submitting
   // WHY exclude "save and submit": User wants to submit, not stash
-  if (/\b(save|stash|later|hold on|pause|save for later|come back|save this)\b/.test(lower)) {
+  if (
+    /\b(save|stash|later|hold on|pause|save for later|come back|save this)\b/.test(
+      lower,
+    )
+  ) {
     // But not "save" in context of submitting
     if (!/\b(save and submit|save and send)\b/.test(lower)) {
-      return 'stash';
+      return "stash";
     }
   }
 
   // Cancel - abandon the form
   // WHY "quit" and "exit": Common ways to abandon a process
-  if (/\b(cancel|abort|nevermind|never mind|forget it|stop|quit|exit)\b/.test(lower)) {
-    return 'cancel';
+  if (
+    /\b(cancel|abort|nevermind|never mind|forget it|stop|quit|exit)\b/.test(
+      lower,
+    )
+  ) {
+    return "cancel";
   }
 
   // ═══ UX MAGIC INTENTS ═══
@@ -113,49 +127,71 @@ export function quickIntentDetect(text: string): FormIntent | null {
 
   // Undo - revert the last change
   // WHY "oops" and "that's wrong": Natural error expressions
-  if (/\b(undo|go back|wait no|change that|oops|that'?s wrong|wrong|not right)\b/.test(lower)) {
-    return 'undo';
+  if (
+    /\b(undo|go back|wait no|change that|oops|that'?s wrong|wrong|not right)\b/.test(
+      lower,
+    )
+  ) {
+    return "undo";
   }
 
   // Skip - skip the current optional field
   // WHY exclude "skip to": That's navigation, not skipping current field
-  if (/\b(skip|pass|don'?t know|next one|next|don'?t have|no idea)\b/.test(lower)) {
+  if (
+    /\b(skip|pass|don'?t know|next one|next|don'?t have|no idea)\b/.test(lower)
+  ) {
     // But not "skip to" (navigation)
     if (!/\bskip to\b/.test(lower)) {
-      return 'skip';
+      return "skip";
     }
   }
 
   // Explain - "why do you need this?"
   // WHY end anchor: "why" at end of sentence is usually a question
-  if (/\b(why|what'?s that for|explain|what do you mean|what is|purpose|reason)\b\??$/i.test(lower)) {
-    return 'explain';
+  if (
+    /\b(why|what'?s that for|explain|what do you mean|what is|purpose|reason)\b\??$/i.test(
+      lower,
+    )
+  ) {
+    return "explain";
   }
   // Also match standalone "why?"
   if (/^why\??$/i.test(lower)) {
-    return 'explain';
+    return "explain";
   }
 
   // Example - "give me an example"
   // WHY end anchor: "like what?" is asking for example
-  if (/\b(example|like what|show me|such as|for instance|sample)\b\??$/i.test(lower)) {
-    return 'example';
+  if (
+    /\b(example|like what|show me|such as|for instance|sample)\b\??$/i.test(
+      lower,
+    )
+  ) {
+    return "example";
   }
   // Also match standalone "example?" or "e.g.?"
   if (/^(example|e\.?g\.?)\??$/i.test(lower)) {
-    return 'example';
+    return "example";
   }
 
   // Progress - "how far am I?"
   // WHY these phrases: Natural ways to ask about completion status
-  if (/\b(how far|how many left|progress|status|how much more|where are we)\b/.test(lower)) {
-    return 'progress';
+  if (
+    /\b(how far|how many left|progress|status|how much more|where are we)\b/.test(
+      lower,
+    )
+  ) {
+    return "progress";
   }
 
   // Autofill - "use my usual values"
   // WHY: Users with repeat forms want saved values
-  if (/\b(same as|last time|use my usual|like before|previous|from before)\b/.test(lower)) {
-    return 'autofill';
+  if (
+    /\b(same as|last time|use my usual|like before|previous|from before)\b/.test(
+      lower,
+    )
+  ) {
+    return "autofill";
   }
 
   // No match - let LLM handle it
@@ -182,7 +218,7 @@ export function quickIntentDetect(text: string): FormIntent | null {
  * - May need confirmation (e.g., cancel)
  */
 export function isLifecycleIntent(intent: FormIntent): boolean {
-  return ['submit', 'stash', 'restore', 'cancel'].includes(intent);
+  return ["submit", "stash", "restore", "cancel"].includes(intent);
 }
 
 /**
@@ -202,7 +238,14 @@ export function isLifecycleIntent(intent: FormIntent): boolean {
  * - Agent response is informational
  */
 export function isUXIntent(intent: FormIntent): boolean {
-  return ['undo', 'skip', 'explain', 'example', 'progress', 'autofill'].includes(intent);
+  return [
+    "undo",
+    "skip",
+    "explain",
+    "example",
+    "progress",
+    "autofill",
+  ].includes(intent);
 }
 
 /**
@@ -218,5 +261,5 @@ export function isUXIntent(intent: FormIntent): boolean {
  * - Lifecycle and UX intents don't have data
  */
 export function hasDataToExtract(intent: FormIntent): boolean {
-  return intent === 'fill_form' || intent === 'other';
+  return intent === "fill_form" || intent === "other";
 }

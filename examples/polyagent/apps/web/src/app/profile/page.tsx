@@ -1,28 +1,27 @@
-'use client';
+"use client";
 
-import { cn } from '@babylon/shared';
 import {
   AlertCircle,
   ArrowLeft,
+  Bot,
   Camera,
   Check,
   Key,
   Settings,
+  TrendingUp,
   User,
   X as XIcon,
-  Bot,
-  TrendingUp,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
-import { LoginButton } from '@/components/auth/LoginButton';
-import { Avatar } from '@/components/shared/Avatar';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/stores/authStore';
-import { useOwnedAgents } from '@/hooks/useOwnedAgents';
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { Avatar } from "@/components/shared/Avatar";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useOwnedAgents } from "@/hooks/useOwnedAgents";
+import { useAuthStore } from "@/stores/authStore";
 
 interface ProfileFormData {
   username: string;
@@ -46,10 +45,10 @@ export default function ProfilePage() {
   const { agents, loading: agentsLoading } = useOwnedAgents(user?.id);
 
   const [formData, setFormData] = useState<ProfileFormData>({
-    username: '',
-    displayName: '',
-    bio: '',
-    profileImageUrl: '',
+    username: "",
+    displayName: "",
+    bio: "",
+    profileImageUrl: "",
   });
 
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -57,10 +56,10 @@ export default function ProfilePage() {
   const [editModal, setEditModal] = useState<EditModalState>({
     isOpen: false,
     formData: {
-      username: '',
-      displayName: '',
-      bio: '',
-      profileImageUrl: '',
+      username: "",
+      displayName: "",
+      bio: "",
+      profileImageUrl: "",
     },
     profileImage: { file: null, preview: null },
     isSaving: false,
@@ -72,10 +71,10 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       setFormData({
-        username: user.username || '',
-        displayName: user.displayName || '',
-        bio: user.bio || '',
-        profileImageUrl: user.profileImageUrl || '',
+        username: user.username || "",
+        displayName: user.displayName || "",
+        bio: user.bio || "",
+        profileImageUrl: user.profileImageUrl || "",
       });
       setLoading(false);
     } else if (ready) {
@@ -97,16 +96,16 @@ export default function ProfilePage() {
     setEditModal({
       isOpen: false,
       formData: {
-        username: '',
-        displayName: '',
-        bio: '',
-        profileImageUrl: '',
+        username: "",
+        displayName: "",
+        bio: "",
+        profileImageUrl: "",
       },
       profileImage: { file: null, preview: null },
       isSaving: false,
       error: null,
     });
-    if (profileImageInputRef.current) profileImageInputRef.current.value = '';
+    if (profileImageInputRef.current) profileImageInputRef.current.value = "";
   };
 
   const handleProfileImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,16 +113,16 @@ export default function ProfilePage() {
     if (!file) return;
 
     const allowedTypes = [
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-      'image/webp',
-      'image/gif',
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/webp",
+      "image/gif",
     ];
     if (!allowedTypes.includes(file.type)) {
       setEditModal((prev) => ({
         ...prev,
-        error: 'Please select a valid image file',
+        error: "Please select a valid image file",
       }));
       return;
     }
@@ -131,7 +130,7 @@ export default function ProfilePage() {
     if (file.size > 10 * 1024 * 1024) {
       setEditModal((prev) => ({
         ...prev,
-        error: 'File size must be less than 10MB',
+        error: "File size must be less than 10MB",
       }));
       return;
     }
@@ -162,11 +161,11 @@ export default function ProfilePage() {
     // Upload profile image if changed
     if (editModal.profileImage.file) {
       const formData = new FormData();
-      formData.append('file', editModal.profileImage.file);
-      formData.append('type', 'profile');
+      formData.append("file", editModal.profileImage.file);
+      formData.append("type", "profile");
 
-      const uploadResponse = await fetch('/api/upload/image', {
-        method: 'POST',
+      const uploadResponse = await fetch("/api/upload/image", {
+        method: "POST",
         headers,
         body: formData,
       });
@@ -174,7 +173,7 @@ export default function ProfilePage() {
       if (!uploadResponse.ok) {
         setEditModal((prev) => ({
           ...prev,
-          error: 'Failed to upload profile image',
+          error: "Failed to upload profile image",
           isSaving: false,
         }));
         return;
@@ -185,7 +184,7 @@ export default function ProfilePage() {
 
     // Remove empty strings from updatedData
     Object.keys(updatedData).forEach((key) => {
-      if (updatedData[key as keyof ProfileFormData] === '') {
+      if (updatedData[key as keyof ProfileFormData] === "") {
         delete updatedData[key as keyof ProfileFormData];
       }
     });
@@ -193,19 +192,19 @@ export default function ProfilePage() {
     const updateResponse = await fetch(
       `/api/users/${encodeURIComponent(user.id)}/update-profile`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(updatedData),
-      }
+      },
     );
 
     if (!updateResponse.ok) {
       const errorData = await updateResponse.json().catch(() => ({}));
       const errorMessage =
-        errorData?.error?.message || 'Failed to update profile';
+        errorData?.error?.message || "Failed to update profile";
       setEditModal((prev) => ({
         ...prev,
         error: errorMessage,
@@ -299,7 +298,7 @@ export default function ProfilePage() {
             <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full border-4 border-background bg-muted">
               <Avatar
                 id={user.id}
-                name={formData.displayName || formData.username || ''}
+                name={formData.displayName || formData.username || ""}
                 type="user"
                 src={formData.profileImageUrl || undefined}
                 size="lg"
@@ -312,10 +311,10 @@ export default function ProfilePage() {
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="font-bold text-xl">
-                    {formData.displayName || 'Your Name'}
+                    {formData.displayName || "Your Name"}
                   </h2>
                   <p className="text-muted-foreground">
-                    @{formData.username || 'username'}
+                    @{formData.username || "username"}
                   </p>
                 </div>
                 <button
@@ -449,7 +448,7 @@ export default function ProfilePage() {
                 disabled={editModal.isSaving}
                 className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50"
               >
-                {editModal.isSaving ? 'Saving...' : 'Save'}
+                {editModal.isSaving ? "Saving..." : "Save"}
               </button>
             </div>
 

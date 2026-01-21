@@ -9,13 +9,11 @@ import type {
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
-const coreActionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(
-  (acc, doc) => {
+const coreActionDocByName: ActionDocByName =
+  allActionDocs.reduce<ActionDocByName>((acc, doc) => {
     acc[doc.name] = doc;
     return acc;
-  },
-  {},
-);
+  }, {});
 
 function toActionParameter(
   param: NonNullable<(typeof allActionDocs)[number]["parameters"]>[number],
@@ -62,20 +60,19 @@ export function withCanonicalActionDocs(action: Action): Action {
   };
 }
 
-export function withCanonicalActionDocsAll(actions: readonly Action[]): Action[] {
+export function withCanonicalActionDocsAll(
+  actions: readonly Action[],
+): Action[] {
   return actions.map(withCanonicalActionDocs);
 }
 
 type EvaluatorDocByName = Record<string, (typeof allEvaluatorDocs)[number]>;
 
 const coreEvaluatorDocByName: EvaluatorDocByName =
-  allEvaluatorDocs.reduce<EvaluatorDocByName>(
-    (acc, doc) => {
-      acc[doc.name] = doc;
-      return acc;
-    },
-    {},
-  );
+  allEvaluatorDocs.reduce<EvaluatorDocByName>((acc, doc) => {
+    acc[doc.name] = doc;
+    return acc;
+  }, {});
 
 function toEvaluationExample(
   ex: NonNullable<(typeof allEvaluatorDocs)[number]["examples"]>[number],

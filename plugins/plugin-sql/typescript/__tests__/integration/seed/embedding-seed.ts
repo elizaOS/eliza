@@ -39,7 +39,6 @@ export const embeddingTestAgent = {
   topics: [],
   adjectives: [],
   knowledge: [],
-  plugins: [],
   secrets: {},
   plugins: [],
   settings: {

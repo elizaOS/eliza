@@ -16,11 +16,10 @@ import {
   type JsonValue,
   type User,
   users,
-} from '@babylon/db';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { generateSnowflakeId } from '../shared/snowflake';
-import { agentWalletService } from './AgentWalletService';
+} from "@babylon/db";
+import { logger } from "../shared/logger";
+import { generateSnowflakeId } from "../shared/snowflake";
+import { agentWalletService } from "./AgentWalletService";
 
 /**
  * Service for agent identity management
@@ -42,7 +41,7 @@ export class AgentIdentityService {
     logger.info(
       `Creating wallet for agent user ${agentUserId}`,
       undefined,
-      'AgentIdentityService'
+      "AgentIdentityService",
     );
 
     const [agentUser] = await db
@@ -52,7 +51,7 @@ export class AgentIdentityService {
       .limit(1);
 
     if (!agentUser || !agentUser.isAgent) {
-      throw new Error('Agent user not found');
+      throw new Error("Agent user not found");
     }
 
     // Use Privy server SDK to create embedded wallet
@@ -72,8 +71,8 @@ export class AgentIdentityService {
     await db.insert(agentLogs).values({
       id: await generateSnowflakeId(),
       agentUserId,
-      type: 'wallet',
-      level: 'info',
+      type: "wallet",
+      level: "info",
       message: `Wallet created: ${walletAddress}`,
       metadata: { walletAddress, privyWalletId } as JsonValue,
     });
@@ -88,7 +87,7 @@ export class AgentIdentityService {
     logger.info(
       `Setting up identity for agent ${agentUserId}`,
       undefined,
-      'AgentIdentityService'
+      "AgentIdentityService",
     );
 
     // First create wallet
@@ -102,7 +101,7 @@ export class AgentIdentityService {
       .limit(1);
 
     if (!updatedAgent) {
-      throw new Error('Agent not found after identity setup');
+      throw new Error("Agent not found after identity setup");
     }
 
     return updatedAgent;

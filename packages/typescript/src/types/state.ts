@@ -1,3 +1,5 @@
+import type { ActionResult, ProviderValue } from "./components";
+import type { Entity, Room, World } from "./environment";
 import type {
   ActionPlan as ProtoActionPlan,
   ActionPlanStep as ProtoActionPlanStep,
@@ -7,8 +9,6 @@ import type {
   StateValues as ProtoStateValues,
   WorkingMemoryItem as ProtoWorkingMemoryItem,
 } from "./proto.js";
-import type { ActionResult, ProviderValue } from "./components";
-import type { Entity, Room, World } from "./environment";
 
 /**
  * Allowed value types for state values (JSON-serializable)
@@ -32,7 +32,10 @@ export interface ActionPlanStep
 
 /** Multi-step action plan */
 export interface ActionPlan
-  extends Omit<ProtoActionPlan, "$typeName" | "$unknown" | "steps" | "metadata"> {
+  extends Omit<
+    ProtoActionPlan,
+    "$typeName" | "$unknown" | "steps" | "metadata"
+  > {
   steps: ActionPlanStep[];
   metadata?: Record<string, StateValue>;
 }

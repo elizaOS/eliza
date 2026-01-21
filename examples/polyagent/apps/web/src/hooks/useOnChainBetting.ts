@@ -1,8 +1,8 @@
-import { getContractAddresses } from '@polyagent/contracts';
-import { CHAIN, logger } from '@polyagent/shared';
-import { useCallback, useState } from 'react';
-import { encodeFunctionData, pad } from 'viem';
-import { useSmartWallet } from '@/hooks/useSmartWallet';
+import { getContractAddresses } from "@polyagent/contracts";
+import { CHAIN, logger } from "@polyagent/shared";
+import { useCallback, useState } from "react";
+import { encodeFunctionData, pad } from "viem";
+import { useSmartWallet } from "@/hooks/useSmartWallet";
 
 /**
  * Result of an on-chain betting transaction.
@@ -33,37 +33,37 @@ const { diamond: DIAMOND_ADDRESS, network: NETWORK } = getContractAddresses();
 // Prediction Market Facet ABI
 const PREDICTION_MARKET_ABI = [
   {
-    type: 'function',
-    name: 'buyShares',
+    type: "function",
+    name: "buyShares",
     inputs: [
-      { name: '_marketId', type: 'bytes32' },
-      { name: '_outcome', type: 'uint8' },
-      { name: '_numShares', type: 'uint256' },
+      { name: "_marketId", type: "bytes32" },
+      { name: "_outcome", type: "uint8" },
+      { name: "_numShares", type: "uint256" },
     ],
     outputs: [],
-    stateMutability: 'nonpayable',
+    stateMutability: "nonpayable",
   },
   {
-    type: 'function',
-    name: 'sellShares',
+    type: "function",
+    name: "sellShares",
     inputs: [
-      { name: '_marketId', type: 'bytes32' },
-      { name: '_outcome', type: 'uint8' },
-      { name: '_numShares', type: 'uint256' },
+      { name: "_marketId", type: "bytes32" },
+      { name: "_outcome", type: "uint8" },
+      { name: "_numShares", type: "uint256" },
     ],
     outputs: [],
-    stateMutability: 'nonpayable',
+    stateMutability: "nonpayable",
   },
   {
-    type: 'function',
-    name: 'calculateCost',
+    type: "function",
+    name: "calculateCost",
     inputs: [
-      { name: '_marketId', type: 'bytes32' },
-      { name: '_outcome', type: 'uint8' },
-      { name: '_numShares', type: 'uint256' },
+      { name: "_marketId", type: "bytes32" },
+      { name: "_outcome", type: "uint8" },
+      { name: "_numShares", type: "uint256" },
     ],
-    outputs: [{ name: 'cost', type: 'uint256' }],
-    stateMutability: 'view',
+    outputs: [{ name: "cost", type: "uint256" }],
+    stateMutability: "view",
   },
 ] as const;
 
@@ -114,23 +114,23 @@ export function useOnChainBetting() {
   const buyShares = useCallback(
     async (
       marketId: string,
-      outcome: 'YES' | 'NO',
-      numShares: number
+      outcome: "YES" | "NO",
+      numShares: number,
     ): Promise<OnChainBetResult> => {
       if (!smartWalletReady || !client) {
-        throw new Error('Smart wallet not ready. Please connect your wallet.');
+        throw new Error("Smart wallet not ready. Please connect your wallet.");
       }
 
       setLoading(true);
       setError(null);
 
-      const outcomeIndex = outcome === 'YES' ? 1 : 0;
+      const outcomeIndex = outcome === "YES" ? 1 : 0;
       const sharesBigInt = BigInt(Math.floor(numShares * 1e18));
 
       // Convert Snowflake ID to bytes32
       const marketIdBytes32 = marketIdToBytes32(marketId);
 
-      logger.info('Buying shares on-chain', {
+      logger.info("Buying shares on-chain", {
         network: NETWORK,
         diamond: DIAMOND_ADDRESS,
         marketId,
@@ -143,7 +143,7 @@ export function useOnChainBetting() {
       // Encode the function call
       const data = encodeFunctionData({
         abi: PREDICTION_MARKET_ABI,
-        functionName: 'buyShares',
+        functionName: "buyShares",
         args: [marketIdBytes32, outcomeIndex, sharesBigInt],
       });
 
@@ -154,7 +154,7 @@ export function useOnChainBetting() {
         chain: CHAIN,
       });
 
-      logger.info('Buy shares transaction sent', {
+      logger.info("Buy shares transaction sent", {
         marketId,
         outcome,
         txHash: hash,
@@ -166,7 +166,7 @@ export function useOnChainBetting() {
         shares: numShares,
       };
     },
-    [smartWalletReady, client, sendSmartWalletTransaction]
+    [smartWalletReady, client, sendSmartWalletTransaction],
   );
 
   /**
@@ -181,23 +181,23 @@ export function useOnChainBetting() {
   const sellShares = useCallback(
     async (
       marketId: string,
-      outcome: 'YES' | 'NO',
-      numShares: number
+      outcome: "YES" | "NO",
+      numShares: number,
     ): Promise<OnChainBetResult> => {
       if (!smartWalletReady || !client) {
-        throw new Error('Smart wallet not ready. Please connect your wallet.');
+        throw new Error("Smart wallet not ready. Please connect your wallet.");
       }
 
       setLoading(true);
       setError(null);
 
-      const outcomeIndex = outcome === 'YES' ? 1 : 0;
+      const outcomeIndex = outcome === "YES" ? 1 : 0;
       const sharesBigInt = BigInt(Math.floor(numShares * 1e18));
 
       // Convert Snowflake ID to bytes32
       const marketIdBytes32 = marketIdToBytes32(marketId);
 
-      logger.info('Selling shares on-chain', {
+      logger.info("Selling shares on-chain", {
         marketId,
         marketIdBytes32,
         outcome,
@@ -207,7 +207,7 @@ export function useOnChainBetting() {
       // Encode the function call
       const data = encodeFunctionData({
         abi: PREDICTION_MARKET_ABI,
-        functionName: 'sellShares',
+        functionName: "sellShares",
         args: [marketIdBytes32, outcomeIndex, sharesBigInt],
       });
 
@@ -218,7 +218,7 @@ export function useOnChainBetting() {
         chain: CHAIN,
       });
 
-      logger.info('Sell shares transaction sent', {
+      logger.info("Sell shares transaction sent", {
         marketId,
         outcome,
         txHash: hash,
@@ -230,7 +230,7 @@ export function useOnChainBetting() {
         shares: numShares,
       };
     },
-    [smartWalletReady, client, sendSmartWalletTransaction]
+    [smartWalletReady, client, sendSmartWalletTransaction],
   );
 
   return {

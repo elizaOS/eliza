@@ -81,7 +81,7 @@ export function getSalt(): string {
   const currentEnvSalt =
     typeof process !== "undefined" && process.env
       ? (process.env.SECRET_SALT ?? "secretsalt")
-      : (getEnv("SECRET_SALT", "secretsalt") || "secretsalt");
+      : getEnv("SECRET_SALT", "secretsalt") || "secretsalt";
   const nodeEnv =
     typeof process !== "undefined" && process.env
       ? (process.env.NODE_ENV ?? "").toLowerCase()
@@ -90,7 +90,7 @@ export function getSalt(): string {
   const allowDefaultSaltRaw =
     typeof process !== "undefined" && process.env
       ? (process.env.ELIZA_ALLOW_DEFAULT_SECRET_SALT ?? "")
-      : (getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "");
+      : getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "";
   const allowDefaultSalt = allowDefaultSaltRaw.toLowerCase() === "true";
   const now = Date.now();
 
@@ -244,7 +244,10 @@ export function decryptStringValue(value: string, salt: string): string {
  * - v1 values are decrypted then re-encrypted as v2
  * - non-encrypted values are returned unchanged
  */
-export function migrateEncryptedStringValue(value: string, salt: string): string {
+export function migrateEncryptedStringValue(
+  value: string,
+  salt: string,
+): string {
   if (typeof value !== "string") {
     return value;
   }
@@ -299,7 +302,9 @@ export function unsaltSettingValue(setting: Setting, salt: string): Setting {
   return settingCopy;
 }
 
-function extractSettingsRecord(worldSettings: WorldSettings): Record<string, Setting> {
+function extractSettingsRecord(
+  worldSettings: WorldSettings,
+): Record<string, Setting> {
   if (worldSettings.settings && typeof worldSettings.settings === "object") {
     return worldSettings.settings;
   }

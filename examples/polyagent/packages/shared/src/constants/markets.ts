@@ -96,7 +96,7 @@ export type PerpMarketConfig = {
  * Lower effective supply = more price impact per trade.
  */
 export function getEffectiveSupply(
-  config: PerpMarketConfig = PERP_MARKET_CONFIG
+  config: PerpMarketConfig = PERP_MARKET_CONFIG,
 ): number {
   return config.SYNTHETIC_SUPPLY / config.LIQUIDITY_FACTOR;
 }
@@ -121,7 +121,7 @@ export function calculatePriceFromHoldings(
   initialPrice: number,
   currentPrice: number,
   netHoldings: number,
-  config: PerpMarketConfig = PERP_MARKET_CONFIG
+  config: PerpMarketConfig = PERP_MARKET_CONFIG,
 ): number {
   const effectiveSupply = getEffectiveSupply(config);
 
@@ -153,7 +153,7 @@ export function calculatePriceFromHoldings(
 export function calculateRawPriceFromHoldings(
   initialPrice: number,
   netHoldings: number,
-  config: PerpMarketConfig = PERP_MARKET_CONFIG
+  config: PerpMarketConfig = PERP_MARKET_CONFIG,
 ): number {
   const effectiveSupply = getEffectiveSupply(config);
   const baseMarketCap = initialPrice * effectiveSupply;

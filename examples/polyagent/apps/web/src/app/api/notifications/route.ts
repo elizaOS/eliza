@@ -1,7 +1,7 @@
-import { authenticateUser } from '@babylon/api';
-import { db, notifications } from '@babylon/db';
-import { and, desc, eq, isNull } from 'drizzle-orm';
-import { NextResponse, type NextRequest } from 'next/server';
+import { authenticateUser } from "@babylon/api";
+import { db, notifications } from "@babylon/db";
+import { and, desc, eq, isNull } from "drizzle-orm";
+import { type NextRequest, NextResponse } from "next/server";
 
 /**
  * GET /api/notifications
@@ -18,8 +18,8 @@ export async function GET(request: NextRequest) {
   }
 
   const searchParams = request.nextUrl.searchParams;
-  const unreadOnly = searchParams.get('unreadOnly') === 'true';
-  const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
+  const unreadOnly = searchParams.get("unreadOnly") === "true";
+  const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100);
 
   try {
     const conditions = [eq(notifications.userId, authResult.user.id)];
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       total: results.length,
     });
   } catch (error) {
-    console.error('Error fetching notifications:', error);
+    console.error("Error fetching notifications:", error);
     // Return empty array on error instead of 500
     return NextResponse.json({
       unreadCount: 0,
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const authResult = await authenticateUser(request);
   if (!authResult.success || !authResult.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -81,8 +81,8 @@ export async function PATCH(request: NextRequest) {
         .where(
           and(
             eq(notifications.userId, authResult.user.id),
-            isNull(notifications.readAt)
-          )
+            isNull(notifications.readAt),
+          ),
         );
     } else if (notificationIds && notificationIds.length > 0) {
       for (const id of notificationIds) {
@@ -92,18 +92,18 @@ export async function PATCH(request: NextRequest) {
           .where(
             and(
               eq(notifications.id, id),
-              eq(notifications.userId, authResult.user.id)
-            )
+              eq(notifications.userId, authResult.user.id),
+            ),
           );
       }
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error updating notifications:', error);
+    console.error("Error updating notifications:", error);
     return NextResponse.json(
-      { error: 'Failed to update notifications' },
-      { status: 500 }
+      { error: "Failed to update notifications" },
+      { status: 500 },
     );
   }
 }

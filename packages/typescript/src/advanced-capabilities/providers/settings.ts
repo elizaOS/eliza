@@ -39,8 +39,16 @@ const formatSettingValue = (
 /**
  * Generates a status message based on the current settings state
  */
-function isSetting(value: Setting | Record<string, Setting> | undefined): value is Setting {
-  return typeof value === "object" && value !== null && "name" in value && "value" in value && "dependsOn" in value;
+function isSetting(
+  value: Setting | Record<string, Setting> | undefined,
+): value is Setting {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    "value" in value &&
+    "dependsOn" in value
+  );
 }
 
 function generateStatusMessage(

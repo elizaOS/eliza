@@ -118,7 +118,8 @@ export const characterProvider: Provider = {
     const messageExamplesArray = character.messageExamples ?? [];
     const formattedCharacterMessageExamples =
       messageExamplesArray.length > 0
-        ? randomSample(messageExamplesArray, 5).map((group) => {
+        ? randomSample(messageExamplesArray, 5)
+            .map((group) => {
               const exampleNames = Array.from({ length: 5 }, () =>
                 Math.random().toString(36).substring(2, 8),
               );
@@ -138,8 +139,8 @@ export const characterProvider: Provider = {
                   return messageString;
                 })
                 .join("\n");
-          })
-          .join("\n\n")
+            })
+            .join("\n\n")
         : "";
 
     const characterMessageExamples =

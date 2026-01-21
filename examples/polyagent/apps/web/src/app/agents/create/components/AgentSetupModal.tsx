@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 import {
   AlertCircle,
   Check,
@@ -9,12 +9,12 @@ import {
   Loader2,
   Upload,
   X as XIcon,
-} from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
-import type { ProfileFormData } from '../hooks/useAgentForm';
-import { useAgentUsernameCheck } from '../hooks/useAgentUsernameCheck';
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import type { ProfileFormData } from "../hooks/useAgentForm";
+import { useAgentUsernameCheck } from "../hooks/useAgentUsernameCheck";
 
 const TOTAL_PROFILE_PICTURES = 100;
 const TOTAL_BANNERS = 100;
@@ -61,7 +61,7 @@ export function AgentSetupModal({
   const { usernameStatus, usernameSuggestion, isCheckingUsername, retryCheck } =
     useAgentUsernameCheck(localData.username);
   const [uploadingImage, setUploadingImage] = useState<
-    'profile' | 'cover' | null
+    "profile" | "cover" | null
   >(null);
   const [profilePictureIndex, setProfilePictureIndex] = useState(() => {
     // Extract index from URL if it's a local asset
@@ -76,14 +76,14 @@ export function AgentSetupModal({
   const [uploadedProfileImage, setUploadedProfileImage] = useState<
     string | null
   >(
-    profileData.profileImageUrl?.startsWith('/assets/')
+    profileData.profileImageUrl?.startsWith("/assets/")
       ? null
-      : profileData.profileImageUrl || null
+      : profileData.profileImageUrl || null,
   );
   const [uploadedBanner, setUploadedBanner] = useState<string | null>(
-    profileData.coverImageUrl?.startsWith('/assets/')
+    profileData.coverImageUrl?.startsWith("/assets/")
       ? null
-      : profileData.coverImageUrl || null
+      : profileData.coverImageUrl || null,
   );
 
   const profileInputRef = useRef<HTMLInputElement>(null);
@@ -102,10 +102,10 @@ export function AgentSetupModal({
   }, [uploadedBanner, bannerIndex]);
 
   // Cycle profile picture
-  const cycleProfilePicture = useCallback((direction: 'next' | 'prev') => {
+  const cycleProfilePicture = useCallback((direction: "next" | "prev") => {
     setUploadedProfileImage(null);
     setProfilePictureIndex((prev) => {
-      if (direction === 'next') {
+      if (direction === "next") {
         return prev >= TOTAL_PROFILE_PICTURES ? 1 : prev + 1;
       }
       return prev <= 1 ? TOTAL_PROFILE_PICTURES : prev - 1;
@@ -113,10 +113,10 @@ export function AgentSetupModal({
   }, []);
 
   // Cycle banner
-  const cycleBanner = useCallback((direction: 'next' | 'prev') => {
+  const cycleBanner = useCallback((direction: "next" | "prev") => {
     setUploadedBanner(null);
     setBannerIndex((prev) => {
-      if (direction === 'next') {
+      if (direction === "next") {
         return prev >= TOTAL_BANNERS ? 1 : prev + 1;
       }
       return prev <= 1 ? TOTAL_BANNERS : prev - 1;
@@ -124,18 +124,18 @@ export function AgentSetupModal({
   }, []);
 
   const handleImageUpload = useCallback(
-    async (type: 'profile' | 'cover', file: File) => {
+    async (type: "profile" | "cover", file: File) => {
       if (file.size > 5 * 1024 * 1024) {
-        toast.error('Image must be smaller than 5MB');
+        toast.error("Image must be smaller than 5MB");
         return;
       }
 
       if (
-        !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(
-          file.type
+        !["image/jpeg", "image/png", "image/gif", "image/webp"].includes(
+          file.type,
         )
       ) {
-        toast.error('Please upload a valid image file');
+        toast.error("Please upload a valid image file");
         return;
       }
 
@@ -143,78 +143,78 @@ export function AgentSetupModal({
 
       const token = await getAccessToken();
       if (!token) {
-        toast.error('Authentication required');
+        toast.error("Authentication required");
         setUploadingImage(null);
         return;
       }
 
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append("file", file);
       formData.append(
-        'type',
-        type === 'profile' ? 'profileImage' : 'coverImage'
+        "type",
+        type === "profile" ? "profileImage" : "coverImage",
       );
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
+      const response = await fetch("/api/upload", {
+        method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        toast.error(errorData.error || 'Upload failed');
+        toast.error(errorData.error || "Upload failed");
         setUploadingImage(null);
         return;
       }
 
       const result = await response.json();
-      if (type === 'profile') {
+      if (type === "profile") {
         setUploadedProfileImage(result.url);
       } else {
         setUploadedBanner(result.url);
       }
       toast.success(
-        `${type === 'profile' ? 'Profile' : 'Cover'} image uploaded`
+        `${type === "profile" ? "Profile" : "Cover"} image uploaded`,
       );
       setUploadingImage(null);
     },
-    [getAccessToken]
+    [getAccessToken],
   );
 
   const handleProfileImageUpload = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
-      handleImageUpload('profile', file);
+      handleImageUpload("profile", file);
     },
-    [handleImageUpload]
+    [handleImageUpload],
   );
 
   const handleBannerUpload = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
-      handleImageUpload('cover', file);
+      handleImageUpload("cover", file);
     },
-    [handleImageUpload]
+    [handleImageUpload],
   );
 
   const handleContinue = () => {
     if (!localData.username.trim()) {
-      toast.error('Username is required');
+      toast.error("Username is required");
       return;
     }
     if (localData.username.length < 3) {
-      toast.error('Username must be at least 3 characters');
+      toast.error("Username must be at least 3 characters");
       return;
     }
-    if (usernameStatus !== 'available') {
-      toast.error('Please choose an available username');
+    if (usernameStatus !== "available") {
+      toast.error("Please choose an available username");
       return;
     }
     if (!localData.displayName.trim()) {
-      toast.error('Display name is required');
+      toast.error("Display name is required");
       return;
     }
     onSave({
@@ -236,7 +236,7 @@ export function AgentSetupModal({
     !localData.displayName.trim() ||
     !localData.username.trim() ||
     localData.username.length < 3 ||
-    usernameStatus !== 'available' ||
+    usernameStatus !== "available" ||
     isCheckingUsername;
 
   if (!isOpen) return null;
@@ -260,8 +260,8 @@ export function AgentSetupModal({
             onClick={handleContinue}
             disabled={isContinueDisabled}
             className={cn(
-              'shrink-0 rounded-lg bg-[#0066FF] px-4 py-2 font-medium text-primary-foreground text-sm transition-colors hover:bg-[#2952d9]',
-              'disabled:cursor-not-allowed disabled:opacity-50'
+              "shrink-0 rounded-lg bg-[#0066FF] px-4 py-2 font-medium text-primary-foreground text-sm transition-colors hover:bg-[#2952d9]",
+              "disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >
             Continue
@@ -282,7 +282,7 @@ export function AgentSetupModal({
               <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
                   type="button"
-                  onClick={() => cycleBanner('prev')}
+                  onClick={() => cycleBanner("prev")}
                   className="rounded-lg bg-background/80 p-2 hover:bg-background"
                 >
                   <ChevronLeft className="h-5 w-5" />
@@ -295,18 +295,18 @@ export function AgentSetupModal({
                     accept="image/*"
                     onChange={handleBannerUpload}
                     className="hidden"
-                    disabled={uploadingImage === 'cover'}
+                    disabled={uploadingImage === "cover"}
                   />
                 </label>
                 <button
                   type="button"
-                  onClick={() => cycleBanner('next')}
+                  onClick={() => cycleBanner("next")}
                   className="rounded-lg bg-background/80 p-2 hover:bg-background"
                 >
                   <ChevronRight className="h-5 w-5" />
                 </button>
               </div>
-              {uploadingImage === 'cover' && (
+              {uploadingImage === "cover" && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50">
                   <span className="text-sm text-white">Uploading...</span>
                 </div>
@@ -325,7 +325,7 @@ export function AgentSetupModal({
               <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/50 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                 <button
                   type="button"
-                  onClick={() => cycleProfilePicture('prev')}
+                  onClick={() => cycleProfilePicture("prev")}
                   className="rounded-lg bg-background/80 p-1.5 hover:bg-background"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -338,18 +338,18 @@ export function AgentSetupModal({
                     accept="image/*"
                     onChange={handleProfileImageUpload}
                     className="hidden"
-                    disabled={uploadingImage === 'profile'}
+                    disabled={uploadingImage === "profile"}
                   />
                 </label>
                 <button
                   type="button"
-                  onClick={() => cycleProfilePicture('next')}
+                  onClick={() => cycleProfilePicture("next")}
                   className="rounded-lg bg-background/80 p-1.5 hover:bg-background"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
-              {uploadingImage === 'profile' && (
+              {uploadingImage === "profile" && (
                 <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50">
                   <span className="text-white text-xs">...</span>
                 </div>
@@ -373,11 +373,11 @@ export function AgentSetupModal({
               </label>
               <div
                 className={cn(
-                  'flex items-center rounded-lg border bg-muted focus-within:ring-2 focus-within:ring-[#0066FF]',
-                  usernameStatus === 'taken' && 'border-red-500',
-                  usernameStatus === 'error' && 'border-yellow-500',
-                  usernameStatus === 'available' && 'border-green-500',
-                  !usernameStatus && 'border-border'
+                  "flex items-center rounded-lg border bg-muted focus-within:ring-2 focus-within:ring-[#0066FF]",
+                  usernameStatus === "taken" && "border-red-500",
+                  usernameStatus === "error" && "border-yellow-500",
+                  usernameStatus === "available" && "border-green-500",
+                  !usernameStatus && "border-border",
                 )}
               >
                 <span className="px-4 text-muted-foreground">@</span>
@@ -390,14 +390,14 @@ export function AgentSetupModal({
                       ...prev,
                       username: e.target.value
                         .toLowerCase()
-                        .replace(/[^a-z0-9_]/g, ''),
+                        .replace(/[^a-z0-9_]/g, ""),
                     }))
                   }
                   maxLength={20}
                   className="w-full bg-transparent py-3 pr-10 focus:outline-none"
                   placeholder="agent_username"
                   aria-invalid={
-                    usernameStatus === 'taken' || usernameStatus === 'error'
+                    usernameStatus === "taken" || usernameStatus === "error"
                   }
                   aria-describedby="username-status username-help"
                 />
@@ -406,21 +406,21 @@ export function AgentSetupModal({
                   {isCheckingUsername && (
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   )}
-                  {!isCheckingUsername && usernameStatus === 'available' && (
+                  {!isCheckingUsername && usernameStatus === "available" && (
                     <Check className="h-4 w-4 text-green-500" />
                   )}
-                  {!isCheckingUsername && usernameStatus === 'taken' && (
+                  {!isCheckingUsername && usernameStatus === "taken" && (
                     <XIcon className="h-4 w-4 text-red-500" />
                   )}
-                  {!isCheckingUsername && usernameStatus === 'error' && (
+                  {!isCheckingUsername && usernameStatus === "error" && (
                     <AlertCircle className="h-4 w-4 text-yellow-500" />
                   )}
                 </div>
               </div>
               {/* Suggestion */}
-              {usernameStatus === 'taken' && usernameSuggestion && (
+              {usernameStatus === "taken" && usernameSuggestion && (
                 <p className="mt-1.5 text-muted-foreground text-xs">
-                  Username taken. Try:{' '}
+                  Username taken. Try:{" "}
                   <button
                     type="button"
                     onClick={handleUseSuggestion}
@@ -431,9 +431,9 @@ export function AgentSetupModal({
                 </p>
               )}
               {/* Error with retry */}
-              {usernameStatus === 'error' && (
+              {usernameStatus === "error" && (
                 <p className="mt-1.5 text-xs text-yellow-600">
-                  Failed to check username.{' '}
+                  Failed to check username.{" "}
                   <button
                     type="button"
                     onClick={retryCheck}
@@ -475,8 +475,8 @@ export function AgentSetupModal({
                   }))
                 }
                 className={cn(
-                  'w-full rounded-lg border border-border bg-muted px-4 py-3',
-                  'focus:outline-none focus:ring-2 focus:ring-[#0066FF]'
+                  "w-full rounded-lg border border-border bg-muted px-4 py-3",
+                  "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
                 )}
                 placeholder="My Awesome Agent"
               />
@@ -494,7 +494,7 @@ export function AgentSetupModal({
               </div>
               <textarea
                 id="edit-bio"
-                value={localData.bio ?? ''}
+                value={localData.bio ?? ""}
                 onChange={(e) =>
                   setLocalData((prev) => ({ ...prev, bio: e.target.value }))
                 }
@@ -502,8 +502,8 @@ export function AgentSetupModal({
                 rows={3}
                 aria-describedby="bio-help"
                 className={cn(
-                  'w-full resize-none rounded-lg border border-border bg-muted px-4 py-3',
-                  'focus:outline-none focus:ring-2 focus:ring-[#0066FF]'
+                  "w-full resize-none rounded-lg border border-border bg-muted px-4 py-3",
+                  "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
                 )}
                 placeholder="A short description of your agent..."
               />

@@ -4,7 +4,6 @@ import {
   createUniqueUuid,
   type FragmentMetadata,
   type IAgentRuntime,
-  type KnowledgeItem,
   logger,
   type Memory,
   type MemoryMetadata,
@@ -15,7 +14,6 @@ import {
   Service,
   splitChunks,
   type UUID,
-  proto,
 } from "@elizaos/core";
 import { validateModelConfig } from "./config";
 import { loadDocsFromPath } from "./docs-loader";
@@ -24,7 +22,7 @@ import {
   extractTextFromDocument,
   processFragmentsSynchronously,
 } from "./document-processor.ts";
-import type { KnowledgeConfig, LoadResult } from "./types";
+import type { KnowledgeConfig, LoadResult, StoredKnowledgeItem } from "./types";
 import type { AddKnowledgeOptions } from "./types.ts";
 import { generateContentBasedId, isBinaryContentType, looksLikeBase64 } from "./utils.ts";
 
@@ -104,11 +102,18 @@ export class KnowledgeService extends Service {
     if (service.runtime.character?.knowledge && service.runtime.character.knowledge.length > 0) {
       const stringKnowledge = service.runtime.character.knowledge
         .map((item) => {
+          // Handle new KnowledgeSourceItem format with item.case/item.value
+          const itemAny = item as { item?: { case?: string; value?: string }; path?: string };
+          if (itemAny?.item?.case === "path" && typeof itemAny.item.value === "string") {
+            return itemAny.item.value;
+          }
+          // Handle legacy format with direct path property
+          if (typeof itemAny?.path === "string") {
+            return itemAny.path;
+          }
+          // Handle string items directly
           if (typeof item === "string") {
             return item;
-          }
-          if (item?.item?.case === "path" && typeof item.item.value === "string") {
-            return item.item.value;
           }
           return null;
         })
@@ -323,7 +328,7 @@ export class KnowledgeService extends Service {
   async getKnowledge(
     message: Memory,
     scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<KnowledgeItem[]> {
+  ): Promise<StoredKnowledgeItem[]> {
     if (!message?.content?.text || message?.content?.text.trim().length === 0) {
       logger.warn("Invalid or empty message content for knowledge query");
       return [];
@@ -355,7 +360,7 @@ export class KnowledgeService extends Service {
         similarity: fragment.similarity,
         metadata: fragment.metadata,
         worldId: fragment.worldId,
-      })) as unknown as KnowledgeItem[];
+      })) as StoredKnowledgeItem[];
   }
 
   async enrichConversationMemoryWithRAG(
@@ -526,12 +531,10 @@ export class KnowledgeService extends Service {
         await this._internalAddKnowledge(
           {
             id: knowledgeId,
-            content: ([
-              {
-                text: item,
-              },
-            ] as unknown) as proto.Content,
-            metadata: (metadata as unknown) as proto.MemoryMetadata,
+            content: {
+              text: item,
+            } as Content,
+            metadata,
           },
           undefined,
           {
@@ -551,7 +554,7 @@ export class KnowledgeService extends Service {
   }
 
   async _internalAddKnowledge(
-    item: KnowledgeItem,
+    item: StoredKnowledgeItem,
     options = {
       targetTokens: 1500,
       overlap: 200,
@@ -627,7 +630,7 @@ export class KnowledgeService extends Service {
   }
 
   private async splitAndCreateFragments(
-    document: KnowledgeItem,
+    document: StoredKnowledgeItem,
     targetTokens: number,
     overlap: number,
     scope: { roomId: UUID; worldId: UUID; entityId: UUID }

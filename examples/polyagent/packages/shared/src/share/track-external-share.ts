@@ -5,22 +5,22 @@
  * and awarding points to users. Makes API calls to record share actions.
  */
 
-import { logger } from '../utils/logger';
+import { logger } from "../utils/logger";
 
 export type SharePlatform =
-  | 'twitter'
-  | 'farcaster'
-  | 'link'
-  | 'native'
-  | 'download'
-  | 'other';
+  | "twitter"
+  | "farcaster"
+  | "link"
+  | "native"
+  | "download"
+  | "other";
 
 export type ShareContentType =
-  | 'post'
-  | 'profile'
-  | 'market'
-  | 'referral'
-  | 'leaderboard';
+  | "post"
+  | "profile"
+  | "market"
+  | "referral"
+  | "leaderboard";
 
 export interface TrackExternalShareOptions {
   platform: SharePlatform;
@@ -63,28 +63,28 @@ const DEFAULT_RESULT: TrackExternalShareResult = {
  * ```
  */
 export async function trackExternalShare(
-  options: TrackExternalShareOptions
+  options: TrackExternalShareOptions,
 ): Promise<TrackExternalShareResult> {
   const { platform, contentType, contentId, url, userId } = options;
 
   if (!userId) {
     logger.warn(
-      'Unable to track external share without authenticated user',
+      "Unable to track external share without authenticated user",
       { platform, contentType },
-      'trackExternalShare'
+      "trackExternalShare",
     );
     return DEFAULT_RESULT;
   }
 
   const token =
-    typeof window !== 'undefined'
+    typeof window !== "undefined"
       ? ((window as { __privyAccessToken?: string }).__privyAccessToken ?? null)
       : null;
   if (!token) {
     logger.warn(
-      'No access token available when attempting to track external share',
+      "No access token available when attempting to track external share",
       { platform },
-      'trackExternalShare'
+      "trackExternalShare",
     );
     return DEFAULT_RESULT;
   }
@@ -92,10 +92,10 @@ export async function trackExternalShare(
   const response = await fetch(
     `/api/users/${encodeURIComponent(userId)}/share`,
     {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         platform,
@@ -103,7 +103,7 @@ export async function trackExternalShare(
         contentId,
         url,
       }),
-    }
+    },
   );
 
   if (!response.ok) {
@@ -111,9 +111,9 @@ export async function trackExternalShare(
       error?: string;
     };
     logger.warn(
-      'Failed to track external share',
+      "Failed to track external share",
       { platform, status: response.status, error: errorPayload?.error },
-      'trackExternalShare'
+      "trackExternalShare",
     );
     return DEFAULT_RESULT;
   }
@@ -130,7 +130,7 @@ export async function trackExternalShare(
     logger.info(
       `Awarded ${pointsAwarded} points for ${platform} share`,
       { platform, pointsAwarded },
-      'trackExternalShare'
+      "trackExternalShare",
     );
   }
 

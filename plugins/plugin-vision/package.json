@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-vision-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
   "type": "module",
   "main": "typescript/dist/index.js",

@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
+import { useEffect } from "react";
 
 /**
  * Counter for the number of components currently locking body scroll.
@@ -20,7 +20,7 @@ let originalOverflow: string | null = null;
 function lock(): void {
   if (lockCount === 0) {
     originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
   }
   lockCount++;
 }
@@ -32,7 +32,7 @@ function lock(): void {
 function unlock(): void {
   lockCount = Math.max(0, lockCount - 1);
   if (lockCount === 0) {
-    document.body.style.overflow = originalOverflow ?? '';
+    document.body.style.overflow = originalOverflow ?? "";
     originalOverflow = null;
   }
 }

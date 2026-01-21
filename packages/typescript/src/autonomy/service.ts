@@ -5,19 +5,19 @@
  * and act independently without external prompts.
  */
 
-import { v4 as uuidv4 } from "uuid";
 import {
   autonomyContinuousContinueTemplate,
   autonomyContinuousFirstTemplate,
   autonomyTaskContinueTemplate,
   autonomyTaskFirstTemplate,
 } from "@elizaos/prompts";
+import { v4 as uuidv4 } from "uuid";
 import {
   ChannelType,
   type Content,
   type ContentValue,
-  EventType,
   type Entity,
+  EventType,
   type IAgentRuntime,
   type Memory,
   type UUID,

@@ -5,7 +5,7 @@
  */
 
 export {
-  researchTaskWorker,
   RESEARCH_TASK_NAME,
+  researchTaskWorker,
   TRADE_EVALUATION_TASK_NAME,
 } from "./researchTaskWorker";

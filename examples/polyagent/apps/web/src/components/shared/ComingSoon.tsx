@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
 import {
   getReferralUrl,
   logger,
   POINTS,
   signInWithFarcaster,
-} from '@polyagent/shared';
-import { usePrivy } from '@privy-io/react-auth';
+} from "@polyagent/shared";
+import { usePrivy } from "@privy-io/react-auth";
 import {
   Check,
   ChevronDown,
@@ -20,20 +20,20 @@ import {
   Users,
   Wallet,
   X,
-} from 'lucide-react';
-import Image from 'next/image';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { LinkSocialAccountsModal } from '@/components/profile/LinkSocialAccountsModal';
-import { Avatar } from '@/components/shared/Avatar';
-import { PlayerStatsModal } from '@/components/shared/PlayerStatsModal';
-import { useAuth } from '@/hooks/useAuth';
-import { getAuthToken } from '@/lib/auth';
+} from "lucide-react";
+import Image from "next/image";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { LinkSocialAccountsModal } from "@/components/profile/LinkSocialAccountsModal";
+import { Avatar } from "@/components/shared/Avatar";
+import { PlayerStatsModal } from "@/components/shared/PlayerStatsModal";
+import { useAuth } from "@/hooks/useAuth";
+import { getAuthToken } from "@/lib/auth";
 
 // Blog URL from environment with fallback
 const blogUrl =
-  process.env.NEXT_PUBLIC_BLOG_URL || 'https://blog.polyagent.app';
+  process.env.NEXT_PUBLIC_BLOG_URL || "https://blog.polyagent.app";
 
 /**
  * Waitlist data structure containing user position and points information.
@@ -92,7 +92,7 @@ interface ReferralUser {
   twitterUsername?: string | null;
   createdAt: string;
   completedAt?: string;
-  status: 'pending' | 'qualified';
+  status: "pending" | "qualified";
 }
 
 /**
@@ -127,12 +127,12 @@ export function ComingSoon() {
   const [leaderboardPage, setLeaderboardPage] = useState(1);
   const [leaderboardTotalPages, setLeaderboardTotalPages] = useState(10); // 10 pages for top 100
   const [leaderboardTab, setLeaderboardTab] = useState<
-    'leaderboard' | 'inviters'
-  >('leaderboard');
+    "leaderboard" | "inviters"
+  >("leaderboard");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showPlayerStatsModal, setShowPlayerStatsModal] = useState(false);
-  const [referralTab, setReferralTab] = useState<'pending' | 'qualified'>(
-    'qualified'
+  const [referralTab, setReferralTab] = useState<"pending" | "qualified">(
+    "qualified",
   );
   const [leaderboardLastFetched, setLeaderboardLastFetched] =
     useState<number>(0);
@@ -157,11 +157,11 @@ export function ComingSoon() {
 
   // Profile form state
   const [profileForm, setProfileForm] = useState({
-    username: dbUser?.username || '',
-    displayName: dbUser?.displayName || '',
-    bio: dbUser?.bio || '',
-    profileImageUrl: dbUser?.profileImageUrl || '',
-    coverImageUrl: dbUser?.coverImageUrl || '',
+    username: dbUser?.username || "",
+    displayName: dbUser?.displayName || "",
+    bio: dbUser?.bio || "",
+    profileImageUrl: dbUser?.profileImageUrl || "",
+    coverImageUrl: dbUser?.coverImageUrl || "",
   });
   const [profilePictureIndex, setProfilePictureIndex] = useState(1);
   const [bannerIndex, setBannerIndex] = useState(1);
@@ -175,10 +175,10 @@ export function ComingSoon() {
   // Username validation state
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState<
-    'available' | 'taken' | null
+    "available" | "taken" | null
   >(null);
   const [usernameSuggestion, setUsernameSuggestion] = useState<string | null>(
-    null
+    null,
   );
 
   // Total available assets
@@ -194,13 +194,13 @@ export function ComingSoon() {
     if (user.twitterUsername) return `@${user.twitterUsername}`;
     if (user.email) {
       // Show first part of email (before @)
-      const emailParts = user.email.split('@');
+      const emailParts = user.email.split("@");
       const emailPrefix = emailParts[0] || user.email;
       return emailPrefix.length > 20
         ? `${emailPrefix.slice(0, 17)}...`
         : emailPrefix;
     }
-    return 'Anonymous';
+    return "Anonymous";
   };
 
   // Helper function to get subtitle/handle for a referral user
@@ -218,40 +218,40 @@ export function ComingSoon() {
   // Handle Twitter OAuth
   const handleTwitterOAuth = () => {
     if (!dbUser?.id) {
-      toast.error('Please complete your profile first');
-      logger.warn('Twitter OAuth attempted without user ID', {}, 'ComingSoon');
+      toast.error("Please complete your profile first");
+      logger.warn("Twitter OAuth attempted without user ID", {}, "ComingSoon");
       return;
     }
 
     // Store current URL to return to
-    sessionStorage.setItem('oauth_return_url', window.location.pathname);
+    sessionStorage.setItem("oauth_return_url", window.location.pathname);
     // Redirect to Twitter OAuth initiation
     // Cookies should be sent automatically with the redirect
-    window.location.href = '/api/auth/twitter/initiate';
+    window.location.href = "/api/auth/twitter/initiate";
   };
 
   const handleDiscordOAuth = () => {
     if (!dbUser?.id) {
-      toast.error('Please complete your profile first');
-      logger.warn('Discord OAuth attempted without user ID', {}, 'ComingSoon');
+      toast.error("Please complete your profile first");
+      logger.warn("Discord OAuth attempted without user ID", {}, "ComingSoon");
       return;
     }
 
     // Store current URL to return to
-    sessionStorage.setItem('oauth_return_url', window.location.pathname);
+    sessionStorage.setItem("oauth_return_url", window.location.pathname);
     // Redirect to Discord OAuth initiation
-    window.location.href = '/api/auth/discord/initiate';
+    window.location.href = "/api/auth/discord/initiate";
   };
 
   // Handle Farcaster OAuth - uses proper Sign In with Farcaster (SIWF) protocol
   // Creates a channel on relay.farcaster.xyz, then polls for authentication completion
   const handleFarcasterOAuth = async () => {
     if (!dbUser?.id) {
-      toast.error('Please complete your profile first');
+      toast.error("Please complete your profile first");
       logger.warn(
-        'Farcaster OAuth attempted without user ID',
+        "Farcaster OAuth attempted without user ID",
         {},
-        'ComingSoon'
+        "ComingSoon",
       );
       return;
     }
@@ -260,16 +260,16 @@ export function ComingSoon() {
     const result = await signInWithFarcaster({
       userId: dbUser.id,
       onStatusUpdate: (status) => {
-        logger.debug('Farcaster auth status', { status }, 'ComingSoon');
+        logger.debug("Farcaster auth status", { status }, "ComingSoon");
       },
     });
 
     // Send authentication data to backend for verification and linking
     const token = getAuthToken();
-    const response = await fetch('/api/auth/farcaster/callback', {
-      method: 'POST',
+    const response = await fetch("/api/auth/farcaster/callback", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({
@@ -296,19 +296,19 @@ export function ComingSoon() {
 
       if (data.pointsAwarded > 0) {
         toast.success(
-          `Farcaster linked! +${data.pointsAwarded} points awarded`
+          `Farcaster linked! +${data.pointsAwarded} points awarded`,
         );
       } else {
-        toast.success('Farcaster account linked successfully!');
+        toast.success("Farcaster account linked successfully!");
       }
     } else {
       // Show specific error message for 409 conflicts
-      const errorMessage = data.error || 'Failed to link Farcaster account';
+      const errorMessage = data.error || "Failed to link Farcaster account";
       if (response.status === 409) {
         toast.error(
-          errorMessage.includes('already linked')
+          errorMessage.includes("already linked")
             ? errorMessage
-            : 'This Farcaster account is already linked to another user'
+            : "This Farcaster account is already linked to another user",
         );
       } else {
         toast.error(errorMessage);
@@ -319,22 +319,22 @@ export function ComingSoon() {
   // Handle Farcaster Follow - just open the link
   const handleFarcasterFollow = () => {
     if (!dbUser?.id) {
-      toast.error('Please complete your profile first');
+      toast.error("Please complete your profile first");
       logger.warn(
-        'Farcaster follow link clicked without user ID',
+        "Farcaster follow link clicked without user ID",
         {},
-        'ComingSoon'
+        "ComingSoon",
       );
       return;
     }
 
     if (!dbUser?.hasFarcaster) {
-      toast.error('Please link your Farcaster account first');
+      toast.error("Please link your Farcaster account first");
       return;
     }
 
     // Open Farcaster profile in new tab
-    window.open('https://warpcast.com/playpolyagent', '_blank');
+    window.open("https://warpcast.com/playpolyagent", "_blank");
 
     // Show verify button
     setShowVerifyFollowButton(true);
@@ -352,12 +352,12 @@ export function ComingSoon() {
       const response = await fetch(
         `/api/users/${encodeURIComponent(dbUser.id)}/verify-farcaster-follow`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-        }
+        },
       );
 
       const data = await response.json();
@@ -371,21 +371,21 @@ export function ComingSoon() {
 
         if (data.points?.awarded > 0) {
           toast.success(
-            `Follow verified! +${data.points.awarded} points awarded`
+            `Follow verified! +${data.points.awarded} points awarded`,
           );
         } else {
           toast.success(
-            'Follow verified! You already received points for this action.'
+            "Follow verified! You already received points for this action.",
           );
         }
       } else {
         toast.error(
           data.message ||
-            'Could not verify follow. Please make sure you followed @playpolyagent on Farcaster.'
+            "Could not verify follow. Please make sure you followed @playpolyagent on Farcaster.",
         );
       }
     } catch {
-      toast.error('Network error. Please try again.');
+      toast.error("Network error. Please try again.");
     } finally {
       setIsVerifyingFollow(false);
     }
@@ -394,24 +394,24 @@ export function ComingSoon() {
   // Handle Twitter Follow - just open the follow intent link
   const handleTwitterFollow = () => {
     if (!dbUser?.id) {
-      toast.error('Please complete your profile first');
+      toast.error("Please complete your profile first");
       logger.warn(
-        'Twitter follow link clicked without user ID',
+        "Twitter follow link clicked without user ID",
         {},
-        'ComingSoon'
+        "ComingSoon",
       );
       return;
     }
 
     if (!dbUser?.hasTwitter) {
-      toast.error('Please link your Twitter account first');
+      toast.error("Please link your Twitter account first");
       return;
     }
 
     // Open Twitter follow intent in new tab
     window.open(
-      'https://x.com/intent/follow?screen_name=PlayPolyagent',
-      '_blank'
+      "https://x.com/intent/follow?screen_name=PlayPolyagent",
+      "_blank",
     );
 
     // Show verify button
@@ -430,12 +430,12 @@ export function ComingSoon() {
       const response = await fetch(
         `/api/users/${encodeURIComponent(dbUser.id)}/verify-twitter-follow`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-        }
+        },
       );
 
       const data = await response.json();
@@ -449,18 +449,18 @@ export function ComingSoon() {
 
         if (data.points?.awarded > 0) {
           toast.success(
-            `Thank you for following! +${data.points.awarded} points awarded`
+            `Thank you for following! +${data.points.awarded} points awarded`,
           );
         } else {
-          toast.success('You already received points for this action.');
+          toast.success("You already received points for this action.");
         }
       } else {
         toast.error(
-          data.message || 'Could not claim reward. Please try again.'
+          data.message || "Could not claim reward. Please try again.",
         );
       }
     } catch {
-      toast.error('Network error. Please try again.');
+      toast.error("Network error. Please try again.");
     } finally {
       setIsVerifyingTwitterFollow(false);
     }
@@ -469,25 +469,25 @@ export function ComingSoon() {
   // Handle Discord Join - open invite link
   const handleDiscordJoin = () => {
     if (!dbUser?.id) {
-      toast.error('Please complete your profile first');
+      toast.error("Please complete your profile first");
       logger.warn(
-        'Discord join link clicked without user ID',
+        "Discord join link clicked without user ID",
         {},
-        'ComingSoon'
+        "ComingSoon",
       );
       return;
     }
 
     if (!dbUser?.hasDiscord) {
-      toast.error('Please link your Discord account first');
+      toast.error("Please link your Discord account first");
       return;
     }
 
     // Open Discord invite in new tab
     const discordInviteUrl =
       process.env.NEXT_PUBLIC_DISCORD_INVITE_URL ||
-      'https://discord.gg/4DYsFgyp';
-    window.open(discordInviteUrl, '_blank');
+      "https://discord.gg/4DYsFgyp";
+    window.open(discordInviteUrl, "_blank");
 
     // Show verify button
     setShowVerifyDiscordJoinButton(true);
@@ -505,12 +505,12 @@ export function ComingSoon() {
       const response = await fetch(
         `/api/users/${encodeURIComponent(dbUser.id)}/verify-discord-join`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-        }
+        },
       );
 
       const data = await response.json();
@@ -524,21 +524,21 @@ export function ComingSoon() {
 
         if (data.points?.awarded > 0) {
           toast.success(
-            `Discord membership verified! +${data.points.awarded} points awarded`
+            `Discord membership verified! +${data.points.awarded} points awarded`,
           );
         } else {
           toast.success(
-            'Membership verified! You already received points for this action.'
+            "Membership verified! You already received points for this action.",
           );
         }
       } else {
         toast.error(
           data.message ||
-            'Could not verify membership. Please make sure you joined the Polyagent Discord server.'
+            "Could not verify membership. Please make sure you joined the Polyagent Discord server.",
         );
       }
     } catch {
-      toast.error('Network error. Please try again.');
+      toast.error("Network error. Please try again.");
     } finally {
       setIsVerifyingDiscordJoin(false);
     }
@@ -580,9 +580,9 @@ export function ComingSoon() {
     };
 
     if (showProfileDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
       return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener("mousedown", handleClickOutside);
       };
     }
 
@@ -590,9 +590,9 @@ export function ComingSoon() {
   }, [showProfileDropdown]);
 
   const getPointsTypeForTab = useCallback(
-    (tab: 'leaderboard' | 'inviters') =>
-      tab === 'leaderboard' ? 'total' : 'invite',
-    []
+    (tab: "leaderboard" | "inviters") =>
+      tab === "leaderboard" ? "total" : "invite",
+    [],
   );
 
   const fetchWaitlistPosition = useCallback(
@@ -607,7 +607,7 @@ export function ComingSoon() {
       const token = await getAccessToken();
 
       const requests = [
-        fetch('/api/waitlist/position', {
+        fetch("/api/waitlist/position", {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         }),
       ];
@@ -615,8 +615,8 @@ export function ComingSoon() {
         // Fetch first page of leaderboard with pagination
         requests.push(
           fetch(
-            `/api/waitlist/leaderboard?page=1&limit=10&pointsType=${pointsType}`
-          )
+            `/api/waitlist/leaderboard?page=1&limit=10&pointsType=${pointsType}`,
+          ),
         );
       }
 
@@ -626,22 +626,22 @@ export function ComingSoon() {
 
       // Handle position response
       if (!positionResult) {
-        logger.error('Position result is undefined', { userId }, 'ComingSoon');
+        logger.error("Position result is undefined", { userId }, "ComingSoon");
         return false;
       }
 
-      if (positionResult.status === 'fulfilled') {
+      if (positionResult.status === "fulfilled") {
         const positionResponse = positionResult.value;
         if (!positionResponse.ok) {
           const errorText = await positionResponse.text();
           logger.error(
-            'Failed to fetch waitlist position',
+            "Failed to fetch waitlist position",
             {
               userId,
               status: positionResponse.status,
               errorText,
             },
-            'ComingSoon'
+            "ComingSoon",
           );
           // User might not be on waitlist yet
           return false;
@@ -665,23 +665,23 @@ export function ComingSoon() {
         // Log warning if points don't match (but don't block - might be base points)
         if (Math.abs(calculatedTotal - reportedTotal) > 100) {
           logger.warn(
-            'Points calculation mismatch detected',
+            "Points calculation mismatch detected",
             {
               userId,
               calculatedTotal,
               reportedTotal,
               breakdown: data.pointsBreakdown,
             },
-            'ComingSoon'
+            "ComingSoon",
           );
         }
 
         // Log if invite code is missing for debugging
         if (!data.inviteCode) {
           logger.warn(
-            'Invite code missing in waitlist data',
+            "Invite code missing in waitlist data",
             { userId },
-            'ComingSoon'
+            "ComingSoon",
           );
         }
 
@@ -695,7 +695,7 @@ export function ComingSoon() {
         setWaitlistData(data);
       } else {
         logger.error(
-          'Failed to fetch waitlist position (network error)',
+          "Failed to fetch waitlist position (network error)",
           {
             userId,
             error:
@@ -703,13 +703,13 @@ export function ComingSoon() {
                 ? positionResult.reason.message
                 : String(positionResult.reason),
           },
-          'ComingSoon'
+          "ComingSoon",
         );
         return false;
       }
 
       // Handle leaderboard response (non-blocking - don't fail if this fails)
-      if (leaderboardResult && leaderboardResult.status === 'fulfilled') {
+      if (leaderboardResult && leaderboardResult.status === "fulfilled") {
         const leaderboardResponse = leaderboardResult.value;
         if (leaderboardResponse.ok) {
           const leaderboardData = await leaderboardResponse.json();
@@ -720,24 +720,24 @@ export function ComingSoon() {
           setLeaderboardPage(1);
         } else {
           logger.warn(
-            'Failed to fetch leaderboard',
+            "Failed to fetch leaderboard",
             {
               status: leaderboardResponse.status,
             },
-            'ComingSoon'
+            "ComingSoon",
           );
         }
-      } else if (leaderboardResult && leaderboardResult.status === 'rejected') {
+      } else if (leaderboardResult && leaderboardResult.status === "rejected") {
         // Leaderboard fetch failed - log but don't block
         logger.warn(
-          'Failed to fetch leaderboard (network error)',
+          "Failed to fetch leaderboard (network error)",
           {
             error:
               leaderboardResult.reason instanceof Error
                 ? leaderboardResult.reason.message
                 : String(leaderboardResult.reason),
           },
-          'ComingSoon'
+          "ComingSoon",
         );
       }
 
@@ -749,42 +749,42 @@ export function ComingSoon() {
       getAccessToken,
       previousRank,
       getPointsTypeForTab,
-    ]
+    ],
   );
 
   const awardWalletBonus = useCallback(
     async (userId: string, walletAddress: string) => {
       try {
-        const response = await fetch('/api/waitlist/bonus/wallet', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await fetch("/api/waitlist/bonus/wallet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId, walletAddress }),
         });
 
         if (!response.ok) {
           const errorText = await response.text();
           logger.error(
-            'Failed to award wallet bonus',
+            "Failed to award wallet bonus",
             {
               userId,
               walletAddress,
               status: response.status,
               errorText,
             },
-            'ComingSoon'
+            "ComingSoon",
           );
           return;
         }
 
         const result = await response.json();
         logger.info(
-          'Wallet bonus awarded',
+          "Wallet bonus awarded",
           {
             userId,
             awarded: result.awarded,
             bonusAmount: result.bonusAmount,
           },
-          'ComingSoon'
+          "ComingSoon",
         );
 
         // Refresh position to show updated points
@@ -792,13 +792,13 @@ export function ComingSoon() {
       } catch {
         // Network error - silently fail (non-critical)
         logger.warn(
-          'Network error awarding wallet bonus',
+          "Network error awarding wallet bonus",
           { userId },
-          'ComingSoon'
+          "ComingSoon",
         );
       }
     },
-    [fetchWaitlistPosition]
+    [fetchWaitlistPosition],
   );
 
   // If user completes onboarding, mark as waitlisted and fetch position
@@ -830,24 +830,24 @@ export function ComingSoon() {
       }
 
       // Mark user as waitlisted (they completed onboarding)
-      const referralCode = searchParams.get('ref') || undefined;
+      const referralCode = searchParams.get("ref") || undefined;
 
       logger.info(
-        'Marking user as waitlisted',
+        "Marking user as waitlisted",
         {
           userId,
           hasReferralCode: !!referralCode,
           referralCode,
         },
-        'ComingSoon'
+        "ComingSoon",
       );
 
       // Get access token for authentication
       const token = await getAccessToken();
-      const response = await fetch('/api/waitlist/mark', {
-        method: 'POST',
+      const response = await fetch("/api/waitlist/mark", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
@@ -859,20 +859,20 @@ export function ComingSoon() {
       if (!response.ok) {
         const errorText = await response.text();
         logger.error(
-          'Failed to mark as waitlisted',
+          "Failed to mark as waitlisted",
           {
             userId,
             status: response.status,
             errorText,
           },
-          'ComingSoon'
+          "ComingSoon",
         );
         return;
       }
 
       const result = await response.json();
       logger.info(
-        'User marked as waitlisted',
+        "User marked as waitlisted",
         {
           userId,
           position: result.waitlistPosition,
@@ -880,7 +880,7 @@ export function ComingSoon() {
           points: result.points,
           referrerRewarded: result.referrerRewarded,
         },
-        'ComingSoon'
+        "ComingSoon",
       );
 
       // Fetch position data to get complete info
@@ -944,18 +944,18 @@ export function ComingSoon() {
   // Fetch leaderboard for a specific page
   const fetchLeaderboardPage = async (
     page: number,
-    tab: 'leaderboard' | 'inviters' = leaderboardTab
+    tab: "leaderboard" | "inviters" = leaderboardTab,
   ) => {
     try {
       const pointsType = getPointsTypeForTab(tab);
       const response = await fetch(
-        `/api/waitlist/leaderboard?page=${page}&limit=10&pointsType=${pointsType}`
+        `/api/waitlist/leaderboard?page=${page}&limit=10&pointsType=${pointsType}`,
       );
       if (!response.ok) {
         logger.warn(
-          'Failed to fetch leaderboard page',
+          "Failed to fetch leaderboard page",
           { page, status: response.status },
-          'ComingSoon'
+          "ComingSoon",
         );
         return false;
       }
@@ -999,13 +999,13 @@ export function ComingSoon() {
       `/assets/user-banners/banner-${bannerIndex}.jpg`;
 
     if (!trimmedUsername || !trimmedDisplayName) {
-      toast.error('Please fill in all required fields.');
+      toast.error("Please fill in all required fields.");
       return;
     }
 
     // Check username validation
-    if (usernameStatus === 'taken') {
-      toast.error('Username is already taken. Please choose another.');
+    if (usernameStatus === "taken") {
+      toast.error("Username is already taken. Please choose another.");
       return;
     }
 
@@ -1016,9 +1016,9 @@ export function ComingSoon() {
       const response = await fetch(
         `/api/users/${encodeURIComponent(dbUser.id)}/update-profile`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
@@ -1028,7 +1028,7 @@ export function ComingSoon() {
             profileImageUrl,
             coverImageUrl,
           }),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -1036,15 +1036,15 @@ export function ComingSoon() {
         const errorMessage =
           errorData?.error?.message ||
           errorData?.message ||
-          'Failed to update profile';
+          "Failed to update profile";
         logger.error(
-          'Failed to update profile',
+          "Failed to update profile",
           {
             userId: dbUser.id,
             status: response.status,
             error: errorMessage,
           },
-          'ComingSoon'
+          "ComingSoon",
         );
         toast.error(errorMessage);
         return;
@@ -1053,9 +1053,9 @@ export function ComingSoon() {
       await refresh();
       await fetchWaitlistPosition(dbUser.id);
       setShowProfileModal(false);
-      toast.success('Profile updated successfully!');
+      toast.success("Profile updated successfully!");
     } catch {
-      toast.error('Network error. Please try again.');
+      toast.error("Network error. Please try again.");
     } finally {
       setIsSavingProfile(false);
     }
@@ -1068,11 +1068,11 @@ export function ComingSoon() {
       const wasClosed = !prevShowProfileModalRef.current;
       if (wasClosed && dbUser) {
         setProfileForm({
-          username: dbUser.username || '',
-          displayName: dbUser.displayName || '',
-          bio: dbUser.bio || '',
-          profileImageUrl: dbUser.profileImageUrl || '',
-          coverImageUrl: dbUser.coverImageUrl || '',
+          username: dbUser.username || "",
+          displayName: dbUser.displayName || "",
+          bio: dbUser.bio || "",
+          profileImageUrl: dbUser.profileImageUrl || "",
+          coverImageUrl: dbUser.coverImageUrl || "",
         });
         // Reset upload states
         setUploadedProfileImage(null);
@@ -1102,7 +1102,7 @@ export function ComingSoon() {
 
     // Don't check if username hasn't changed from original
     if (username === dbUser?.username) {
-      setUsernameStatus('available');
+      setUsernameStatus("available");
       setUsernameSuggestion(null);
       return;
     }
@@ -1113,14 +1113,14 @@ export function ComingSoon() {
       setIsCheckingUsername(true);
 
       const response = await fetch(
-        `/api/onboarding/check-username?username=${encodeURIComponent(username)}`
+        `/api/onboarding/check-username?username=${encodeURIComponent(username)}`,
       );
 
       if (!cancelled && response.ok) {
         const result = await response.json();
-        setUsernameStatus(result.available ? 'available' : 'taken');
+        setUsernameStatus(result.available ? "available" : "taken");
         setUsernameSuggestion(
-          result.available ? null : result.suggestion || null
+          result.available ? null : result.suggestion || null,
         );
       }
       if (!cancelled) {
@@ -1139,20 +1139,20 @@ export function ComingSoon() {
   }, [profileForm.username, showProfileModal, dbUser?.username]);
 
   // Image cycling and upload handlers
-  const cycleProfilePicture = (direction: 'next' | 'prev') => {
+  const cycleProfilePicture = (direction: "next" | "prev") => {
     setUploadedProfileImage(null);
     setProfilePictureIndex((prev) => {
-      if (direction === 'next') {
+      if (direction === "next") {
         return prev >= TOTAL_PROFILE_PICTURES ? 1 : prev + 1;
       }
       return prev <= 1 ? TOTAL_PROFILE_PICTURES : prev - 1;
     });
   };
 
-  const cycleBanner = (direction: 'next' | 'prev') => {
+  const cycleBanner = (direction: "next" | "prev") => {
     setUploadedBanner(null);
     setBannerIndex((prev) => {
-      if (direction === 'next') {
+      if (direction === "next") {
         return prev >= TOTAL_BANNERS ? 1 : prev + 1;
       }
       return prev <= 1 ? TOTAL_BANNERS : prev - 1;
@@ -1160,14 +1160,14 @@ export function ComingSoon() {
   };
 
   const handleProfileImageUpload = (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onloadend = () => {
       setUploadedProfileImage(reader.result as string);
-      setProfileForm((prev) => ({ ...prev, profileImageUrl: '' }));
+      setProfileForm((prev) => ({ ...prev, profileImageUrl: "" }));
     };
     reader.readAsDataURL(file);
   };
@@ -1178,7 +1178,7 @@ export function ComingSoon() {
     const reader = new FileReader();
     reader.onloadend = () => {
       setUploadedBanner(reader.result as string);
-      setProfileForm((prev) => ({ ...prev, coverImageUrl: '' }));
+      setProfileForm((prev) => ({ ...prev, coverImageUrl: "" }));
     };
     reader.readAsDataURL(file);
   };
@@ -1188,7 +1188,7 @@ export function ComingSoon() {
     // After login, OnboardingProvider will handle profile setup
     // Then we'll mark as waitlisted in the useEffect above
     const currentUrl = new URL(window.location.href);
-    currentUrl.searchParams.set('waitlist', 'true');
+    currentUrl.searchParams.set("waitlist", "true");
     router.push(currentUrl.pathname + currentUrl.search, { scroll: false });
     login();
   };
@@ -1200,7 +1200,7 @@ export function ComingSoon() {
         {/* Hero Section */}
         <section className="relative z-10 flex min-h-screen items-center justify-center overflow-x-hidden overflow-y-visible px-4 pt-4 pb-8 sm:px-6 sm:py-16 md:px-8 md:py-20 lg:py-24">
           {/* Background Image - Full Width */}
-          <div className="-translate-x-1/2 fixed inset-0 left-1/2 z-0 h-full w-screen">
+          <div className="fixed inset-0 left-1/2 z-0 h-full w-screen -translate-x-1/2">
             <Image
               src="/assets/images/background.png"
               alt="Polyagent Background"
@@ -1215,8 +1215,8 @@ export function ComingSoon() {
 
           <div className="relative z-10 mx-auto w-full max-w-3xl text-center">
             {/* Decorative Elements */}
-            <div className="-top-20 -left-20 absolute h-64 w-64 animate-pulse-slow rounded-full bg-primary/20 blur-[100px]" />
-            <div className="-bottom-20 -right-20 animation-delay-500 absolute h-64 w-64 animate-pulse-slow rounded-full bg-sky-500/20 blur-[100px]" />
+            <div className="absolute -top-20 -left-20 h-64 w-64 animate-pulse-slow rounded-full bg-primary/20 blur-[100px]" />
+            <div className="animation-delay-500 absolute -right-20 -bottom-20 h-64 w-64 animate-pulse-slow rounded-full bg-sky-500/20 blur-[100px]" />
 
             {/* Logo */}
             <div className="mb-2 flex animate-fadeIn justify-center sm:mb-8 md:mb-10">
@@ -1237,7 +1237,7 @@ export function ComingSoon() {
             <div className="mb-4 animate-fadeIn overflow-visible px-4 sm:mb-8">
               <h1 className="mb-2 font-bold text-5xl text-foreground tracking-tight drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] sm:mb-4 sm:whitespace-nowrap sm:text-5xl md:text-6xl lg:text-7xl">
                 Welcome to
-                <br className="block sm:hidden" />{' '}
+                <br className="block sm:hidden" />{" "}
                 <span className="mt-2 block text-5xl text-primary sm:mt-0 sm:inline sm:text-5xl md:text-6xl lg:text-7xl">
                   Polyagent
                 </span>
@@ -1250,10 +1250,10 @@ export function ComingSoon() {
             {/* Description */}
             <div className="animation-delay-100 mx-auto mb-6 max-w-3xl animate-fadeIn px-4 text-lg text-muted-foreground sm:mb-12 sm:text-xl md:text-2xl">
               <p className="text-balance leading-relaxed">
-                A continuous virtual world where{' '}
-                <span className="font-semibold text-foreground">AI agents</span>{' '}
-                and{' '}
-                <span className="font-semibold text-foreground">humans</span>{' '}
+                A continuous virtual world where{" "}
+                <span className="font-semibold text-foreground">AI agents</span>{" "}
+                and{" "}
+                <span className="font-semibold text-foreground">humans</span>{" "}
                 compete side-by-side in real-time prediction markets.
               </p>
             </div>
@@ -1262,7 +1262,7 @@ export function ComingSoon() {
             <div className="animation-delay-200 relative z-20 mb-8 animate-fadeIn px-4 sm:mb-16">
               <button
                 onClick={handleJoinWaitlist}
-                className="group hover:-translate-y-1 relative w-full skew-x-[-10deg] overflow-hidden rounded-none bg-primary px-10 py-5 font-bold text-primary-foreground text-xl shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all duration-300 hover:bg-primary/90 hover:shadow-[0_0_40px_rgba(var(--primary),0.6)] disabled:opacity-50 sm:w-auto sm:px-12 sm:py-6 sm:text-2xl"
+                className="group relative w-full skew-x-[-10deg] overflow-hidden rounded-none bg-primary px-10 py-5 font-bold text-primary-foreground text-xl shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all duration-300 hover:-translate-y-1 hover:bg-primary/90 hover:shadow-[0_0_40px_rgba(var(--primary),0.6)] disabled:opacity-50 sm:w-auto sm:px-12 sm:py-6 sm:text-2xl"
               >
                 <span className="relative z-10 inline-block skew-x-[10deg]">
                   Join Waitlist
@@ -1295,7 +1295,7 @@ export function ComingSoon() {
           </div>
 
           {/* Scroll Indicator */}
-          <div className="-translate-x-1/2 absolute bottom-14 left-1/2 flex animate-bounce flex-col items-center gap-1 text-muted-foreground sm:bottom-18 md:bottom-10 lg:bottom-8">
+          <div className="absolute bottom-14 left-1/2 flex -translate-x-1/2 animate-bounce flex-col items-center gap-1 text-muted-foreground sm:bottom-18 md:bottom-10 lg:bottom-8">
             <span className="font-medium text-xs sm:text-sm">Learn More</span>
             <ChevronDown className="h-6 w-6 sm:h-7 sm:w-7" />
           </div>
@@ -1307,7 +1307,7 @@ export function ComingSoon() {
             <div className="grid w-full grid-cols-1 items-stretch gap-6 sm:gap-8 md:gap-10 lg:grid-cols-2">
               {/* Left Column: Image */}
               <div className="group relative order-2 flex h-full animate-fadeIn items-stretch lg:order-1">
-                <div className="-inset-2 absolute animate-pulse-slow rounded-xl bg-gradient-to-r from-primary/20 to-sky-500/20 opacity-50 blur-xl transition-opacity duration-500 group-hover:opacity-100 sm:rounded-2xl" />
+                <div className="absolute -inset-2 animate-pulse-slow rounded-xl bg-gradient-to-r from-primary/20 to-sky-500/20 opacity-50 blur-xl transition-opacity duration-500 group-hover:opacity-100 sm:rounded-2xl" />
                 <div className="relative flex w-full items-center overflow-hidden rounded-lg border border-border/50 bg-card shadow-xl transition-transform duration-700 group-hover:scale-[1.02] sm:rounded-xl">
                   <Image
                     src="/assets/images/storypic.png"
@@ -1337,12 +1337,12 @@ export function ComingSoon() {
 
                   {/* 3:00 PM */}
                   <div className="group relative">
-                    <div className="-left-[39px] sm:-left-[49px] absolute top-1.5 z-10 h-4 w-4 rounded-full border-2 border-primary bg-background shadow-[0_0_10px_var(--primary)] transition-transform duration-300 group-hover:scale-125 sm:h-5 sm:w-5 sm:border-4" />
+                    <div className="absolute top-1.5 -left-[39px] z-10 h-4 w-4 rounded-full border-2 border-primary bg-background shadow-[0_0_10px_var(--primary)] transition-transform duration-300 group-hover:scale-125 sm:-left-[49px] sm:h-5 sm:w-5 sm:border-4" />
                     <div className="mb-1 font-bold font-mono text-primary text-xs sm:mb-2 sm:text-sm">
                       3:00 PM
                     </div>
                     <p className="text-base text-muted-foreground leading-relaxed transition-colors group-hover:text-foreground sm:text-lg">
-                      New market launches:{' '}
+                      New market launches:{" "}
                       <span className="font-medium text-foreground italic">
                         "Will SpAIce X launch their rocket by end of day?"
                       </span>
@@ -1351,7 +1351,7 @@ export function ComingSoon() {
 
                   {/* 3:15 PM */}
                   <div className="group relative">
-                    <div className="-left-[39px] sm:-left-[49px] absolute top-1.5 z-10 h-4 w-4 rounded-full border-2 border-muted-foreground/30 bg-background transition-all duration-300 group-hover:scale-110 group-hover:border-primary/50 sm:h-5 sm:w-5 sm:border-4" />
+                    <div className="absolute top-1.5 -left-[39px] z-10 h-4 w-4 rounded-full border-2 border-muted-foreground/30 bg-background transition-all duration-300 group-hover:scale-110 group-hover:border-primary/50 sm:-left-[49px] sm:h-5 sm:w-5 sm:border-4" />
                     <div className="mb-1 font-mono text-muted-foreground text-xs sm:mb-2 sm:text-sm">
                       3:15 PM
                     </div>
@@ -1363,7 +1363,7 @@ export function ComingSoon() {
 
                   {/* 4:00 PM */}
                   <div className="group relative">
-                    <div className="-left-[39px] sm:-left-[49px] absolute top-1.5 z-10 h-4 w-4 rounded-full border-2 border-muted-foreground/30 bg-background transition-all duration-300 group-hover:scale-110 group-hover:border-primary/50 sm:h-5 sm:w-5 sm:border-4" />
+                    <div className="absolute top-1.5 -left-[39px] z-10 h-4 w-4 rounded-full border-2 border-muted-foreground/30 bg-background transition-all duration-300 group-hover:scale-110 group-hover:border-primary/50 sm:-left-[49px] sm:h-5 sm:w-5 sm:border-4" />
                     <div className="mb-1 font-mono text-muted-foreground text-xs sm:mb-2 sm:text-sm">
                       4:00 PM
                     </div>
@@ -1375,7 +1375,7 @@ export function ComingSoon() {
 
                   {/* 4:30 PM */}
                   <div className="group relative">
-                    <div className="-left-[39px] sm:-left-[49px] absolute top-1.5 z-10 h-4 w-4 rounded-full border-2 border-muted-foreground/30 bg-background transition-all duration-300 group-hover:scale-110 group-hover:border-primary/50 sm:h-5 sm:w-5 sm:border-4" />
+                    <div className="absolute top-1.5 -left-[39px] z-10 h-4 w-4 rounded-full border-2 border-muted-foreground/30 bg-background transition-all duration-300 group-hover:scale-110 group-hover:border-primary/50 sm:-left-[49px] sm:h-5 sm:w-5 sm:border-4" />
                     <div className="mb-1 font-mono text-muted-foreground text-xs sm:mb-2 sm:text-sm">
                       4:30 PM
                     </div>
@@ -1387,7 +1387,7 @@ export function ComingSoon() {
 
                   {/* 4:31 PM */}
                   <div className="group relative">
-                    <div className="-left-[39px] sm:-left-[49px] absolute top-1.5 z-10 h-4 w-4 rounded-full border-2 border-muted-foreground/30 bg-background transition-all duration-300 group-hover:scale-110 group-hover:border-primary/50 sm:h-5 sm:w-5 sm:border-4" />
+                    <div className="absolute top-1.5 -left-[39px] z-10 h-4 w-4 rounded-full border-2 border-muted-foreground/30 bg-background transition-all duration-300 group-hover:scale-110 group-hover:border-primary/50 sm:-left-[49px] sm:h-5 sm:w-5 sm:border-4" />
                     <div className="mb-1 font-mono text-muted-foreground text-xs sm:mb-2 sm:text-sm">
                       4:31 PM
                     </div>
@@ -1400,23 +1400,23 @@ export function ComingSoon() {
 
                   {/* 5:30 PM */}
                   <div className="group relative">
-                    <div className="-left-[39px] sm:-left-[49px] absolute top-1.5 z-10 h-4 w-4 rounded-full border-2 border-primary bg-background shadow-[0_0_10px_var(--primary)] transition-transform duration-300 group-hover:scale-125 sm:h-5 sm:w-5 sm:border-4" />
+                    <div className="absolute top-1.5 -left-[39px] z-10 h-4 w-4 rounded-full border-2 border-primary bg-background shadow-[0_0_10px_var(--primary)] transition-transform duration-300 group-hover:scale-125 sm:-left-[49px] sm:h-5 sm:w-5 sm:border-4" />
                     <div className="mb-1 font-bold font-mono text-primary text-xs sm:mb-2 sm:text-sm">
                       5:30 PM
                     </div>
                     <p className="text-base text-muted-foreground leading-relaxed transition-colors group-hover:text-foreground sm:text-lg">
-                      Rocket launches. Market resolves. Agents A & B earn{' '}
+                      Rocket launches. Market resolves. Agents A & B earn{" "}
                       <span className="font-semibold text-green-500">
                         2,500 points
-                      </span>{' '}
-                      each. Agent C loses{' '}
+                      </span>{" "}
+                      each. Agent C loses{" "}
                       <span className="font-semibold text-red-500">800</span>.
                     </p>
                   </div>
 
                   {/* Next Market */}
                   <div className="relative pt-4 sm:pt-5">
-                    <div className="-left-[39px] sm:-left-[49px] absolute top-8 z-10 h-4 w-4 animate-pulse rounded-full bg-primary shadow-[0_0_15px_rgba(var(--primary),0.8)] sm:top-10 sm:h-5 sm:w-5" />
+                    <div className="absolute top-8 -left-[39px] z-10 h-4 w-4 animate-pulse rounded-full bg-primary shadow-[0_0_15px_rgba(var(--primary),0.8)] sm:top-10 sm:-left-[49px] sm:h-5 sm:w-5" />
                     <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 shadow-[0_0_30px_rgba(var(--primary),0.1)] sm:rounded-xl sm:p-5">
                       <p className="animate-pulse font-bold text-foreground text-lg sm:text-xl">
                         The next market is already opening...
@@ -1433,7 +1433,7 @@ export function ComingSoon() {
         <section className="relative z-10 bg-background px-4 py-12 sm:px-6 sm:py-16 md:px-8 md:py-20 lg:py-24">
           <div className="mx-auto max-w-6xl">
             <h3 className="mb-12 animate-fadeIn px-4 text-center font-bold text-3xl text-foreground tracking-tight sm:mb-16 sm:text-4xl md:text-5xl lg:text-6xl">
-              The Old Way Is{' '}
+              The Old Way Is{" "}
               <span className="text-red-500 line-through decoration-4 decoration-red-500/50">
                 Broken
               </span>
@@ -1441,7 +1441,7 @@ export function ComingSoon() {
 
             <div className="mb-8 grid grid-cols-1 gap-6 sm:mb-12 sm:grid-cols-2 sm:gap-8 md:grid-cols-3">
               {/* Months of Waiting */}
-              <div className="group hover:-translate-y-2 animation-delay-100 animate-fadeIn rounded-none border border-blue-500/10 bg-blue-500/5 p-8 text-center backdrop-blur-sm transition-all duration-500 hover:border-blue-500/30 hover:bg-blue-500/10 hover:shadow-[0_0_30px_rgba(59,130,246,0.15)]">
+              <div className="group animation-delay-100 animate-fadeIn rounded-none border border-blue-500/10 bg-blue-500/5 p-8 text-center backdrop-blur-sm transition-all duration-500 hover:-translate-y-2 hover:border-blue-500/30 hover:bg-blue-500/10 hover:shadow-[0_0_30px_rgba(59,130,246,0.15)]">
                 <h3 className="mb-4 font-bold text-foreground text-xl transition-colors group-hover:text-blue-400">
                   MONTHS OF WAITING
                 </h3>
@@ -1452,7 +1452,7 @@ export function ComingSoon() {
               </div>
 
               {/* No Learning */}
-              <div className="group hover:-translate-y-2 animation-delay-200 animate-fadeIn rounded-none border border-blue-500/10 bg-blue-500/5 p-8 text-center backdrop-blur-sm transition-all duration-500 hover:border-blue-500/30 hover:bg-blue-500/10 hover:shadow-[0_0_30px_rgba(59,130,246,0.15)]">
+              <div className="group animation-delay-200 animate-fadeIn rounded-none border border-blue-500/10 bg-blue-500/5 p-8 text-center backdrop-blur-sm transition-all duration-500 hover:-translate-y-2 hover:border-blue-500/30 hover:bg-blue-500/10 hover:shadow-[0_0_30px_rgba(59,130,246,0.15)]">
                 <h3 className="mb-4 font-bold text-foreground text-xl transition-colors group-hover:text-blue-400">
                   NO LEARNING
                 </h3>
@@ -1463,7 +1463,7 @@ export function ComingSoon() {
               </div>
 
               {/* Limited Data */}
-              <div className="group hover:-translate-y-2 animation-delay-300 animate-fadeIn rounded-none border border-blue-500/10 bg-blue-500/5 p-8 text-center backdrop-blur-sm transition-all duration-500 hover:border-blue-500/30 hover:bg-blue-500/10 hover:shadow-[0_0_30px_rgba(59,130,246,0.15)] sm:col-span-2 md:col-span-1">
+              <div className="group animation-delay-300 animate-fadeIn rounded-none border border-blue-500/10 bg-blue-500/5 p-8 text-center backdrop-blur-sm transition-all duration-500 hover:-translate-y-2 hover:border-blue-500/30 hover:bg-blue-500/10 hover:shadow-[0_0_30px_rgba(59,130,246,0.15)] sm:col-span-2 md:col-span-1">
                 <h3 className="mb-4 font-bold text-foreground text-xl transition-colors group-hover:text-blue-400">
                   LIMITED DATA
                 </h3>
@@ -1505,7 +1505,7 @@ export function ComingSoon() {
 
             <div className="grid grid-cols-1 gap-6 sm:gap-8 md:grid-cols-2 lg:grid-cols-3">
               {/* Continuous Markets */}
-              <div className="group hover:-translate-y-1 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
+              <div className="group relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
                 <div className="absolute inset-0 rounded-none bg-primary/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 <div className="relative z-10">
                   <h4 className="mb-3 font-bold text-foreground text-xl transition-colors group-hover:text-primary">
@@ -1519,7 +1519,7 @@ export function ComingSoon() {
               </div>
 
               {/* Instant Feedback */}
-              <div className="group hover:-translate-y-1 animation-delay-100 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
+              <div className="group animation-delay-100 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
                 <div className="absolute inset-0 rounded-none bg-primary/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 <div className="relative z-10">
                   <h4 className="mb-3 font-bold text-foreground text-xl transition-colors group-hover:text-primary">
@@ -1534,7 +1534,7 @@ export function ComingSoon() {
               </div>
 
               {/* Team Coordination */}
-              <div className="group hover:-translate-y-1 animation-delay-200 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
+              <div className="group animation-delay-200 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
                 <div className="absolute inset-0 rounded-none bg-primary/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 <div className="relative z-10">
                   <h4 className="mb-3 font-bold text-foreground text-xl transition-colors group-hover:text-primary">
@@ -1549,7 +1549,7 @@ export function ComingSoon() {
               </div>
 
               {/* Accelerated Learning */}
-              <div className="group hover:-translate-y-1 animation-delay-300 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
+              <div className="group animation-delay-300 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
                 <div className="absolute inset-0 rounded-none bg-primary/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 <div className="relative z-10">
                   <h4 className="mb-3 font-bold text-foreground text-xl transition-colors group-hover:text-primary">
@@ -1563,7 +1563,7 @@ export function ComingSoon() {
               </div>
 
               {/* AI-Powered Intelligence */}
-              <div className="group hover:-translate-y-1 animation-delay-500 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
+              <div className="group animation-delay-500 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
                 <div className="absolute inset-0 rounded-none bg-primary/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 <div className="relative z-10">
                   <h4 className="mb-3 font-bold text-foreground text-xl transition-colors group-hover:text-primary">
@@ -1577,7 +1577,7 @@ export function ComingSoon() {
               </div>
 
               {/* Cryptographically Sealed */}
-              <div className="group hover:-translate-y-1 animation-delay-500 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
+              <div className="group animation-delay-500 relative animate-fadeIn rounded-none border border-white/5 bg-gradient-to-b from-primary/5 to-transparent p-8 transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:bg-primary/10 hover:shadow-[0_0_30px_rgba(var(--primary),0.15)]">
                 <div className="absolute inset-0 rounded-none bg-primary/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 <div className="relative z-10">
                   <h4 className="mb-3 font-bold text-foreground text-xl transition-colors group-hover:text-primary">
@@ -1597,7 +1597,7 @@ export function ComingSoon() {
         <section className="relative z-10 bg-background px-4 py-12 sm:px-6 sm:py-16 md:px-8 md:py-20 lg:py-24">
           <div className="relative mx-auto max-w-5xl">
             {/* Connector Line (Desktop) */}
-            <div className="-translate-x-1/2 absolute top-[320px] bottom-20 left-1/2 z-0 hidden w-0.5 bg-gradient-to-b from-primary/50 to-transparent md:block" />
+            <div className="absolute top-[320px] bottom-20 left-1/2 z-0 hidden w-0.5 -translate-x-1/2 bg-gradient-to-b from-primary/50 to-transparent md:block" />
 
             <h2 className="mb-6 animate-fadeIn px-4 text-center font-bold text-3xl text-foreground tracking-tight sm:mb-8 sm:text-4xl md:text-5xl lg:text-6xl">
               HOW IT WORKS
@@ -1613,7 +1613,7 @@ export function ComingSoon() {
             {/* Mobile: Single column vertical stack, Desktop: 2 columns */}
             <div className="relative z-10 grid grid-cols-1 gap-6 sm:gap-8 md:grid-cols-2 md:gap-12">
               {/* Register & Spin Off */}
-              <div className="hover:-translate-y-1 animation-delay-100 flex w-full animate-fadeIn flex-col rounded-xl border border-primary/20 bg-card p-8 transition-all duration-300 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(var(--primary),0.1)] md:p-10">
+              <div className="animation-delay-100 flex w-full animate-fadeIn flex-col rounded-xl border border-primary/20 bg-card p-8 transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(var(--primary),0.1)] md:p-10">
                 <h3 className="mb-3 font-bold text-foreground text-xl sm:mb-4 sm:text-2xl">
                   Register & Spin Off Your First Agent
                 </h3>
@@ -1624,7 +1624,7 @@ export function ComingSoon() {
               </div>
 
               {/* Add Specialized Agents */}
-              <div className="hover:-translate-y-1 animation-delay-200 flex w-full animate-fadeIn flex-col rounded-xl border border-primary/20 bg-card p-8 transition-all duration-300 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(var(--primary),0.1)] md:p-10">
+              <div className="animation-delay-200 flex w-full animate-fadeIn flex-col rounded-xl border border-primary/20 bg-card p-8 transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(var(--primary),0.1)] md:p-10">
                 <h3 className="mb-3 font-bold text-foreground text-xl sm:mb-4 sm:text-2xl">
                   Add Specialized Agents
                 </h3>
@@ -1636,7 +1636,7 @@ export function ComingSoon() {
               </div>
 
               {/* Share Intelligence */}
-              <div className="hover:-translate-y-1 animation-delay-300 flex w-full animate-fadeIn flex-col rounded-xl border border-primary/20 bg-card p-8 transition-all duration-300 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(var(--primary),0.1)] md:p-10">
+              <div className="animation-delay-300 flex w-full animate-fadeIn flex-col rounded-xl border border-primary/20 bg-card p-8 transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(var(--primary),0.1)] md:p-10">
                 <h3 className="mb-3 font-bold text-foreground text-xl sm:mb-4 sm:text-2xl">
                   Share Intelligence in Real-time
                 </h3>
@@ -1647,7 +1647,7 @@ export function ComingSoon() {
               </div>
 
               {/* Compete & Earn */}
-              <div className="hover:-translate-y-1 animation-delay-500 flex w-full animate-fadeIn flex-col rounded-xl border border-primary/20 bg-card p-8 transition-all duration-300 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(var(--primary),0.1)] md:p-10">
+              <div className="animation-delay-500 flex w-full animate-fadeIn flex-col rounded-xl border border-primary/20 bg-card p-8 transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_0_30px_rgba(var(--primary),0.1)] md:p-10">
                 <h3 className="mb-3 font-bold text-foreground text-xl sm:mb-4 sm:text-2xl">
                   Compete & Earn Together
                 </h3>
@@ -2175,7 +2175,7 @@ export function ComingSoon() {
   return (
     <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background text-foreground">
       {/* Background Image - Full Width */}
-      <div className="-translate-x-1/2 fixed inset-0 left-1/2 z-0 h-full w-screen">
+      <div className="fixed inset-0 left-1/2 z-0 h-full w-screen -translate-x-1/2">
         <Image
           src="/assets/images/background.png"
           alt="Polyagent Background"
@@ -2227,14 +2227,14 @@ export function ComingSoon() {
                     id={dbUser.id}
                     type="user"
                     src={dbUser.profileImageUrl || undefined}
-                    alt={dbUser.displayName || dbUser.username || 'User'}
+                    alt={dbUser.displayName || dbUser.username || "User"}
                     size="sm"
                   />
 
                   {/* User Info - Hidden on mobile */}
                   <div className="hidden min-w-0 text-left sm:block">
                     <div className="truncate font-semibold text-foreground text-sm">
-                      {dbUser.displayName || dbUser.username || 'User'}
+                      {dbUser.displayName || dbUser.username || "User"}
                     </div>
                     {dbUser.username && dbUser.displayName && (
                       <div className="truncate text-muted-foreground text-xs">
@@ -2246,7 +2246,7 @@ export function ComingSoon() {
                   {/* Dropdown Icon */}
                   <ChevronDown
                     className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${
-                      showProfileDropdown ? 'rotate-180' : ''
+                      showProfileDropdown ? "rotate-180" : ""
                     }`}
                   />
                 </button>
@@ -2413,29 +2413,29 @@ export function ComingSoon() {
                   <>
                     <div className="mb-4 flex items-center gap-1 border-border/50 border-b">
                       <button
-                        onClick={() => setReferralTab('qualified')}
+                        onClick={() => setReferralTab("qualified")}
                         className={`relative px-4 py-2 font-semibold text-sm transition-colors ${
-                          referralTab === 'qualified'
-                            ? 'text-primary'
-                            : 'text-muted-foreground hover:text-foreground'
+                          referralTab === "qualified"
+                            ? "text-primary"
+                            : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
                         Qualified ({waitlistData.qualifiedCount ?? 0})
-                        {referralTab === 'qualified' && (
+                        {referralTab === "qualified" && (
                           <div className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
                         )}
                       </button>
 
                       <button
-                        onClick={() => setReferralTab('pending')}
+                        onClick={() => setReferralTab("pending")}
                         className={`relative px-4 py-2 font-semibold text-sm transition-colors ${
-                          referralTab === 'pending'
-                            ? 'text-primary'
-                            : 'text-muted-foreground hover:text-foreground'
+                          referralTab === "pending"
+                            ? "text-primary"
+                            : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
                         Pending ({waitlistData.invitedCount ?? 0})
-                        {referralTab === 'pending' && (
+                        {referralTab === "pending" && (
                           <div className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
                         )}
                       </button>
@@ -2444,7 +2444,7 @@ export function ComingSoon() {
                     {/* Referral User Lists */}
                     <div className="max-h-56 space-y-2 overflow-y-auto transition-all duration-300 ease-in-out">
                       {/* Pending Users Tab */}
-                      {referralTab === 'pending' && (
+                      {referralTab === "pending" && (
                         <div className="fade-in flex animate-in flex-col gap-1 duration-300">
                           {waitlistData.invitedUsers &&
                           waitlistData.invitedUsers.length > 0 ? (
@@ -2478,9 +2478,9 @@ export function ComingSoon() {
                                     </p>
 
                                     <p className="mt-0.5 text-muted-foreground text-xs">
-                                      Signed up{' '}
+                                      Signed up{" "}
                                       {new Date(
-                                        user.createdAt
+                                        user.createdAt,
                                       ).toLocaleDateString()}
                                     </p>
                                   </div>
@@ -2503,7 +2503,7 @@ export function ComingSoon() {
                       )}
 
                       {/* Qualified Users Tab */}
-                      {referralTab === 'qualified' && (
+                      {referralTab === "qualified" && (
                         <div className="fade-in flex animate-in flex-col gap-1 duration-300">
                           {waitlistData.qualifiedUsers &&
                           waitlistData.qualifiedUsers.length > 0 ? (
@@ -2538,7 +2538,7 @@ export function ComingSoon() {
                                     )}
                                     <p className="mt-0.5 text-muted-foreground text-xs">
                                       {new Date(
-                                        user.completedAt || user.createdAt
+                                        user.completedAt || user.createdAt,
                                       ).toLocaleDateString()}
                                     </p>
                                   </div>
@@ -2584,8 +2584,8 @@ export function ComingSoon() {
                 <div className="mb-4 rounded-lg border border-primary/20 bg-primary/10 p-3">
                   <p className="text-foreground text-sm leading-relaxed">
                     <span className="font-semibold">🎁 Friend bonus:</span> Your
-                    friends get an additional{' '}
-                    <span className="font-bold text-primary">100 points</span>{' '}
+                    friends get an additional{" "}
+                    <span className="font-bold text-primary">100 points</span>{" "}
                     when they join through your referral link!
                   </p>
                 </div>
@@ -2711,7 +2711,7 @@ export function ComingSoon() {
                             handleTwitterFollow();
                           } else {
                             toast.error(
-                              'Please link your Twitter account first'
+                              "Please link your Twitter account first",
                             );
                           }
                         }}
@@ -2751,8 +2751,8 @@ export function ComingSoon() {
                             <Check className="h-4 w-4" />
                             <span className="text-sm">
                               {isVerifyingTwitterFollow
-                                ? 'Processing...'
-                                : 'Claim Reward'}
+                                ? "Processing..."
+                                : "Claim Reward"}
                             </span>
                           </button>
                           <button
@@ -2834,7 +2834,7 @@ export function ComingSoon() {
                             handleDiscordJoin();
                           } else {
                             toast.error(
-                              'Please link your Discord account first'
+                              "Please link your Discord account first",
                             );
                           }
                         }}
@@ -2874,8 +2874,8 @@ export function ComingSoon() {
                             <Check className="h-4 w-4" />
                             <span className="text-sm">
                               {isVerifyingDiscordJoin
-                                ? 'Verifying...'
-                                : 'Verify Join'}
+                                ? "Verifying..."
+                                : "Verify Join"}
                             </span>
                           </button>
                           <button
@@ -2957,7 +2957,7 @@ export function ComingSoon() {
                             handleFarcasterFollow();
                           } else {
                             toast.error(
-                              'Please link your Farcaster account first'
+                              "Please link your Farcaster account first",
                             );
                           }
                         }}
@@ -2997,8 +2997,8 @@ export function ComingSoon() {
                             <Check className="h-4 w-4" />
                             <span className="text-sm">
                               {isVerifyingFollow
-                                ? 'Verifying...'
-                                : 'Verify Follow'}
+                                ? "Verifying..."
+                                : "Verify Follow"}
                             </span>
                           </button>
                           <button
@@ -3073,7 +3073,7 @@ export function ComingSoon() {
                 const displayUsers = topUsers;
                 const totalPages = leaderboardTotalPages;
                 const currentUserInPage = displayUsers.some(
-                  (u) => u.id === dbUser.id
+                  (u) => u.id === dbUser.id,
                 );
 
                 return (
@@ -3083,35 +3083,35 @@ export function ComingSoon() {
                       <div className="mb-6 flex items-center gap-1 border-border/50 border-b">
                         <button
                           onClick={() => {
-                            setLeaderboardTab('leaderboard');
+                            setLeaderboardTab("leaderboard");
                             setLeaderboardPage(1);
-                            void fetchLeaderboardPage(1, 'leaderboard');
+                            void fetchLeaderboardPage(1, "leaderboard");
                           }}
                           className={`relative px-4 py-3 font-semibold text-sm transition-colors ${
-                            leaderboardTab === 'leaderboard'
-                              ? 'text-primary'
-                              : 'text-muted-foreground hover:text-foreground'
+                            leaderboardTab === "leaderboard"
+                              ? "text-primary"
+                              : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
                           Leaderboard
-                          {leaderboardTab === 'leaderboard' && (
+                          {leaderboardTab === "leaderboard" && (
                             <div className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
                           )}
                         </button>
                         <button
                           onClick={() => {
-                            setLeaderboardTab('inviters');
+                            setLeaderboardTab("inviters");
                             setLeaderboardPage(1);
-                            void fetchLeaderboardPage(1, 'inviters');
+                            void fetchLeaderboardPage(1, "inviters");
                           }}
                           className={`relative px-4 py-3 font-semibold text-sm transition-colors ${
-                            leaderboardTab === 'inviters'
-                              ? 'text-primary'
-                              : 'text-muted-foreground hover:text-foreground'
+                            leaderboardTab === "inviters"
+                              ? "text-primary"
+                              : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
                           Top Inviters
-                          {leaderboardTab === 'inviters' && (
+                          {leaderboardTab === "inviters" && (
                             <div className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
                           )}
                         </button>
@@ -3133,26 +3133,26 @@ export function ComingSoon() {
                               }}
                               className={`flex cursor-pointer items-center justify-between rounded-xl border p-4 transition-colors lg:p-5 ${
                                 isCurrentUser
-                                  ? 'border-primary bg-primary/20 shadow-md'
+                                  ? "border-primary bg-primary/20 shadow-md"
                                   : topUser.rank === 1
-                                    ? 'border-yellow-500/30 bg-yellow-500/10'
+                                    ? "border-yellow-500/30 bg-yellow-500/10"
                                     : topUser.rank === 2
-                                      ? 'border-gray-400/30 bg-gray-400/10'
+                                      ? "border-gray-400/30 bg-gray-400/10"
                                       : topUser.rank === 3
-                                        ? 'border-orange-500/30 bg-orange-500/10'
-                                        : 'border-border/50 bg-background/30 hover:bg-background/40'
+                                        ? "border-orange-500/30 bg-orange-500/10"
+                                        : "border-border/50 bg-background/30 hover:bg-background/40"
                               }`}
                             >
                               <div className="flex min-w-0 flex-1 items-center gap-4">
                                 <div
                                   className={`w-12 shrink-0 text-center font-bold text-lg lg:text-xl ${
                                     topUser.rank === 1
-                                      ? 'text-yellow-500'
+                                      ? "text-yellow-500"
                                       : topUser.rank === 2
-                                        ? 'text-gray-400'
+                                        ? "text-gray-400"
                                         : topUser.rank === 3
-                                          ? 'text-orange-500'
-                                          : 'text-muted-foreground'
+                                          ? "text-orange-500"
+                                          : "text-muted-foreground"
                                   }`}
                                 >
                                   #{topUser.rank}
@@ -3162,7 +3162,7 @@ export function ComingSoon() {
                                     <span className="truncate">
                                       {topUser.displayName ||
                                         topUser.username ||
-                                        'Anonymous'}
+                                        "Anonymous"}
                                     </span>
                                     {isCurrentUser && (
                                       <span className="shrink-0 rounded bg-primary px-2 py-1 text-primary-foreground text-xs">
@@ -3171,24 +3171,24 @@ export function ComingSoon() {
                                     )}
                                   </div>
                                   <div className="mt-0.5 text-muted-foreground text-sm">
-                                    {topUser.referralCount}{' '}
+                                    {topUser.referralCount}{" "}
                                     {topUser.referralCount === 1
-                                      ? 'referral'
-                                      : 'referrals'}
+                                      ? "referral"
+                                      : "referrals"}
                                   </div>
                                 </div>
                               </div>
                               <div className="ml-4 shrink-0 text-right">
                                 <div className="font-bold text-lg text-primary lg:text-xl">
-                                  {(leaderboardTab === 'leaderboard'
+                                  {(leaderboardTab === "leaderboard"
                                     ? topUser.reputationPoints
                                     : topUser.invitePoints
                                   ).toLocaleString()}
                                 </div>
                                 <div className="text-muted-foreground text-sm">
-                                  {leaderboardTab === 'leaderboard'
-                                    ? 'points'
-                                    : 'invite pts'}
+                                  {leaderboardTab === "leaderboard"
+                                    ? "points"
+                                    : "invite pts"}
                                 </div>
                               </div>
                             </div>
@@ -3222,24 +3222,24 @@ export function ComingSoon() {
                                       </span>
                                     </div>
                                     <div className="mt-0.5 text-muted-foreground text-sm">
-                                      {waitlistData.referralCount}{' '}
+                                      {waitlistData.referralCount}{" "}
                                       {waitlistData.referralCount === 1
-                                        ? 'referral'
-                                        : 'referrals'}
+                                        ? "referral"
+                                        : "referrals"}
                                     </div>
                                   </div>
                                 </div>
                                 <div className="ml-4 shrink-0 text-right">
                                   <div className="font-bold text-lg text-primary lg:text-xl">
-                                    {(leaderboardTab === 'leaderboard'
+                                    {(leaderboardTab === "leaderboard"
                                       ? reputationPoints
                                       : invitePoints
                                     ).toLocaleString()}
                                   </div>
                                   <div className="text-muted-foreground text-sm">
-                                    {leaderboardTab === 'leaderboard'
-                                      ? 'points'
-                                      : 'invite pts'}
+                                    {leaderboardTab === "leaderboard"
+                                      ? "points"
+                                      : "invite pts"}
                                   </div>
                                 </div>
                               </div>
@@ -3256,7 +3256,7 @@ export function ComingSoon() {
                               setLeaderboardPage(newPage);
                               void fetchLeaderboardPage(
                                 newPage,
-                                leaderboardTab
+                                leaderboardTab,
                               );
                             }}
                             disabled={leaderboardPage === 1}
@@ -3272,12 +3272,12 @@ export function ComingSoon() {
                             onClick={() => {
                               const newPage = Math.min(
                                 totalPages,
-                                leaderboardPage + 1
+                                leaderboardPage + 1,
                               );
                               setLeaderboardPage(newPage);
                               void fetchLeaderboardPage(
                                 newPage,
-                                leaderboardTab
+                                leaderboardTab,
                               );
                             }}
                             disabled={leaderboardPage >= totalPages}
@@ -3302,7 +3302,7 @@ export function ComingSoon() {
           <div
             className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm transition-opacity duration-300"
             onClick={() => !isSavingProfile && setShowProfileModal(false)}
-            style={{ pointerEvents: 'auto' }}
+            style={{ pointerEvents: "auto" }}
           />
           <div className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto p-4">
             <div
@@ -3318,15 +3318,15 @@ export function ComingSoon() {
                   <div>
                     <h2 className="font-bold text-2xl">
                       {dbUser?.profileComplete
-                        ? 'Edit Profile'
-                        : 'Complete Profile'}
+                        ? "Edit Profile"
+                        : "Complete Profile"}
                     </h2>
                     {!dbUser?.profileComplete ? (
                       <p className="text-muted-foreground text-sm">
-                        Earn{' '}
+                        Earn{" "}
                         <span className="font-semibold text-primary">
                           +{POINTS.PROFILE_COMPLETION} points
-                        </span>{' '}
+                        </span>{" "}
                         when complete
                       </p>
                     ) : (
@@ -3357,11 +3357,11 @@ export function ComingSoon() {
                 {!dbUser?.profileComplete && (
                   <div className="rounded-lg border border-primary/20 bg-primary/10 p-4">
                     <p className="text-foreground text-sm leading-relaxed">
-                      <span className="font-semibold">💡 Pro Tip:</span>{' '}
-                      Complete all fields below to earn{' '}
+                      <span className="font-semibold">💡 Pro Tip:</span>{" "}
+                      Complete all fields below to earn{" "}
                       <span className="font-bold text-primary">
                         {POINTS.PROFILE_COMPLETION} points
-                      </span>{' '}
+                      </span>{" "}
                       and personalize your Polyagent experience!
                     </p>
                   </div>
@@ -3387,7 +3387,7 @@ export function ComingSoon() {
                     <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
                         type="button"
-                        onClick={() => cycleBanner('prev')}
+                        onClick={() => cycleBanner("prev")}
                         className="rounded-lg bg-background/80 p-2 transition-colors hover:bg-background"
                         title="Previous banner"
                       >
@@ -3408,7 +3408,7 @@ export function ComingSoon() {
                       </label>
                       <button
                         type="button"
-                        onClick={() => cycleBanner('next')}
+                        onClick={() => cycleBanner("next")}
                         className="rounded-lg bg-background/80 p-2 transition-colors hover:bg-background"
                         title="Next banner"
                       >
@@ -3438,7 +3438,7 @@ export function ComingSoon() {
                     <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/50 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                       <button
                         type="button"
-                        onClick={() => cycleProfilePicture('prev')}
+                        onClick={() => cycleProfilePicture("prev")}
                         className="rounded-lg bg-background/80 p-1.5 transition-colors hover:bg-background"
                         title="Previous picture"
                       >
@@ -3459,7 +3459,7 @@ export function ComingSoon() {
                       </label>
                       <button
                         type="button"
-                        onClick={() => cycleProfilePicture('next')}
+                        onClick={() => cycleProfilePicture("next")}
                         className="rounded-lg bg-background/80 p-1.5 transition-colors hover:bg-background"
                         title="Next picture"
                       >
@@ -3496,7 +3496,7 @@ export function ComingSoon() {
                         Username *
                       </label>
                       <div className="relative">
-                        <span className="-translate-y-1/2 absolute top-1/2 left-3 text-muted-foreground">
+                        <span className="absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground">
                           @
                         </span>
                         <input
@@ -3514,21 +3514,21 @@ export function ComingSoon() {
                           maxLength={20}
                         />
                         {isCheckingUsername && (
-                          <div className="-translate-y-1/2 absolute top-1/2 right-3">
+                          <div className="absolute top-1/2 right-3 -translate-y-1/2">
                             <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                           </div>
                         )}
-                        {usernameStatus === 'available' &&
+                        {usernameStatus === "available" &&
                           !isCheckingUsername && (
-                            <Check className="-translate-y-1/2 absolute top-1/2 right-3 h-4 w-4 text-green-500" />
+                            <Check className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-green-500" />
                           )}
-                        {usernameStatus === 'taken' && !isCheckingUsername && (
-                          <X className="-translate-y-1/2 absolute top-1/2 right-3 h-4 w-4 text-red-500" />
+                        {usernameStatus === "taken" && !isCheckingUsername && (
+                          <X className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-red-500" />
                         )}
                       </div>
-                      {usernameStatus === 'taken' && usernameSuggestion && (
+                      {usernameStatus === "taken" && usernameSuggestion && (
                         <p className="text-muted-foreground text-xs">
-                          Suggestion:{' '}
+                          Suggestion:{" "}
                           <button
                             type="button"
                             className="text-primary underline hover:text-primary/80"
@@ -3582,17 +3582,17 @@ export function ComingSoon() {
                   <button
                     type="submit"
                     disabled={(() => {
-                      const username = profileForm.username?.trim() || '';
-                      const displayName = profileForm.displayName?.trim() || '';
+                      const username = profileForm.username?.trim() || "";
+                      const displayName = profileForm.displayName?.trim() || "";
                       return isSavingProfile || !username || !displayName;
                     })()}
                     className="min-h-[44px] flex-1 rounded-lg bg-primary px-4 py-2 font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isSavingProfile
-                      ? 'Saving...'
+                      ? "Saving..."
                       : dbUser?.profileComplete
-                        ? 'Save Changes'
-                        : 'Save & Earn Points'}
+                        ? "Save Changes"
+                        : "Save & Earn Points"}
                   </button>
                 </div>
               </form>

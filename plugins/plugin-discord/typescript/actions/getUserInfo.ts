@@ -12,11 +12,11 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { GuildMember } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 // Import generated prompts
 import { getUserInfoTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 
 const getUserIdentifier = async (

@@ -62,7 +62,8 @@
  * ```
  */
 
-import type { ControlType, FormControl, ValidationResult } from './types.ts';
+import type { JsonValue } from "@elizaos/core";
+import type { ControlType, FormControl, ValidationResult } from "./types";
 
 // ============================================================================
 // VALIDATION HELPERS
@@ -108,47 +109,56 @@ const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
  * - Allows consistent error messages
  */
 const textType: ControlType = {
-  id: 'text',
+  id: "text",
   builtin: true,
-  
-  validate: (value: unknown, control: FormControl): ValidationResult => {
+
+  validate: (value: JsonValue, control: FormControl): ValidationResult => {
     if (value === null || value === undefined) {
       return { valid: true }; // Empty is valid; required check is separate
     }
-    
+
     const str = String(value);
-    
+
     // Check minLength if specified
     if (control.minLength !== undefined && str.length < control.minLength) {
-      return { valid: false, error: `Must be at least ${control.minLength} characters` };
+      return {
+        valid: false,
+        error: `Must be at least ${control.minLength} characters`,
+      };
     }
-    
+
     // Check maxLength if specified
     if (control.maxLength !== undefined && str.length > control.maxLength) {
-      return { valid: false, error: `Must be at most ${control.maxLength} characters` };
+      return {
+        valid: false,
+        error: `Must be at most ${control.maxLength} characters`,
+      };
     }
-    
+
     // Check pattern if specified
     if (control.pattern) {
       const regex = new RegExp(control.pattern);
       if (!regex.test(str)) {
-        return { valid: false, error: 'Invalid format' };
+        return { valid: false, error: "Invalid format" };
       }
     }
-    
+
     // Check enum if specified
     if (control.enum && !control.enum.includes(str)) {
-      return { valid: false, error: `Must be one of: ${control.enum.join(', ')}` };
+      return {
+        valid: false,
+        error: `Must be one of: ${control.enum.join(", ")}`,
+      };
     }
-    
+
     return { valid: true };
   },
-  
+
   parse: (value: string): string => String(value).trim(),
-  
-  format: (value: unknown): string => String(value ?? ''),
-  
-  extractionPrompt: 'a text string',
+
+  format: (value: JsonValue): string => String(value ?? ""),
+
+  extractionPrompt: "a text string",
 };
 
 /**
@@ -168,46 +178,46 @@ const textType: ControlType = {
  * - Agent should handle natural input, not require clean numbers
  */
 const numberType: ControlType = {
-  id: 'number',
+  id: "number",
   builtin: true,
-  
-  validate: (value: unknown, control: FormControl): ValidationResult => {
-    if (value === null || value === undefined || value === '') {
+
+  validate: (value: JsonValue, control: FormControl): ValidationResult => {
+    if (value === null || value === undefined || value === "") {
       return { valid: true }; // Empty is valid; required check is separate
     }
-    
-    const num = typeof value === 'number' ? value : parseFloat(String(value));
-    
+
+    const num = typeof value === "number" ? value : parseFloat(String(value));
+
     if (isNaN(num)) {
-      return { valid: false, error: 'Must be a valid number' };
+      return { valid: false, error: "Must be a valid number" };
     }
-    
+
     // Check min if specified
     if (control.min !== undefined && num < control.min) {
       return { valid: false, error: `Must be at least ${control.min}` };
     }
-    
+
     // Check max if specified
     if (control.max !== undefined && num > control.max) {
       return { valid: false, error: `Must be at most ${control.max}` };
     }
-    
+
     return { valid: true };
   },
-  
+
   parse: (value: string): number => {
-    const cleaned = value.replace(/[,$\s]/g, ''); // Remove common formatting
+    const cleaned = value.replace(/[,$\s]/g, ""); // Remove common formatting
     return parseFloat(cleaned);
   },
-  
-  format: (value: unknown): string => {
-    if (value === null || value === undefined) return '';
-    const num = typeof value === 'number' ? value : parseFloat(String(value));
+
+  format: (value: JsonValue): string => {
+    if (value === null || value === undefined) return "";
+    const num = typeof value === "number" ? value : parseFloat(String(value));
     if (isNaN(num)) return String(value);
     return num.toLocaleString();
   },
-  
-  extractionPrompt: 'a number (integer or decimal)',
+
+  extractionPrompt: "a number (integer or decimal)",
 };
 
 /**
@@ -228,28 +238,28 @@ const numberType: ControlType = {
  * - Consistent lowercase prevents duplicate account issues
  */
 const emailType: ControlType = {
-  id: 'email',
+  id: "email",
   builtin: true,
-  
-  validate: (value: unknown): ValidationResult => {
-    if (value === null || value === undefined || value === '') {
+
+  validate: (value: JsonValue): ValidationResult => {
+    if (value === null || value === undefined || value === "") {
       return { valid: true }; // Empty is valid; required check is separate
     }
-    
+
     const str = String(value).trim().toLowerCase();
-    
+
     if (!EMAIL_REGEX.test(str)) {
-      return { valid: false, error: 'Invalid email format' };
+      return { valid: false, error: "Invalid email format" };
     }
-    
+
     return { valid: true };
   },
-  
+
   parse: (value: string): string => value.trim().toLowerCase(),
-  
-  format: (value: unknown): string => String(value ?? '').toLowerCase(),
-  
-  extractionPrompt: 'an email address (e.g., user@example.com)',
+
+  format: (value: JsonValue): string => String(value ?? "").toLowerCase(),
+
+  extractionPrompt: "an email address (e.g., user@example.com)",
 };
 
 /**
@@ -269,40 +279,40 @@ const emailType: ControlType = {
  * - Consistent with how agent should speak
  */
 const booleanType: ControlType = {
-  id: 'boolean',
+  id: "boolean",
   builtin: true,
-  
-  validate: (value: unknown): ValidationResult => {
+
+  validate: (value: JsonValue): ValidationResult => {
     if (value === null || value === undefined) {
       return { valid: true }; // Empty is valid; required check is separate
     }
-    
-    if (typeof value === 'boolean') {
+
+    if (typeof value === "boolean") {
       return { valid: true };
     }
-    
+
     const str = String(value).toLowerCase();
-    const validValues = ['true', 'false', 'yes', 'no', '1', '0', 'on', 'off'];
-    
+    const validValues = ["true", "false", "yes", "no", "1", "0", "on", "off"];
+
     if (!validValues.includes(str)) {
-      return { valid: false, error: 'Must be yes/no or true/false' };
+      return { valid: false, error: "Must be yes/no or true/false" };
     }
-    
+
     return { valid: true };
   },
-  
+
   parse: (value: string): boolean => {
     const str = value.toLowerCase();
-    return ['true', 'yes', '1', 'on'].includes(str);
+    return ["true", "yes", "1", "on"].includes(str);
   },
-  
-  format: (value: unknown): string => {
-    if (value === true) return 'Yes';
-    if (value === false) return 'No';
-    return String(value ?? '');
+
+  format: (value: JsonValue): string => {
+    if (value === true) return "Yes";
+    if (value === false) return "No";
+    return String(value ?? "");
   },
-  
-  extractionPrompt: 'a yes/no or true/false value',
+
+  extractionPrompt: "a yes/no or true/false value",
 };
 
 /**
@@ -322,41 +332,44 @@ const booleanType: ControlType = {
  * - Agent can use this for more helpful prompts
  */
 const selectType: ControlType = {
-  id: 'select',
+  id: "select",
   builtin: true,
-  
-  validate: (value: unknown, control: FormControl): ValidationResult => {
-    if (value === null || value === undefined || value === '') {
+
+  validate: (value: JsonValue, control: FormControl): ValidationResult => {
+    if (value === null || value === undefined || value === "") {
       return { valid: true }; // Empty is valid; required check is separate
     }
-    
+
     const str = String(value);
-    
+
     // Check against options if defined
     if (control.options) {
-      const validValues = control.options.map(o => o.value);
+      const validValues = control.options.map((o) => o.value);
       if (!validValues.includes(str)) {
-        const labels = control.options.map(o => o.label).join(', ');
+        const labels = control.options.map((o) => o.label).join(", ");
         return { valid: false, error: `Must be one of: ${labels}` };
       }
     }
-    
+
     // Check against enum if defined (fallback)
     if (control.enum && !control.options) {
       if (!control.enum.includes(str)) {
-        return { valid: false, error: `Must be one of: ${control.enum.join(', ')}` };
+        return {
+          valid: false,
+          error: `Must be one of: ${control.enum.join(", ")}`,
+        };
       }
     }
-    
+
     return { valid: true };
   },
-  
+
   parse: (value: string): string => value.trim(),
-  
-  format: (value: unknown): string => String(value ?? ''),
-  
+
+  format: (value: JsonValue): string => String(value ?? ""),
+
   // Note: extractionPrompt is typically customized per-field with option labels
-  extractionPrompt: 'one of the available options',
+  extractionPrompt: "one of the available options",
 };
 
 /**
@@ -380,47 +393,47 @@ const selectType: ControlType = {
  * - toLocaleDateString() adapts automatically
  */
 const dateType: ControlType = {
-  id: 'date',
+  id: "date",
   builtin: true,
-  
-  validate: (value: unknown): ValidationResult => {
-    if (value === null || value === undefined || value === '') {
+
+  validate: (value: JsonValue): ValidationResult => {
+    if (value === null || value === undefined || value === "") {
       return { valid: true }; // Empty is valid; required check is separate
     }
-    
+
     const str = String(value);
-    
+
     // Check ISO format
     if (!ISO_DATE_REGEX.test(str)) {
-      return { valid: false, error: 'Must be in YYYY-MM-DD format' };
+      return { valid: false, error: "Must be in YYYY-MM-DD format" };
     }
-    
+
     // Check if it's a valid date
     const date = new Date(str);
     if (isNaN(date.getTime())) {
-      return { valid: false, error: 'Invalid date' };
+      return { valid: false, error: "Invalid date" };
     }
-    
+
     return { valid: true };
   },
-  
+
   parse: (value: string): string => {
     // Try to parse and normalize to ISO
     const date = new Date(value);
     if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
+      return date.toISOString().split("T")[0];
     }
     return value.trim();
   },
-  
-  format: (value: unknown): string => {
-    if (!value) return '';
+
+  format: (value: JsonValue): string => {
+    if (!value) return "";
     const date = new Date(String(value));
     if (isNaN(date.getTime())) return String(value);
     return date.toLocaleDateString();
   },
-  
-  extractionPrompt: 'a date (preferably in YYYY-MM-DD format)',
+
+  extractionPrompt: "a date (preferably in YYYY-MM-DD format)",
 };
 
 /**
@@ -446,35 +459,35 @@ const dateType: ControlType = {
  * - Count and names are what user cares about
  */
 const fileType: ControlType = {
-  id: 'file',
+  id: "file",
   builtin: true,
-  
-  validate: (value: unknown, control: FormControl): ValidationResult => {
+
+  validate: (value: JsonValue, control: FormControl): ValidationResult => {
     if (value === null || value === undefined) {
       return { valid: true }; // Empty is valid; required check is separate
     }
-    
+
     // For file type, value is typically a FieldFile or array of FieldFile
     // Basic validation - detailed validation happens in upload pipeline
-    if (typeof value === 'object') {
+    if (typeof value === "object") {
       return { valid: true };
     }
-    
-    return { valid: false, error: 'Invalid file data' };
+
+    return { valid: false, error: "Invalid file data" };
   },
-  
-  format: (value: unknown): string => {
-    if (!value) return '';
+
+  format: (value: JsonValue): string => {
+    if (!value) return "";
     if (Array.isArray(value)) {
       return `${value.length} file(s)`;
     }
-    if (typeof value === 'object' && value !== null && 'name' in value) {
+    if (typeof value === "object" && value !== null && "name" in value) {
       return String((value as { name: string }).name);
     }
-    return 'File attached';
+    return "File attached";
   },
-  
-  extractionPrompt: 'a file attachment (upload required)',
+
+  extractionPrompt: "a file attachment (upload required)",
 };
 
 // ============================================================================
@@ -511,7 +524,7 @@ export const BUILTIN_TYPES: ControlType[] = [
  * - Clear has/get semantics
  */
 export const BUILTIN_TYPE_MAP: Map<string, ControlType> = new Map(
-  BUILTIN_TYPES.map(t => [t.id, t])
+  BUILTIN_TYPES.map((t) => [t.id, t]),
 );
 
 /**
@@ -528,7 +541,10 @@ export const BUILTIN_TYPE_MAP: Map<string, ControlType> = new Map(
  * @param registerFn - The FormService.registerControlType method
  */
 export function registerBuiltinTypes(
-  registerFn: (type: ControlType, options?: { allowOverride?: boolean }) => void
+  registerFn: (
+    type: ControlType,
+    options?: { allowOverride?: boolean },
+  ) => void,
 ): void {
   for (const type of BUILTIN_TYPES) {
     registerFn(type);
@@ -566,4 +582,3 @@ export function getBuiltinType(id: string): ControlType | undefined {
 export function isBuiltinType(id: string): boolean {
   return BUILTIN_TYPE_MAP.has(id);
 }
-

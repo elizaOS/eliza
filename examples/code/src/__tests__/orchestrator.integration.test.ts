@@ -23,20 +23,24 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AgentOrchestratorService,
-  configureAgentOrchestratorPlugin,
   type AgentProvider,
+  configureAgentOrchestratorPlugin,
   type OrchestratedTask,
   type ProviderTaskExecutionContext,
   type TaskResult,
 } from "@elizaos/plugin-agent-orchestrator";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 
 // Track which provider was called for each task
-const executionLog: Array<{ providerId: string; taskName: string; completed: boolean }> = [];
+const executionLog: Array<{
+  providerId: string;
+  taskName: string;
+  completed: boolean;
+}> = [];
 
 // Create mock providers that track execution
 function createMockProvider(
@@ -52,7 +56,11 @@ function createMockProvider(
       task: OrchestratedTask,
       ctx: ProviderTaskExecutionContext,
     ): Promise<TaskResult> => {
-      executionLog.push({ providerId: id, taskName: task.name, completed: false });
+      executionLog.push({
+        providerId: id,
+        taskName: task.name,
+        completed: false,
+      });
 
       await ctx.appendOutput(`[${label}] Starting task: ${task.name}`);
       await ctx.updateProgress(10);
@@ -155,7 +163,9 @@ describe("Agent Orchestrator Integration", () => {
       async ({ tags }: { tags?: string[] }) => {
         const allTasks = Array.from(tasks.values());
         if (!tags || tags.length === 0) return allTasks;
-        return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
+        return allTasks.filter((t) =>
+          tags.some((tag) => t.tags?.includes(tag)),
+        );
       },
     );
 
@@ -164,7 +174,8 @@ describe("Agent Orchestrator Integration", () => {
         const task = tasks.get(id);
         if (!task) return;
         if (typeof updates.name === "string") task.name = updates.name;
-        if (typeof updates.description === "string") task.description = updates.description;
+        if (typeof updates.description === "string")
+          task.description = updates.description;
         if (Array.isArray(updates.tags)) task.tags = updates.tags;
         if (updates.roomId) task.roomId = updates.roomId;
         if (updates.worldId) task.worldId = updates.worldId;
@@ -191,7 +202,9 @@ describe("Agent Orchestrator Integration", () => {
       activeProviderEnvVar: "ELIZA_CODE_ACTIVE_SUB_AGENT",
     });
 
-    service = (await AgentOrchestratorService.start(runtime)) as AgentOrchestratorService;
+    service = (await AgentOrchestratorService.start(
+      runtime,
+    )) as AgentOrchestratorService;
   });
 
   afterEach(async () => {
@@ -249,7 +262,12 @@ describe("Agent Orchestrator Integration", () => {
 
     it("should throw error for unknown provider", async () => {
       await expect(
-        service.createTask("Bad Task", "Unknown provider", undefined, "unknown-provider"),
+        service.createTask(
+          "Bad Task",
+          "Unknown provider",
+          undefined,
+          "unknown-provider",
+        ),
       ).rejects.toThrow(/Unknown provider/);
     });
   });
@@ -260,14 +278,19 @@ describe("Agent Orchestrator Integration", () => {
 
   describe("Task Execution", () => {
     it("should execute task with eliza provider", async () => {
-      const task = await service.createTask("Eliza Execution", "Run with eliza");
+      const task = await service.createTask(
+        "Eliza Execution",
+        "Run with eliza",
+      );
       await service.startTaskExecution(task.id ?? "");
 
       const updated = await service.getTask(task.id ?? "");
       expect(updated?.metadata.status).toBe("completed");
       expect(updated?.metadata.progress).toBe(100);
       expect(updated?.metadata.result?.success).toBe(true);
-      expect(executionLog.some((e) => e.providerId === "eliza" && e.completed)).toBe(true);
+      expect(
+        executionLog.some((e) => e.providerId === "eliza" && e.completed),
+      ).toBe(true);
     });
 
     it("should execute task with claude-code provider", async () => {
@@ -281,7 +304,9 @@ describe("Agent Orchestrator Integration", () => {
 
       const updated = await service.getTask(task.id ?? "");
       expect(updated?.metadata.status).toBe("completed");
-      expect(executionLog.some((e) => e.providerId === "claude-code" && e.completed)).toBe(true);
+      expect(
+        executionLog.some((e) => e.providerId === "claude-code" && e.completed),
+      ).toBe(true);
     });
 
     it("should execute task with codex provider", async () => {
@@ -295,7 +320,9 @@ describe("Agent Orchestrator Integration", () => {
 
       const updated = await service.getTask(task.id ?? "");
       expect(updated?.metadata.status).toBe("completed");
-      expect(executionLog.some((e) => e.providerId === "codex" && e.completed)).toBe(true);
+      expect(
+        executionLog.some((e) => e.providerId === "codex" && e.completed),
+      ).toBe(true);
     });
 
     it("should execute task with sweagent provider", async () => {
@@ -309,11 +336,16 @@ describe("Agent Orchestrator Integration", () => {
 
       const updated = await service.getTask(task.id ?? "");
       expect(updated?.metadata.status).toBe("completed");
-      expect(executionLog.some((e) => e.providerId === "sweagent" && e.completed)).toBe(true);
+      expect(
+        executionLog.some((e) => e.providerId === "sweagent" && e.completed),
+      ).toBe(true);
     });
 
     it("should track files created and modified", async () => {
-      const task = await service.createTask("File Tracking", "Create and modify files");
+      const task = await service.createTask(
+        "File Tracking",
+        "Create and modify files",
+      );
       await service.startTaskExecution(task.id ?? "");
 
       const updated = await service.getTask(task.id ?? "");
@@ -327,8 +359,12 @@ describe("Agent Orchestrator Integration", () => {
 
       const updated = await service.getTask(task.id ?? "");
       expect(updated?.metadata.output.length).toBeGreaterThan(0);
-      expect(updated?.metadata.output.some((o) => o.includes("Starting task"))).toBe(true);
-      expect(updated?.metadata.output.some((o) => o.includes("completed"))).toBe(true);
+      expect(
+        updated?.metadata.output.some((o) => o.includes("Starting task")),
+      ).toBe(true);
+      expect(
+        updated?.metadata.output.some((o) => o.includes("completed")),
+      ).toBe(true);
     });
   });
 
@@ -381,10 +417,30 @@ describe("Agent Orchestrator Integration", () => {
 
   describe("Task Listing and Searching", () => {
     beforeEach(async () => {
-      await service.createTask("Auth API", "Implement authentication", undefined, "eliza");
-      await service.createTask("File Upload", "Handle file uploads", undefined, "claude-code");
-      await service.createTask("Database Schema", "Design database", undefined, "codex");
-      await service.createTask("Bug Fix #123", "Fix critical bug", undefined, "sweagent");
+      await service.createTask(
+        "Auth API",
+        "Implement authentication",
+        undefined,
+        "eliza",
+      );
+      await service.createTask(
+        "File Upload",
+        "Handle file uploads",
+        undefined,
+        "claude-code",
+      );
+      await service.createTask(
+        "Database Schema",
+        "Design database",
+        undefined,
+        "codex",
+      );
+      await service.createTask(
+        "Bug Fix #123",
+        "Fix critical bug",
+        undefined,
+        "sweagent",
+      );
     });
 
     it("should list all recent tasks", async () => {
@@ -463,7 +519,7 @@ describe("Agent Orchestrator Integration", () => {
     });
 
     it("should get current task details", async () => {
-      const task = await service.createTask("Current Task", "Get details");
+      const _task = await service.createTask("Current Task", "Get details");
       const current = await service.getCurrentTask();
 
       expect(current).not.toBeNull();
@@ -477,8 +533,14 @@ describe("Agent Orchestrator Integration", () => {
 
   describe("Task Context for AI Prompts", () => {
     it("should provide formatted context for current task", async () => {
-      const task = await service.createTask("Context Task", "Test context generation");
-      await service.appendOutput(task.id ?? "", "Step 1: Started\nStep 2: Processing");
+      const task = await service.createTask(
+        "Context Task",
+        "Test context generation",
+      );
+      await service.appendOutput(
+        task.id ?? "",
+        "Step 1: Started\nStep 2: Processing",
+      );
       await service.addStep(task.id ?? "", "Analyze requirements");
       await service.addStep(task.id ?? "", "Implement solution");
 
@@ -492,7 +554,12 @@ describe("Agent Orchestrator Integration", () => {
     });
 
     it("should include provider information in context", async () => {
-      await service.createTask("Provider Task", "Check provider", undefined, "claude-code");
+      await service.createTask(
+        "Provider Task",
+        "Check provider",
+        undefined,
+        "claude-code",
+      );
       const context = await service.getTaskContext();
 
       expect(context).toContain("Claude Code");
@@ -537,7 +604,10 @@ describe("Agent Orchestrator Integration", () => {
       const events: string[] = [];
       service.on("task:cancelled", () => events.push("cancelled"));
 
-      const task = await service.createTask("Cancel Event", "Test cancel event");
+      const task = await service.createTask(
+        "Cancel Event",
+        "Test cancel event",
+      );
       await service.cancelTask(task.id ?? "");
 
       expect(events).toContain("cancelled");
@@ -585,7 +655,9 @@ describe("All 4 Agents - Complete Flow", () => {
       async ({ tags }: { tags?: string[] }) => {
         const allTasks = Array.from(tasks.values());
         if (!tags || tags.length === 0) return allTasks;
-        return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
+        return allTasks.filter((t) =>
+          tags.some((tag) => t.tags?.includes(tag)),
+        );
       },
     );
     vi.spyOn(runtime, "updateTask").mockImplementation(
@@ -613,7 +685,9 @@ describe("All 4 Agents - Complete Flow", () => {
       getWorkingDirectory: () => process.cwd(),
     });
 
-    service = (await AgentOrchestratorService.start(runtime)) as AgentOrchestratorService;
+    service = (await AgentOrchestratorService.start(
+      runtime,
+    )) as AgentOrchestratorService;
   });
 
   afterEach(async () => {
@@ -688,9 +762,24 @@ describe("All 4 Agents - Complete Flow", () => {
   it("should handle multiple tasks across different agents", async () => {
     // Create tasks for each agent
     const elizaTask = await service.createTask("Task A", "Eliza task");
-    const claudeTask = await service.createTask("Task B", "Claude task", undefined, "claude-code");
-    const codexTask = await service.createTask("Task C", "Codex task", undefined, "codex");
-    const sweTask = await service.createTask("Task D", "SWE task", undefined, "sweagent");
+    const claudeTask = await service.createTask(
+      "Task B",
+      "Claude task",
+      undefined,
+      "claude-code",
+    );
+    const codexTask = await service.createTask(
+      "Task C",
+      "Codex task",
+      undefined,
+      "codex",
+    );
+    const sweTask = await service.createTask(
+      "Task D",
+      "SWE task",
+      undefined,
+      "sweagent",
+    );
 
     // Execute all
     await Promise.all([
@@ -714,8 +803,8 @@ describe("All 4 Agents - Complete Flow", () => {
 
   it("should list unfinished tasks correctly", async () => {
     // Create tasks
-    const task1 = await service.createTask("Unfinished 1", "Still pending");
-    const task2 = await service.createTask("Unfinished 2", "Also pending");
+    const _task1 = await service.createTask("Unfinished 1", "Still pending");
+    const _task2 = await service.createTask("Unfinished 2", "Also pending");
     const task3 = await service.createTask("Finished", "Will be done");
 
     // Complete one

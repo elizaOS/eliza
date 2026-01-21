@@ -11,8 +11,8 @@ import {
   countTokensSync,
   getModelTokenLimit,
   truncateToTokenLimitSync,
-} from '@polyagent/api';
-import { logger } from '../shared/logger';
+} from "@polyagent/api";
+import { logger } from "../shared/logger";
 
 export interface PromptSection {
   name: string;
@@ -31,8 +31,8 @@ export interface PromptSection {
  */
 export function buildSafePrompt(
   sections: PromptSection[],
-  model = 'unsloth/Qwen3-4B-128K',
-  safetyMargin = 2000
+  model = "unsloth/Qwen3-4B-128K",
+  safetyMargin = 2000,
 ): {
   prompt: string;
   truncated: boolean;
@@ -47,7 +47,7 @@ export function buildSafePrompt(
   const fullPrompt = sections
     .sort((a, b) => b.priority - a.priority) // Highest priority first
     .map((s) => s.content)
-    .join('\n\n');
+    .join("\n\n");
 
   // Count tokens
   const estimatedTokens = countTokensSync(fullPrompt);
@@ -69,7 +69,7 @@ export function buildSafePrompt(
       model,
       estimatedTokens,
       limit: maxPromptTokens,
-    }
+    },
   );
 
   // Keep high-priority sections, truncate low-priority
@@ -100,10 +100,10 @@ export function buildSafePrompt(
     }
   }
 
-  const finalPrompt = keptSections.join('\n\n');
+  const finalPrompt = keptSections.join("\n\n");
   const finalTokens = countTokensSync(finalPrompt);
 
-  logger.info('Prompt truncated successfully', {
+  logger.info("Prompt truncated successfully", {
     original: estimatedTokens,
     final: finalTokens,
     sectionsKept: keptSections.length,
@@ -125,19 +125,19 @@ export function buildSafePrompt(
 export function buildPrompt(
   systemPrompt: string,
   userPrompt: string,
-  model = 'unsloth/Qwen3-4B-128K'
+  model = "unsloth/Qwen3-4B-128K",
 ): string {
   const result = buildSafePrompt(
     [
-      { name: 'system', content: systemPrompt, priority: 100, minTokens: 500 },
-      { name: 'user', content: userPrompt, priority: 90, minTokens: 1000 },
+      { name: "system", content: systemPrompt, priority: 100, minTokens: 500 },
+      { name: "user", content: userPrompt, priority: 90, minTokens: 1000 },
     ],
-    model
+    model,
   );
 
   if (result.truncated) {
     logger.warn(
-      `Prompt was truncated from ${result.originalTokens} to ${result.finalTokens} tokens`
+      `Prompt was truncated from ${result.originalTokens} to ${result.finalTokens} tokens`,
     );
   }
 
@@ -149,8 +149,8 @@ export function buildPrompt(
  */
 export function willPromptFit(
   prompt: string,
-  model = 'unsloth/Qwen3-4B-128K',
-  safetyMargin = 2000
+  model = "unsloth/Qwen3-4B-128K",
+  safetyMargin = 2000,
 ): { fits: boolean; tokens: number; limit: number } {
   const tokens = countTokensSync(prompt);
   const limit = getModelTokenLimit(model) - safetyMargin;

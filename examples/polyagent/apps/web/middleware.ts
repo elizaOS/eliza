@@ -1,33 +1,33 @@
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 const ALLOWED_PATHS = new Set([
-  '/',
-  '/favicon.ico',
-  '/robots.txt',
-  '/sitemap.xml',
-  '/manifest.webmanifest',
+  "/",
+  "/favicon.ico",
+  "/robots.txt",
+  "/sitemap.xml",
+  "/manifest.webmanifest",
 ]);
 
 /**
  * Production and staging origins for CORS requests
  */
 const PRODUCTION_ORIGINS = [
-  'https://polyagent.market',
-  'https://www.polyagent.market',
-  'https://app.polyagent.market',
-  'https://privy.polyagent.market',
-  'https://staging.polyagent.market',
-  'https://app.staging.polyagent.market',
+  "https://polyagent.market",
+  "https://www.polyagent.market",
+  "https://app.polyagent.market",
+  "https://privy.polyagent.market",
+  "https://staging.polyagent.market",
+  "https://app.staging.polyagent.market",
 ] as const;
 
 /**
  * Development-only origins - only included when NODE_ENV is not 'production'
  */
 const DEV_ORIGINS = [
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://127.0.0.1:3000',
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3000",
 ] as const;
 
 /**
@@ -40,7 +40,7 @@ function getEnvOrigins(): string[] {
   if (!envOrigins) return [];
 
   return envOrigins
-    .split(',')
+    .split(",")
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
 }
@@ -53,7 +53,7 @@ function getEnvOrigins(): string[] {
 const ALLOWED_ORIGINS = new Set<string>([
   ...PRODUCTION_ORIGINS,
   ...getEnvOrigins(),
-  ...(process.env.NODE_ENV !== 'production' ? DEV_ORIGINS : []),
+  ...(process.env.NODE_ENV !== "production" ? DEV_ORIGINS : []),
 ]);
 
 /**
@@ -66,20 +66,20 @@ function isAllowedOrigin(origin: string | null): boolean {
 
 function isAssetRequest(pathname: string) {
   return (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/assets') ||
-    pathname.startsWith('/static') ||
-    pathname.startsWith('/images') ||
-    pathname.startsWith('/fonts') ||
-    pathname.startsWith('/.well-known') ||
-    pathname.startsWith('/_vercel') ||
-    pathname.startsWith('/monitoring') ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/assets") ||
+    pathname.startsWith("/static") ||
+    pathname.startsWith("/images") ||
+    pathname.startsWith("/fonts") ||
+    pathname.startsWith("/.well-known") ||
+    pathname.startsWith("/_vercel") ||
+    pathname.startsWith("/monitoring") ||
     /\.[^/]+$/.test(pathname)
   );
 }
 
 function isApiRequest(pathname: string) {
-  return pathname.startsWith('/api');
+  return pathname.startsWith("/api");
 }
 
 /**
@@ -87,7 +87,7 @@ function isApiRequest(pathname: string) {
  * Agent routes use Bearer token auth, not cookies, so they can have wildcard CORS
  */
 function isAgentApiRequest(pathname: string) {
-  return pathname.startsWith('/api/agents');
+  return pathname.startsWith("/api/agents");
 }
 
 /**
@@ -95,32 +95,32 @@ function isAgentApiRequest(pathname: string) {
  */
 function addCorsHeaders(
   response: NextResponse,
-  origin: string | null
+  origin: string | null,
 ): NextResponse {
   // For credentialed requests, must use specific origin (not *)
   if (origin && isAllowedOrigin(origin)) {
-    response.headers.set('Access-Control-Allow-Origin', origin);
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
+    response.headers.set("Access-Control-Allow-Origin", origin);
+    response.headers.set("Access-Control-Allow-Credentials", "true");
     // Vary header prevents caching issues when origin changes
-    response.headers.set('Vary', 'Origin');
+    response.headers.set("Vary", "Origin");
   }
 
   response.headers.set(
-    'Access-Control-Allow-Methods',
-    'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   );
   response.headers.set(
-    'Access-Control-Allow-Headers',
-    'Content-Type, Authorization, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Date, X-Api-Version, x-admin-token, x-dev-admin-token'
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Date, X-Api-Version, x-admin-token, x-dev-admin-token",
   );
-  response.headers.set('Access-Control-Max-Age', '86400');
+  response.headers.set("Access-Control-Max-Age", "86400");
 
   return response;
 }
 
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  const origin = request.headers.get('origin');
+  const origin = request.headers.get("origin");
 
   // Skip CORS handling for agent routes - handled in vercel.json with wildcard
   // Agent routes use Bearer token auth (not cookies), so they can use wildcard CORS
@@ -129,7 +129,7 @@ export function middleware(request: NextRequest) {
   }
 
   // Handle CORS preflight (OPTIONS) requests for API routes
-  if (request.method === 'OPTIONS' && isApiRequest(pathname)) {
+  if (request.method === "OPTIONS" && isApiRequest(pathname)) {
     const response = new NextResponse(null, { status: 204 });
     return addCorsHeaders(response, origin);
   }
@@ -142,9 +142,9 @@ export function middleware(request: NextRequest) {
 
   // Waitlist mode handling
   const waitlistFlag =
-    process.env.WAITLIST_MODE ?? process.env.NEXT_PUBLIC_WAITLIST_MODE ?? '';
-  const waitlistEnabled = ['true', '1', 'yes', 'on'].includes(
-    waitlistFlag.toLowerCase()
+    process.env.WAITLIST_MODE ?? process.env.NEXT_PUBLIC_WAITLIST_MODE ?? "";
+  const waitlistEnabled = ["true", "1", "yes", "on"].includes(
+    waitlistFlag.toLowerCase(),
   );
 
   if (!waitlistEnabled) {
@@ -156,7 +156,7 @@ export function middleware(request: NextRequest) {
   }
 
   const redirectUrl = request.nextUrl.clone();
-  redirectUrl.pathname = '/';
+  redirectUrl.pathname = "/";
   redirectUrl.search = search;
 
   return NextResponse.redirect(redirectUrl);
@@ -164,5 +164,5 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   // Run on everything (assets/API are allowed through in handler)
-  matcher: ['/(.*)'],
+  matcher: ["/(.*)"],
 };

@@ -86,15 +86,15 @@
  * ```
  */
 
-import { callGroqDirect } from '@polyagent/agents';
+import { callGroqDirect } from "@polyagent/agents";
 import {
   authenticateUser,
   checkRateLimitAndDuplicates,
   RATE_LIMIT_CONFIGS,
-} from '@polyagent/api';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@polyagent/api";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const maxDuration = 30;
 
@@ -105,14 +105,14 @@ export async function POST(req: NextRequest) {
   const rateLimitError = checkRateLimitAndDuplicates(
     user.userId,
     null, // No duplicate detection for agent generation
-    RATE_LIMIT_CONFIGS.GENERATE_AGENT_PROFILE
+    RATE_LIMIT_CONFIGS.GENERATE_AGENT_PROFILE,
   );
 
   if (rateLimitError) {
     logger.warn(
-      'Agent profile generation rate limit exceeded',
+      "Agent profile generation rate limit exceeded",
       { userId: user.userId },
-      'GenerateProfile'
+      "GenerateProfile",
     );
     return rateLimitError;
   }
@@ -121,12 +121,12 @@ export async function POST(req: NextRequest) {
   const { archetype, userProfile, existingProfile } = body;
 
   logger.info(
-    'Generating agent profile',
+    "Generating agent profile",
     {
       hasArchetype: !!archetype,
       hasExistingProfile: !!existingProfile,
     },
-    'GenerateProfile'
+    "GenerateProfile",
   );
 
   let prompt: string;
@@ -139,12 +139,12 @@ Regenerate a fresh, creative agent profile while keeping the same general theme 
 
 **Current Profile:**
 - Name: ${existingProfile.name}
-- Description: ${existingProfile.description || 'Not set'}
+- Description: ${existingProfile.description || "Not set"}
 - System Prompt: ${existingProfile.system}
-- Personality: ${existingProfile.personality || 'Not set'}
-- Trading Strategy: ${existingProfile.tradingStrategy || 'Not set'}
+- Personality: ${existingProfile.personality || "Not set"}
+- Trading Strategy: ${existingProfile.tradingStrategy || "Not set"}
 
-${userProfile?.name ? `The user creating this agent is: ${userProfile.name} (@${userProfile.username || 'user'})${userProfile.bio ? `\nUser bio: ${userProfile.bio}` : ''}` : ''}
+${userProfile?.name ? `The user creating this agent is: ${userProfile.name} (@${userProfile.username || "user"})${userProfile.bio ? `\nUser bio: ${userProfile.bio}` : ""}` : ""}
 
 Generate a JSON response with the following fields:`;
   } else if (archetype) {
@@ -155,7 +155,7 @@ Create a complete agent profile based on this archetype:
 **${archetype.name}** ${archetype.emoji}
 ${archetype.description}
 
-${userProfile?.name ? `The user creating this agent is: ${userProfile.name} (@${userProfile.username || 'user'})${userProfile.bio ? `\nUser bio: ${userProfile.bio}` : ''}` : ''}
+${userProfile?.name ? `The user creating this agent is: ${userProfile.name} (@${userProfile.username || "user"})${userProfile.bio ? `\nUser bio: ${userProfile.bio}` : ""}` : ""}
 
 Generate a JSON response with the following fields:`;
   } else {
@@ -164,7 +164,7 @@ Generate a JSON response with the following fields:`;
 
 Create a unique agent profile for an AI trading agent.
 
-${userProfile?.name ? `The user creating this agent is: ${userProfile.name} (@${userProfile.username || 'user'})${userProfile.bio ? `\nUser bio: ${userProfile.bio}` : ''}` : ''}
+${userProfile?.name ? `The user creating this agent is: ${userProfile.name} (@${userProfile.username || "user"})${userProfile.bio ? `\nUser bio: ${userProfile.bio}` : ""}` : ""}
 
 Generate a JSON response with the following fields:`;
   }
@@ -192,10 +192,10 @@ Respond ONLY with valid JSON, no markdown formatting.`;
 
   const response = await callGroqDirect({
     prompt,
-    modelSize: 'large',
+    modelSize: "large",
     temperature: 0.9,
     maxTokens: 2000,
-    actionType: 'generate_agent_profile',
+    actionType: "generate_agent_profile",
   });
 
   // Parse the AI response
@@ -206,16 +206,16 @@ Respond ONLY with valid JSON, no markdown formatting.`;
   const cleanedResponse = jsonMatch ? jsonMatch[1] : response;
   if (!cleanedResponse) {
     logger.error(
-      'Failed to extract JSON from response',
+      "Failed to extract JSON from response",
       { response },
-      'GenerateProfile'
+      "GenerateProfile",
     );
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to generate valid profile',
+        error: "Failed to generate valid profile",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
   const generated = JSON.parse(cleanedResponse.trim());
@@ -228,23 +228,23 @@ Respond ONLY with valid JSON, no markdown formatting.`;
     !Array.isArray(generated.bio)
   ) {
     logger.error(
-      'Invalid generated profile structure',
+      "Invalid generated profile structure",
       { generated },
-      'GenerateProfile'
+      "GenerateProfile",
     );
     return NextResponse.json(
       {
         success: false,
-        error: 'Generated profile missing required fields',
+        error: "Generated profile missing required fields",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
   logger.info(
     `Successfully generated profile for ${archetype.name}`,
     undefined,
-    'GenerateProfile'
+    "GenerateProfile",
   );
 
   return NextResponse.json({

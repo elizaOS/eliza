@@ -1,4 +1,5 @@
 import type { AgentRuntime } from "@elizaos/core";
+import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatPane } from "./components/ChatPane.js";
@@ -9,7 +10,6 @@ import { getAgentClient } from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
 import { useStore } from "./lib/store.js";
 import { handleTaskSlashCommand } from "./lib/task-slash-command.js";
-import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
 import type { SubAgentType, TaskEvent } from "./types.js";
 
 interface AppProps {
@@ -138,9 +138,9 @@ export function App({ runtime }: AppProps) {
       // Sync current task from session
       const storedTaskId = useStore.getState().currentTaskId;
 
-      // Initial sync
+      // Initial sync - cast OrchestratedTask to CodeTask for local store compatibility
       service.getTasks().then((tasks) => {
-        setTasks(tasks);
+        setTasks(tasks as unknown as import("./types.js").CodeTask[]);
 
         // Restore task selection from session or get from service
         if (storedTaskId && tasks.some((t) => t.id === storedTaskId)) {
@@ -156,7 +156,7 @@ export function App({ runtime }: AppProps) {
       // Listen for task events
       const handleTaskEvent = async (event: TaskEvent) => {
         const tasks = await service.getTasks();
-        setTasks(tasks);
+        setTasks(tasks as unknown as import("./types.js").CodeTask[]);
 
         if (event.type === "task:created") {
           const currentId = service.getCurrentTaskId();

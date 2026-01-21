@@ -29,21 +29,21 @@
  * const emptyBalance = toSafeString(null); // "0"
  * ```
  */
-export function toSafeString(value: unknown, defaultValue = '0'): string {
+export function toSafeString(value: unknown, defaultValue = "0"): string {
   if (value === null || value === undefined) {
     return defaultValue;
   }
 
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     return value;
   }
 
-  if (typeof value === 'number') {
+  if (typeof value === "number") {
     return value.toString();
   }
 
   // Object with toString method (like Decimal)
-  if (typeof value === 'object' && 'toString' in value) {
+  if (typeof value === "object" && "toString" in value) {
     return (value as { toString: () => string }).toString();
   }
 
@@ -73,17 +73,17 @@ export function toSafeNumber(value: unknown, defaultValue = 0): number {
     return defaultValue;
   }
 
-  if (typeof value === 'number') {
+  if (typeof value === "number") {
     return value;
   }
 
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const parsed = Number.parseFloat(value);
     return Number.isNaN(parsed) ? defaultValue : parsed;
   }
 
   // Object with toString method - convert to string then parse
-  if (typeof value === 'object' && 'toString' in value) {
+  if (typeof value === "object" && "toString" in value) {
     const str = (value as { toString: () => string }).toString();
     const parsed = Number.parseFloat(str);
     return Number.isNaN(parsed) ? defaultValue : parsed;

@@ -77,7 +77,10 @@ impl Provider for KnowledgeProvider {
                 }
             }
             Err(e) => {
-                runtime.log_warning("provider:knowledge", &format!("Error searching knowledge: {}", e));
+                runtime.log_warning(
+                    "provider:knowledge",
+                    &format!("Error searching knowledge: {}", e),
+                );
             }
         }
 
@@ -94,4 +97,3 @@ impl Provider for KnowledgeProvider {
             .with_data("query", query_text.clone()))
     }
 }
-

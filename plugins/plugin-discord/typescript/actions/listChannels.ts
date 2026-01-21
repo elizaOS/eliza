@@ -9,8 +9,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { DISCORD_SERVICE_NAME } from "../constants";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 
 const spec = requireActionSpec("LIST_CHANNELS");

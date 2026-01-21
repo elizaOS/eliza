@@ -52,7 +52,7 @@ impl McpClient {
                 "capabilities": {},
                 "clientInfo": {
                     "name": "elizaos-plugin-mcp",
-                    "version": "2.0.0"
+                    "version": "2.0.0-alpha"
                 }
             })),
         );

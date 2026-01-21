@@ -86,7 +86,11 @@ impl FollowUpService {
     }
 
     /// Get upcoming follow-ups.
-    pub fn get_upcoming_follow_ups(&self, days_ahead: i64, include_overdue: bool) -> Vec<&FollowUpTask> {
+    pub fn get_upcoming_follow_ups(
+        &self,
+        days_ahead: i64,
+        include_overdue: bool,
+    ) -> Vec<&FollowUpTask> {
         let now = Utc::now();
         let future = now + Duration::days(days_ahead);
 
@@ -147,10 +151,3 @@ impl Service for FollowUpService {
         Ok(())
     }
 }
-
-
-
-
-
-
-

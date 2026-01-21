@@ -137,14 +137,14 @@
  * @see {@link ControlBuilder} for field definition
  */
 
-import type { Plugin, IAgentRuntime } from '@elizaos/core';
+import type { Plugin, IAgentRuntime } from "@elizaos/core";
 
 // ============================================================================
 // TYPE EXPORTS
 // ============================================================================
 
 // Types - all interfaces and type definitions
-export * from './types.ts';
+export * from "./types";
 
 // ============================================================================
 // BUILT-IN TYPES EXPORTS
@@ -157,22 +157,36 @@ export {
   registerBuiltinTypes,
   getBuiltinType,
   isBuiltinType,
-} from './builtins.ts';
+} from "./builtins";
 
 // ============================================================================
 // VALIDATION EXPORTS
 // Field validation, type coercion, and custom type registration
 // ============================================================================
 
-export { validateField, formatValue, parseValue, matchesMimeType } from './validation.ts';
-export { registerTypeHandler, getTypeHandler, clearTypeHandlers } from './validation.ts';
+export {
+  validateField,
+  formatValue,
+  parseValue,
+  matchesMimeType,
+} from "./validation";
+export {
+  registerTypeHandler,
+  getTypeHandler,
+  clearTypeHandlers,
+} from "./validation";
 
 // ============================================================================
 // INTENT DETECTION EXPORTS
 // Two-tier intent detection (fast path + LLM fallback)
 // ============================================================================
 
-export { quickIntentDetect, isLifecycleIntent, isUXIntent, hasDataToExtract } from './intent.ts';
+export {
+  quickIntentDetect,
+  isLifecycleIntent,
+  isUXIntent,
+  hasDataToExtract,
+} from "./intent";
 
 // ============================================================================
 // STORAGE EXPORTS
@@ -189,14 +203,18 @@ export {
   getSubmissions,
   getAutofillData,
   saveAutofillData,
-} from './storage.ts';
+} from "./storage";
 
 // ============================================================================
 // EXTRACTION EXPORTS
 // LLM-based field extraction from natural language
 // ============================================================================
 
-export { llmIntentAndExtract, extractSingleField, detectCorrection } from './extraction.ts';
+export {
+  llmIntentAndExtract,
+  extractSingleField,
+  detectCorrection,
+} from "./extraction";
 
 // ============================================================================
 // TTL & EFFORT EXPORTS
@@ -211,28 +229,28 @@ export {
   shouldConfirmCancel,
   formatTimeRemaining,
   formatEffort,
-} from './ttl.ts';
+} from "./ttl";
 
 // ============================================================================
 // DEFAULTS EXPORTS
 // Sensible default value application
 // ============================================================================
 
-export { applyControlDefaults, applyFormDefaults, prettify } from './defaults.ts';
+export { applyControlDefaults, applyFormDefaults, prettify } from "./defaults";
 
 // ============================================================================
 // BUILDER API EXPORTS
 // Fluent API for defining forms and controls
 // ============================================================================
 
-export { FormBuilder, ControlBuilder, Form, C } from './builder.ts';
+export { FormBuilder, ControlBuilder, Form, C } from "./builder";
 
 // ============================================================================
 // SERVICE EXPORT
 // Central form management service
 // ============================================================================
 
-export { FormService } from './service.ts';
+export { FormService } from "./service";
 
 // ============================================================================
 // COMPONENT EXPORTS
@@ -240,16 +258,16 @@ export { FormService } from './service.ts';
 // ============================================================================
 
 // Provider - injects form context into agent state
-export { formContextProvider } from './providers/context.ts';
+export { formContextProvider } from "./providers/context";
 
 // Evaluator - extracts fields and handles intents
-export { formEvaluator } from './evaluators/extractor.ts';
+export { formEvaluator } from "./evaluators/extractor";
 
 // Action - fast-path restore for stashed forms
-export { formRestoreAction } from './actions/restore.ts';
+export { formRestoreAction } from "./actions/restore";
 
 // Tasks - background processing for nudges and cleanup
-export { formNudgeWorker, processEntityNudges } from './tasks/nudge.ts';
+export { formNudgeWorker, processEntityNudges } from "./tasks/nudge";
 
 // ============================================================================
 // PLUGIN DEFINITION
@@ -274,17 +292,17 @@ export { formNudgeWorker, processEntityNudges } from './tasks/nudge.ts';
  * 5. The agent (via REPLY) handles the conversation naturally
  */
 export const formPlugin: Plugin = {
-  name: 'form',
-  description: 'Agent-native conversational forms for data collection',
+  name: "form",
+  description: "Agent-native conversational forms for data collection",
 
   // Service for form management
   services: [
     // FormService is registered as a static class
     // It will be instantiated by the runtime
     {
-      serviceType: 'FORM',
+      serviceType: "FORM",
       start: async (runtime: IAgentRuntime) => {
-        const { FormService } = await import('./service.ts');
+        const { FormService } = await import("./service");
         return FormService.start(runtime);
       },
     } as any,
@@ -294,10 +312,10 @@ export const formPlugin: Plugin = {
   providers: [
     // Import dynamically to avoid circular deps
     {
-      name: 'FORM_CONTEXT',
-      description: 'Provides context about active form sessions',
+      name: "FORM_CONTEXT",
+      description: "Provides context about active form sessions",
       get: async (runtime, message, state) => {
-        const { formContextProvider } = await import('./providers/context.ts');
+        const { formContextProvider } = await import("./providers/context");
         return formContextProvider.get(runtime, message, state);
       },
     },
@@ -306,16 +324,16 @@ export const formPlugin: Plugin = {
   // Evaluator for field extraction
   evaluators: [
     {
-      name: 'form_evaluator',
-      description: 'Extracts form fields and handles form intents',
-      similes: ['FORM_EXTRACTION', 'FORM_HANDLER'],
+      name: "form_evaluator",
+      description: "Extracts form fields and handles form intents",
+      similes: ["FORM_EXTRACTION", "FORM_HANDLER"],
       examples: [],
       validate: async (runtime, message, state) => {
-        const { formEvaluator } = await import('./evaluators/extractor.ts');
+        const { formEvaluator } = await import("./evaluators/extractor");
         return formEvaluator.validate(runtime, message, state);
       },
       handler: async (runtime, message, state) => {
-        const { formEvaluator } = await import('./evaluators/extractor.ts');
+        const { formEvaluator } = await import("./evaluators/extractor");
         return formEvaluator.handler(runtime, message, state);
       },
     },
@@ -324,27 +342,33 @@ export const formPlugin: Plugin = {
   // Action for restoring stashed forms
   actions: [
     {
-      name: 'FORM_RESTORE',
-      similes: ['RESUME_FORM', 'CONTINUE_FORM'],
-      description: 'Restore a previously stashed form session',
+      name: "FORM_RESTORE",
+      similes: ["RESUME_FORM", "CONTINUE_FORM"],
+      description: "Restore a previously stashed form session",
       validate: async (runtime, message, state) => {
-        const { formRestoreAction } = await import('./actions/restore.ts');
+        const { formRestoreAction } = await import("./actions/restore");
         return formRestoreAction.validate(runtime, message, state);
       },
       handler: async (runtime, message, state, options, callback) => {
-        const { formRestoreAction } = await import('./actions/restore.ts');
-        return formRestoreAction.handler(runtime, message, state, options, callback);
+        const { formRestoreAction } = await import("./actions/restore");
+        return formRestoreAction.handler(
+          runtime,
+          message,
+          state,
+          options,
+          callback,
+        );
       },
       examples: [
         [
           {
-            name: '{{user1}}',
-            content: { text: 'Resume my form' },
+            name: "{{user1}}",
+            content: { text: "Resume my form" },
           },
           {
-            name: '{{agentName}}',
+            name: "{{agentName}}",
             content: {
-              text: 'I\'ve restored your form. Let\'s continue where you left off.',
+              text: "I've restored your form. Let's continue where you left off.",
             },
           },
         ],
@@ -354,4 +378,3 @@ export const formPlugin: Plugin = {
 };
 
 export default formPlugin;
-

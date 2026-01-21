@@ -57,9 +57,8 @@ async fn get_runtime() -> Result<Arc<AgentRuntime>, String> {
 
         web_sys::console::log_1(&"elizaOS runtime initialized successfully".into());
 
-        let arc_runtime = Arc::new(runtime);
-        RUNTIME = Some(arc_runtime.clone());
-        Ok(arc_runtime)
+        RUNTIME = Some(runtime.clone());
+        Ok(runtime)
     }
 }
 

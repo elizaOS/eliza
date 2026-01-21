@@ -25,4 +25,3 @@ def coder_env(tmp_allowed_dir: Path) -> None:
 def service(coder_env: None) -> CoderService:
     # Reads config from env during init.
     return CoderService()
-

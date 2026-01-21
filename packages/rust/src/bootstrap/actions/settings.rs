@@ -10,8 +10,8 @@ use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
 use super::Action;
-use once_cell::sync::Lazy;
 use crate::generated::spec_helpers::require_action_spec;
+use once_cell::sync::Lazy;
 
 /// Action for updating settings.
 pub struct UpdateSettingsAction;
@@ -23,7 +23,13 @@ impl Action for UpdateSettingsAction {
     }
 
     fn similes(&self) -> &[&'static str] {
-        &["CHANGE_SETTINGS", "MODIFY_SETTINGS", "CONFIGURE", "SET_PREFERENCE", "UPDATE_CONFIG"]
+        &[
+            "CHANGE_SETTINGS",
+            "MODIFY_SETTINGS",
+            "CONFIGURE",
+            "SET_PREFERENCE",
+            "UPDATE_CONFIG",
+        ]
     }
 
     fn description(&self) -> &'static str {
@@ -48,7 +54,10 @@ impl Action for UpdateSettingsAction {
 
         // Compose state
         let composed_state = runtime
-            .compose_state(message, &["RECENT_MESSAGES", "ACTION_STATE", "AGENT_SETTINGS"])
+            .compose_state(
+                message,
+                &["RECENT_MESSAGES", "ACTION_STATE", "AGENT_SETTINGS"],
+            )
             .await?;
 
         // Get current settings
@@ -103,14 +112,16 @@ impl Action for UpdateSettingsAction {
         if let (Some(k), Some(v)) = (key.clone(), value.clone()) {
             runtime.set_setting(&k, &v).await?;
 
-            Ok(ActionResult::success(format!("Updated setting: {} = {}", k, v))
-                .with_value("success", true)
-                .with_value("settingsUpdated", true)
-                .with_value("updatedKey", k.clone())
-                .with_data("actionName", "UPDATE_SETTINGS")
-                .with_data("key", k)
-                .with_data("value", v)
-                .with_data("thought", thought))
+            Ok(
+                ActionResult::success(format!("Updated setting: {} = {}", k, v))
+                    .with_value("success", true)
+                    .with_value("settingsUpdated", true)
+                    .with_value("updatedKey", k.clone())
+                    .with_data("actionName", "UPDATE_SETTINGS")
+                    .with_data("key", k)
+                    .with_data("value", v)
+                    .with_data("thought", thought),
+            )
         } else {
             Ok(ActionResult::success("No settings to update")
                 .with_value("success", true)
@@ -120,4 +131,3 @@ impl Action for UpdateSettingsAction {
         }
     }
 }
-

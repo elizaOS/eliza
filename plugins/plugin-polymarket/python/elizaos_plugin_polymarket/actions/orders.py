@@ -10,7 +10,6 @@ from elizaos_plugin_polymarket.providers import get_authenticated_clob_client
 from elizaos_plugin_polymarket.types import (
     OrderParams,
     OrderResponse,
-    OrderSide,
     OrderType,
 )
 
@@ -220,9 +219,11 @@ async def get_open_orders(
                 "CLOB client missing get_orders method",
             )
 
-        response_obj = cast(Callable[..., object], get_orders)(**params) if params else cast(
-            Callable[..., object], get_orders
-        )()
+        response_obj = (
+            cast(Callable[..., object], get_orders)(**params)
+            if params
+            else cast(Callable[..., object], get_orders)()
+        )
 
         if not isinstance(response_obj, dict):
             return []

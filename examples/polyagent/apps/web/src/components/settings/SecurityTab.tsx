@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { logger } from '@polyagent/shared';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { logger } from "@polyagent/shared";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 import {
   AlertCircle,
   CheckCircle2,
@@ -11,9 +11,9 @@ import {
   LogOut,
   Shield,
   Wallet,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
+} from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 
 /**
  * Security tab component for managing account security settings.
@@ -48,34 +48,34 @@ export function SecurityTab() {
 
   const handleLogout = async () => {
     await logout();
-    toast.success('Logged out successfully');
+    toast.success("Logged out successfully");
     logger.info(
-      'User logged out from security settings',
+      "User logged out from security settings",
       undefined,
-      'SecurityTab'
+      "SecurityTab",
     );
   };
 
   const getWalletTypeDisplay = (walletClientType: string) => {
     switch (walletClientType) {
-      case 'privy':
-      case 'privy-v2':
-        return 'Embedded Wallet';
-      case 'metamask':
-        return 'MetaMask';
-      case 'coinbase_wallet':
-        return 'Coinbase Wallet';
-      case 'rainbow':
-        return 'Rainbow';
-      case 'rabby_wallet':
-        return 'Rabby';
+      case "privy":
+      case "privy-v2":
+        return "Embedded Wallet";
+      case "metamask":
+        return "MetaMask";
+      case "coinbase_wallet":
+        return "Coinbase Wallet";
+      case "rainbow":
+        return "Rainbow";
+      case "rabby_wallet":
+        return "Rabby";
       default:
-        return 'External Wallet';
+        return "External Wallet";
     }
   };
 
   const isEmbeddedWallet = (walletClientType: string) => {
-    return walletClientType === 'privy' || walletClientType === 'privy-v2';
+    return walletClientType === "privy" || walletClientType === "privy-v2";
   };
 
   return (
@@ -195,7 +195,7 @@ export function SecurityTab() {
                       {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
                     </code>
                     <button
-                      onClick={() => copyToClipboard(wallet.address, 'Address')}
+                      onClick={() => copyToClipboard(wallet.address, "Address")}
                       className="rounded p-1 hover:bg-background"
                       title="Copy full address"
                     >
@@ -235,8 +235,8 @@ export function SecurityTab() {
             <div className="text-muted-foreground text-sm">
               <strong className="text-foreground">Embedded wallets</strong> are
               created and managed by Privy, enabling gasless transactions. You
-              can export your private key at any time.{' '}
-              <strong className="text-foreground">External wallets</strong>{' '}
+              can export your private key at any time.{" "}
+              <strong className="text-foreground">External wallets</strong>{" "}
               require you to pay gas fees.
             </div>
           </div>
@@ -287,7 +287,7 @@ export function SecurityTab() {
           </a>
         </div>
         <p className="mt-3 text-muted-foreground text-xs">
-          For security concerns or to report vulnerabilities, contact{' '}
+          For security concerns or to report vulnerabilities, contact{" "}
           <a
             href="mailto:security@elizas.com"
             className="text-[#0066FF] hover:underline"

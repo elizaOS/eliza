@@ -1,11 +1,11 @@
-import { initializeAgent, shutdownAgent } from "../lib/agent.js";
+import { execFile } from "node:child_process";
+import * as crypto from "node:crypto";
+import * as path from "node:path";
+import { promisify } from "node:util";
 import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
+import { initializeAgent, shutdownAgent } from "../lib/agent.js";
 import { setCwd } from "../lib/cwd.js";
 import type { SubAgentType } from "../types.js";
-import * as path from "node:path";
-import * as crypto from "node:crypto";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 
 type RunResult = {
   type: SubAgentType;
@@ -49,7 +49,12 @@ async function getRepoRoot(startDir: string): Promise<string> {
 
 async function createDetachedWorktree(repoRoot: string): Promise<string> {
   const rand = crypto.randomBytes(6).toString("hex");
-  const dir = path.join(repoRoot, ".eliza", "e2e-worktrees", `${Date.now()}-${rand}`);
+  const dir = path.join(
+    repoRoot,
+    ".eliza",
+    "e2e-worktrees",
+    `${Date.now()}-${rand}`,
+  );
   const add = await git(["worktree", "add", "--detach", dir, "HEAD"], {
     cwd: repoRoot,
   });
@@ -71,7 +76,10 @@ async function gitStatusPorcelain(cwd: string): Promise<string> {
   return r.stdout.trim();
 }
 
-async function runOne(service: CodeTaskService, type: SubAgentType): Promise<RunResult> {
+async function runOne(
+  service: CodeTaskService,
+  type: SubAgentType,
+): Promise<RunResult> {
   const task = await service.createCodeTask(
     `E2E: ${type}`,
     [
@@ -176,11 +184,15 @@ async function main(): Promise<void> {
       );
     }
 
-    logLine(`[${nowIso()}] running e2e sub-agent checks: ${runnable.join(", ")}`);
+    logLine(
+      `[${nowIso()}] running e2e sub-agent checks: ${runnable.join(", ")}`,
+    );
 
     const before = await gitStatusPorcelain(worktree);
     if (before.length > 0) {
-      logLine(`[${nowIso()}] warning: worktree is not clean before run:\n${before}`);
+      logLine(
+        `[${nowIso()}] warning: worktree is not clean before run:\n${before}`,
+      );
     }
 
     const results: RunResult[] = [];
@@ -207,7 +219,8 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       logLine("");
       const parts: string[] = [];
-      if (failed.length > 0) parts.push(`${failed.length} sub-agent(s) did not complete`);
+      if (failed.length > 0)
+        parts.push(`${failed.length} sub-agent(s) did not complete`);
       if (repoDirtyAfter) parts.push("repository changed during run");
       logLine(`FAILED: ${parts.join("; ")}`);
     } else {
@@ -221,4 +234,3 @@ async function main(): Promise<void> {
 }
 
 await main();
-

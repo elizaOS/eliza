@@ -174,15 +174,15 @@
  * @see {@link /src/app/agents/[agentId]/page.tsx} Agent detail page
  */
 
-import { agentService, getAgentConfig } from '@polyagent/agents';
-import { authenticateUser } from '@polyagent/api';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { agentService, getAgentConfig } from "@polyagent/agents";
+import { authenticateUser } from "@polyagent/api";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(req);
   const { agentId } = await params;
@@ -196,20 +196,20 @@ export async function GET(
   return NextResponse.json({
     success: true,
     agent: {
-      id: agent!.id,
-      username: agent!.username,
-      name: agent!.displayName,
-      description: agent!.bio,
-      profileImageUrl: agent!.profileImageUrl,
+      id: agent?.id,
+      username: agent?.username,
+      name: agent?.displayName,
+      description: agent?.bio,
+      profileImageUrl: agent?.profileImageUrl,
       // Parse trading strategy from system prompt if it was appended
       system: (() => {
-        const system = config?.systemPrompt || '';
+        const system = config?.systemPrompt || "";
         const tradingStrategyMatch = system.match(
-          /\n\nTrading Strategy:\s*(.+)$/s
+          /\n\nTrading Strategy:\s*(.+)$/s,
         );
         if (tradingStrategyMatch && config?.tradingStrategy) {
           // If trading strategy exists in DB and is also in system prompt, extract base system
-          return system.replace(/\n\nTrading Strategy:\s*.+$/s, '').trim();
+          return system.replace(/\n\nTrading Strategy:\s*.+$/s, "").trim();
         }
         return system;
       })(),
@@ -217,14 +217,14 @@ export async function GET(
         // Use messageExamples (ElizaOS bio array) if available, otherwise fall back to bio string
         if (config?.messageExamples) {
           const parsed =
-            typeof config.messageExamples === 'string'
+            typeof config.messageExamples === "string"
               ? JSON.parse(config.messageExamples)
               : config.messageExamples;
           if (Array.isArray(parsed)) {
-            return parsed.filter((b: string) => b && b.trim());
+            return parsed.filter((b: string) => b?.trim());
           }
         }
-        return agent!.bio ? agent!.bio.split('\n').filter((b) => b.trim()) : [];
+        return agent?.bio ? agent?.bio.split("\n").filter((b) => b.trim()) : [];
       })(),
       personality:
         config?.personality ||
@@ -232,27 +232,27 @@ export async function GET(
           // If personality is not set but bio array exists, join it for display
           if (config?.messageExamples) {
             const parsed =
-              typeof config.messageExamples === 'string'
+              typeof config.messageExamples === "string"
                 ? JSON.parse(config.messageExamples)
                 : config.messageExamples;
             if (Array.isArray(parsed)) {
-              return parsed.filter((b: string) => b && b.trim()).join('\n');
+              return parsed.filter((b: string) => b?.trim()).join("\n");
             }
           }
-          return '';
+          return "";
         })(),
       tradingStrategy:
         config?.tradingStrategy ||
         (() => {
           // Extract trading strategy from system prompt if it was appended
-          const system = config?.systemPrompt || '';
+          const system = config?.systemPrompt || "";
           const tradingStrategyMatch = system.match(
-            /\n\nTrading Strategy:\s*(.+)$/s
+            /\n\nTrading Strategy:\s*(.+)$/s,
           );
-          return tradingStrategyMatch ? tradingStrategyMatch[1]!.trim() : '';
+          return tradingStrategyMatch ? tradingStrategyMatch[1]?.trim() : "";
         })(),
-      virtualBalance: Number(agent!.virtualBalance ?? 0),
-      isActive: config?.status === 'active',
+      virtualBalance: Number(agent?.virtualBalance ?? 0),
+      isActive: config?.status === "active",
       autonomousEnabled: config?.autonomousTrading ?? false,
       autonomousTrading: config?.autonomousTrading ?? false,
       autonomousPosting: config?.autonomousPosting ?? false,
@@ -260,27 +260,27 @@ export async function GET(
       autonomousDMs: config?.autonomousDMs ?? false,
       autonomousGroupChats: config?.autonomousGroupChats ?? false,
       a2aEnabled: config?.a2aEnabled ?? false,
-      modelTier: config?.modelTier ?? 'lite',
-      status: config?.status ?? 'idle',
+      modelTier: config?.modelTier ?? "lite",
+      status: config?.status ?? "idle",
       errorMessage: config?.errorMessage ?? null,
-      lifetimePnL: agent!.lifetimePnL.toString(),
+      lifetimePnL: agent?.lifetimePnL.toString(),
       totalTrades: performance.totalTrades,
       profitableTrades: performance.profitableTrades,
       winRate: performance.winRate,
       lastTickAt: config?.lastTickAt?.toISOString(),
       lastChatAt: config?.lastChatAt?.toISOString(),
-      walletAddress: agent!.walletAddress,
-      agent0TokenId: agent!.agent0TokenId,
-      onChainRegistered: agent!.onChainRegistered,
-      createdAt: agent!.createdAt.toISOString(),
-      updatedAt: agent!.updatedAt.toISOString(),
+      walletAddress: agent?.walletAddress,
+      agent0TokenId: agent?.agent0TokenId,
+      onChainRegistered: agent?.onChainRegistered,
+      createdAt: agent?.createdAt.toISOString(),
+      updatedAt: agent?.updatedAt.toISOString(),
     },
   });
 }
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(req);
   const { agentId } = await params;
@@ -312,8 +312,8 @@ export async function PUT(
   if (bio !== undefined) {
     if (Array.isArray(bio)) {
       updates.bio = bio;
-    } else if (bio !== null && typeof bio === 'string') {
-      updates.bio = bio.split('\n').filter((b: string) => b.trim());
+    } else if (bio !== null && typeof bio === "string") {
+      updates.bio = bio.split("\n").filter((b: string) => b.trim());
     } else {
       updates.bio = [];
     }
@@ -336,7 +336,7 @@ export async function PUT(
   const agent = await agentService.updateAgent(agentId, user.id, updates);
   const updatedConfig = await getAgentConfig(agentId);
 
-  logger.info(`Agent updated via API: ${agentId}`, undefined, 'AgentsAPI');
+  logger.info(`Agent updated via API: ${agentId}`, undefined, "AgentsAPI");
 
   return NextResponse.json({
     success: true,
@@ -349,7 +349,7 @@ export async function PUT(
       virtualBalance: Number(agent.virtualBalance ?? 0),
       autonomousTrading: updatedConfig?.autonomousTrading ?? false,
       autonomousPosting: updatedConfig?.autonomousPosting ?? false,
-      modelTier: updatedConfig?.modelTier ?? 'lite',
+      modelTier: updatedConfig?.modelTier ?? "lite",
       updatedAt: agent.updatedAt.toISOString(),
     },
   });
@@ -357,17 +357,17 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(req);
   const { agentId } = await params;
 
   await agentService.deleteAgent(agentId, user.id);
 
-  logger.info(`Agent deleted via API: ${agentId}`, undefined, 'AgentsAPI');
+  logger.info(`Agent deleted via API: ${agentId}`, undefined, "AgentsAPI");
 
   return NextResponse.json({
     success: true,
-    message: 'Agent deleted successfully',
+    message: "Agent deleted successfully",
   });
 }

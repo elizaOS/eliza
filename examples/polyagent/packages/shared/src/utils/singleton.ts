@@ -79,7 +79,7 @@ export function createGlobalSingleton<T>(globalKey: string): {
  */
 export function createPortSingleton<T>(
   globalKey: string,
-  portKey = `${globalKey}Port`
+  portKey = `${globalKey}Port`,
 ): {
   getInstance: (port?: number) => T | null;
   setInstance: (instance: T, port?: number) => void;

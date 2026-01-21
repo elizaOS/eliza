@@ -6,7 +6,7 @@
  * to be injected from the application layer.
  */
 
-import { performanceMonitor } from './performance-monitor';
+import { performanceMonitor } from "./performance-monitor";
 
 // Storage client interface - to be injected from app
 export interface StorageClient {
@@ -15,18 +15,18 @@ export interface StorageClient {
     filename: string;
     contentType: string;
     folder?:
-      | 'profiles'
-      | 'covers'
-      | 'posts'
-      | 'user-profiles'
-      | 'user-banners'
-      | 'actors'
-      | 'actor-banners'
-      | 'organizations'
-      | 'org-banners'
-      | 'logos'
-      | 'icons'
-      | 'static';
+      | "profiles"
+      | "covers"
+      | "posts"
+      | "user-profiles"
+      | "user-banners"
+      | "actors"
+      | "actor-banners"
+      | "organizations"
+      | "org-banners"
+      | "logos"
+      | "icons"
+      | "static";
     optimize?: boolean;
   }): Promise<{ url: string; key: string; size: number }>;
 }
@@ -40,7 +40,7 @@ export function setStorageClient(client: StorageClient): void {
 function getStorageClient(): StorageClient {
   if (!storageClientInstance) {
     throw new Error(
-      'StorageClient not initialized. Call setStorageClient() first.'
+      "StorageClient not initialized. Call setStorageClient() first.",
     );
   }
   return storageClientInstance;
@@ -54,18 +54,18 @@ export async function monitoredUploadImage(options: {
   filename: string;
   contentType: string;
   folder?:
-    | 'profiles'
-    | 'covers'
-    | 'posts'
-    | 'user-profiles'
-    | 'user-banners'
-    | 'actors'
-    | 'actor-banners'
-    | 'organizations'
-    | 'org-banners'
-    | 'logos'
-    | 'icons'
-    | 'static';
+    | "profiles"
+    | "covers"
+    | "posts"
+    | "user-profiles"
+    | "user-banners"
+    | "actors"
+    | "actor-banners"
+    | "organizations"
+    | "org-banners"
+    | "logos"
+    | "icons"
+    | "static";
   optimize?: boolean;
 }): Promise<{ url: string; key: string; size: number }> {
   const startTime = performance.now();
@@ -74,7 +74,7 @@ export async function monitoredUploadImage(options: {
   const result = await storageClient.uploadImage(options);
   const latency = performance.now() - startTime;
 
-  performanceMonitor.recordStorageOperation('upload', latency, result.size);
+  performanceMonitor.recordStorageOperation("upload", latency, result.size);
 
   return result;
 }

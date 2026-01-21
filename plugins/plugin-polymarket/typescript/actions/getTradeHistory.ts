@@ -1,20 +1,20 @@
-import {
-  type Action,
-  type ActionResult,
-  type Content,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  Content,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 import type { ClobClient } from "@polymarket/clob-client";
 import { POLYMARKET_SERVICE_NAME } from "../constants";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { PolymarketService } from "../services/polymarket";
 import { getTradeHistoryTemplate } from "../templates";
 import type { GetTradesParams, TradeEntry, TradeHistoryActivityData } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 /**
  * Type assertion helper for trades from Polymarket API.

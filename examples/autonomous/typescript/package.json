@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-autonomous",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Sandboxed autonomous loop using local-ai + shell + inmemorydb",
   "type": "module",
   "private": true,

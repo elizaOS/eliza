@@ -10,4 +10,3 @@ pub enum CodeError {
     #[error("process error: {0}")]
     Process(String),
 }
-

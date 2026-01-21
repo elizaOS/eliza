@@ -344,16 +344,10 @@ class JSONSchema(BaseModel):
     """JSON schema definition for object generation."""
 
     type: str = Field(..., description="JSON schema type")
-    properties: dict[str, "JSONSchema"] | None = Field(
-        default=None, description="Nested properties"
-    )
-    required: list[str] | None = Field(
-        default=None, description="Required property names"
-    )
-    items: "JSONSchema" | None = Field(default=None, description="Array item schema")
-    extra: dict[str, object] | None = Field(
-        default=None, description="Additional schema fields"
-    )
+    properties: dict[str, JSONSchema] | None = Field(default=None, description="Nested properties")
+    required: list[str] | None = Field(default=None, description="Required property names")
+    items: JSONSchema | None = Field(default=None, description="Array item schema")
+    extra: dict[str, object] | None = Field(default=None, description="Additional schema fields")
 
     model_config = {"populate_by_name": True, "extra": "allow"}
 
@@ -428,7 +422,9 @@ class ResearchMcpTool(BaseModel):
 
 
 # Union type for research tools
-ResearchTool = ResearchWebSearchTool | ResearchFileSearchTool | ResearchCodeInterpreterTool | ResearchMcpTool
+ResearchTool = (
+    ResearchWebSearchTool | ResearchFileSearchTool | ResearchCodeInterpreterTool | ResearchMcpTool
+)
 
 
 class ResearchParams(BaseModel):
@@ -447,13 +443,16 @@ class ResearchParams(BaseModel):
         default=None, description="Run in background mode for long tasks"
     )
     tools: list[ResearchTool] | None = Field(
-        default=None, description="Research tools (web_search_preview, file_search, mcp, code_interpreter)"
+        default=None,
+        description="Research tools (web_search_preview, file_search, mcp, code_interpreter)",
     )
     max_tool_calls: int | None = Field(
         default=None, alias="maxToolCalls", description="Maximum number of tool calls"
     )
     reasoning_summary: str | None = Field(
-        default=None, alias="reasoningSummary", description="Include reasoning summary ('auto' or 'none')"
+        default=None,
+        alias="reasoningSummary",
+        description="Include reasoning summary ('auto' or 'none')",
     )
     model: str | None = Field(
         default=None, description="Model variant (o3-deep-research or o4-mini-deep-research)"
@@ -482,11 +481,11 @@ class ResearchResult(BaseModel):
         default_factory=list, description="Annotations linking text to sources"
     )
     output_items: list[dict[str, Any]] = Field(
-        default_factory=list, alias="outputItems", description="Output items showing research process"
+        default_factory=list,
+        alias="outputItems",
+        description="Output items showing research process",
     )
-    status: str | None = Field(
-        default=None, description="Status for background requests"
-    )
+    status: str | None = Field(default=None, description="Status for background requests")
 
     model_config = {"populate_by_name": True}
 

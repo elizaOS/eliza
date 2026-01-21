@@ -1,5 +1,4 @@
 import type { Logger } from "../logger";
-import type { JsonValue } from "./proto.js";
 import type { Character } from "./agent";
 import type {
   Action,
@@ -30,6 +29,7 @@ import type {
   ServiceClass,
 } from "./plugin";
 import type { ChannelType, Content, UUID } from "./primitives";
+import type { JsonValue } from "./proto.js";
 import type { Service, ServiceTypeName } from "./service";
 import type { State } from "./state";
 import type { TaskWorker } from "./task";

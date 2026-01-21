@@ -1,5 +1,5 @@
-import { cn } from '@polyagent/shared';
-import type React from 'react';
+import { cn } from "@polyagent/shared";
+import type React from "react";
 
 /**
  * Badge component for displaying labels and status indicators.
@@ -15,8 +15,8 @@ import type React from 'react';
  * <Badge variant="default">New</Badge>
  * ```
  */
-export interface BadgeProps extends React.ComponentPropsWithoutRef<'span'> {
-  variant?: 'default' | 'secondary' | 'outline' | 'destructive';
+export interface BadgeProps extends React.ComponentPropsWithoutRef<"span"> {
+  variant?: "default" | "secondary" | "outline" | "destructive";
 }
 
 export const Badge = ({
@@ -31,4 +31,4 @@ export const Badge = ({
     </span>
   );
 };
-export const badgeVariants = () => '';
+export const badgeVariants = () => "";

@@ -1,11 +1,11 @@
-import {
-  type Action,
-  type ActionResult,
-  type Content,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  Content,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 import {
   type ClobClient,
@@ -13,12 +13,16 @@ import {
   Side,
   type UserOrder,
 } from "@polymarket/clob-client";
-import { GAMMA_API_URL, POLYMARKET_PROVIDER_CACHE_KEY, POLYMARKET_SERVICE_NAME } from "../constants";
+import {
+  GAMMA_API_URL,
+  POLYMARKET_PROVIDER_CACHE_KEY,
+  POLYMARKET_SERVICE_NAME,
+} from "../constants";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { PolymarketService } from "../services/polymarket";
 import { orderTemplate } from "../templates";
 import type { OrderResponse } from "../types";
 import { initializeClobClient, initializeClobClientWithCreds } from "../utils/clobClient";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
   callLLMWithTimeout,
   isLLMError,
@@ -81,7 +85,7 @@ interface SearchMarketResult {
 
 /**
  * Search for a market by name and return matching token info
- * Handles both direct market searches ("Miami Heat playoffs") and 
+ * Handles both direct market searches ("Miami Heat playoffs") and
  * event+market searches ("Where will Giannis be traded? Miami Heat")
  */
 async function searchMarketByName(
@@ -122,15 +126,15 @@ async function searchMarketByName(
 
       const eventTitle = (event.title || "").toLowerCase();
       const eventTitleWords = eventTitle.split(/\s+/).filter((w) => w.length > 2);
-      
+
       // Words from search that match the event title
       const eventMatchWords = searchWords.filter((sw) =>
         eventTitleWords.some((tw) => tw.includes(sw) || sw.includes(tw))
       );
-      
+
       // Words from search that DON'T match event title (market-specific)
-      const marketSpecificWords = searchWords.filter((sw) =>
-        !eventTitleWords.some((tw) => tw.includes(sw) || sw.includes(tw))
+      const marketSpecificWords = searchWords.filter(
+        (sw) => !eventTitleWords.some((tw) => tw.includes(sw) || sw.includes(tw))
       );
 
       runtime.logger.info(
@@ -203,7 +207,9 @@ async function searchMarketByName(
     }
 
     if (bestMatch && bestScore >= Math.ceil(searchWords.length * 0.5)) {
-      runtime.logger.info(`[placeOrder] Best partial match (${bestScore}/${searchWords.length}): ${bestMatch.question}`);
+      runtime.logger.info(
+        `[placeOrder] Best partial match (${bestScore}/${searchWords.length}): ${bestMatch.question}`
+      );
       return { match: extractTokenFromMarket(bestMatch, outcome, runtime) ?? undefined };
     }
 
@@ -220,7 +226,8 @@ function extractTokenFromMarket(
   runtime: IAgentRuntime
 ): { tokenId: string; question: string; price: number } | null {
   try {
-    const tokenIds = JSON.parse(market.clobTokenIds!) as string[];
+    if (!market.clobTokenIds) return null;
+    const tokenIds = JSON.parse(market.clobTokenIds) as string[];
     const pricesStr = JSON.parse(market.outcomePrices) as string[];
     const prices = pricesStr.map((p) => parseFloat(p));
 
@@ -337,13 +344,43 @@ export const placeOrderAction: Action = {
   description: spec.description,
 
   parameters: [
-    { name: "tokenId", description: "Token ID to trade", required: false, schema: { type: "string" } },
-    { name: "marketName", description: "Market name to search for", required: false, schema: { type: "string" } },
-    { name: "outcome", description: "Outcome to bet on: yes or no", required: false, schema: { type: "string" } },
+    {
+      name: "tokenId",
+      description: "Token ID to trade",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "marketName",
+      description: "Market name to search for",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "outcome",
+      description: "Outcome to bet on: yes or no",
+      required: false,
+      schema: { type: "string" },
+    },
     { name: "side", description: "BUY or SELL", required: false, schema: { type: "string" } },
-    { name: "price", description: "Price per share (0.01-0.99)", required: false, schema: { type: "number" } },
-    { name: "size", description: "Number of shares or dollar amount", required: true, schema: { type: "number" } },
-    { name: "orderType", description: "GTC, FOK, or FAK", required: false, schema: { type: "string" } },
+    {
+      name: "price",
+      description: "Price per share (0.01-0.99)",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "size",
+      description: "Number of shares or dollar amount",
+      required: true,
+      schema: { type: "number" },
+    },
+    {
+      name: "orderType",
+      description: "GTC, FOK, or FAK",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -359,7 +396,8 @@ export const placeOrderAction: Action = {
     }
 
     const clobApiKey = runtime.getSetting("CLOB_API_KEY");
-    const clobApiSecret = runtime.getSetting("CLOB_API_SECRET") || runtime.getSetting("CLOB_SECRET");
+    const clobApiSecret =
+      runtime.getSetting("CLOB_API_SECRET") || runtime.getSetting("CLOB_SECRET");
     const clobApiPassphrase =
       runtime.getSetting("CLOB_API_PASSPHRASE") || runtime.getSetting("CLOB_PASS_PHRASE");
     const allowCreate = runtime.getSetting("POLYMARKET_ALLOW_CREATE_API_KEY");
@@ -393,8 +431,16 @@ export const placeOrderAction: Action = {
     );
 
     if (isLLMError(llmResult)) {
-      await sendError(callback, "Could not parse order parameters from your request", "LLM parsing");
-      return { success: false, text: "Required order parameters not found", error: "parsing_failed" };
+      await sendError(
+        callback,
+        "Could not parse order parameters from your request",
+        "LLM parsing"
+      );
+      return {
+        success: false,
+        text: "Required order parameters not found",
+        error: "parsing_failed",
+      };
     }
 
     let tokenId = llmResult?.tokenId ?? "";
@@ -413,7 +459,7 @@ export const placeOrderAction: Action = {
     let isDollarAmount = false;
 
     // If token ID looks like a condition ID (starts with 0x), look up the actual token
-    if (tokenId && tokenId.startsWith("0x")) {
+    if (tokenId?.startsWith("0x")) {
       await sendUpdate(callback, `🔍 Looking up market ${tokenId.slice(0, 16)}...`);
       try {
         const clobClient = await initializeClobClient(runtime);
@@ -561,7 +607,11 @@ export const placeOrderAction: Action = {
     }
 
     if (size <= 0) {
-      await sendError(callback, "Invalid order size", "Please specify how many shares or dollars to bet");
+      await sendError(
+        callback,
+        "Invalid order size",
+        "Please specify how many shares or dollars to bet"
+      );
       return { success: false, text: "Invalid order size", error: "invalid_size" };
     }
 
@@ -598,9 +648,9 @@ export const placeOrderAction: Action = {
       orderType,
     };
     if (marketQuestion) {
-      ackParams.market = marketQuestion.slice(0, 40) + "...";
+      ackParams.market = `${marketQuestion.slice(0, 40)}...`;
     } else {
-      ackParams.tokenId = tokenId.slice(0, 16) + "...";
+      ackParams.tokenId = `${tokenId.slice(0, 16)}...`;
     }
 
     await sendAcknowledgement(callback, "Placing order on Polymarket...", ackParams);
@@ -630,7 +680,9 @@ export const placeOrderAction: Action = {
     try {
       const orderBook = await client.getOrderBook(tokenId);
       if (!orderBook || (!orderBook.bids?.length && !orderBook.asks?.length)) {
-        runtime.logger.warn(`[placeOrderAction] Token ${tokenId.slice(0, 20)}... has no order book data`);
+        runtime.logger.warn(
+          `[placeOrderAction] Token ${tokenId.slice(0, 20)}... has no order book data`
+        );
         await sendError(
           callback,
           `Token not found or has no liquidity. The token ID may be invalid.`,
@@ -681,7 +733,7 @@ export const placeOrderAction: Action = {
     // Log order details before submission
     runtime.logger.info(
       `[placeOrderAction] Submitting order: tokenID=${tokenId.slice(0, 20)}..., ` +
-      `side=${side}, price=${price}, size=${size}, orderType=${orderType}`
+        `side=${side}, price=${price}, size=${size}, orderType=${orderType}`
     );
 
     const orderArgs: UserOrder = {
@@ -733,7 +785,11 @@ export const placeOrderAction: Action = {
       } else {
         errMsg = String(error);
       }
-      await sendError(callback, `Order submission failed: ${errMsg}`, `${side} ${size} @ $${price.toFixed(4)}`);
+      await sendError(
+        callback,
+        `Order submission failed: ${errMsg}`,
+        `${side} ${size} @ $${price.toFixed(4)}`
+      );
       return {
         success: false,
         text: `Order failed: ${errMsg}`,
@@ -844,62 +900,120 @@ export const placeOrderAction: Action = {
     // Example 1: Bet by market name
     [
       { name: "{{user1}}", content: { text: "Put $5 on Yes for Miami Heat" } },
-      { name: "{{user2}}", content: { text: "Searching for Miami Heat market and placing your bet.", action: "POLYMARKET_PLACE_ORDER" } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Searching for Miami Heat market and placing your bet.",
+          action: "POLYMARKET_PLACE_ORDER",
+        },
+      },
     ],
     // Example 2: Bet on No outcome
     [
       { name: "{{user1}}", content: { text: "Bet $10 on No for the Thunder winning" } },
-      { name: "{{user2}}", content: { text: "Placing $10 on No for Thunder.", action: "POLYMARKET_PLACE_ORDER" } },
+      {
+        name: "{{user2}}",
+        content: { text: "Placing $10 on No for Thunder.", action: "POLYMARKET_PLACE_ORDER" },
+      },
     ],
     // Example 3: After seeing market results
     [
       { name: "{{user1}}", content: { text: "Show me the Bitcoin $100k market" } },
-      { name: "{{user2}}", content: { text: "The Bitcoin $100k market: YES is at 35%, NO at 65%. Token: 0x123abc..." } },
+      {
+        name: "{{user2}}",
+        content: { text: "The Bitcoin $100k market: YES is at 35%, NO at 65%. Token: 0x123abc..." },
+      },
       { name: "{{user1}}", content: { text: "Put $1 on Yes" } },
-      { name: "{{user2}}", content: { text: "Placing $1 on Yes for Bitcoin $100k.", action: "POLYMARKET_PLACE_ORDER" } },
+      {
+        name: "{{user2}}",
+        content: { text: "Placing $1 on Yes for Bitcoin $100k.", action: "POLYMARKET_PLACE_ORDER" },
+      },
     ],
     // Example 4: With specific token ID
     [
       { name: "{{user1}}", content: { text: "Buy 50 shares of token 0xabc123 at 40 cents" } },
-      { name: "{{user2}}", content: { text: "Placing limit buy order for 50 shares at $0.40.", action: "POLYMARKET_PLACE_ORDER" } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Placing limit buy order for 50 shares at $0.40.",
+          action: "POLYMARKET_PLACE_ORDER",
+        },
+      },
     ],
     // Example 5: User asks about prices - should NOT place order
     [
       { name: "{{user1}}", content: { text: "What's the price on the election market?" } },
-      { name: "{{user2}}", content: { text: "Let me fetch the current pricing.", action: "POLYMARKET_GET_TOKEN_INFO" } },
+      {
+        name: "{{user2}}",
+        content: { text: "Let me fetch the current pricing.", action: "POLYMARKET_GET_TOKEN_INFO" },
+      },
     ],
     // Example 6: Wager by name
     [
       { name: "{{user1}}", content: { text: "I want to wager $20 on the Lakers winning" } },
-      { name: "{{user2}}", content: { text: "Searching for Lakers market and placing your $20 bet.", action: "POLYMARKET_PLACE_ORDER" } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Searching for Lakers market and placing your $20 bet.",
+          action: "POLYMARKET_PLACE_ORDER",
+        },
+      },
     ],
     // Example 7: CRITICAL - User confirms a proposed order
     [
       { name: "{{user1}}", content: { text: "I want to put $1 on No for Miami Heat Playoffs" } },
-      { name: "{{user2}}", content: { text: "Confirm: place $1 on No for Miami Heat Playoffs at current best ask. Reply 'confirm' or 'yes, execute' to proceed." } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Confirm: place $1 on No for Miami Heat Playoffs at current best ask. Reply 'confirm' or 'yes, execute' to proceed.",
+        },
+      },
       { name: "{{user1}}", content: { text: "confirm" } },
-      { name: "{{user2}}", content: { text: "Executing order: $1 on No for Miami Heat Playoffs.", action: "POLYMARKET_PLACE_ORDER" } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Executing order: $1 on No for Miami Heat Playoffs.",
+          action: "POLYMARKET_PLACE_ORDER",
+        },
+      },
     ],
     // Example 8: User says "yes" to confirm
     [
       { name: "{{user1}}", content: { text: "Bet $5 on Bitcoin hitting 100k" } },
       { name: "{{user2}}", content: { text: "I'll place $5 on Yes for Bitcoin $100k. Confirm?" } },
       { name: "{{user1}}", content: { text: "yes" } },
-      { name: "{{user2}}", content: { text: "Placing the order now.", action: "POLYMARKET_PLACE_ORDER" } },
+      {
+        name: "{{user2}}",
+        content: { text: "Placing the order now.", action: "POLYMARKET_PLACE_ORDER" },
+      },
     ],
     // Example 9: User says "do it" or "go ahead"
     [
       { name: "{{user1}}", content: { text: "I want to bet on the election" } },
-      { name: "{{user2}}", content: { text: "Found Trump vs Harris market. Place $10 on Trump at 52%?" } },
+      {
+        name: "{{user2}}",
+        content: { text: "Found Trump vs Harris market. Place $10 on Trump at 52%?" },
+      },
       { name: "{{user1}}", content: { text: "do it" } },
-      { name: "{{user2}}", content: { text: "Executing order.", action: "POLYMARKET_PLACE_ORDER" } },
+      {
+        name: "{{user2}}",
+        content: { text: "Executing order.", action: "POLYMARKET_PLACE_ORDER" },
+      },
     ],
     // Example 10: User says "execute"
     [
       { name: "{{user1}}", content: { text: "Put $2 on No for the Celtics" } },
-      { name: "{{user2}}", content: { text: "Ready to place $2 on No for Celtics NBA Championship at 15%. Say 'execute' to confirm." } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Ready to place $2 on No for Celtics NBA Championship at 15%. Say 'execute' to confirm.",
+        },
+      },
       { name: "{{user1}}", content: { text: "execute" } },
-      { name: "{{user2}}", content: { text: "Submitting order.", action: "POLYMARKET_PLACE_ORDER" } },
+      {
+        name: "{{user2}}",
+        content: { text: "Submitting order.", action: "POLYMARKET_PLACE_ORDER" },
+      },
     ],
   ],
 };

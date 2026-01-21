@@ -1,6 +1,6 @@
-import { composePrompt } from "../../utils.ts";
-import { ModelType } from "../../types/index.ts";
 import type { Provider } from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
+import { composePrompt } from "../../utils.ts";
 import { messageClassifierTemplate } from "../prompts.ts";
 import type { JsonValue } from "../types.ts";
 
@@ -67,18 +67,25 @@ export const messageClassifierProvider: Provider = {
       const complexity = fields.COMPLEXITY || "simple";
       const planningType = fields.PLANNING || "direct_action";
       const confidenceStr = fields.CONFIDENCE || "0.5";
-      const confidence = Math.min(1.0, Math.max(0.0, Number.parseFloat(confidenceStr) || 0.5));
+      const confidence = Math.min(
+        1.0,
+        Math.max(0.0, Number.parseFloat(confidenceStr) || 0.5),
+      );
 
       const capabilities = parseField("CAPABILITIES:");
       const stakeholders = parseField("STAKEHOLDERS:");
       const constraints = parseField("CONSTRAINTS:");
       const dependencies = parseField("DEPENDENCIES:");
 
-      const planningRequired = planningType !== "direct_action" && complexity !== "simple";
+      const planningRequired =
+        planningType !== "direct_action" && complexity !== "simple";
 
       const textLower = text.toLowerCase();
       let messageClassification = "general";
-      if (textLower.includes("strategic") || planningType === "strategic_planning") {
+      if (
+        textLower.includes("strategic") ||
+        planningType === "strategic_planning"
+      ) {
         messageClassification = "strategic";
       } else if (textLower.includes("analyz")) {
         messageClassification = "analysis";
@@ -112,13 +119,23 @@ export const messageClassifierProvider: Provider = {
       let classification = "general";
       let confidence = 0.5;
 
-      if (textLower.includes("strategy") || textLower.includes("plan") || textLower.includes("strategic")) {
+      if (
+        textLower.includes("strategy") ||
+        textLower.includes("plan") ||
+        textLower.includes("strategic")
+      ) {
         classification = "strategic";
         confidence = 0.7;
-      } else if (textLower.includes("analyze") || textLower.includes("analysis")) {
+      } else if (
+        textLower.includes("analyze") ||
+        textLower.includes("analysis")
+      ) {
         classification = "analysis";
         confidence = 0.8;
-      } else if (textLower.includes("process") || textLower.includes("processing")) {
+      } else if (
+        textLower.includes("process") ||
+        textLower.includes("processing")
+      ) {
         classification = "processing";
         confidence = 0.8;
       } else if (textLower.includes("execute") || textLower.includes("final")) {
@@ -148,4 +165,3 @@ export const messageClassifierProvider: Provider = {
     }
   },
 };
-

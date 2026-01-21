@@ -1,5 +1,5 @@
-import { cn } from '@polyagent/shared';
-import type React from 'react';
+import { cn } from "@polyagent/shared";
+import type React from "react";
 
 /**
  * Table component for displaying tabular data.
@@ -21,10 +21,10 @@ export const Table = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'table'>) => (
+}: React.ComponentPropsWithoutRef<"table">) => (
   <div className="relative w-full overflow-auto">
     <table
-      className={cn('w-full caption-bottom text-sm', className)}
+      className={cn("w-full caption-bottom text-sm", className)}
       {...props}
     >
       {children}
@@ -44,8 +44,8 @@ export const TableHeader = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'thead'>) => (
-  <thead className={cn('[&_tr]:border-b', className)} {...props}>
+}: React.ComponentPropsWithoutRef<"thead">) => (
+  <thead className={cn("[&_tr]:border-b", className)} {...props}>
     {children}
   </thead>
 );
@@ -62,8 +62,8 @@ export const TableBody = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'tbody'>) => (
-  <tbody className={cn('[&_tr:last-child]:border-0', className)} {...props}>
+}: React.ComponentPropsWithoutRef<"tbody">) => (
+  <tbody className={cn("[&_tr:last-child]:border-0", className)} {...props}>
     {children}
   </tbody>
 );
@@ -80,11 +80,11 @@ export const TableFooter = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'tfoot'>) => (
+}: React.ComponentPropsWithoutRef<"tfoot">) => (
   <tfoot
     className={cn(
-      'border-t bg-muted/50 font-medium [&>tr]:last:border-b-0',
-      className
+      "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+      className,
     )}
     {...props}
   >
@@ -104,11 +104,11 @@ export const TableRow = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'tr'>) => (
+}: React.ComponentPropsWithoutRef<"tr">) => (
   <tr
     className={cn(
-      'border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted',
-      className
+      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      className,
     )}
     {...props}
   >
@@ -128,11 +128,11 @@ export const TableHead = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'th'>) => (
+}: React.ComponentPropsWithoutRef<"th">) => (
   <th
     className={cn(
-      'h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0',
-      className
+      "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      className,
     )}
     {...props}
   >
@@ -152,9 +152,9 @@ export const TableCell = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'td'>) => (
+}: React.ComponentPropsWithoutRef<"td">) => (
   <td
-    className={cn('p-4 align-middle [&:has([role=checkbox])]:pr-0', className)}
+    className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)}
     {...props}
   >
     {children}
@@ -173,9 +173,9 @@ export const TableCaption = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'caption'>) => (
+}: React.ComponentPropsWithoutRef<"caption">) => (
   <caption
-    className={cn('mt-4 text-muted-foreground text-sm', className)}
+    className={cn("mt-4 text-muted-foreground text-sm", className)}
     {...props}
   >
     {children}

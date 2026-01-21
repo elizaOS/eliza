@@ -1,17 +1,16 @@
-'use client';
+"use client";
 
-import { cn } from '@babylon/shared';
-import { Bot, LogOut, Plus, Settings } from 'lucide-react';
-import Image from 'next/image';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
-import { LoginButton } from '@/components/auth/LoginButton';
-import { UserMenu } from '@/components/auth/UserMenu';
-import { Avatar } from '@/components/shared/Avatar';
-import { Separator } from '@/components/shared/Separator';
-import { useAuth } from '@/hooks/useAuth';
-import { useOwnedAgents } from '@/hooks/useOwnedAgents';
+import { cn } from "@babylon/shared";
+import { Bot, LogOut, Plus, Settings } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { UserMenu } from "@/components/auth/UserMenu";
+import { Avatar } from "@/components/shared/Avatar";
+import { Separator } from "@/components/shared/Separator";
+import { useAuth } from "@/hooks/useAuth";
+import { useOwnedAgents } from "@/hooks/useOwnedAgents";
 
 /**
  * Sidebar content component with navigation for Polymarket Agent Manager.
@@ -35,36 +34,36 @@ function SidebarContent() {
     };
 
     if (showMdMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
       return () =>
-        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener("mousedown", handleClickOutside);
     }
     return undefined;
   }, [showMdMenu]);
 
   const navItems = [
     {
-      name: 'Agents',
-      href: '/agents',
+      name: "Agents",
+      href: "/agents",
       icon: Bot,
-      color: '#0066FF',
+      color: "#0066FF",
       active:
-        pathname === '/agents' ||
-        (pathname.startsWith('/agents/') && !pathname.includes('/create')),
+        pathname === "/agents" ||
+        (pathname.startsWith("/agents/") && !pathname.includes("/create")),
     },
     {
-      name: 'Create Agent',
-      href: '/agents/create',
+      name: "Create Agent",
+      href: "/agents/create",
       icon: Plus,
-      color: '#22c55e',
-      active: pathname === '/agents/create',
+      color: "#22c55e",
+      active: pathname === "/agents/create",
     },
     {
-      name: 'Settings',
-      href: '/settings',
+      name: "Settings",
+      href: "/settings",
       icon: Settings,
-      color: '#0066FF',
-      active: pathname === '/settings',
+      color: "#0066FF",
+      active: pathname === "/settings",
     },
   ];
 
@@ -72,37 +71,37 @@ function SidebarContent() {
 
   const statusLabel = (status: string) => {
     switch (status) {
-      case 'active':
-        return 'Active';
-      case 'paused':
-        return 'Paused';
-      case 'error':
-        return 'Error';
+      case "active":
+        return "Active";
+      case "paused":
+        return "Paused";
+      case "error":
+        return "Error";
       default:
-        return 'Idle';
+        return "Idle";
     }
   };
 
   const statusDotClass = (status: string) => {
     switch (status) {
-      case 'active':
-        return 'bg-green-500';
-      case 'paused':
-        return 'bg-yellow-500';
-      case 'error':
-        return 'bg-red-500';
+      case "active":
+        return "bg-green-500";
+      case "paused":
+        return "bg-yellow-500";
+      case "error":
+        return "bg-red-500";
       default:
-        return 'bg-gray-400';
+        return "bg-gray-400";
     }
   };
 
   return (
     <aside
       className={cn(
-        'sticky top-0 isolate z-40 hidden h-screen md:flex md:flex-col',
-        'bg-sidebar',
-        'transition-all duration-300',
-        'md:w-20 lg:w-64'
+        "sticky top-0 isolate z-40 hidden h-screen md:flex md:flex-col",
+        "bg-sidebar",
+        "transition-all duration-300",
+        "md:w-20 lg:w-64",
       )}
     >
       {/* Header - Logo */}
@@ -113,9 +112,7 @@ function SidebarContent() {
         >
           <div className="flex items-center gap-2">
             <Bot className="h-8 w-8 text-primary" />
-            <span className="hidden font-bold text-lg lg:block">
-              Polyagent
-            </span>
+            <span className="hidden font-bold text-lg lg:block">Polyagent</span>
           </div>
         </Link>
       </div>
@@ -130,10 +127,10 @@ function SidebarContent() {
               href={item.href}
               prefetch={true}
               className={cn(
-                'group pointer-events-auto relative z-10 flex items-center px-4 py-3',
-                'transition-colors duration-200',
-                'md:justify-center lg:justify-start',
-                !item.active && 'bg-transparent hover:bg-sidebar-accent'
+                "group pointer-events-auto relative z-10 flex items-center px-4 py-3",
+                "transition-colors duration-200",
+                "md:justify-center lg:justify-start",
+                !item.active && "bg-transparent hover:bg-sidebar-accent",
               )}
               title={item.name}
               style={{
@@ -146,29 +143,29 @@ function SidebarContent() {
               }}
               onMouseLeave={(e) => {
                 if (!item.active) {
-                  e.currentTarget.style.backgroundColor = '';
+                  e.currentTarget.style.backgroundColor = "";
                 }
               }}
             >
               <div className="relative lg:mr-3">
                 <Icon
                   className={cn(
-                    'h-6 w-6 flex-shrink-0',
-                    'transition-all duration-300',
-                    'group-hover:scale-110',
-                    !item.active && 'text-sidebar-foreground'
+                    "h-6 w-6 flex-shrink-0",
+                    "transition-all duration-300",
+                    "group-hover:scale-110",
+                    !item.active && "text-sidebar-foreground",
                   )}
                   style={{
-                    color: item.active ? '#e4e4e4' : undefined,
+                    color: item.active ? "#e4e4e4" : undefined,
                   }}
                   onMouseEnter={(e) => {
                     if (!item.active) {
-                      e.currentTarget.style.color = '#e4e4e4';
+                      e.currentTarget.style.color = "#e4e4e4";
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!item.active) {
-                      e.currentTarget.style.color = '';
+                      e.currentTarget.style.color = "";
                     }
                   }}
                 />
@@ -176,21 +173,21 @@ function SidebarContent() {
 
               <span
                 className={cn(
-                  'hidden lg:block',
-                  'text-lg transition-colors duration-300',
-                  item.active ? 'font-semibold' : 'text-sidebar-foreground'
+                  "hidden lg:block",
+                  "text-lg transition-colors duration-300",
+                  item.active ? "font-semibold" : "text-sidebar-foreground",
                 )}
                 style={{
-                  color: item.active ? '#e4e4e4' : undefined,
+                  color: item.active ? "#e4e4e4" : undefined,
                 }}
                 onMouseEnter={(e) => {
                   if (!item.active) {
-                    e.currentTarget.style.color = '#e4e4e4';
+                    e.currentTarget.style.color = "#e4e4e4";
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!item.active) {
-                    e.currentTarget.style.color = '';
+                    e.currentTarget.style.color = "";
                   }
                 }}
               >
@@ -202,7 +199,7 @@ function SidebarContent() {
 
         {authenticated && agentList.length > 0 && (
           <div className="mt-4 hidden px-4 lg:block">
-            <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+            <p className="mb-2 font-semibold text-muted-foreground text-xs uppercase">
               Agents
             </p>
             <div className="space-y-1">
@@ -211,17 +208,17 @@ function SidebarContent() {
                   key={agent.id}
                   href={`/agents/${agent.id}`}
                   className={cn(
-                    'flex items-center justify-between rounded-md px-2 py-1 text-sm',
-                    'text-sidebar-foreground transition-colors',
-                    'hover:bg-sidebar-accent'
+                    "flex items-center justify-between rounded-md px-2 py-1 text-sm",
+                    "text-sidebar-foreground transition-colors",
+                    "hover:bg-sidebar-accent",
                   )}
                 >
                   <span className="truncate">{agent.name}</span>
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1 text-muted-foreground text-xs">
                     <span
                       className={cn(
-                        'inline-flex h-2 w-2 rounded-full',
-                        statusDotClass(agent.status)
+                        "inline-flex h-2 w-2 rounded-full",
+                        statusDotClass(agent.status),
                       )}
                       aria-hidden
                     />
@@ -267,7 +264,7 @@ function SidebarContent() {
             >
               <Avatar
                 id={user.id}
-                name={user.displayName || user.email || 'User'}
+                name={user.displayName || user.email || "User"}
                 type="user"
                 size="md"
                 src={user.profileImageUrl || undefined}
@@ -278,7 +275,7 @@ function SidebarContent() {
 
           {/* Dropdown Menu */}
           {showMdMenu && (
-            <div className="-translate-x-1/2 absolute bottom-full left-1/2 z-50 mb-2 w-auto overflow-hidden rounded-lg border border-border bg-sidebar shadow-lg">
+            <div className="absolute bottom-full left-1/2 z-50 mb-2 w-auto -translate-x-1/2 overflow-hidden rounded-lg border border-border bg-sidebar shadow-lg">
               <button
                 onClick={() => {
                   setShowMdMenu(false);

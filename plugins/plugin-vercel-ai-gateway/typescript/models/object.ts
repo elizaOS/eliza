@@ -1,8 +1,4 @@
-import type {
-  IAgentRuntime,
-  JsonValue,
-  ObjectGenerationParams,
-} from "@elizaos/core";
+import type { IAgentRuntime, JsonValue, ObjectGenerationParams } from "@elizaos/core";
 import { GatewayClient } from "../providers/client";
 import { buildConfig, getLargeModel, getSmallModel } from "../utils/config";
 

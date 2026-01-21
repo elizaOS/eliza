@@ -161,4 +161,3 @@ impl Service for EmbeddingService {
         Ok(())
     }
 }
-

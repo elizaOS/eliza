@@ -13,8 +13,8 @@ import {
   parseKeyValueXml,
   type State,
 } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { extractCancellationTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { createGoalDataService, type GoalData } from "../services/goalDataService.js";
 
 interface TaskCancellation {

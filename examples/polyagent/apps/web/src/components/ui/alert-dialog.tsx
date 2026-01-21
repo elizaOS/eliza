@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
-import type * as React from 'react';
+import { cn } from "@polyagent/shared";
+import type * as React from "react";
 
 /**
  * Alert dialog component for displaying modal confirmations and alerts.
@@ -66,9 +66,9 @@ export function AlertDialogContent({
   return (
     <div
       className={cn(
-        'mx-4 w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-lg',
-        'fade-in-0 zoom-in-95 animate-in duration-200',
-        className
+        "mx-4 w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-lg",
+        "fade-in-0 zoom-in-95 animate-in duration-200",
+        className,
       )}
       onClick={(e) => e.stopPropagation()}
     >
@@ -98,8 +98,8 @@ export function AlertDialogHeader({
   return (
     <div
       className={cn(
-        'flex flex-col space-y-2 text-center sm:text-left',
-        className
+        "flex flex-col space-y-2 text-center sm:text-left",
+        className,
       )}
     >
       {children}
@@ -125,7 +125,7 @@ export function AlertDialogTitle({
   className,
 }: AlertDialogTitleProps) {
   return (
-    <h2 className={cn('font-semibold text-foreground text-lg', className)}>
+    <h2 className={cn("font-semibold text-foreground text-lg", className)}>
       {children}
     </h2>
   );
@@ -149,7 +149,7 @@ export function AlertDialogDescription({
   className,
 }: AlertDialogDescriptionProps) {
   return (
-    <div className={cn('text-muted-foreground text-sm', className)}>
+    <div className={cn("text-muted-foreground text-sm", className)}>
       {children}
     </div>
   );
@@ -176,8 +176,8 @@ export function AlertDialogFooter({
   return (
     <div
       className={cn(
-        'mt-4 flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2',
-        className
+        "mt-4 flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+        className,
       )}
     >
       {children}
@@ -208,12 +208,12 @@ export function AlertDialogAction({
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center rounded-md font-medium text-sm',
-        'h-10 px-4 py-2',
-        'bg-primary text-primary-foreground hover:bg-primary/90',
-        'disabled:pointer-events-none disabled:opacity-50',
-        'transition-colors',
-        className
+        "inline-flex items-center justify-center rounded-md font-medium text-sm",
+        "h-10 px-4 py-2",
+        "bg-primary text-primary-foreground hover:bg-primary/90",
+        "disabled:pointer-events-none disabled:opacity-50",
+        "transition-colors",
+        className,
       )}
       {...props}
     >
@@ -245,11 +245,11 @@ export function AlertDialogCancel({
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center rounded-md font-medium text-sm',
-        'mt-2 h-10 px-4 py-2 sm:mt-0',
-        'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-        'transition-colors',
-        className
+        "inline-flex items-center justify-center rounded-md font-medium text-sm",
+        "mt-2 h-10 px-4 py-2 sm:mt-0",
+        "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        "transition-colors",
+        className,
       )}
       {...props}
     >

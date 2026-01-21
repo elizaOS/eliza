@@ -160,18 +160,22 @@ impl MacOSAXElement {
         }
     }
 
+    #[allow(dead_code)]
     fn ax_string(res: Result<CFString, AxError>) -> Option<String> {
         res.ok().map(|s| s.to_string())
     }
 
+    #[allow(dead_code)]
     fn role_str(&self) -> Option<String> {
         Self::ax_string(self.ax.role())
     }
 
+    #[allow(dead_code)]
     fn title_str(&self) -> Option<String> {
         Self::ax_string(self.ax.title())
     }
 
+    #[allow(dead_code)]
     fn identifier_str(&self) -> Option<String> {
         Self::ax_string(self.ax.identifier())
     }
@@ -1316,7 +1320,7 @@ impl MacOSEngine {
                     .and_then(|v| v.downcast::<CFDictionary>())
                     .and_then(|bd_untyped| {
                         let bd: CFDictionary<CFString, CFType> =
-                            unsafe { CFDictionary::wrap_under_get_rule(bd_untyped.as_concrete_TypeRef()) };
+                            CFDictionary::wrap_under_get_rule(bd_untyped.as_concrete_TypeRef());
                         let kx = CFString::new("X");
                         let ky = CFString::new("Y");
                         let kw = CFString::new("Width");

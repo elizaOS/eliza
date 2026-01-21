@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { logger } from '@polyagent/shared';
-import * as Sentry from '@sentry/nextjs';
-import { AlertTriangle } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { Component } from 'react';
+import { logger } from "@polyagent/shared";
+import * as Sentry from "@sentry/nextjs";
+import { AlertTriangle } from "lucide-react";
+import type { ReactNode } from "react";
+import { Component } from "react";
 
 /**
  * Props for the ErrorBoundary component.
@@ -57,14 +57,14 @@ export class ErrorBoundary extends Component<
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     logger.error(
-      'ErrorBoundary caught an error:',
+      "ErrorBoundary caught an error:",
       { error, errorInfo },
-      'ErrorBoundary'
+      "ErrorBoundary",
     );
 
     // Capture error in Sentry
     Sentry.withScope((scope) => {
-      scope.setContext('react', {
+      scope.setContext("react", {
         componentStack: errorInfo.componentStack,
       });
       Sentry.captureException(error);
@@ -87,7 +87,7 @@ export class ErrorBoundary extends Component<
             <AlertTriangle className="mx-auto mb-4 h-16 w-16 text-destructive" />
             <h2 className="mb-2 font-bold text-2xl">Something went wrong</h2>
             <p className="mb-6 text-muted-foreground">
-              {this.state.error?.message || 'An unexpected error occurred'}
+              {this.state.error?.message || "An unexpected error occurred"}
             </p>
             <button
               onClick={() => {

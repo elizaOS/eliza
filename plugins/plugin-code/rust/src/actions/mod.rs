@@ -28,4 +28,3 @@ pub fn get_code_actions() -> Vec<Box<dyn crate::Action>> {
         Box::new(GitAction),
     ]
 }
-

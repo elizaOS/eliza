@@ -14,4 +14,3 @@ export const solanaPlugin: Plugin = {
 };
 
 export default solanaPlugin;
-

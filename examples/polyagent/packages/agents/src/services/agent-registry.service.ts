@@ -8,8 +8,9 @@
  * @packageDocumentation
  */
 
-import { verifyApiKey } from '@babylon/api';
-import type { JsonValue } from '@babylon/db';
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { verifyApiKey } from "@babylon/api";
+import type { JsonValue } from "@babylon/db";
 import {
   type AgentRegistry,
   agentCapabilities,
@@ -27,17 +28,16 @@ import {
   or,
   type User,
   users,
-} from '@babylon/db';
-import { logger } from '@babylon/shared';
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+} from "@babylon/db";
+import { logger } from "@babylon/shared";
 import type {
   AgentCapabilities,
   AgentDiscoveryFilter,
   AgentRegistration,
   ExternalAgentConnectionParams,
   TrustLevel,
-} from '../types/agent-registry';
-import { AgentStatus, AgentType } from '../types/agent-registry';
+} from "../types/agent-registry";
+import { AgentStatus, AgentType } from "../types/agent-registry";
 
 /**
  * Gets encryption key from environment or dev fallback
@@ -45,14 +45,14 @@ import { AgentStatus, AgentType } from '../types/agent-registry';
  */
 const getEncryptionKey = () => {
   if (process.env.CRON_SECRET) return process.env.CRON_SECRET;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('CRON_SECRET must be set in production');
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("CRON_SECRET must be set in production");
   }
-  return 'dev-key-change-in-production-32-chars!!';
+  return "dev-key-change-in-production-32-chars!!";
 };
 
 /** Encryption algorithm for API key storage */
-const ALGORITHM = 'aes-256-cbc';
+const ALGORITHM = "aes-256-cbc";
 
 /**
  * Registry entry with loaded relations
@@ -114,7 +114,7 @@ export class AgentRegistryService {
 
     if (existing) {
       throw new Error(
-        `User ${userId} already registered as agent ${existing.agentId}`
+        `User ${userId} already registered as agent ${existing.agentId}`,
       );
     }
 
@@ -144,7 +144,7 @@ export class AgentRegistryService {
       strategies: capabilities.strategies ?? [],
       markets: capabilities.markets ?? [],
       actions: capabilities.actions ?? [],
-      version: capabilities.version ?? '1.0.0',
+      version: capabilities.version ?? "1.0.0",
       x402Support: capabilities.x402Support ?? false,
       platform: capabilities.platform,
       userType: capabilities.userType,
@@ -163,7 +163,7 @@ export class AgentRegistryService {
     // Fetch complete registry with relations
     const registry = await this.getRegistryWithRelations(userId);
     if (!registry) {
-      throw new Error('Failed to create agent registry');
+      throw new Error("Failed to create agent registry");
     }
 
     return this.mapToRegistration(registry);
@@ -190,7 +190,9 @@ export class AgentRegistryService {
     const { actorId, systemPrompt, capabilities } = params;
 
     // NPC support removed - throw error
-    throw new Error(`NPC registration not supported. Use registerUserAgent instead.`);
+    throw new Error(
+      `NPC registration not supported. Use registerUserAgent instead.`,
+    );
 
     // Check if already registered
     const [existing] = await db
@@ -201,7 +203,7 @@ export class AgentRegistryService {
 
     if (existing) {
       throw new Error(
-        `Actor ${actorId} already registered as agent ${existing.agentId}`
+        `Actor ${actorId} already registered as agent ${existing.agentId}`,
       );
     }
 
@@ -230,7 +232,7 @@ export class AgentRegistryService {
       strategies: capabilities.strategies ?? [],
       markets: capabilities.markets ?? [],
       actions: capabilities.actions ?? [],
-      version: capabilities.version ?? '1.0.0',
+      version: capabilities.version ?? "1.0.0",
       x402Support: capabilities.x402Support ?? false,
       platform: capabilities.platform,
       userType: capabilities.userType,
@@ -247,7 +249,7 @@ export class AgentRegistryService {
     // Fetch complete registry with relations
     const registry = await this.getRegistryWithRelations(actorId);
     if (!registry) {
-      throw new Error('Failed to create agent registry');
+      throw new Error("Failed to create agent registry");
     }
 
     return this.mapToRegistration(registry);
@@ -265,7 +267,7 @@ export class AgentRegistryService {
    * @throws {Error} If external agent already registered
    */
   async registerExternalAgent(
-    params: ExternalAgentConnectionParams
+    params: ExternalAgentConnectionParams,
   ): Promise<AgentRegistration> {
     const {
       externalId,
@@ -322,7 +324,7 @@ export class AgentRegistryService {
       strategies: capabilities.strategies ?? [],
       markets: capabilities.markets ?? [],
       actions: capabilities.actions ?? [],
-      version: capabilities.version ?? '1.0.0',
+      version: capabilities.version ?? "1.0.0",
       x402Support: capabilities.x402Support ?? false,
       platform: capabilities.platform,
       userType: capabilities.userType,
@@ -359,7 +361,7 @@ export class AgentRegistryService {
     // Fetch complete registry with relations
     const registry = await this.getRegistryWithRelations(externalId);
     if (!registry) {
-      throw new Error('Failed to create agent registry');
+      throw new Error("Failed to create agent registry");
     }
 
     return this.mapToRegistration(registry);
@@ -375,7 +377,7 @@ export class AgentRegistryService {
    * @returns {Promise<AgentRegistration[]>} Array of matching agents
    */
   async discoverAgents(
-    filter: AgentDiscoveryFilter = {}
+    filter: AgentDiscoveryFilter = {},
   ): Promise<AgentRegistration[]> {
     const {
       types,
@@ -384,7 +386,7 @@ export class AgentRegistryService {
       requiredCapabilities,
       requiredSkills,
       requiredDomains,
-      matchMode = 'all',
+      matchMode = "all",
       search,
       limit = 50,
       offset = 0,
@@ -408,7 +410,7 @@ export class AgentRegistryService {
     if (search) {
       const searchCondition = or(
         ilike(agentRegistries.name, `%${search}%`),
-        ilike(agentRegistries.systemPrompt, `%${search}%`)
+        ilike(agentRegistries.systemPrompt, `%${search}%`),
       );
       if (searchCondition) {
         conditions.push(searchCondition);
@@ -420,17 +422,17 @@ export class AgentRegistryService {
       .from(agentRegistries)
       .leftJoin(
         agentCapabilities,
-        eq(agentCapabilities.agentRegistryId, agentRegistries.id)
+        eq(agentCapabilities.agentRegistryId, agentRegistries.id),
       )
       .leftJoin(users, eq(users.id, agentRegistries.userId))
       .leftJoin(
         externalAgentConnections,
-        eq(externalAgentConnections.agentRegistryId, agentRegistries.id)
+        eq(externalAgentConnections.agentRegistryId, agentRegistries.id),
       )
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(
         desc(agentRegistries.trustLevel),
-        desc(agentRegistries.registeredAt)
+        desc(agentRegistries.registeredAt),
       )
       .limit(limit)
       .offset(offset);
@@ -438,7 +440,7 @@ export class AgentRegistryService {
     // Map to registry with relations format, getting Actor from static registry
     const registrations: RegistryWithRelations[] = registrationsRaw.map(
       (row) => {
-        const actorId = row.AgentRegistry.actorId;
+        const _actorId = row.AgentRegistry.actorId;
         const staticActor = null; // NPC support removed
         return {
           ...row.AgentRegistry,
@@ -447,7 +449,7 @@ export class AgentRegistryService {
           Actor: staticActor,
           externalConnection: row.ExternalAgentConnection,
         };
-      }
+      },
     );
 
     // Filter by required capabilities if specified
@@ -470,7 +472,7 @@ export class AgentRegistryService {
         if (!reg.capabilities || !reg.capabilities.skills) return false;
         const agentSkills = reg.capabilities.skills;
 
-        if (matchMode === 'all') {
+        if (matchMode === "all") {
           // All required skills must be present
           return requiredSkills.every((skill) => agentSkills.includes(skill));
         }
@@ -485,10 +487,10 @@ export class AgentRegistryService {
         if (!reg.capabilities || !reg.capabilities.domains) return false;
         const agentDomains = reg.capabilities.domains;
 
-        if (matchMode === 'all') {
+        if (matchMode === "all") {
           // All required domains must be present
           return requiredDomains.every((domain) =>
-            agentDomains.includes(domain)
+            agentDomains.includes(domain),
           );
         }
         // Any required domain matches
@@ -528,7 +530,7 @@ export class AgentRegistryService {
    */
   async updateAgentStatus(
     agentId: string,
-    status: AgentStatus
+    status: AgentStatus,
   ): Promise<AgentRegistration> {
     await db
       .update(agentRegistries)
@@ -560,7 +562,7 @@ export class AgentRegistryService {
    */
   async setRuntimeInstance(
     agentId: string,
-    runtimeInstanceId: string
+    runtimeInstanceId: string,
   ): Promise<void> {
     await db
       .update(agentRegistries)
@@ -601,7 +603,7 @@ export class AgentRegistryService {
    */
   async updateTrustLevel(
     agentId: string,
-    trustLevel: TrustLevel
+    trustLevel: TrustLevel,
   ): Promise<void> {
     await db
       .update(agentRegistries)
@@ -623,7 +625,7 @@ export class AgentRegistryService {
    */
   async linkExternalAgentToUser(
     agentId: string,
-    userId: string
+    userId: string,
   ): Promise<AgentRegistration> {
     // Verify agent is EXTERNAL type
     const [registry] = await db
@@ -638,7 +640,7 @@ export class AgentRegistryService {
 
     if (registry.type !== AgentType.EXTERNAL) {
       throw new Error(
-        `Only EXTERNAL agents can be linked to users. Agent ${agentId} is type ${registry.type}`
+        `Only EXTERNAL agents can be linked to users. Agent ${agentId} is type ${registry.type}`,
       );
     }
 
@@ -661,7 +663,7 @@ export class AgentRegistryService {
 
     if (existingAgentRegistry) {
       throw new Error(
-        `User ${userId} already linked to agent ${existingAgentRegistry.agentId}`
+        `User ${userId} already linked to agent ${existingAgentRegistry.agentId}`,
       );
     }
 
@@ -692,16 +694,16 @@ export class AgentRegistryService {
    * @returns {Promise<AgentRegistration | null>} Agent registration if valid, null otherwise
    */
   async verifyExternalAgentApiKey(
-    apiKey: string
+    apiKey: string,
   ): Promise<AgentRegistration | null> {
     const agents = await db
       .select()
       .from(externalAgentConnections)
       .where(
         and(
-          eq(externalAgentConnections.authType, 'apiKey'),
-          isNull(externalAgentConnections.revokedAt)
-        )
+          eq(externalAgentConnections.authType, "apiKey"),
+          isNull(externalAgentConnections.revokedAt),
+        ),
       );
 
     for (const agent of agents) {
@@ -719,7 +721,7 @@ export class AgentRegistryService {
             externalId: agent.externalId,
             error: error instanceof Error ? error.message : String(error),
           },
-          'AgentRegistryService'
+          "AgentRegistryService",
         );
         continue;
       }
@@ -733,7 +735,7 @@ export class AgentRegistryService {
           logger.warn(
             `Valid key for external agent ${agent.externalId} but missing AgentRegistry link`,
             undefined,
-            'AgentRegistryService'
+            "AgentRegistryService",
           );
           return null;
         }
@@ -757,7 +759,7 @@ export class AgentRegistryService {
    */
   async revokeExternalAgent(
     externalId: string,
-    revokedBy: string
+    revokedBy: string,
   ): Promise<void> {
     const now = new Date();
     const [updated] = await db
@@ -770,8 +772,8 @@ export class AgentRegistryService {
       .where(
         and(
           eq(externalAgentConnections.externalId, externalId),
-          isNull(externalAgentConnections.revokedAt)
-        )
+          isNull(externalAgentConnections.revokedAt),
+        ),
       )
       .returning({ externalId: externalAgentConnections.externalId });
 
@@ -793,7 +795,7 @@ export class AgentRegistryService {
     logger.info(
       `External agent ${externalId} revoked by ${revokedBy}`,
       { externalId, revokedBy },
-      'AgentRegistryService'
+      "AgentRegistryService",
     );
   }
 
@@ -806,7 +808,7 @@ export class AgentRegistryService {
    * @returns {Promise<ExternalAgentConnection | null>} External agent connection or null
    */
   async getExternalAgentConnection(
-    externalId: string
+    externalId: string,
   ): Promise<ExternalAgentConnection | null> {
     const [agent] = await db
       .select()
@@ -821,19 +823,19 @@ export class AgentRegistryService {
    * Helper method to get registry with all relations
    */
   private async getRegistryWithRelations(
-    agentId: string
+    agentId: string,
   ): Promise<RegistryWithRelations | null> {
     const [row] = await db
       .select()
       .from(agentRegistries)
       .leftJoin(
         agentCapabilities,
-        eq(agentCapabilities.agentRegistryId, agentRegistries.id)
+        eq(agentCapabilities.agentRegistryId, agentRegistries.id),
       )
       .leftJoin(users, eq(users.id, agentRegistries.userId))
       .leftJoin(
         externalAgentConnections,
-        eq(externalAgentConnections.agentRegistryId, agentRegistries.id)
+        eq(externalAgentConnections.agentRegistryId, agentRegistries.id),
       )
       .where(eq(agentRegistries.agentId, agentId))
       .limit(1);
@@ -841,7 +843,7 @@ export class AgentRegistryService {
     if (!row) return null;
 
     // NPC support removed
-    const actorId = row.AgentRegistry.actorId;
+    const _actorId = row.AgentRegistry.actorId;
     const staticActor = null;
 
     return {
@@ -864,7 +866,7 @@ export class AgentRegistryService {
    * @private
    */
   private mapToRegistration(
-    registry: RegistryWithRelations
+    registry: RegistryWithRelations,
   ): AgentRegistration {
     // Map capabilities
     const capabilities: AgentCapabilities = registry.capabilities
@@ -881,7 +883,7 @@ export class AgentRegistryService {
                 chainId: registry.capabilities.gameNetworkChainId,
                 registryAddress:
                   registry.capabilities.gameNetworkRpcUrl ||
-                  '0x0000000000000000000000000000000000000000', // A2A: registryAddress read from rpcUrl field, fallback to zero address
+                  "0x0000000000000000000000000000000000000000", // A2A: registryAddress read from rpcUrl field, fallback to zero address
                 reputationAddress:
                   registry.capabilities.gameNetworkExplorerUrl ?? undefined, // A2A: reputationAddress read from explorerUrl field
               }
@@ -897,7 +899,7 @@ export class AgentRegistryService {
           strategies: [],
           markets: [],
           actions: [],
-          version: '1.0.0',
+          version: "1.0.0",
           x402Support: false,
           skills: [],
           domains: [],
@@ -914,7 +916,7 @@ export class AgentRegistryService {
       capabilities,
       discoveryMetadata: registry.discoveryCardVersion
         ? {
-            version: '1.0' as const,
+            version: "1.0" as const,
             agentId: registry.agentId,
             name: registry.name,
             description: registry.systemPrompt,
@@ -928,9 +930,9 @@ export class AgentRegistryService {
               ? {
                   required: true,
                   methods: registry.discoveryAuthMethods as (
-                    | 'apiKey'
-                    | 'oauth'
-                    | 'wallet'
+                    | "apiKey"
+                    | "oauth"
+                    | "wallet"
                   )[],
                 }
               : undefined,
@@ -945,28 +947,28 @@ export class AgentRegistryService {
       onChainData: registry.onChainTokenId
         ? {
             tokenId: registry.onChainTokenId,
-            txHash: registry.onChainTxHash ?? '',
-            serverWallet: registry.onChainServerWallet ?? '',
+            txHash: registry.onChainTxHash ?? "",
+            serverWallet: registry.onChainServerWallet ?? "",
             reputationScore: registry.onChainReputationScore ?? 0,
             chainId: registry.onChainChainId ?? 31337,
             contracts: {
-              identityRegistry: registry.onChainIdentityRegistry ?? '',
-              reputationSystem: registry.onChainReputationSystem ?? '',
+              identityRegistry: registry.onChainIdentityRegistry ?? "",
+              reputationSystem: registry.onChainReputationSystem ?? "",
             },
           }
         : null,
       agent0Data: registry.agent0TokenId
         ? {
             tokenId: registry.agent0TokenId,
-            metadataCID: registry.agent0MetadataCID ?? '',
+            metadataCID: registry.agent0MetadataCID ?? "",
             subgraphData: registry.agent0SubgraphOwner
               ? {
                   owner: registry.agent0SubgraphOwner,
-                  metadataURI: registry.agent0SubgraphMetadataURI ?? '',
+                  metadataURI: registry.agent0SubgraphMetadataURI ?? "",
                   timestamp: registry.agent0SubgraphTimestamp ?? 0,
                 }
               : undefined,
-            discoveryEndpoint: registry.agent0DiscoveryEndpoint ?? '',
+            discoveryEndpoint: registry.agent0DiscoveryEndpoint ?? "",
           }
         : null,
       runtimeInstanceId: registry.runtimeInstanceId,
@@ -985,25 +987,25 @@ export class AgentRegistryService {
     const key = Buffer.from(getEncryptionKey().padEnd(32).slice(0, 32));
     const cipher = createCipheriv(ALGORITHM, key, iv);
 
-    let encrypted = cipher.update(credentials, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
+    let encrypted = cipher.update(credentials, "utf8", "hex");
+    encrypted += cipher.final("hex");
 
-    return `${iv.toString('hex')}:${encrypted}`;
+    return `${iv.toString("hex")}:${encrypted}`;
   }
 
   /**
    * Decrypt credentials
    */
   private decryptCredentials(encrypted: string): string {
-    const [ivHex, encryptedHex] = encrypted.split(':');
-    if (!ivHex || !encryptedHex) throw new Error('Invalid encrypted format');
+    const [ivHex, encryptedHex] = encrypted.split(":");
+    if (!ivHex || !encryptedHex) throw new Error("Invalid encrypted format");
 
-    const iv = Buffer.from(ivHex, 'hex');
+    const iv = Buffer.from(ivHex, "hex");
     const key = Buffer.from(getEncryptionKey().padEnd(32).slice(0, 32));
     const decipher = createDecipheriv(ALGORITHM, key, iv);
 
-    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
+    let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+    decrypted += decipher.final("utf8");
 
     return decrypted;
   }

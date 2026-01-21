@@ -85,4 +85,3 @@ async def test_git_requires_repo(service: CoderService) -> None:
     g = GitAction()
     res = await g.handler(_message("git"), {"args": "status"}, service)
     assert not res.success
-

@@ -1,8 +1,14 @@
 import type { TownState } from "../../shared/types";
-import { TownSimulation, type TownSimulationSnapshot } from "../simulation/townSimulation.ts";
-import type { MafiaGameState, MafiaGameUpdate } from "../simulation/mafiaGame.ts";
 import type { ModelSettings } from "../runtime/modelSettings.ts";
+import type {
+  MafiaGameState,
+  MafiaGameUpdate,
+} from "../simulation/mafiaGame.ts";
 import { setTownSimulation } from "../simulation/townContext.ts";
+import {
+  TownSimulation,
+  type TownSimulationSnapshot,
+} from "../simulation/townSimulation.ts";
 
 type TickMode = "continuous" | "interval";
 
@@ -29,7 +35,10 @@ export class TownEngine {
 
   constructor(options: TownEngineOptions) {
     this.options = options;
-    this.simulation = new TownSimulation(options.settingsProvider, options.snapshot ?? null);
+    this.simulation = new TownSimulation(
+      options.settingsProvider,
+      options.snapshot ?? null,
+    );
     const attach = options.attachToTownContext ?? true;
     if (attach) {
       setTownSimulation(this.simulation);
@@ -112,7 +121,8 @@ export class TownEngine {
     if (this.tickTimer) {
       clearTimeout(this.tickTimer);
     }
-    const interval = this.options.tickIntervalMs ?? this.simulation.getTickIntervalMs();
+    const interval =
+      this.options.tickIntervalMs ?? this.simulation.getTickIntervalMs();
     const tickMode = this.options.tickMode ?? "continuous";
     const delay = tickMode === "continuous" ? 0 : interval;
     this.tickTimer = setTimeout(() => {

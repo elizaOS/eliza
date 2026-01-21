@@ -26,4 +26,3 @@ async def test_advanced_memory_not_loaded_when_disabled() -> None:
     )
     await runtime.initialize()
     assert runtime.get_service("memory") is None
-

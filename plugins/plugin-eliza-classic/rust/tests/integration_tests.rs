@@ -94,11 +94,14 @@ fn test_memory_recall_on_limit_4() {
     // advance LIMIT to 4 with no keyword match to trigger memory recall
     plugin.generate_response("xyzzy"); // limit=3
     let recalled = plugin.generate_response("xyzzy"); // limit=4
-    let possible = vec![
+    let possible = [
         "Lets discuss further why your car is broken",
         "Earlier you said your car is broken",
         "But your car is broken",
         "Does that have anything to do with the fact that your car is broken?",
     ];
-    assert!(possible.contains(&recalled.as_str()), "unexpected memory: {recalled}");
+    assert!(
+        possible.contains(&recalled.as_str()),
+        "unexpected memory: {recalled}"
+    );
 }

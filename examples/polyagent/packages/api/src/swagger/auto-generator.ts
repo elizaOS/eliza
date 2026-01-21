@@ -7,9 +7,9 @@
 
 /// <reference path="./swagger-jsdoc.d.ts" />
 
-import path from 'path';
-import { swaggerDefinition } from './config';
-import { generateOpenApiSpec } from './generator';
+import path from "node:path";
+import { swaggerDefinition } from "./config";
+import { generateOpenApiSpec } from "./generator";
 
 // swagger-jsdoc is an optional dev dependency for docs generation
 // Use dynamic import to handle cases where it's not installed
@@ -19,7 +19,7 @@ type SwaggerJsdocOptions = {
 };
 
 type SwaggerJsdocFunction = (
-  options: SwaggerJsdocOptions
+  options: SwaggerJsdocOptions,
 ) => Record<string, unknown>;
 
 /**
@@ -52,15 +52,15 @@ interface OpenAPISpec {
 export async function generateAutoSpec() {
   // Dynamically import swagger-jsdoc if available (optional dev dependency)
   let swaggerJsdoc: SwaggerJsdocFunction | null = null;
-  const swaggerModule = await import('swagger-jsdoc');
+  const swaggerModule = await import("swagger-jsdoc");
   // Handle type mismatch between swagger-jsdoc types and our interface
   swaggerJsdoc = swaggerModule.default as unknown as SwaggerJsdocFunction;
 
   // Check if we're in a Node.js environment with file system access
-  if (typeof process === 'undefined' || typeof process.cwd !== 'function') {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") {
     // Edge runtime environment - return minimal spec without file scanning
     return {
-      openapi: swaggerDefinition.openapi || '3.0.0',
+      openapi: swaggerDefinition.openapi || "3.0.0",
       info: swaggerDefinition.info,
       paths: {},
       tags: [],
@@ -71,8 +71,8 @@ export async function generateAutoSpec() {
     definition: swaggerDefinition,
     // Scan all route files for @openapi JSDoc comments using absolute paths
     apis: [
-      path.join(process.cwd(), 'src/app/api/**/*.ts'),
-      path.join(process.cwd(), 'src/app/api/**/*.tsx'),
+      path.join(process.cwd(), "src/app/api/**/*.ts"),
+      path.join(process.cwd(), "src/app/api/**/*.tsx"),
     ],
   };
 
@@ -80,13 +80,13 @@ export async function generateAutoSpec() {
   const autoSpec: OpenAPISpec = swaggerJsdoc
     ? (swaggerJsdoc(options) as OpenAPISpec)
     : {
-        openapi: swaggerDefinition.openapi || '3.0.0',
+        openapi: swaggerDefinition.openapi || "3.0.0",
         info: swaggerDefinition.info,
       };
 
   // Ensure openapi version field is present (required by Swagger UI)
   if (!autoSpec.openapi && !autoSpec.swagger) {
-    autoSpec.openapi = swaggerDefinition.openapi || '3.0.0';
+    autoSpec.openapi = swaggerDefinition.openapi || "3.0.0";
   }
 
   // Ensure all required OpenAPI fields are present

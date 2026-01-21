@@ -5,8 +5,8 @@
  * Persists authentication data to localStorage for session persistence.
  */
 
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 /**
  * User profile data structure.
@@ -115,8 +115,8 @@ export const useAuthStore = create<AuthState>()(
         }),
     }),
     {
-      name: 'polyagent-auth',
+      name: "polyagent-auth",
       version: 2, // Increment this to invalidate old cached data
-    }
-  )
+    },
+  ),
 );

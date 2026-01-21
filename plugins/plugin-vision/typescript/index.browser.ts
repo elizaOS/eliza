@@ -14,4 +14,3 @@ export const visionPlugin: Plugin = {
 };
 
 export default visionPlugin;
-

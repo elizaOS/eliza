@@ -33,7 +33,7 @@ async def get_action_state_context(
         values = state.values
         pending = []
         completed = []
-        
+
         if hasattr(values, "get") and callable(values.get):
             # Dict-like access
             pending = values.get("pendingActions", [])
@@ -46,36 +46,38 @@ async def get_action_state_context(
                 completed_raw = extra.get("completedActions", "")
             elif hasattr(extra, "__getitem__"):
                 try:
-                    pending_raw = extra["pendingActions"] if "pendingActions" in extra else ""
+                    pending_raw = extra.get("pendingActions", "")
                 except (KeyError, TypeError):
                     pending_raw = ""
                 try:
-                    completed_raw = extra["completedActions"] if "completedActions" in extra else ""
+                    completed_raw = extra.get("completedActions", "")
                 except (KeyError, TypeError):
                     completed_raw = ""
             else:
                 pending_raw = ""
                 completed_raw = ""
-            
+
             # Parse if stored as string
             if isinstance(pending_raw, str) and pending_raw:
                 import json
+
                 try:
                     pending = json.loads(pending_raw)
                 except json.JSONDecodeError:
                     pending = []
             elif isinstance(pending_raw, list):
                 pending = pending_raw
-            
+
             if isinstance(completed_raw, str) and completed_raw:
                 import json
+
                 try:
                     completed = json.loads(completed_raw)
                 except json.JSONDecodeError:
                     completed = []
             elif isinstance(completed_raw, list):
                 completed = completed_raw
-        
+
         if isinstance(pending, list):
             action_data["pending"] = [str(a) for a in pending]
 

@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::{Action, ActionExample, ActionResult};
 use crate::service::CoderService;
+use crate::{Action, ActionExample, ActionResult};
 
 pub struct GitAction;
 
@@ -58,7 +58,11 @@ impl Action for GitAction {
         match svc.git(conv, args).await {
             Ok(result) => ActionResult {
                 success: result.success,
-                text: if result.success { result.stdout } else { result.stderr },
+                text: if result.success {
+                    result.stdout
+                } else {
+                    result.stderr
+                },
                 data: None,
                 error: None,
             },
@@ -78,4 +82,3 @@ impl Action for GitAction {
         }]
     }
 }
-

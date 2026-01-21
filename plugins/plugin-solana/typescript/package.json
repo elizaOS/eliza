@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-solana",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "engines": {
     "bun": ">=1.1.0"
   },

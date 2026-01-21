@@ -1,7 +1,7 @@
-import { describe, expect, test } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
-import { OpenCodeSubAgent } from "../lib/sub-agents/opencode-sub-agent.js";
+import { describe, expect, test } from "vitest";
 import { ElizaOSNativeSubAgent } from "../lib/sub-agents/elizaos-native-sub-agent.js";
+import { OpenCodeSubAgent } from "../lib/sub-agents/opencode-sub-agent.js";
 import { SweAgentSubAgent } from "../lib/sub-agents/sweagent-sub-agent.js";
 import type { SubAgentContext, SubAgentTool } from "../lib/sub-agents/types.js";
 import type { CodeTask } from "../types.js";
@@ -38,7 +38,10 @@ function createTask(id: string, name: string): CodeTask {
   };
 }
 
-function baseContext(runtime: IAgentRuntime, tools: SubAgentTool[]): SubAgentContext {
+function baseContext(
+  runtime: IAgentRuntime,
+  tools: SubAgentTool[],
+): SubAgentContext {
   return {
     runtime,
     workingDirectory: process.cwd(),
@@ -56,15 +59,24 @@ describe("sub-agent smoke", () => {
     delete process.env.ELIZA_CODE_OPENCODE_PREFER_CLI;
     const agent = new OpenCodeSubAgent({ maxIterations: 3, preferCli: false });
     const runtime = createRuntimeAlwaysDone();
-    const result = await agent.execute(createTask("t1", "OpenCode"), baseContext(runtime, []));
+    const result = await agent.execute(
+      createTask("t1", "OpenCode"),
+      baseContext(runtime, []),
+    );
     expect(result.success).toBe(true);
     expect(result.summary.toLowerCase()).toContain("ok");
   });
 
   test("ElizaOSNativeSubAgent completes on DONE response", async () => {
-    const agent = new ElizaOSNativeSubAgent({ maxIterations: 3, enableThinking: false });
+    const agent = new ElizaOSNativeSubAgent({
+      maxIterations: 3,
+      enableThinking: false,
+    });
     const runtime = createRuntimeAlwaysDone();
-    const result = await agent.execute(createTask("t2", "Native"), baseContext(runtime, []));
+    const result = await agent.execute(
+      createTask("t2", "Native"),
+      baseContext(runtime, []),
+    );
     expect(result.success).toBe(true);
     expect(result.summary.toLowerCase()).toContain("ok");
   });
@@ -81,9 +93,11 @@ describe("sub-agent smoke", () => {
     };
     const agent = new SweAgentSubAgent({ maxIterations: 2 });
     const runtime = createRuntimeAlwaysDone();
-    const result = await agent.execute(createTask("t3", "SWE"), baseContext(runtime, [shell]));
+    const result = await agent.execute(
+      createTask("t3", "SWE"),
+      baseContext(runtime, [shell]),
+    );
     expect(result.success).toBe(false);
     expect(result.summary.toLowerCase()).toContain("git");
   });
 });
-

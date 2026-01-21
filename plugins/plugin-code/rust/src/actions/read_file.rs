@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::{Action, ActionExample, ActionResult};
 use crate::service::CoderService;
+use crate::{Action, ActionExample, ActionResult};
 
 pub struct ReadFileAction;
 
@@ -13,7 +13,13 @@ impl Action for ReadFileAction {
     }
 
     fn similes(&self) -> Vec<&str> {
-        vec!["VIEW_FILE", "OPEN_FILE", "CAT_FILE", "SHOW_FILE", "GET_FILE"]
+        vec![
+            "VIEW_FILE",
+            "OPEN_FILE",
+            "CAT_FILE",
+            "SHOW_FILE",
+            "GET_FILE",
+        ]
     }
 
     fn description(&self) -> &str {
@@ -82,4 +88,3 @@ impl Action for ReadFileAction {
         }]
     }
 }
-

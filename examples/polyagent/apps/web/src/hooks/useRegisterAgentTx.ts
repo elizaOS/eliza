@@ -1,19 +1,19 @@
-import type { OnboardingProfilePayload } from '@polyagent/shared';
+import type { OnboardingProfilePayload } from "@polyagent/shared";
 import {
   CAPABILITIES_HASH,
   CHAIN,
   getIdentityRegistryAddress,
   identityRegistryAbi,
   WALLET_ERROR_MESSAGES,
-} from '@polyagent/shared';
-import { useCallback } from 'react';
+} from "@polyagent/shared";
+import { useCallback } from "react";
 import {
   type Address,
   createPublicClient,
   encodeFunctionData,
   http,
-} from 'viem';
-import { useSmartWallet } from '@/hooks/useSmartWallet';
+} from "viem";
+import { useSmartWallet } from "@/hooks/useSmartWallet";
 
 /**
  * Hook for registering an agent on-chain via the identity registry.
@@ -57,7 +57,7 @@ export function useRegisterAgentTx() {
   const registerAgent = useCallback(
     async (profile: OnboardingProfilePayload) => {
       if (!registryAddress) {
-        throw new Error('Identity registry not configured for this chain');
+        throw new Error("Identity registry not configured for this chain");
       }
 
       if (!smartWalletReady || !smartWalletAddress) {
@@ -65,7 +65,7 @@ export function useRegisterAgentTx() {
       }
 
       if (!profile.username) {
-        throw new Error('Username is required to complete registration.');
+        throw new Error("Username is required to complete registration.");
       }
 
       const publicClient = createPublicClient({
@@ -76,13 +76,13 @@ export function useRegisterAgentTx() {
       const isRegistered = await publicClient.readContract({
         address: registryAddress,
         abi: identityRegistryAbi,
-        functionName: 'isRegistered',
+        functionName: "isRegistered",
         args: [smartWalletAddress as Address],
       });
 
       if (isRegistered) {
         throw new Error(
-          'Already registered - wallet is already registered on-chain'
+          "Already registered - wallet is already registered on-chain",
         );
       }
 
@@ -90,14 +90,14 @@ export function useRegisterAgentTx() {
       const metadataUri = JSON.stringify({
         name: profile.displayName ?? profile.username,
         username: profile.username,
-        bio: profile.bio ?? '',
-        type: 'user',
+        bio: profile.bio ?? "",
+        type: "user",
         registered: new Date().toISOString(),
       });
 
       const data = encodeFunctionData({
         abi: identityRegistryAbi,
-        functionName: 'registerAgent',
+        functionName: "registerAgent",
         args: [profile.username, agentEndpoint, CAPABILITIES_HASH, metadataUri],
       });
 
@@ -113,7 +113,7 @@ export function useRegisterAgentTx() {
       smartWalletReady,
       sendSmartWalletTransaction,
       registryAddress,
-    ]
+    ],
   );
 
   return { registerAgent, smartWalletAddress, smartWalletReady };

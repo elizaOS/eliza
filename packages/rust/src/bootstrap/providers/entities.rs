@@ -45,7 +45,10 @@ impl Provider for EntitiesProvider {
         if let Some(sender_id) = sender_id {
             if let Ok(Some(sender)) = runtime.get_entity(sender_id).await {
                 let sender_name = sender.name.clone().unwrap_or_else(|| "Unknown".to_string());
-                let sender_type = sender.entity_type.clone().unwrap_or_else(|| "user".to_string());
+                let sender_type = sender
+                    .entity_type
+                    .clone()
+                    .unwrap_or_else(|| "user".to_string());
 
                 entity_list.push(serde_json::json!({
                     "id": sender_id.to_string(),
@@ -90,4 +93,3 @@ impl Provider for EntitiesProvider {
             .with_data("agentId", agent_id.to_string()))
     }
 }
-

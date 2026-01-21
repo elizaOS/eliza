@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from "uuid";
 import type {
   Action,
   ActionResult,
@@ -7,7 +8,6 @@ import type {
   Memory,
   State,
 } from "../../types/index.ts";
-import { v4 as uuidv4 } from "uuid";
 import type { JsonValue } from "../types.ts";
 
 type PlanningActionOptions = HandlerOptions & {
@@ -80,7 +80,8 @@ export const processAnalysisAction: Action = {
     options?: PlanningActionOptions,
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const previousResults = options?.previousResults ?? options?.actionContext?.previousResults;
+    const previousResults =
+      options?.previousResults ?? options?.actionContext?.previousResults;
     const previousResult = previousResults?.[0];
     if (!previousResult?.data) {
       throw new Error("No analysis data available");
@@ -137,9 +138,12 @@ export const executeFinalAction: Action = {
     options?: PlanningActionOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const previousResults = options?.previousResults ?? options?.actionContext?.previousResults;
+    const previousResults =
+      options?.previousResults ?? options?.actionContext?.previousResults;
     const processingResult = previousResults?.find(
-      (r) => (r.data as Record<string, JsonValue> | undefined)?.decisions !== undefined,
+      (r) =>
+        (r.data as Record<string, JsonValue> | undefined)?.decisions !==
+        undefined,
     );
 
     const processingData = processingResult?.data as
@@ -151,7 +155,9 @@ export const executeFinalAction: Action = {
     }
 
     const execution = {
-      action: processingData.decisions.requiresAction ? "RESPOND" : "ACKNOWLEDGE",
+      action: processingData.decisions.requiresAction
+        ? "RESPOND"
+        : "ACKNOWLEDGE",
       message: processingData.decisions.suggestedResponse,
       metadata: {
         chainId: options?.chainContext?.chainId,
@@ -190,7 +196,8 @@ export const executeFinalAction: Action = {
 
 export const createPlanAction: Action = {
   name: "CREATE_PLAN",
-  description: "Creates a comprehensive project plan with multiple phases and tasks",
+  description:
+    "Creates a comprehensive project plan with multiple phases and tasks",
   similes: ["PLAN_PROJECT", "GENERATE_PLAN", "MAKE_PLAN", "PROJECT_PLAN"],
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
@@ -251,11 +258,13 @@ export const createPlanAction: Action = {
       data: {
         actionName: "CREATE_PLAN",
         phaseCount: plan.phases.length,
-        taskCount: plan.phases.reduce((total, phase) => total + phase.tasks.length, 0),
+        taskCount: plan.phases.reduce(
+          (total, phase) => total + phase.tasks.length,
+          0,
+        ),
         planId: plan.id,
       },
       text: `Created ${plan.phases.length}-phase plan`,
     };
   },
 };
-

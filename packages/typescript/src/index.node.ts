@@ -8,9 +8,6 @@
 
 // Export all core modules
 export * from "./actions";
-// Export generated action/provider/evaluator specs from centralized prompts
-export * from "./generated/action-docs";
-export * from "./generated/spec-helpers";
 // Export capabilities and plugin creation
 export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
@@ -18,6 +15,9 @@ export * from "./character";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+// Export generated action/provider/evaluator specs from centralized prompts
+export * from "./generated/action-docs";
+export * from "./generated/spec-helpers";
 export * from "./logger";
 export * from "./memory";
 export * from "./plugin";

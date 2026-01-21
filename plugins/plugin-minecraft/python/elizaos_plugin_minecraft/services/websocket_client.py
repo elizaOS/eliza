@@ -90,4 +90,3 @@ class MinecraftWebSocketClient:
             await self._ws.close()
             self._ws = None
         self._connected = False
-

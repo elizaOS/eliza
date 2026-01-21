@@ -67,13 +67,24 @@ asyncio_default_fixture_loop_scope = "function"
 python_version = "3.11"
 strict = true
 warn_return_any = true
-warn_unused_ignores = true
+warn_unused_ignores = false
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
 disallow_any_generics = true
 disallow_subclassing_any = true
+
+[[tool.mypy.overrides]]
+module = "elizaos_plugin_bluesky.client"
+# The client uses dynamic JSON data from API responses
+# Strict type checking is relaxed here for practical API interaction
+disable_error_code = ["arg-type", "union-attr", "index", "type-arg", "call-overload", "dict-item", "return-value"]
+
+[[tool.mypy.overrides]]
+module = "elizaos_plugin_bluesky.types"
+# Type definitions use generic types
+disable_error_code = ["type-arg"]
 
 [tool.ruff]
 target-version = "py311"

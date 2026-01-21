@@ -1,14 +1,10 @@
 use std::path::{Path, PathBuf};
 
-pub const DEFAULT_FORBIDDEN_COMMANDS: [&str; 5] = ["rm -rf /", "rm -rf ~", "sudo rm", "mkfs", "dd if=/dev"];
+pub const DEFAULT_FORBIDDEN_COMMANDS: [&str; 5] =
+    ["rm -rf /", "rm -rf ~", "sudo rm", "mkfs", "dd if=/dev"];
 
 pub fn extract_base_command(command: &str) -> String {
-    command
-        .trim()
-        .split_whitespace()
-        .next()
-        .unwrap_or("")
-        .to_string()
+    command.split_whitespace().next().unwrap_or("").to_string()
 }
 
 pub fn is_safe_command(command: &str) -> bool {
@@ -48,7 +44,11 @@ pub fn is_forbidden_command(command: &str, additional_forbidden: &[String]) -> b
     false
 }
 
-pub fn validate_path(target_path: &str, allowed_directory: &Path, current_directory: &Path) -> Option<PathBuf> {
+pub fn validate_path(
+    target_path: &str,
+    allowed_directory: &Path,
+    current_directory: &Path,
+) -> Option<PathBuf> {
     let base = if current_directory.as_os_str().is_empty() {
         allowed_directory
     } else {
@@ -79,4 +79,3 @@ pub fn validate_path(target_path: &str, allowed_directory: &Path, current_direct
     canonical.strip_prefix(&allowed).ok()?;
     Some(canonical)
 }
-

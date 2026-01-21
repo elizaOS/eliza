@@ -15,7 +15,7 @@ COMMAND_EXTRACTION_TEMPLATE = """# Extracting shell command from request
 
 # Instructions: {{senderName}} wants to execute a shell command. Extract the COMPLETE shell command they want to run.
 
-IMPORTANT: 
+IMPORTANT:
 1. Always return the FULL executable shell command, not just the content or partial command.
 2. If the user mentions installing something, create the appropriate brew/npm/apt command.
 3. If the user directly provides a command (like "brew install X"), use it exactly as provided.

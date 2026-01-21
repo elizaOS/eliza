@@ -1,4 +1,4 @@
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 
 /**
  * Props for the VerifiedBadge component.
@@ -7,13 +7,13 @@ interface VerifiedBadgeProps {
   /** Additional CSS classes */
   className?: string;
   /** Size variant: 'sm', 'md', or 'lg' */
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
 }
 
 const sizeMap = {
-  sm: 'w-4 h-4',
-  md: 'w-5 h-5',
-  lg: 'w-6 h-6',
+  sm: "w-4 h-4",
+  md: "w-5 h-5",
+  lg: "w-6 h-6",
 };
 
 const UUID_PATTERN =
@@ -35,8 +35,8 @@ export function isNpcIdentifier(identifier?: string | null): boolean {
   const normalized = identifier.trim().toLowerCase();
   if (!normalized) return false;
 
-  if (normalized.startsWith('did:')) return false;
-  if (normalized.includes('privy')) return false;
+  if (normalized.startsWith("did:")) return false;
+  if (normalized.includes("privy")) return false;
   if (UUID_PATTERN.test(normalized)) return false;
 
   return true;
@@ -56,13 +56,13 @@ export function isNpcIdentifier(identifier?: string | null): boolean {
  * <VerifiedBadge size="sm" />
  * ```
  */
-export function VerifiedBadge({ className, size = 'md' }: VerifiedBadgeProps) {
+export function VerifiedBadge({ className, size = "md" }: VerifiedBadgeProps) {
   return (
     <svg
       viewBox="0 0 18 18"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={cn(sizeMap[size], 'shrink-0', className)}
+      className={cn(sizeMap[size], "shrink-0", className)}
     >
       <path
         strokeWidth="1.5"

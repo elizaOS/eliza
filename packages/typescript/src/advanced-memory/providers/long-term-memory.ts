@@ -1,11 +1,11 @@
-import {
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type State,
-} from "../../types/index.ts";
 import { logger } from "../../logger.ts";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 
@@ -14,9 +14,15 @@ export const longTermMemoryProvider: Provider = {
   description: "Persistent facts and preferences about the user",
   position: 50,
 
-  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
     try {
-      const memoryService = runtime.getService("memory") as MemoryService | null;
+      const memoryService = runtime.getService(
+        "memory",
+      ) as MemoryService | null;
       if (!memoryService) {
         return {
           data: { memoryCount: 0 },
@@ -34,7 +40,11 @@ export const longTermMemoryProvider: Provider = {
         };
       }
 
-      const memories = await memoryService.getLongTermMemories(entityId, undefined, 25);
+      const memories = await memoryService.getLongTermMemories(
+        entityId,
+        undefined,
+        25,
+      );
       if (memories.length === 0) {
         return {
           data: { memoryCount: 0 },
@@ -43,7 +53,8 @@ export const longTermMemoryProvider: Provider = {
         };
       }
 
-      const formattedMemories = await memoryService.getFormattedLongTermMemories(entityId);
+      const formattedMemories =
+        await memoryService.getFormattedLongTermMemories(entityId);
       const text = addHeader("# What I Know About You", formattedMemories);
 
       const categoryCounts = new Map<string, number>();
@@ -69,7 +80,10 @@ export const longTermMemoryProvider: Provider = {
       };
     } catch (error) {
       const err = error instanceof Error ? error.message : String(error);
-      logger.error({ src: "provider:memory", err }, "Error in longTermMemoryProvider");
+      logger.error(
+        { src: "provider:memory", err },
+        "Error in longTermMemoryProvider",
+      );
       return {
         data: { memoryCount: 0 },
         values: { longTermMemories: "" },
@@ -78,4 +92,3 @@ export const longTermMemoryProvider: Provider = {
     }
   },
 };
-

@@ -1,7 +1,7 @@
 import type { IAgentRuntime, ProviderValue } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { polymarketProvider } from "../providers/polymarket";
-import { initializeClobClientWithCreds, getWalletAddress } from "../utils/clobClient";
+import { getWalletAddress, initializeClobClientWithCreds } from "../utils/clobClient";
 
 vi.mock("../utils/clobClient", () => ({
   initializeClobClientWithCreds: vi.fn(),
@@ -97,9 +97,9 @@ describe("polymarketProvider", () => {
         ],
         next_cursor: "",
       }),
-      getOpenOrders: vi.fn().mockResolvedValue([
-        { id: "o1", asset_id: "a1", market: "m1", side: "BUY", price: "0.4" },
-      ]),
+      getOpenOrders: vi
+        .fn()
+        .mockResolvedValue([{ id: "o1", asset_id: "a1", market: "m1", side: "BUY", price: "0.4" }]),
       getBalanceAllowance: vi.fn().mockResolvedValue({ balance: "100", allowance: "1000" }),
       getOrderBook: vi.fn().mockResolvedValue({
         bids: [{ price: "0.39" }],

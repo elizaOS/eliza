@@ -43,7 +43,9 @@ async function main(): Promise<void> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`❌ ${message}`);
-    console.error("   Copy examples/twitter-xai/env.example to examples/twitter-xai/.env and fill in credentials.");
+    console.error(
+      "   Copy examples/twitter-xai/env.example to examples/twitter-xai/.env and fill in credentials.",
+    );
     process.exit(1);
   }
 
@@ -65,10 +67,16 @@ async function main(): Promise<void> {
 
   console.log(`\n✅ Agent "${character.name}" is now running on X.`);
   console.log(`   Dry run mode: ${process.env.X_DRY_RUN === "true"}`);
-  console.log(`   Replies enabled: ${(process.env.X_ENABLE_REPLIES ?? "true") !== "false"}`);
+  console.log(
+    `   Replies enabled: ${(process.env.X_ENABLE_REPLIES ?? "true") !== "false"}`,
+  );
   console.log(`   Posting enabled: ${process.env.X_ENABLE_POST === "true"}`);
-  console.log(`   Timeline actions enabled: ${process.env.X_ENABLE_ACTIONS === "true"}`);
-  console.log(`   Discovery enabled: ${process.env.X_ENABLE_DISCOVERY === "true"}`);
+  console.log(
+    `   Timeline actions enabled: ${process.env.X_ENABLE_ACTIONS === "true"}`,
+  );
+  console.log(
+    `   Discovery enabled: ${process.env.X_ENABLE_DISCOVERY === "true"}`,
+  );
   console.log("\n   Press Ctrl+C to stop.\n");
 
   const shutdown = async (signal: string): Promise<void> => {
@@ -89,4 +97,3 @@ main().catch((err) => {
   console.error(`Fatal error: ${message}`);
   process.exit(1);
 });
-

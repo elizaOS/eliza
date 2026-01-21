@@ -10,10 +10,10 @@
  */
 
 // Communication
-export * from './communication/CommunicationHub';
-export * from './communication/EventBus';
+export * from "./communication/CommunicationHub";
+export * from "./communication/EventBus";
 // Errors
-export * from './errors';
+export * from "./errors";
 // External agent adapter
 export {
   type AgentResponse,
@@ -23,34 +23,34 @@ export {
   type ExternalAgentMessage,
   getExternalAgentAdapter,
   type Protocol,
-} from './external/ExternalAgentAdapter';
+} from "./external/ExternalAgentAdapter";
 // Identity and wallet management
-export * from './identity/AgentIdentityService';
-export * from './identity/AgentWalletService';
+export * from "./identity/AgentIdentityService";
+export * from "./identity/AgentWalletService";
 // LLM integrations
-export * from './llm';
+export * from "./llm";
+// Plugin utilities
+export { groqPlugin } from "./plugins/groq";
+export * from "./plugins/plugin-autonomy/src";
+export * from "./plugins/plugin-experience/src";
+export * from "./plugins/plugin-trajectory-logger/src";
 // Polymarket plugin wrapper
 export {
   babylonPolymarketPlugin,
   getPolymarketService,
-  waitForPolymarketService,
   type PolymarketAgentConfig,
-} from './plugins/polymarket';
-// Plugin utilities
-export { groqPlugin } from './plugins/groq';
-export * from './plugins/plugin-autonomy/src';
-export * from './plugins/plugin-experience/src';
-export * from './plugins/plugin-trajectory-logger/src';
+  waitForPolymarketService,
+} from "./plugins/polymarket";
 // Runtime
-export * from './runtime/AgentRuntimeManager';
+export * from "./runtime/AgentRuntimeManager";
 // Services
-export * from './services';
+export * from "./services";
 // Templates loader
-export * from './templates-loader';
+export * from "./templates-loader";
 // Core types
-export * from './types';
-export * from './types/agent-template';
-export * from './types/goals';
+export * from "./types";
+export * from "./types/agent-template";
+export * from "./types/goals";
 // Utils
-export * from './utils/createTestAgent';
-export * from './utils/prompt-builder';
+export * from "./utils/createTestAgent";
+export * from "./utils/prompt-builder";

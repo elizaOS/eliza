@@ -29,4 +29,3 @@ impl Default for ComputerUseConfig {
         }
     }
 }
-

@@ -18,8 +18,8 @@ import {
   lte,
   sql,
   trajectories,
-} from '@babylon/db';
-import type { JsonValue } from '../../../types/common';
+} from "@babylon/db";
+import type { JsonValue } from "../../../types/common";
 
 /**
  * Fisher-Yates shuffle algorithm
@@ -32,7 +32,8 @@ function shuffleArray<T>(array: T[]): T[] {
   }
   return shuffled;
 }
-import type { Trajectory } from './types';
+
+import type { Trajectory } from "./types";
 
 export interface ExportOptions {
   // Dataset configuration
@@ -52,7 +53,7 @@ export interface ExportOptions {
   maxTrajectories?: number;
 
   // Format
-  format?: 'jsonl' | 'parquet' | 'arrow';
+  format?: "jsonl" | "parquet" | "arrow";
   splitRatio?: { train: number; validation: number; test: number };
 }
 
@@ -67,7 +68,7 @@ export interface ExportResult {
  * Export trajectories to Hugging Face Dataset
  */
 export async function exportToHuggingFace(
-  options: ExportOptions
+  options: ExportOptions,
 ): Promise<ExportResult> {
   // Build where conditions
   const conditions = buildWhereConditions(options);
@@ -104,7 +105,7 @@ export async function exportToHuggingFace(
   const splits = splitDataset(dataset, options.splitRatio);
 
   // Export based on format
-  if (options.format === 'parquet' || options.format === 'arrow') {
+  if (options.format === "parquet" || options.format === "arrow") {
     return await exportToParquet<TrainingTrajectory>(splits, options);
   } else {
     return await exportToJSONL<TrainingTrajectory>(splits, options);
@@ -264,19 +265,19 @@ function transformForTraining(traj: TrajectoryRecord): TrainingTrajectory {
     // Metrics
     metrics: {
       episode_length:
-        typeof metrics.episodeLength === 'number' ? metrics.episodeLength : 0,
+        typeof metrics.episodeLength === "number" ? metrics.episodeLength : 0,
       trades_executed:
-        typeof metrics.tradesExecuted === 'number'
+        typeof metrics.tradesExecuted === "number"
           ? metrics.tradesExecuted
           : null,
       posts_created:
-        typeof metrics.postsCreated === 'number' ? metrics.postsCreated : null,
+        typeof metrics.postsCreated === "number" ? metrics.postsCreated : null,
       messages_handled:
-        typeof metrics.messagesHandled === 'number'
+        typeof metrics.messagesHandled === "number"
           ? metrics.messagesHandled
           : null,
       error_count:
-        typeof metrics.errorCount === 'number' ? metrics.errorCount : null,
+        typeof metrics.errorCount === "number" ? metrics.errorCount : null,
     },
 
     // Metadata
@@ -289,7 +290,7 @@ function transformForTraining(traj: TrajectoryRecord): TrainingTrajectory {
  */
 function splitDataset<T>(
   data: T[],
-  ratio?: { train: number; validation: number; test: number }
+  ratio?: { train: number; validation: number; test: number },
 ): { train: T[]; validation: T[]; test: T[] } {
   const defaultRatio = { train: 0.8, validation: 0.1, test: 0.1 };
   const { train, validation, test: testRatio } = ratio || defaultRatio;
@@ -315,20 +316,20 @@ function splitDataset<T>(
  */
 async function exportToJSONL<T extends object>(
   splits: { train: T[]; validation: T[]; test: T[] },
-  options: ExportOptions
+  options: ExportOptions,
 ): Promise<ExportResult> {
   // Check if we're in a Node.js environment with file system access
-  if (typeof process === 'undefined' || typeof process.cwd !== 'function') {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") {
     throw new Error(
-      'exportToJSONL requires Node.js environment with file system access. Not available in edge runtime.'
+      "exportToJSONL requires Node.js environment with file system access. Not available in edge runtime.",
     );
   }
 
-  const fs = await import('node:fs/promises');
-  const path = await import('node:path');
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
 
   // Create export directory
-  const exportDir = path.resolve(process.cwd(), 'exports', 'trajectories');
+  const exportDir = path.resolve(process.cwd(), "exports", "trajectories");
   await fs.mkdir(exportDir, { recursive: true });
 
   // Write splits
@@ -336,8 +337,8 @@ async function exportToJSONL<T extends object>(
     if (data.length === 0) continue;
 
     const filePath = path.join(exportDir, `${splitName}.jsonl`);
-    const lines = data.map((item: T) => JSON.stringify(item)).join('\n');
-    await fs.writeFile(filePath, lines, 'utf-8');
+    const lines = data.map((item: T) => JSON.stringify(item)).join("\n");
+    await fs.writeFile(filePath, lines, "utf-8");
 
     console.log(`Exported ${data.length} trajectories to ${filePath}`);
   }
@@ -362,11 +363,11 @@ async function exportToJSONL<T extends object>(
  */
 async function exportToParquet<T extends object>(
   splits: { train: T[]; validation: T[]; test: T[] },
-  options: ExportOptions
+  options: ExportOptions,
 ): Promise<ExportResult> {
   // This would require Apache Arrow/Parquet libraries
   // For now, fallback to JSONL
-  console.warn('Parquet export not yet implemented, falling back to JSONL');
+  console.warn("Parquet export not yet implemented, falling back to JSONL");
   return exportToJSONL(splits, options);
 }
 
@@ -375,45 +376,45 @@ async function exportToParquet<T extends object>(
  */
 async function uploadToHuggingFaceHub(
   exportDir: string,
-  options: ExportOptions
+  options: ExportOptions,
 ): Promise<void> {
   if (!options.huggingFaceToken) {
-    throw new Error('HuggingFace token is required for upload');
+    throw new Error("HuggingFace token is required for upload");
   }
 
   // Try using child_process to call huggingface-cli (most reliable method)
-  const { exec } = await import('node:child_process');
-  const { promisify } = await import('node:util');
+  const { exec } = await import("node:child_process");
+  const { promisify } = await import("node:util");
   const execAsync = promisify(exec);
 
   // Set token as environment variable for huggingface-cli
   process.env.HUGGINGFACE_HUB_TOKEN = options.huggingFaceToken;
 
-  console.log('Uploading to Hugging Face Hub...');
+  console.log("Uploading to Hugging Face Hub...");
   console.log(`Dataset: ${options.datasetName}`);
 
   await execAsync(
-    `huggingface-cli upload ${options.datasetName} ${exportDir} --repo-type dataset`
+    `huggingface-cli upload ${options.datasetName} ${exportDir} --repo-type dataset`,
   );
-  console.log('✅ Successfully uploaded via huggingface-cli');
+  console.log("✅ Successfully uploaded via huggingface-cli");
 }
 
 /**
  * Export trajectories grouped by scenario (for GRPO training)
  */
 export async function exportGroupedByScenario(
-  options: Omit<ExportOptions, 'format'>
+  options: Omit<ExportOptions, "format">,
 ): Promise<ExportResult> {
   // Check if we're in a Node.js environment with file system access
-  if (typeof process === 'undefined' || typeof process.cwd !== 'function') {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") {
     throw new Error(
-      'exportGroupedByScenario requires Node.js environment with file system access. Not available in edge runtime.'
+      "exportGroupedByScenario requires Node.js environment with file system access. Not available in edge runtime.",
     );
   }
 
-  const fs = await import('node:fs/promises');
-  const path = await import('node:path');
-  const exportDir = path.resolve(process.cwd(), 'exports', 'scenarios');
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+  const exportDir = path.resolve(process.cwd(), "exports", "scenarios");
   await fs.mkdir(exportDir, { recursive: true });
 
   // Build conditions
@@ -456,15 +457,15 @@ export async function exportGroupedByScenario(
         finalPnL: traj.finalPnL,
         aiJudgeReward: traj.aiJudgeReward,
         aiJudgeReasoning: traj.aiJudgeReasoning,
-      })
+      }),
     );
 
     const filePath = path.join(exportDir, `scenario-${scenarioId}.jsonl`);
-    const lines = transformed.map((item) => JSON.stringify(item)).join('\n');
-    await fs.writeFile(filePath, lines, 'utf-8');
+    const lines = transformed.map((item) => JSON.stringify(item)).join("\n");
+    await fs.writeFile(filePath, lines, "utf-8");
 
     console.log(
-      `Exported ${trajResults.length} trajectories for scenario ${scenarioId}`
+      `Exported ${trajResults.length} trajectories for scenario ${scenarioId}`,
     );
     totalExported += trajResults.length;
   }
@@ -480,16 +481,16 @@ export async function exportGroupedByScenario(
  * Matches the format expected by ART/GRPO training
  */
 export async function exportForOpenPipeART(
-  options: ExportOptions
+  options: ExportOptions,
 ): Promise<ExportResult> {
   // Check if we're in a Node.js environment with file system access
-  if (typeof process === 'undefined' || typeof process.cwd !== 'function') {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") {
     throw new Error(
-      'exportForOpenPipeART requires Node.js environment with file system access. Not available in edge runtime.'
+      "exportForOpenPipeART requires Node.js environment with file system access. Not available in edge runtime.",
     );
   }
 
-  const { toARTTrajectory } = await import('./art-format');
+  const { toARTTrajectory } = await import("./art-format");
 
   const conditions = buildWhereConditions(options);
 
@@ -511,7 +512,7 @@ export async function exportForOpenPipeART(
         traj.agentId as `${string}-${string}-${string}-${string}-${string}`,
       scenarioId: traj.scenarioId,
       groupIndex: traj.batchId
-        ? parseInt(traj.batchId.split('-').pop() || '0')
+        ? parseInt(traj.batchId.split("-").pop() || "0", 10)
         : undefined,
       startTime: traj.startTime.getTime(),
       endTime: traj.endTime.getTime(),
@@ -526,17 +527,17 @@ export async function exportForOpenPipeART(
     return toARTTrajectory(trajectory as Trajectory);
   });
 
-  const fs = await import('node:fs/promises');
-  const path = await import('node:path');
-  const exportDir = path.resolve(process.cwd(), 'exports', 'openpipe-art');
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+  const exportDir = path.resolve(process.cwd(), "exports", "openpipe-art");
   await fs.mkdir(exportDir, { recursive: true });
 
-  const filePath = path.join(exportDir, 'trajectories.jsonl');
-  const lines = artFormat.map((item) => JSON.stringify(item)).join('\n');
-  await fs.writeFile(filePath, lines, 'utf-8');
+  const filePath = path.join(exportDir, "trajectories.jsonl");
+  const lines = artFormat.map((item) => JSON.stringify(item)).join("\n");
+  await fs.writeFile(filePath, lines, "utf-8");
 
   console.log(
-    `Exported ${artFormat.length} trajectories in OpenPipe ART format`
+    `Exported ${artFormat.length} trajectories in OpenPipe ART format`,
   );
 
   return {
@@ -550,16 +551,16 @@ export async function exportForOpenPipeART(
  * This creates the structure RULER needs for comparative ranking
  */
 export async function exportGroupedForGRPO(
-  options: ExportOptions
+  options: ExportOptions,
 ): Promise<ExportResult> {
   // Check if we're in a Node.js environment with file system access
-  if (typeof process === 'undefined' || typeof process.cwd !== 'function') {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") {
     throw new Error(
-      'exportGroupedForGRPO requires Node.js environment with file system access. Not available in edge runtime.'
+      "exportGroupedForGRPO requires Node.js environment with file system access. Not available in edge runtime.",
     );
   }
 
-  const { groupTrajectories, toARTTrajectory } = await import('./art-format');
+  const { groupTrajectories, toARTTrajectory } = await import("./art-format");
 
   // CRITICAL: Enforce maxTrajectories limit to prevent 200GB disk usage
   const MAX_TRAJECTORIES = options.maxTrajectories || 2000; // Default hard limit
@@ -584,42 +585,42 @@ export async function exportGroupedForGRPO(
 
   // Type guard for scenario count row
   function isScenarioCountRow(row: object): row is ScenarioCountRow {
-    return 'scenarioId' in row && 'count' in row;
+    return "scenarioId" in row && "count" in row;
   }
 
   // Validate and type the raw SQL result
   if (!Array.isArray(scenarioCountsRaw)) {
-    throw new Error('Invalid scenario counts result from database');
+    throw new Error("Invalid scenario counts result from database");
   }
   const scenarioCounts: Array<{ scenarioId: string; count: string }> = (
     scenarioCountsRaw as object[]
   )
     .filter(
       (row): row is ScenarioCountRow =>
-        row !== null && typeof row === 'object' && isScenarioCountRow(row)
+        row !== null && typeof row === "object" && isScenarioCountRow(row),
     )
     .map((row) => ({
       scenarioId: String(row.scenarioId),
       count: String(row.count),
     }));
 
-  const fs = await import('node:fs/promises');
-  const path = await import('node:path');
-  const exportDir = path.resolve(process.cwd(), 'exports', 'grpo-groups');
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+  const exportDir = path.resolve(process.cwd(), "exports", "grpo-groups");
   await fs.mkdir(exportDir, { recursive: true });
 
   let totalExported = 0;
   let remainingQuota = MAX_TRAJECTORIES;
 
   for (const { scenarioId, count } of scenarioCounts) {
-    const countNum = parseInt(count);
+    const countNum = parseInt(count, 10);
     if (!scenarioId || countNum < 2) continue; // Need at least 2 for comparison
     if (remainingQuota <= 0) break; // Stop if we've hit the limit
 
     // Calculate how many trajectories we can take for this scenario
     const takeForScenario = Math.min(
       MAX_TRAJECTORIES_PER_SCENARIO,
-      remainingQuota
+      remainingQuota,
     );
 
     const trajResults = await db
@@ -661,7 +662,7 @@ export async function exportGroupedForGRPO(
       };
 
       const filePath = path.join(exportDir, `group-${scenarioId}.jsonl`);
-      await fs.writeFile(filePath, JSON.stringify(artFormat) + '\n', 'utf-8');
+      await fs.writeFile(filePath, `${JSON.stringify(artFormat)}\n`, "utf-8");
 
       const exported = group.trajectories.length;
       totalExported += exported;
@@ -670,7 +671,7 @@ export async function exportGroupedForGRPO(
   }
 
   console.log(
-    `Exported ${totalExported} trajectories in ${scenarioCounts.length} GRPO groups (limit: ${MAX_TRAJECTORIES})`
+    `Exported ${totalExported} trajectories in ${scenarioCounts.length} GRPO groups (limit: ${MAX_TRAJECTORIES})`,
   );
 
   return {

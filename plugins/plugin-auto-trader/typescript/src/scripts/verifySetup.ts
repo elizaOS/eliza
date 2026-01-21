@@ -1,18 +1,10 @@
 #!/usr/bin/env node
 
-// Missing services - commented out until implemented
-// import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-// import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
-// import { SimulationService } from '../services/SimulationService.ts';
-// import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
-// import { AnalyticsService } from '../services/analyticsService.ts';
-import { AgentRuntime } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import * as fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import chalk from 'chalk';
-import dotenv from 'dotenv';
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import chalk from "chalk";
+import dotenv from "dotenv";
+import { v4 as uuidv4 } from "uuid";
 
 // Load environment variables
 dotenv.config();
@@ -20,9 +12,11 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Mock runtime
-class MockRuntime {
-  public agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+// Mock runtime - kept for future use when services are implemented
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+class _MockRuntime {
+  public agentId =
+    uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
 
   getSetting(key: string): string | undefined {
     return process.env[key];
@@ -39,8 +33,12 @@ class MockRuntime {
     */
   }
 
-  useModel(modelType: any, params: any, provider?: string): Promise<any> {
-    throw new Error('Model not needed for verification');
+  useModel(
+    _modelType: string,
+    _params: Record<string, unknown>,
+    _provider?: string,
+  ): Promise<unknown> {
+    throw new Error("Model not needed for verification");
   }
 }
 
@@ -52,7 +50,9 @@ class MockRuntime {
 // let simulationService: SimulationService;
 
 async function verifySetup() {
-  throw new Error('This script requires missing services: HistoricalDataService, StrategyRegistryService, SimulationService, PerformanceReportingService, AnalyticsService');
+  throw new Error(
+    "This script requires missing services: HistoricalDataService, StrategyRegistryService, SimulationService, PerformanceReportingService, AnalyticsService",
+  );
   /* Commented out until services are implemented
   console.log(
     chalk.bold.cyan(`
@@ -106,8 +106,9 @@ async function verifySetup() {
     console.log(chalk.green('   ✅ SimulationService initialized'));
 
     checks.services = true;
-  } catch (error: any) {
-    console.log(chalk.red(`   ❌ Service initialization failed: ${error.message}`));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(chalk.red(`   ❌ Service initialization failed: ${message}`));
   }
 
   // 3. Check strategies
@@ -207,8 +208,9 @@ async function verifySetup() {
       } else {
         console.log(chalk.yellow('   ⚠️ Could not fetch test data'));
       }
-    } catch (error: any) {
-      console.log(chalk.yellow(`   ⚠️ Mini backtest failed: ${error.message}`));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(chalk.yellow(`   ⚠️ Mini backtest failed: ${message}`));
     }
   }
 
@@ -250,6 +252,6 @@ async function verifySetup() {
 
 // Run verification
 verifySetup().catch((error) => {
-  console.error(chalk.red('\n❌ Verification failed:'), error);
+  console.error(chalk.red("\n❌ Verification failed:"), error);
   process.exit(1);
 });

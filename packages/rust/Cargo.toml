@@ -72,6 +72,9 @@ tracing-subscriber = { version = "0.3", optional = true }
 regex = "1.0"
 lazy_static = "1.4"
 
+# URL encoding (for stringToUuid compatibility with TypeScript)
+percent-encoding = "2.3"
+
 # Template engine (handlebars equivalent)
 handlebars = "6.4"
 

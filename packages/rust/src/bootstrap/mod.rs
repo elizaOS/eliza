@@ -87,10 +87,7 @@ impl BootstrapPlugin {
 
     /// Initialize the plugin with a runtime.
     pub async fn init(&self, runtime: Arc<dyn IAgentRuntime>) -> PluginResult<()> {
-        runtime.log_info(
-            "plugin:bootstrap",
-            "Initializing Bootstrap plugin",
-        );
+        runtime.log_info("plugin:bootstrap", "Initializing Bootstrap plugin");
 
         // Initialize services only if basic capabilities are enabled
         if !self.config.disable_basic {
@@ -397,7 +394,7 @@ mod tests {
     #[test]
     fn test_get_action_by_name() {
         let plugin = BootstrapPlugin::new();
-        
+
         let reply = plugin.get_action("REPLY");
         assert!(reply.is_some());
         assert_eq!(reply.unwrap().name(), "REPLY");
@@ -409,7 +406,7 @@ mod tests {
     #[test]
     fn test_get_action_by_simile() {
         let plugin = BootstrapPlugin::new();
-        
+
         // RESPOND is a simile for REPLY
         let reply = plugin.get_action("RESPOND");
         assert!(reply.is_some());
@@ -419,7 +416,7 @@ mod tests {
     #[test]
     fn test_get_provider() {
         let plugin = BootstrapPlugin::new();
-        
+
         let character = plugin.get_provider("CHARACTER");
         assert!(character.is_some());
         assert_eq!(character.unwrap().name(), "CHARACTER");
@@ -428,7 +425,7 @@ mod tests {
     #[test]
     fn test_all_actions_have_descriptions() {
         let plugin = BootstrapPlugin::with_config(CapabilityConfig::with_extended());
-        
+
         for action in plugin.actions() {
             assert!(!action.name().is_empty());
             assert!(!action.description().is_empty());
@@ -438,7 +435,7 @@ mod tests {
     #[test]
     fn test_all_providers_have_descriptions() {
         let plugin = BootstrapPlugin::with_config(CapabilityConfig::with_extended());
-        
+
         for provider in plugin.providers() {
             assert!(!provider.name().is_empty());
             assert!(!provider.description().is_empty());
@@ -460,4 +457,3 @@ mod tests {
         assert!(extended_only.enable_extended);
     }
 }
-

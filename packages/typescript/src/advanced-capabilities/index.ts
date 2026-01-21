@@ -11,20 +11,20 @@
  * - Additional services (rolodex, follow-ups)
  */
 
+import { withCanonicalActionDocs } from "../action-docs.ts";
 import { FollowUpService } from "../services/followUp.ts";
 import { RolodexService } from "../services/rolodex.ts";
 import type { ServiceClass } from "../types/plugin.ts";
-import { withCanonicalActionDocs } from "../action-docs.ts";
 
 // Re-export action, provider, and evaluator modules
 export * from "./actions/index.ts";
-export * from "./providers/index.ts";
 export * from "./evaluators/index.ts";
+export * from "./providers/index.ts";
 
 // Import for local use
 import * as actions from "./actions/index.ts";
-import * as providers from "./providers/index.ts";
 import * as evaluators from "./evaluators/index.ts";
+import * as providers from "./providers/index.ts";
 
 /**
  * Advanced providers - extended context and state management

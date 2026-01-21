@@ -57,7 +57,9 @@ export class MinecraftWebSocketClient {
         // reject all pending
         for (const [requestId, entry] of this.pending) {
           clearTimeout(entry.timeoutId);
-          entry.reject(new Error(`WebSocket closed while waiting for ${requestId}`));
+          entry.reject(
+            new Error(`WebSocket closed while waiting for ${requestId}`),
+          );
         }
         this.pending.clear();
       });
@@ -96,21 +98,23 @@ export class MinecraftWebSocketClient {
 
     const payload = JSON.stringify(msg);
 
-    const response = await new Promise<MinecraftBridgeResponse>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        this.pending.delete(requestId);
-        reject(new Error(`Request timeout: ${type}`));
-      }, timeoutMs);
-
-      this.pending.set(requestId, { resolve, reject, timeoutId });
-      this.ws?.send(payload, (err) => {
-        if (err) {
-          clearTimeout(timeoutId);
+    const response = await new Promise<MinecraftBridgeResponse>(
+      (resolve, reject) => {
+        const timeoutId = setTimeout(() => {
           this.pending.delete(requestId);
-          reject(err);
-        }
-      });
-    });
+          reject(new Error(`Request timeout: ${type}`));
+        }, timeoutMs);
+
+        this.pending.set(requestId, { resolve, reject, timeoutId });
+        this.ws?.send(payload, (err) => {
+          if (err) {
+            clearTimeout(timeoutId);
+            this.pending.delete(requestId);
+            reject(err);
+          }
+        });
+      },
+    );
 
     if (!response.success) {
       throw new Error(response.error ?? `Request failed: ${type}`);
@@ -137,4 +141,3 @@ export class MinecraftWebSocketClient {
     pending.resolve(parsed);
   }
 }
-

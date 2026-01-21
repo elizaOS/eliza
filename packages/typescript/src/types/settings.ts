@@ -1,10 +1,10 @@
 import type {
+  JsonValue,
   OnboardingConfig as ProtoOnboardingConfig,
   RuntimeSettings as ProtoRuntimeSettings,
   Setting as ProtoSetting,
   SettingDefinition as ProtoSettingDefinition,
   WorldSettings as ProtoWorldSettings,
-  JsonValue,
 } from "./proto.js";
 
 /**

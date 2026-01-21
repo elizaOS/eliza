@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import type { IAgentRuntime, TestSuite } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import type { VisionService } from "../../service";
 import { VisionServiceType } from "../../types";
 import {
@@ -13,7 +13,7 @@ import {
 
 const execAsync = promisify(exec);
 
-export class VisionWorkerE2ETestSuite  {
+export class VisionWorkerE2ETestSuite {
   name = "plugin-vision-workers-e2e";
   description = "E2E tests for multi-threaded vision system with worker threads";
 

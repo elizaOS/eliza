@@ -191,7 +191,9 @@ export function syncMafiaGameState(
   if (!existing) {
     return createMafiaGameState(agentIds);
   }
-  const playersById = new Map(existing.players.map((player) => [player.agentId, player]));
+  const playersById = new Map(
+    existing.players.map((player) => [player.agentId, player]),
+  );
   const nextPlayers: MafiaPlayerState[] = agentIds.map((agentId) => {
     const current = playersById.get(agentId);
     if (current) {
@@ -223,14 +225,16 @@ export function syncMafiaGameState(
   }
   const investigations: Record<string, MafiaInvestigation | null> = {};
   for (const player of nextPlayers) {
-    investigations[player.agentId] = existing.investigations[player.agentId] ?? null;
+    investigations[player.agentId] =
+      existing.investigations[player.agentId] ?? null;
   }
   const validAgentIds = new Set(agentIds);
   const filteredVotes = existing.votes.filter(
     (vote) => validAgentIds.has(vote.voterId) && validAgentIds.has(vote.target),
   );
   const filteredActions = existing.nightActions.filter(
-    (action) => validAgentIds.has(action.actorId) && validAgentIds.has(action.target),
+    (action) =>
+      validAgentIds.has(action.actorId) && validAgentIds.has(action.target),
   );
   return {
     ...existing,
@@ -302,14 +306,25 @@ export function startMafiaRound(state: MafiaGameState): MafiaGameUpdate {
   return update(nextState, true, "Round started.");
 }
 
-export function pauseMafiaGame(state: MafiaGameState, paused: boolean): MafiaGameUpdate {
+export function pauseMafiaGame(
+  state: MafiaGameState,
+  paused: boolean,
+): MafiaGameUpdate {
   if (state.phase === "ended") {
     return update(state, false, "Game already ended.");
   }
   if (state.isPaused === paused) {
-    return update(state, false, paused ? "Game already paused." : "Game already running.");
+    return update(
+      state,
+      false,
+      paused ? "Game already paused." : "Game already running.",
+    );
   }
-  return update({ ...state, isPaused: paused }, true, paused ? "Game paused." : "Game resumed.");
+  return update(
+    { ...state, isPaused: paused },
+    true,
+    paused ? "Game paused." : "Game resumed.",
+  );
 }
 
 export function resetMafiaGame(
@@ -348,8 +363,8 @@ export function advanceMafiaPhase(state: MafiaGameState): MafiaGameUpdate {
       nightActions: [],
       lastEvent:
         winner === "none"
-          ? resolved.lastEvent ?? "Dawn breaks. Discuss and vote."
-          : resolved.lastEvent ?? "The game has ended.",
+          ? (resolved.lastEvent ?? "Dawn breaks. Discuss and vote.")
+          : (resolved.lastEvent ?? "The game has ended."),
     };
     return update(nextState, true, "Night resolved.");
   }
@@ -364,8 +379,8 @@ export function advanceMafiaPhase(state: MafiaGameState): MafiaGameUpdate {
     nightActions: [],
     lastEvent:
       winner === "none"
-        ? resolved.lastEvent ?? "Night falls. The mafia chooses a target."
-        : resolved.lastEvent ?? "The game has ended.",
+        ? (resolved.lastEvent ?? "Night falls. The mafia chooses a target.")
+        : (resolved.lastEvent ?? "The game has ended."),
   };
   return update(nextState, true, "Day resolved.");
 }
@@ -439,7 +454,11 @@ export function submitMafiaNightAction(
   return update(nextState, true, "Night action recorded.");
 }
 
-function update(state: MafiaGameState, success: boolean, message: string): MafiaGameUpdate {
+function update(
+  state: MafiaGameState,
+  success: boolean,
+  message: string,
+): MafiaGameUpdate {
   return { state, success, message };
 }
 
@@ -511,7 +530,11 @@ function resolveNightActions(state: MafiaGameState): MafiaGameState {
     lastEvent = "A quiet investigation uncovers new clues.";
   }
 
-  if (mafiaTarget && mafiaTarget !== doctorTarget && isAlive(state, mafiaTarget)) {
+  if (
+    mafiaTarget &&
+    mafiaTarget !== doctorTarget &&
+    isAlive(state, mafiaTarget)
+  ) {
     const victim = players.find((entry) => entry.agentId === mafiaTarget);
     if (victim) {
       victim.alive = false;
@@ -563,7 +586,7 @@ function resolveVotes(state: MafiaGameState): MafiaGameState {
   let lastEvent: string | null = "The town debates with uncertainty.";
   if (topTarget && !tie) {
     const target = players.find((entry) => entry.agentId === topTarget);
-    if (target && target.alive) {
+    if (target?.alive) {
       target.alive = false;
       target.revealedRole = target.role;
       eliminations.push({
@@ -586,7 +609,10 @@ function resolveVotes(state: MafiaGameState): MafiaGameState {
   };
 }
 
-function pickNightTarget(state: MafiaGameState, type: MafiaNightActionType): string | null {
+function pickNightTarget(
+  state: MafiaGameState,
+  type: MafiaNightActionType,
+): string | null {
   const candidates = state.nightActions.filter((action) => {
     if (action.type !== type) {
       return false;
@@ -624,10 +650,14 @@ function evaluateWinner(players: MafiaPlayerState[]): MafiaWinner {
 }
 
 export function getAlivePlayerIds(state: MafiaGameState): string[] {
-  return state.players.filter((player) => player.alive).map((player) => player.agentId);
+  return state.players
+    .filter((player) => player.alive)
+    .map((player) => player.agentId);
 }
 
-export function getNightActionStatus(state: MafiaGameState): MafiaNightActionStatus {
+export function getNightActionStatus(
+  state: MafiaGameState,
+): MafiaNightActionStatus {
   const mafiaRequired = hasAliveRole(state, "mafia");
   const detectiveRequired = hasAliveRole(state, "detective");
   const doctorRequired = hasAliveRole(state, "doctor");
@@ -682,7 +712,8 @@ export function getVoteStatus(state: MafiaGameState): MafiaVoteStatus {
     .sort((a, b) => b.count - a.count);
   const totalVotes = validVotes.length;
   const allVoted = aliveCount > 0 && totalVotes >= aliveCount;
-  const ready = allVoted || (leadingTarget !== null && leadingCount >= requiredMajority);
+  const ready =
+    allVoted || (leadingTarget !== null && leadingCount >= requiredMajority);
   return {
     aliveCount,
     requiredMajority,

@@ -5,7 +5,7 @@
  * For production, consider integrating with OpenAGI Moderation API or similar service
  */
 
-import { logger } from './logger';
+import { logger } from "./logger";
 
 // Basic profanity and abuse detection (expandable)
 const BLOCKED_PATTERNS = [
@@ -26,7 +26,7 @@ const INJECTION_PATTERNS = [
 export interface ContentCheckResult {
   safe: boolean;
   reason?: string;
-  category?: 'profanity' | 'abuse' | 'injection' | 'spam';
+  category?: "profanity" | "abuse" | "injection" | "spam";
 }
 
 /**
@@ -47,12 +47,12 @@ export interface ContentCheckResult {
  */
 export function checkUserInput(content: string): ContentCheckResult {
   if (!content || content.trim().length === 0) {
-    return { safe: false, reason: 'Empty content', category: 'spam' };
+    return { safe: false, reason: "Empty content", category: "spam" };
   }
 
   // Check length
   if (content.length > 2000) {
-    return { safe: false, reason: 'Message too long', category: 'spam' };
+    return { safe: false, reason: "Message too long", category: "spam" };
   }
 
   // Check for excessive repetition (spam)
@@ -63,8 +63,8 @@ export function checkUserInput(content: string): ContentCheckResult {
     if (repetitionRatio > 3) {
       return {
         safe: false,
-        reason: 'Excessive repetition detected',
-        category: 'spam',
+        reason: "Excessive repetition detected",
+        category: "spam",
       };
     }
   }
@@ -72,13 +72,13 @@ export function checkUserInput(content: string): ContentCheckResult {
   // Check for profanity
   for (const pattern of BLOCKED_PATTERNS) {
     if (pattern.test(content)) {
-      logger.warn('Blocked profanity in user input', {
+      logger.warn("Blocked profanity in user input", {
         preview: content.substring(0, 50),
       });
       return {
         safe: false,
-        reason: 'Content contains inappropriate language',
-        category: 'profanity',
+        reason: "Content contains inappropriate language",
+        category: "profanity",
       };
     }
   }
@@ -86,13 +86,13 @@ export function checkUserInput(content: string): ContentCheckResult {
   // Check for prompt injection
   for (const pattern of INJECTION_PATTERNS) {
     if (pattern.test(content)) {
-      logger.warn('Blocked prompt injection attempt', {
+      logger.warn("Blocked prompt injection attempt", {
         preview: content.substring(0, 50),
       });
       return {
         safe: false,
-        reason: 'Invalid input format',
-        category: 'injection',
+        reason: "Invalid input format",
+        category: "injection",
       };
     }
   }
@@ -120,33 +120,33 @@ export function checkUserInput(content: string): ContentCheckResult {
  */
 export function checkAgentOutput(content: string): ContentCheckResult {
   if (!content || content.trim().length === 0) {
-    return { safe: false, reason: 'Empty response', category: 'spam' };
+    return { safe: false, reason: "Empty response", category: "spam" };
   }
 
   // Check for profanity in output
   for (const pattern of BLOCKED_PATTERNS) {
     if (pattern.test(content)) {
-      logger.warn('Agent generated inappropriate content', {
+      logger.warn("Agent generated inappropriate content", {
         preview: content.substring(0, 50),
       });
       return {
         safe: false,
-        reason: 'Generated content needs review',
-        category: 'profanity',
+        reason: "Generated content needs review",
+        category: "profanity",
       };
     }
   }
 
   // Check if response leaked system instructions
   if (
-    content.toLowerCase().includes('you are') &&
-    content.toLowerCase().includes('system')
+    content.toLowerCase().includes("you are") &&
+    content.toLowerCase().includes("system")
   ) {
-    logger.warn('Agent may have leaked system prompt');
+    logger.warn("Agent may have leaked system prompt");
     return {
       safe: false,
-      reason: 'Response format invalid',
-      category: 'injection',
+      reason: "Response format invalid",
+      category: "injection",
     };
   }
 
@@ -173,10 +173,10 @@ export function sanitizeContent(content: string): string {
   let sanitized = content;
 
   // Remove system prompt leakage
-  sanitized = sanitized.replace(/\[?system\]?:.*$/gim, '');
+  sanitized = sanitized.replace(/\[?system\]?:.*$/gim, "");
 
   // Remove special tokens
-  sanitized = sanitized.replace(/<\|.*?\|>/g, '');
+  sanitized = sanitized.replace(/<\|.*?\|>/g, "");
 
   return sanitized.trim();
 }

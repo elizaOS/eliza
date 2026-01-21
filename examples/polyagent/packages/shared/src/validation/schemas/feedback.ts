@@ -5,12 +5,12 @@
  * Used by both the API route and test files.
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 
 export const FeedbackTypeSchema = z.enum([
-  'bug',
-  'feature_request',
-  'performance',
+  "bug",
+  "feature_request",
+  "performance",
 ]);
 export type FeedbackType = z.infer<typeof FeedbackTypeSchema>;
 
@@ -31,19 +31,19 @@ export const FEEDBACK_TYPE_CONFIG: Record<
   }
 > = {
   bug: {
-    label: 'Bug Report',
-    heading: 'Bug Report',
-    emoji: '🐛',
+    label: "Bug Report",
+    heading: "Bug Report",
+    emoji: "🐛",
   },
   feature_request: {
-    label: 'Feature Request',
-    heading: 'Feature Request',
-    emoji: '✨',
+    label: "Feature Request",
+    heading: "Feature Request",
+    emoji: "✨",
   },
   performance: {
-    label: 'Performance Issue',
-    heading: 'Performance Issue',
-    emoji: '⚡',
+    label: "Performance Issue",
+    heading: "Performance Issue",
+    emoji: "⚡",
   },
 };
 
@@ -61,10 +61,10 @@ export const FEEDBACK_STEPS_MAX_LENGTH = 2000;
  */
 const ALLOWED_SCREENSHOT_DOMAINS = [
   // Vercel Blob Storage (production)
-  '.public.blob.vercel-storage.com',
+  ".public.blob.vercel-storage.com",
   // MinIO (local development)
-  'localhost:9000',
-  '127.0.0.1:9000',
+  "localhost:9000",
+  "127.0.0.1:9000",
 ];
 
 /**
@@ -73,7 +73,7 @@ const ALLOWED_SCREENSHOT_DOMAINS = [
  */
 function isAllowedScreenshotUrl(url: string): boolean {
   // Allow relative URLs (local uploads)
-  if (url.startsWith('/uploads/')) {
+  if (url.startsWith("/uploads/")) {
     return true;
   }
 
@@ -84,7 +84,7 @@ function isAllowedScreenshotUrl(url: string): boolean {
       (domain) =>
         parsed.hostname === domain ||
         parsed.hostname.endsWith(domain) ||
-        parsed.host === domain
+        parsed.host === domain,
     );
   } catch {
     return false;
@@ -99,7 +99,7 @@ export const GameFeedbackSchema = z
       .trim()
       .min(
         FEEDBACK_DESCRIPTION_MIN_LENGTH,
-        `Description must be at least ${FEEDBACK_DESCRIPTION_MIN_LENGTH} characters`
+        `Description must be at least ${FEEDBACK_DESCRIPTION_MIN_LENGTH} characters`,
       )
       .max(FEEDBACK_DESCRIPTION_MAX_LENGTH),
     stepsToReproduce: z
@@ -110,25 +110,25 @@ export const GameFeedbackSchema = z
     screenshotUrl: z
       .string()
       .optional()
-      .or(z.literal(''))
-      .transform((val) => (val === '' ? undefined : val))
+      .or(z.literal(""))
+      .transform((val) => (val === "" ? undefined : val))
       .refine(
         (val) => val === undefined || isAllowedScreenshotUrl(val),
-        'Screenshot URL must be from an allowed domain'
+        "Screenshot URL must be from an allowed domain",
       ),
     rating: z.number().int().min(1).max(5).optional(),
   })
-  .refine((data) => data.feedbackType !== 'bug' || !!data.stepsToReproduce, {
-    message: 'Steps to reproduce are required for bug reports',
-    path: ['stepsToReproduce'],
+  .refine((data) => data.feedbackType !== "bug" || !!data.stepsToReproduce, {
+    message: "Steps to reproduce are required for bug reports",
+    path: ["stepsToReproduce"],
   })
   .refine(
     (data) =>
-      data.feedbackType !== 'feature_request' || data.rating !== undefined,
+      data.feedbackType !== "feature_request" || data.rating !== undefined,
     {
-      message: 'Rating is required for feature requests',
-      path: ['rating'],
-    }
+      message: "Rating is required for feature requests",
+      path: ["rating"],
+    },
   );
 
 export type GameFeedback = z.infer<typeof GameFeedbackSchema>;

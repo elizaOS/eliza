@@ -7,9 +7,9 @@ import {
   type Memory,
   ModelType,
   type State,
-} from '@elizaos/core';
-import type { ExperienceService } from '../service';
-import { ExperienceType, OutcomeType } from '../types';
+} from "@elizaos/core";
+import type { ExperienceService } from "../service";
+import { ExperienceType, OutcomeType } from "../types";
 
 type ExtractedExperience = {
   type?: string;
@@ -20,58 +20,58 @@ type ExtractedExperience = {
 };
 
 export const experienceEvaluator: Evaluator = {
-  name: 'EXPERIENCE_EVALUATOR',
-  similes: ['experience recorder', 'learning evaluator', 'self-reflection'],
+  name: "EXPERIENCE_EVALUATOR",
+  similes: ["experience recorder", "learning evaluator", "self-reflection"],
   description:
-    'Periodically analyzes conversation patterns to extract novel learning experiences',
+    "Periodically analyzes conversation patterns to extract novel learning experiences",
   alwaysRun: false,
 
   examples: [
     {
       prompt:
-        'The agent successfully executed a shell command after initially failing',
+        "The agent successfully executed a shell command after initially failing",
       messages: [
         {
-          name: 'Autoliza',
+          name: "Autoliza",
           content: {
-            text: 'Let me try to run this Python script.',
+            text: "Let me try to run this Python script.",
           },
         },
         {
-          name: 'Autoliza',
+          name: "Autoliza",
           content: {
-            text: 'Error: ModuleNotFoundError for pandas. I need to install it first.',
+            text: "Error: ModuleNotFoundError for pandas. I need to install it first.",
           },
         },
         {
-          name: 'Autoliza',
+          name: "Autoliza",
           content: {
-            text: 'After installing pandas, the script ran successfully and produced the expected output.',
+            text: "After installing pandas, the script ran successfully and produced the expected output.",
           },
         },
       ],
       outcome:
-        'Record a CORRECTION experience about needing to install dependencies before running Python scripts',
+        "Record a CORRECTION experience about needing to install dependencies before running Python scripts",
     },
     {
-      prompt: 'The agent discovered a new system capability',
+      prompt: "The agent discovered a new system capability",
       messages: [
         {
-          name: 'Autoliza',
+          name: "Autoliza",
           content: {
-            text: 'I found that the system has jq installed, which is perfect for parsing JSON data.',
+            text: "I found that the system has jq installed, which is perfect for parsing JSON data.",
           },
         },
       ],
       outcome:
-        'Record a DISCOVERY experience about the availability of jq for JSON processing',
+        "Record a DISCOVERY experience about the availability of jq for JSON processing",
     },
   ],
 
   async validate(
     runtime: IAgentRuntime,
     message: Memory,
-    state?: State
+    state?: State,
   ): Promise<boolean> {
     void state; // State currently unused during validation
 
@@ -81,9 +81,9 @@ export const experienceEvaluator: Evaluator = {
     }
 
     // Check cooldown - only extract experiences every 10 messages
-    const lastExtractionKey = 'experience-extraction:last-message-count';
+    const lastExtractionKey = "experience-extraction:last-message-count";
     const currentCount =
-      (await runtime.getCache<string>(lastExtractionKey)) || '0';
+      (await runtime.getCache<string>(lastExtractionKey)) || "0";
     const messageCount = parseInt(currentCount, 10);
     const newMessageCount = messageCount + 1;
 
@@ -94,7 +94,7 @@ export const experienceEvaluator: Evaluator = {
 
     if (shouldExtract) {
       logger.info(
-        `[experienceEvaluator] Triggering experience extraction after ${newMessageCount} messages`
+        `[experienceEvaluator] Triggering experience extraction after ${newMessageCount} messages`,
       );
     }
 
@@ -107,7 +107,7 @@ export const experienceEvaluator: Evaluator = {
     state?: State,
     _options?: HandlerOptions,
     _callback?: HandlerCallback,
-    _responses?: Memory[]
+    _responses?: Memory[],
   ): Promise<void> {
     void _message; // Message currently unused within evaluator handler
     void _options; // Options reserved for future evaluator configuration
@@ -115,11 +115,11 @@ export const experienceEvaluator: Evaluator = {
     void _responses; // Responses not utilized in current evaluator logic
 
     const experienceService = runtime.getService(
-      'EXPERIENCE'
+      "EXPERIENCE",
     ) as ExperienceService;
 
     if (!experienceService) {
-      logger.warn('[experienceEvaluator] Experience service not available');
+      logger.warn("[experienceEvaluator] Experience service not available");
       return;
     }
 
@@ -130,7 +130,7 @@ export const experienceEvaluator: Evaluator = {
       : [];
     if (recentMessages.length < 3) {
       logger.debug(
-        '[experienceEvaluator] Not enough messages for experience extraction'
+        "[experienceEvaluator] Not enough messages for experience extraction",
       );
       return;
     }
@@ -139,7 +139,7 @@ export const experienceEvaluator: Evaluator = {
     const conversationContext = recentMessages
       .map((m: Memory) => m.content.text)
       .filter(Boolean)
-      .join(' ');
+      .join(" ");
 
     // Query existing experiences for similarity check
     const existingExperiences = await experienceService.queryExperiences({
@@ -155,7 +155,7 @@ Conversation context:
 ${conversationContext}
 
 Existing similar experiences:
-${existingExperiences.map((exp) => `- ${exp.learning}`).join('\n') || 'None'}
+${existingExperiences.map((exp) => `- ${exp.learning}`).join("\n") || "None"}
 
 Extract ONLY experiences that are:
 1. Genuinely novel (not in existing experiences)
@@ -188,7 +188,7 @@ Return empty array [] if no novel experiences found.`;
       const parsed = JSON.parse(jsonMatch[0]);
       if (Array.isArray(parsed)) {
         experiences = parsed.filter((item): item is ExtractedExperience => {
-          return item && typeof item === 'object';
+          return item && typeof item === "object";
         });
       }
     }
@@ -208,7 +208,7 @@ Return empty array [] if no novel experiences found.`;
       }
 
       const normalizedType =
-        typeof exp.type === 'string' ? exp.type.toUpperCase() : '';
+        typeof exp.type === "string" ? exp.type.toUpperCase() : "";
       const experienceType =
         experienceTypeMap[normalizedType] ?? ExperienceType.LEARNING;
       const experienceTag = experienceType;
@@ -219,28 +219,28 @@ Return empty array [] if no novel experiences found.`;
           experienceType === ExperienceType.CORRECTION
             ? OutcomeType.POSITIVE
             : OutcomeType.NEUTRAL,
-        context: sanitizeContext(exp.context || 'Conversation analysis'),
-        action: 'pattern_recognition',
+        context: sanitizeContext(exp.context || "Conversation analysis"),
+        action: "pattern_recognition",
         result: exp.learning,
         learning: sanitizeContext(exp.learning),
         domain: detectDomain(exp.learning),
-        tags: ['extracted', 'novel', experienceTag],
+        tags: ["extracted", "novel", experienceTag],
         confidence: Math.min(exp.confidence, 0.9), // Cap confidence
         importance: 0.8, // High importance for extracted experiences
       });
 
       logger.info(
-        `[experienceEvaluator] Recorded novel experience: ${exp.learning.substring(0, 100)}...`
+        `[experienceEvaluator] Recorded novel experience: ${exp.learning.substring(0, 100)}...`,
       );
     }
 
     if (experiences.length > 0) {
       logger.info(
-        `[experienceEvaluator] Extracted ${experiences.length} novel experiences from conversation`
+        `[experienceEvaluator] Extracted ${experiences.length} novel experiences from conversation`,
       );
     } else {
       logger.debug(
-        `[experienceEvaluator] No novel experiences found in recent conversation`
+        `[experienceEvaluator] No novel experiences found in recent conversation`,
       );
     }
   },
@@ -249,57 +249,57 @@ Return empty array [] if no novel experiences found.`;
 // Helper functions
 
 function sanitizeContext(text: string): string {
-  if (!text) return 'Unknown context';
+  if (!text) return "Unknown context";
 
   // Remove user-specific details while preserving technical context
   return text
-    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, '[EMAIL]') // emails
-    .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '[IP]') // IP addresses
-    .replace(/\/Users\/[^\/\s]+/g, '/Users/[USER]') // user directories
-    .replace(/\/home\/[^\/\s]+/g, '/home/[USER]') // home directories
-    .replace(/\b[A-Z0-9]{20,}\b/g, '[TOKEN]') // API keys/tokens
+    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, "[EMAIL]") // emails
+    .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "[IP]") // IP addresses
+    .replace(/\/Users\/[^/\s]+/g, "/Users/[USER]") // user directories
+    .replace(/\/home\/[^/\s]+/g, "/home/[USER]") // home directories
+    .replace(/\b[A-Z0-9]{20,}\b/g, "[TOKEN]") // API keys/tokens
     .replace(
       /\b(user|person|someone|they)\s+(said|asked|told|mentioned)/gi,
-      'when asked'
+      "when asked",
     ) // personal references
     .substring(0, 200); // limit length
 }
 
 function detectDomain(text: string): string {
   const domains = {
-    shell: ['command', 'terminal', 'bash', 'shell', 'execute', 'script', 'cli'],
+    shell: ["command", "terminal", "bash", "shell", "execute", "script", "cli"],
     coding: [
-      'code',
-      'function',
-      'variable',
-      'syntax',
-      'programming',
-      'debug',
-      'typescript',
-      'javascript',
+      "code",
+      "function",
+      "variable",
+      "syntax",
+      "programming",
+      "debug",
+      "typescript",
+      "javascript",
     ],
     system: [
-      'file',
-      'directory',
-      'process',
-      'memory',
-      'cpu',
-      'system',
-      'install',
-      'package',
+      "file",
+      "directory",
+      "process",
+      "memory",
+      "cpu",
+      "system",
+      "install",
+      "package",
     ],
     network: [
-      'http',
-      'api',
-      'request',
-      'response',
-      'url',
-      'network',
-      'fetch',
-      'curl',
+      "http",
+      "api",
+      "request",
+      "response",
+      "url",
+      "network",
+      "fetch",
+      "curl",
     ],
-    data: ['json', 'csv', 'database', 'query', 'data', 'sql', 'table'],
-    ai: ['model', 'llm', 'embedding', 'prompt', 'token', 'inference'],
+    data: ["json", "csv", "database", "query", "data", "sql", "table"],
+    ai: ["model", "llm", "embedding", "prompt", "token", "inference"],
   };
 
   const lowerText = text.toLowerCase();
@@ -310,5 +310,5 @@ function detectDomain(text: string): string {
     }
   }
 
-  return 'general';
+  return "general";
 }

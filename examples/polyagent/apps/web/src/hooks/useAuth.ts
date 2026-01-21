@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import { logger } from '@polyagent/shared';
+import { logger } from "@polyagent/shared";
 import {
   type ConnectedWallet,
   type User as PrivyUser,
   usePrivy,
   useWallets,
-} from '@privy-io/react-auth';
-import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { toast } from 'sonner';
-import { type User, useAuthStore } from '@/stores/authStore';
-import { apiFetch } from '@/utils/api-fetch';
+} from "@privy-io/react-auth";
+import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { toast } from "sonner";
+import { type User, useAuthStore } from "@/stores/authStore";
+import { apiFetch } from "@/utils/api-fetch";
 
 /**
  * Return type for the useAuth hook.
@@ -121,7 +121,7 @@ export function useAuth(): UseAuthReturn {
     if (wallets.length === 0) return undefined;
 
     // First, try to find the Privy embedded wallet for gas sponsorship
-    const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy');
+    const embeddedWallet = wallets.find((w) => w.walletClientType === "privy");
     if (embeddedWallet) return embeddedWallet;
 
     // If no embedded wallet, fall back to external wallet (user pays gas)
@@ -136,14 +136,14 @@ export function useAuth(): UseAuthReturn {
 
   const persistAccessToken = useCallback(async (): Promise<string | null> => {
     if (!authenticated) {
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         window.__privyAccessToken = null;
       }
       return null;
     }
 
     const token = await getAccessToken();
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       window.__privyAccessToken = token;
     }
     return token ?? null;
@@ -167,21 +167,21 @@ export function useAuth(): UseAuthReturn {
         if (!token) {
           if (retryCount >= 5) {
             logger.error(
-              'Privy access token unavailable after max retries; giving up',
+              "Privy access token unavailable after max retries; giving up",
               { userId: privyUser.id, retryCount },
-              'useAuth'
+              "useAuth",
             );
             setIsLoadingProfile(false);
             return;
           }
 
           logger.warn(
-            'Privy access token unavailable; delaying /api/users/me fetch',
+            "Privy access token unavailable; delaying /api/users/me fetch",
             { userId: privyUser.id, retryCount },
-            'useAuth'
+            "useAuth",
           );
           setIsLoadingProfile(false);
-          if (typeof window !== 'undefined') {
+          if (typeof window !== "undefined") {
             if (globalTokenRetryTimeout) {
               window.clearTimeout(globalTokenRetryTimeout);
             }
@@ -189,7 +189,7 @@ export function useAuth(): UseAuthReturn {
               () => {
                 void fetchCurrentUser(retryCount + 1);
               },
-              200 * (retryCount + 1)
+              200 * (retryCount + 1),
             );
           }
           return;
@@ -197,32 +197,32 @@ export function useAuth(): UseAuthReturn {
 
         // Get referral code from sessionStorage (if user clicked a referral link)
         const referralCode =
-          typeof window !== 'undefined'
-            ? sessionStorage.getItem('referralCode')
+          typeof window !== "undefined"
+            ? sessionStorage.getItem("referralCode")
             : null;
 
         // Build URL with referral code if present
         const url = referralCode
           ? `/api/users/me?ref=${encodeURIComponent(referralCode)}`
-          : '/api/users/me';
+          : "/api/users/me";
 
         const response = await apiFetch(url);
 
         // 401 is expected when not authenticated - exit early without error
         if (response.status === 401) {
           logger.debug(
-            'Not authenticated yet, skipping user fetch',
+            "Not authenticated yet, skipping user fetch",
             { userId: privyUser.id },
-            'useAuth'
+            "useAuth",
           );
           return;
         }
 
         // For other HTTP errors, fail fast - don't silently swallow
         if (!response.ok) {
-          const errorBody = await response.text().catch(() => '');
+          const errorBody = await response.text().catch(() => "");
           throw new Error(
-            `Failed to fetch user profile: HTTP ${response.status}${errorBody ? ` - ${errorBody}` : ''}`
+            `Failed to fetch user profile: HTTP ${response.status}${errorBody ? ` - ${errorBody}` : ""}`,
           );
         }
 
@@ -249,9 +249,9 @@ export function useAuth(): UseAuthReturn {
             walletAddress:
               me.user.walletAddress ?? smartWalletAddress ?? wallet?.address,
             displayName:
-              me.user.displayName && me.user.displayName.trim() !== ''
+              me.user.displayName && me.user.displayName.trim() !== ""
                 ? me.user.displayName
-                : privyUser.email?.address || wallet?.address || 'Anonymous',
+                : privyUser.email?.address || wallet?.address || "Anonymous",
             email: privyUser.email?.address,
             username: me.user.username ?? undefined,
             bio: me.user.bio ?? undefined,
@@ -324,7 +324,7 @@ export function useAuth(): UseAuthReturn {
               id: privyUser.id,
               walletAddress: wallet?.address,
               displayName:
-                privyUser.email?.address ?? wallet?.address ?? 'Anonymous',
+                privyUser.email?.address ?? wallet?.address ?? "Anonymous",
               email: privyUser.email?.address,
               onChainRegistered: false,
             });
@@ -336,7 +336,7 @@ export function useAuth(): UseAuthReturn {
 
       const promise = run().finally(() => {
         globalFetchInFlight = null;
-        if (typeof window !== 'undefined' && globalTokenRetryTimeout) {
+        if (typeof window !== "undefined" && globalTokenRetryTimeout) {
           window.clearTimeout(globalTokenRetryTimeout);
           globalTokenRetryTimeout = null;
         }
@@ -356,7 +356,7 @@ export function useAuth(): UseAuthReturn {
       setUser,
       smartWalletAddress,
       wallet?.address,
-    ]
+    ],
   );
 
   const synchronizeWallet = useCallback(() => {
@@ -406,40 +406,40 @@ export function useAuth(): UseAuthReturn {
         const response = await apiFetch(
           `/api/users/${encodeURIComponent(privyUser.id)}/link-social`,
           {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              platform: 'farcaster',
+              platform: "farcaster",
               username: farcaster.username || farcaster.displayName,
             }),
-          }
+          },
         );
 
         if (response.status === 409) {
           // 409 = account already linked to another user - don't retry
           failedLinkAttempts.add(farcasterKey);
-          toast.error('Farcaster Account Already Linked', {
+          toast.error("Farcaster Account Already Linked", {
             description: `The Farcaster account @${farcaster.username || farcaster.displayName} is already linked to another Polyagent account.`,
             duration: 6000,
           });
           logger.info(
-            'Farcaster account already linked to another user, skipping future retries',
+            "Farcaster account already linked to another user, skipping future retries",
             { username: farcaster.username },
-            'useAuth'
+            "useAuth",
           );
         } else if (!response.ok) {
           // Log other errors but don't throw - we don't want to break auth flow
-          const errorText = await response.text().catch(() => 'Unknown error');
+          const errorText = await response.text().catch(() => "Unknown error");
           logger.warn(
-            'Failed to link Farcaster account',
+            "Failed to link Farcaster account",
             {
               username: farcaster.username,
               status: response.status,
               error: errorText,
             },
-            'useAuth'
+            "useAuth",
           );
         }
         // 200 means successfully linked - great!
@@ -455,40 +455,40 @@ export function useAuth(): UseAuthReturn {
         const response = await apiFetch(
           `/api/users/${encodeURIComponent(privyUser.id)}/link-social`,
           {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              platform: 'twitter',
+              platform: "twitter",
               username: twitter.username,
             }),
-          }
+          },
         );
 
         if (response.status === 409) {
           // 409 = account already linked to another user - don't retry
           failedLinkAttempts.add(twitterKey);
-          toast.error('Twitter Account Already Linked', {
+          toast.error("Twitter Account Already Linked", {
             description: `The Twitter account @${twitter.username} is already linked to another Polyagent account.`,
             duration: 6000,
           });
           logger.info(
-            'Twitter account already linked to another user, skipping future retries',
+            "Twitter account already linked to another user, skipping future retries",
             { username: twitter.username },
-            'useAuth'
+            "useAuth",
           );
         } else if (!response.ok) {
           // Log other errors but don't throw - we don't want to break auth flow
-          const errorText = await response.text().catch(() => 'Unknown error');
+          const errorText = await response.text().catch(() => "Unknown error");
           logger.warn(
-            'Failed to link Twitter account',
+            "Failed to link Twitter account",
             {
               username: twitter.username,
               status: response.status,
               error: errorText,
             },
-            'useAuth'
+            "useAuth",
           );
         }
         // 200 means successfully linked - great!
@@ -507,35 +507,35 @@ export function useAuth(): UseAuthReturn {
         const response = await apiFetch(
           `/api/users/${encodeURIComponent(privyUser.id)}/link-social`,
           {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              platform: 'wallet',
+              platform: "wallet",
               address: wallet.address.toLowerCase(),
             }),
-          }
+          },
         );
 
         if (response.status === 409) {
           // 409 = wallet already linked to another account - don't retry
           failedLinkAttempts.add(walletKey);
           logger.info(
-            'Wallet already linked to another account, skipping future retries',
+            "Wallet already linked to another account, skipping future retries",
             { address: wallet.address },
-            'useAuth'
+            "useAuth",
           );
         } else if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error');
+          const errorText = await response.text().catch(() => "Unknown error");
           logger.warn(
-            'Failed to link wallet',
+            "Failed to link wallet",
             {
               address: wallet.address,
               status: response.status,
               error: errorText,
             },
-            'useAuth'
+            "useAuth",
           );
         }
         // 200 means successfully linked - great!
@@ -563,7 +563,7 @@ export function useAuth(): UseAuthReturn {
 
   useEffect(() => {
     return () => {
-      if (typeof window !== 'undefined' && globalTokenRetryTimeout) {
+      if (typeof window !== "undefined" && globalTokenRetryTimeout) {
         window.clearTimeout(globalTokenRetryTimeout);
         globalTokenRetryTimeout = null;
       }
@@ -572,7 +572,7 @@ export function useAuth(): UseAuthReturn {
 
   // Expose getAccessToken to window for use by apiFetch
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       (
         window as typeof window & {
           __privyGetAccessToken?: () => Promise<string | null>;
@@ -580,7 +580,7 @@ export function useAuth(): UseAuthReturn {
       ).__privyGetAccessToken = getAccessToken;
     }
     return () => {
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         (
           window as typeof window & {
             __privyGetAccessToken?: () => Promise<string | null>;
@@ -614,10 +614,10 @@ export function useAuth(): UseAuthReturn {
         return;
       }
 
-      linkedSocialUsers.delete(privyUser?.id ?? '');
-      linkingInProgress.delete(privyUser?.id ?? '');
+      linkedSocialUsers.delete(privyUser?.id ?? "");
+      linkingInProgress.delete(privyUser?.id ?? "");
       // Clear failed link attempts for this user (keys start with userId)
-      const userPrefix = `${privyUser?.id ?? ''}:`;
+      const userPrefix = `${privyUser?.id ?? ""}:`;
       failedLinkAttempts.forEach((key) => {
         if (key.startsWith(userPrefix)) {
           failedLinkAttempts.delete(key);
@@ -630,8 +630,8 @@ export function useAuth(): UseAuthReturn {
       hasClearedAuthRef.current = true;
 
       // Clear any stale localStorage cache
-      if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem('polyagent-auth');
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("polyagent-auth");
         if (stored) {
           const parsed = JSON.parse(stored);
           if (
@@ -640,14 +640,14 @@ export function useAuth(): UseAuthReturn {
             parsed.state.user.id !== privyUser.id
           ) {
             logger.info(
-              'Clearing stale auth cache for different user',
+              "Clearing stale auth cache for different user",
               {
                 cachedUserId: parsed.state.user.id,
                 currentUserId: privyUser?.id,
               },
-              'useAuth'
+              "useAuth",
             );
-            localStorage.removeItem('polyagent-auth');
+            localStorage.removeItem("polyagent-auth");
           }
         }
       }
@@ -679,17 +679,17 @@ export function useAuth(): UseAuthReturn {
     clearAuth();
 
     // Clear access token
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       window.__privyAccessToken = null;
 
       // Explicitly remove the persisted auth storage
       // This ensures localStorage is cleared even if clearAuth() doesn't trigger storage update
-      localStorage.removeItem('polyagent-auth');
+      localStorage.removeItem("polyagent-auth");
 
       // Clear any Privy localStorage keys that might persist
       // Privy's logout() should handle this, but we'll be thorough
       const privyKeys = Object.keys(localStorage).filter(
-        (key) => key.startsWith('privy:') || key.startsWith('privy-')
+        (key) => key.startsWith("privy:") || key.startsWith("privy-"),
       );
       privyKeys.forEach((key) => {
         localStorage.removeItem(key);
@@ -697,7 +697,7 @@ export function useAuth(): UseAuthReturn {
 
       // Clear session storage as well
       const sessionPrivyKeys = Object.keys(sessionStorage).filter(
-        (key) => key.startsWith('privy:') || key.startsWith('privy-')
+        (key) => key.startsWith("privy:") || key.startsWith("privy-"),
       );
       sessionPrivyKeys.forEach((key) => {
         sessionStorage.removeItem(key);
@@ -716,9 +716,9 @@ export function useAuth(): UseAuthReturn {
     }
 
     logger.info(
-      'User logged out and all auth state cleared',
+      "User logged out and all auth state cleared",
       undefined,
-      'useAuth'
+      "useAuth",
     );
   };
 

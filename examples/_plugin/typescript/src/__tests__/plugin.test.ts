@@ -16,7 +16,7 @@ import {
   type Service,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { StarterService, starterPlugin } from "../index";
 import {
@@ -140,7 +140,10 @@ describe("Hello World Action", () => {
       content: { source: "test" } as Content,
     });
 
-    const isValid = await helloWorldAction.validate(runtime, messageWithoutText);
+    const isValid = await helloWorldAction.validate(
+      runtime,
+      messageWithoutText,
+    );
     expect(isValid).toBe(true);
   });
 
@@ -149,7 +152,13 @@ describe("Hello World Action", () => {
       throw new Error("Hello world action validate not found");
     }
 
-    const helloMessages = ["hello", "hi there", "hey!", "greetings", "howdy partner"];
+    const helloMessages = [
+      "hello",
+      "hi there",
+      "hey!",
+      "greetings",
+      "howdy partner",
+    ];
     for (const text of helloMessages) {
       const message = createTestMemory({
         content: { text, source: "test" },
@@ -158,7 +167,12 @@ describe("Hello World Action", () => {
       expect(isValid).toBe(true);
     }
 
-    const nonHelloMessages = ["goodbye", "what is the weather", "tell me a joke", ""];
+    const nonHelloMessages = [
+      "goodbye",
+      "what is the weather",
+      "tell me a joke",
+      "",
+    ];
     for (const text of nonHelloMessages) {
       const message = createTestMemory({
         content: { text, source: "test" },
@@ -194,13 +208,15 @@ describe("Hello World Action", () => {
     expect(result).toHaveProperty("text", "Hello world!");
     expect(result).toHaveProperty("success", true);
     expect(result).toHaveProperty("data");
-    expect((result as ActionResult).data).toHaveProperty("actions", ["HELLO_WORLD"]);
+    expect((result as ActionResult).data).toHaveProperty("actions", [
+      "HELLO_WORLD",
+    ]);
     expect((result as ActionResult).data).toHaveProperty("source", "test");
 
     expect(callbackContent).toBeDefined();
-    expect(callbackContent!.text).toBe("Hello world!");
-    expect(callbackContent!.actions).toEqual(["HELLO_WORLD"]);
-    expect(callbackContent!.source).toBe("test");
+    expect(callbackContent?.text).toBe("Hello world!");
+    expect(callbackContent?.actions).toEqual(["HELLO_WORLD"]);
+    expect(callbackContent?.source).toBe("test");
   });
 
   it("should handle errors gracefully", async () => {
@@ -217,7 +233,13 @@ describe("Hello World Action", () => {
     };
 
     await expect(
-      helloWorldAction.handler(runtime, message, undefined, undefined, errorCallback),
+      helloWorldAction.handler(
+        runtime,
+        message,
+        undefined,
+        undefined,
+        errorCallback,
+      ),
     ).rejects.toThrow("Callback error");
   });
 
@@ -443,7 +465,9 @@ describe("API Routes", () => {
   });
 
   it("should handle hello world route", async () => {
-    const helloRoute = starterPlugin.routes?.find((r) => r.name === "hello-world-route");
+    const helloRoute = starterPlugin.routes?.find(
+      (r) => r.name === "hello-world-route",
+    );
     if (!helloRoute || !helloRoute.handler) {
       throw new Error("Hello world route handler not found");
     }
@@ -458,11 +482,13 @@ describe("API Routes", () => {
     await helloRoute.handler({}, mockRes, runtime);
 
     expect(mockRes._jsonData).toBeDefined();
-    expect(mockRes._jsonData!.message).toBe("Hello World!");
+    expect(mockRes._jsonData?.message).toBe("Hello World!");
   });
 
   it("should validate route configuration", () => {
-    const helloRoute = starterPlugin.routes?.find((r) => r.name === "hello-world-route");
+    const helloRoute = starterPlugin.routes?.find(
+      (r) => r.name === "hello-world-route",
+    );
 
     expect(helloRoute).toBeDefined();
     expect(helloRoute?.path).toBe("/helloworld");
@@ -471,7 +497,9 @@ describe("API Routes", () => {
   });
 
   it("should handle request with query parameters", async () => {
-    const helloRoute = starterPlugin.routes?.find((r) => r.name === "hello-world-route");
+    const helloRoute = starterPlugin.routes?.find(
+      (r) => r.name === "hello-world-route",
+    );
     if (!helloRoute || !helloRoute.handler) {
       throw new Error("Hello world route handler not found");
     }
@@ -492,7 +520,7 @@ describe("API Routes", () => {
     await helloRoute.handler(mockReq, mockRes, runtime);
 
     expect(mockRes._jsonData).toBeDefined();
-    expect(mockRes._jsonData!.message).toBe("Hello World!");
+    expect(mockRes._jsonData?.message).toBe("Hello World!");
   });
 });
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from typing import TypedDict
 
+
 class ActionDoc(TypedDict, total=False):
     name: str
     description: str

@@ -100,7 +100,9 @@ export function loadTownSnapshot(): Promise<TownSimulationSnapshot | null> {
   return Promise.resolve(cached);
 }
 
-export function saveTownSnapshot(snapshot: TownSimulationSnapshot): Promise<void> {
+export function saveTownSnapshot(
+  snapshot: TownSimulationSnapshot,
+): Promise<void> {
   writeToStorage(SNAPSHOT_KEY, snapshot);
   return Promise.resolve();
 }
@@ -145,7 +147,9 @@ function getProviderSettingsKey(provider: ModelProvider): string {
 function readProviderSettings(): Map<ModelProvider, ProviderModelConfig> {
   const results = new Map<ModelProvider, ProviderModelConfig>();
   for (const provider of PROVIDERS) {
-    const cached = readFromStorage<ProviderSettingsSnapshot>(getProviderSettingsKey(provider));
+    const cached = readFromStorage<ProviderSettingsSnapshot>(
+      getProviderSettingsKey(provider),
+    );
     if (cached && cached.version === 1) {
       results.set(provider, cached.config);
     }

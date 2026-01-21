@@ -1,7 +1,7 @@
-import type { JsonValue } from '@polyagent/shared';
-import { type UUID } from '@elizaos/core';
-import type { Experience } from '../types';
-import { ExperienceType } from '../types';
+import type { UUID } from "@elizaos/core";
+import type { JsonValue } from "@polyagent/shared";
+import type { Experience } from "../types";
+import { ExperienceType } from "../types";
 
 export interface ExperienceChain {
   rootExperience: string; // UUID of the root experience
@@ -13,7 +13,7 @@ export interface ExperienceChain {
 export interface ExperienceRelationship {
   fromId: string;
   toId: string;
-  type: 'causes' | 'contradicts' | 'supports' | 'supersedes' | 'related';
+  type: "causes" | "contradicts" | "supports" | "supersedes" | "related";
   strength: number; // 0-1
   metadata?: Record<string, JsonValue>;
 }
@@ -26,12 +26,12 @@ export class ExperienceRelationshipManager {
     if (!this.relationships.has(fromId)) {
       this.relationships.set(fromId, []);
     }
-    this.relationships.get(fromId)!.push(relationship);
+    this.relationships.get(fromId)?.push(relationship);
   }
 
   findRelationships(
     experienceId: string,
-    type?: string
+    type?: string,
   ): ExperienceRelationship[] {
     const rels = this.relationships.get(experienceId) || [];
     if (type) {
@@ -79,7 +79,7 @@ export class ExperienceRelationshipManager {
                 rootExperience: current.id,
                 chain,
                 strength: next.confidence,
-                validated: next.outcome === 'positive',
+                validated: next.outcome === "positive",
               });
               break;
             }
@@ -120,7 +120,7 @@ export class ExperienceRelationshipManager {
 
   findContradictions(
     experience: Experience,
-    allExperiences: Experience[]
+    allExperiences: Experience[],
   ): Experience[] {
     const contradictions: Experience[] = [];
 
@@ -137,7 +137,7 @@ export class ExperienceRelationshipManager {
       }
 
       // Explicit contradiction relationship
-      const rels = this.findRelationships(experience.id, 'contradicts');
+      const rels = this.findRelationships(experience.id, "contradicts");
       if (rels.some((r) => r.toId === other.id)) {
         contradictions.push(other);
       }
@@ -148,7 +148,7 @@ export class ExperienceRelationshipManager {
 
   getExperienceImpact(
     experienceId: string,
-    allExperiences: Experience[]
+    allExperiences: Experience[],
   ): number {
     let impact = 0;
 
@@ -161,7 +161,7 @@ export class ExperienceRelationshipManager {
     // Add impact from relationships
     const relationships = this.findRelationships(experienceId);
     for (const rel of relationships) {
-      if (rel.type === 'causes') {
+      if (rel.type === "causes") {
         impact += rel.strength;
       }
     }

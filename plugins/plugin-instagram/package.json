@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-instagram-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Instagram integration plugin for elizaOS",
   "type": "module",
   "main": "typescript/dist/index.js",

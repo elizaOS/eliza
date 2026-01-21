@@ -1,4 +1,3 @@
-import { ChannelType, MemoryType, Service, stringToUuid } from "@elizaos/core";
 import type {
   Content,
   CustomMetadata,
@@ -7,6 +6,7 @@ import type {
   MemoryMetadata,
   UUID,
 } from "@elizaos/core";
+import { ChannelType, MemoryType, Service, stringToUuid } from "@elizaos/core";
 
 export const WAYPOINTS_SERVICE_TYPE = "minecraft_waypoints" as const;
 
@@ -43,8 +43,12 @@ export class WaypointsService extends Service {
     this.runtime = runtime;
 
     // Dedicated context for waypoint persistence.
-    this.waypointsWorldId = stringToUuid("00000000-0000-0000-0000-00000000a001");
-    this.waypointsRoomId = stringToUuid(`minecraft-waypoints:${runtime.agentId}`);
+    this.waypointsWorldId = stringToUuid(
+      "00000000-0000-0000-0000-00000000a001",
+    );
+    this.waypointsRoomId = stringToUuid(
+      `minecraft-waypoints:${runtime.agentId}`,
+    );
   }
 
   static async start(runtime: IAgentRuntime): Promise<WaypointsService> {
@@ -65,7 +69,10 @@ export class WaypointsService extends Service {
         name: "Minecraft Waypoints",
         agentId: this.runtime.agentId,
         messageServerId: stringToUuid("00000000-0000-0000-0000-000000000000"),
-        metadata: { type: "minecraft", description: "Persistent waypoint storage" },
+        metadata: {
+          type: "minecraft",
+          description: "Persistent waypoint storage",
+        },
       });
     }
     if (this.runtime.ensureRoomExists) {
@@ -75,11 +82,17 @@ export class WaypointsService extends Service {
         worldId: this.waypointsWorldId,
         source: "plugin-minecraft",
         type: ChannelType.SELF,
-        metadata: { type: "minecraft", description: "Persistent waypoint storage" },
+        metadata: {
+          type: "minecraft",
+          description: "Persistent waypoint storage",
+        },
       });
     }
     if (this.runtime.ensureParticipantInRoom) {
-      await this.runtime.ensureParticipantInRoom(this.runtime.agentId, this.waypointsRoomId);
+      await this.runtime.ensureParticipantInRoom(
+        this.runtime.agentId,
+        this.waypointsRoomId,
+      );
     }
 
     // Load existing waypoint memories (persisted by plugin-sql or any durable adapter).
@@ -95,11 +108,18 @@ export class WaypointsService extends Service {
       const cmd = md as WaypointMetadata;
       if (cmd.waypointType !== "minecraft_waypoint") continue;
       if (typeof cmd.waypointName !== "string") continue;
-      if (typeof cmd.x !== "number" || typeof cmd.y !== "number" || typeof cmd.z !== "number") continue;
+      if (
+        typeof cmd.x !== "number" ||
+        typeof cmd.y !== "number" ||
+        typeof cmd.z !== "number"
+      )
+        continue;
 
       const key = cmd.waypointName.trim().toLowerCase();
-      const createdAt = typeof m.createdAt === "number" ? new Date(m.createdAt) : new Date();
-      const id = m.id ?? stringToUuid(`mc-waypoint:${this.runtime.agentId}:${key}`);
+      const createdAt =
+        typeof m.createdAt === "number" ? new Date(m.createdAt) : new Date();
+      const id =
+        m.id ?? stringToUuid(`mc-waypoint:${this.runtime.agentId}:${key}`);
       this.waypoints.set(key, {
         id,
         name: cmd.waypointName,
@@ -146,7 +166,12 @@ export class WaypointsService extends Service {
     };
   }
 
-  async setWaypoint(name: string, x: number, y: number, z: number): Promise<Waypoint> {
+  async setWaypoint(
+    name: string,
+    x: number,
+    y: number,
+    z: number,
+  ): Promise<Waypoint> {
     const key = name.trim().toLowerCase();
     const wp: Waypoint = {
       id: this.waypointIdForKey(key),
@@ -166,7 +191,11 @@ export class WaypointsService extends Service {
       tableName: "memories",
     });
     if (existing.some((m) => m.id === wp.id)) {
-      await this.runtime.updateMemory({ id: wp.id, content: memory.content, metadata: memory.metadata });
+      await this.runtime.updateMemory({
+        id: wp.id,
+        content: memory.content,
+        metadata: memory.metadata,
+      });
     } else {
       await this.runtime.createMemory(memory, "memories", true);
     }
@@ -195,4 +224,3 @@ export class WaypointsService extends Service {
     );
   }
 }
-

@@ -51,7 +51,9 @@ class McpProvider:
                         tool_name_obj if isinstance(tool_name_obj, str) else str(tool_name_obj)
                     )
                     description = (
-                        description_obj if isinstance(description_obj, str) else str(description_obj)
+                        description_obj
+                        if isinstance(description_obj, str)
+                        else str(description_obj)
                     )
                     output += f"- {tool_name}: {description}\n"
 

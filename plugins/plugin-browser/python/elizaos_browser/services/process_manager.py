@@ -3,9 +3,7 @@
 import asyncio
 import logging
 import os
-import platform
 import subprocess
-import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -24,7 +22,7 @@ class BrowserProcessManager:
         """Find the browser server executable or script."""
         # Get the directory of this file
         this_dir = Path(__file__).parent.parent.parent
-        
+
         # Possible server locations
         possible_paths = [
             # Stagehand server dist
@@ -34,24 +32,24 @@ class BrowserProcessManager:
             # From workspace root
             Path.cwd() / "plugins" / "plugin-browser" / "stagehand-server" / "dist" / "index.js",
         ]
-        
+
         for path in possible_paths:
             if path.exists():
                 logger.info(f"Found browser server at: {path}")
                 return path
-        
+
         # Check for TypeScript source as fallback
         ts_paths = [
             this_dir.parent.parent / "stagehand-server" / "src" / "index.ts",
             this_dir.parent / "stagehand-server" / "src" / "index.ts",
             Path.cwd() / "plugins" / "plugin-browser" / "stagehand-server" / "src" / "index.ts",
         ]
-        
+
         for path in ts_paths:
             if path.exists():
                 logger.warn(f"Found TypeScript source at: {path} - will need tsx to run")
                 return path
-        
+
         logger.error("Could not find browser server")
         logger.error(f"Searched paths: {possible_paths + ts_paths}")
         return None
@@ -77,7 +75,7 @@ class BrowserProcessManager:
         # Copy relevant env vars
         for key in [
             "BROWSERBASE_API_KEY",
-            "BROWSERBASE_PROJECT_ID", 
+            "BROWSERBASE_PROJECT_ID",
             "OPENAI_API_KEY",
             "ANTHROPIC_API_KEY",
             "BROWSER_HEADLESS",
@@ -89,7 +87,7 @@ class BrowserProcessManager:
                 env[key] = os.environ[key]
 
         logger.info(f"Starting browser server from: {self.server_path}")
-        
+
         if str(self.server_path).endswith(".ts"):
             # TypeScript source - use npx tsx
             cmd = ["npx", "tsx", str(self.server_path)]
@@ -105,15 +103,15 @@ class BrowserProcessManager:
                 stderr=subprocess.PIPE,
                 cwd=self.server_path.parent.parent,  # stagehand-server directory
             )
-            
+
             # Start output readers
             asyncio.create_task(self._read_output())
-            
+
             # Wait for server to be ready
             await self._wait_for_server()
             self.is_running = True
             logger.info("Browser server started successfully")
-            
+
         except Exception as e:
             logger.error(f"Failed to start browser server: {e}")
             self.stop()
@@ -123,7 +121,7 @@ class BrowserProcessManager:
         """Read and log server output."""
         if not self.process:
             return
-            
+
         while self.process.poll() is None:
             if self.process.stdout:
                 line = self.process.stdout.readline()
@@ -134,40 +132,40 @@ class BrowserProcessManager:
     async def _wait_for_server(self, max_attempts: int = 30, delay: float = 1.0) -> None:
         """Wait for the server to be ready."""
         import websockets
-        
+
         url = f"ws://localhost:{self.server_port}"
-        
+
         for attempt in range(1, max_attempts + 1):
             try:
-                async with websockets.connect(url) as ws:
+                async with websockets.connect(url):
                     logger.info("Browser server is ready")
                     return
             except Exception as e:
                 if attempt < max_attempts:
                     logger.debug(f"Server not ready yet (attempt {attempt}/{max_attempts}): {e}")
                     await asyncio.sleep(delay)
-                    
+
                     # Check if process died
                     if self.process and self.process.poll() is not None:
                         stderr = self.process.stderr.read().decode() if self.process.stderr else ""
                         raise RuntimeError(f"Browser server process died. stderr: {stderr}")
-                        
+
         raise RuntimeError(f"Browser server failed to start after {max_attempts} attempts")
 
     def stop(self) -> None:
         """Stop the browser server process."""
         if not self.process:
             return
-            
+
         logger.info("Stopping browser server")
-        
+
         try:
             self.process.terminate()
             self.process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             self.process.kill()
             self.process.wait()
-        
+
         self.process = None
         self.is_running = False
 

@@ -7,9 +7,9 @@
  * the AdminAuditLog database table (for persistence and reporting).
  */
 
-import { adminAuditLogs, db } from '@polyagent/db';
-import { generateSnowflakeId, logger } from '@polyagent/shared';
-import type { JsonValue } from './types';
+import { adminAuditLogs, db } from "@polyagent/db";
+import { generateSnowflakeId, logger } from "@polyagent/shared";
+import type { JsonValue } from "./types";
 
 export interface AdminAuditContext {
   /** Admin user ID performing the action */
@@ -36,7 +36,7 @@ export interface AdminAuditContext {
  */
 export async function logAdminAction(
   action: string,
-  context: AdminAuditContext
+  context: AdminAuditContext,
 ): Promise<void> {
   const timestamp = new Date().toISOString();
 
@@ -51,7 +51,7 @@ export async function logAdminAction(
       resourceId: context.resourceId,
       timestamp,
     },
-    'AdminAudit'
+    "AdminAudit",
   );
 
   // Persist to database asynchronously (don't block on this)
@@ -64,7 +64,7 @@ export async function logAdminAction(
  */
 async function persistAuditLog(
   action: string,
-  context: AdminAuditContext
+  context: AdminAuditContext,
 ): Promise<void> {
   const id = await generateSnowflakeId();
 
@@ -87,7 +87,7 @@ async function persistAuditLog(
       logger.warn(
         `Failed to persist audit log: ${err.message}`,
         { action, resourceType: context.resourceType },
-        'AdminAudit'
+        "AdminAudit",
       );
     });
 }
@@ -96,56 +96,56 @@ async function persistAuditLog(
  * Log admin viewing/reading a resource
  */
 export async function logAdminView(context: AdminAuditContext): Promise<void> {
-  await logAdminAction('VIEW', context);
+  await logAdminAction("VIEW", context);
 }
 
 /**
  * Log admin modifying a resource
  */
 export async function logAdminModify(
-  context: AdminAuditContext
+  context: AdminAuditContext,
 ): Promise<void> {
-  await logAdminAction('MODIFY', context);
+  await logAdminAction("MODIFY", context);
 }
 
 /**
  * Log admin deleting a resource
  */
 export async function logAdminDelete(
-  context: AdminAuditContext
+  context: AdminAuditContext,
 ): Promise<void> {
-  await logAdminAction('DELETE', context);
+  await logAdminAction("DELETE", context);
 }
 
 /**
  * Log admin creating a resource
  */
 export async function logAdminCreate(
-  context: AdminAuditContext
+  context: AdminAuditContext,
 ): Promise<void> {
-  await logAdminAction('CREATE', context);
+  await logAdminAction("CREATE", context);
 }
 
 /**
  * Log admin ban/unban action
  */
 export async function logAdminBan(
-  context: AdminAuditContext & { isBan: boolean }
+  context: AdminAuditContext & { isBan: boolean },
 ): Promise<void> {
-  await logAdminAction(context.isBan ? 'BAN' : 'UNBAN', context);
+  await logAdminAction(context.isBan ? "BAN" : "UNBAN", context);
 }
 
 /**
  * Log admin promoting/demoting another admin
  */
 export async function logAdminPrivilegeChange(
-  context: AdminAuditContext & { isPromotion: boolean }
+  context: AdminAuditContext & { isPromotion: boolean },
 ): Promise<void> {
   await logAdminAction(
-    context.isPromotion ? 'PROMOTE_ADMIN' : 'DEMOTE_ADMIN',
-    context
+    context.isPromotion ? "PROMOTE_ADMIN" : "DEMOTE_ADMIN",
+    context,
   );
 }
 
 // Re-export getClientIp from utils for convenience
-export { getClientIp } from './utils';
+export { getClientIp } from "./utils";

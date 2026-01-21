@@ -10,10 +10,6 @@
  * Uses runtime.composeState() for providers and runtime.processActions() for execution.
  */
 
-import { agentRuntimeManager, agentService } from '@polyagent/agents';
-import { authenticateUser, withErrorHandling } from '@polyagent/api';
-import { db, eq, userAgentConfigs } from '@polyagent/db';
-import { checkUserInput, GROQ_MODELS, logger } from '@polyagent/shared';
 import {
   type ActionResult,
   composePromptFromState,
@@ -21,11 +17,15 @@ import {
   ModelType,
   parseKeyValueXml,
   type State,
-} from '@elizaos/core';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
-import { MODEL_TIER_POINTS_COST } from '@/lib/constants';
+} from "@elizaos/core";
+import { agentRuntimeManager, agentService } from "@polyagent/agents";
+import { authenticateUser, withErrorHandling } from "@polyagent/api";
+import { db, eq, userAgentConfigs } from "@polyagent/db";
+import { checkUserInput, GROQ_MODELS, logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { v4 as uuidv4 } from "uuid";
+import { MODEL_TIER_POINTS_COST } from "@/lib/constants";
 
 // =============================================================================
 // Multi-Step Decision Template
@@ -198,10 +198,10 @@ Output ONLY this XML with your actual response (not examples or placeholders):
 export const POST = withErrorHandling(
   async (
     req: NextRequest,
-    { params }: { params: Promise<{ agentId: string }> }
+    { params }: { params: Promise<{ agentId: string }> },
   ) => {
     const { agentId } = await params;
-    logger.info('Agent chat endpoint hit', { agentId }, 'AgentChat');
+    logger.info("Agent chat endpoint hit", { agentId }, "AgentChat");
 
     const body = (await req.json()) as { message: string; usePro?: boolean };
     const message = body.message;
@@ -211,13 +211,13 @@ export const POST = withErrorHandling(
     const inputCheck = checkUserInput(message);
     if (!inputCheck.safe) {
       logger.warn(
-        'Unsafe user input blocked',
+        "Unsafe user input blocked",
         { agentId, reason: inputCheck.reason, category: inputCheck.category },
-        'AgentChat'
+        "AgentChat",
       );
       return NextResponse.json(
-        { success: false, error: inputCheck.reason || 'Invalid input' },
-        { status: 400 }
+        { success: false, error: inputCheck.reason || "Invalid input" },
+        { status: 400 },
       );
     }
 
@@ -226,12 +226,12 @@ export const POST = withErrorHandling(
     // Verify ownership
     const agentWithConfig = await agentService.getAgentWithConfig(
       agentId,
-      user.id
+      user.id,
     );
     if (!agentWithConfig) {
       return NextResponse.json(
-        { success: false, error: 'Agent not found' },
-        { status: 404 }
+        { success: false, error: "Agent not found" },
+        { status: 404 },
       );
     }
     const agentConfig = agentWithConfig.agentConfig;
@@ -251,7 +251,7 @@ export const POST = withErrorHandling(
         agentId,
         pointsCost,
         `Chat message (pro mode)`,
-        undefined
+        undefined,
       );
     }
 
@@ -283,7 +283,7 @@ export const POST = withErrorHandling(
       logger.info(
         `[MultiStep] Iteration ${iteration}/${MAX_ITERATIONS}`,
         { agentId, actionsCompleted: traceActionResults.length },
-        'AgentChat'
+        "AgentChat",
       );
 
       // Compose state with providers
@@ -291,17 +291,17 @@ export const POST = withErrorHandling(
       // This prevents all Polyagent A2A providers from running unnecessarily
       const state: State = await runtime.composeState(
         elizaMessage,
-        ['RECENT_MESSAGES', 'ACTION_STATE', 'ACTIONS'],
-        true
+        ["RECENT_MESSAGES", "ACTION_STATE", "ACTIONS"],
+        true,
       );
 
       // Add custom values to state
       state.values = {
         ...state.values,
         agentId, // Pass agentId for actions that need it
-        system: agentConfig?.systemPrompt ?? 'You are a helpful AI assistant.',
-        personality: agentConfig?.personality ?? '',
-        tradingStrategy: agentConfig?.tradingStrategy ?? '',
+        system: agentConfig?.systemPrompt ?? "You are a helpful AI assistant.",
+        personality: agentConfig?.personality ?? "",
+        tradingStrategy: agentConfig?.tradingStrategy ?? "",
         currentMessage: message,
         iterationCount: iteration,
         maxIterations: MAX_ITERATIONS,
@@ -336,7 +336,7 @@ export const POST = withErrorHandling(
           logger.debug(
             `[MultiStep] Parsed decision on attempt ${attempt}`,
             { action: parsedStep.action, isFinish: parsedStep.isFinish },
-            'AgentChat'
+            "AgentChat",
           );
           break;
         }
@@ -344,7 +344,7 @@ export const POST = withErrorHandling(
         logger.warn(
           `[MultiStep] Failed to parse decision (attempt ${attempt})`,
           { preview: response.substring(0, 200) },
-          'AgentChat'
+          "AgentChat",
         );
       }
 
@@ -354,13 +354,13 @@ export const POST = withErrorHandling(
         break;
       }
 
-      const thought = (parsedStep.thought as string) ?? '';
-      const action = (parsedStep.action as string) ?? '';
+      const thought = (parsedStep.thought as string) ?? "";
+      const action = (parsedStep.action as string) ?? "";
       const parameters = parsedStep.parameters;
       const isFinish = parsedStep.isFinish;
 
       // No action - go to summary phase
-      if (!action || action === '') {
+      if (!action || action === "") {
         break;
       }
 
@@ -368,21 +368,21 @@ export const POST = withErrorHandling(
       logger.info(
         `[MultiStep] Executing action: ${action}`,
         { parameters },
-        'AgentChat'
+        "AgentChat",
       );
 
       // Parse parameters
       let actionParams = {};
       if (parameters) {
-        if (typeof parameters === 'string') {
+        if (typeof parameters === "string") {
           try {
             actionParams = JSON.parse(parameters);
           } catch {
             logger.warn(
-              `[MultiStep] Failed to parse parameters: ${parameters}`
+              `[MultiStep] Failed to parse parameters: ${parameters}`,
             );
           }
-        } else if (typeof parameters === 'object') {
+        } else if (typeof parameters === "object") {
           actionParams = parameters;
         }
       }
@@ -397,7 +397,7 @@ export const POST = withErrorHandling(
       const actionContent = {
         text: `Executing action: ${action}`,
         actions: [action],
-        thought: thought ?? '',
+        thought: thought ?? "",
       };
 
       const actionMessage: Memory = {
@@ -436,7 +436,7 @@ export const POST = withErrorHandling(
                 actionResult = {
                   success: firstResult.content?.success ?? true,
                   text:
-                    typeof firstResult.content?.text === 'string'
+                    typeof firstResult.content?.text === "string"
                       ? firstResult.content.text
                       : undefined,
                   values: firstResult.content?.values,
@@ -444,7 +444,7 @@ export const POST = withErrorHandling(
               }
             }
             return [];
-          }
+          },
         );
 
         // Fallback to state cache if callback didn't capture
@@ -483,7 +483,7 @@ export const POST = withErrorHandling(
         });
       } catch (error) {
         const errorMsg =
-          error instanceof Error ? error.message : 'Unknown error';
+          error instanceof Error ? error.message : "Unknown error";
         traceActionResults.push({
           actionType: action,
           success: false,
@@ -495,7 +495,7 @@ export const POST = withErrorHandling(
       }
 
       // Check if done - always go to summary phase for proper response
-      if (isFinish === 'true' || isFinish === true) {
+      if (isFinish === "true" || isFinish === true) {
         break;
       }
     }
@@ -504,15 +504,15 @@ export const POST = withErrorHandling(
     {
       const state = await runtime.composeState(
         elizaMessage,
-        ['RECENT_MESSAGES', 'ACTION_STATE'],
-        true
+        ["RECENT_MESSAGES", "ACTION_STATE"],
+        true,
       );
       state.values = {
         ...state.values,
         agentId, // Pass agentId for actions that need it
-        system: agentConfig?.systemPrompt ?? 'You are a helpful AI assistant.',
-        personality: agentConfig?.personality ?? '',
-        tradingStrategy: agentConfig?.tradingStrategy ?? '',
+        system: agentConfig?.systemPrompt ?? "You are a helpful AI assistant.",
+        personality: agentConfig?.personality ?? "",
+        tradingStrategy: agentConfig?.tradingStrategy ?? "",
         currentMessage: message,
       };
       state.data = {
@@ -550,7 +550,7 @@ export const POST = withErrorHandling(
           logger.debug(
             `[MultiStep] Parsed summary on attempt ${attempt}`,
             { preview: extractedText.substring(0, 50) },
-            'AgentChat'
+            "AgentChat",
           );
           break;
         }
@@ -558,14 +558,14 @@ export const POST = withErrorHandling(
         logger.warn(
           `[MultiStep] Failed to parse summary (attempt ${attempt})`,
           { preview: summaryResponse.substring(0, 200) },
-          'AgentChat'
+          "AgentChat",
         );
       }
 
       finalResponse =
         extractedText ||
         (traceActionResults.length > 0
-          ? 'Actions completed.'
+          ? "Actions completed."
           : "I'm here to help!");
     }
 
@@ -583,7 +583,7 @@ export const POST = withErrorHandling(
         {
           id: userMessageId,
           agentUserId: agentId,
-          role: 'user',
+          role: "user",
           content: message,
           pointsCost: 0,
           metadata: {},
@@ -592,7 +592,7 @@ export const POST = withErrorHandling(
         {
           id: assistantMessageId,
           agentUserId: agentId,
-          role: 'assistant',
+          role: "assistant",
           content: responseText,
           modelUsed,
           pointsCost,
@@ -619,9 +619,9 @@ export const POST = withErrorHandling(
       data: {
         id: uuidv4(),
         agentUserId: agentId,
-        type: 'chat',
-        level: 'info',
-        message: 'Chat interaction completed',
+        type: "chat",
+        level: "info",
+        message: "Chat interaction completed",
         prompt: message,
         completion: responseText,
         metadata: {
@@ -637,7 +637,7 @@ export const POST = withErrorHandling(
     logger.info(
       `Chat completed for agent ${agentId}`,
       { actionsExecuted: traceActionResults.length },
-      'AgentsAPI'
+      "AgentsAPI",
     );
 
     return NextResponse.json({
@@ -656,7 +656,7 @@ export const POST = withErrorHandling(
         })),
       },
     });
-  }
+  },
 );
 
 // =============================================================================
@@ -666,7 +666,7 @@ export const POST = withErrorHandling(
 export const GET = withErrorHandling(
   async (
     req: NextRequest,
-    { params }: { params: Promise<{ agentId: string }> }
+    { params }: { params: Promise<{ agentId: string }> },
   ) => {
     const user = await authenticateUser(req);
     const { agentId } = await params;
@@ -674,19 +674,19 @@ export const GET = withErrorHandling(
     const agent = await agentService.getAgent(agentId, user.id);
     if (!agent) {
       return NextResponse.json(
-        { success: false, error: 'Agent not found' },
-        { status: 404 }
+        { success: false, error: "Agent not found" },
+        { status: 404 },
       );
     }
 
     const { searchParams } = new URL(req.url);
-    const limit = Number.parseInt(searchParams.get('limit') || '50');
-    const cursor = searchParams.get('cursor') || undefined;
+    const limit = Number.parseInt(searchParams.get("limit") || "50", 10);
+    const cursor = searchParams.get("cursor") || undefined;
 
     const { messages, hasMore, nextCursor } = await agentService.getChatHistory(
       agentId,
       limit,
-      cursor
+      cursor,
     );
 
     return NextResponse.json({
@@ -704,5 +704,5 @@ export const GET = withErrorHandling(
         nextCursor,
       },
     });
-  }
+  },
 );

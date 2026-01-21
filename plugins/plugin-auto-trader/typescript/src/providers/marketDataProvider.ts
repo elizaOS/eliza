@@ -1,7 +1,7 @@
-import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 
 export const marketDataProvider: Provider = {
-  name: 'MARKET_DATA',
+  name: "MARKET_DATA",
   get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
       // For now, provide mock market data
@@ -24,8 +24,8 @@ export const marketDataProvider: Provider = {
 
       return { text: marketText };
     } catch (error) {
-      console.error('[MarketDataProvider] Error:', error);
-      return { text: 'Market data is currently unavailable.' };
+      console.error("[MarketDataProvider] Error:", error);
+      return { text: "Market data is currently unavailable." };
     }
   },
 };

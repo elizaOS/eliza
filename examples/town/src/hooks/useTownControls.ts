@@ -6,8 +6,8 @@ import {
   pauseGame,
   resetGame,
   resetTownState,
-  startGameRound,
   setRunning,
+  startGameRound,
   subscribe,
   toggleRunning,
 } from "../state/townStore";

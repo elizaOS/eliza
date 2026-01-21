@@ -11,18 +11,10 @@
  * 4. Optionally triggers a follow-up trade evaluation task
  */
 
-import type {
-  IAgentRuntime,
-  Task,
-  TaskWorker,
-} from "@elizaos/core";
+import type { IAgentRuntime, Task, TaskWorker } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { ResearchStorageService } from "../services/researchStorage";
-import type {
-  ResearchRecommendation,
-  ResearchResult,
-  ResearchTaskMetadata,
-} from "../types";
+import type { ResearchRecommendation, ResearchResult, ResearchTaskMetadata } from "../types";
 
 /**
  * Response structure from the RESEARCH model
@@ -94,14 +86,12 @@ Consider:
 
     // Validate and provide defaults
     return {
-      summary:
-        result.summary ?? "Research completed but summary generation failed.",
+      summary: result.summary ?? "Research completed but summary generation failed.",
       recommendation: {
         shouldTrade: result.recommendation?.shouldTrade ?? false,
         direction: result.recommendation?.direction,
         confidence: result.recommendation?.confidence ?? 0,
-        reasoning:
-          result.recommendation?.reasoning ?? "Unable to generate reasoning.",
+        reasoning: result.recommendation?.reasoning ?? "Unable to generate reasoning.",
       },
     };
   } catch (error) {
@@ -133,15 +123,11 @@ async function triggerTradeEvaluation(
   }
 
   if (!metadata.tradeParams?.tokenId) {
-    logger.warn(
-      "[ResearchTask] Cannot trigger trade evaluation - no tokenId provided"
-    );
+    logger.warn("[ResearchTask] Cannot trigger trade evaluation - no tokenId provided");
     return;
   }
 
-  logger.info(
-    `[ResearchTask] Triggering trade evaluation for market: ${metadata.marketId}`
-  );
+  logger.info(`[ResearchTask] Triggering trade evaluation for market: ${metadata.marketId}`);
 
   await runtime.createTask({
     name: TRADE_EVALUATION_TASK_NAME,
@@ -171,9 +157,7 @@ async function notifyResearchComplete(
   recommendation: ResearchRecommendation
 ): Promise<void> {
   const direction = recommendation.direction ?? "N/A";
-  const tradeStr = recommendation.shouldTrade
-    ? `TRADE ${direction}`
-    : "NO TRADE";
+  const tradeStr = recommendation.shouldTrade ? `TRADE ${direction}` : "NO TRADE";
 
   logger.info(
     `[ResearchTask] ✅ Research completed for market: ${metadata.marketQuestion}\n` +
@@ -199,9 +183,7 @@ export const researchTaskWorker: TaskWorker = {
     // Check if OpenAI API is configured for research
     const apiKey = runtime.getSetting("OPENAI_API_KEY");
     if (!apiKey) {
-      logger.warn(
-        "[ResearchTask] OPENAI_API_KEY not configured - research unavailable"
-      );
+      logger.warn("[ResearchTask] OPENAI_API_KEY not configured - research unavailable");
       return false;
     }
     return true;
@@ -218,12 +200,8 @@ export const researchTaskWorker: TaskWorker = {
     const metadata = task.metadata as unknown as ResearchTaskMetadata;
     const storage = new ResearchStorageService(runtime);
 
-    logger.info(
-      `[ResearchTask] 🔬 Starting deep research for market: ${metadata.marketQuestion}`
-    );
-    logger.info(
-      `[ResearchTask] This may take 20-40 minutes. Task ID: ${task.id}`
-    );
+    logger.info(`[ResearchTask] 🔬 Starting deep research for market: ${metadata.marketQuestion}`);
+    logger.info(`[ResearchTask] This may take 20-40 minutes. Task ID: ${task.id}`);
 
     try {
       // Call OpenAI Deep Research via the model system
@@ -251,10 +229,9 @@ Provide a detailed, balanced analysis with citations to your sources.`,
       // Use "RESEARCH" as the model type string to access deep research capabilities
       // The RESEARCH model type may not be available in all environments
       // Using type assertion as the model registration happens at runtime via OpenAI plugin
-      const rawResult = await (runtime.useModel as (
-        modelType: string,
-        params: Record<string, unknown>
-      ) => Promise<unknown>)("RESEARCH", researchParams);
+      const rawResult = await (
+        runtime.useModel as (modelType: string, params: Record<string, unknown>) => Promise<unknown>
+      )("RESEARCH", researchParams);
       const researchResult = rawResult as ResearchModelResult;
 
       logger.info(
@@ -278,16 +255,14 @@ Provide a detailed, balanced analysis with citations to your sources.`,
           title: a.title,
         })),
         sourcesCount:
-          researchResult.outputItems?.filter((o) => o.type === "web_search_call")
-            .length ?? researchResult.annotations.length,
+          researchResult.outputItems?.filter((o) => o.type === "web_search_call").length ??
+          researchResult.annotations.length,
       };
 
       // Store the results
       await storage.storeResearchResult(metadata.marketId, result, researchResult.id);
 
-      logger.info(
-        `[ResearchTask] ✅ Research stored for market: ${metadata.marketId}`
-      );
+      logger.info(`[ResearchTask] ✅ Research stored for market: ${metadata.marketId}`);
 
       // Handle callback action
       if (metadata.callbackAction === "EVALUATE_TRADE" && metadata.tradeParams) {
@@ -297,8 +272,7 @@ Provide a detailed, balanced analysis with citations to your sources.`,
       // Always notify/log completion
       await notifyResearchComplete(runtime, metadata, summary, recommendation);
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(`[ResearchTask] ❌ Research failed: ${errorMessage}`);
 
       // Mark as failed in storage

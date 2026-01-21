@@ -80,8 +80,10 @@ mod tests {
         }
         missing.sort();
         missing.dedup();
-        assert!(missing.is_empty(), "missing redirect targets: {:?}", missing);
+        assert!(
+            missing.is_empty(),
+            "missing redirect targets: {:?}",
+            missing
+        );
     }
 }
-
-

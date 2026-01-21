@@ -8,12 +8,12 @@ try:
     )
 
     EXTRACT_EXPERIENCES_TEMPLATE = _EXTRACT_EXPERIENCES_TEMPLATE
-except ImportError:
+except ImportError as err:
     # Generated prompts not available - this should not happen in production
     # Prompts should be generated via build:prompts script
     raise ImportError(
         "Generated prompts not found. Run 'npm run build:prompts' to generate prompts."
-    )
+    ) from err
 
 
 def build_extract_experiences_prompt(conversation_context: str, existing_experiences: str) -> str:

@@ -67,7 +67,11 @@ pub fn parse_key_value_xml(xml: &str) -> Option<HashMap<String, String>> {
         }
     }
 
-    if result.is_empty() { None } else { Some(result) }
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 /// Extract direct child XML elements from a string.
@@ -267,7 +271,10 @@ mod tests {
         "#;
 
         let result = parse_key_value_xml(xml).unwrap();
-        assert_eq!(result.get("thought"), Some(&"Thinking about this".to_string()));
+        assert_eq!(
+            result.get("thought"),
+            Some(&"Thinking about this".to_string())
+        );
         assert_eq!(result.get("text"), Some(&"Hello world".to_string()));
     }
 
@@ -374,4 +381,3 @@ mod tests {
         );
     }
 }
-

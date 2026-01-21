@@ -56,9 +56,9 @@ import {
   type HandlerOptions,
   type UUID,
   logger,
-} from '@elizaos/core';
-import { FormService } from '../service.ts';
-import { quickIntentDetect } from '../intent.ts';
+} from "@elizaos/core";
+import { FormService } from "../service";
+import { quickIntentDetect } from "../intent";
 
 /**
  * Form Restore Action
@@ -72,9 +72,9 @@ import { quickIntentDetect } from '../intent.ts';
  * - Context needed for next message
  */
 export const formRestoreAction: Action = {
-  name: 'FORM_RESTORE',
-  similes: ['RESUME_FORM', 'CONTINUE_FORM'],
-  description: 'Restore a previously stashed form session',
+  name: "FORM_RESTORE",
+  similes: ["RESUME_FORM", "CONTINUE_FORM"],
+  description: "Restore a previously stashed form session",
 
   /**
    * Validate: Only trigger for restore intent with stashed sessions.
@@ -84,18 +84,22 @@ export const formRestoreAction: Action = {
    *
    * @returns true if action should run
    */
-  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+  ): Promise<boolean> => {
     try {
-      const text = message.content?.text || '';
+      const text = message.content?.text || "";
 
       // Quick check for restore intent
       // WHY quick path: Avoid LLM call for simple English phrases
       const intent = quickIntentDetect(text);
-      if (intent !== 'restore') {
+      if (intent !== "restore") {
         return false;
       }
 
-      const formService = runtime.getService('FORM') as FormService;
+      const formService = runtime.getService("FORM") as FormService;
       if (!formService) {
         return false;
       }
@@ -108,7 +112,7 @@ export const formRestoreAction: Action = {
 
       return stashed.length > 0;
     } catch (error) {
-      logger.error('[FormRestoreAction] Validation error:', String(error));
+      logger.error("[FormRestoreAction] Validation error:", String(error));
       return false;
     }
   },
@@ -127,10 +131,10 @@ export const formRestoreAction: Action = {
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
-      const formService = runtime.getService('FORM') as FormService;
+      const formService = runtime.getService("FORM") as FormService;
       if (!formService) {
         await callback?.({
           text: "Sorry, I couldn't find the form service.",
@@ -172,7 +176,9 @@ export const formRestoreAction: Action = {
       // Restore the most recent stashed session
       // WHY most recent: User likely wants what they just stashed
       // TODO: Let user choose if multiple
-      const sessionToRestore = stashed.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      const sessionToRestore = stashed.sort(
+        (a, b) => b.updatedAt - a.updatedAt,
+      )[0];
       const session = await formService.restore(sessionToRestore.id, entityId);
 
       const form = formService.getForm(session.formId);
@@ -195,7 +201,7 @@ export const formRestoreAction: Action = {
         if (context.nextField.askPrompt) {
           responseText += ` ${context.nextField.askPrompt}`;
         }
-      } else if (context.status === 'ready') {
+      } else if (context.status === "ready") {
         responseText += `\nEverything looks complete! Ready to submit?`;
       }
 
@@ -212,7 +218,7 @@ export const formRestoreAction: Action = {
         },
       };
     } catch (error) {
-      logger.error('[FormRestoreAction] Handler error:', String(error));
+      logger.error("[FormRestoreAction] Handler error:", String(error));
       await callback?.({
         text: "Sorry, I couldn't restore your form. Please try again.",
       });
@@ -224,11 +230,11 @@ export const formRestoreAction: Action = {
   examples: [
     [
       {
-        name: '{{user1}}',
-        content: { text: 'Resume my form' },
+        name: "{{user1}}",
+        content: { text: "Resume my form" },
       },
       {
-        name: '{{agentName}}',
+        name: "{{agentName}}",
         content: {
           text: "I've restored your form. Let's continue where you left off.",
         },
@@ -236,11 +242,11 @@ export const formRestoreAction: Action = {
     ],
     [
       {
-        name: '{{user1}}',
-        content: { text: 'Continue with my registration' },
+        name: "{{user1}}",
+        content: { text: "Continue with my registration" },
       },
       {
-        name: '{{agentName}}',
+        name: "{{agentName}}",
         content: {
           text: "I've restored your Registration form. You're 60% complete.",
         },
@@ -248,11 +254,11 @@ export const formRestoreAction: Action = {
     ],
     [
       {
-        name: '{{user1}}',
-        content: { text: 'Pick up where I left off' },
+        name: "{{user1}}",
+        content: { text: "Pick up where I left off" },
       },
       {
-        name: '{{agentName}}',
+        name: "{{agentName}}",
         content: {
           text: "I've restored your form. Here's what you have so far...",
         },

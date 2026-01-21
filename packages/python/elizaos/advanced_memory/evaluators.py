@@ -20,7 +20,9 @@ async def _summarization_validate(runtime, message, _state=None) -> bool:
     return (count - existing.last_message_offset) >= cfg.short_term_summarization_interval
 
 
-async def _summarization_handler(runtime, message, _state=None, _options: HandlerOptions | None = None, *_args):
+async def _summarization_handler(
+    runtime, message, _state=None, _options: HandlerOptions | None = None, *_args
+):
     svc = runtime.get_service("memory")
     if svc is None:
         return None
@@ -52,7 +54,9 @@ async def _long_term_validate(runtime, message, _state=None) -> bool:
     return await svc.should_run_extraction(message.entity_id, message.room_id, count)
 
 
-async def _long_term_handler(runtime, message, _state=None, _options: HandlerOptions | None = None, *_args):
+async def _long_term_handler(
+    runtime, message, _state=None, _options: HandlerOptions | None = None, *_args
+):
     svc = runtime.get_service("memory")
     if svc is None:
         return None
@@ -91,4 +95,3 @@ long_term_extraction_evaluator = Evaluator(
     validate=_long_term_validate,
     handler=_long_term_handler,
 )
-

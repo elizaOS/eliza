@@ -1,11 +1,11 @@
-import {
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type State,
-} from "../../types/index.ts";
 import { logger } from "../../logger.ts";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 
@@ -14,9 +14,15 @@ export const contextSummaryProvider: Provider = {
   description: "Provides summarized context from previous conversations",
   position: 96,
 
-  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
     try {
-      const memoryService = runtime.getService("memory") as MemoryService | null;
+      const memoryService = runtime.getService(
+        "memory",
+      ) as MemoryService | null;
       const { roomId } = message;
 
       if (!memoryService) {
@@ -27,7 +33,8 @@ export const contextSummaryProvider: Provider = {
         };
       }
 
-      const currentSummary = await memoryService.getCurrentSessionSummary(roomId);
+      const currentSummary =
+        await memoryService.getCurrentSessionSummary(roomId);
       if (!currentSummary) {
         return {
           data: {},
@@ -48,7 +55,10 @@ export const contextSummaryProvider: Provider = {
       }
 
       const sessionSummaries = addHeader("# Conversation Summary", summaryOnly);
-      const sessionSummariesWithTopics = addHeader("# Conversation Summary", summaryWithTopics);
+      const sessionSummariesWithTopics = addHeader(
+        "# Conversation Summary",
+        summaryWithTopics,
+      );
 
       return {
         data: {
@@ -61,7 +71,10 @@ export const contextSummaryProvider: Provider = {
       };
     } catch (error) {
       const err = error instanceof Error ? error.message : String(error);
-      logger.error({ src: "provider:memory", err }, "Error in contextSummaryProvider");
+      logger.error(
+        { src: "provider:memory", err },
+        "Error in contextSummaryProvider",
+      );
       return {
         data: {},
         values: { sessionSummaries: "", sessionSummariesWithTopics: "" },
@@ -70,4 +83,3 @@ export const contextSummaryProvider: Provider = {
     }
   },
 };
-

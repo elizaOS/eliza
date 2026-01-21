@@ -54,18 +54,13 @@ export class ResearchStorageService {
         research.expiresAt &&
         Date.now() > research.expiresAt
       ) {
-        logger.debug(
-          `[ResearchStorage] Research for market ${marketId} has expired`
-        );
+        logger.debug(`[ResearchStorage] Research for market ${marketId} has expired`);
         return { ...research, status: ResearchStatus.EXPIRED };
       }
 
       return research;
     } catch (error) {
-      logger.error(
-        `[ResearchStorage] Error getting research for market ${marketId}:`,
-        error
-      );
+      logger.error(`[ResearchStorage] Error getting research for market ${marketId}:`, error);
       return null;
     }
   }
@@ -86,10 +81,7 @@ export class ResearchStorageService {
 
       return this.getMarketResearch(marketId);
     } catch (error) {
-      logger.error(
-        `[ResearchStorage] Error getting research by token ${tokenId}:`,
-        error
-      );
+      logger.error(`[ResearchStorage] Error getting research by token ${tokenId}:`, error);
       return null;
     }
   }
@@ -112,9 +104,7 @@ export class ResearchStorageService {
     };
 
     await this.runtime.setCache(key, research);
-    logger.info(
-      `[ResearchStorage] Marked research IN_PROGRESS for market: ${marketId}`
-    );
+    logger.info(`[ResearchStorage] Marked research IN_PROGRESS for market: ${marketId}`);
   }
 
   /**
@@ -145,18 +135,13 @@ export class ResearchStorageService {
     };
 
     await this.runtime.setCache(key, research);
-    logger.info(
-      `[ResearchStorage] Stored COMPLETED research for market: ${marketId}`
-    );
+    logger.info(`[ResearchStorage] Stored COMPLETED research for market: ${marketId}`);
   }
 
   /**
    * Mark research as failed
    */
-  async markResearchFailed(
-    marketId: string,
-    errorMessage: string
-  ): Promise<void> {
+  async markResearchFailed(marketId: string, errorMessage: string): Promise<void> {
     const key = this.getCacheKey(marketId);
     const existing = await this.getMarketResearch(marketId);
 

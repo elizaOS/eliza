@@ -10,7 +10,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { formatEther, type Hex, parseEther } from "viem";
-
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { initWalletProvider, type WalletProvider } from "../providers/wallet";
 import { transferTemplate } from "../templates";
 import {
@@ -21,7 +21,6 @@ import {
   type Transaction,
   type TransferParams,
 } from "../types";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 export class TransferAction {
   constructor(private readonly walletProvider: WalletProvider) {}

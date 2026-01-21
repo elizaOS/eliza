@@ -3,13 +3,13 @@
 // HistoricalDataService and memeCoins config not implemented
 // import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
 // import { VERIFIED_MEME_COINS, ALL_MEME_COINS } from '../config/memeCoins.ts';
-const VERIFIED_MEME_COINS: string[] = [];
-const ALL_MEME_COINS: string[] = [];
-import { AgentRuntime, ModelType } from '@elizaos/core';
-import * as fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
+const _VERIFIED_MEME_COINS: string[] = [];
+const _ALL_MEME_COINS: string[] = [];
+
+import * as fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 
 // Load environment variables
 dotenv.config();
@@ -17,22 +17,28 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Mock runtime for service initialization
-class MockRuntime {
+// Mock runtime for service initialization (used in commented code below)
+// Kept for reference when HistoricalDataService is implemented
+const _createMockRuntime = () => ({
   getSetting(key: string): string | undefined {
-    if (key === 'BIRDEYE_API_KEY') {
+    if (key === "BIRDEYE_API_KEY") {
       return process.env.BIRDEYE_API_KEY;
     }
     return undefined;
-  }
-
-  useModel(_modelType: unknown, _params: unknown, _provider?: string): Promise<unknown> {
-    throw new Error('Model not needed for data download');
-  }
-}
+  },
+  useModel(
+    _modelType: unknown,
+    _params: unknown,
+    _provider?: string,
+  ): Promise<unknown> {
+    throw new Error("Model not needed for data download");
+  },
+});
 
 async function downloadAllData() {
-  throw new Error('HistoricalDataService not implemented - this script requires HistoricalDataService');
+  throw new Error(
+    "HistoricalDataService not implemented - this script requires HistoricalDataService",
+  );
   /* Commented out until HistoricalDataService is implemented
   console.log('🚀 Starting historical data download for all meme coins...');
 
@@ -157,23 +163,26 @@ async function downloadAllData() {
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const command = args[0] || 'download';
+const command = args[0] || "download";
 
 switch (command) {
-  case 'download':
+  case "download":
     downloadAllData().catch(console.error);
     break;
-  case 'clear':
-    const cacheDir = path.join(__dirname, '../../cache/birdeye');
+  case "clear": {
+    const cacheDir = path.join(__dirname, "../../cache/birdeye");
     if (fs.existsSync(cacheDir)) {
       fs.rmSync(cacheDir, { recursive: true });
-      console.log('✅ Cache cleared');
+      console.log("✅ Cache cleared");
     }
     break;
+  }
   default:
-    console.log('Usage: npm run download-data [download|clear]');
-    console.log('  download       - Download 6 months of data for all coins');
-    console.log('  download --verified - Download only verified coins (first 30)');
-    console.log('  clear         - Clear cache directory');
+    console.log("Usage: npm run download-data [download|clear]");
+    console.log("  download       - Download 6 months of data for all coins");
+    console.log(
+      "  download --verified - Download only verified coins (first 30)",
+    );
+    console.log("  clear         - Clear cache directory");
     process.exit(1);
 }

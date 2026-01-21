@@ -30,4 +30,3 @@ class ChangeDirectoryAction:
 
         result = await service.change_directory(conversation_id(message), target)
         return ActionResult(result.success, result.stdout if result.success else result.stderr)
-

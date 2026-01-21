@@ -1,10 +1,10 @@
 // registered to runtime through plugin
 
+import type { JsonValue } from "../types";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 import type { State } from "../types/state";
-import type { JsonValue } from "../types";
 import type { Task } from "../types/task";
 
 /**
@@ -216,8 +216,6 @@ export class TaskService extends Service {
         typeof task.metadata.updatedAt === "number"
       ) {
         taskStartTime = task.metadata.updatedAt;
-      } else if (typeof task.updatedAt === "bigint") {
-        taskStartTime = Number(task.updatedAt);
       } else if (typeof task.updatedAt === "bigint") {
         taskStartTime = Number(task.updatedAt);
       } else if (task.updatedAt) {

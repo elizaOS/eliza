@@ -1,8 +1,8 @@
 import {
   AgentRuntime,
   ChannelType,
-  createCharacter,
   type Character,
+  createCharacter,
   createMessageMemory,
   type IAgentRuntime,
   type Plugin,

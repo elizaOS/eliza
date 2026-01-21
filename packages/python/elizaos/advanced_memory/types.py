@@ -63,4 +63,3 @@ class MemoryExtraction:
     category: LongTermMemoryCategory
     content: str
     confidence: float
-

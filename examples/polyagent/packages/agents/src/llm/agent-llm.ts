@@ -24,17 +24,17 @@
  * @packageDocumentation
  */
 
-import type { IAgentRuntime } from '@elizaos/core';
-import { getTrajectoryContext } from '../plugins/plugin-trajectory-logger/src/action-interceptor';
-import type { TrajectoryLoggerService } from '../plugins/plugin-trajectory-logger/src/TrajectoryLoggerService';
-import { logger } from '../shared/logger';
-import { callGroqDirect } from './direct-groq';
-import { callOllama } from './ollama-provider';
+import type { IAgentRuntime } from "@elizaos/core";
+import { getTrajectoryContext } from "../plugins/plugin-trajectory-logger/src/action-interceptor";
+import type { TrajectoryLoggerService } from "../plugins/plugin-trajectory-logger/src/TrajectoryLoggerService";
+import { logger } from "../shared/logger";
+import { callGroqDirect } from "./direct-groq";
+import { callOllama } from "./ollama-provider";
 
 /**
  * Supported LLM provider types for agent inference
  */
-export type AgentLLMProvider = 'huggingface' | 'phala' | 'ollama' | 'groq';
+export type AgentLLMProvider = "huggingface" | "phala" | "ollama" | "groq";
 
 /**
  * Determines the configured LLM provider from environment variables
@@ -44,10 +44,10 @@ export type AgentLLMProvider = 'huggingface' | 'phala' | 'ollama' | 'groq';
  */
 function getConfiguredProvider(): AgentLLMProvider {
   const provider = process.env.AGENT_LLM_PROVIDER?.toLowerCase();
-  if (provider === 'huggingface' || provider === 'hf') return 'huggingface';
-  if (provider === 'phala') return 'phala';
-  if (provider === 'ollama' || provider === 'local') return 'ollama';
-  return 'groq';
+  if (provider === "huggingface" || provider === "hf") return "huggingface";
+  if (provider === "phala") return "phala";
+  if (provider === "ollama" || provider === "local") return "ollama";
+  return "groq";
 }
 
 /**
@@ -69,7 +69,7 @@ export interface AgentLLMParams {
   /** Trajectory ID for logging context */
   trajectoryId?: string;
   /** Purpose of the LLM call for training categorization */
-  purpose?: 'action' | 'reasoning' | 'evaluation' | 'response' | 'other';
+  purpose?: "action" | "reasoning" | "evaluation" | "response" | "other";
   /** Specific action type being performed */
   actionType?: string;
   /** Agent runtime for context extraction */
@@ -90,35 +90,35 @@ export interface AgentLLMParams {
 async function callHuggingFace(params: AgentLLMParams): Promise<string> {
   const apiKey = process.env.HUGGINGFACE_API_KEY;
   const endpoint = process.env.HUGGINGFACE_MODEL_ENDPOINT;
-  const apiFormat = process.env.HUGGINGFACE_API_FORMAT || 'inference';
+  const apiFormat = process.env.HUGGINGFACE_API_FORMAT || "inference";
 
   if (!apiKey) {
-    throw new Error('HUGGINGFACE_API_KEY not set');
+    throw new Error("HUGGINGFACE_API_KEY not set");
   }
   if (!endpoint) {
-    throw new Error('HUGGINGFACE_MODEL_ENDPOINT not set');
+    throw new Error("HUGGINGFACE_MODEL_ENDPOINT not set");
   }
 
   const startTime = Date.now();
 
   const messages: Array<{ role: string; content: string }> = [];
   if (params.system) {
-    messages.push({ role: 'system', content: params.system });
+    messages.push({ role: "system", content: params.system });
   }
-  messages.push({ role: 'user', content: params.prompt });
+  messages.push({ role: "user", content: params.prompt });
 
   let requestBody: string;
   let requestUrl = endpoint;
 
-  if (apiFormat === 'openai') {
+  if (apiFormat === "openai") {
     requestBody = JSON.stringify({
-      model: params.archetype ? `polyagent-${params.archetype}` : 'default',
+      model: params.archetype ? `polyagent-${params.archetype}` : "default",
       messages,
       temperature: params.temperature ?? 0.7,
       max_tokens: params.maxTokens ?? 2048,
     });
-    if (!endpoint.includes('/chat/completions')) {
-      requestUrl = endpoint.replace(/\/$/, '') + '/v1/chat/completions';
+    if (!endpoint.includes("/chat/completions")) {
+      requestUrl = `${endpoint.replace(/\/$/, "")}/v1/chat/completions`;
     }
   } else {
     requestBody = JSON.stringify({
@@ -132,10 +132,10 @@ async function callHuggingFace(params: AgentLLMParams): Promise<string> {
   }
 
   const response = await fetch(requestUrl, {
-    method: 'POST',
+    method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: requestBody,
     signal: AbortSignal.timeout(120000),
@@ -153,17 +153,17 @@ async function callHuggingFace(params: AgentLLMParams): Promise<string> {
   const latencyMs = Date.now() - startTime;
 
   let responseText: string;
-  if ('choices' in data && data.choices) {
-    responseText = data.choices[0]?.message?.content || '';
+  if ("choices" in data && data.choices) {
+    responseText = data.choices[0]?.message?.content || "";
   } else if (Array.isArray(data)) {
-    responseText = data[0]?.generated_text || '';
-  } else if ('generated_text' in data) {
-    responseText = data.generated_text || '';
+    responseText = data[0]?.generated_text || "";
+  } else if ("generated_text" in data) {
+    responseText = data.generated_text || "";
   } else {
-    responseText = '';
+    responseText = "";
   }
 
-  await logToTrajectory(params, 'huggingface', responseText, latencyMs);
+  await logToTrajectory(params, "huggingface", responseText, latencyMs);
 
   return responseText;
 }
@@ -180,23 +180,23 @@ async function callPhala(params: AgentLLMParams): Promise<string> {
   const endpoint = process.env.PHALA_ENDPOINT;
 
   if (!endpoint) {
-    throw new Error('PHALA_ENDPOINT not set');
+    throw new Error("PHALA_ENDPOINT not set");
   }
 
   const startTime = Date.now();
 
   const response = await fetch(endpoint, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       model: params.archetype
         ? `polyagent-${params.archetype}`
-        : 'polyagent-default',
+        : "polyagent-default",
       messages: [
-        ...(params.system ? [{ role: 'system', content: params.system }] : []),
-        { role: 'user', content: params.prompt },
+        ...(params.system ? [{ role: "system", content: params.system }] : []),
+        { role: "user", content: params.prompt },
       ],
       temperature: params.temperature ?? 0.7,
       max_tokens: params.maxTokens ?? 2048,
@@ -216,9 +216,9 @@ async function callPhala(params: AgentLLMParams): Promise<string> {
   const latencyMs = Date.now() - startTime;
 
   const responseText =
-    data.choices?.[0]?.message?.content || data.response || '';
+    data.choices?.[0]?.message?.content || data.response || "";
 
-  await logToTrajectory(params, 'phala', responseText, latencyMs);
+  await logToTrajectory(params, "phala", responseText, latencyMs);
 
   return responseText;
 }
@@ -262,7 +262,7 @@ async function logToTrajectory(
   model: string,
   response: string,
   latencyMs: number,
-  tokenCounts?: { promptTokens?: number; completionTokens?: number }
+  tokenCounts?: { promptTokens?: number; completionTokens?: number },
 ): Promise<void> {
   let trajectoryLogger = params.trajectoryLogger;
   let trajectoryId = params.trajectoryId;
@@ -280,12 +280,12 @@ async function logToTrajectory(
     if (stepId) {
       trajectoryLogger.logLLMCall(stepId, {
         model,
-        systemPrompt: params.system || '',
+        systemPrompt: params.system || "",
         userPrompt: params.prompt,
         response,
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 2048,
-        purpose: params.purpose || 'action',
+        purpose: params.purpose || "action",
         actionType: params.actionType,
         latencyMs,
         promptTokens: tokenCounts?.promptTokens,
@@ -319,31 +319,29 @@ export async function callAgentLLM(params: AgentLLMParams): Promise<string> {
   const provider = getConfiguredProvider();
 
   logger.debug(
-    'Agent LLM call',
+    "Agent LLM call",
     {
       provider,
       archetype: params.archetype,
       purpose: params.purpose,
     },
-    'AgentLLM'
+    "AgentLLM",
   );
 
   switch (provider) {
-    case 'huggingface':
+    case "huggingface":
       return callHuggingFace(params);
 
-    case 'phala':
+    case "phala":
       return callPhala(params);
 
-    case 'ollama':
+    case "ollama":
       return callOllamaLocal(params);
-
-    case 'groq':
     default:
       return callGroqDirect({
         prompt: params.prompt,
         system: params.system,
-        modelSize: 'large',
+        modelSize: "large",
         temperature: params.temperature,
         maxTokens: params.maxTokens,
         trajectoryLogger: params.trajectoryLogger,
@@ -383,15 +381,15 @@ export async function getAgentLLMStatus(): Promise<{
   let available = false;
 
   switch (provider) {
-    case 'huggingface':
+    case "huggingface":
       configured =
         !!process.env.HUGGINGFACE_API_KEY &&
         !!process.env.HUGGINGFACE_MODEL_ENDPOINT;
       details.hasApiKey = !!process.env.HUGGINGFACE_API_KEY;
-      details.endpoint = process.env.HUGGINGFACE_MODEL_ENDPOINT || 'not set';
+      details.endpoint = process.env.HUGGINGFACE_MODEL_ENDPOINT || "not set";
       if (configured) {
         const response = await fetch(process.env.HUGGINGFACE_MODEL_ENDPOINT!, {
-          method: 'HEAD',
+          method: "HEAD",
           headers: {
             Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
           },
@@ -401,9 +399,9 @@ export async function getAgentLLMStatus(): Promise<{
       }
       break;
 
-    case 'phala':
+    case "phala":
       configured = !!process.env.PHALA_ENDPOINT;
-      details.endpoint = process.env.PHALA_ENDPOINT || 'not set';
+      details.endpoint = process.env.PHALA_ENDPOINT || "not set";
       if (configured) {
         const response = await fetch(`${process.env.PHALA_ENDPOINT}/health`, {
           signal: AbortSignal.timeout(5000),
@@ -412,8 +410,8 @@ export async function getAgentLLMStatus(): Promise<{
       }
       break;
 
-    case 'ollama':
-      const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+    case "ollama": {
+      const ollamaUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
       configured = true;
       details.endpoint = ollamaUrl;
       try {
@@ -431,8 +429,7 @@ export async function getAgentLLMStatus(): Promise<{
         available = false;
       }
       break;
-
-    case 'groq':
+    }
     default:
       configured = !!process.env.GROQ_API_KEY;
       details.hasApiKey = !!process.env.GROQ_API_KEY;

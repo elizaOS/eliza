@@ -1,5 +1,5 @@
-import { logger } from '@polyagent/shared';
-import type { RealtimeChannel } from './index';
+import { logger } from "@polyagent/shared";
+import type { RealtimeChannel } from "./index";
 
 interface ConnectionInfo {
   id: string;
@@ -14,18 +14,18 @@ class ConnectionRegistry {
   add(connection: ConnectionInfo) {
     this.connections.set(connection.id, connection);
     logger.debug(
-      'Realtime connection added',
+      "Realtime connection added",
       { connectionId: connection.id, channels: connection.channels },
-      'Realtime'
+      "Realtime",
     );
   }
 
   remove(id: string) {
     this.connections.delete(id);
     logger.debug(
-      'Realtime connection removed',
+      "Realtime connection removed",
       { connectionId: id },
-      'Realtime'
+      "Realtime",
     );
   }
 

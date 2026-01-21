@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { logger } from '@polyagent/shared';
+import { logger } from "@polyagent/shared";
 /**
  * PostHog error boundary component for catching and tracking React errors.
  *
@@ -25,8 +25,8 @@ import { logger } from '@polyagent/shared';
  * </PostHogErrorBoundary>
  * ```
  */
-import React, { Component, type ReactNode } from 'react';
-import { posthog } from '@/lib/posthog';
+import React, { Component, type ReactNode } from "react";
+import { posthog } from "@/lib/posthog";
 
 interface Props {
   children: ReactNode;
@@ -52,7 +52,7 @@ export class PostHogErrorBoundary extends Component<Props, State> {
     // Track error with PostHog
     if (posthog) {
       const properties: Record<string, string | boolean> = {
-        $exception_type: error.name || 'Error',
+        $exception_type: error.name || "Error",
         $exception_message: error.message,
         errorBoundary: true,
         timestamp: new Date().toISOString(),
@@ -66,14 +66,14 @@ export class PostHogErrorBoundary extends Component<Props, State> {
         properties.componentStack = errorInfo.componentStack;
       }
 
-      posthog.capture('$exception', properties);
+      posthog.capture("$exception", properties);
     }
 
     // Also log using logger
     logger.error(
-      'Error caught by PostHogErrorBoundary',
+      "Error caught by PostHogErrorBoundary",
       { error, errorInfo },
-      'PostHogErrorBoundary'
+      "PostHogErrorBoundary",
     );
   }
 

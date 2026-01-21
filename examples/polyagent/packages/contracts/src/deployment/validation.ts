@@ -8,9 +8,9 @@
  * import from '@polyagent/contracts/deployment/validation-node'.
  */
 
-import { ethers } from 'ethers';
-import type { DeploymentEnv } from './env-detection';
-import { logger } from './logger';
+import { ethers } from "ethers";
+import type { DeploymentEnv } from "./env-detection";
+import { logger } from "./logger";
 
 /**
  * Contract addresses for a deployment.
@@ -76,18 +76,18 @@ export interface ValidationResult {
  * @returns Deployment info or null if not found
  */
 export async function loadDeployment(
-  env: DeploymentEnv
+  env: DeploymentEnv,
 ): Promise<DeploymentInfo | null> {
-  if (env === 'localnet') {
-    const deployment = await import('../../deployments/local');
+  if (env === "localnet") {
+    const deployment = await import("../../deployments/local");
     return deployment.default as DeploymentInfo;
   }
-  if (env === 'testnet') {
-    const deployment = await import('../../deployments/base-sepolia');
+  if (env === "testnet") {
+    const deployment = await import("../../deployments/base-sepolia");
     return deployment.default as DeploymentInfo;
   }
-  if (env === 'mainnet') {
-    const deployment = await import('../../deployments/base');
+  if (env === "mainnet") {
+    const deployment = await import("../../deployments/base");
     return deployment.default as DeploymentInfo;
   }
 
@@ -100,7 +100,7 @@ export async function loadDeployment(
 export async function validateDeployment(
   env: DeploymentEnv,
   rpcUrl: string,
-  expectedContracts?: Partial<ContractAddresses>
+  expectedContracts?: Partial<ContractAddresses>,
 ): Promise<ValidationResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -114,7 +114,7 @@ export async function validateDeployment(
       deployed: false,
       errors: [
         `No deployment found for ${env}`,
-        'Run the deployment script to deploy contracts',
+        "Run the deployment script to deploy contracts",
       ],
       warnings: [],
       contracts: {},
@@ -126,7 +126,7 @@ export async function validateDeployment(
   const deploymentChainId = BigInt(deployment.chainId);
   if (network.chainId !== deploymentChainId) {
     errors.push(
-      `Chain ID mismatch: provider is ${network.chainId}, deployment is ${deploymentChainId}`
+      `Chain ID mismatch: provider is ${network.chainId}, deployment is ${deploymentChainId}`,
     );
   }
 
@@ -134,46 +134,46 @@ export async function validateDeployment(
 
   if (contractsToValidate.diamond) {
     const code = await provider.getCode(contractsToValidate.diamond);
-    if (code === '0x' || code === '0x0') {
+    if (code === "0x" || code === "0x0") {
       errors.push(`Diamond not deployed at ${contractsToValidate.diamond}`);
     } else {
       contracts.diamond = contractsToValidate.diamond;
       logger.info(
         `✅ Diamond verified at ${contractsToValidate.diamond}`,
         undefined,
-        'DeploymentValidation'
+        "DeploymentValidation",
       );
     }
   }
 
   if (contractsToValidate.identityRegistry) {
     const code = await provider.getCode(contractsToValidate.identityRegistry);
-    if (code === '0x' || code === '0x0') {
+    if (code === "0x" || code === "0x0") {
       errors.push(
-        `Identity Registry not deployed at ${contractsToValidate.identityRegistry}`
+        `Identity Registry not deployed at ${contractsToValidate.identityRegistry}`,
       );
     } else {
       contracts.identityRegistry = contractsToValidate.identityRegistry;
       logger.info(
         `✅ Identity Registry verified at ${contractsToValidate.identityRegistry}`,
         undefined,
-        'DeploymentValidation'
+        "DeploymentValidation",
       );
     }
   }
 
   if (contractsToValidate.reputationSystem) {
     const code = await provider.getCode(contractsToValidate.reputationSystem);
-    if (code === '0x' || code === '0x0') {
+    if (code === "0x" || code === "0x0") {
       errors.push(
-        `Reputation System not deployed at ${contractsToValidate.reputationSystem}`
+        `Reputation System not deployed at ${contractsToValidate.reputationSystem}`,
       );
     } else {
       contracts.reputationSystem = contractsToValidate.reputationSystem;
       logger.info(
         `✅ Reputation System verified at ${contractsToValidate.reputationSystem}`,
         undefined,
-        'DeploymentValidation'
+        "DeploymentValidation",
       );
     }
   }
@@ -181,17 +181,17 @@ export async function validateDeployment(
   if (contracts.diamond) {
     const diamondContract = new ethers.Contract(
       contracts.diamond,
-      ['function getBalance(address) view returns (uint256)'],
-      provider
+      ["function getBalance(address) view returns (uint256)"],
+      provider,
     );
 
     if (diamondContract.getBalance) {
       await diamondContract.getBalance(ethers.ZeroAddress);
     }
     logger.info(
-      '✅ Diamond contract is functional',
+      "✅ Diamond contract is functional",
       undefined,
-      'DeploymentValidation'
+      "DeploymentValidation",
     );
   }
 
@@ -209,11 +209,11 @@ export async function validateDeployment(
  */
 export async function isContractDeployed(
   rpcUrl: string,
-  address: string
+  address: string,
 ): Promise<boolean> {
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   const code = await provider.getCode(address);
-  return code !== '0x' && code !== '0x0';
+  return code !== "0x" && code !== "0x0";
 }
 
 /**
@@ -221,54 +221,54 @@ export async function isContractDeployed(
  */
 export function printDeploymentValidationResult(
   result: ValidationResult,
-  env: DeploymentEnv
+  env: DeploymentEnv,
 ): void {
   if (!result.deployed) {
     logger.error(
       `❌ No contracts deployed for ${env}`,
       undefined,
-      'DeploymentValidation'
+      "DeploymentValidation",
     );
     for (const error of result.errors) {
-      logger.error(`   ${error}`, undefined, 'DeploymentValidation');
+      logger.error(`   ${error}`, undefined, "DeploymentValidation");
     }
 
     logger.info(
-      '\nTo deploy contracts, run:',
+      "\nTo deploy contracts, run:",
       undefined,
-      'DeploymentValidation'
+      "DeploymentValidation",
     );
     logger.info(
-      `   bun run contracts:deploy:${env === 'testnet' ? 'testnet' : env === 'mainnet' ? 'mainnet' : 'local'}`,
+      `   bun run contracts:deploy:${env === "testnet" ? "testnet" : env === "mainnet" ? "mainnet" : "local"}`,
       undefined,
-      'DeploymentValidation'
+      "DeploymentValidation",
     );
     return;
   }
 
   if (result.warnings.length > 0) {
-    logger.warn('Warnings:', undefined, 'DeploymentValidation');
+    logger.warn("Warnings:", undefined, "DeploymentValidation");
     for (const warning of result.warnings) {
-      logger.warn(`  ⚠️  ${warning}`, undefined, 'DeploymentValidation');
+      logger.warn(`  ⚠️  ${warning}`, undefined, "DeploymentValidation");
     }
   }
 
   if (result.errors.length > 0) {
-    logger.error('Validation errors:', undefined, 'DeploymentValidation');
+    logger.error("Validation errors:", undefined, "DeploymentValidation");
     for (const error of result.errors) {
-      logger.error(`  ❌ ${error}`, undefined, 'DeploymentValidation');
+      logger.error(`  ❌ ${error}`, undefined, "DeploymentValidation");
     }
-    throw new Error('Contract validation failed');
+    throw new Error("Contract validation failed");
   }
 
   if (!result.valid) {
-    throw new Error('Contract validation failed');
+    throw new Error("Contract validation failed");
   }
 
   logger.info(
-    '✅ All contracts validated successfully',
+    "✅ All contracts validated successfully",
     undefined,
-    'DeploymentValidation'
+    "DeploymentValidation",
   );
 }
 
@@ -286,12 +286,12 @@ export function printDeploymentValidationResult(
 export async function waitForTransaction(
   provider: ethers.Provider,
   txHash: string,
-  confirmations = 1
+  confirmations = 1,
 ): Promise<ethers.TransactionReceipt | null> {
   logger.info(
     `Waiting for transaction ${txHash}...`,
     undefined,
-    'DeploymentValidation'
+    "DeploymentValidation",
   );
 
   let attempts = 0;
@@ -299,7 +299,7 @@ export async function waitForTransaction(
 
   while (attempts < maxAttempts) {
     const receipt = await provider.getTransactionReceipt(txHash);
-    if (receipt && receipt.blockNumber) {
+    if (receipt?.blockNumber) {
       const currentBlock = await provider.getBlockNumber();
       const confirmedBlocks = currentBlock - receipt.blockNumber;
 
@@ -307,7 +307,7 @@ export async function waitForTransaction(
         logger.info(
           `✅ Transaction confirmed (${confirmedBlocks} blocks)`,
           undefined,
-          'DeploymentValidation'
+          "DeploymentValidation",
         );
         return receipt;
       }
@@ -315,7 +315,7 @@ export async function waitForTransaction(
       logger.info(
         `Transaction has ${confirmedBlocks}/${confirmations} confirmations`,
         undefined,
-        'DeploymentValidation'
+        "DeploymentValidation",
       );
     }
 
@@ -323,5 +323,5 @@ export async function waitForTransaction(
     attempts++;
   }
 
-  throw new Error('Transaction confirmation timeout');
+  throw new Error("Transaction confirmation timeout");
 }

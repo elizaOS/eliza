@@ -2,11 +2,11 @@ import {
   agentPerformanceMetrics,
   agentRegistries,
   db,
-  eq,
   desc,
+  eq,
   users,
-} from '@babylon/db';
-import { NextResponse } from 'next/server';
+} from "@babylon/db";
+import { NextResponse } from "next/server";
 
 interface PublicAgent {
   id: string;
@@ -38,7 +38,7 @@ export async function GET() {
       .leftJoin(agentRegistries, eq(agentRegistries.userId, users.id))
       .leftJoin(
         agentPerformanceMetrics,
-        eq(agentPerformanceMetrics.userId, users.id)
+        eq(agentPerformanceMetrics.userId, users.id),
       )
       .where(eq(users.isAgent, true))
       .orderBy(desc(users.lifetimePnL))
@@ -58,10 +58,10 @@ export async function GET() {
 
     return NextResponse.json({ agents });
   } catch (error) {
-    console.error('Failed to fetch public agents:', error);
+    console.error("Failed to fetch public agents:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch public agents' },
-      { status: 500 }
+      { error: "Failed to fetch public agents" },
+      { status: 500 },
     );
   }
 }

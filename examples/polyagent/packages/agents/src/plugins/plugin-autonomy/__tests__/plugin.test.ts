@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, it } from 'bun:test';
-import type { IAgentRuntime, Memory, State, UUID } from '@elizaos/core';
-import type { JsonValue } from '../../../types/common';
-import { sendToAdminAction } from '../src/action';
-import { autonomyPlugin } from '../src/index';
-import { adminChatProvider } from '../src/provider';
-import { AutonomyService } from '../src/service';
-import { autonomyStatusProvider } from '../src/status-provider';
+import { beforeEach, describe, expect, it } from "bun:test";
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import type { JsonValue } from "../../../types/common";
+import { sendToAdminAction } from "../src/action";
+import { autonomyPlugin } from "../src/index";
+import { adminChatProvider } from "../src/provider";
+import { AutonomyService } from "../src/service";
+import { autonomyStatusProvider } from "../src/status-provider";
 
 // Partial mock type for IAgentRuntime in tests
 type MockAgentRuntime = Partial<IAgentRuntime> & {
@@ -22,7 +22,7 @@ type MockAgentRuntime = Partial<IAgentRuntime> & {
   setSetting: (key: string, value: JsonValue) => void;
   updateAgent: (
     agentId: UUID,
-    updates: Record<string, JsonValue>
+    updates: Record<string, JsonValue>,
   ) => Promise<boolean>;
   getService: (serviceName: string) => {
     getAutonomousRoomId: () => UUID;
@@ -31,7 +31,7 @@ type MockAgentRuntime = Partial<IAgentRuntime> & {
   } | null;
 };
 
-describe('Autonomy Plugin Tests', () => {
+describe("Autonomy Plugin Tests", () => {
   let mockRuntime: IAgentRuntime;
   let mockMessage: Memory;
   let mockState: State;
@@ -44,17 +44,17 @@ describe('Autonomy Plugin Tests', () => {
   beforeEach(() => {
     updateAgentCalls = [];
     const dynamicSettings = {
-      ADMIN_USER_ID: 'a1b2c3d4-5678-4abc-b123-123456789012',
+      ADMIN_USER_ID: "a1b2c3d4-5678-4abc-b123-123456789012",
       AUTONOMY_ENABLED: false,
     };
 
     mockRuntime = {
       character: {
-        name: 'TestAgent',
-        bio: ['Test agent for autonomy plugin'],
+        name: "TestAgent",
+        bio: ["Test agent for autonomy plugin"],
         settings: {},
       },
-      agentId: '12345678-1234-4567-8901-123456789012' as UUID,
+      agentId: "12345678-1234-4567-8901-123456789012" as UUID,
       getSetting: (key: string) => {
         return dynamicSettings[key as keyof typeof dynamicSettings];
       },
@@ -71,20 +71,20 @@ describe('Autonomy Plugin Tests', () => {
       },
       updateAgent: async (
         agentId: UUID,
-        updates: Record<string, JsonValue>
+        updates: Record<string, JsonValue>,
       ) => {
         updateAgentCalls.push({ agentId, updates });
         return true;
       },
       getMemories: async (_params: Record<string, JsonValue>) => [],
-      createMemory: async () => 'test-memory-id' as UUID,
+      createMemory: async () => "test-memory-id" as UUID,
       createRoom: async () => {},
       getRoom: async () => null,
       sendMessageToTarget: async () => {},
       getService: (serviceName: string) => {
-        if (serviceName === 'AUTONOMY' || serviceName === 'autonomy') {
+        if (serviceName === "AUTONOMY" || serviceName === "autonomy") {
           return {
-            getAutonomousRoomId: () => 'autonomous-room-id' as UUID,
+            getAutonomousRoomId: () => "autonomous-room-id" as UUID,
             isLoopRunning: () => false,
             getLoopInterval: () => 30000,
           };
@@ -95,70 +95,70 @@ describe('Autonomy Plugin Tests', () => {
     } as MockAgentRuntime as IAgentRuntime;
 
     mockMessage = {
-      id: 'test-msg-id' as UUID,
-      entityId: 'test-user-id' as UUID,
-      roomId: 'test-room-id' as UUID,
-      content: { text: 'Test message' },
+      id: "test-msg-id" as UUID,
+      entityId: "test-user-id" as UUID,
+      roomId: "test-room-id" as UUID,
+      content: { text: "Test message" },
     } as Memory;
 
     mockState = {
       values: {},
       data: {},
-      text: '',
+      text: "",
     };
   });
 
-  describe('Plugin Structure Tests', () => {
-    it('should have correct plugin metadata', () => {
-      expect(autonomyPlugin.name).toBe('autonomy');
-      expect(autonomyPlugin.description).toContain('autonomous');
+  describe("Plugin Structure Tests", () => {
+    it("should have correct plugin metadata", () => {
+      expect(autonomyPlugin.name).toBe("autonomy");
+      expect(autonomyPlugin.description).toContain("autonomous");
       expect(autonomyPlugin.services).toBeDefined();
       expect(autonomyPlugin.actions).toBeDefined();
       expect(autonomyPlugin.providers).toBeDefined();
     });
 
-    it('should export required components', () => {
+    it("should export required components", () => {
       expect(autonomyPlugin.services).toHaveLength(1);
       expect(autonomyPlugin.actions).toHaveLength(1);
       expect(autonomyPlugin.providers).toHaveLength(2); // adminChatProvider + autonomyStatusProvider
     });
 
-    it('should have the correct service', () => {
+    it("should have the correct service", () => {
       const service = autonomyPlugin.services?.[0];
       expect(service).toBe(AutonomyService);
     });
 
-    it('should have the correct actions', () => {
+    it("should have the correct actions", () => {
       const actionNames = autonomyPlugin.actions?.map((a) => a.name) || [];
-      expect(actionNames).toContain('SEND_TO_ADMIN');
+      expect(actionNames).toContain("SEND_TO_ADMIN");
     });
 
-    it('should have the correct providers', () => {
+    it("should have the correct providers", () => {
       const providerNames = autonomyPlugin.providers?.map((p) => p.name) || [];
-      expect(providerNames).toContain('ADMIN_CHAT_HISTORY');
-      expect(providerNames).toContain('AUTONOMY_STATUS');
+      expect(providerNames).toContain("ADMIN_CHAT_HISTORY");
+      expect(providerNames).toContain("AUTONOMY_STATUS");
     });
   });
 
-  describe('AutonomyService Tests', () => {
-    it('should be constructable', () => {
+  describe("AutonomyService Tests", () => {
+    it("should be constructable", () => {
       expect(
-        () => new AutonomyService(mockRuntime as IAgentRuntime)
+        () => new AutonomyService(mockRuntime as IAgentRuntime),
       ).not.toThrow();
     });
 
-    it('should have correct service metadata', () => {
-      expect(AutonomyService.serviceType).toBe('AUTONOMOUS');
+    it("should have correct service metadata", () => {
+      expect(AutonomyService.serviceType).toBe("AUTONOMOUS");
     });
   });
 
-  describe('AdminChat Provider Tests', () => {
-    it('should have correct metadata', () => {
-      expect(adminChatProvider.name).toBe('ADMIN_CHAT_HISTORY');
-      expect(adminChatProvider.description).toContain('conversation history');
+  describe("AdminChat Provider Tests", () => {
+    it("should have correct metadata", () => {
+      expect(adminChatProvider.name).toBe("ADMIN_CHAT_HISTORY");
+      expect(adminChatProvider.description).toContain("conversation history");
     });
 
-    it('should handle no admin configured in autonomous context', async () => {
+    it("should handle no admin configured in autonomous context", async () => {
       const runtimeWithoutAdmin = {
         ...mockRuntime,
         getSetting: () => null,
@@ -166,79 +166,79 @@ describe('Autonomy Plugin Tests', () => {
 
       const autonomousMessage = {
         ...mockMessage,
-        roomId: 'autonomous-room-id' as UUID,
+        roomId: "autonomous-room-id" as UUID,
       };
 
       const result = await adminChatProvider.get(
         runtimeWithoutAdmin as IAgentRuntime,
         autonomousMessage,
-        mockState
+        mockState,
       );
 
-      expect(result.text).toContain('No admin user configured');
+      expect(result.text).toContain("No admin user configured");
       expect(result.data?.adminConfigured).toBe(false);
     });
 
-    it('should work when admin is configured in autonomous context', async () => {
+    it("should work when admin is configured in autonomous context", async () => {
       const autonomousMessage = {
         ...mockMessage,
-        roomId: 'autonomous-room-id' as UUID,
+        roomId: "autonomous-room-id" as UUID,
       };
 
       const result = await adminChatProvider.get(
         mockRuntime as IAgentRuntime,
         autonomousMessage,
-        mockState
+        mockState,
       );
 
       // Since getMemories returns empty array, should get "no recent messages" message
-      expect(result.text).toContain('No recent messages found');
+      expect(result.text).toContain("No recent messages found");
       expect(result.data?.adminConfigured).toBe(true);
       expect(result.data?.adminUserId).toBe(
-        'a1b2c3d4-5678-4abc-b123-123456789012'
+        "a1b2c3d4-5678-4abc-b123-123456789012",
       );
     });
   });
 
-  describe('Send To Admin Action Tests', () => {
-    it('should have correct metadata', () => {
-      expect(sendToAdminAction.name).toBe('SEND_TO_ADMIN');
-      expect(sendToAdminAction.description).toContain('Send');
+  describe("Send To Admin Action Tests", () => {
+    it("should have correct metadata", () => {
+      expect(sendToAdminAction.name).toBe("SEND_TO_ADMIN");
+      expect(sendToAdminAction.description).toContain("Send");
       expect(sendToAdminAction.validate).toBeDefined();
       expect(sendToAdminAction.handler).toBeDefined();
     });
 
-    it('should validate messages in autonomous context', async () => {
+    it("should validate messages in autonomous context", async () => {
       const autonomousMessage = {
         ...mockMessage,
-        roomId: 'autonomous-room-id' as UUID,
-        content: { text: 'I need to tell the admin something' },
+        roomId: "autonomous-room-id" as UUID,
+        content: { text: "I need to tell the admin something" },
       };
 
       const isValid = await sendToAdminAction.validate(
         mockRuntime,
-        autonomousMessage
+        autonomousMessage,
       );
       expect(isValid).toBe(true);
     });
 
-    it('should reject messages outside autonomous context', async () => {
+    it("should reject messages outside autonomous context", async () => {
       const regularMessage = {
         ...mockMessage,
-        roomId: 'regular-room-id' as UUID,
-        content: { text: 'I need to tell the admin something' },
+        roomId: "regular-room-id" as UUID,
+        content: { text: "I need to tell the admin something" },
       };
 
       const isValid = await sendToAdminAction.validate(
         mockRuntime,
-        regularMessage
+        regularMessage,
       );
       expect(isValid).toBe(false);
     });
   });
 
-  describe('Plugin Integration Tests', () => {
-    it('should have all components properly connected', () => {
+  describe("Plugin Integration Tests", () => {
+    it("should have all components properly connected", () => {
       // Verify that all expected components are present
       expect(autonomyPlugin.services).toContain(AutonomyService);
       expect(autonomyPlugin.actions).toContain(sendToAdminAction);
@@ -246,17 +246,17 @@ describe('Autonomy Plugin Tests', () => {
       expect(autonomyPlugin.providers).toContain(autonomyStatusProvider);
     });
 
-    it('should have consistent naming', () => {
-      expect(autonomyPlugin.name).toBe('autonomy');
-      expect(AutonomyService.serviceType).toBe('AUTONOMOUS');
-      expect(adminChatProvider.name).toBe('ADMIN_CHAT_HISTORY');
-      expect(autonomyStatusProvider.name).toBe('AUTONOMY_STATUS');
-      expect(sendToAdminAction.name).toBe('SEND_TO_ADMIN');
+    it("should have consistent naming", () => {
+      expect(autonomyPlugin.name).toBe("autonomy");
+      expect(AutonomyService.serviceType).toBe("AUTONOMOUS");
+      expect(adminChatProvider.name).toBe("ADMIN_CHAT_HISTORY");
+      expect(autonomyStatusProvider.name).toBe("AUTONOMY_STATUS");
+      expect(sendToAdminAction.name).toBe("SEND_TO_ADMIN");
     });
   });
 
-  describe('Autonomy Service Integration Tests', () => {
-    it('should enable autonomy via settings', async () => {
+  describe("Autonomy Service Integration Tests", () => {
+    it("should enable autonomy via settings", async () => {
       const service = new AutonomyService(mockRuntime);
       await service.initialize();
 
@@ -273,7 +273,7 @@ describe('Autonomy Plugin Tests', () => {
       await service.stop();
     });
 
-    it('should disable autonomy via settings', async () => {
+    it("should disable autonomy via settings", async () => {
       const service = new AutonomyService(mockRuntime);
       await service.initialize();
 
@@ -288,7 +288,7 @@ describe('Autonomy Plugin Tests', () => {
       expect(service.isLoopRunning()).toBe(false);
     });
 
-    it('should provide status information', async () => {
+    it("should provide status information", async () => {
       const service = new AutonomyService(mockRuntime);
       await service.initialize();
 
@@ -308,14 +308,14 @@ describe('Autonomy Plugin Tests', () => {
       await service.stop();
     });
 
-    it('should have correct autonomous room ID', async () => {
+    it("should have correct autonomous room ID", async () => {
       const service = new AutonomyService(mockRuntime);
       await service.initialize();
 
       const roomId = service.getAutonomousRoomId();
       // Should be a valid UUID format
       expect(roomId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
       );
     });
   });

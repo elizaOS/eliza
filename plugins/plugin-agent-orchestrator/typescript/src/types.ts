@@ -1,26 +1,17 @@
-import type { Task as CoreTask, TaskMetadata, UUID } from "@elizaos/core";
+import type { Task as CoreTask, UUID } from "@elizaos/core";
 
 // ============================================================================
 // JSON-safe value types (no `any` / `unknown`)
 // ============================================================================
 
 export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue =
-  | JsonPrimitive
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 // ============================================================================
 // Task model
 // ============================================================================
 
-export type TaskStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "paused"
-  | "cancelled";
+export type TaskStatus = "pending" | "running" | "completed" | "failed" | "paused" | "cancelled";
 
 /**
  * User-controlled lifecycle status (separate from execution status).
@@ -33,7 +24,8 @@ export interface TaskStep {
   description: string;
   status: TaskStatus;
   output?: string;
-  [key: string]: JsonValue;
+  /** Additional metadata for the step */
+  metadata?: Record<string, JsonValue>;
 }
 
 export interface TaskResult {
@@ -42,7 +34,8 @@ export interface TaskResult {
   filesModified: string[];
   filesCreated: string[];
   error?: string;
-  [key: string]: JsonValue;
+  /** Additional metadata for the result */
+  metadata?: Record<string, JsonValue>;
 }
 
 export type AgentProviderId = string;
@@ -81,8 +74,6 @@ export interface OrchestratedTaskMetadata {
   /** Optional result mirrors for UIs. */
   filesCreated?: string[];
   filesModified?: string[];
-
-  [key: string]: JsonValue;
 }
 
 export interface OrchestratedTask extends Omit<CoreTask, "metadata"> {
@@ -114,10 +105,7 @@ export interface AgentProvider {
   label: string;
   description?: string;
 
-  executeTask: (
-    task: OrchestratedTask,
-    ctx: ProviderTaskExecutionContext,
-  ) => Promise<TaskResult>;
+  executeTask: (task: OrchestratedTask, ctx: ProviderTaskExecutionContext) => Promise<TaskResult>;
 }
 
 export interface AgentOrchestratorPluginOptions {
@@ -170,4 +158,3 @@ export interface TaskEvent {
   taskId: string;
   data?: Record<string, JsonValue>;
 }
-

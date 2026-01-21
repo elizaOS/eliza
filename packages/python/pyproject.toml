@@ -120,12 +120,18 @@ select = [
     "SIM", # flake8-simplify
 ]
 ignore = [
+    "E402",  # module level import not at top of file (common in __init__.py with __all__)
     "E501",  # line too long (handled by black)
+    "E741",  # ambiguous variable name (common in list comprehensions)
     "B008",  # do not perform function calls in argument defaults
+    "B024",  # abstract base class without abstract methods (service interfaces)
     "ARG001",  # unused function argument (common in test fixtures and callbacks)
     "ARG002",  # unused method argument (common in handler patterns)
     "SIM102",  # nested if statements (sometimes clearer for readability)
     "SIM116",  # dictionary instead of if/elif (not always cleaner)
+    "F811",  # redefinition of unused name (common in type stubs)
+    "F404",  # from __future__ imports must occur at beginning (generated code)
+    "F821",  # undefined name (some names are injected at runtime)
 ]
 
 [tool.ruff.lint.isort]

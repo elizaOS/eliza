@@ -27,23 +27,19 @@ export type EvaluatorDoc = {
 };
 
 export const coreActionsSpec = {
-  "version": "1.0.0",
-  "actions": [
+  version: "1.0.0",
+  actions: [
     {
-      "name": "CLEAR_SHELL_HISTORY",
-      "description": "Clears the recorded history of shell commands for the current conversation",
-      "similes": [
-        "RESET_SHELL",
-        "CLEAR_TERMINAL",
-        "CLEAR_HISTORY",
-        "RESET_HISTORY"
-      ],
-      "parameters": []
+      name: "CLEAR_SHELL_HISTORY",
+      description: "Clears the recorded history of shell commands for the current conversation",
+      similes: ["RESET_SHELL", "CLEAR_TERMINAL", "CLEAR_HISTORY", "RESET_HISTORY"],
+      parameters: [],
     },
     {
-      "name": "EXECUTE_COMMAND",
-      "description": "Execute shell commands including brew install, npm install, apt-get, system commands, file operations, directory navigation, and scripts.",
-      "similes": [
+      name: "EXECUTE_COMMAND",
+      description:
+        "Execute shell commands including brew install, npm install, apt-get, system commands, file operations, directory navigation, and scripts.",
+      similes: [
         "RUN_COMMAND",
         "SHELL_COMMAND",
         "TERMINAL_COMMAND",
@@ -56,30 +52,26 @@ export const coreActionsSpec = {
         "INSTALL",
         "BREW_INSTALL",
         "NPM_INSTALL",
-        "APT_INSTALL"
+        "APT_INSTALL",
       ],
-      "parameters": []
-    }
-  ]
+      parameters: [],
+    },
+  ],
 } as const;
 export const allActionsSpec = {
-  "version": "1.0.0",
-  "actions": [
+  version: "1.0.0",
+  actions: [
     {
-      "name": "CLEAR_SHELL_HISTORY",
-      "description": "Clears the recorded history of shell commands for the current conversation",
-      "similes": [
-        "RESET_SHELL",
-        "CLEAR_TERMINAL",
-        "CLEAR_HISTORY",
-        "RESET_HISTORY"
-      ],
-      "parameters": []
+      name: "CLEAR_SHELL_HISTORY",
+      description: "Clears the recorded history of shell commands for the current conversation",
+      similes: ["RESET_SHELL", "CLEAR_TERMINAL", "CLEAR_HISTORY", "RESET_HISTORY"],
+      parameters: [],
     },
     {
-      "name": "EXECUTE_COMMAND",
-      "description": "Execute shell commands including brew install, npm install, apt-get, system commands, file operations, directory navigation, and scripts.",
-      "similes": [
+      name: "EXECUTE_COMMAND",
+      description:
+        "Execute shell commands including brew install, npm install, apt-get, system commands, file operations, directory navigation, and scripts.",
+      similes: [
         "RUN_COMMAND",
         "SHELL_COMMAND",
         "TERMINAL_COMMAND",
@@ -92,39 +84,41 @@ export const allActionsSpec = {
         "INSTALL",
         "BREW_INSTALL",
         "NPM_INSTALL",
-        "APT_INSTALL"
+        "APT_INSTALL",
       ],
-      "parameters": []
-    }
-  ]
+      parameters: [],
+    },
+  ],
 } as const;
 export const coreProvidersSpec = {
-  "version": "1.0.0",
-  "providers": [
+  version: "1.0.0",
+  providers: [
     {
-      "name": "SHELL_HISTORY",
-      "description": "Provides recent shell command history, current working directory, and file operations within the restricted environment",
-      "dynamic": true
-    }
-  ]
+      name: "SHELL_HISTORY",
+      description:
+        "Provides recent shell command history, current working directory, and file operations within the restricted environment",
+      dynamic: true,
+    },
+  ],
 } as const;
 export const allProvidersSpec = {
-  "version": "1.0.0",
-  "providers": [
+  version: "1.0.0",
+  providers: [
     {
-      "name": "SHELL_HISTORY",
-      "description": "Provides recent shell command history, current working directory, and file operations within the restricted environment",
-      "dynamic": true
-    }
-  ]
+      name: "SHELL_HISTORY",
+      description:
+        "Provides recent shell command history, current working directory, and file operations within the restricted environment",
+      dynamic: true,
+    },
+  ],
 } as const;
 export const coreEvaluatorsSpec = {
-  "version": "1.0.0",
-  "evaluators": []
+  version: "1.0.0",
+  evaluators: [],
 } as const;
 export const allEvaluatorsSpec = {
-  "version": "1.0.0",
-  "evaluators": []
+  version: "1.0.0",
+  evaluators: [],
 } as const;
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;

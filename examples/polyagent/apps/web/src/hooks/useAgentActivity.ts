@@ -5,8 +5,8 @@
  * Provides a unified interface for displaying agent activity in the UI.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type Channel, useSSEChannel } from './useSSE';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type Channel, useSSEChannel } from "./useSSE";
 
 // Activity types matching the API response
 interface AgentInfo {
@@ -17,7 +17,7 @@ interface AgentInfo {
 
 export interface TradeActivityData {
   tradeId: string;
-  marketType: 'prediction' | 'perp';
+  marketType: "prediction" | "perp";
   marketId: string | null;
   ticker: string | null;
   marketQuestion: string | null;
@@ -49,7 +49,7 @@ export interface MessageActivityData {
 }
 
 export interface AgentActivity {
-  type: 'trade' | 'post' | 'comment' | 'message';
+  type: "trade" | "post" | "comment" | "message";
   id: string;
   timestamp: string;
   agent?: AgentInfo;
@@ -75,7 +75,7 @@ interface AgentActivityResponse {
 interface UseAgentActivityOptions {
   agentId?: string;
   limit?: number;
-  type?: 'all' | 'trade' | 'post' | 'comment';
+  type?: "all" | "trade" | "post" | "comment";
   pollInterval?: number;
   enableSSE?: boolean;
 }
@@ -89,39 +89,39 @@ interface UseAgentActivityOptions {
  * @returns The activity's unique identifier
  */
 export function extractActivityId(
-  data: AgentActivity['data'],
-  fallback: string
+  data: AgentActivity["data"],
+  fallback: string,
 ): string {
-  if ('tradeId' in data && data.tradeId) return data.tradeId;
-  if ('commentId' in data && data.commentId) return data.commentId;
-  if ('messageId' in data && data.messageId) return data.messageId;
-  if ('postId' in data && data.postId) return data.postId;
+  if ("tradeId" in data && data.tradeId) return data.tradeId;
+  if ("commentId" in data && data.commentId) return data.commentId;
+  if ("messageId" in data && data.messageId) return data.messageId;
+  if ("postId" in data && data.postId) return data.postId;
   return fallback;
 }
 
 // Type guards for discriminated union
 export function isTradeActivity(
-  activity: AgentActivity
+  activity: AgentActivity,
 ): activity is AgentActivity & { data: TradeActivityData } {
-  return activity.type === 'trade';
+  return activity.type === "trade";
 }
 
 export function isPostActivity(
-  activity: AgentActivity
+  activity: AgentActivity,
 ): activity is AgentActivity & { data: PostActivityData } {
-  return activity.type === 'post';
+  return activity.type === "post";
 }
 
 export function isCommentActivity(
-  activity: AgentActivity
+  activity: AgentActivity,
 ): activity is AgentActivity & { data: CommentActivityData } {
-  return activity.type === 'comment';
+  return activity.type === "comment";
 }
 
 export function isMessageActivity(
-  activity: AgentActivity
+  activity: AgentActivity,
 ): activity is AgentActivity & { data: MessageActivityData } {
-  return activity.type === 'message';
+  return activity.type === "message";
 }
 
 interface UseAgentActivityReturn {
@@ -158,19 +158,19 @@ interface UseAgentActivityReturn {
  * ```
  */
 export function useAgentActivity(
-  options: UseAgentActivityOptions = {}
+  options: UseAgentActivityOptions = {},
 ): UseAgentActivityReturn {
   const {
     agentId,
     limit = 50,
-    type = 'all',
+    type = "all",
     pollInterval = 30000,
     enableSSE = true,
   } = options;
 
   // State for fetched data
   const [fetchedActivities, setFetchedActivities] = useState<AgentActivity[]>(
-    []
+    [],
   );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -178,7 +178,7 @@ export function useAgentActivity(
 
   // Track real-time activities that haven't been merged into fetched data yet
   const [realtimeActivities, setRealtimeActivities] = useState<AgentActivity[]>(
-    []
+    [],
   );
 
   // Ref to track activities we've already seen to prevent duplicates.
@@ -201,10 +201,10 @@ export function useAgentActivity(
   const apiUrl = useMemo(() => {
     const base = agentId
       ? `/api/agents/${agentId}/activity`
-      : '/api/agents/activity';
+      : "/api/agents/activity";
     const params = new URLSearchParams();
-    params.set('limit', String(limit));
-    params.set('type', type);
+    params.set("limit", String(limit));
+    params.set("type", type);
     return `${base}?${params.toString()}`;
   }, [agentId, limit, type]);
 
@@ -249,7 +249,7 @@ export function useAgentActivity(
     // Set up polling
     const intervalId = setInterval(() => {
       fetchActivities().catch((err: Error) => {
-        console.error('Failed to poll agent activity:', err);
+        console.error("Failed to poll agent activity:", err);
       });
     }, pollInterval);
 
@@ -260,17 +260,17 @@ export function useAgentActivity(
   const handleSSEMessage = useCallback(
     (message: Record<string, unknown>) => {
       const eventType = message.type as string;
-      if (!eventType?.startsWith('agent_') || !message.activity) {
+      if (!eventType?.startsWith("agent_") || !message.activity) {
         return;
       }
 
       const activity = message.activity as {
-        type: AgentActivity['type'];
+        type: AgentActivity["type"];
         agentId: string;
         agentName: string;
         profileImageUrl?: string | null;
         timestamp: number;
-        data: AgentActivity['data'];
+        data: AgentActivity["data"];
       };
 
       // Validate required fields exist (including timestamp to prevent Invalid Date)
@@ -278,17 +278,17 @@ export function useAgentActivity(
         !activity.type ||
         !activity.agentId ||
         !activity.data ||
-        typeof activity.timestamp !== 'number' ||
+        typeof activity.timestamp !== "number" ||
         !Number.isFinite(activity.timestamp)
       ) {
-        console.warn('Malformed SSE activity payload:', message);
+        console.warn("Malformed SSE activity payload:", message);
         return;
       }
 
       // Extract activity ID using type guard function
       const activityId = extractActivityId(
         activity.data,
-        `${activity.type}-${activity.agentId}-${activity.timestamp}`
+        `${activity.type}-${activity.agentId}-${activity.timestamp}`,
       );
 
       // Skip duplicates
@@ -318,7 +318,7 @@ export function useAgentActivity(
 
       setRealtimeActivities((prev) => [newActivity, ...prev].slice(0, limit));
     },
-    [limit]
+    [limit],
   );
 
   // Subscribe to agent SSE channel
@@ -348,7 +348,7 @@ export function useAgentActivity(
     return Array.from(uniqueActivities.values())
       .sort(
         (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       )
       .slice(0, limit);
   }, [fetchedActivities, realtimeActivities, limit]);

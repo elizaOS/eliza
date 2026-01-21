@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from elizaos.generated.spec_helpers import require_action_spec
-from elizaos.types import Action, ActionExample, ActionResult, Content
+from elizaos.types import Action, ActionExample, ActionResult
 from elizaos.utils.spec_examples import convert_spec_examples
 
 if TYPE_CHECKING:

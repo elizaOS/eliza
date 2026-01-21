@@ -6,7 +6,7 @@
  * Sessions expire after 24 hours and are automatically cleaned up.
  */
 
-import { logger } from '@polyagent/shared';
+import { logger } from "@polyagent/shared";
 
 /**
  * Agent session information
@@ -31,9 +31,9 @@ const agentSessions = new Map<string, AgentSession>();
 
 // Session duration: 24 hours
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
-const SESSION_PREFIX = 'agent:session:';
-const DEFAULT_TEST_AGENT_ID = 'polyagent-agent-alice';
-const isProduction = process.env.NODE_ENV === 'production';
+const SESSION_PREFIX = "agent:session:";
+const DEFAULT_TEST_AGENT_ID = "polyagent-agent-alice";
+const isProduction = process.env.NODE_ENV === "production";
 
 // Configurable session store - defaults to in-memory
 let sessionStore: SessionStore | null = null;
@@ -50,15 +50,15 @@ export function setSessionStore(store: SessionStore | null): void {
  */
 const inMemoryStore: SessionStore = {
   async get(key: string): Promise<string | null> {
-    const session = agentSessions.get(key.replace(SESSION_PREFIX, ''));
+    const session = agentSessions.get(key.replace(SESSION_PREFIX, ""));
     return session ? JSON.stringify(session) : null;
   },
   async set(key: string, value: string, _ttlMs: number): Promise<void> {
     const session = JSON.parse(value) as AgentSession;
-    agentSessions.set(key.replace(SESSION_PREFIX, ''), session);
+    agentSessions.set(key.replace(SESSION_PREFIX, ""), session);
   },
   async delete(key: string): Promise<void> {
-    agentSessions.delete(key.replace(SESSION_PREFIX, ''));
+    agentSessions.delete(key.replace(SESSION_PREFIX, ""));
   },
 };
 
@@ -99,7 +99,7 @@ export function cleanupExpiredSessions(): void {
  */
 export function verifyAgentCredentials(
   agentId: string,
-  agentSecret: string
+  agentSecret: string,
 ): boolean {
   const configuredAgentId =
     process.env.POLYAGENT_AGENT_ID ??
@@ -113,7 +113,7 @@ export function verifyAgentCredentials(
   if (!isProduction) {
     // Lazy import to avoid circular dependency
     const { isValidAgentSecret, getDevCredentials } =
-      require('./dev-credentials') as typeof import('./dev-credentials');
+      require("./dev-credentials") as typeof import("./dev-credentials");
 
     const devCreds = getDevCredentials();
     if (devCreds) {
@@ -131,18 +131,18 @@ export function verifyAgentCredentials(
   // Production validation
   if (!configuredAgentSecret) {
     logger.error(
-      'AGENT_SECRET (or CRON_SECRET) not configured in environment',
+      "AGENT_SECRET (or CRON_SECRET) not configured in environment",
       undefined,
-      'AgentAuth'
+      "AgentAuth",
     );
     return false;
   }
 
   if (!configuredAgentId) {
     logger.error(
-      'POLYAGENT_AGENT_ID must be configured in production environments',
+      "POLYAGENT_AGENT_ID must be configured in production environments",
       undefined,
-      'AgentAuth'
+      "AgentAuth",
     );
     return false;
   }
@@ -155,7 +155,7 @@ export function verifyAgentCredentials(
  */
 export async function createAgentSession(
   agentId: string,
-  sessionToken: string
+  sessionToken: string,
 ): Promise<AgentSession> {
   const expiresAt = Date.now() + SESSION_DURATION;
   const session: AgentSession = {
@@ -175,7 +175,7 @@ export async function createAgentSession(
  * Verify agent session token
  */
 export async function verifyAgentSession(
-  sessionToken: string
+  sessionToken: string,
 ): Promise<{ agentId: string } | null> {
   const store = getStore();
   const key = `${SESSION_PREFIX}${sessionToken}`;

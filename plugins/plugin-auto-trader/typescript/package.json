@@ -53,7 +53,7 @@
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup",
-    "lint": "bunx @biomejs/biome check --write ./src",
+    "lint": "bunx @biomejs/biome check --write --unsafe ./src",
     "test": "vitest run",
     "format": "bunx @biomejs/biome format --write ./src",
     "format:check": "bunx @biomejs/biome format ./src",

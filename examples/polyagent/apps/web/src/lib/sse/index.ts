@@ -17,4 +17,4 @@ export {
   type SSEManagerConfig,
   type SSEMessage,
   type StaticChannel,
-} from './SSEManager';
+} from "./SSEManager";

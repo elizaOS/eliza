@@ -77,7 +77,8 @@ export const adminChatProvider: Provider = {
     const sortedMessages = adminMessages.sort(
       (a, b) => (a.createdAt || 0) - (b.createdAt || 0),
     );
-    const historyStart = sortedMessages.length > 10 ? sortedMessages.length - 10 : 0;
+    const historyStart =
+      sortedMessages.length > 10 ? sortedMessages.length - 10 : 0;
     const conversationHistory = sortedMessages
       .slice(historyStart)
       .map((msg) => {

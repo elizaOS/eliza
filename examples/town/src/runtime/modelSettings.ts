@@ -1,4 +1,10 @@
-export type ModelProvider = "openai" | "anthropic" | "google" | "groq" | "xai" | "local";
+export type ModelProvider =
+  | "openai"
+  | "anthropic"
+  | "google"
+  | "groq"
+  | "xai"
+  | "local";
 
 export type ProviderModelConfig = {
   apiKey: string;
@@ -86,17 +92,27 @@ export function isProviderConfigured(settings: ModelSettings): boolean {
     config.smallModel.trim().length > 0 && config.largeModel.trim().length > 0;
 
   // Check if we're running in a browser environment
-  const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
+  const isBrowser =
+    typeof window !== "undefined" && typeof document !== "undefined";
 
   switch (settings.provider) {
     case "openai":
-      return settings.openai.apiKey.trim().length > 0 && modelReady(settings.openai);
+      return (
+        settings.openai.apiKey.trim().length > 0 && modelReady(settings.openai)
+      );
     case "anthropic":
-      return settings.anthropic.apiKey.trim().length > 0 && modelReady(settings.anthropic);
+      return (
+        settings.anthropic.apiKey.trim().length > 0 &&
+        modelReady(settings.anthropic)
+      );
     case "google":
-      return settings.google.apiKey.trim().length > 0 && modelReady(settings.google);
+      return (
+        settings.google.apiKey.trim().length > 0 && modelReady(settings.google)
+      );
     case "groq":
-      return settings.groq.apiKey.trim().length > 0 && modelReady(settings.groq);
+      return (
+        settings.groq.apiKey.trim().length > 0 && modelReady(settings.groq)
+      );
     case "xai":
       return settings.xai.apiKey.trim().length > 0 && modelReady(settings.xai);
     case "local":

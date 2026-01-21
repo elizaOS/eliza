@@ -6,10 +6,11 @@ These types mirror the TypeScript definitions for cross-platform parity.
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Awaitable, Protocol, TypeAlias, Optional
-import uuid
+from typing import Any, Protocol, TypeAlias
 
 # JSON-safe value types
 JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
@@ -17,6 +18,7 @@ JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dic
 
 class TaskStatus(str, Enum):
     """Execution status of a task."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -27,6 +29,7 @@ class TaskStatus(str, Enum):
 
 class TaskUserStatus(str, Enum):
     """User-controlled lifecycle status (separate from execution status)."""
+
     OPEN = "open"
     DONE = "done"
 
@@ -34,14 +37,15 @@ class TaskUserStatus(str, Enum):
 @dataclass
 class TaskStep:
     """A single step within a task plan."""
+
     id: str
     description: str
     status: TaskStatus = TaskStatus.PENDING
-    output: Optional[str] = None
+    output: str | None = None
     extra: dict[str, JsonValue] = field(default_factory=dict)
 
     @staticmethod
-    def create(description: str) -> "TaskStep":
+    def create(description: str) -> TaskStep:
         return TaskStep(id=str(uuid.uuid4()), description=description)
 
     def to_dict(self) -> dict[str, JsonValue]:
@@ -56,8 +60,10 @@ class TaskStep:
         return result
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "TaskStep":
-        extra = {k: v for k, v in data.items() if k not in ("id", "description", "status", "output")}
+    def from_dict(data: dict[str, Any]) -> TaskStep:
+        extra = {
+            k: v for k, v in data.items() if k not in ("id", "description", "status", "output")
+        }
         return TaskStep(
             id=str(data.get("id", "")),
             description=str(data.get("description", "")),
@@ -70,11 +76,12 @@ class TaskStep:
 @dataclass
 class TaskResult:
     """Result of task execution."""
+
     success: bool
     summary: str
     files_modified: list[str] = field(default_factory=list)
     files_created: list[str] = field(default_factory=list)
-    error: Optional[str] = None
+    error: str | None = None
     extra: dict[str, JsonValue] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, JsonValue]:
@@ -90,9 +97,12 @@ class TaskResult:
         return result
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "TaskResult":
-        extra = {k: v for k, v in data.items() 
-                 if k not in ("success", "summary", "filesModified", "filesCreated", "error")}
+    def from_dict(data: dict[str, Any]) -> TaskResult:
+        extra = {
+            k: v
+            for k, v in data.items()
+            if k not in ("success", "summary", "filesModified", "filesCreated", "error")
+        }
         return TaskResult(
             success=bool(data.get("success", False)),
             summary=str(data.get("summary", "")),
@@ -109,6 +119,7 @@ AgentProviderId: TypeAlias = str
 @dataclass
 class OrchestratedTaskMetadata:
     """Metadata for an orchestrated task."""
+
     status: TaskStatus
     progress: int
     output: list[str]
@@ -117,15 +128,15 @@ class OrchestratedTaskMetadata:
     provider_id: AgentProviderId
     created_at: int
 
-    result: Optional[TaskResult] = None
-    error: Optional[str] = None
-    started_at: Optional[int] = None
-    completed_at: Optional[int] = None
+    result: TaskResult | None = None
+    error: str | None = None
+    started_at: int | None = None
+    completed_at: int | None = None
 
-    provider_label: Optional[str] = None
-    sub_agent_type: Optional[str] = None
+    provider_label: str | None = None
+    sub_agent_type: str | None = None
     user_status: TaskUserStatus = TaskUserStatus.OPEN
-    user_status_updated_at: Optional[int] = None
+    user_status_updated_at: int | None = None
     files_created: list[str] = field(default_factory=list)
     files_modified: list[str] = field(default_factory=list)
     extra: dict[str, JsonValue] = field(default_factory=dict)
@@ -161,16 +172,29 @@ class OrchestratedTaskMetadata:
         return result
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "OrchestratedTaskMetadata":
+    def from_dict(data: dict[str, Any]) -> OrchestratedTaskMetadata:
         steps = [TaskStep.from_dict(s) for s in data.get("steps", [])]
         result_data = data.get("result")
         result = TaskResult.from_dict(result_data) if result_data else None
-        
+
         known_keys = {
-            "status", "progress", "output", "steps", "workingDirectory",
-            "providerId", "createdAt", "result", "error", "startedAt",
-            "completedAt", "providerLabel", "subAgentType", "userStatus",
-            "userStatusUpdatedAt", "filesCreated", "filesModified",
+            "status",
+            "progress",
+            "output",
+            "steps",
+            "workingDirectory",
+            "providerId",
+            "createdAt",
+            "result",
+            "error",
+            "startedAt",
+            "completedAt",
+            "providerLabel",
+            "subAgentType",
+            "userStatus",
+            "userStatusUpdatedAt",
+            "filesCreated",
+            "filesModified",
         }
         extra = {k: v for k, v in data.items() if k not in known_keys}
 
@@ -199,32 +223,34 @@ class OrchestratedTaskMetadata:
 @dataclass
 class OrchestratedTask:
     """A task managed by the orchestrator."""
+
     id: str
     name: str
     description: str
     metadata: OrchestratedTaskMetadata
     tags: list[str] = field(default_factory=list)
-    room_id: Optional[str] = None
-    world_id: Optional[str] = None
+    room_id: str | None = None
+    world_id: str | None = None
 
 
 @dataclass
 class ProviderTaskExecutionContext:
     """Context provided to agent providers during task execution."""
+
     runtime_agent_id: str
     working_directory: str
     append_output: Callable[[str], Awaitable[None]]
     update_progress: Callable[[int], Awaitable[None]]
-    update_step: Callable[[str, TaskStatus, Optional[str]], Awaitable[None]]
+    update_step: Callable[[str, TaskStatus, str | None], Awaitable[None]]
     is_cancelled: Callable[[], bool]
     is_paused: Callable[[], bool]
-    room_id: Optional[str] = None
-    world_id: Optional[str] = None
+    room_id: str | None = None
+    world_id: str | None = None
 
 
 class AgentProvider(Protocol):
     """Protocol for agent providers that can execute tasks."""
-    
+
     @property
     def id(self) -> AgentProviderId:
         """Unique identifier for this provider."""
@@ -236,7 +262,7 @@ class AgentProvider(Protocol):
         ...
 
     @property
-    def description(self) -> Optional[str]:
+    def description(self) -> str | None:
         """Optional description of this provider."""
         ...
 
@@ -252,6 +278,7 @@ class AgentProvider(Protocol):
 @dataclass
 class AgentOrchestratorPluginOptions:
     """Configuration options for the orchestrator plugin."""
+
     providers: list[AgentProvider]
     default_provider_id: AgentProviderId
     get_working_directory: Callable[[], str]
@@ -260,6 +287,7 @@ class AgentOrchestratorPluginOptions:
 
 class TaskEventType(str, Enum):
     """Types of task events."""
+
     CREATED = "task:created"
     STARTED = "task:started"
     PROGRESS = "task:progress"
@@ -275,6 +303,7 @@ class TaskEventType(str, Enum):
 @dataclass
 class TaskEvent:
     """Event emitted by the orchestrator service."""
+
     type: TaskEventType
     task_id: str
-    data: Optional[dict[str, JsonValue]] = None
+    data: dict[str, JsonValue] | None = None

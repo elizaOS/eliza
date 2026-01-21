@@ -75,7 +75,11 @@ pub trait IAgentRuntime: Send + Sync {
     fn compose_prompt(&self, state: &State, template: &str) -> String;
 
     /// Use a model for inference.
-    async fn use_model(&self, model_type: ModelType, params: ModelParams) -> PluginResult<ModelOutput>;
+    async fn use_model(
+        &self,
+        model_type: ModelType,
+        params: ModelParams,
+    ) -> PluginResult<ModelOutput>;
 
     /// Check if a model type is available.
     fn has_model(&self, model_type: ModelType) -> bool;
@@ -169,4 +173,3 @@ pub struct ActionInfo {
     /// Action description
     pub description: String,
 }
-

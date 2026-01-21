@@ -11,8 +11,8 @@
  *   const posts: Post[] = await db.post.findMany({ where: { authorId: user.id } });
  */
 
-import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
-import type * as schema from './schema';
+import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import type * as schema from "./schema";
 
 // ============================================================================
 // Select Types (what you get when reading from the database)
@@ -306,7 +306,7 @@ export type MessageWithSender = Message & {
 export type BalanceTransactionWithUser = BalanceTransaction & {
   user?: Pick<
     User,
-    'id' | 'username' | 'displayName' | 'profileImageUrl' | 'isActor'
+    "id" | "username" | "displayName" | "profileImageUrl" | "isActor"
   > | null;
 };
 
@@ -314,20 +314,20 @@ export type BalanceTransactionWithUser = BalanceTransaction & {
 export type ModerationEscrowWithRelations = ModerationEscrow & {
   recipient?: Pick<
     User,
-    'id' | 'username' | 'displayName' | 'profileImageUrl'
+    "id" | "username" | "displayName" | "profileImageUrl"
   > | null;
   admin?: Pick<
     User,
-    'id' | 'username' | 'displayName' | 'walletAddress'
+    "id" | "username" | "displayName" | "walletAddress"
   > | null;
-  refundedByUser?: Pick<User, 'id' | 'username' | 'displayName'> | null;
+  refundedByUser?: Pick<User, "id" | "username" | "displayName"> | null;
 };
 
 /** TradingFee with user relation */
 export type TradingFeeWithUser = TradingFee & {
   user?: Pick<
     User,
-    'id' | 'username' | 'displayName' | 'profileImageUrl' | 'isActor'
+    "id" | "username" | "displayName" | "profileImageUrl" | "isActor"
   > | null;
 };
 

@@ -16,22 +16,22 @@ import {
   agentRuntimeManager,
   agentService,
   releaseAgentLock,
-} from '@babylon/agents';
+} from "@babylon/agents";
 import {
   DistributedLockService,
   recordCronExecution,
   relayCronToStaging,
   verifyCronAuth,
-} from '@babylon/api';
-import type { User, UserAgentConfig } from '@babylon/db';
-import { db, eq, inArray, userAgentConfigs, users } from '@babylon/db';
-import { logger } from '@babylon/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@babylon/api";
+import type { User, UserAgentConfig } from "@babylon/db";
+import { db, eq, inArray, userAgentConfigs, users } from "@babylon/db";
+import { logger } from "@babylon/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // Vercel function configuration
 export const maxDuration = 800;
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/cron/agent-tick
@@ -45,37 +45,37 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(_req: NextRequest) {
   // Verify cron authorization
-  if (!verifyCronAuth(_req, { jobName: 'AgentTick' })) {
+  if (!verifyCronAuth(_req, { jobName: "AgentTick" })) {
     logger.warn(
-      'Unauthorized agent-tick request attempt',
+      "Unauthorized agent-tick request attempt",
       undefined,
-      'AgentTick'
+      "AgentTick",
     );
     return NextResponse.json(
-      { error: 'Unauthorized cron request' },
-      { status: 401 }
+      { error: "Unauthorized cron request" },
+      { status: 401 },
     );
   }
 
   const startTime = Date.now();
   const processId = `agent-tick-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-  logger.info('Agent tick started', { processId }, 'AgentTick');
+  logger.info("Agent tick started", { processId }, "AgentTick");
 
   // Relay to staging if REDIRECT_CRON_STAGING is enabled
-  const relayResult = await relayCronToStaging(_req, 'agent-tick');
+  const relayResult = await relayCronToStaging(_req, "agent-tick");
   if (relayResult.forwarded) {
     logger.info(
-      'Cron execution relayed to staging - skipping local execution',
+      "Cron execution relayed to staging - skipping local execution",
       {
         status: relayResult.status,
         error: relayResult.error,
       },
-      'AgentTick'
+      "AgentTick",
     );
     return NextResponse.json({
       success: true,
       skipped: true,
-      reason: 'Relayed to staging environment',
+      reason: "Relayed to staging environment",
       relayStatus: relayResult.status,
       processed: 0,
       skippedLocked: 0,
@@ -84,21 +84,21 @@ export async function POST(_req: NextRequest) {
 
   // Acquire global lock
   const globalLockAcquired = await DistributedLockService.acquireLock({
-    lockId: 'agent-tick-global',
+    lockId: "agent-tick-global",
     durationMs: 800 * 1000,
-    operation: 'agent-tick-global',
+    operation: "agent-tick-global",
     processId,
   });
   if (!globalLockAcquired) {
     logger.info(
-      'Agent tick skipped - previous tick still running',
+      "Agent tick skipped - previous tick still running",
       { processId },
-      'AgentTick'
+      "AgentTick",
     );
     return NextResponse.json({
       success: true,
       skipped: true,
-      reason: 'Previous tick still running',
+      reason: "Previous tick still running",
       processed: 0,
       skippedLocked: 0,
     });
@@ -126,7 +126,7 @@ export async function POST(_req: NextRequest) {
     }> = [];
 
     const userControlledAgents = registeredAgents.filter(
-      (agent) => agent.type === AgentType.USER_CONTROLLED && agent.userId
+      (agent) => agent.type === AgentType.USER_CONTROLLED && agent.userId,
     );
     const userIds = userControlledAgents.map((agent) => agent.userId!);
 
@@ -152,9 +152,9 @@ export async function POST(_req: NextRequest) {
 
       if (!user) {
         logger.warn(
-          'USER_CONTROLLED agent missing user record - skipping',
+          "USER_CONTROLLED agent missing user record - skipping",
           { agentId: agent.agentId, userId: agent.userId },
-          'AgentTick'
+          "AgentTick",
         );
         continue;
       }
@@ -173,9 +173,9 @@ export async function POST(_req: NextRequest) {
 
     if (eligibleAgents.length === 0) {
       logger.info(
-        'No eligible agents found to run',
+        "No eligible agents found to run",
         { totalRegistered: registeredAgents.length },
-        'AgentTick'
+        "AgentTick",
       );
 
       return NextResponse.json({
@@ -184,14 +184,14 @@ export async function POST(_req: NextRequest) {
         duration: Date.now() - startTime,
         results: [],
         skippedLocked: 0,
-        message: 'No agents found with autonomous trading enabled',
+        message: "No agents found with autonomous trading enabled",
       });
     }
 
     logger.info(
       `Found ${eligibleAgents.length} eligible agents`,
       { userAgents: eligibleAgents.length },
-      'AgentTick'
+      "AgentTick",
     );
 
     const results: Array<{
@@ -211,7 +211,7 @@ export async function POST(_req: NextRequest) {
 
       const lockAcquired = await acquireAgentLock(
         eligibleAgent.agentId,
-        processId
+        processId,
       );
 
       if (!lockAcquired) {
@@ -219,15 +219,15 @@ export async function POST(_req: NextRequest) {
         logger.info(
           `Skipping agent ${eligibleAgent.name} - still running from previous tick`,
           { agentId: eligibleAgent.agentId },
-          'AgentTick'
+          "AgentTick",
         );
 
         results.push({
           agentId: eligibleAgent.agentId,
           agentType: eligibleAgent.type,
           name: eligibleAgent.name,
-          status: 'skipped',
-          reason: 'locked',
+          status: "skipped",
+          reason: "locked",
           duration: Date.now() - agentStartTime,
         });
 
@@ -236,14 +236,14 @@ export async function POST(_req: NextRequest) {
 
       try {
         // Get runtime and execute trading logic
-        const runtime = await agentRuntimeManager.getRuntime(
-          eligibleAgent.agentId
+        const _runtime = await agentRuntimeManager.getRuntime(
+          eligibleAgent.agentId,
         );
 
         // Log tick execution
         await agentService.createLog(eligibleAgent.user.id, {
-          type: 'tick',
-          level: 'info',
+          type: "tick",
+          level: "info",
           message: `Autonomous tick executed`,
           metadata: {
             duration: Date.now() - agentStartTime,
@@ -255,7 +255,7 @@ export async function POST(_req: NextRequest) {
           .update(userAgentConfigs)
           .set({
             lastTickAt: new Date(),
-            status: 'running',
+            status: "running",
             updatedAt: new Date(),
           })
           .where(eq(userAgentConfigs.userId, eligibleAgent.user.id));
@@ -264,14 +264,14 @@ export async function POST(_req: NextRequest) {
           agentId: eligibleAgent.agentId,
           agentType: eligibleAgent.type,
           name: eligibleAgent.name,
-          status: 'success',
+          status: "success",
           duration: Date.now() - agentStartTime,
         });
 
         logger.info(
           `Agent ${eligibleAgent.name} tick completed in ${Date.now() - agentStartTime}ms`,
           { agentId: eligibleAgent.agentId },
-          'AgentTick'
+          "AgentTick",
         );
       } catch (error) {
         errors++;
@@ -281,14 +281,14 @@ export async function POST(_req: NextRequest) {
             agentId: eligibleAgent.agentId,
             error: error instanceof Error ? error.message : String(error),
           },
-          'AgentTick'
+          "AgentTick",
         );
 
         results.push({
           agentId: eligibleAgent.agentId,
           agentType: eligibleAgent.type,
           name: eligibleAgent.name,
-          status: 'error',
+          status: "error",
           error: error instanceof Error ? error.message : String(error),
           duration: Date.now() - agentStartTime,
         });
@@ -307,10 +307,10 @@ export async function POST(_req: NextRequest) {
         agentsSkippedLocked: skippedDueToLock,
         errors,
       },
-      'AgentTick'
+      "AgentTick",
     );
 
-    recordCronExecution('agent-tick', new Date(startTime), {
+    recordCronExecution("agent-tick", new Date(startTime), {
       success: true,
       processed: results.length - skippedDueToLock,
       errorCount: errors,
@@ -328,6 +328,6 @@ export async function POST(_req: NextRequest) {
       results,
     });
   } finally {
-    await DistributedLockService.releaseLock('agent-tick-global', processId);
+    await DistributedLockService.releaseLock("agent-tick-global", processId);
   }
 }

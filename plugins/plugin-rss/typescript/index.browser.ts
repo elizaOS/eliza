@@ -14,4 +14,3 @@ export const rssPlugin: Plugin = {
 };
 
 export default rssPlugin;
-

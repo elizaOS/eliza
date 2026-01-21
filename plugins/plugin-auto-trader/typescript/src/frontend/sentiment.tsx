@@ -1,32 +1,39 @@
-import { useQuery } from '@tanstack/react-query';
-import moment from 'moment';
-import Loader from './loader.js';
-import { Badge } from './ui/badge.js';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card.js';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table.js';
+import { useQuery } from "@tanstack/react-query";
+import moment from "moment";
+import Loader from "./loader.js";
+import { Badge } from "./ui/badge.js";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table.js";
 
 const getSentimentColor = (sentiment: number) => {
-  if (sentiment >= 75) return 'text-green-600 bg-green-50';
-  if (sentiment >= 25) return 'text-green-500 bg-green-50';
-  if (sentiment >= -25) return 'text-yellow-600 bg-yellow-50';
-  if (sentiment >= -75) return 'text-red-500 bg-red-50';
-  return 'text-red-600 bg-red-50';
+  if (sentiment >= 75) return "text-green-600 bg-green-50";
+  if (sentiment >= 25) return "text-green-500 bg-green-50";
+  if (sentiment >= -25) return "text-yellow-600 bg-yellow-50";
+  if (sentiment >= -75) return "text-red-500 bg-red-50";
+  return "text-red-600 bg-red-50";
 };
 
 const getSentimentLabel = (sentiment: number) => {
-  if (sentiment >= 75) return 'Very Bullish';
-  if (sentiment >= 25) return 'Bullish';
-  if (sentiment >= -25) return 'Neutral';
-  if (sentiment >= -75) return 'Bearish';
-  return 'Very Bearish';
+  if (sentiment >= 75) return "Very Bullish";
+  if (sentiment >= 25) return "Bullish";
+  if (sentiment >= -25) return "Neutral";
+  if (sentiment >= -75) return "Bearish";
+  return "Very Bearish";
 };
 
 export default function Sentiment() {
   const query = useQuery({
-    queryKey: ['sentiment'],
+    queryKey: ["sentiment"],
     queryFn: async () => {
-      const response = await fetch('/api/intel/sentiment', {
-        method: 'GET',
+      const response = await fetch("/api/intel/sentiment", {
+        method: "GET",
       });
       const result = await response.json();
       return result.success ? result.data : [];
@@ -45,12 +52,15 @@ export default function Sentiment() {
   const allTokens = sentiments.flatMap((s) => s.occuringTokens || []);
   const avgSentiment =
     allTokens.length > 0
-      ? allTokens.reduce((sum, token) => sum + token.sentiment, 0) / allTokens.length
+      ? allTokens.reduce((sum, token) => sum + token.sentiment, 0) /
+        allTokens.length
       : 0;
 
   const bullishCount = allTokens.filter((t) => t.sentiment > 25).length;
   const bearishCount = allTokens.filter((t) => t.sentiment < -25).length;
-  const neutralCount = allTokens.filter((t) => t.sentiment >= -25 && t.sentiment <= 25).length;
+  const _neutralCount = allTokens.filter(
+    (t) => t.sentiment >= -25 && t.sentiment <= 25,
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -58,45 +68,67 @@ export default function Sentiment() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Overall Sentiment</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Overall Sentiment
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{avgSentiment.toFixed(1)}</div>
-            <p className="text-xs text-muted-foreground">{getSentimentLabel(avgSentiment)}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Bullish Tokens</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{bullishCount}</div>
             <p className="text-xs text-muted-foreground">
-              {allTokens.length > 0 ? ((bullishCount / allTokens.length) * 100).toFixed(1) : 0}%
+              {getSentimentLabel(avgSentiment)}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Bearish Tokens</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Bullish Tokens
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{bearishCount}</div>
+            <div className="text-2xl font-bold text-green-600">
+              {bullishCount}
+            </div>
             <p className="text-xs text-muted-foreground">
-              {allTokens.length > 0 ? ((bearishCount / allTokens.length) * 100).toFixed(1) : 0}%
+              {allTokens.length > 0
+                ? ((bullishCount / allTokens.length) * 100).toFixed(1)
+                : 0}
+              %
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Analysis</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Bearish Tokens
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">
+              {bearishCount}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {allTokens.length > 0
+                ? ((bearishCount / allTokens.length) * 100).toFixed(1)
+                : 0}
+              %
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">
+              Total Analysis
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{sentiments.length}</div>
-            <p className="text-xs text-muted-foreground">{allTokens.length} tokens analyzed</p>
+            <p className="text-xs text-muted-foreground">
+              {allTokens.length} tokens analyzed
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -119,7 +151,7 @@ export default function Sentiment() {
               {recentSentiments.map((item, index) => (
                 <TableRow key={item._id || index}>
                   <TableCell className="font-medium text-muted-foreground">
-                    {moment(item.timeslot).format('MMM DD, HH:mm')}
+                    {moment(item.timeslot).format("MMM DD, HH:mm")}
                   </TableCell>
                   <TableCell>
                     <div className="max-w-md">
@@ -133,12 +165,14 @@ export default function Sentiment() {
                           key={`${item.timeslot}-${token.token}-${tokenIndex}`}
                           className="flex items-center gap-2 p-2 rounded-lg border bg-card"
                         >
-                          <div className="font-medium text-sm">{token.token}</div>
+                          <div className="font-medium text-sm">
+                            {token.token}
+                          </div>
                           <Badge
                             className={`${getSentimentColor(token.sentiment)} border-0`}
                             variant="secondary"
                           >
-                            {token.sentiment > 0 ? '+' : ''}
+                            {token.sentiment > 0 ? "+" : ""}
                             {token.sentiment}
                           </Badge>
                           <div className="text-xs text-muted-foreground max-w-[200px] truncate">

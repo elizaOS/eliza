@@ -47,11 +47,11 @@ impl ComponentRecord {
             entity_id: UUID::new(&self.entity_id.to_string()).unwrap(),
             agent_id: UUID::new(&self.agent_id.to_string()).unwrap(),
             room_id: UUID::new(&self.room_id.to_string()).unwrap(),
-            world_id: UUID::new(&self.world_id.to_string()).unwrap(),
-            source_entity_id: UUID::new(&self.source_entity_id.to_string()).unwrap(),
+            world_id: Some(UUID::new(&self.world_id.to_string()).unwrap()),
+            source_entity_id: Some(UUID::new(&self.source_entity_id.to_string()).unwrap()),
             component_type: self.component_type.clone(),
-            created_at: self.created_at.timestamp_millis(),
-            data: serde_json::from_value(self.data.clone()).unwrap_or_default(),
+            created_at: Some(self.created_at.timestamp_millis()),
+            data: Some(self.data.clone()),
         }
     }
 }

@@ -11,16 +11,16 @@
  * which is used for agent operations (chat, tick, posting).
  */
 
-import { agentService } from '@polyagent/agents';
-import { authenticateUser } from '@polyagent/api';
-import { balanceTransactions, db, desc, eq, users } from '@polyagent/db';
-import { POLYAGENT_POINTS_SYMBOL, logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { agentService } from "@polyagent/agents";
+import { authenticateUser } from "@polyagent/api";
+import { balanceTransactions, db, desc, eq, users } from "@polyagent/db";
+import { logger, POLYAGENT_POINTS_SYMBOL } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(req);
   const { agentId } = await params;
@@ -43,8 +43,8 @@ export async function GET(
   const agent = agentResult[0];
   if (!agent) {
     return NextResponse.json(
-      { success: false, error: 'Agent not found' },
-      { status: 404 }
+      { success: false, error: "Agent not found" },
+      { status: 404 },
     );
   }
 
@@ -91,7 +91,7 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(req);
   const { agentId } = await params;
@@ -99,37 +99,37 @@ export async function POST(
 
   const { action, amount } = body;
 
-  if (!action || !['deposit', 'withdraw'].includes(action)) {
+  if (!action || !["deposit", "withdraw"].includes(action)) {
     return NextResponse.json(
       {
         success: false,
         error: 'Invalid action. Must be "deposit" or "withdraw"',
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   if (!amount || amount <= 0) {
     return NextResponse.json(
-      { success: false, error: 'Amount must be a positive number' },
-      { status: 400 }
+      { success: false, error: "Amount must be a positive number" },
+      { status: 400 },
     );
   }
 
   try {
-    if (action === 'deposit') {
+    if (action === "deposit") {
       await agentService.depositTradingBalance(agentId, user.id, amount);
       logger.info(
         `Deposited ${POLYAGENT_POINTS_SYMBOL}${amount} trading balance to agent ${agentId}`,
         undefined,
-        'AgentsAPI'
+        "AgentsAPI",
       );
     } else {
       await agentService.withdrawTradingBalance(agentId, user.id, amount);
       logger.info(
         `Withdrew ${POLYAGENT_POINTS_SYMBOL}${amount} trading balance from agent ${agentId}`,
         undefined,
-        'AgentsAPI'
+        "AgentsAPI",
       );
     }
 
@@ -158,19 +158,19 @@ export async function POST(
         lifetimePnL: Number(agentResult[0]?.lifetimePnL ?? 0),
       },
       userBalance: Number(userResult[0]?.virtualBalance ?? 0),
-      message: `${action === 'deposit' ? 'Deposited' : 'Withdrew'} ${POLYAGENT_POINTS_SYMBOL}${amount.toFixed(2)} successfully`,
+      message: `${action === "deposit" ? "Deposited" : "Withdrew"} ${POLYAGENT_POINTS_SYMBOL}${amount.toFixed(2)} successfully`,
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : 'Transaction failed';
+      error instanceof Error ? error.message : "Transaction failed";
     logger.error(
       `Trading balance ${action} failed: ${message}`,
       undefined,
-      'AgentsAPI'
+      "AgentsAPI",
     );
     return NextResponse.json(
       { success: false, error: message },
-      { status: 400 }
+      { status: 400 },
     );
   }
 }

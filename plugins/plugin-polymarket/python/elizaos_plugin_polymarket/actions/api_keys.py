@@ -8,9 +8,9 @@ import hmac
 import time
 from typing import Protocol, cast
 
+import httpx
 from eth_account import Account
 from eth_account.messages import encode_typed_data
-import httpx
 
 from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 from elizaos_plugin_polymarket.types import ApiKey, ApiKeyStatus, ApiKeyType
@@ -39,7 +39,7 @@ def _hmac_signature(
     """
     L2 signature: base64(HMAC_SHA256(secret, f"{METHOD} {path} {body} {timestamp_ms}")).
     """
-    to_sign = f"{method.upper()} {path} {body} {timestamp_ms}".encode("utf-8")
+    to_sign = f"{method.upper()} {path} {body} {timestamp_ms}".encode()
     mac = hmac.new(secret.encode("utf-8"), to_sign, hashlib.sha256).digest()
     return base64.b64encode(mac).decode("utf-8")
 
@@ -63,7 +63,9 @@ def _require_private_key(runtime: RuntimeProtocol | None) -> str:
             PolymarketErrorCode.CONFIG_ERROR,
             "No private key found. Please set POLYMARKET_PRIVATE_KEY, WALLET_PRIVATE_KEY, or PRIVATE_KEY",
         )
-    return private_key_setting if private_key_setting.startswith("0x") else f"0x{private_key_setting}"
+    return (
+        private_key_setting if private_key_setting.startswith("0x") else f"0x{private_key_setting}"
+    )
 
 
 def _extract_api_creds(api_creds: dict[str, object]) -> tuple[str, str, str]:
@@ -113,7 +115,6 @@ async def create_api_key(
     Raises:
         PolymarketError: If API key creation fails
     """
-    import os
 
     try:
         clob_api_url = _get_setting(runtime, "CLOB_API_URL") or "https://clob.polymarket.com"
@@ -239,7 +240,9 @@ async def get_all_api_keys(
         address = Account.from_key(private_key).address
 
         api_key = _get_setting(runtime, "CLOB_API_KEY")
-        api_secret = _get_setting(runtime, "CLOB_API_SECRET") or _get_setting(runtime, "CLOB_SECRET")
+        api_secret = _get_setting(runtime, "CLOB_API_SECRET") or _get_setting(
+            runtime, "CLOB_SECRET"
+        )
         api_passphrase = _get_setting(runtime, "CLOB_API_PASSPHRASE") or _get_setting(
             runtime, "CLOB_PASS_PHRASE"
         )
@@ -333,7 +336,9 @@ async def revoke_api_key(
         address = Account.from_key(private_key).address
 
         api_key = _get_setting(runtime, "CLOB_API_KEY")
-        api_secret = _get_setting(runtime, "CLOB_API_SECRET") or _get_setting(runtime, "CLOB_SECRET")
+        api_secret = _get_setting(runtime, "CLOB_API_SECRET") or _get_setting(
+            runtime, "CLOB_SECRET"
+        )
         api_passphrase = _get_setting(runtime, "CLOB_API_PASSPHRASE") or _get_setting(
             runtime, "CLOB_PASS_PHRASE"
         )
@@ -361,7 +366,9 @@ async def revoke_api_key(
         }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.delete(f"{clob_api_url}{path}", params={"apiKeyId": key_id}, headers=headers)
+            resp = await client.delete(
+                f"{clob_api_url}{path}", params={"apiKeyId": key_id}, headers=headers
+            )
             if resp.status_code != 200:
                 raise PolymarketError(
                     PolymarketErrorCode.API_ERROR,

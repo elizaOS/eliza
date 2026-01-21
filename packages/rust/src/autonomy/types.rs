@@ -18,4 +18,3 @@ pub struct AutonomyStatus {
     /// The autonomous room ID used for internal thoughts.
     pub autonomous_room_id: UUID,
 }
-

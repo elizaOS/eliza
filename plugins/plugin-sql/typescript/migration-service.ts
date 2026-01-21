@@ -27,7 +27,7 @@ export class DatabaseMigrationService {
     for (const plugin of plugins) {
       type PluginWithSchema = Plugin & {
         schema?: Record<string, unknown>;
-      }
+      };
       const pluginWithSchema = plugin as PluginWithSchema;
       if (pluginWithSchema.schema) {
         this.registeredSchemas.set(plugin.name, pluginWithSchema.schema);

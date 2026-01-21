@@ -41,4 +41,3 @@ def test_redaction_processor_supports_custom_keys(monkeypatch) -> None:
     out = _redaction_processor(logging.getLogger("test"), "info", event)
     assert out["email"] == "[REDACTED]"
     assert out["phone"] == "[REDACTED]"
-

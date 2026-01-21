@@ -4,7 +4,7 @@
  * Error classes for API authentication and authorization
  */
 
-import type { JsonValue } from './types';
+import type { JsonValue } from "./types";
 
 /**
  * Base API Error class (simple version for compatibility)
@@ -13,10 +13,10 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public statusCode = 500,
-    public code?: string
+    public code?: string,
   ) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
   }
 }
 
@@ -34,7 +34,7 @@ export abstract class PolyagentError extends Error {
     code: string,
     statusCode: number,
     isOperational = true,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
     super(message);
     this.name = this.constructor.name;
@@ -55,10 +55,10 @@ export abstract class PolyagentError extends Error {
  */
 export class AuthenticationError extends PolyagentError {
   constructor(
-    message = 'Authentication required',
-    context?: Record<string, JsonValue>
+    message = "Authentication required",
+    context?: Record<string, JsonValue>,
   ) {
-    super(message, 'AUTH_FAILED', 401, true, context);
+    super(message, "AUTH_FAILED", 401, true, context);
   }
 }
 
@@ -70,12 +70,12 @@ export class AuthorizationError extends PolyagentError {
   public readonly action?: string;
 
   constructor(
-    message = 'Access denied',
+    message = "Access denied",
     resource?: string,
     action?: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
-    super(message, 'FORBIDDEN', 403, true, context);
+    super(message, "FORBIDDEN", 403, true, context);
     this.resource = resource;
     this.action = action;
   }
@@ -85,7 +85,7 @@ export class AuthorizationError extends PolyagentError {
  * Type guard to check if an error is an authentication error
  */
 export function isAuthenticationError(
-  error: unknown
+  error: unknown,
 ): error is AuthenticationError {
   return error instanceof AuthenticationError;
 }
@@ -94,7 +94,7 @@ export function isAuthenticationError(
  * Type guard to check if an error is an authorization error
  */
 export function isAuthorizationError(
-  error: unknown
+  error: unknown,
 ): error is AuthorizationError {
   return error instanceof AuthorizationError;
 }
@@ -106,9 +106,9 @@ export class BadRequestError extends PolyagentError {
   constructor(
     message: string,
     code?: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
-    super(message, code || 'BAD_REQUEST', 400, true, context);
+    super(message, code || "BAD_REQUEST", 400, true, context);
   }
 }
 
@@ -117,11 +117,11 @@ export class BadRequestError extends PolyagentError {
  */
 export class UnauthorizedError extends PolyagentError {
   constructor(
-    message = 'Unauthorized',
+    message = "Unauthorized",
     code?: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
-    super(message, code || 'UNAUTHORIZED', 401, true, context);
+    super(message, code || "UNAUTHORIZED", 401, true, context);
   }
 }
 
@@ -130,11 +130,11 @@ export class UnauthorizedError extends PolyagentError {
  */
 export class ForbiddenError extends PolyagentError {
   constructor(
-    message = 'Forbidden',
+    message = "Forbidden",
     code?: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
-    super(message, code || 'FORBIDDEN', 403, true, context);
+    super(message, code || "FORBIDDEN", 403, true, context);
   }
 }
 
@@ -143,11 +143,11 @@ export class ForbiddenError extends PolyagentError {
  */
 export class NotFoundError extends PolyagentError {
   constructor(
-    resource = 'Resource',
+    resource = "Resource",
     code?: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
-    super(`${resource} not found`, code || 'NOT_FOUND', 404, true, context);
+    super(`${resource} not found`, code || "NOT_FOUND", 404, true, context);
   }
 }
 
@@ -158,9 +158,9 @@ export class ConflictError extends PolyagentError {
   constructor(
     message: string,
     code?: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
-    super(message, code || 'CONFLICT', 409, true, context);
+    super(message, code || "CONFLICT", 409, true, context);
   }
 }
 
@@ -174,9 +174,9 @@ export class ValidationError extends PolyagentError {
     message: string,
     errors?: Record<string, string[]>,
     code?: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
-    super(message, code || 'VALIDATION_ERROR', 422, true, context);
+    super(message, code || "VALIDATION_ERROR", 422, true, context);
     this.errors = errors;
   }
 }
@@ -188,12 +188,12 @@ export class RateLimitError extends PolyagentError {
   public readonly reset?: number;
 
   constructor(
-    message = 'Too many requests',
+    message = "Too many requests",
     reset?: number,
     code?: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
-    super(message, code || 'RATE_LIMIT', 429, true, context);
+    super(message, code || "RATE_LIMIT", 429, true, context);
     this.reset = reset;
   }
 }
@@ -203,11 +203,11 @@ export class RateLimitError extends PolyagentError {
  */
 export class InternalServerError extends PolyagentError {
   constructor(
-    message = 'Internal server error',
+    message = "Internal server error",
     code?: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
-    super(message, code || 'INTERNAL_ERROR', 500, false, context);
+    super(message, code || "INTERNAL_ERROR", 500, false, context);
   }
 }
 
@@ -216,11 +216,11 @@ export class InternalServerError extends PolyagentError {
  */
 export class ServiceUnavailableError extends PolyagentError {
   constructor(
-    message = 'Service temporarily unavailable',
+    message = "Service temporarily unavailable",
     code?: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
-    super(message, code || 'SERVICE_UNAVAILABLE', 503, true, context);
+    super(message, code || "SERVICE_UNAVAILABLE", 503, true, context);
   }
 }
 
@@ -234,7 +234,7 @@ export class BusinessLogicError extends PolyagentError {
   constructor(
     message: string,
     code: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
     super(message, code, 400, true, context);
   }
@@ -248,45 +248,45 @@ export class BusinessLogicError extends PolyagentError {
  */
 export const ErrorCodes = {
   // General errors
-  VALIDATION_ERROR: 'VALIDATION_ERROR',
-  NOT_FOUND: 'NOT_FOUND',
-  CONFLICT: 'CONFLICT',
-  BAD_REQUEST: 'BAD_REQUEST',
-  INTERNAL_ERROR: 'INTERNAL_ERROR',
-  SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
+  VALIDATION_ERROR: "VALIDATION_ERROR",
+  NOT_FOUND: "NOT_FOUND",
+  CONFLICT: "CONFLICT",
+  BAD_REQUEST: "BAD_REQUEST",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
 
   // Auth errors
-  AUTH_NO_TOKEN: 'AUTH_NO_TOKEN',
-  AUTH_INVALID_TOKEN: 'AUTH_INVALID_TOKEN',
-  AUTH_EXPIRED_TOKEN: 'AUTH_EXPIRED_TOKEN',
-  AUTH_INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
-  FORBIDDEN: 'FORBIDDEN',
+  AUTH_NO_TOKEN: "AUTH_NO_TOKEN",
+  AUTH_INVALID_TOKEN: "AUTH_INVALID_TOKEN",
+  AUTH_EXPIRED_TOKEN: "AUTH_EXPIRED_TOKEN",
+  AUTH_INVALID_CREDENTIALS: "AUTH_INVALID_CREDENTIALS",
+  FORBIDDEN: "FORBIDDEN",
 
   // Database errors
-  DATABASE_ERROR: 'DATABASE_ERROR',
-  DUPLICATE_ENTRY: 'DUPLICATE_ENTRY',
-  FOREIGN_KEY_CONSTRAINT: 'FOREIGN_KEY_CONSTRAINT',
+  DATABASE_ERROR: "DATABASE_ERROR",
+  DUPLICATE_ENTRY: "DUPLICATE_ENTRY",
+  FOREIGN_KEY_CONSTRAINT: "FOREIGN_KEY_CONSTRAINT",
 
   // Business logic errors
-  INSUFFICIENT_FUNDS: 'INSUFFICIENT_FUNDS',
-  RATE_LIMIT: 'RATE_LIMIT',
+  INSUFFICIENT_FUNDS: "INSUFFICIENT_FUNDS",
+  RATE_LIMIT: "RATE_LIMIT",
 
   // Trading errors
-  TRADING_MARKET_CLOSED: 'TRADING_MARKET_CLOSED',
-  TRADING_INVALID_PRICE: 'TRADING_INVALID_PRICE',
-  TRADING_POSITION_LIMIT: 'TRADING_POSITION_LIMIT',
-  TRADING_RISK_LIMIT: 'TRADING_RISK_LIMIT',
+  TRADING_MARKET_CLOSED: "TRADING_MARKET_CLOSED",
+  TRADING_INVALID_PRICE: "TRADING_INVALID_PRICE",
+  TRADING_POSITION_LIMIT: "TRADING_POSITION_LIMIT",
+  TRADING_RISK_LIMIT: "TRADING_RISK_LIMIT",
 
   // Agent errors
-  AGENT_ERROR: 'AGENT_ERROR',
-  AGENT_AUTH_NOT_REGISTERED: 'AGENT_AUTH_NOT_REGISTERED',
-  AGENT_AUTH_INVALID_SIGNATURE: 'AGENT_AUTH_INVALID_SIGNATURE',
+  AGENT_ERROR: "AGENT_ERROR",
+  AGENT_AUTH_NOT_REGISTERED: "AGENT_AUTH_NOT_REGISTERED",
+  AGENT_AUTH_INVALID_SIGNATURE: "AGENT_AUTH_INVALID_SIGNATURE",
 
   // External service errors
-  EXTERNAL_SERVICE_ERROR: 'EXTERNAL_SERVICE_ERROR',
-  BLOCKCHAIN_ERROR: 'BLOCKCHAIN_ERROR',
-  SMART_CONTRACT_ERROR: 'SMART_CONTRACT_ERROR',
-  LLM_ERROR: 'LLM_ERROR',
+  EXTERNAL_SERVICE_ERROR: "EXTERNAL_SERVICE_ERROR",
+  BLOCKCHAIN_ERROR: "BLOCKCHAIN_ERROR",
+  SMART_CONTRACT_ERROR: "SMART_CONTRACT_ERROR",
+  LLM_ERROR: "LLM_ERROR",
 } as const;
 
 /**
@@ -352,10 +352,10 @@ export function createErrorResponse(error: PolyagentError): ErrorResponse {
         error.errors && {
           violations: Object.entries(error.errors).flatMap(
             ([field, messages]) =>
-              messages.map((message) => ({ field, message }))
+              messages.map((message) => ({ field, message })),
           ),
         }),
-      ...(process.env.NODE_ENV === 'development' &&
+      ...(process.env.NODE_ENV === "development" &&
         error.context && {
           context: error.context as Record<string, JsonValue>,
         }),

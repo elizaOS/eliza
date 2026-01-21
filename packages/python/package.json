@@ -1,12 +1,12 @@
 {
   "name": "@elizaos/python",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "elizaOS Core - Python runtime and types",
   "private": true,
   "scripts": {
     "build": "python3 -c \"from pathlib import Path; import json; Path('elizaos.egg-info').mkdir(exist_ok=True); Path('elizaos.egg-info/PKG-INFO').write_text('Metadata-Version: 2.1\\nName: elizaos\\nVersion: 1.0.0\\n'); print('✅ Build completed - egg-info created')\"",
     "test": "pytest",
-    "lint": "ruff check --fix . && ruff format .",
+    "lint": "ruff check --fix --unsafe-fixes . && ruff format .",
     "lint:fix": "ruff check --fix . && ruff format .",
     "format": "ruff format .",
     "format:check": "ruff format --check .",

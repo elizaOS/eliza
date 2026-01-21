@@ -1,8 +1,8 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { logger } from "@elizaos/core";
 import BigNumber from "../bn";
 import { SOLANA_WALLET_DATA_CACHE_KEY } from "../constants";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { getWalletKey } from "../keypairUtils";
 import type { WalletPortfolio } from "../types";
 

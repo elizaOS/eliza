@@ -44,7 +44,7 @@ export interface PredictionPosition {
   id: string;
   marketId: string;
   question: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
   shares: number;
   avgPrice: number;
   currentPrice: number;
@@ -87,7 +87,7 @@ export interface UserProfileStats {
 export interface PerpPositionFromAPI {
   id: string;
   ticker: string;
-  side: 'long' | 'short';
+  side: "long" | "short";
   entryPrice: number;
   currentPrice: number;
   size: number;

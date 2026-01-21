@@ -215,4 +215,3 @@ Respond with a JSON markdown block containing only the extracted values. Use nul
 \`\`\``;
 
 export const VOTE_TEMPLATE = voteTemplate;
-

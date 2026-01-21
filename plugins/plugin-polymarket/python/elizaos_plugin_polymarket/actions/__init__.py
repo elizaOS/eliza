@@ -2,12 +2,12 @@ from elizaos_plugin_polymarket.actions.account import (
     get_account_access_status,
     handle_authentication,
 )
-from elizaos_plugin_polymarket.actions.balances import get_balances
 from elizaos_plugin_polymarket.actions.api_keys import (
     create_api_key,
     get_all_api_keys,
     revoke_api_key,
 )
+from elizaos_plugin_polymarket.actions.balances import get_balances
 from elizaos_plugin_polymarket.actions.elizaos import ALL_ACTION_NAMES
 from elizaos_plugin_polymarket.actions.markets import (
     get_clob_markets,
@@ -38,21 +38,21 @@ from elizaos_plugin_polymarket.actions.realtime import (
     setup_websocket,
 )
 from elizaos_plugin_polymarket.actions.research import (
-    research_market,
-    ResearchParams,
     ResearchActionResult,
+    ResearchParams,
     build_research_prompt,
-    format_research_results,
     format_full_report,
     format_research_action_result,
+    format_research_results,
+    research_market,
 )
 from elizaos_plugin_polymarket.actions.search import (
-    search_markets,
-    SearchResult,
-    GammaMarket,
     GammaEvent,
+    GammaMarket,
     GammaTag,
+    SearchResult,
     format_search_results,
+    search_markets,
 )
 from elizaos_plugin_polymarket.actions.trading import (
     check_order_scoring,

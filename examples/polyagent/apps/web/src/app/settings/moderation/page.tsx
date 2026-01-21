@@ -4,16 +4,16 @@
  * Manage blocked and muted users
  */
 
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
-import { Ban, Trash2, UserX, VolumeX } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { Avatar } from '@/components/shared/Avatar';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
+import { cn } from "@polyagent/shared";
+import { Ban, Trash2, UserX, VolumeX } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Avatar } from "@/components/shared/Avatar";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
 
 interface BlockedUser {
   id: string;
@@ -39,19 +39,19 @@ interface MutedUser {
   };
 }
 
-type Tab = 'blocked' | 'muted';
+type Tab = "blocked" | "muted";
 
 export default function ModerationSettingsPage() {
   const { authenticated } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>('blocked');
+  const [activeTab, setActiveTab] = useState<Tab>("blocked");
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [mutedUsers, setMutedUsers] = useState<MutedUser[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchBlockedUsers = useCallback(async () => {
-    const response = await fetch('/api/moderation/blocks');
+    const response = await fetch("/api/moderation/blocks");
     if (!response.ok) {
-      toast.error('Failed to load blocked users');
+      toast.error("Failed to load blocked users");
       setLoading(false);
       return;
     }
@@ -62,9 +62,9 @@ export default function ModerationSettingsPage() {
   }, []);
 
   const fetchMutedUsers = useCallback(async () => {
-    const response = await fetch('/api/moderation/mutes');
+    const response = await fetch("/api/moderation/mutes");
     if (!response.ok) {
-      toast.error('Failed to load muted users');
+      toast.error("Failed to load muted users");
       return;
     }
 
@@ -81,13 +81,13 @@ export default function ModerationSettingsPage() {
 
   const handleUnblock = async (userId: string, displayName: string) => {
     const response = await fetch(`/api/users/${userId}/block`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'unblock' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "unblock" }),
     });
 
     if (!response.ok) {
-      toast.error('Failed to unblock user');
+      toast.error("Failed to unblock user");
       return;
     }
 
@@ -97,13 +97,13 @@ export default function ModerationSettingsPage() {
 
   const handleUnmute = async (userId: string, displayName: string) => {
     const response = await fetch(`/api/users/${userId}/mute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'unmute' }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "unmute" }),
     });
 
     if (!response.ok) {
-      toast.error('Failed to unmute user');
+      toast.error("Failed to unmute user");
       return;
     }
 
@@ -112,10 +112,10 @@ export default function ModerationSettingsPage() {
   };
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
+    return new Date(date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
     });
   };
 
@@ -145,24 +145,24 @@ export default function ModerationSettingsPage() {
         {/* Tabs */}
         <div className="mb-6 flex gap-2 border-border border-b">
           <button
-            onClick={() => setActiveTab('blocked')}
+            onClick={() => setActiveTab("blocked")}
             className={cn(
-              '-mb-[1px] flex items-center gap-2 border-b-2 px-4 py-2 font-medium transition-colors',
-              activeTab === 'blocked'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+              "-mb-[1px] flex items-center gap-2 border-b-2 px-4 py-2 font-medium transition-colors",
+              activeTab === "blocked"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             <Ban className="h-4 w-4" />
             Blocked ({blockedUsers.length})
           </button>
           <button
-            onClick={() => setActiveTab('muted')}
+            onClick={() => setActiveTab("muted")}
             className={cn(
-              '-mb-[1px] flex items-center gap-2 border-b-2 px-4 py-2 font-medium transition-colors',
-              activeTab === 'muted'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+              "-mb-[1px] flex items-center gap-2 border-b-2 px-4 py-2 font-medium transition-colors",
+              activeTab === "muted"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             <VolumeX className="h-4 w-4" />
@@ -180,7 +180,7 @@ export default function ModerationSettingsPage() {
         ) : (
           <>
             {/* Blocked Users */}
-            {activeTab === 'blocked' && (
+            {activeTab === "blocked" && (
               <div className="space-y-3">
                 {blockedUsers.length === 0 ? (
                   <div className="rounded-lg border border-border bg-card py-12 text-center">
@@ -194,7 +194,7 @@ export default function ModerationSettingsPage() {
                   blockedUsers.map((block) => {
                     const user = block.blocked;
                     const displayName =
-                      user.displayName || user.username || 'User';
+                      user.displayName || user.username || "User";
 
                     return (
                       <div
@@ -239,7 +239,7 @@ export default function ModerationSettingsPage() {
             )}
 
             {/* Muted Users */}
-            {activeTab === 'muted' && (
+            {activeTab === "muted" && (
               <div className="space-y-3">
                 {mutedUsers.length === 0 ? (
                   <div className="rounded-lg border border-border bg-card py-12 text-center">
@@ -253,7 +253,7 @@ export default function ModerationSettingsPage() {
                   mutedUsers.map((mute) => {
                     const user = mute.muted;
                     const displayName =
-                      user.displayName || user.username || 'User';
+                      user.displayName || user.username || "User";
 
                     return (
                       <div

@@ -1,4 +1,9 @@
-import type { IAgentRuntime, Memory, Provider, State } from "../../types/index.ts";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
+} from "../../types/index.ts";
 
 function hasBenchmarkContext(
   meta: Memory["metadata"] | undefined,
@@ -7,7 +12,8 @@ function hasBenchmarkContext(
     typeof meta === "object" &&
     meta !== null &&
     "benchmarkContext" in meta &&
-    (typeof (meta as { benchmarkContext?: string }).benchmarkContext === "string" ||
+    (typeof (meta as { benchmarkContext?: string }).benchmarkContext ===
+      "string" ||
       (meta as { benchmarkContext?: string }).benchmarkContext === undefined)
   );
 }
@@ -31,7 +37,10 @@ export const contextBenchProvider: Provider = {
       ? meta.benchmarkContext
       : undefined;
 
-    if (typeof benchmarkContext !== "string" || benchmarkContext.trim() === "") {
+    if (
+      typeof benchmarkContext !== "string" ||
+      benchmarkContext.trim() === ""
+    ) {
       return {
         text: "",
         values: {
@@ -52,4 +61,3 @@ export const contextBenchProvider: Provider = {
     };
   },
 };
-

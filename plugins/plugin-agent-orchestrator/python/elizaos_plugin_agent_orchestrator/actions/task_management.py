@@ -5,7 +5,7 @@ Task management actions for the Agent Orchestrator plugin.
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 from ..service import AgentOrchestratorService
 
@@ -57,9 +57,9 @@ async def validate_create_task(runtime: Any, message: Any) -> bool:
 async def handle_create_task(
     runtime: Any,
     message: Any,
-    state: Optional[Any] = None,
-    options: Optional[dict[str, Any]] = None,
-    callback: Optional[Any] = None,
+    state: Any | None = None,
+    options: dict[str, Any] | None = None,
+    callback: Any | None = None,
 ) -> dict[str, Any]:
     """Handle CREATE_TASK action."""
     svc = _get_service(runtime)
@@ -79,8 +79,7 @@ async def handle_create_task(
             if step:
                 await svc.add_step(task.id, step)
         await svc.append_output(
-            task.id,
-            f"Plan:\n" + "\n".join(f"{i + 1}. {s}" for i, s in enumerate(step_lines))
+            task.id, "Plan:\n" + "\n".join(f"{i + 1}. {s}" for i, s in enumerate(step_lines))
         )
 
     msg = (
@@ -121,9 +120,9 @@ async def validate_list_tasks(runtime: Any, message: Any) -> bool:
 async def handle_list_tasks(
     runtime: Any,
     message: Any,
-    state: Optional[Any] = None,
-    options: Optional[dict[str, Any]] = None,
-    callback: Optional[Any] = None,
+    state: Any | None = None,
+    options: dict[str, Any] | None = None,
+    callback: Any | None = None,
 ) -> dict[str, Any]:
     """Handle LIST_TASKS action."""
     svc = _get_service(runtime)
@@ -165,15 +164,17 @@ switch_task_action = {
 async def validate_switch_task(runtime: Any, message: Any) -> bool:
     """Validate SWITCH_TASK action."""
     text = (getattr(message.content, "text", "") or "").lower()
-    return "switch to task" in text or "select task" in text or ("task" in text and "switch" in text)
+    return (
+        "switch to task" in text or "select task" in text or ("task" in text and "switch" in text)
+    )
 
 
 async def handle_switch_task(
     runtime: Any,
     message: Any,
-    state: Optional[Any] = None,
-    options: Optional[dict[str, Any]] = None,
-    callback: Optional[Any] = None,
+    state: Any | None = None,
+    options: dict[str, Any] | None = None,
+    callback: Any | None = None,
 ) -> dict[str, Any]:
     """Handle SWITCH_TASK action."""
     svc = _get_service(runtime)
@@ -225,14 +226,16 @@ async def validate_search_tasks(runtime: Any, message: Any) -> bool:
 async def handle_search_tasks(
     runtime: Any,
     message: Any,
-    state: Optional[Any] = None,
-    options: Optional[dict[str, Any]] = None,
-    callback: Optional[Any] = None,
+    state: Any | None = None,
+    options: dict[str, Any] | None = None,
+    callback: Any | None = None,
 ) -> dict[str, Any]:
     """Handle SEARCH_TASKS action."""
     svc = _get_service(runtime)
     opts = options or {}
-    query = (opts.get("query") or _extract_query(getattr(message.content, "text", "") or "")).strip()
+    query = (
+        opts.get("query") or _extract_query(getattr(message.content, "text", "") or "")
+    ).strip()
 
     if not query:
         msg = "What would you like to search for?"
@@ -282,9 +285,9 @@ async def validate_pause_task(runtime: Any, message: Any) -> bool:
 async def handle_pause_task(
     runtime: Any,
     message: Any,
-    state: Optional[Any] = None,
-    options: Optional[dict[str, Any]] = None,
-    callback: Optional[Any] = None,
+    state: Any | None = None,
+    options: dict[str, Any] | None = None,
+    callback: Any | None = None,
 ) -> dict[str, Any]:
     """Handle PAUSE_TASK action."""
     svc = _get_service(runtime)
@@ -328,9 +331,9 @@ async def validate_resume_task(runtime: Any, message: Any) -> bool:
 async def handle_resume_task(
     runtime: Any,
     message: Any,
-    state: Optional[Any] = None,
-    options: Optional[dict[str, Any]] = None,
-    callback: Optional[Any] = None,
+    state: Any | None = None,
+    options: dict[str, Any] | None = None,
+    callback: Any | None = None,
 ) -> dict[str, Any]:
     """Handle RESUME_TASK action."""
     svc = _get_service(runtime)
@@ -375,9 +378,9 @@ async def validate_cancel_task(runtime: Any, message: Any) -> bool:
 async def handle_cancel_task(
     runtime: Any,
     message: Any,
-    state: Optional[Any] = None,
-    options: Optional[dict[str, Any]] = None,
-    callback: Optional[Any] = None,
+    state: Any | None = None,
+    options: dict[str, Any] | None = None,
+    callback: Any | None = None,
 ) -> dict[str, Any]:
     """Handle CANCEL_TASK action."""
     svc = _get_service(runtime)

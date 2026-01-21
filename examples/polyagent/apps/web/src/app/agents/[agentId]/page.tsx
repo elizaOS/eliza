@@ -8,9 +8,9 @@
  * - Wallet funding
  */
 
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 import {
   Activity,
   ArrowLeft,
@@ -24,17 +24,17 @@ import {
   TrendingDown,
   TrendingUp,
   Wallet,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { Avatar } from '@/components/shared/Avatar';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuth } from '@/hooks/useAuth';
+} from "lucide-react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Avatar } from "@/components/shared/Avatar";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/hooks/useAuth";
 
 interface Position {
   market: string;
@@ -44,14 +44,14 @@ interface Position {
   average_price: string;
   current_price?: string;
   unrealized_pnl?: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
 }
 
 interface Trade {
   id: string;
   market: string;
   marketQuestion?: string;
-  side: 'BUY' | 'SELL';
+  side: "BUY" | "SELL";
   outcome: string;
   size: string;
   price: string;
@@ -68,7 +68,7 @@ interface Agent {
   tradingStrategy?: string;
   balance: number;
   tradingEnabled: boolean;
-  riskTolerance: 'conservative' | 'moderate' | 'aggressive';
+  riskTolerance: "conservative" | "moderate" | "aggressive";
   maxPositionSize: number;
   walletAddress?: string;
   createdAt: string;
@@ -91,7 +91,7 @@ function PositionCard({ position }: { position: Position }) {
   const unrealizedPnl = position.unrealized_pnl
     ? parseFloat(position.unrealized_pnl)
     : (currentPrice - avgPrice) * size;
-  const pnlColor = unrealizedPnl >= 0 ? 'text-green-500' : 'text-red-500';
+  const pnlColor = unrealizedPnl >= 0 ? "text-green-500" : "text-red-500";
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">
@@ -102,10 +102,10 @@ function PositionCard({ position }: { position: Position }) {
           </p>
           <span
             className={cn(
-              'mt-1 inline-block rounded px-2 py-0.5 text-xs font-medium',
-              position.side === 'YES'
-                ? 'bg-green-500/20 text-green-500'
-                : 'bg-red-500/20 text-red-500'
+              "mt-1 inline-block rounded px-2 py-0.5 font-medium text-xs",
+              position.side === "YES"
+                ? "bg-green-500/20 text-green-500"
+                : "bg-red-500/20 text-red-500",
             )}
           >
             {position.side}
@@ -123,8 +123,8 @@ function PositionCard({ position }: { position: Position }) {
         </div>
         <div>
           <p className="text-muted-foreground text-xs">P&L</p>
-          <p className={cn('font-mono', pnlColor)}>
-            {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
+          <p className={cn("font-mono", pnlColor)}>
+            {unrealizedPnl >= 0 ? "+" : ""}${unrealizedPnl.toFixed(2)}
           </p>
         </div>
       </div>
@@ -133,15 +133,15 @@ function PositionCard({ position }: { position: Position }) {
 }
 
 function TradeRow({ trade }: { trade: Trade }) {
-  const isBuy = trade.side === 'BUY';
+  const isBuy = trade.side === "BUY";
   const date = new Date(trade.timestamp);
 
   return (
     <div className="flex items-center gap-4 border-border border-b py-3 last:border-0">
       <div
         className={cn(
-          'flex h-8 w-8 items-center justify-center rounded-full',
-          isBuy ? 'bg-green-500/20' : 'bg-red-500/20'
+          "flex h-8 w-8 items-center justify-center rounded-full",
+          isBuy ? "bg-green-500/20" : "bg-red-500/20",
         )}
       >
         {isBuy ? (
@@ -191,7 +191,7 @@ function StatCard({
         </div>
         <div>
           <p className="text-muted-foreground text-sm">{label}</p>
-          <p className={cn('font-semibold text-lg', valueColor)}>{value}</p>
+          <p className={cn("font-semibold text-lg", valueColor)}>{value}</p>
           {subValue && (
             <p className="text-muted-foreground text-xs">{subValue}</p>
           )}
@@ -215,8 +215,8 @@ export default function AgentDetailPage() {
   const fetchAgentData = useCallback(async () => {
     const token = await getAccessToken();
     if (!token) {
-      toast.error('Authentication required');
-      router.push('/agents');
+      toast.error("Authentication required");
+      router.push("/agents");
       return;
     }
 
@@ -227,8 +227,8 @@ export default function AgentDetailPage() {
       });
 
       if (!agentRes.ok) {
-        toast.error('Agent not found');
-        router.push('/agents');
+        toast.error("Agent not found");
+        router.push("/agents");
         return;
       }
 
@@ -269,8 +269,8 @@ export default function AgentDetailPage() {
         usdcBalance,
       });
     } catch (error) {
-      console.error('Failed to fetch agent data:', error);
-      toast.error('Failed to load agent data');
+      console.error("Failed to fetch agent data:", error);
+      toast.error("Failed to load agent data");
     } finally {
       setLoading(false);
     }
@@ -285,10 +285,10 @@ export default function AgentDetailPage() {
     setToggling(true);
     try {
       const res = await fetch(`/api/agents/${agentId}/autonomy`, {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           enabled: !data.agent.tradingEnabled,
@@ -297,16 +297,14 @@ export default function AgentDetailPage() {
 
       if (res.ok) {
         toast.success(
-          data.agent.tradingEnabled
-            ? 'Trading paused'
-            : 'Trading started'
+          data.agent.tradingEnabled ? "Trading paused" : "Trading started",
         );
         await fetchAgentData();
       } else {
-        toast.error('Failed to toggle trading');
+        toast.error("Failed to toggle trading");
       }
     } catch {
-      toast.error('Failed to toggle trading');
+      toast.error("Failed to toggle trading");
     } finally {
       setToggling(false);
     }
@@ -359,7 +357,7 @@ export default function AgentDetailPage() {
   }
 
   const { agent, positions, recentTrades, totalPnl, usdcBalance } = data;
-  const pnlColor = totalPnl >= 0 ? 'text-green-500' : 'text-red-500';
+  const pnlColor = totalPnl >= 0 ? "text-green-500" : "text-red-500";
 
   return (
     <PageContainer>
@@ -367,7 +365,7 @@ export default function AgentDetailPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <Button
-            onClick={() => router.push('/agents')}
+            onClick={() => router.push("/agents")}
             variant="ghost"
             className="gap-2"
           >
@@ -382,7 +380,7 @@ export default function AgentDetailPage() {
               disabled={refreshing}
             >
               <RefreshCw
-                className={cn('h-4 w-4', refreshing && 'animate-spin')}
+                className={cn("h-4 w-4", refreshing && "animate-spin")}
               />
             </Button>
             <Link href={`/agents/${agentId}/settings`}>
@@ -413,7 +411,7 @@ export default function AgentDetailPage() {
                 <Button
                   onClick={toggleTrading}
                   disabled={toggling}
-                  variant={agent.tradingEnabled ? 'destructive' : 'default'}
+                  variant={agent.tradingEnabled ? "destructive" : "default"}
                   className="gap-2"
                 >
                   {agent.tradingEnabled ? (
@@ -435,14 +433,14 @@ export default function AgentDetailPage() {
               <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
                 <span
                   className={cn(
-                    'flex items-center gap-1 rounded-full px-2 py-1',
+                    "flex items-center gap-1 rounded-full px-2 py-1",
                     agent.tradingEnabled
-                      ? 'bg-green-500/20 text-green-500'
-                      : 'bg-gray-500/20 text-gray-500'
+                      ? "bg-green-500/20 text-green-500"
+                      : "bg-gray-500/20 text-gray-500",
                   )}
                 >
                   <Activity className="h-3 w-3" />
-                  {agent.tradingEnabled ? 'Trading Active' : 'Trading Paused'}
+                  {agent.tradingEnabled ? "Trading Active" : "Trading Paused"}
                 </span>
                 <span className="rounded-full bg-muted px-2 py-1 capitalize">
                   {agent.riskTolerance} Risk
@@ -474,7 +472,7 @@ export default function AgentDetailPage() {
           <StatCard
             icon={TrendingUp}
             label="Unrealized P&L"
-            value={`${totalPnl >= 0 ? '+' : ''}$${Math.abs(totalPnl).toFixed(2)}`}
+            value={`${totalPnl >= 0 ? "+" : ""}$${Math.abs(totalPnl).toFixed(2)}`}
             valueColor={pnlColor}
           />
           <StatCard
@@ -511,13 +509,13 @@ export default function AgentDetailPage() {
 
           <TabsContent value="positions" className="mt-4">
             {positions.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
+              <div className="rounded-xl border border-border border-dashed bg-card/50 p-8 text-center">
                 <TrendingUp className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
                 <h3 className="mb-2 font-semibold">No Open Positions</h3>
                 <p className="text-muted-foreground">
                   {agent.tradingEnabled
-                    ? 'Your agent will open positions when it finds opportunities'
-                    : 'Start trading to begin taking positions'}
+                    ? "Your agent will open positions when it finds opportunities"
+                    : "Start trading to begin taking positions"}
                 </p>
               </div>
             ) : (
@@ -585,7 +583,7 @@ export default function AgentDetailPage() {
                       Max Position Size
                     </p>
                     <p className="font-medium">
-                      ${agent.maxPositionSize?.toLocaleString() || 'Not set'}
+                      ${agent.maxPositionSize?.toLocaleString() || "Not set"}
                     </p>
                   </div>
                 </div>

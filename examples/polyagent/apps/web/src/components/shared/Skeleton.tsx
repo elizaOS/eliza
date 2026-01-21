@@ -1,4 +1,4 @@
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 
 /**
  * Props for the Skeleton component.
@@ -25,7 +25,7 @@ interface SkeletonProps {
 export function Skeleton({ className }: SkeletonProps) {
   return (
     <div
-      className={cn('animate-pulse rounded bg-muted/50', className)}
+      className={cn("animate-pulse rounded bg-muted/50", className)}
       aria-hidden="true"
     />
   );
@@ -202,8 +202,8 @@ export function ChatMessageSkeleton({
   return (
     <div
       className={cn(
-        'flex gap-3',
-        isCurrentUser ? 'justify-end' : 'items-start'
+        "flex gap-3",
+        isCurrentUser ? "justify-end" : "items-start",
       )}
     >
       {!isCurrentUser && (
@@ -211,15 +211,15 @@ export function ChatMessageSkeleton({
       )}
       <div
         className={cn(
-          'min-w-0 max-w-[70%] space-y-2',
-          isCurrentUser ? 'items-end' : 'items-start'
+          "min-w-0 max-w-[70%] space-y-2",
+          isCurrentUser ? "items-end" : "items-start",
         )}
       >
         <Skeleton className="h-3 w-24 max-w-full" />
         <Skeleton
           className={cn(
-            'h-20 max-w-full rounded-2xl',
-            isCurrentUser ? 'w-36 sm:w-48' : 'w-40 sm:w-56'
+            "h-20 max-w-full rounded-2xl",
+            isCurrentUser ? "w-36 sm:w-48" : "w-40 sm:w-56",
           )}
         />
       </div>

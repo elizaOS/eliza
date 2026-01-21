@@ -20,17 +20,15 @@ use crate::types::components::{
 };
 use crate::types::database::GetMemoriesParams;
 use crate::types::plugin::Plugin;
-use crate::types::primitives::UUID;
 use crate::types::primitives::string_to_uuid;
+use crate::types::primitives::UUID;
 use crate::types::settings::SettingValue;
 use crate::types::state::State;
 use crate::types::Memory;
 
 // Import templates from centralized prompts
 use crate::prompts::{
-    INITIAL_SUMMARIZATION_TEMPLATE,
-    UPDATE_SUMMARIZATION_TEMPLATE,
-    LONG_TERM_EXTRACTION_TEMPLATE,
+    INITIAL_SUMMARIZATION_TEMPLATE, LONG_TERM_EXTRACTION_TEMPLATE, UPDATE_SUMMARIZATION_TEMPLATE,
 };
 
 const TABLE_SESSION_SUMMARY: &str = "session_summary";
@@ -165,7 +163,8 @@ fn extract_between(haystack: &str, start_tag: &str, end_tag: &str) -> Option<Str
 }
 
 fn parse_summary_xml(xml: &str) -> SummaryResult {
-    let text = extract_between(xml, "<text>", "</text>").unwrap_or_else(|| "Summary not available".to_string());
+    let text = extract_between(xml, "<text>", "</text>")
+        .unwrap_or_else(|| "Summary not available".to_string());
     let topics_raw = extract_between(xml, "<topics>", "</topics>").unwrap_or_default();
     let topics = topics_raw
         .split(',')
@@ -177,7 +176,9 @@ fn parse_summary_xml(xml: &str) -> SummaryResult {
     let mut rem = xml;
     while let Some(start) = rem.find("<point>") {
         let after = &rem[start + "<point>".len()..];
-        let Some(end) = after.find("</point>") else { break };
+        let Some(end) = after.find("</point>") else {
+            break;
+        };
         key_points.push(after[..end].trim().to_string());
         rem = &after[end + "</point>".len()..];
     }
@@ -201,7 +202,9 @@ fn parse_memory_extraction_xml(xml: &str) -> Vec<MemoryExtraction> {
     let mut rem = xml;
     while let Some(mem_start) = rem.find("<memory>") {
         let after = &rem[mem_start + "<memory>".len()..];
-        let Some(mem_end) = after.find("</memory>") else { break };
+        let Some(mem_end) = after.find("</memory>") else {
+            break;
+        };
         let block = &after[..mem_end];
 
         let cat = extract_between(block, "<category>", "</category>");
@@ -241,8 +244,6 @@ impl MemoryService {
 
     /// Configure from runtime settings (best-effort).
     pub async fn configure_from_runtime(&self, runtime: &AgentRuntime) {
-        let mut cfg = self.config.lock().expect("lock poisoned");
-
         async fn get_i(rt: &AgentRuntime, key: &str) -> Option<i32> {
             match rt.get_setting(key).await {
                 Some(SettingValue::Number(n)) => Some(n as i32),
@@ -265,28 +266,40 @@ impl MemoryService {
             }
         }
 
-        if let Some(v) = get_i(runtime, "MEMORY_SUMMARIZATION_THRESHOLD").await {
+        // Collect all settings first (before acquiring lock) to avoid holding lock across await
+        let summarization_threshold = get_i(runtime, "MEMORY_SUMMARIZATION_THRESHOLD").await;
+        let retain_recent = get_i(runtime, "MEMORY_RETAIN_RECENT").await;
+        let summarization_interval = get_i(runtime, "MEMORY_SUMMARIZATION_INTERVAL").await;
+        let max_new_messages = get_i(runtime, "MEMORY_MAX_NEW_MESSAGES").await;
+        let long_term_enabled = get_b(runtime, "MEMORY_LONG_TERM_ENABLED").await;
+        let confidence_threshold = get_f(runtime, "MEMORY_CONFIDENCE_THRESHOLD").await;
+        let extraction_threshold = get_i(runtime, "MEMORY_EXTRACTION_THRESHOLD").await;
+        let extraction_interval = get_i(runtime, "MEMORY_EXTRACTION_INTERVAL").await;
+
+        // Now acquire lock and apply settings
+        let mut cfg = self.config.lock().expect("lock poisoned");
+        if let Some(v) = summarization_threshold {
             cfg.short_term_summarization_threshold = v;
         }
-        if let Some(v) = get_i(runtime, "MEMORY_RETAIN_RECENT").await {
+        if let Some(v) = retain_recent {
             cfg.short_term_retain_recent = v;
         }
-        if let Some(v) = get_i(runtime, "MEMORY_SUMMARIZATION_INTERVAL").await {
+        if let Some(v) = summarization_interval {
             cfg.short_term_summarization_interval = v;
         }
-        if let Some(v) = get_i(runtime, "MEMORY_MAX_NEW_MESSAGES").await {
+        if let Some(v) = max_new_messages {
             cfg.summary_max_new_messages = v;
         }
-        if let Some(v) = get_b(runtime, "MEMORY_LONG_TERM_ENABLED").await {
+        if let Some(v) = long_term_enabled {
             cfg.long_term_extraction_enabled = v;
         }
-        if let Some(v) = get_f(runtime, "MEMORY_CONFIDENCE_THRESHOLD").await {
+        if let Some(v) = confidence_threshold {
             cfg.long_term_confidence_threshold = v;
         }
-        if let Some(v) = get_i(runtime, "MEMORY_EXTRACTION_THRESHOLD").await {
+        if let Some(v) = extraction_threshold {
             cfg.long_term_extraction_threshold = v;
         }
-        if let Some(v) = get_i(runtime, "MEMORY_EXTRACTION_INTERVAL").await {
+        if let Some(v) = extraction_interval {
             cfg.long_term_extraction_interval = v;
         }
     }
@@ -296,11 +309,14 @@ impl MemoryService {
     }
 
     fn long_term_room_id(entity_id: &UUID) -> UUID {
-        string_to_uuid(&format!("advanced-memory:long-term:{}", entity_id))
+        string_to_uuid(format!("advanced-memory:long-term:{}", entity_id))
     }
 
     fn checkpoint_room_id(entity_id: &UUID, room_id: &UUID) -> UUID {
-        string_to_uuid(&format!("advanced-memory:checkpoint:{}:{}", entity_id, room_id))
+        string_to_uuid(format!(
+            "advanced-memory:checkpoint:{}:{}",
+            entity_id, room_id
+        ))
     }
 
     /// Get the current session summary for a room.
@@ -373,7 +389,12 @@ impl MemoryService {
     }
 
     /// Set the last extraction checkpoint (message count) for an entity+room.
-    pub fn set_last_extraction_checkpoint(&self, entity_id: UUID, room_id: UUID, message_count: i32) {
+    pub fn set_last_extraction_checkpoint(
+        &self,
+        entity_id: UUID,
+        room_id: UUID,
+        message_count: i32,
+    ) {
         let key = Self::checkpoint_key(entity_id, room_id);
         self.checkpoints
             .lock()
@@ -382,7 +403,12 @@ impl MemoryService {
     }
 
     /// Decide whether we should run long-term extraction for an entity+room.
-    pub fn should_run_extraction(&self, entity_id: UUID, room_id: UUID, current_message_count: i32) -> bool {
+    pub fn should_run_extraction(
+        &self,
+        entity_id: UUID,
+        room_id: UUID,
+        current_message_count: i32,
+    ) -> bool {
         let cfg = self.get_config();
         if current_message_count < cfg.long_term_extraction_threshold {
             return false;
@@ -483,11 +509,13 @@ impl MemoryService {
             world_id: None,
             unique: Some(false),
             similarity: None,
-            metadata: Some(crate::types::memory::MemoryMetadata::Custom(serde_json::json!({
-                "type": TABLE_EXTRACTION_CHECKPOINT,
-                "entityId": entity_id.as_str(),
-                "roomId": room_id.as_str(),
-            }))),
+            metadata: Some(crate::types::memory::MemoryMetadata::Custom(
+                serde_json::json!({
+                    "type": TABLE_EXTRACTION_CHECKPOINT,
+                    "entityId": entity_id.as_str(),
+                    "roomId": room_id.as_str(),
+                }),
+            )),
         };
         let _ = adapter
             .create_memory(&mem, TABLE_EXTRACTION_CHECKPOINT)
@@ -505,7 +533,9 @@ impl MemoryService {
         if current_message_count < cfg.long_term_extraction_threshold {
             return false;
         }
-        let last = self.get_last_extraction_checkpoint_db(runtime, entity_id, room_id).await;
+        let last = self
+            .get_last_extraction_checkpoint_db(runtime, entity_id, room_id)
+            .await;
         let interval = cfg.long_term_extraction_interval.max(1);
         let current_checkpoint = (current_message_count / interval) * interval;
         current_checkpoint > last
@@ -543,8 +573,14 @@ impl MemoryService {
                 .and_then(|v| v.as_str())
                 .and_then(LongTermMemoryCategory::from_str)
                 .unwrap_or(LongTermMemoryCategory::Semantic);
-            let conf = meta.get("confidence").and_then(|v| v.as_f64()).unwrap_or(1.0);
-            let source = meta.get("source").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let conf = meta
+                .get("confidence")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1.0);
+            let source = meta
+                .get("source")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             out.push(LongTermMemory {
                 id: m.id.unwrap_or_else(UUID::new_v4),
                 agent_id: runtime.agent_id.clone(),
@@ -553,18 +589,21 @@ impl MemoryService {
                 content: m.content.text.unwrap_or_default(),
                 confidence: conf,
                 source,
-                metadata: meta.get("metadata").cloned().unwrap_or(Value::Object(Default::default())),
+                metadata: meta
+                    .get("metadata")
+                    .cloned()
+                    .unwrap_or(Value::Object(Default::default())),
             });
         }
-        out.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+        out.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         out
     }
 
-    async fn store_long_term_memory_db(
-        &self,
-        runtime: &AgentRuntime,
-        memory: &LongTermMemory,
-    ) {
+    async fn store_long_term_memory_db(&self, runtime: &AgentRuntime, memory: &LongTermMemory) {
         let Some(adapter) = runtime.get_adapter() else {
             self.store_long_term_memory(memory.clone());
             return;
@@ -584,13 +623,15 @@ impl MemoryService {
             world_id: None,
             unique: Some(false),
             similarity: None,
-            metadata: Some(crate::types::memory::MemoryMetadata::Custom(serde_json::json!({
-                "type": TABLE_LONG_TERM_MEMORY,
-                "category": memory.category.as_str(),
-                "confidence": memory.confidence,
-                "source": memory.source,
-                "metadata": memory.metadata,
-            }))),
+            metadata: Some(crate::types::memory::MemoryMetadata::Custom(
+                serde_json::json!({
+                    "type": TABLE_LONG_TERM_MEMORY,
+                    "category": memory.category.as_str(),
+                    "confidence": memory.confidence,
+                    "source": memory.source,
+                    "metadata": memory.metadata,
+                }),
+            )),
         };
         let _ = adapter.create_memory(&mem, TABLE_LONG_TERM_MEMORY).await;
         self.store_long_term_memory(memory.clone());
@@ -614,9 +655,7 @@ impl MemoryService {
             })
             .await
             .unwrap_or_default();
-        let Some(m) = rows.first() else {
-            return None;
-        };
+        let m = rows.first()?;
         let meta = match &m.metadata {
             Some(crate::types::memory::MemoryMetadata::Custom(v)) => v.clone(),
             None => Value::Null,
@@ -627,22 +666,31 @@ impl MemoryService {
             room_id: room_id.clone(),
             entity_id: None,
             summary: m.content.text.clone().unwrap_or_default(),
-            message_count: meta.get("messageCount").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-            last_message_offset: meta.get("lastMessageOffset").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+            message_count: meta
+                .get("messageCount")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32,
+            last_message_offset: meta
+                .get("lastMessageOffset")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32,
             topics: meta
                 .get("topics")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
                 .unwrap_or_default(),
-            metadata: meta.get("metadata").cloned().unwrap_or(Value::Object(Default::default())),
+            metadata: meta
+                .get("metadata")
+                .cloned()
+                .unwrap_or(Value::Object(Default::default())),
         })
     }
 
-    async fn store_session_summary_db(
-        &self,
-        runtime: &AgentRuntime,
-        summary: &SessionSummary,
-    ) {
+    async fn store_session_summary_db(&self, runtime: &AgentRuntime, summary: &SessionSummary) {
         let Some(adapter) = runtime.get_adapter() else {
             self.store_session_summary(summary.clone());
             return;
@@ -661,13 +709,15 @@ impl MemoryService {
             world_id: None,
             unique: Some(false),
             similarity: None,
-            metadata: Some(crate::types::memory::MemoryMetadata::Custom(serde_json::json!({
-                "type": TABLE_SESSION_SUMMARY,
-                "messageCount": summary.message_count,
-                "lastMessageOffset": summary.last_message_offset,
-                "topics": summary.topics,
-                "metadata": summary.metadata,
-            }))),
+            metadata: Some(crate::types::memory::MemoryMetadata::Custom(
+                serde_json::json!({
+                    "type": TABLE_SESSION_SUMMARY,
+                    "messageCount": summary.message_count,
+                    "lastMessageOffset": summary.last_message_offset,
+                    "topics": summary.topics,
+                    "metadata": summary.metadata,
+                }),
+            )),
         };
         let _ = adapter.create_memory(&mem, TABLE_SESSION_SUMMARY).await;
         self.store_session_summary(summary.clone());
@@ -717,7 +767,10 @@ impl Service for MemoryService {
     }
 
     async fn stop(&self) -> Result<()> {
-        self.session_summaries.lock().expect("lock poisoned").clear();
+        self.session_summaries
+            .lock()
+            .expect("lock poisoned")
+            .clear();
         self.long_term.lock().expect("lock poisoned").clear();
         self.checkpoints.lock().expect("lock poisoned").clear();
         Ok(())
@@ -787,7 +840,9 @@ impl ProviderHandler for ContextSummaryProvider {
     fn definition(&self) -> ProviderDefinition {
         ProviderDefinition {
             name: "SUMMARIZED_CONTEXT".to_string(),
-            description: Some("Provides summarized context from previous conversations".to_string()),
+            description: Some(
+                "Provides summarized context from previous conversations".to_string(),
+            ),
             dynamic: Some(false),
             position: Some(96),
             private: Some(false),
@@ -841,7 +896,8 @@ impl EvaluatorHandler for SummarizationEvaluator {
     fn definition(&self) -> EvaluatorDefinition {
         EvaluatorDefinition {
             name: "MEMORY_SUMMARIZATION".to_string(),
-            description: "Automatically summarizes conversations to optimize context usage".to_string(),
+            description: "Automatically summarizes conversations to optimize context usage"
+                .to_string(),
             always_run: Some(true),
             similes: Some(vec![
                 "CONVERSATION_SUMMARY".to_string(),
@@ -901,19 +957,17 @@ impl EvaluatorHandler for SummarizationEvaluator {
         }
 
         let existing = ms.get_session_summary_db(&runtime, &room_id).await;
-        let existing_offset = existing.as_ref().map(|s| s.last_message_offset).unwrap_or(0);
+        let existing_offset = existing
+            .as_ref()
+            .map(|s| s.last_message_offset)
+            .unwrap_or(0);
         let cfg = ms.get_config();
 
         let mut dialogue_lines: Vec<String> = Vec::new();
         for m in messages.iter() {
             if let Some(t) = &m.content.text {
                 let sender = if m.entity_id == runtime.agent_id {
-                    runtime
-                        .character
-                        .read()
-                        .await
-                        .name
-                        .clone()
+                    runtime.character.read().await.name.clone()
                 } else {
                     "User".to_string()
                 };
@@ -1075,7 +1129,14 @@ impl EvaluatorHandler for LongTermExtractionEvaluator {
         } else {
             existing
                 .iter()
-                .map(|m| format!("[{}] {} (confidence: {})", m.category.as_str(), m.content, m.confidence))
+                .map(|m| {
+                    format!(
+                        "[{}] {} (confidence: {})",
+                        m.category.as_str(),
+                        m.content,
+                        m.confidence
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n")
         };
@@ -1157,4 +1218,3 @@ pub fn create_advanced_memory_plugin(runtime: Weak<AgentRuntime>) -> Plugin {
     }))
     .with_evaluator(Arc::new(LongTermExtractionEvaluator { runtime }))
 }
-

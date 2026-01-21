@@ -28,7 +28,11 @@ export const taskContextProvider: Provider = {
   name: "TASK_CONTEXT",
   description: "Summary of orchestrated tasks and current selection",
   dynamic: true,
-  get: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ): Promise<ProviderResult> => {
     const svc = getService(runtime);
     if (!svc) {
       return { text: "Task service not available." };
@@ -62,4 +66,3 @@ export const taskContextProvider: Provider = {
     return { text: lines.join("\n").trim() };
   },
 };
-

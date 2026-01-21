@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-telegram",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Complete Telegram bot agent using elizaOS with SQL persistence",
   "type": "module",
   "private": true,

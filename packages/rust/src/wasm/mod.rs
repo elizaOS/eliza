@@ -19,13 +19,7 @@ use wasm_bindgen_futures::future_to_promise;
 use js_sys::{Function, Object, Promise, Reflect};
 
 #[cfg(feature = "wasm")]
-use crate::runtime::{AgentRuntime, RuntimeOptions};
-
-#[cfg(feature = "wasm")]
-use crate::types::{Agent, Character, Content, Entity, Memory, Plugin, Room, State, UUID};
-
-#[cfg(feature = "wasm")]
-use crate::wasm::shims::JsModelHandler;
+use crate::types::{Agent, Character, Content, Entity, Memory, Plugin, Room, UUID};
 
 /// Initialize the WASM module with panic hook for better error messages
 #[cfg(feature = "wasm")]
@@ -55,12 +49,10 @@ impl WasmUUID {
     /// Create a UUID from a string
     #[wasm_bindgen(js_name = "fromString")]
     pub fn from_string(s: &str) -> Result<WasmUUID, JsValue> {
-        UUID::new(s)
-            .map(|inner| WasmUUID { inner })
-            .map_err(|e| {
-                WasmError::validation_error(format!("Invalid UUID: {}", e), Some("uuid".to_string()))
-                    .into_js_value()
-            })
+        UUID::new(s).map(|inner| WasmUUID { inner }).map_err(|e| {
+            WasmError::validation_error(format!("Invalid UUID: {}", e), Some("uuid".to_string()))
+                .into_js_value()
+        })
     }
 
     /// Convert to string
@@ -98,11 +90,10 @@ impl WasmMemory {
     /// Convert to JSON
     #[wasm_bindgen(js_name = "toJson")]
     pub fn to_json(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner)
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize Memory: {}", e), None)
-                    .into_js_value()
-            })
+        serde_json::to_string(&self.inner).map_err(|e| {
+            WasmError::parse_error(format!("Failed to serialize Memory: {}", e), None)
+                .into_js_value()
+        })
     }
 
     /// Get the memory ID
@@ -126,11 +117,10 @@ impl WasmMemory {
     /// Get the content as JSON
     #[wasm_bindgen(getter)]
     pub fn content(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner.content)
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize content: {}", e), None)
-                    .into_js_value()
-            })
+        serde_json::to_string(&self.inner.content).map_err(|e| {
+            WasmError::parse_error(format!("Failed to serialize content: {}", e), None)
+                .into_js_value()
+        })
     }
 
     /// Check if memory is unique
@@ -169,11 +159,10 @@ impl WasmCharacter {
     /// Convert to JSON
     #[wasm_bindgen(js_name = "toJson")]
     pub fn to_json(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner)
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize Character: {}", e), None)
-                    .into_js_value()
-            })
+        serde_json::to_string(&self.inner).map_err(|e| {
+            WasmError::parse_error(format!("Failed to serialize Character: {}", e), None)
+                .into_js_value()
+        })
     }
 
     /// Get the character name
@@ -191,21 +180,18 @@ impl WasmCharacter {
     /// Get topics as JSON array
     #[wasm_bindgen(getter)]
     pub fn topics(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner.topics)
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize topics: {}", e), None)
-                    .into_js_value()
-            })
+        serde_json::to_string(&self.inner.topics).map_err(|e| {
+            WasmError::parse_error(format!("Failed to serialize topics: {}", e), None)
+                .into_js_value()
+        })
     }
 
     /// Get the bio
     #[wasm_bindgen(getter)]
     pub fn bio(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner.bio)
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize bio: {}", e), None)
-                    .into_js_value()
-            })
+        serde_json::to_string(&self.inner.bio).map_err(|e| {
+            WasmError::parse_error(format!("Failed to serialize bio: {}", e), None).into_js_value()
+        })
     }
 }
 
@@ -230,11 +216,10 @@ impl WasmAgent {
     /// Convert to JSON
     #[wasm_bindgen(js_name = "toJson")]
     pub fn to_json(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner)
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize Agent: {}", e), None)
-                    .into_js_value()
-            })
+        serde_json::to_string(&self.inner).map_err(|e| {
+            WasmError::parse_error(format!("Failed to serialize Agent: {}", e), None)
+                .into_js_value()
+        })
     }
 
     /// Get the agent ID
@@ -264,10 +249,9 @@ impl WasmPlugin {
     #[wasm_bindgen(js_name = "fromJson")]
     pub fn from_json(json: &str) -> Result<WasmPlugin, JsValue> {
         use crate::types::{Plugin, PluginDefinition};
-        let definition: PluginDefinition = serde_json::from_str(json)
-            .map_err(|e| {
-                WasmError::from_json_error(&e, Some("pluginDefinition".to_string())).into_js_value()
-            })?;
+        let definition: PluginDefinition = serde_json::from_str(json).map_err(|e| {
+            WasmError::from_json_error(&e, Some("pluginDefinition".to_string())).into_js_value()
+        })?;
         Ok(WasmPlugin {
             inner: Plugin {
                 definition,
@@ -284,11 +268,10 @@ impl WasmPlugin {
     /// Convert to JSON (only definition is serialized)
     #[wasm_bindgen(js_name = "toJson")]
     pub fn to_json(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner.definition)
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize PluginDefinition: {}", e), None)
-                    .into_js_value()
-            })
+        serde_json::to_string(&self.inner.definition).map_err(|e| {
+            WasmError::parse_error(format!("Failed to serialize PluginDefinition: {}", e), None)
+                .into_js_value()
+        })
     }
 
     /// Get the plugin name
@@ -301,50 +284,6 @@ impl WasmPlugin {
     #[wasm_bindgen(getter)]
     pub fn description(&self) -> Option<String> {
         Some(self.inner.description().to_string())
-    }
-}
-
-/// WASM-compatible State wrapper
-#[cfg(feature = "wasm")]
-#[wasm_bindgen]
-pub struct WasmState {
-    inner: State,
-}
-
-#[cfg(feature = "wasm")]
-#[wasm_bindgen]
-impl WasmState {
-    /// Create a new state from JSON
-    #[wasm_bindgen(js_name = "fromJson")]
-    pub fn from_json(json: &str) -> Result<WasmState, JsValue> {
-        serde_json::from_str::<State>(json)
-            .map(|inner| WasmState { inner })
-            .map_err(|e| WasmError::from_json_error(&e, Some("state".to_string())).into_js_value())
-    }
-
-    /// Convert to JSON
-    #[wasm_bindgen(js_name = "toJson")]
-    pub fn to_json(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner)
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize State: {}", e), None)
-                    .into_js_value()
-            })
-    }
-
-    /// Create empty state
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self {
-            inner: State::default(),
-        }
-    }
-}
-
-#[cfg(feature = "wasm")]
-impl Default for WasmState {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -369,11 +308,9 @@ impl WasmRoom {
     /// Convert to JSON
     #[wasm_bindgen(js_name = "toJson")]
     pub fn to_json(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner)
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize Room: {}", e), None)
-                    .into_js_value()
-            })
+        serde_json::to_string(&self.inner).map_err(|e| {
+            WasmError::parse_error(format!("Failed to serialize Room: {}", e), None).into_js_value()
+        })
     }
 
     /// Get the room ID
@@ -404,11 +341,10 @@ impl WasmEntity {
     /// Convert to JSON
     #[wasm_bindgen(js_name = "toJson")]
     pub fn to_json(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner)
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize Entity: {}", e), None)
-                    .into_js_value()
-            })
+        serde_json::to_string(&self.inner).map_err(|e| {
+            WasmError::parse_error(format!("Failed to serialize Entity: {}", e), None)
+                .into_js_value()
+        })
     }
 
     /// Get the entity ID
@@ -474,9 +410,6 @@ use std::cell::RefCell;
 #[cfg(feature = "wasm")]
 use std::collections::HashMap;
 
-#[cfg(feature = "wasm")]
-use std::rc::Rc;
-
 // Thread-local storage for JS model handlers
 // Since WASM is single-threaded, this is safe
 #[cfg(feature = "wasm")]
@@ -500,19 +433,19 @@ async fn call_js_model_handler(
         .into_js_value()
     })?;
 
-    handler
-        .call(&params)
-        .await
-        .map_err(|e| e.into_js_value())
+    handler.call(&params).await.map_err(|e| e.into_js_value())
 }
 
 /// WASM-compatible AgentRuntime
+///
+/// This is a standalone WASM runtime that doesn't depend on the native AgentRuntime.
+/// It provides basic message handling by delegating to JavaScript model handlers.
 #[cfg(feature = "wasm")]
 #[wasm_bindgen]
 pub struct WasmAgentRuntime {
-    inner: Rc<RefCell<Option<std::sync::Arc<AgentRuntime>>>>,
     character: RefCell<Character>,
     agent_id: UUID,
+    initialized: RefCell<bool>,
 }
 
 #[cfg(feature = "wasm")]
@@ -533,38 +466,23 @@ impl WasmAgentRuntime {
             .unwrap_or_else(|| crate::types::string_to_uuid(&character.name));
 
         Ok(WasmAgentRuntime {
-            inner: Rc::new(RefCell::new(None)),
             character: RefCell::new(character),
             agent_id,
+            initialized: RefCell::new(false),
         })
     }
 
-    /// Initialize the runtime asynchronously.
+    /// Initialize the runtime.
     #[wasm_bindgen]
-    pub fn initialize(&self) -> Promise {
-        let character = self.character.borrow().clone();
-        let inner = Rc::clone(&self.inner);
-
-        future_to_promise(async move {
-            let runtime = AgentRuntime::new(RuntimeOptions {
-                character: Some(character),
-                ..Default::default()
-            })
-            .await
-            .map_err(|e| {
-                WasmError::internal_error(format!("Failed to create runtime: {}", e))
-                    .into_js_value()
-            })?;
-
-            *inner.borrow_mut() = Some(runtime);
-            Ok(JsValue::undefined())
-        })
+    pub fn initialize(&self) -> Result<(), JsValue> {
+        *self.initialized.borrow_mut() = true;
+        Ok(())
     }
 
     /// Check if the runtime has been initialized.
     #[wasm_bindgen(getter, js_name = "isInitialized")]
     pub fn is_initialized(&self) -> bool {
-        self.inner.borrow().is_some()
+        *self.initialized.borrow()
     }
 
     /// Register a model handler using the shim.
@@ -597,10 +515,10 @@ impl WasmAgentRuntime {
         let message_result: Result<Memory, _> = serde_json::from_str(message_json);
         let character = self.character.borrow().clone();
         let agent_id = self.agent_id.clone();
-        let inner = Rc::clone(&self.inner);
+        let initialized = *self.initialized.borrow();
 
         future_to_promise(async move {
-            if inner.borrow().is_none() {
+            if !initialized {
                 return Err(WasmError::not_initialized("Runtime not initialized").into_js_value());
             }
 
@@ -675,11 +593,10 @@ impl WasmAgentRuntime {
     /// Get the character as JSON
     #[wasm_bindgen(getter, js_name = "character")]
     pub fn character(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&*self.character.borrow())
-            .map_err(|e| {
-                WasmError::parse_error(format!("Failed to serialize character: {}", e), None)
-                    .into_js_value()
-            })
+        serde_json::to_string(&*self.character.borrow()).map_err(|e| {
+            WasmError::parse_error(format!("Failed to serialize character: {}", e), None)
+                .into_js_value()
+        })
     }
 
     /// Stop the runtime
@@ -689,7 +606,7 @@ impl WasmAgentRuntime {
         JS_MODEL_HANDLERS.with(|handlers| {
             handlers.borrow_mut().clear();
         });
-        *self.inner.borrow_mut() = None;
+        *self.initialized.borrow_mut() = false;
     }
 }
 

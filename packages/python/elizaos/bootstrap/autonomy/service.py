@@ -7,17 +7,17 @@ import time
 import uuid
 from typing import TYPE_CHECKING
 
-from elizaos.types.environment import Room, World
-from elizaos.types.events import EventType
-from elizaos.types.memory import Memory
-from elizaos.types.primitives import UUID, Content, as_uuid
-from elizaos.types.service import Service
 from elizaos.prompts import (
     AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE,
     AUTONOMY_CONTINUOUS_FIRST_TEMPLATE,
     AUTONOMY_TASK_CONTINUE_TEMPLATE,
     AUTONOMY_TASK_FIRST_TEMPLATE,
 )
+from elizaos.types.environment import Room, World
+from elizaos.types.events import EventType
+from elizaos.types.memory import Memory
+from elizaos.types.primitives import UUID, Content, as_uuid
+from elizaos.types.service import Service
 
 from .types import AutonomyStatus
 
@@ -75,7 +75,9 @@ class AutonomyService(Service):
 
         # Check if autonomy should auto-start based on runtime configuration
         if autonomy_enabled:
-            self._log("info", "Autonomy enabled (enable_autonomy: True), starting autonomous loop...")
+            self._log(
+                "info", "Autonomy enabled (enable_autonomy: True), starting autonomous loop..."
+            )
             await self.start_loop()
         else:
             self._log(
@@ -373,9 +375,7 @@ class AutonomyService(Service):
         self, last_thought: str | None, is_first_thought: bool, target_context: str
     ) -> str:
         template = (
-            AUTONOMY_TASK_FIRST_TEMPLATE
-            if is_first_thought
-            else AUTONOMY_TASK_CONTINUE_TEMPLATE
+            AUTONOMY_TASK_FIRST_TEMPLATE if is_first_thought else AUTONOMY_TASK_CONTINUE_TEMPLATE
         )
         return self._fill_autonomy_template(template, target_context, last_thought)
 

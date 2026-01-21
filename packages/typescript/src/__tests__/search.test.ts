@@ -27,7 +27,9 @@ describe("BM25 search", () => {
   });
 
   it("omits stats when includeStats is false", () => {
-    const bm = new BM25([{ text: "hello world" }], { fieldBoosts: { text: 1 } });
+    const bm = new BM25([{ text: "hello world" }], {
+      fieldBoosts: { text: 1 },
+    });
     const tokenizer = bm.tokenizer;
     const result = tokenizer.tokenize("hello world");
     expect(result.stats).toBeUndefined();

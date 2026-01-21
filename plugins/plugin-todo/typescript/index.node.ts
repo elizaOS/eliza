@@ -8,19 +8,19 @@ const nodePlugin = {
 
 export { nodePlugin as default };
 
-// Re-export all named exports from index.ts
-export {
-  todoSchema,
-  CacheManager,
-  TodoIntegrationBridge,
-  NotificationManager,
-  TodoReminderService,
-  createTodoDataService,
-} from "./index";
 export type {
   CacheEntry,
   CacheStats,
   NotificationData,
   NotificationPreferences,
   TodoData,
+} from "./index";
+// Re-export all named exports from index.ts
+export {
+  CacheManager,
+  createTodoDataService,
+  NotificationManager,
+  TodoIntegrationBridge,
+  TodoReminderService,
+  todoSchema,
 } from "./index";

@@ -210,8 +210,12 @@ ${
   this.runtime.character.messageExamples && this.runtime.character.messageExamples.length > 0
     ? `
 Example posts that capture your voice:
-${this.runtime.character.messageExamples
-  .flatMap((group) => group.examples)
+${(
+  this.runtime.character.messageExamples as Array<{
+    examples?: Array<{ content?: { text?: string } }>;
+  }>
+)
+  .flatMap((group) => group.examples ?? [])
   .map((example) => example.content?.text ?? "")
   .filter((text) => text.length > 0)
   .slice(0, 5)

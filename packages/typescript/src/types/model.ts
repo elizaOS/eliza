@@ -1,4 +1,5 @@
 import type {
+  JsonValue,
   AudioProcessingParams as ProtoAudioProcessingParams,
   DetokenizeTextParams as ProtoDetokenizeTextParams,
   GenerateTextOptions as ProtoGenerateTextOptions,
@@ -13,12 +14,11 @@ import type {
   TextEmbeddingParams as ProtoTextEmbeddingParams,
   TextStreamChunk as ProtoTextStreamChunk,
   TextToSpeechParams as ProtoTextToSpeechParams,
-  TokenUsage as ProtoTokenUsage,
   TokenizeTextParams as ProtoTokenizeTextParams,
+  TokenUsage as ProtoTokenUsage,
   TranscriptionParams as ProtoTranscriptionParams,
   VideoProcessingParams as ProtoVideoProcessingParams,
 } from "./proto.js";
-import type { JsonValue } from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 
 export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
@@ -302,7 +302,10 @@ export interface TextStreamResult {
  * Extends GenerateTextParams with additional configuration for character context.
  */
 export interface GenerateTextOptions
-  extends Omit<ProtoGenerateTextOptions, "$typeName" | "$unknown" | "modelType"> {
+  extends Omit<
+    ProtoGenerateTextOptions,
+    "$typeName" | "$unknown" | "modelType"
+  > {
   includeCharacter?: boolean;
   modelType?: TextGenerationModelType;
   minTokens?: number;
@@ -325,7 +328,10 @@ export interface GenerateTextResult
  * Parameters for text tokenization models
  */
 export interface TokenizeTextParams
-  extends Omit<ProtoTokenizeTextParams, "$typeName" | "$unknown" | "modelType"> {
+  extends Omit<
+    ProtoTokenizeTextParams,
+    "$typeName" | "$unknown" | "modelType"
+  > {
   modelType: ModelTypeName;
 }
 
@@ -642,7 +648,12 @@ export interface JSONSchema
 export interface ObjectGenerationParams
   extends Omit<
     ProtoObjectGenerationParams,
-    "$typeName" | "$unknown" | "modelType" | "schema" | "enumValues" | "stopSequences"
+    | "$typeName"
+    | "$unknown"
+    | "modelType"
+    | "schema"
+    | "enumValues"
+    | "stopSequences"
   > {
   schema?: JSONSchema;
   modelType?: ModelTypeName;

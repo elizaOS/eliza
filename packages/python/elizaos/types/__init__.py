@@ -1,6 +1,5 @@
 # Import generated module first to set up sys.path for protobuf imports
 import elizaos.types.generated  # noqa: F401
-
 from elizaos.types.agent import (
     Agent,
     AgentStatus,

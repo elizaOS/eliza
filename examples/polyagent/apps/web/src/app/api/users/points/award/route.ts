@@ -75,7 +75,7 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@polyagent/api';
+} from "@polyagent/api";
 import {
   balanceTransactions,
   Decimal,
@@ -84,14 +84,14 @@ import {
   eq,
   sql,
   users,
-} from '@polyagent/db';
+} from "@polyagent/db";
 import {
   AwardPointsSchema,
   generateSnowflakeId,
   logger,
   UserIdParamSchema,
-} from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
+} from "@polyagent/shared";
+import type { NextRequest } from "next/server";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   await requireAdmin(request);
@@ -109,7 +109,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const user = await requireUserByIdentifier(userId);
 
   // Calculate balance changes
-  const balanceBefore = new Decimal(user.virtualBalance?.toString() || '0');
+  const balanceBefore = new Decimal(user.virtualBalance?.toString() || "0");
   const amountDecimal = new Decimal(amount);
   const balanceAfter = Decimal.add(balanceBefore, amountDecimal);
 
@@ -120,7 +120,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     .values({
       id: transactionId,
       userId: user.id,
-      type: 'deposit',
+      type: "deposit",
       amount: amountDecimal.toString(),
       balanceBefore: balanceBefore.toString(),
       balanceAfter: balanceAfter.toString(),
@@ -145,33 +145,33 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   logger.info(
     `Successfully awarded ${amount} points`,
     { userId: user.id, amount, reason },
-    'POST /api/users/points/award'
+    "POST /api/users/points/award",
   );
 
   if (!transaction) {
     throw new BusinessLogicError(
-      'Failed to create transaction',
-      'TRANSACTION_FAILED'
+      "Failed to create transaction",
+      "TRANSACTION_FAILED",
     );
   }
   if (!updatedUser) {
-    throw new BusinessLogicError('Failed to update user', 'UPDATE_FAILED');
+    throw new BusinessLogicError("Failed to update user", "UPDATE_FAILED");
   }
 
   return successResponse({
     message: `Successfully awarded ${amount} points`,
     transaction: {
       id: transaction.id,
-      amount: transaction.amount?.toString() || '0',
+      amount: transaction.amount?.toString() || "0",
       reason: transaction.description,
       timestamp: transaction.createdAt,
-      balanceBefore: transaction.balanceBefore?.toString() || '0',
-      balanceAfter: transaction.balanceAfter?.toString() || '0',
+      balanceBefore: transaction.balanceBefore?.toString() || "0",
+      balanceAfter: transaction.balanceAfter?.toString() || "0",
     },
     user: {
       id: updatedUser.id,
-      virtualBalance: updatedUser.virtualBalance?.toString() || '0',
-      totalDeposited: updatedUser.totalDeposited?.toString() || '0',
+      virtualBalance: updatedUser.virtualBalance?.toString() || "0",
+      totalDeposited: updatedUser.totalDeposited?.toString() || "0",
     },
   });
 });
@@ -180,10 +180,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const authUser = await authenticate(request);
 
   const { searchParams } = new URL(request.url);
-  const userIdParam = searchParams.get('userId');
+  const userIdParam = searchParams.get("userId");
 
   if (!userIdParam) {
-    throw new BusinessLogicError('User ID is required', 'USER_ID_REQUIRED');
+    throw new BusinessLogicError("User ID is required", "USER_ID_REQUIRED");
   }
 
   // Validate userId format
@@ -193,8 +193,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   if (authUser.userId !== canonicalUserId) {
     throw new BusinessLogicError(
-      'You can only view your own points history',
-      'UNAUTHORIZED_ACCESS'
+      "You can only view your own points history",
+      "UNAUTHORIZED_ACCESS",
     );
   }
 
@@ -213,9 +213,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     .orderBy(desc(balanceTransactions.createdAt));
 
   logger.info(
-    'Points award history fetched',
+    "Points award history fetched",
     { userId: canonicalUserId, transactionCount: transactions.length },
-    'GET /api/users/points/award'
+    "GET /api/users/points/award",
   );
 
   return successResponse({

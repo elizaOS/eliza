@@ -139,10 +139,7 @@ impl TaskService {
 
     /// Get all tasks with a specific status.
     pub fn get_tasks_by_status(&self, status: TaskStatus) -> Vec<&Task> {
-        self.tasks
-            .values()
-            .filter(|t| t.status == status)
-            .collect()
+        self.tasks.values().filter(|t| t.status == status).collect()
     }
 
     /// Get all pending tasks sorted by priority.
@@ -211,4 +208,3 @@ impl Service for TaskService {
         Ok(())
     }
 }
-

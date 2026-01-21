@@ -2,6 +2,6 @@
  * Type Exports for @babylon/agents
  */
 
-export * from './agent-registry';
-export * from './common';
-export * from './entities';
+export * from "./agent-registry";
+export * from "./common";
+export * from "./entities";
