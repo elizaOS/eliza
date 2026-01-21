@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-whatsapp",
-    "version": "0.25.6-alpha.1",
+    "version": "2.0.0-alpha.1",
     "description": "WhatsApp Cloud API plugin",
     "type": "module",
     "main": "dist/index.js",

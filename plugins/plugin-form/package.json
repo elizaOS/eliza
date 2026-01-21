@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-form",
-  "version": "1.0.0",
+  "version": "2.0.0-alpha.1",
   "description": "Guardrails for agent-guided user journeys - forms as agent guidance rails for ElizaOS",
   "author": "Odilitime",
   "license": "MIT",
@@ -27,9 +27,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
+    "bun-types": "^1.2.21",
     "prettier": "3.5.3",
-    "typescript": "5.8.2",
-    "bun-types": "^1.2.21"
+    "typescript": "5.8.2"
   },
   "scripts": {
     "build": "bun run build.ts",

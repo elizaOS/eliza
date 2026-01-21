@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-mcp-root",
   "description": "elizaOS plugin to integrate with MCP (Model Context Protocol) servers",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-alpha.1",
   "type": "module",
   "main": "dist/node/index.js",
   "module": "dist/node/index.js",

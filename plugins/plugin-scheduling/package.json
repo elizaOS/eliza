@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-scheduling",
-  "version": "1.0.0",
+  "version": "2.0.0-alpha.1",
   "description": "Scheduling and calendar coordination plugin for ElizaOS agents",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -29,11 +29,17 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "publishConfig": {
+        "access": "public"
+      }
     }
   },
   "files": [
     "dist",
     "README.md"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }
