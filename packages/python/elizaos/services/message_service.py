@@ -488,6 +488,12 @@ class DefaultMessageService(IMessageService):
                     stream_field=False,
                 ),
                 SchemaRow(
+                    field="params",
+                    description="JSON object with action parameters, e.g. {\"ACTION_NAME\": {\"param\": \"value\"}}",
+                    validate_field=False,
+                    stream_field=False,
+                ),
+                SchemaRow(
                     field="text",
                     description="The text response to send to the user",
                     stream_field=True,
@@ -523,10 +529,28 @@ class DefaultMessageService(IMessageService):
             providers = [p.strip() for p in providers_raw.split(",") if p.strip()]
             
             # Parse params from response if available
-            # Convert to JSON (not Python repr) for _parse_params_from_xml
             import json as json_module
+            params: dict[str, list[dict[str, str]]] = {}
+            if parsed_response:
+                params_raw = parsed_response.get("params", "")
+                if params_raw:
+                    # Try to parse as JSON if it's a string
+                    if isinstance(params_raw, str):
+                        try:
+                            params_parsed = json_module.loads(params_raw)
+                            if isinstance(params_parsed, dict):
+                                # Convert to expected format: {ACTION: [{param: value}]}
+                                for action_name, action_params in params_parsed.items():
+                                    if isinstance(action_params, dict):
+                                        params[action_name] = [action_params]
+                        except json_module.JSONDecodeError:
+                            pass
+                    elif isinstance(params_raw, dict):
+                        # Already a dict, convert to expected format
+                        for action_name, action_params in params_raw.items():
+                            if isinstance(action_params, dict):
+                                params[action_name] = [action_params]
             raw_response_str = json_module.dumps(parsed_response) if parsed_response else ""
-            params = _parse_params_from_xml(raw_response_str)
 
             # Step 5b: If actions require params but none were provided, run a parameter-repair pass
             # using the SAME model. This keeps behavior canonical while preventing "action without params"
@@ -812,8 +836,22 @@ class DefaultMessageService(IMessageService):
             thought = str(decision_result.get("thought", "")) if decision_result else ""
             action_name = str(decision_result.get("action", "")).strip() if decision_result else ""
             providers_csv = str(decision_result.get("providers", "")).strip() if decision_result else ""
+            parameters_raw = decision_result.get("parameters", "") if decision_result else ""
             is_finish_raw = str(decision_result.get("isFinish", "")).strip().lower() if decision_result else ""
             is_finish = is_finish_raw in ("true", "yes", "1")
+            
+            # Parse parameters (may be JSON string or dict)
+            action_params: dict[str, Any] = {}
+            if parameters_raw:
+                if isinstance(parameters_raw, str):
+                    try:
+                        parsed_params = json.loads(parameters_raw)
+                        if isinstance(parsed_params, dict):
+                            action_params = parsed_params
+                    except json.JSONDecodeError:
+                        pass
+                elif isinstance(parameters_raw, dict):
+                    action_params = parameters_raw
 
             last_thought = thought
 
@@ -838,6 +876,7 @@ class DefaultMessageService(IMessageService):
                     thought=thought if thought else None,
                     actions=[action_name],
                     providers=providers if providers else None,
+                    params=json.dumps(action_params) if action_params else None,
                 )
                 response_memory = Memory(
                     id=response_id,
