@@ -139,8 +139,8 @@ export class DefaultMessageService implements IMessageService {
   ): Promise<MessageProcessingResult> {
     const trajectoryStepId =
       typeof message.metadata === "object" &&
-      message.metadata !== null &&
-      "trajectoryStepId" in message.metadata
+        message.metadata !== null &&
+        "trajectoryStepId" in message.metadata
         ? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
         : undefined;
 
@@ -149,98 +149,85 @@ export class DefaultMessageService implements IMessageService {
         ? { trajectoryStepId: trajectoryStepId.trim() }
         : undefined,
       async (): Promise<MessageProcessingResult> => {
-    // Determine shouldRespondModel from options or runtime settings
-    const shouldRespondModelSetting = runtime.getSetting(
-      "SHOULD_RESPOND_MODEL",
-    );
-    const resolvedShouldRespondModel: ShouldRespondModelType =
-      options?.shouldRespondModel ??
-      (shouldRespondModelSetting === "large" ? "large" : "small");
-
-    const opts: ResolvedMessageOptions = {
-      maxRetries: options?.maxRetries ?? 3,
-      timeoutDuration: options?.timeoutDuration ?? 60 * 60 * 1000, // 1 hour
-      useMultiStep:
-        options?.useMultiStep ??
-        parseBooleanFromText(
-          String(runtime.getSetting("USE_MULTI_STEP") ?? ""),
-        ),
-      maxMultiStepIterations:
-        options?.maxMultiStepIterations ??
-        parseInt(
-          String(runtime.getSetting("MAX_MULTISTEP_ITERATIONS") ?? "6"),
-          10,
-        ),
-      onStreamChunk: options?.onStreamChunk,
-      shouldRespondModel: resolvedShouldRespondModel,
-    };
-
-    // Set up timeout monitoring
-    let timeoutId: NodeJS.Timeout | undefined;
-    // Single ID used for tracking, streaming, and the final message
-    const responseId = asUUID(v4());
-
-    try {
-      runtime.logger.info(
-        {
-          src: "service:message",
-          agentId: runtime.agentId,
-          entityId: message.entityId,
-          roomId: message.roomId,
-        },
-        "Message received",
-      );
-
-      // Track this response ID - ensure map exists for this agent
-      let agentResponses = latestResponseIds.get(runtime.agentId);
-      if (!agentResponses) {
-        agentResponses = new Map<string, string>();
-        latestResponseIds.set(runtime.agentId, agentResponses);
-      }
-
-      const previousResponseId = agentResponses.get(message.roomId);
-      if (previousResponseId) {
-        logger.debug(
-          {
-            src: "service:message",
-            roomId: message.roomId,
-            previousResponseId,
-            responseId,
-          },
-          "Updating response ID",
+        // Determine shouldRespondModel from options or runtime settings
+        const shouldRespondModelSetting = runtime.getSetting(
+          "SHOULD_RESPOND_MODEL",
         );
-      }
-      agentResponses.set(message.roomId, responseId);
+        const resolvedShouldRespondModel: ShouldRespondModelType =
+          options?.shouldRespondModel ??
+          (shouldRespondModelSetting === "large" ? "large" : "small");
 
-      // Start run tracking with roomId for proper log association
-      const runId = runtime.startRun(message.roomId);
-      if (!runId) {
-        runtime.logger.error("Failed to start run tracking");
-        return {
-          didRespond: false,
-          responseContent: null,
-          responseMessages: [],
-          state: { values: {}, data: {}, text: "" } as State,
-          mode: "none",
+        const opts: ResolvedMessageOptions = {
+          maxRetries: options?.maxRetries ?? 3,
+          timeoutDuration: options?.timeoutDuration ?? 60 * 60 * 1000, // 1 hour
+          useMultiStep:
+            options?.useMultiStep ??
+            parseBooleanFromText(
+              String(runtime.getSetting("USE_MULTI_STEP") ?? ""),
+            ),
+          maxMultiStepIterations:
+            options?.maxMultiStepIterations ??
+            parseInt(
+              String(runtime.getSetting("MAX_MULTISTEP_ITERATIONS") ?? "6"),
+              10,
+            ),
+          onStreamChunk: options?.onStreamChunk,
+          shouldRespondModel: resolvedShouldRespondModel,
         };
-      }
-      const startTime = Date.now();
 
-      // Emit run started event
-      await runtime.emitEvent(EventType.RUN_STARTED, {
-        runtime,
-        source: "messageHandler",
-        runId,
-        messageId: message.id,
-        roomId: message.roomId,
-        entityId: message.entityId,
-        startTime,
-        status: "started",
-      } as RunEventPayload);
+        // Set up timeout monitoring
+        let timeoutId: NodeJS.Timeout | undefined;
+        // Single ID used for tracking, streaming, and the final message
+        const responseId = asUUID(v4());
 
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(async () => {
-          await runtime.emitEvent(EventType.RUN_TIMEOUT, {
+        try {
+          runtime.logger.info(
+            {
+              src: "service:message",
+              agentId: runtime.agentId,
+              entityId: message.entityId,
+              roomId: message.roomId,
+            },
+            "Message received",
+          );
+
+          // Track this response ID - ensure map exists for this agent
+          let agentResponses = latestResponseIds.get(runtime.agentId);
+          if (!agentResponses) {
+            agentResponses = new Map<string, string>();
+            latestResponseIds.set(runtime.agentId, agentResponses);
+          }
+
+          const previousResponseId = agentResponses.get(message.roomId);
+          if (previousResponseId) {
+            logger.debug(
+              {
+                src: "service:message",
+                roomId: message.roomId,
+                previousResponseId,
+                responseId,
+              },
+              "Updating response ID",
+            );
+          }
+          agentResponses.set(message.roomId, responseId);
+
+          // Start run tracking with roomId for proper log association
+          const runId = runtime.startRun(message.roomId);
+          if (!runId) {
+            runtime.logger.error("Failed to start run tracking");
+            return {
+              didRespond: false,
+              responseContent: null,
+              responseMessages: [],
+              state: { values: {}, data: {}, text: "" } as State,
+              mode: "none",
+            };
+          }
+          const startTime = Date.now();
+
+          // Emit run started event
+          await runtime.emitEvent(EventType.RUN_STARTED, {
             runtime,
             source: "messageHandler",
             runId,
@@ -248,59 +235,72 @@ export class DefaultMessageService implements IMessageService {
             roomId: message.roomId,
             entityId: message.entityId,
             startTime,
-            status: "timeout",
-            endTime: Date.now(),
-            duration: Date.now() - startTime,
-            error: "Run exceeded timeout",
+            status: "started",
           } as RunEventPayload);
-          reject(new Error("Run exceeded timeout"));
-        }, opts.timeoutDuration);
-      });
 
-      // Wrap processing with streaming context for automatic streaming in useModel calls
-      // Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
-      let streamingContext:
-        | {
-            onStreamChunk: (chunk: string, messageId?: string) => Promise<void>;
-            messageId?: string;
-          }
-        | undefined;
-      if (opts.onStreamChunk) {
-        const extractor = new ResponseStreamExtractor();
-        const onStreamChunk = opts.onStreamChunk;
-        streamingContext = {
-          onStreamChunk: async (chunk: string, msgId?: string) => {
-            if (extractor.done) return;
-            const textToStream = extractor.push(chunk);
-            if (textToStream) {
-              await onStreamChunk(textToStream, msgId);
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(async () => {
+              await runtime.emitEvent(EventType.RUN_TIMEOUT, {
+                runtime,
+                source: "messageHandler",
+                runId,
+                messageId: message.id,
+                roomId: message.roomId,
+                entityId: message.entityId,
+                startTime,
+                status: "timeout",
+                endTime: Date.now(),
+                duration: Date.now() - startTime,
+                error: "Run exceeded timeout",
+              } as RunEventPayload);
+              reject(new Error("Run exceeded timeout"));
+            }, opts.timeoutDuration);
+          });
+
+          // Wrap processing with streaming context for automatic streaming in useModel calls
+          // Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
+          let streamingContext:
+            | {
+              onStreamChunk: (chunk: string, messageId?: string) => Promise<void>;
+              messageId?: string;
             }
-          },
-          messageId: responseId,
-        };
-      }
+            | undefined;
+          if (opts.onStreamChunk) {
+            const extractor = new ResponseStreamExtractor();
+            const onStreamChunk = opts.onStreamChunk;
+            streamingContext = {
+              onStreamChunk: async (chunk: string, msgId?: string) => {
+                if (extractor.done) return;
+                const textToStream = extractor.push(chunk);
+                if (textToStream) {
+                  await onStreamChunk(textToStream, msgId);
+                }
+              },
+              messageId: responseId,
+            };
+          }
 
-      const processingPromise = runWithStreamingContext(streamingContext, () =>
-        this.processMessage(
-          runtime,
-          message,
-          callback,
-          responseId,
-          runId,
-          startTime,
-          opts,
-        ),
-      );
+          const processingPromise = runWithStreamingContext(streamingContext, () =>
+            this.processMessage(
+              runtime,
+              message,
+              callback,
+              responseId,
+              runId,
+              startTime,
+              opts,
+            ),
+          );
 
-      const result = await Promise.race([processingPromise, timeoutPromise]);
+          const result = await Promise.race([processingPromise, timeoutPromise]);
 
-      // Clean up timeout
-      clearTimeout(timeoutId);
+          // Clean up timeout
+          clearTimeout(timeoutId);
 
-      return result;
-    } finally {
-      clearTimeout(timeoutId);
-    }
+          return result;
+        } finally {
+          clearTimeout(timeoutId);
+        }
       },
     );
   }
@@ -444,7 +444,7 @@ export class DefaultMessageService implements IMessageService {
     let shouldRespondToMessage = true;
     const metadata =
       typeof message.content.metadata === "object" &&
-      message.content.metadata !== null
+        message.content.metadata !== null
         ? (message.content.metadata as Record<string, unknown>)
         : null;
     const isAutonomous = metadata?.isAutonomous === true;
@@ -575,20 +575,20 @@ export class DefaultMessageService implements IMessageService {
     if (shouldRespondToMessage) {
       const result = opts.useMultiStep
         ? await this.runMultiStepCore(
-            runtime,
-            message,
-            state,
-            callback,
-            opts,
-            responseId,
-          )
+          runtime,
+          message,
+          state,
+          callback,
+          opts,
+          responseId,
+        )
         : await this.runSingleShotCore(
-            runtime,
-            message,
-            state,
-            opts,
-            responseId,
-          );
+          runtime,
+          message,
+          state,
+          opts,
+          responseId,
+        );
 
       responseContent = result.responseContent;
       responseMessages = result.responseMessages;
@@ -913,11 +913,11 @@ export class DefaultMessageService implements IMessageService {
     // Support runtime-configurable overrides via env settings
     const customChannels = normalizeEnvList(
       runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ||
-        runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
+      runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
     );
     const customSources = normalizeEnvList(
       runtime.getSetting("ALWAYS_RESPOND_SOURCES") ||
-        runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
+      runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
     );
 
     const respondChannels = new Set(
@@ -1275,9 +1275,9 @@ export class DefaultMessageService implements IMessageService {
         ? parsedXml.providers.filter((p): p is string => typeof p === "string")
         : typeof parsedXml.providers === "string"
           ? parsedXml.providers
-              .split(",")
-              .map((p) => String(p).trim())
-              .filter((p) => p.length > 0)
+            .split(",")
+            .map((p) => String(p).trim())
+            .filter((p) => p.length > 0)
           : [];
 
       responseContent = {
@@ -1624,9 +1624,16 @@ Output ONLY the continuation, starting immediately after the last character abov
 
       const thought =
         typeof parsedStep.thought === "string" ? parsedStep.thought : undefined;
-      const providers = Array.isArray(parsedStep.providers)
-        ? parsedStep.providers
-        : [];
+      // Handle providers as comma-separated string or array
+      let providers: string[] = [];
+      if (Array.isArray(parsedStep.providers)) {
+        providers = parsedStep.providers;
+      } else if (typeof parsedStep.providers === "string") {
+        providers = parsedStep.providers
+          .split(",")
+          .map((p: string) => p.trim())
+          .filter((p: string) => p.length > 0);
+      }
       const action =
         typeof parsedStep.action === "string" ? parsedStep.action : undefined;
       const isFinish = parsedStep.isFinish;
@@ -1873,9 +1880,9 @@ Output ONLY the continuation, starting immediately after the last character abov
               : undefined,
           values:
             result &&
-            "values" in result &&
-            typeof result.values === "object" &&
-            result.values !== null
+              "values" in result &&
+              typeof result.values === "object" &&
+              result.values !== null
               ? result.values
               : undefined,
           error: success
@@ -1951,15 +1958,15 @@ Output ONLY the continuation, starting immediately after the last character abov
 
     const responseMessages: Memory[] = responseContent
       ? [
-          {
-            id: responseId,
-            entityId: runtime.agentId,
-            agentId: runtime.agentId,
-            content: responseContent,
-            roomId: message.roomId,
-            createdAt: Date.now(),
-          },
-        ]
+        {
+          id: responseId,
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: responseContent,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        },
+      ]
       : [];
 
     return {

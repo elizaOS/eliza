@@ -699,12 +699,42 @@ async fn run_multi_step(
         let parsed = parsed.ok_or_else(|| anyhow::anyhow!("Failed to parse multi-step result"))?;
         let thought = parsed.get("thought").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         let action = parsed.get("action").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let parameters_raw = parsed.get("parameters");
         let is_finish = parsed
             .get("isFinish")
             .and_then(|v| v.as_str())
             .map(|s| s.trim().eq_ignore_ascii_case("true"))
             .unwrap_or(false);
         last_thought = thought.clone();
+
+        // Parse parameters into HashMap
+        let mut action_params: HashMap<String, String> = HashMap::new();
+        if let Some(params_val) = parameters_raw {
+            match params_val {
+                serde_json::Value::Object(obj) => {
+                    for (k, v) in obj {
+                        let value_str = match v {
+                            serde_json::Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        };
+                        action_params.insert(k.clone(), value_str);
+                    }
+                }
+                serde_json::Value::String(s) => {
+                    // Try to parse as JSON string
+                    if let Ok(serde_json::Value::Object(obj)) = serde_json::from_str(s) {
+                        for (k, v) in obj {
+                            let value_str = match v {
+                                serde_json::Value::String(s) => s,
+                                other => other.to_string(),
+                            };
+                            action_params.insert(k, value_str);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
 
         if is_finish {
             break;
@@ -713,7 +743,7 @@ async fn run_multi_step(
         let action_name = action.trim().to_string();
         if !action_name.is_empty() {
             let results = runtime
-                .process_selected_actions(message, &iter_state, &[action_name], &HashMap::new())
+                .process_selected_actions(message, &iter_state, &[action_name.clone()], &action_params)
                 .await?;
             trace_results.extend(results);
         }
