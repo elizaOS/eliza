@@ -522,8 +522,10 @@ class DefaultMessageService(IMessageService):
             actions = [a.strip().upper() for a in actions_raw.split(",") if a.strip()]
             providers = [p.strip() for p in providers_raw.split(",") if p.strip()]
             
-            # Parse params from XML response if available
-            raw_response_str = str(parsed_response) if parsed_response else ""
+            # Parse params from response if available
+            # Convert to JSON (not Python repr) for _parse_params_from_xml
+            import json as json_module
+            raw_response_str = json_module.dumps(parsed_response) if parsed_response else ""
             params = _parse_params_from_xml(raw_response_str)
 
             # Step 5b: If actions require params but none were provided, run a parameter-repair pass
