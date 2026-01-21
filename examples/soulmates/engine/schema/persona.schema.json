@@ -1,0 +1,568 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "persona.schema.json",
+  "title": "Persona",
+  "type": "object",
+  "required": [
+    "id",
+    "status",
+    "domains",
+    "general",
+    "profile",
+    "domainProfiles",
+    "matchPreferences",
+    "reliability",
+    "feedbackBias",
+    "facts",
+    "conversations",
+    "blockedPersonaIds",
+    "lastUpdated",
+    "profileRevision"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "integer", "minimum": 0, "maximum": 199 },
+    "status": {
+      "type": "string",
+      "enum": ["active", "paused", "blocked", "pending"]
+    },
+    "domains": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["general", "business", "dating", "friendship"]
+      }
+    },
+    "general": {
+      "type": "object",
+      "required": [
+        "name",
+        "age",
+        "genderIdentity",
+        "pronouns",
+        "location",
+        "values",
+        "bio"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "age": { "type": "integer", "minimum": 18, "maximum": 99 },
+        "genderIdentity": { "type": "string" },
+        "pronouns": { "type": "string" },
+        "location": {
+          "type": "object",
+          "required": ["city", "country", "timeZone"],
+          "additionalProperties": false,
+          "properties": {
+            "city": { "type": "string" },
+            "country": { "type": "string" },
+            "neighborhood": { "type": "string" },
+            "timeZone": { "type": "string" },
+            "geo": {
+              "type": "object",
+              "required": ["lat", "lng"],
+              "additionalProperties": false,
+              "properties": {
+                "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+                "lng": { "type": "number", "minimum": -180, "maximum": 180 }
+              }
+            }
+          }
+        },
+        "values": { "type": "array", "items": { "type": "string" } },
+        "education": { "type": "string" },
+        "bio": { "type": "string" }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "required": [
+        "name",
+        "pronouns",
+        "availability",
+        "interests",
+        "meetingCadence",
+        "connectionGoals",
+        "communityTags",
+        "feedbackSummary"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "pronouns": { "type": "string" },
+        "availability": {
+          "type": "object",
+          "required": ["timeZone", "weekly", "exceptions"],
+          "additionalProperties": false,
+          "properties": {
+            "timeZone": { "type": "string" },
+            "weekly": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["day", "startMinutes", "endMinutes"],
+                "additionalProperties": false,
+                "properties": {
+                  "day": {
+                    "type": "string",
+                    "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+                  },
+                  "startMinutes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  },
+                  "endMinutes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  }
+                }
+              }
+            },
+            "exceptions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "date": { "type": "string" },
+                  "startMinutes": { "type": "integer" },
+                  "endMinutes": { "type": "integer" },
+                  "unavailable": { "type": "boolean" },
+                  "reason": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "interests": { "type": "array", "items": { "type": "string" } },
+        "meetingCadence": {
+          "type": "string",
+          "enum": ["weekly", "biweekly", "monthly", "flexible"]
+        },
+        "connectionGoals": { "type": "array", "items": { "type": "string" } },
+        "communityTags": { "type": "array", "items": { "type": "string" } },
+        "feedbackSummary": {
+          "type": "object",
+          "required": [
+            "sentimentScore",
+            "positiveCount",
+            "neutralCount",
+            "negativeCount",
+            "lastUpdated",
+            "redFlagTags",
+            "issueTags"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "sentimentScore": { "type": "number", "minimum": -1, "maximum": 1 },
+            "positiveCount": { "type": "integer", "minimum": 0 },
+            "neutralCount": { "type": "integer", "minimum": 0 },
+            "negativeCount": { "type": "integer", "minimum": 0 },
+            "lastUpdated": { "type": "string" },
+            "redFlagTags": { "type": "array", "items": { "type": "string" } },
+            "issueTags": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "domainProfiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dating": {
+          "type": "object",
+          "required": [
+            "datingPreferences",
+            "attractionProfile",
+            "hobbies",
+            "personalityTraits",
+            "communicationStyle",
+            "lifestyle",
+            "relationshipGoal",
+            "schedule"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "datingPreferences": {
+              "type": "object",
+              "required": [
+                "preferredGenders",
+                "preferredAgeMin",
+                "preferredAgeMax",
+                "relationshipGoal",
+                "dealbreakers",
+                "bodyTypePreferences",
+                "attractivenessImportance",
+                "fitnessImportance",
+                "orientation"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "preferredGenders": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "preferredAgeMin": {
+                  "type": "integer",
+                  "minimum": 18,
+                  "maximum": 99
+                },
+                "preferredAgeMax": {
+                  "type": "integer",
+                  "minimum": 18,
+                  "maximum": 99
+                },
+                "relationshipGoal": { "type": "string" },
+                "dealbreakers": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "bodyTypePreferences": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "attractivenessImportance": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10
+                },
+                "fitnessImportance": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10
+                },
+                "orientation": { "type": "string" }
+              }
+            },
+            "attractionProfile": {
+              "type": "object",
+              "required": ["appearance", "assessments"],
+              "additionalProperties": false,
+              "properties": {
+                "appearance": {
+                  "type": "object",
+                  "required": [
+                    "attractiveness",
+                    "build",
+                    "hairColor",
+                    "eyeColor",
+                    "skinTone",
+                    "ethnicity",
+                    "perceivedGender",
+                    "distinctiveFeatures"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "attractiveness": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "build": {
+                      "type": "string",
+                      "enum": [
+                        "thin",
+                        "fit",
+                        "average",
+                        "above_average",
+                        "overweight"
+                      ]
+                    },
+                    "hairColor": { "type": "string" },
+                    "eyeColor": { "type": "string" },
+                    "skinTone": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "ethnicity": { "type": "string" },
+                    "perceivedGender": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "distinctiveFeatures": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                },
+                "assessments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "assessmentId",
+                      "modelScore",
+                      "notes",
+                      "assessedAt"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "assessmentId": { "type": "string" },
+                      "modelScore": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10
+                      },
+                      "eloRating": { "type": "integer" },
+                      "notes": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                      },
+                      "assessedAt": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            },
+            "hobbies": { "type": "array", "items": { "type": "string" } },
+            "personalityTraits": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "communicationStyle": { "type": "string" },
+            "lifestyle": { "type": "string" },
+            "relationshipGoal": { "type": "string" },
+            "schedule": { "type": "string" }
+          }
+        },
+        "business": {
+          "type": "object",
+          "required": [
+            "jobTitle",
+            "industry",
+            "roles",
+            "seekingRoles",
+            "skills",
+            "experienceYears",
+            "companyStage",
+            "commitment",
+            "values"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "jobTitle": { "type": "string" },
+            "industry": { "type": "string" },
+            "roles": { "type": "array", "items": { "type": "string" } },
+            "seekingRoles": { "type": "array", "items": { "type": "string" } },
+            "skills": { "type": "array", "items": { "type": "string" } },
+            "experienceYears": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60
+            },
+            "companyStage": { "type": "string" },
+            "commitment": { "type": "string" },
+            "values": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "friendship": {
+          "type": "object",
+          "required": [
+            "vibe",
+            "energy",
+            "socialStyle",
+            "interests",
+            "hobbies",
+            "boundaries"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "vibe": { "type": "string" },
+            "energy": { "type": "string" },
+            "socialStyle": { "type": "string" },
+            "interests": { "type": "array", "items": { "type": "string" } },
+            "hobbies": { "type": "array", "items": { "type": "string" } },
+            "boundaries": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "matchPreferences": {
+      "type": "object",
+      "required": ["blockedPersonaIds", "excludedPersonaIds"],
+      "additionalProperties": false,
+      "properties": {
+        "blockedPersonaIds": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "excludedPersonaIds": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "preferredAgeMin": { "type": "integer" },
+        "preferredAgeMax": { "type": "integer" },
+        "preferredGenders": { "type": "array", "items": { "type": "string" } },
+        "bodyTypePreferences": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "reliabilityMinScore": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "reliability": {
+      "type": "object",
+      "required": [
+        "score",
+        "lastUpdated",
+        "attendedCount",
+        "lateCancelCount",
+        "noShowCount",
+        "ghostCount",
+        "responseLatencyAvgMinutes",
+        "history"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "lastUpdated": { "type": "string" },
+        "attendedCount": { "type": "integer", "minimum": 0 },
+        "lateCancelCount": { "type": "integer", "minimum": 0 },
+        "noShowCount": { "type": "integer", "minimum": 0 },
+        "ghostCount": { "type": "integer", "minimum": 0 },
+        "responseLatencyAvgMinutes": { "type": "integer", "minimum": 0 },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["eventId", "type", "occurredAt", "impact"],
+            "additionalProperties": false,
+            "properties": {
+              "eventId": { "type": "string" },
+              "type": { "type": "string" },
+              "occurredAt": { "type": "string" },
+              "impact": { "type": "number" },
+              "notes": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "feedbackBias": {
+      "type": "object",
+      "required": [
+        "harshnessScore",
+        "positivityBias",
+        "redFlagFrequency",
+        "notes",
+        "stats",
+        "lastUpdated"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "harshnessScore": { "type": "number", "minimum": 0, "maximum": 1 },
+        "positivityBias": { "type": "number", "minimum": 0, "maximum": 1 },
+        "redFlagFrequency": { "type": "number", "minimum": 0, "maximum": 1 },
+        "notes": { "type": "array", "items": { "type": "string" } },
+        "stats": {
+          "type": "object",
+          "required": [
+            "givenCount",
+            "averageRating",
+            "negativeRate",
+            "redFlagRate",
+            "lastUpdated"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "givenCount": { "type": "integer", "minimum": 0 },
+            "averageRating": { "type": "number", "minimum": 0, "maximum": 5 },
+            "negativeRate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "redFlagRate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "lastUpdated": { "type": "string" }
+          }
+        },
+        "lastUpdated": { "type": "string" }
+      }
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "factId",
+          "type",
+          "key",
+          "value",
+          "confidence",
+          "evidence",
+          "status",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "factId": { "type": "string" },
+          "type": { "type": "string" },
+          "key": { "type": "string" },
+          "value": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "array", "items": { "type": "string" } },
+              { "type": "array", "items": { "type": "number" } },
+              { "type": "array", "items": { "type": "boolean" } }
+            ]
+          },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["conversationId", "turnIds"],
+              "additionalProperties": false,
+              "properties": {
+                "conversationId": { "type": "string" },
+                "turnIds": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "superseded", "retracted"]
+          },
+          "createdAt": { "type": "string" },
+          "updatedAt": { "type": "string" }
+        }
+      }
+    },
+    "conversations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["conversationId", "scenario", "turns", "processed"],
+        "additionalProperties": false,
+        "properties": {
+          "conversationId": { "type": "string" },
+          "scenario": { "type": "string" },
+          "turns": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["turnId", "role", "text", "createdAt"],
+              "additionalProperties": false,
+              "properties": {
+                "turnId": { "type": "string" },
+                "role": { "type": "string", "enum": ["agent", "user"] },
+                "text": { "type": "string" },
+                "createdAt": { "type": "string" }
+              }
+            }
+          },
+          "processed": { "type": "boolean" },
+          "processedAt": { "type": "string" }
+        }
+      }
+    },
+    "blockedPersonaIds": { "type": "array", "items": { "type": "integer" } },
+    "lastUpdated": { "type": "string" },
+    "profileRevision": { "type": "integer", "minimum": 0 }
+  }
+}
