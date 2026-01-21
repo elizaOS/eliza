@@ -1,10 +1,10 @@
 // @ts-nocheck
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { IAgentRuntime, TestSuite } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import type { VisionService } from "../../service";
 
-export class VisionCaptureLogTestSuite  {
+export class VisionCaptureLogTestSuite {
   name = "plugin-vision-capture-log";
   description = "Captures 30 seconds of vision data and saves to logs for analysis";
 

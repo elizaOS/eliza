@@ -4,7 +4,7 @@
  * Centralized TypeScript types to eliminate duplication and ensure consistency
  */
 
-import type { ACTOR_TIERS, POST_TYPES, RELATIONSHIP_TYPES } from './constants';
+import type { ACTOR_TIERS, POST_TYPES, RELATIONSHIP_TYPES } from "./constants";
 
 /**
  * Actor tier type from constants
@@ -45,7 +45,7 @@ export interface Actor {
   engagementThreshold?: number;
 
   // Database-specific fields (optional, populated when stored in DB)
-  initialLuck?: 'low' | 'medium' | 'high';
+  initialLuck?: "low" | "medium" | "high";
   initialMood?: number; // -1 to 1
   hasPool?: boolean; // Can run a trading pool
   tradingBalance?: number; // NPC's trading balance
@@ -58,7 +58,7 @@ export interface Actor {
     insiderOrgs: string[]; // Org IDs with insider knowledge
     expertise: string[]; // Domain expertise
     willingToLie: boolean; // Will strategically deceive
-    selfInterest: 'wealth' | 'reputation' | 'ideology' | 'chaos';
+    selfInterest: "wealth" | "reputation" | "ideology" | "chaos";
     favorsActors: string[]; // Actor IDs they favor
     opposesActors: string[]; // Actor IDs they oppose
     favorsOrgs: string[]; // Org IDs they favor
@@ -80,7 +80,7 @@ export interface Actor {
 export interface SelectedActor extends Actor {
   tier: ActorTier;
   role: string;
-  initialLuck: 'low' | 'medium' | 'high';
+  initialLuck: "low" | "medium" | "high";
   initialMood: number; // -1 to 1
 }
 
@@ -90,7 +90,7 @@ export interface SelectedActor extends Actor {
  */
 export interface ActorState {
   mood: number; // -1 to 1
-  luck: 'low' | 'medium' | 'high';
+  luck: "low" | "medium" | "high";
 }
 
 /**
@@ -159,14 +159,14 @@ export interface PriceUpdate {
   change: number;
   changePercent: number;
   reason: string; // Event that caused the change
-  impact: 'major' | 'moderate' | 'minor'; // Magnitude of impact
+  impact: "major" | "moderate" | "minor"; // Magnitude of impact
 }
 
 /**
  * Markov chain state for price generation
  */
 export interface MarkovChainState {
-  trend: 'bullish' | 'bearish' | 'neutral';
+  trend: "bullish" | "bearish" | "neutral";
   volatility: number; // 0-1
   momentum: number; // -1 to 1
 }
@@ -181,12 +181,12 @@ export interface Organization {
   description: string;
   profileDescription?: string; // What the organization says about itself on its profile
   type:
-    | 'company'
-    | 'media'
-    | 'government'
-    | 'vc'
-    | 'organization'
-    | 'financial';
+    | "company"
+    | "media"
+    | "government"
+    | "vc"
+    | "organization"
+    | "financial";
   canBeInvolved: boolean;
   postStyle?: string;
   postExample?: string[];
@@ -276,17 +276,17 @@ export interface WorldEvent {
   id: string;
   day: number;
   type:
-    | 'announcement'
-    | 'meeting'
-    | 'leak'
-    | 'development'
-    | 'scandal'
-    | 'rumor'
-    | 'deal'
-    | 'conflict'
-    | 'revelation'
-    | 'development:occurred'
-    | 'news:published';
+    | "announcement"
+    | "meeting"
+    | "leak"
+    | "development"
+    | "scandal"
+    | "rumor"
+    | "deal"
+    | "conflict"
+    | "revelation"
+    | "development:occurred"
+    | "news:published";
   actors: string[];
   description: string;
   relatedQuestion?: number | null;
@@ -294,8 +294,8 @@ export interface WorldEvent {
    * @deprecated Use sentimentSignal instead for more nuanced signal direction.
    * Kept for backwards compatibility - will be derived from sentimentSignal if not set.
    */
-  pointsToward?: 'YES' | 'NO' | null;
-  visibility: 'public' | 'leaked' | 'secret' | 'private' | 'group';
+  pointsToward?: "YES" | "NO" | null;
+  visibility: "public" | "leaked" | "secret" | "private" | "group";
 
   // New sentiment-based signal fields (preferred over pointsToward)
   /** Sentiment signal from -1.0 (negative) to 1.0 (positive) */
@@ -412,7 +412,7 @@ export interface Question {
   // New fields for continuous game
   createdDate?: string; // ISO date when question was created
   resolutionDate?: string; // ISO date when question resolves (24h-7d from creation)
-  status?: 'active' | 'resolved' | 'cancelled'; // Question lifecycle status
+  status?: "active" | "resolved" | "cancelled"; // Question lifecycle status
   resolvedOutcome?: boolean; // Final outcome when resolved
   resolutionProofUrl?: string; // URL to post/article proving outcome
   resolutionDescription?: string; // Description of how it resolved

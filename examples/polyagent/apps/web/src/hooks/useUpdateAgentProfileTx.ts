@@ -4,10 +4,10 @@ import {
   getIdentityRegistryAddress,
   identityRegistryAbi,
   WALLET_ERROR_MESSAGES,
-} from '@polyagent/shared';
-import { useCallback } from 'react';
-import { encodeFunctionData } from 'viem';
-import { useSmartWallet } from '@/hooks/useSmartWallet';
+} from "@polyagent/shared";
+import { useCallback } from "react";
+import { encodeFunctionData } from "viem";
+import { useSmartWallet } from "@/hooks/useSmartWallet";
 
 /**
  * Metadata for updating an agent profile on-chain.
@@ -24,7 +24,7 @@ export interface AgentProfileMetadata {
   /** Cover image URL (optional) */
   coverImageUrl?: string | null;
   /** Agent type (default: 'user') */
-  type?: 'user' | string;
+  type?: "user" | string;
   /** ISO timestamp of update */
   updated?: string;
 }
@@ -78,7 +78,7 @@ export function useUpdateAgentProfileTx() {
   const updateAgentProfile = useCallback(
     async ({ metadata, endpoint }: UpdateAgentProfileInput) => {
       if (!registryAddress) {
-        throw new Error('Identity registry not configured for this chain');
+        throw new Error("Identity registry not configured for this chain");
       }
 
       if (!smartWalletReady || !smartWalletAddress) {
@@ -91,13 +91,13 @@ export function useUpdateAgentProfileTx() {
 
       const metadataJson = JSON.stringify({
         ...metadata,
-        type: metadata.type ?? 'user',
+        type: metadata.type ?? "user",
         updated: metadata.updated ?? new Date().toISOString(),
       });
 
       const data = encodeFunctionData({
         abi: identityRegistryAbi,
-        functionName: 'updateAgent',
+        functionName: "updateAgent",
         args: [targetEndpoint, CAPABILITIES_HASH, metadataJson],
       });
 
@@ -113,7 +113,7 @@ export function useUpdateAgentProfileTx() {
       sendSmartWalletTransaction,
       smartWalletAddress,
       smartWalletReady,
-    ]
+    ],
   );
 
   return {

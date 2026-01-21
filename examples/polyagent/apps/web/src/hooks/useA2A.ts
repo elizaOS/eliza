@@ -20,9 +20,9 @@ export const useA2A = () => {
     // Placeholder for future A2A utilities
     // Could include: task subscriptions, streaming hooks, etc.
     debug: () => {
-      console.log('A2A utilities available');
-      console.log('Custom methods: /api/a2a (58 methods)');
-      console.log('A2A: /api/a2a (message/send)');
+      console.log("A2A utilities available");
+      console.log("Custom methods: /api/a2a (58 methods)");
+      console.log("A2A: /api/a2a (message/send)");
     },
   };
 };

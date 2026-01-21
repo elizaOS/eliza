@@ -2,13 +2,13 @@
  * Post and social interaction validation schemas
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 import {
   createTrimmedStringSchema,
   PaginationSchema,
   SnowflakeIdSchema,
   UserIdSchema,
-} from './common';
+} from "./common";
 
 /**
  * Post ID parameter schema
@@ -16,7 +16,7 @@ import {
  * Game post IDs have format: {gameId}-{authorId}-{timestamp}-{random}
  */
 export const PostIdParamSchema = z.object({
-  id: z.string().min(1, 'Post ID is required'),
+  id: z.string().min(1, "Post ID is required"),
 });
 
 /**
@@ -25,7 +25,7 @@ export const PostIdParamSchema = z.object({
 export const CreatePostSchema = z.object({
   content: createTrimmedStringSchema(1, 5000),
   marketId: SnowflakeIdSchema.optional(),
-  side: z.enum(['YES', 'NO', 'LONG', 'SHORT']).optional(),
+  side: z.enum(["YES", "NO", "LONG", "SHORT"]).optional(),
   sentiment: z.number().min(-1).max(1).optional(),
   shareCount: z.number().int().nonnegative().optional(),
   imageUrl: z.string().url().optional(),
@@ -61,7 +61,7 @@ export const UpdateCommentSchema = z.object({
  */
 export const LikeSchema = z.object({
   target: SnowflakeIdSchema,
-  targetType: z.enum(['post', 'comment']),
+  targetType: z.enum(["post", "comment"]),
 });
 
 /**

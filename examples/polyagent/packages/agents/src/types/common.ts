@@ -4,7 +4,7 @@
  * Shared types for common patterns
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 
 /**
  * JSON-serializable value types
@@ -28,7 +28,7 @@ export const JsonValueSchema: JsonValueSchema = z.lazy(() =>
     z.null(),
     z.array(JsonValueSchema),
     z.record(z.string(), JsonValueSchema),
-  ])
+  ]),
 );
 
 /**
@@ -114,7 +114,7 @@ export interface PaginatedResponse<T> {
 /**
  * Sort order
  */
-export type SortOrder = 'asc' | 'desc';
+export type SortOrder = "asc" | "desc";
 
 /**
  * Sort parameters

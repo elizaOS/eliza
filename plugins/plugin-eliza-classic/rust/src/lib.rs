@@ -34,11 +34,11 @@ pub mod types;
 
 use std::sync::Mutex;
 
-pub use types::{ElizaConfig, ElizaPattern, ElizaRule};
 use std::collections::{HashMap, VecDeque};
+pub use types::{ElizaConfig, ElizaPattern, ElizaRule};
 
-use lazy_static::lazy_static;
 use doctor_script::{load_doctor_script, DoctorScript, KeywordEntry, ScriptRule};
+use lazy_static::lazy_static;
 
 #[derive(Debug, Clone)]
 enum Token {
@@ -123,23 +123,23 @@ fn tokenize_words(text: &str) -> Vec<String> {
     if cleaned.trim().is_empty() {
         return Vec::new();
     }
-  // Keep scan/tokenization close to the TS implementation:
-  // only canonicalize a small subset (punctuation/orthography), not full ELIZA substitutions.
-  const CANON_KEYS: [&str; 7] = ["dont", "cant", "wont", "dreamed", "dreams", "mom", "dad"];
+    // Keep scan/tokenization close to the TS implementation:
+    // only canonicalize a small subset (punctuation/orthography), not full ELIZA substitutions.
+    const CANON_KEYS: [&str; 7] = ["dont", "cant", "wont", "dreamed", "dreams", "mom", "dad"];
     cleaned
         .split_whitespace()
         .map(|w| {
             let w = w.to_string();
-      if CANON_KEYS.contains(&w.as_str()) {
-        SCRIPT
-          .substitutions
-          .get(&w)
-          .cloned()
-          .or_else(|| SCRIPT.reflections.get(&w).cloned())
-          .unwrap_or(w)
-      } else {
-        w
-      }
+            if CANON_KEYS.contains(&w.as_str()) {
+                SCRIPT
+                    .substitutions
+                    .get(&w)
+                    .cloned()
+                    .or_else(|| SCRIPT.reflections.get(&w).cloned())
+                    .unwrap_or(w)
+            } else {
+                w
+            }
         })
         .collect()
 }
@@ -152,21 +152,21 @@ fn tokenize_for_scan(input: &str) -> Vec<String> {
     if cleaned.trim().is_empty() {
         return Vec::new();
     }
-  const CANON_KEYS: [&str; 7] = ["dont", "cant", "wont", "dreamed", "dreams", "mom", "dad"];
-  cleaned
+    const CANON_KEYS: [&str; 7] = ["dont", "cant", "wont", "dreamed", "dreams", "mom", "dad"];
+    cleaned
         .split_whitespace()
         .map(|w| {
             let w = w.to_string();
-      if CANON_KEYS.contains(&w.as_str()) {
-        SCRIPT
-          .substitutions
-          .get(&w)
-          .cloned()
-          .or_else(|| SCRIPT.reflections.get(&w).cloned())
-          .unwrap_or(w)
-      } else {
-        w
-      }
+            if CANON_KEYS.contains(&w.as_str()) {
+                SCRIPT
+                    .substitutions
+                    .get(&w)
+                    .cloned()
+                    .or_else(|| SCRIPT.reflections.get(&w).cloned())
+                    .unwrap_or(w)
+            } else {
+                w
+            }
         })
         .collect()
 }
@@ -257,7 +257,7 @@ fn select_keyword_stack(scan_words: &[String]) -> (Vec<FoundKeyword>, Vec<String
 }
 
 fn parse_decomposition(pattern: &str) -> Vec<Token> {
-    let raw = pattern.trim().split_whitespace().collect::<Vec<_>>().join(" ");
+    let raw = pattern.split_whitespace().collect::<Vec<_>>().join(" ");
     let raw = raw.to_lowercase();
     if raw.is_empty() {
         return Vec::new();
@@ -318,7 +318,11 @@ fn parse_decomposition(pattern: &str) -> Vec<Token> {
                 while j < chars.len() && chars[j] != ' ' {
                     j += 1;
                 }
-                let w = chars[start..j].iter().collect::<String>().trim().to_string();
+                let w = chars[start..j]
+                    .iter()
+                    .collect::<String>()
+                    .trim()
+                    .to_string();
                 if !w.is_empty() {
                     tokens.push(Token::Literal(w));
                 }
@@ -438,7 +442,9 @@ fn choose_default_response(session: &mut SessionState) -> String {
         }
     }
     let idx = *session.reassembly_index.get("__default__").unwrap_or(&0);
-    session.reassembly_index.insert("__default__".to_string(), idx + 1);
+    session
+        .reassembly_index
+        .insert("__default__".to_string(), idx + 1);
     SCRIPT
         .default_responses
         .get(idx % SCRIPT.default_responses.len())
@@ -503,7 +509,11 @@ enum RuleEvalResult {
     NoMatch,
     NewKey,
     Redirect(String),
-    Pre { pre_text: String, redirect: String, parts: Vec<String> },
+    Pre {
+        pre_text: String,
+        redirect: String,
+        parts: Vec<String>,
+    },
     Response(String),
 }
 
@@ -597,7 +607,10 @@ impl ElizaClassicPlugin {
     /// A new `ElizaClassicPlugin` with the standard ELIZA patterns and responses.
     pub fn new() -> Self {
         Self {
-            state: Mutex::new(SessionState { limit: 1, ..SessionState::default() }),
+            state: Mutex::new(SessionState {
+                limit: 1,
+                ..SessionState::default()
+            }),
         }
     }
 
@@ -679,7 +692,11 @@ impl ElizaClassicPlugin {
                         _ => continue,
                     }
                 }
-                RuleEvalResult::Pre { pre_text, redirect, parts } => {
+                RuleEvalResult::Pre {
+                    pre_text,
+                    redirect,
+                    parts,
+                } => {
                     let pre_applied = apply_reassembly(&pre_text, &parts);
                     let pre_words = tokenize_words(&pre_applied);
                     let idx = match KEYWORD_INDEX.get(&redirect) {
@@ -718,7 +735,10 @@ impl ElizaClassicPlugin {
     /// useful for starting fresh conversations.
     pub fn reset_history(&self) {
         let mut state = self.state.lock().expect("state lock");
-        *state = SessionState { limit: 1, ..SessionState::default() };
+        *state = SessionState {
+            limit: 1,
+            ..SessionState::default()
+        };
     }
 }
 

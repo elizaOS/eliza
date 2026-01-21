@@ -40,7 +40,13 @@ pub fn encrypt_string_value(value: &str, salt: &str) -> String {
     let gcm = Aes256Gcm::new_from_slice(&key).expect("valid key");
     let nonce = Nonce::from_slice(&iv);
     let encrypted = gcm
-        .encrypt(nonce, Payload { msg: value.as_bytes(), aad })
+        .encrypt(
+            nonce,
+            Payload {
+                msg: value.as_bytes(),
+                aad,
+            },
+        )
         .expect("encryption must succeed");
     let split = encrypted.len().saturating_sub(16);
     let (ciphertext, tag) = encrypted.split_at(split);
@@ -86,7 +92,13 @@ pub fn decrypt_string_value(value: &str, salt: &str) -> String {
                 Err(_) => return value.to_string(),
             };
             let nonce = Nonce::from_slice(&iv);
-            match gcm.decrypt(nonce, Payload { msg: &combined, aad }) {
+            match gcm.decrypt(
+                nonce,
+                Payload {
+                    msg: &combined,
+                    aad,
+                },
+            ) {
                 Ok(plaintext) => String::from_utf8(plaintext).unwrap_or_else(|_| value.to_string()),
                 Err(_) => value.to_string(),
             }
@@ -94,37 +106,37 @@ pub fn decrypt_string_value(value: &str, salt: &str) -> String {
             value.to_string()
         }
     } else {
-    let (iv_hex, encrypted_hex) = match value.split_once(':') {
-        Some(parts) => parts,
-        None => return value.to_string(),
-    };
+        let (iv_hex, encrypted_hex) = match value.split_once(':') {
+            Some(parts) => parts,
+            None => return value.to_string(),
+        };
 
-    let iv = match hex::decode(iv_hex) {
-        Ok(b) => b,
-        Err(_) => return value.to_string(),
-    };
-    if iv.len() != 16 {
-        return value.to_string();
-    }
-
-    let ciphertext = match hex::decode(encrypted_hex) {
-        Ok(b) => b,
-        Err(_) => return value.to_string(),
-    };
-
-    let key = derive_key(salt);
-    let cipher = match Decryptor::<Aes256>::new_from_slices(&key, &iv) {
-        Ok(c) => c,
-        Err(_) => return value.to_string(),
-    };
-
-    let mut buf = ciphertext;
-    match cipher.decrypt_padded_mut::<Pkcs7>(&mut buf) {
-        Ok(plaintext) => {
-            String::from_utf8(plaintext.to_vec()).unwrap_or_else(|_| value.to_string())
+        let iv = match hex::decode(iv_hex) {
+            Ok(b) => b,
+            Err(_) => return value.to_string(),
+        };
+        if iv.len() != 16 {
+            return value.to_string();
         }
-        Err(_) => value.to_string(),
-    }
+
+        let ciphertext = match hex::decode(encrypted_hex) {
+            Ok(b) => b,
+            Err(_) => return value.to_string(),
+        };
+
+        let key = derive_key(salt);
+        let cipher = match Decryptor::<Aes256>::new_from_slices(&key, &iv) {
+            Ok(c) => c,
+            Err(_) => return value.to_string(),
+        };
+
+        let mut buf = ciphertext;
+        match cipher.decrypt_padded_mut::<Pkcs7>(&mut buf) {
+            Ok(plaintext) => {
+                String::from_utf8(plaintext.to_vec()).unwrap_or_else(|_| value.to_string())
+            }
+            Err(_) => value.to_string(),
+        }
     }
 }
 
@@ -158,8 +170,12 @@ fn looks_encrypted(value: &str) -> bool {
     if let Some(rest) = value.strip_prefix("v2:") {
         let parts: Vec<&str> = rest.split(':').collect();
         if parts.len() == 3 {
-            let iv_ok = hex::decode(parts[0]).map(|iv| iv.len() == 12).unwrap_or(false);
-            let tag_ok = hex::decode(parts[2]).map(|tag| tag.len() == 16).unwrap_or(false);
+            let iv_ok = hex::decode(parts[0])
+                .map(|iv| iv.len() == 12)
+                .unwrap_or(false);
+            let tag_ok = hex::decode(parts[2])
+                .map(|tag| tag.len() == 16)
+                .unwrap_or(false);
             return iv_ok && tag_ok;
         }
         return false;

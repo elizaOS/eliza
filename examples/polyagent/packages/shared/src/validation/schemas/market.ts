@@ -1,14 +1,14 @@
 /**
  * Market and trading validation schemas
  */
-import { z } from 'zod';
+import { z } from "zod";
 
 import {
   NumericStringSchema,
   PaginationSchema,
   SnowflakeIdSchema,
   UserIdSchema,
-} from './common';
+} from "./common";
 
 /**
  * Open perp position schema
@@ -18,14 +18,14 @@ export const OpenPerpPositionSchema = z.object({
     .string()
     .min(1)
     .max(20)
-    .regex(/^[A-Z0-9-]+$/, 'Ticker must be uppercase alphanumeric'),
-  side: z.enum(['LONG', 'SHORT']),
+    .regex(/^[A-Z0-9-]+$/, "Ticker must be uppercase alphanumeric"),
+  side: z.enum(["LONG", "SHORT"]),
   size: NumericStringSchema, // Position size as string for precision
   leverage: z
     .number()
     .int()
     .min(1)
-    .max(100, 'Leverage must be between 1x and 100x'),
+    .max(100, "Leverage must be between 1x and 100x"),
   slippage: z.number().min(0).max(0.1).default(0.01), // 1% default max slippage
 });
 
@@ -68,15 +68,15 @@ export const SellPredictionSharesSchema = z
       return (data.shares !== undefined) !== (data.percentage !== undefined);
     },
     {
-      message: 'Specify either shares or percentage, but not both',
-    }
+      message: "Specify either shares or percentage, but not both",
+    },
   );
 
 /**
  * Market query schema
  */
 export const MarketQuerySchema = PaginationSchema.extend({
-  status: z.enum(['ACTIVE', 'RESOLVED', 'CANCELLED']).optional(),
+  status: z.enum(["ACTIVE", "RESOLVED", "CANCELLED"]).optional(),
   category: z.string().optional(),
   minLiquidity: z.coerce.number().nonnegative().optional(),
   maxLiquidity: z.coerce.number().nonnegative().optional(),
@@ -88,8 +88,8 @@ export const MarketQuerySchema = PaginationSchema.extend({
  */
 export const UserPositionsQuerySchema = z.object({
   userId: UserIdSchema,
-  type: z.enum(['perp', 'prediction', 'all']).default('all'),
-  status: z.enum(['open', 'closed', 'all']).default('open'),
+  type: z.enum(["perp", "prediction", "all"]).default("all"),
+  status: z.enum(["open", "closed", "all"]).default("open"),
   page: z.coerce.number().positive().default(1),
   limit: z.coerce.number().positive().max(100).default(20),
 });

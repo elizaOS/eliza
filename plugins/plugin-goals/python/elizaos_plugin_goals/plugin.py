@@ -12,7 +12,13 @@ from elizaos_plugin_goals.actions.confirm_goal import ConfirmGoalAction
 from elizaos_plugin_goals.actions.create_goal import CreateGoalAction
 from elizaos_plugin_goals.actions.update_goal import UpdateGoalAction
 from elizaos_plugin_goals.providers.goals import GoalsProvider
-from elizaos_plugin_goals.types import CreateGoalParams, Goal, GoalFilters, GoalOwnerType, UpdateGoalParams
+from elizaos_plugin_goals.types import (
+    CreateGoalParams,
+    Goal,
+    GoalFilters,
+    GoalOwnerType,
+    UpdateGoalParams,
+)
 
 
 class TaskRuntime(Protocol):
@@ -102,7 +108,9 @@ class TaskBackedGoalService:
             owner_type=owner_type,
             owner_id=owner_id,
             name=name,
-            description=task.get("description") if isinstance(task.get("description"), str) else None,
+            description=task.get("description")
+            if isinstance(task.get("description"), str)
+            else None,
             is_completed=is_completed,
             completed_at=completed_at,
             created_at=created_at,
@@ -147,7 +155,11 @@ class TaskBackedGoalService:
                 continue
             if filters and filters.owner_type and goal.owner_type != filters.owner_type:
                 continue
-            if filters and filters.is_completed is not None and goal.is_completed != filters.is_completed:
+            if (
+                filters
+                and filters.is_completed is not None
+                and goal.is_completed != filters.is_completed
+            ):
                 continue
             goals.append(goal)
         goals.sort(key=lambda g: g.created_at)
@@ -181,7 +193,9 @@ class TaskBackedGoalService:
 
         patch: dict[str, object] = {
             "name": updates.name if updates.name is not None else existing_goal.name,
-            "description": updates.description if updates.description is not None else existing_goal.description,
+            "description": updates.description
+            if updates.description is not None
+            else existing_goal.description,
             "status": status,
             "tags": updates.tags if updates.tags is not None else existing_goal.tags,
             "metadata": new_metadata,
@@ -202,8 +216,8 @@ def _memory_to_message_dict(message: object) -> dict[str, object]:
     # The goal action implementations operate on a JS-like dict message shape.
     # We build the minimum fields they access.
     content_text = ""
-    if hasattr(message, "content") and getattr(message, "content") is not None:
-        content = getattr(message, "content")
+    if hasattr(message, "content") and message.content is not None:
+        content = message.content
         if hasattr(content, "text") and isinstance(content.text, str):
             content_text = content.text
 
@@ -216,7 +230,9 @@ def _memory_to_message_dict(message: object) -> dict[str, object]:
     }
 
 
-async def _validate_with_action(action_obj: object, runtime: TaskRuntime, message: object, state: object | None) -> bool:
+async def _validate_with_action(
+    action_obj: object, runtime: TaskRuntime, message: object, state: object | None
+) -> bool:
     msg = _memory_to_message_dict(message)
     st: dict[str, object] | None = None
     if state is not None and hasattr(state, "model_dump"):
@@ -227,7 +243,7 @@ async def _validate_with_action(action_obj: object, runtime: TaskRuntime, messag
         # (runtime, message, state). Detect parameter count to avoid TypeError.
         import inspect
 
-        validate_fn = getattr(action_obj, "validate")
+        validate_fn = action_obj.validate
         try:
             param_len = len(inspect.signature(validate_fn).parameters)
         except (TypeError, ValueError):
@@ -257,7 +273,7 @@ async def _handle_with_action(
         res = await action_obj.handler(runtime, msg, st, goal_service)
         if hasattr(res, "success"):
             return ActionResult(
-                success=bool(getattr(res, "success")),
+                success=bool(res.success),
                 text=getattr(res, "text", None),
                 error=getattr(res, "error", None),
                 data=getattr(res, "data", None),
@@ -265,7 +281,9 @@ async def _handle_with_action(
     return None
 
 
-async def goals_provider_get(runtime: TaskRuntime, message: object, state: object) -> ProviderResult:
+async def goals_provider_get(
+    runtime: TaskRuntime, message: object, state: object
+) -> ProviderResult:
     msg = _memory_to_message_dict(message)
     st: dict[str, object] = {}
     if hasattr(state, "model_dump"):
@@ -295,90 +313,90 @@ goals_plugin = Plugin(
             description=CreateGoalAction.description,
             similes=CreateGoalAction.similes,
             examples=[
-                [
-                    {"name": ex.name, "content": ex.content}
-                    for ex in example
-                ]
+                [{"name": ex.name, "content": ex.content} for ex in example]
                 for example in CreateGoalAction.examples
             ],
             validate=lambda runtime, message, state: _validate_with_action(
                 CreateGoalAction(), runtime, message, state
             ),
-            handler=lambda runtime, message, state, options, callback, responses: _handle_with_action(
-                CreateGoalAction(), runtime, message, state
-            ),
+            handler=lambda runtime,
+            message,
+            state,
+            options,
+            callback,
+            responses: _handle_with_action(CreateGoalAction(), runtime, message, state),
         ),
         Action(
             name=ConfirmGoalAction.name,
             description=ConfirmGoalAction.description,
             similes=ConfirmGoalAction.similes,
             examples=[
-                [
-                    {"name": ex.name, "content": ex.content}
-                    for ex in example
-                ]
+                [{"name": ex.name, "content": ex.content} for ex in example]
                 for example in ConfirmGoalAction.examples
             ],
             validate=lambda runtime, message, state: _validate_with_action(
                 ConfirmGoalAction(), runtime, message, state
             ),
-            handler=lambda runtime, message, state, options, callback, responses: _handle_with_action(
-                ConfirmGoalAction(), runtime, message, state
-            ),
+            handler=lambda runtime,
+            message,
+            state,
+            options,
+            callback,
+            responses: _handle_with_action(ConfirmGoalAction(), runtime, message, state),
         ),
         Action(
             name=UpdateGoalAction.name,
             description=UpdateGoalAction.description,
             similes=UpdateGoalAction.similes,
             examples=[
-                [
-                    {"name": ex.name, "content": ex.content}
-                    for ex in example
-                ]
+                [{"name": ex.name, "content": ex.content} for ex in example]
                 for example in UpdateGoalAction.examples
             ],
             validate=lambda runtime, message, state: _validate_with_action(
                 UpdateGoalAction(), runtime, message, state
             ),
-            handler=lambda runtime, message, state, options, callback, responses: _handle_with_action(
-                UpdateGoalAction(), runtime, message, state
-            ),
+            handler=lambda runtime,
+            message,
+            state,
+            options,
+            callback,
+            responses: _handle_with_action(UpdateGoalAction(), runtime, message, state),
         ),
         Action(
             name=CompleteGoalAction.name,
             description=CompleteGoalAction.description,
             similes=CompleteGoalAction.similes,
             examples=[
-                [
-                    {"name": ex.name, "content": ex.content}
-                    for ex in example
-                ]
+                [{"name": ex.name, "content": ex.content} for ex in example]
                 for example in CompleteGoalAction.examples
             ],
             validate=lambda runtime, message, state: _validate_with_action(
                 CompleteGoalAction(), runtime, message, state
             ),
-            handler=lambda runtime, message, state, options, callback, responses: _handle_with_action(
-                CompleteGoalAction(), runtime, message, state
-            ),
+            handler=lambda runtime,
+            message,
+            state,
+            options,
+            callback,
+            responses: _handle_with_action(CompleteGoalAction(), runtime, message, state),
         ),
         Action(
             name=CancelGoalAction.name,
             description=CancelGoalAction.description,
             similes=CancelGoalAction.similes,
             examples=[
-                [
-                    {"name": ex.name, "content": ex.content}
-                    for ex in example
-                ]
+                [{"name": ex.name, "content": ex.content} for ex in example]
                 for example in CancelGoalAction.examples
             ],
             validate=lambda runtime, message, state: _validate_with_action(
                 CancelGoalAction(), runtime, message, state
             ),
-            handler=lambda runtime, message, state, options, callback, responses: _handle_with_action(
-                CancelGoalAction(), runtime, message, state
-            ),
+            handler=lambda runtime,
+            message,
+            state,
+            options,
+            callback,
+            responses: _handle_with_action(CancelGoalAction(), runtime, message, state),
         ),
     ],
     providers=[
@@ -389,4 +407,3 @@ goals_plugin = Plugin(
         )
     ],
 )
-

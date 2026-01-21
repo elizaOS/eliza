@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import type { PerpPosition, UserPredictionPosition } from '@polyagent/shared';
-import { logger } from '@polyagent/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PerpPosition, UserPredictionPosition } from "@polyagent/shared";
+import { logger } from "@polyagent/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Helper to safely convert API values to numbers.
  */
 function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
+  if (typeof value === "number" && Number.isFinite(value)) {
     return value;
   }
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
   }
@@ -19,7 +19,7 @@ function toNumber(value: unknown, fallback = 0): number {
 }
 
 // Re-export for convenience
-export type { UserPredictionPosition } from '@polyagent/shared';
+export type { UserPredictionPosition } from "@polyagent/shared";
 
 interface PerpStats {
   totalPositions: number;
@@ -40,7 +40,7 @@ interface ApiPerpPositionPayload {
   userId?: string;
   ticker: string;
   organizationId?: string;
-  side: PerpPosition['side'];
+  side: PerpPosition["side"];
   entryPrice: NumericLike;
   currentPrice: NumericLike;
   size: NumericLike;
@@ -57,7 +57,7 @@ interface ApiPredictionPositionPayload {
   id: string;
   marketId: string;
   question: string;
-  side: UserPredictionPosition['side'];
+  side: UserPredictionPosition["side"];
   shares: NumericLike;
   avgPrice: NumericLike;
   currentPrice: NumericLike;
@@ -123,7 +123,7 @@ const createDefaultState = (): PositionsState => ({
  */
 export function useUserPositions(
   userId?: string | null,
-  options: UseUserPositionsOptions = {}
+  options: UseUserPositionsOptions = {},
 ) {
   const { enabled = true } = options;
   const [state, setState] = useState<PositionsState>(createDefaultState);
@@ -149,7 +149,7 @@ export function useUserPositions(
     try {
       const response = await fetch(
         `/api/markets/positions/${encodeURIComponent(userId)}`,
-        { signal: controller.signal }
+        { signal: controller.signal },
       );
 
       // Check if request was aborted before parsing
@@ -160,7 +160,7 @@ export function useUserPositions(
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const errorMessage =
-          typeof errorData.error === 'string'
+          typeof errorData.error === "string"
             ? errorData.error
             : `Failed to fetch positions: ${response.status}`;
         throw new Error(errorMessage);
@@ -193,7 +193,7 @@ export function useUserPositions(
           fundingPaid: toNumber(pos.fundingPaid),
           openedAt: pos.openedAt,
           lastUpdated: pos.lastUpdated ?? pos.openedAt,
-        })
+        }),
       ) as PerpPosition[];
 
       const normalizedPredictions = (predictions.positions ?? []).map(
@@ -214,7 +214,7 @@ export function useUserPositions(
             resolved: Boolean(pos.resolved),
             resolution: pos.resolution ?? null,
           };
-        }
+        },
       ) as UserPredictionPosition[];
 
       setState({
@@ -225,16 +225,16 @@ export function useUserPositions(
       setError(null);
     } catch (err) {
       // Ignore abort errors - these are expected during cleanup
-      if (err instanceof Error && err.name === 'AbortError') {
+      if (err instanceof Error && err.name === "AbortError") {
         return;
       }
 
       const error =
-        err instanceof Error ? err : new Error('Failed to fetch positions');
+        err instanceof Error ? err : new Error("Failed to fetch positions");
       logger.error(
-        'Failed to fetch user positions',
+        "Failed to fetch user positions",
         { userId, error },
-        'useUserPositions'
+        "useUserPositions",
       );
       setError(error);
       setState(createDefaultState());

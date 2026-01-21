@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-code-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Coder tools plugin for ElizaOS (filesystem + shell + git) with multi-language implementations",
   "type": "module",
   "main": "typescript/dist/index.js",

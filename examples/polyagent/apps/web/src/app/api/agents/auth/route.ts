@@ -78,6 +78,7 @@
  * @see {@link /examples/polyagent-typescript-agent} Example agent usage
  */
 
+import { randomBytes } from "node:crypto";
 import {
   AuthorizationError,
   cleanupExpiredSessions,
@@ -86,10 +87,9 @@ import {
   successResponse,
   verifyAgentCredentials,
   withErrorHandling,
-} from '@polyagent/api';
-import { AgentAuthSchema, logger } from '@polyagent/shared';
-import { randomBytes } from 'crypto';
-import type { NextRequest } from 'next/server';
+} from "@polyagent/api";
+import { AgentAuthSchema, logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * POST /api/agents/auth
@@ -99,9 +99,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const body = await request.json();
 
   // Check if body is empty or not an object
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new Error(
-      'Request body must be a JSON object containing agentId and agentSecret fields.'
+      "Request body must be a JSON object containing agentId and agentSecret fields.",
     );
   }
 
@@ -110,9 +110,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Verify agent credentials
   if (!verifyAgentCredentials(agentId, agentSecret)) {
     throw new AuthorizationError(
-      'Invalid agent credentials',
-      'agent',
-      'authenticate'
+      "Invalid agent credentials",
+      "agent",
+      "authenticate",
     );
   }
 
@@ -120,7 +120,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   cleanupExpiredSessions();
 
   // Generate session token
-  const sessionToken = randomBytes(32).toString('hex');
+  const sessionToken = randomBytes(32).toString("hex");
 
   // Create session
   const session = await createAgentSession(agentId, sessionToken);
@@ -128,7 +128,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   logger.info(
     `Agent ${agentId} authenticated successfully`,
     undefined,
-    'POST /api/agents/auth'
+    "POST /api/agents/auth",
   );
 
   return successResponse({

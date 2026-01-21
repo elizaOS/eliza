@@ -1,11 +1,11 @@
-import 'server-only';
+import "server-only";
 
 /**
  * PostHog Server Client
  * Server-side analytics and event tracking for API routes
  */
 
-import { PostHog } from 'posthog-node';
+import { PostHog } from "posthog-node";
 
 type JsonValue =
   | string
@@ -24,7 +24,7 @@ let posthogClient: PostHog | null = null;
 export function getPostHogServerClient(): PostHog | null {
   const apiKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   const apiHost =
-    process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
+    process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
   if (!apiKey) {
     return null;
@@ -49,7 +49,7 @@ export function getPostHogServerClient(): PostHog | null {
 export async function trackServerEvent(
   distinctId: string,
   event: string,
-  properties?: StringRecord<JsonValue>
+  properties?: StringRecord<JsonValue>,
 ): Promise<void> {
   const client = getPostHogServerClient();
   if (!client) return;
@@ -59,8 +59,8 @@ export async function trackServerEvent(
     event,
     properties: {
       ...properties,
-      $lib: 'posthog-node',
-      environment: process.env.NODE_ENV || 'development',
+      $lib: "posthog-node",
+      environment: process.env.NODE_ENV || "development",
       timestamp: new Date().toISOString(),
     },
   });
@@ -71,7 +71,7 @@ export async function trackServerEvent(
  */
 export async function identifyServerUser(
   distinctId: string,
-  properties: StringRecord<JsonValue>
+  properties: StringRecord<JsonValue>,
 ): Promise<void> {
   const client = getPostHogServerClient();
   if (!client) return;
@@ -92,7 +92,7 @@ export async function trackServerError(
     endpoint: string;
     method: string;
     statusCode?: number;
-  } & StringRecord<JsonValue>
+  } & StringRecord<JsonValue>,
 ): Promise<void> {
   const client = getPostHogServerClient();
   if (!client) return;
@@ -100,17 +100,17 @@ export async function trackServerError(
   const { endpoint, method, statusCode, ...otherContext } = context;
 
   client.capture({
-    distinctId: distinctId || 'anonymous',
-    event: '$exception',
+    distinctId: distinctId || "anonymous",
+    event: "$exception",
     properties: {
-      $exception_type: error.name || 'Error',
-      $exception_message: error.message || '',
-      $exception_stack: error.stack || '',
+      $exception_type: error.name || "Error",
+      $exception_message: error.message || "",
+      $exception_stack: error.stack || "",
       endpoint,
       method,
       ...(statusCode !== undefined && { statusCode }),
       ...otherContext,
-      environment: process.env.NODE_ENV || 'development',
+      environment: process.env.NODE_ENV || "development",
       timestamp: new Date().toISOString(),
     },
   });
@@ -124,7 +124,7 @@ export async function flushPostHog(): Promise<void> {
 
   const flushPromise = posthogClient.flush();
   const timeoutPromise = new Promise<void>((_, reject) => {
-    setTimeout(() => reject(new Error('PostHog flush timeout')), 3000);
+    setTimeout(() => reject(new Error("PostHog flush timeout")), 3000);
   });
 
   await Promise.race([flushPromise, timeoutPromise]);
@@ -138,7 +138,7 @@ export async function shutdownPostHog(): Promise<void> {
 
   const shutdownPromise = posthogClient.shutdown();
   const timeoutPromise = new Promise<void>((_, reject) => {
-    setTimeout(() => reject(new Error('PostHog shutdown timeout')), 3000);
+    setTimeout(() => reject(new Error("PostHog shutdown timeout")), 3000);
   });
 
   await Promise.race([shutdownPromise, timeoutPromise]);

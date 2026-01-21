@@ -1,4 +1,4 @@
-import { logger, type JsonValue } from "@elizaos/core";
+import { type JsonValue, logger } from "@elizaos/core";
 
 export function getJsonRepairFunction(): ((text: string) => string) | undefined {
   try {

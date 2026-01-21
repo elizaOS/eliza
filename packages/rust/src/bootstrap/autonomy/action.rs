@@ -46,8 +46,17 @@ impl Action for SendToAdminAction {
         // Check for admin-related keywords in the message
         let text = message.content.text.to_lowercase();
         let admin_keywords = [
-            "admin", "user", "tell", "notify", "inform", "update",
-            "message", "send", "communicate", "report", "alert",
+            "admin",
+            "user",
+            "tell",
+            "notify",
+            "inform",
+            "update",
+            "message",
+            "send",
+            "communicate",
+            "report",
+            "alert",
         ];
 
         admin_keywords.iter().any(|kw| text.contains(kw))
@@ -63,25 +72,34 @@ impl Action for SendToAdminAction {
         let autonomous_thought = &message.content.text;
 
         // Generate message to admin
-        let message_to_admin = if autonomous_thought.contains("completed") || autonomous_thought.contains("finished") {
-            format!("I've completed a task and wanted to update you. My thoughts: {}", autonomous_thought)
-        } else if autonomous_thought.contains("problem") || autonomous_thought.contains("issue") || autonomous_thought.contains("error") {
-            format!("I encountered something that might need your attention: {}", autonomous_thought)
+        let message_to_admin = if autonomous_thought.contains("completed")
+            || autonomous_thought.contains("finished")
+        {
+            format!(
+                "I've completed a task and wanted to update you. My thoughts: {}",
+                autonomous_thought
+            )
+        } else if autonomous_thought.contains("problem")
+            || autonomous_thought.contains("issue")
+            || autonomous_thought.contains("error")
+        {
+            format!(
+                "I encountered something that might need your attention: {}",
+                autonomous_thought
+            )
         } else if autonomous_thought.contains("question") || autonomous_thought.contains("unsure") {
-            format!("I have a question and would appreciate your guidance: {}", autonomous_thought)
+            format!(
+                "I have a question and would appreciate your guidance: {}",
+                autonomous_thought
+            )
         } else {
             format!("Autonomous update: {}", autonomous_thought)
         };
 
-        Ok(Some(ActionResult::success(&message_to_admin)
-            .with_data("sent", true)
-            .with_data("messageContent", message_to_admin.clone())))
+        Ok(Some(
+            ActionResult::success(&message_to_admin)
+                .with_data("sent", true)
+                .with_data("messageContent", message_to_admin.clone()),
+        ))
     }
 }
-
-
-
-
-
-
-

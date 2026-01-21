@@ -1,6 +1,5 @@
 """Tests for ElevenLabs plugin types."""
 
-
 from eliza_plugin_elevenlabs.types import (
     DEFAULT_STT_OPTIONS,
     DEFAULT_TTS_OPTIONS,

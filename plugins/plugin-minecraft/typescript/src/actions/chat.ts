@@ -8,14 +8,22 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { MinecraftService, MINECRAFT_SERVICE_TYPE } from "../services/minecraft-service.js";
+import {
+  MINECRAFT_SERVICE_TYPE,
+  type MinecraftService,
+} from "../services/minecraft-service.js";
 
 export const minecraftChatAction: Action = {
   name: "MC_CHAT",
   similes: ["MINECRAFT_CHAT", "SAY_IN_MINECRAFT", "CHAT"],
   description: "Send a chat message in Minecraft as the bot",
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
     return Boolean(service) && (message.content.text ?? "").trim().length > 0;
   },
   handler: async (
@@ -25,7 +33,9 @@ export const minecraftChatAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
     if (!service) {
       return { text: "Minecraft service is not available", success: false };
     }
@@ -40,7 +50,11 @@ export const minecraftChatAction: Action = {
         source: message.content.source,
       };
       await callback?.(content);
-      return { text: content.text ?? "", success: true, values: { sent: true } };
+      return {
+        text: content.text ?? "",
+        success: true,
+        values: { sent: true },
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const content: Content = {
@@ -53,4 +67,3 @@ export const minecraftChatAction: Action = {
     }
   },
 };
-

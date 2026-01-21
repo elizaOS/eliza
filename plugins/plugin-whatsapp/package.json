@@ -1,5 +1,5 @@
 {
-    "name": "@elizaos-plugins/plugin-whatsapp",
+    "name": "@elizaos/plugin-whatsapp",
     "version": "0.25.6-alpha.1",
     "description": "WhatsApp Cloud API plugin",
     "type": "module",
@@ -24,7 +24,7 @@
         "dev": "tsup --format esm --dts --watch",
         "test": "vitest run",
         "coverage": "vitest run --coverage",
-        "lint": "biome check src/",
+        "lint": "biome check --apply-unsafe src/",
         "lint:fix": "biome check --apply src/",
         "format": "biome format src/",
         "format:fix": "biome format --write src/"

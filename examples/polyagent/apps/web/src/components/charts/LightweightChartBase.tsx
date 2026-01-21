@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { POLYAGENT_POINTS_SYMBOL, logger } from '@polyagent/shared';
+import { logger, POLYAGENT_POINTS_SYMBOL } from "@polyagent/shared";
 import type {
   AreaSeriesOptions,
   ChartOptions,
@@ -9,9 +9,9 @@ import type {
   ISeriesApi,
   LineSeriesOptions,
   Time,
-} from 'lightweight-charts';
-import { ColorType, createChart } from 'lightweight-charts';
-import { useEffect, useRef, useState } from 'react';
+} from "lightweight-charts";
+import { ColorType, createChart } from "lightweight-charts";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Base chart props for Lightweight Charts wrapper.
@@ -28,8 +28,8 @@ interface LightweightChartBaseProps {
  */
 export const DARK_CHART_THEME: DeepPartial<ChartOptions> = {
   layout: {
-    background: { type: ColorType.Solid, color: 'transparent' },
-    textColor: '#a1a1aa', // zinc-400 - readable on dark backgrounds
+    background: { type: ColorType.Solid, color: "transparent" },
+    textColor: "#a1a1aa", // zinc-400 - readable on dark backgrounds
     fontSize: 11,
     fontFamily:
       'ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"',
@@ -37,26 +37,26 @@ export const DARK_CHART_THEME: DeepPartial<ChartOptions> = {
   },
   grid: {
     vertLines: { visible: false },
-    horzLines: { color: 'rgba(63, 63, 70, 0.5)', style: 1 }, // zinc-700 with opacity
+    horzLines: { color: "rgba(63, 63, 70, 0.5)", style: 1 }, // zinc-700 with opacity
   },
   crosshair: {
     vertLine: {
-      color: 'rgba(161, 161, 170, 0.5)', // zinc-400 with opacity
+      color: "rgba(161, 161, 170, 0.5)", // zinc-400 with opacity
       width: 1,
       style: 2,
-      labelBackgroundColor: '#27272a', // zinc-800
+      labelBackgroundColor: "#27272a", // zinc-800
     },
     horzLine: {
-      color: 'rgba(161, 161, 170, 0.5)', // zinc-400 with opacity
+      color: "rgba(161, 161, 170, 0.5)", // zinc-400 with opacity
       width: 1,
       style: 2,
-      labelBackgroundColor: '#27272a', // zinc-800
+      labelBackgroundColor: "#27272a", // zinc-800
     },
   },
   rightPriceScale: {
     borderVisible: false,
     scaleMargins: { top: 0.1, bottom: 0.1 },
-    textColor: '#a1a1aa', // zinc-400
+    textColor: "#a1a1aa", // zinc-400
   },
   timeScale: {
     borderVisible: false,
@@ -74,36 +74,36 @@ export const DARK_CHART_THEME: DeepPartial<ChartOptions> = {
  */
 export const AREA_STYLES = {
   green: {
-    lineColor: '#22c55e', // green-500 - brighter for visibility
-    topColor: 'rgba(34, 197, 94, 0.25)',
-    bottomColor: 'rgba(34, 197, 94, 0.02)',
+    lineColor: "#22c55e", // green-500 - brighter for visibility
+    topColor: "rgba(34, 197, 94, 0.25)",
+    bottomColor: "rgba(34, 197, 94, 0.02)",
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#22c55e',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#22c55e",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<AreaSeriesOptions>,
   red: {
-    lineColor: '#ef4444', // red-500 - brighter for visibility
-    topColor: 'rgba(239, 68, 68, 0.25)',
-    bottomColor: 'rgba(239, 68, 68, 0.02)',
+    lineColor: "#ef4444", // red-500 - brighter for visibility
+    topColor: "rgba(239, 68, 68, 0.25)",
+    bottomColor: "rgba(239, 68, 68, 0.02)",
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#ef4444',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#ef4444",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<AreaSeriesOptions>,
   blue: {
-    lineColor: '#3b82f6',
-    topColor: 'rgba(59, 130, 246, 0.25)',
-    bottomColor: 'rgba(59, 130, 246, 0.02)',
+    lineColor: "#3b82f6",
+    topColor: "rgba(59, 130, 246, 0.25)",
+    bottomColor: "rgba(59, 130, 246, 0.02)",
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#3b82f6',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#3b82f6",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<AreaSeriesOptions>,
 };
@@ -113,21 +113,21 @@ export const AREA_STYLES = {
  */
 export const LINE_STYLES = {
   green: {
-    color: '#22c55e', // green-500
+    color: "#22c55e", // green-500
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#22c55e',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#22c55e",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<LineSeriesOptions>,
   red: {
-    color: '#ef4444', // red-500
+    color: "#ef4444", // red-500
     lineWidth: 2,
     crosshairMarkerVisible: true,
     crosshairMarkerRadius: 4,
-    crosshairMarkerBackgroundColor: '#ef4444',
-    crosshairMarkerBorderColor: '#ffffff',
+    crosshairMarkerBackgroundColor: "#ef4444",
+    crosshairMarkerBorderColor: "#ffffff",
     crosshairMarkerBorderWidth: 2,
   } satisfies DeepPartial<LineSeriesOptions>,
 };
@@ -154,7 +154,7 @@ interface UseLightweightChartResult {
  * @returns Chart container ref and chart API
  */
 export function useLightweightChart(
-  options?: DeepPartial<ChartOptions>
+  options?: DeepPartial<ChartOptions>,
 ): UseLightweightChartResult {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
@@ -164,7 +164,7 @@ export function useLightweightChart(
 
   useEffect(() => {
     // Skip during SSR
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     let rafId: number | null = null;
     let mounted = true;
@@ -184,9 +184,9 @@ export function useLightweightChart(
         retryCount++;
         if (retryCount >= MAX_RETRIES) {
           logger.warn(
-            'Chart container never acquired dimensions after max retries',
+            "Chart container never acquired dimensions after max retries",
             { retryCount },
-            'useLightweightChart'
+            "useLightweightChart",
           );
           return;
         }
@@ -208,9 +208,9 @@ export function useLightweightChart(
         }
       } catch (error) {
         logger.error(
-          'Failed to create chart',
+          "Failed to create chart",
           { error },
-          'useLightweightChart'
+          "useLightweightChart",
         );
       }
     };
@@ -245,7 +245,7 @@ export function formatChartTime(timestamp: number): Time {
  * Format price for display.
  */
 export function formatChartPrice(value: number, includeSymbol = false): string {
-  const prefix = includeSymbol ? POLYAGENT_POINTS_SYMBOL : '';
+  const prefix = includeSymbol ? POLYAGENT_POINTS_SYMBOL : "";
 
   if (value === 0) return `${prefix}0`;
   if (value >= 1_000_000_000)

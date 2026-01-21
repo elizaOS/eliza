@@ -105,7 +105,8 @@ impl ElevenLabsService {
 
         ElevenLabsSTTOptions {
             api_key: api_key.to_string(),
-            model_id: env::var("ELEVENLABS_STT_MODEL_ID").unwrap_or_else(|_| "scribe_v1".to_string()),
+            model_id: env::var("ELEVENLABS_STT_MODEL_ID")
+                .unwrap_or_else(|_| "scribe_v1".to_string()),
             language_code: env::var("ELEVENLABS_STT_LANGUAGE_CODE").ok(),
             transcription_settings: TranscriptionSettings {
                 timestamps_granularity: env::var("ELEVENLABS_STT_TIMESTAMPS_GRANULARITY")
@@ -201,10 +202,7 @@ impl ElevenLabsService {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(ElevenLabsError::Api(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
+            return Err(ElevenLabsError::Api(format!("HTTP {}: {}", status, body)));
         }
 
         let bytes = response.bytes().await?;
@@ -249,13 +247,12 @@ impl ElevenLabsService {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(ElevenLabsError::Api(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
+            return Err(ElevenLabsError::Api(format!("HTTP {}: {}", status, body)));
         }
 
-        Ok(response.bytes_stream().map(|result| result.map_err(ElevenLabsError::from)))
+        Ok(response
+            .bytes_stream()
+            .map(|result| result.map_err(ElevenLabsError::from)))
     }
 
     /// Convert speech to text using ElevenLabs API.
@@ -331,10 +328,7 @@ impl ElevenLabsService {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(ElevenLabsError::Api(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
+            return Err(ElevenLabsError::Api(format!("HTTP {}: {}", status, body)));
         }
 
         let result: STTResponse = response.json().await?;
@@ -351,10 +345,7 @@ impl ElevenLabsService {
         }
 
         if let Some(transcripts) = result.transcripts {
-            let texts: Vec<String> = transcripts
-                .into_iter()
-                .filter_map(|t| t.text)
-                .collect();
+            let texts: Vec<String> = transcripts.into_iter().filter_map(|t| t.text).collect();
             return Ok(texts.join("\n"));
         }
 

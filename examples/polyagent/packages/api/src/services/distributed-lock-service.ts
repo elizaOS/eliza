@@ -6,9 +6,9 @@
  * Supports automatic stale lock recovery.
  */
 
-import { and, db, eq, generationLocks, lte } from '@polyagent/db';
-import { logger } from '@polyagent/shared';
-import { randomBytes } from 'crypto';
+import { randomBytes } from "node:crypto";
+import { and, db, eq, generationLocks, lte } from "@polyagent/db";
+import { logger } from "@polyagent/shared";
 
 export interface LockOptions {
   lockId: string;
@@ -40,7 +40,7 @@ export class DistributedLockService {
 
     // Generate serverless-safe unique ID if not provided
     const lockHolder =
-      processId || `serverless-${Date.now()}-${randomBytes(8).toString('hex')}`;
+      processId || `serverless-${Date.now()}-${randomBytes(8).toString("hex")}`;
 
     // First, try to atomically update an existing expired lock
     // This is TOCTOU-safe: only succeeds if lock is expired at update time
@@ -54,7 +54,10 @@ export class DistributedLockService {
         operation,
       })
       .where(
-        and(eq(generationLocks.id, lockId), lte(generationLocks.expiresAt, now))
+        and(
+          eq(generationLocks.id, lockId),
+          lte(generationLocks.expiresAt, now),
+        ),
       )
       .returning({ id: generationLocks.id });
 
@@ -66,7 +69,7 @@ export class DistributedLockService {
           lockHolder,
           expiresAt: expiry.toISOString(),
         },
-        'DistributedLockService'
+        "DistributedLockService",
       );
       return true;
     }
@@ -81,7 +84,7 @@ export class DistributedLockService {
     if (existingLock) {
       // Lock exists and is not expired (otherwise update would have succeeded)
       const ageMinutes = Math.round(
-        (now.getTime() - existingLock.lockedAt.getTime()) / 1000 / 60
+        (now.getTime() - existingLock.lockedAt.getTime()) / 1000 / 60,
       );
       logger.info(
         `Lock ${lockId} held by ${existingLock.lockedBy} - skipping`,
@@ -90,10 +93,10 @@ export class DistributedLockService {
           holder: existingLock.lockedBy,
           ageMinutes,
           expiresIn: Math.round(
-            (existingLock.expiresAt.getTime() - now.getTime()) / 1000
+            (existingLock.expiresAt.getTime() - now.getTime()) / 1000,
           ),
         },
-        'DistributedLockService'
+        "DistributedLockService",
       );
       return false;
     }
@@ -120,7 +123,7 @@ export class DistributedLockService {
           lockHolder,
           expiresAt: expiry.toISOString(),
         },
-        'DistributedLockService'
+        "DistributedLockService",
       );
       return true;
     }
@@ -129,7 +132,7 @@ export class DistributedLockService {
     logger.info(
       `Lock ${lockId} lost race to another process`,
       { lockId },
-      'DistributedLockService'
+      "DistributedLockService",
     );
     return false;
   }
@@ -151,7 +154,7 @@ export class DistributedLockService {
       logger.warn(
         `releaseLock called without processId for ${lockId} - unsafe release prevented`,
         undefined,
-        'DistributedLockService'
+        "DistributedLockService",
       );
       return;
     }
@@ -163,8 +166,8 @@ export class DistributedLockService {
       .where(
         and(
           eq(generationLocks.id, lockId),
-          eq(generationLocks.lockedBy, processId)
-        )
+          eq(generationLocks.lockedBy, processId),
+        ),
       )
       .returning({ id: generationLocks.id });
 
@@ -172,14 +175,14 @@ export class DistributedLockService {
       logger.info(
         `Lock ${lockId} released`,
         { lockId, lockHolder: processId },
-        'DistributedLockService'
+        "DistributedLockService",
       );
     } else {
       // Lock either doesn't exist, expired and was taken by another process, or we don't own it
       logger.info(
         `Lock ${lockId} not released - not held by this process or already released`,
         { lockId, processId },
-        'DistributedLockService'
+        "DistributedLockService",
       );
     }
   }

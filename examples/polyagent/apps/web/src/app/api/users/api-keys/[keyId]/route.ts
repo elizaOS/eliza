@@ -5,11 +5,15 @@
  * @access Authenticated (own keys only)
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@polyagent/api';
-import { asUser, eq, userApiKeys } from '@polyagent/db';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import {
+  authenticate,
+  successResponse,
+  withErrorHandling,
+} from "@polyagent/api";
+import { asUser, eq, userApiKeys } from "@polyagent/db";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * DELETE /api/users/api-keys/[keyId] - Revoke API key
@@ -17,7 +21,7 @@ import { NextResponse } from 'next/server';
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ keyId: string }> }
+    context: { params: Promise<{ keyId: string }> },
   ) => {
     const authUser = await authenticate(request);
     const { keyId } = await context.params;
@@ -30,7 +34,7 @@ export const DELETE = withErrorHandling(
           andFn(
             eq(keys.id, keyId),
             eq(keys.userId, authUser.userId),
-            isNullFn(keys.revokedAt)
+            isNullFn(keys.revokedAt),
           ),
       });
 
@@ -48,19 +52,19 @@ export const DELETE = withErrorHandling(
 
     if (!deleted || deleted.length === 0) {
       return NextResponse.json(
-        { error: 'API key not found or already revoked' },
-        { status: 404 }
+        { error: "API key not found or already revoked" },
+        { status: 404 },
       );
     }
 
     logger.info(
-      'API key revoked',
+      "API key revoked",
       { userId: authUser.userId, keyId },
-      'API Keys'
+      "API Keys",
     );
 
     return successResponse({
-      message: 'API key revoked successfully',
+      message: "API key revoked successfully",
     });
-  }
+  },
 );

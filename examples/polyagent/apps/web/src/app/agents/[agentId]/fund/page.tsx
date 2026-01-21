@@ -1,24 +1,24 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 import {
+  AlertCircle,
   ArrowLeft,
-  Copy,
   CheckCircle,
+  Copy,
   ExternalLink,
   Loader2,
   Wallet,
-  AlertCircle,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
-import { useSmartWallet } from '@/hooks/useSmartWallet';
+} from "lucide-react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { useSmartWallet } from "@/hooks/useSmartWallet";
 
 interface Agent {
   id: string;
@@ -37,7 +37,7 @@ export default function FundAgentPage() {
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [copied, setCopied] = useState(false);
   const [userBalance, setUserBalance] = useState<number | null>(null);
@@ -45,8 +45,8 @@ export default function FundAgentPage() {
   const fetchAgent = useCallback(async () => {
     const token = await getAccessToken();
     if (!token) {
-      toast.error('Authentication required');
-      router.push('/agents');
+      toast.error("Authentication required");
+      router.push("/agents");
       return;
     }
 
@@ -59,11 +59,11 @@ export default function FundAgentPage() {
         const data = await res.json();
         setAgent(data.agent);
       } else {
-        toast.error('Agent not found');
-        router.push('/agents');
+        toast.error("Agent not found");
+        router.push("/agents");
       }
     } catch {
-      toast.error('Failed to load agent');
+      toast.error("Failed to load agent");
     } finally {
       setLoading(false);
     }
@@ -74,7 +74,7 @@ export default function FundAgentPage() {
     if (!token) return;
 
     try {
-      const res = await fetch('/api/users/me', {
+      const res = await fetch("/api/users/me", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -97,25 +97,25 @@ export default function FundAgentPage() {
     if (agent?.walletAddress) {
       navigator.clipboard.writeText(agent.walletAddress);
       setCopied(true);
-      toast.success('Address copied to clipboard');
+      toast.success("Address copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
     }
   };
 
   const handleSendFunds = async () => {
     if (!agent?.walletAddress) {
-      toast.error('Agent wallet not available');
+      toast.error("Agent wallet not available");
       return;
     }
 
     const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      toast.error('Please enter a valid amount');
+    if (Number.isNaN(amountNum) || amountNum <= 0) {
+      toast.error("Please enter a valid amount");
       return;
     }
 
     if (userBalance !== null && amountNum > userBalance) {
-      toast.error('Insufficient balance');
+      toast.error("Insufficient balance");
       return;
     }
 
@@ -124,16 +124,16 @@ export default function FundAgentPage() {
     try {
       const token = await getAccessToken();
       if (!token) {
-        toast.error('Authentication required');
+        toast.error("Authentication required");
         return;
       }
 
       // Call API to transfer funds to agent
       const res = await fetch(`/api/agents/${agentId}/fund`, {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           amount: amountNum,
@@ -142,17 +142,17 @@ export default function FundAgentPage() {
 
       if (res.ok) {
         toast.success(`Successfully sent $${amountNum} USDC to agent`);
-        setAmount('');
+        setAmount("");
         // Refresh agent data
         await fetchAgent();
         await fetchUserBalance();
       } else {
         const error = await res.json().catch(() => ({}));
-        toast.error(error.message || 'Failed to send funds');
+        toast.error(error.message || "Failed to send funds");
       }
     } catch (error) {
-      console.error('Failed to send funds:', error);
-      toast.error('Failed to send funds');
+      console.error("Failed to send funds:", error);
+      toast.error("Failed to send funds");
     } finally {
       setIsSending(false);
     }
@@ -220,14 +220,20 @@ export default function FundAgentPage() {
             <div className="rounded-lg bg-muted/50 p-4">
               <p className="text-muted-foreground text-sm">Agent Balance</p>
               <p className="font-mono font-semibold text-2xl">
-                ${agent.balance?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? '0.00'}
+                $
+                {agent.balance?.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                }) ?? "0.00"}
               </p>
               <p className="text-muted-foreground text-xs">USDC</p>
             </div>
             <div className="rounded-lg bg-muted/50 p-4">
               <p className="text-muted-foreground text-sm">Your Balance</p>
               <p className="font-mono font-semibold text-2xl">
-                ${userBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? '0.00'}
+                $
+                {userBalance?.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                }) ?? "0.00"}
               </p>
               <p className="text-muted-foreground text-xs">Available to send</p>
             </div>
@@ -285,11 +291,11 @@ export default function FundAgentPage() {
           <h2 className="mb-4 font-semibold">Send USDC</h2>
           <div className="space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-medium">
+              <label className="mb-2 block font-medium text-sm">
                 Amount (USDC)
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                <span className="absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground">
                   $
                 </span>
                 <input
@@ -299,7 +305,7 @@ export default function FundAgentPage() {
                   placeholder="0.00"
                   min="0"
                   step="0.01"
-                  className="w-full rounded-lg border border-border bg-background py-3 pl-8 pr-4 text-lg focus:border-primary focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-background py-3 pr-4 pl-8 text-lg focus:border-primary focus:outline-none"
                 />
               </div>
               <div className="mt-2 flex gap-2">
@@ -344,7 +350,7 @@ export default function FundAgentPage() {
 
         {/* External Funding Option */}
         {hasWallet && (
-          <div className="rounded-xl border border-dashed border-border bg-card/50 p-6 text-center">
+          <div className="rounded-xl border border-border border-dashed bg-card/50 p-6 text-center">
             <h3 className="mb-2 font-semibold">Fund Externally</h3>
             <p className="mb-4 text-muted-foreground text-sm">
               You can also send USDC directly to the agent's wallet address on
@@ -354,8 +360,8 @@ export default function FundAgentPage() {
               <button
                 onClick={copyAddress}
                 className={cn(
-                  'flex items-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors',
-                  'border border-border hover:bg-muted'
+                  "flex items-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors",
+                  "border border-border hover:bg-muted",
                 )}
               >
                 <Copy className="h-4 w-4" />

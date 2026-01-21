@@ -155,11 +155,11 @@
  * @see {@link /src/app/agents/page.tsx} Agents management UI
  */
 
-import { agentService, getAgentConfig } from '@polyagent/agents';
-import { authenticateUser } from '@polyagent/api';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { agentService, getAgentConfig } from "@polyagent/agents";
+import { authenticateUser } from "@polyagent/api";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   const user = await authenticateUser(req);
@@ -203,13 +203,13 @@ export async function POST(req: NextRequest) {
   logger.info(
     `Agent user created via API: ${agentUser.id}`,
     undefined,
-    'AgentsAPI'
+    "AgentsAPI",
   );
 
   // Update agent config with settings from step 3
   // (createAgent sets all autonomous features to true by default, so we apply user's choices here)
   await agentService.updateAgent(agentUser.id, user.id, {
-    modelTier: modelTier || 'free',
+    modelTier: modelTier || "free",
     autonomousTrading: autonomousEnabled ?? false,
     autonomousPosting: autonomousPosting ?? false,
     autonomousCommenting: autonomousCommenting ?? false,
@@ -235,7 +235,7 @@ export async function POST(req: NextRequest) {
       autonomousCommenting: config?.autonomousCommenting ?? false,
       autonomousDMs: config?.autonomousDMs ?? false,
       autonomousGroupChats: config?.autonomousGroupChats ?? false,
-      modelTier: config?.modelTier ?? 'lite',
+      modelTier: config?.modelTier ?? "lite",
       lifetimePnL: agentUser.lifetimePnL.toString(),
       walletAddress: agentUser.walletAddress,
       onChainRegistered: agentUser.onChainRegistered,
@@ -248,11 +248,11 @@ export async function GET(req: NextRequest) {
   const user = await authenticateUser(req);
 
   const { searchParams } = new URL(req.url);
-  const autonomousTrading = searchParams.get('autonomousTrading');
+  const autonomousTrading = searchParams.get("autonomousTrading");
 
   const filters: { autonomousTrading?: boolean } = {};
   if (autonomousTrading !== null) {
-    filters.autonomousTrading = autonomousTrading === 'true';
+    filters.autonomousTrading = autonomousTrading === "true";
   }
 
   const agents = await agentService.listUserAgents(user.id, filters);
@@ -276,9 +276,9 @@ export async function GET(req: NextRequest) {
         autonomousCommenting: config?.autonomousCommenting ?? false,
         autonomousDMs: config?.autonomousDMs ?? false,
         autonomousGroupChats: config?.autonomousGroupChats ?? false,
-        modelTier: config?.modelTier ?? 'lite',
-        status: config?.status ?? 'idle',
-        isActive: config?.status === 'active',
+        modelTier: config?.modelTier ?? "lite",
+        status: config?.status ?? "idle",
+        isActive: config?.status === "active",
         lifetimePnL: agent.lifetimePnL.toString(),
         totalTrades: performance.totalTrades,
         profitableTrades: performance.profitableTrades,
@@ -291,7 +291,7 @@ export async function GET(req: NextRequest) {
         createdAt: agent.createdAt.toISOString(),
         updatedAt: agent.updatedAt.toISOString(),
       };
-    })
+    }),
   );
 
   return NextResponse.json({

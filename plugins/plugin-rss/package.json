@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-rss-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "RSS and Atom feed integration plugin for elizaOS - enables agents to fetch and monitor news feeds",
   "type": "module",
   "main": "typescript/dist/index.js",

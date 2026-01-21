@@ -15,7 +15,13 @@ static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
 
 /// Sensitive key patterns to filter out.
 const SENSITIVE_PATTERNS: &[&str] = &[
-    "key", "secret", "password", "token", "credential", "auth", "private",
+    "key",
+    "secret",
+    "password",
+    "token",
+    "credential",
+    "auth",
+    "private",
 ];
 
 /// Provider for agent settings.
@@ -80,4 +86,3 @@ impl Provider for AgentSettingsProvider {
             .with_data("settings", serde_json::Value::Object(settings_map)))
     }
 }
-

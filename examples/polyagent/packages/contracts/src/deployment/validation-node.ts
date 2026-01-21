@@ -7,11 +7,11 @@
  * @remarks Import from '@polyagent/contracts/deployment/validation-node' for Node.js scripts only.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import type { DeploymentEnv } from './env-detection';
-import { logger } from './logger';
-import type { ContractAddresses, DeploymentInfo } from './validation';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { DeploymentEnv } from "./env-detection";
+import { logger } from "./logger";
+import type { ContractAddresses, DeploymentInfo } from "./validation";
 
 /**
  * Save deployment information to JSON file.
@@ -25,22 +25,22 @@ import type { ContractAddresses, DeploymentInfo } from './validation';
  */
 export async function saveDeployment(
   env: DeploymentEnv,
-  deployment: DeploymentInfo
+  deployment: DeploymentInfo,
 ): Promise<void> {
-  if (typeof process === 'undefined' || typeof process.cwd !== 'function') {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") {
     throw new Error(
-      'saveDeployment requires Node.js environment with file system access. Not available in edge runtime.'
+      "saveDeployment requires Node.js environment with file system access. Not available in edge runtime.",
     );
   }
 
   const deploymentPaths = {
-    localnet: 'packages/contracts/deployments/local',
-    testnet: 'packages/contracts/deployments/base-sepolia',
-    mainnet: 'packages/contracts/deployments/base',
+    localnet: "packages/contracts/deployments/local",
+    testnet: "packages/contracts/deployments/base-sepolia",
+    mainnet: "packages/contracts/deployments/base",
   };
 
   const dirpath = path.join(process.cwd(), deploymentPaths[env]);
-  const filepath = path.join(dirpath, 'index.json');
+  const filepath = path.join(dirpath, "index.json");
 
   if (!fs.existsSync(dirpath)) {
     fs.mkdirSync(dirpath, { recursive: true });
@@ -50,7 +50,7 @@ export async function saveDeployment(
   logger.info(
     `Deployment saved to ${filepath}`,
     undefined,
-    'DeploymentValidation'
+    "DeploymentValidation",
   );
 }
 
@@ -62,25 +62,25 @@ export async function saveDeployment(
  */
 export async function updateEnvFile(
   env: DeploymentEnv,
-  contracts: ContractAddresses
+  contracts: ContractAddresses,
 ): Promise<void> {
-  if (typeof process === 'undefined' || typeof process.cwd !== 'function') {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") {
     throw new Error(
-      'updateEnvFile requires Node.js environment with file system access. Not available in edge runtime.'
+      "updateEnvFile requires Node.js environment with file system access. Not available in edge runtime.",
     );
   }
 
   const envFiles = {
-    localnet: '.env.local',
-    testnet: '.env.testnet',
-    mainnet: '.env.production',
+    localnet: ".env.local",
+    testnet: ".env.testnet",
+    mainnet: ".env.production",
   };
 
   const envFile = path.join(process.cwd(), envFiles[env]);
 
-  let envContent = '';
+  let envContent = "";
   if (fs.existsSync(envFile)) {
-    envContent = fs.readFileSync(envFile, 'utf-8');
+    envContent = fs.readFileSync(envFile, "utf-8");
   }
 
   const updates: Record<string, string | undefined> = {
@@ -107,7 +107,7 @@ export async function updateEnvFile(
 
   for (const [key, value] of Object.entries(updates)) {
     if (value) {
-      const regex = new RegExp(`^${key}=.*$`, 'm');
+      const regex = new RegExp(`^${key}=.*$`, "m");
       const match = envContent.match(regex);
       if (match) {
         envContent = envContent.replace(regex, `${key}=${value}`);
@@ -121,6 +121,6 @@ export async function updateEnvFile(
   logger.info(
     `Updated ${envFile} with contract addresses`,
     undefined,
-    'DeploymentValidation'
+    "DeploymentValidation",
   );
 }

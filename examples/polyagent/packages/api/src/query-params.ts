@@ -43,7 +43,7 @@ export function parseDateParam(param: string | null): Date | null {
  */
 export function createEnumValidator<T extends readonly string[]>(
   validValues: T,
-  defaultValue: T[number]
+  defaultValue: T[number],
 ): (value: string | null) => T[number] {
   return (value: string | null): T[number] => {
     if (!value || !validValues.includes(value as T[number])) {
@@ -74,7 +74,7 @@ export function createEnumValidator<T extends readonly string[]>(
 export function validateEnum<T extends readonly string[]>(
   value: string | null,
   validValues: T,
-  defaultValue: T[number]
+  defaultValue: T[number],
 ): T[number] {
   if (!value || !validValues.includes(value as T[number])) {
     return defaultValue;
@@ -105,7 +105,7 @@ export const MAX_DATE_RANGE_DAYS = 365;
 export function validateDateRange(
   startDate: Date | null | undefined,
   endDate: Date | null | undefined,
-  maxDays: number = MAX_DATE_RANGE_DAYS
+  maxDays: number = MAX_DATE_RANGE_DAYS,
 ): string | null {
   if (!startDate || !endDate) return null;
 
@@ -113,7 +113,7 @@ export function validateDateRange(
   const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
   if (diffDays < 0) {
-    return 'startDate must be before endDate';
+    return "startDate must be before endDate";
   }
 
   if (diffDays > maxDays) {

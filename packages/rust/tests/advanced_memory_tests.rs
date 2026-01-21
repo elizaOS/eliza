@@ -122,4 +122,3 @@ fn get_long_term_memories_handles_zero_limit() {
     let out = service.get_long_term_memories(entity_id, 0);
     assert!(out.is_empty());
 }
-

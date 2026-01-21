@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from elizaos.runtime import AgentRuntime
 from elizaos.advanced_memory.memory_service import MemoryService
 from elizaos.advanced_memory.types import LongTermMemoryCategory
+from elizaos.runtime import AgentRuntime
 from elizaos.types.agent import Character
 from elizaos.types.components import ProviderResult
-from elizaos.types.primitives import Content
 from elizaos.types.memory import Memory
-from elizaos.types.primitives import as_uuid
+from elizaos.types.primitives import Content, as_uuid
 
 
 @pytest.mark.asyncio
@@ -93,4 +92,3 @@ async def test_get_long_term_memories_handles_zero_limit() -> None:
     entity_id = as_uuid("12345678-1234-1234-1234-123456789220")
     results = await svc.get_long_term_memories(entity_id, None, 0)
     assert results == []
-

@@ -3,7 +3,7 @@
  * Includes: likes, comments, shares, and favorites
  */
 
-import type { JsonValue } from './common';
+import type { JsonValue } from "./common";
 
 // ============================================================================
 // Post Interaction Types
@@ -184,13 +184,13 @@ export interface CommentsResponse {
 export interface OptimisticUpdate<T> {
   id: string;
   type:
-    | 'like'
-    | 'unlike'
-    | 'comment'
-    | 'share'
-    | 'unshare'
-    | 'favorite'
-    | 'unfavorite';
+    | "like"
+    | "unlike"
+    | "comment"
+    | "share"
+    | "unshare"
+    | "favorite"
+    | "unfavorite";
   data: T;
   timestamp: number;
   reverted?: boolean;
@@ -198,7 +198,7 @@ export interface OptimisticUpdate<T> {
 
 export interface PendingInteraction<T = JsonValue> {
   id: string;
-  type: 'like' | 'comment' | 'share' | 'favorite';
+  type: "like" | "comment" | "share" | "favorite";
   target: string;
   timestamp: number;
   optimisticData: T;
@@ -226,11 +226,11 @@ export interface PollingUpdate {
 
 export interface InteractionError {
   code:
-    | 'UNAUTHORIZED'
-    | 'NOT_FOUND'
-    | 'DUPLICATE'
-    | 'NETWORK_ERROR'
-    | 'UNKNOWN';
+    | "UNAUTHORIZED"
+    | "NOT_FOUND"
+    | "DUPLICATE"
+    | "NETWORK_ERROR"
+    | "UNKNOWN";
   message: string;
   details?: JsonValue | Record<string, JsonValue>;
 }
@@ -266,7 +266,7 @@ export interface InteractionStoreActions {
   addComment: (
     postId: string,
     content: string,
-    parentId?: string
+    parentId?: string,
   ) => Promise<CommentData | null>;
   editComment: (commentId: string, content: string) => Promise<void>;
   deleteComment: (commentId: string, postId?: string) => Promise<void>;
@@ -302,11 +302,11 @@ export type InteractionStore = InteractionStoreState & InteractionStoreActions;
 
 export interface LikeButtonProps {
   target: string;
-  targetType: 'post' | 'comment';
+  targetType: "post" | "comment";
   initialLiked?: boolean;
   initialCount?: number;
-  initialReactionType?: 'like' | 'love' | 'laugh' | 'sad';
-  size?: 'sm' | 'md' | 'lg';
+  initialReactionType?: "like" | "love" | "laugh" | "sad";
+  size?: "sm" | "md" | "lg";
   showCount?: boolean;
   className?: string;
 }
@@ -315,7 +315,7 @@ export interface CommentButtonProps {
   postId: string;
   commentCount: number;
   onClick?: () => void;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   className?: string;
 }
 
@@ -323,7 +323,7 @@ export interface RepostButtonProps {
   postId: string;
   shareCount: number;
   initialShared?: boolean;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   showCount?: boolean;
   className?: string;
   postData?: {
@@ -340,8 +340,8 @@ export interface RepostButtonProps {
 export interface FavoriteButtonProps {
   profileId: string;
   initialFavorited?: boolean;
-  size?: 'sm' | 'md' | 'lg';
-  variant?: 'icon' | 'button';
+  size?: "sm" | "md" | "lg";
+  variant?: "icon" | "button";
   className?: string;
 }
 

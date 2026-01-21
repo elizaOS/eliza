@@ -9,7 +9,6 @@ use elizaos::types::{string_to_uuid, ChannelType, Content, Entity, Memory, Room,
 use elizaos::AgentRuntime;
 use rand::Rng;
 use std::any::Any;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
@@ -325,7 +324,7 @@ async fn process_mention(
             name: Some("X".to_string()),
             agent_id: Some(runtime.agent_id.clone()),
             source: "x".to_string(),
-            room_type: ChannelType::Thread,
+            room_type: ChannelType::THREAD.to_string(),
             channel_id: None,
             message_server_id: None,
             world_id: Some(world_id.clone()),
@@ -336,9 +335,9 @@ async fn process_mention(
     adapter
         .create_entity(&Entity {
             id: Some(string_to_uuid(&author_key)),
-            names: vec![post.username.clone()],
-            metadata: HashMap::new(),
-            agent_id: runtime.agent_id.clone(),
+            names: Some(vec![post.username.clone()]),
+            metadata: None,
+            agent_id: Some(runtime.agent_id.clone()),
             components: None,
         })
         .await
@@ -358,7 +357,7 @@ async fn process_mention(
             text: Some(post.text.clone()),
             source: Some("x".to_string()),
             url: Some(post.permanent_url.clone()),
-            in_reply_to: in_reply_to_uuid,
+            in_reply_to: in_reply_to_uuid.map(|u| u.to_string()),
             ..Default::default()
         },
         created_at: Some(post.timestamp),
@@ -377,7 +376,7 @@ async fn process_mention(
     let agent_id = runtime.agent_id.clone();
     let my_username = me.username.clone();
     let reply_world_id = Some(string_to_uuid("x-world"));
-    let callback: elizaos::types::HandlerCallback = Arc::new(move |content: Content| {
+    let callback: elizaos::types::HandlerCallback = Box::new(move |content: Content| {
         let client_for_cb = Arc::clone(&client_for_cb);
         let reply_to_id = reply_to_id.clone();
         let my_username = my_username.clone();
@@ -388,11 +387,14 @@ async fn process_mention(
         Box::pin(async move {
             let text = content.text.unwrap_or_default();
             if text.trim().is_empty() {
-                return Ok(Vec::new());
+                return vec![];
             }
-            let created = {
+            let created = match {
                 let c = client_for_cb.lock().await;
-                c.create_reply(&text, &reply_to_id).await?
+                c.create_reply(&text, &reply_to_id).await
+            } {
+                Ok(c) => c,
+                Err(_) => return vec![],
             };
             let reply_mem = Memory {
                 id: Some(string_to_uuid(&format!("x-post:{}", created.id))),
@@ -403,7 +405,7 @@ async fn process_mention(
                     text: Some(created.text),
                     source: Some("x".to_string()),
                     url: Some(format!("https://x.com/{}/status/{}", my_username, created.id)),
-                    in_reply_to: Some(reply_in_reply_to),
+                    in_reply_to: Some(reply_in_reply_to.to_string()),
                     ..Default::default()
                 },
                 created_at: None,
@@ -413,7 +415,7 @@ async fn process_mention(
                 similarity: None,
                 metadata: None,
             };
-            Ok(vec![reply_mem])
+            vec![reply_mem]
         })
     });
 

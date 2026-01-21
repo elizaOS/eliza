@@ -21,8 +21,7 @@ export const buildConfig: BuildConfig = {
     "dotenv",
     "vitest",
     "zod",
-    "@elizaos/core"
+    "@elizaos/core",
   ],
-  naming: "[dir]/[name].[ext]"
+  naming: "[dir]/[name].[ext]",
 };
-

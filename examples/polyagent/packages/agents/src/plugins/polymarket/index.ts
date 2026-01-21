@@ -14,28 +14,28 @@
  * - Market research capabilities
  */
 
-import type { Plugin, IAgentRuntime } from '@elizaos/core';
-import { logger } from '@elizaos/core';
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import polymarketPlugin, {
-  PolymarketService,
-  polymarketProvider,
-  retrieveAllMarketsAction,
-  getTokenInfoAction,
-  getOrderBookDepthAction,
-  placeOrderAction,
-  getOrderDetailsAction,
   checkOrderScoringAction,
+  getOrderBookDepthAction,
+  getOrderDetailsAction,
+  getTokenInfoAction,
+  PolymarketService,
+  placeOrderAction,
+  polymarketProvider,
   researchMarketAction,
-} from '@elizaos/plugin-polymarket';
+  retrieveAllMarketsAction,
+} from "@elizaos/plugin-polymarket";
 
-export { PolymarketService } from '@elizaos/plugin-polymarket';
 export type {
-  Market,
-  Position,
   AccountBalances,
   ApiKeyCreds,
   CachedAccountState,
-} from '@elizaos/plugin-polymarket';
+  Market,
+  Position,
+} from "@elizaos/plugin-polymarket";
+export { PolymarketService } from "@elizaos/plugin-polymarket";
 
 /**
  * Configuration for a Polymarket trading agent
@@ -54,7 +54,7 @@ export interface PolymarketAgentConfig {
   /** Trading strategy description */
   tradingStrategy: string;
   /** Risk tolerance level */
-  riskTolerance: 'conservative' | 'moderate' | 'aggressive';
+  riskTolerance: "conservative" | "moderate" | "aggressive";
   /** Maximum position size in USDC */
   maxPositionSize: number;
   /** Whether autonomous trading is enabled */
@@ -71,9 +71,9 @@ export interface PolymarketAgentConfig {
  * Get Polymarket service from runtime
  */
 export function getPolymarketService(
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): PolymarketService | null {
-  return runtime.getService('polymarket') as PolymarketService | null;
+  return runtime.getService("polymarket") as PolymarketService | null;
 }
 
 /**
@@ -81,7 +81,7 @@ export function getPolymarketService(
  */
 export async function waitForPolymarketService(
   runtime: IAgentRuntime,
-  timeoutMs = 30000
+  timeoutMs = 30000,
 ): Promise<PolymarketService> {
   const startTime = Date.now();
 
@@ -93,7 +93,7 @@ export async function waitForPolymarketService(
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  throw new Error('Polymarket service not available within timeout');
+  throw new Error("Polymarket service not available within timeout");
 }
 
 /**
@@ -104,9 +104,9 @@ export async function waitForPolymarketService(
  * with agent-specific configuration and initialization.
  */
 export const polyagentPolymarketPlugin: Plugin = {
-  name: 'polyagent-polymarket',
+  name: "polyagent-polymarket",
   description:
-    'Polymarket prediction markets integration for Polyagent agents. Enables autonomous trading, market research, and position management.',
+    "Polymarket prediction markets integration for Polyagent agents. Enables autonomous trading, market research, and position management.",
 
   config: {
     // Core Polymarket config (inherited from env)
@@ -125,7 +125,7 @@ export const polyagentPolymarketPlugin: Plugin = {
   },
 
   async init(config: Record<string, string>, runtime?: IAgentRuntime) {
-    logger.info('[PolyagentPolymarket] Initializing Polymarket plugin...');
+    logger.info("[PolyagentPolymarket] Initializing Polymarket plugin...");
 
     // Initialize the base polymarket plugin
     if (polymarketPlugin.init) {
@@ -133,7 +133,7 @@ export const polyagentPolymarketPlugin: Plugin = {
     }
 
     logger.info(
-      '[PolyagentPolymarket] Polymarket plugin initialized successfully'
+      "[PolyagentPolymarket] Polymarket plugin initialized successfully",
     );
   },
 

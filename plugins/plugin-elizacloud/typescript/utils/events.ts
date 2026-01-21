@@ -8,7 +8,7 @@ import type { LanguageModelUsage } from "ai";
 export function emitModelUsageEvent(
   runtime: IAgentRuntime,
   type: ModelTypeName,
-  prompt: string,
+  _prompt: string,
   usage: Partial<LanguageModelUsage> & {
     inputTokens?: number;
     outputTokens?: number;

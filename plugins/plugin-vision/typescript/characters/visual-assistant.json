@@ -61,10 +61,7 @@
     "proactive support"
   ],
   "clients": ["direct"],
-  "plugins": [
-    "@elizaos/plugin-message-handling",
-    "@elizaos/plugin-vision",
-  ],
+  "plugins": ["@elizaos/plugin-message-handling", "@elizaos/plugin-vision"],
   "settings": {
     "voice": {
       "model": "en-US-Neural2-F"

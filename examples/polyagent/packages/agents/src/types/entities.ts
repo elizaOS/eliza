@@ -48,7 +48,7 @@ export interface ActorEntity {
  * Entity mention result
  */
 export interface EntityMention {
-  type: 'company' | 'user' | 'actor';
+  type: "company" | "user" | "actor";
   data: CompanyEntity | UserEntity | ActorEntity;
 }
 
@@ -56,25 +56,25 @@ export interface EntityMention {
  * Type guard for company entity
  */
 export function isCompanyEntity(
-  entity: CompanyEntity | UserEntity | ActorEntity
+  entity: CompanyEntity | UserEntity | ActorEntity,
 ): entity is CompanyEntity {
-  return 'ticker' in entity || 'currentPrice' in entity;
+  return "ticker" in entity || "currentPrice" in entity;
 }
 
 /**
  * Type guard for user entity
  */
 export function isUserEntity(
-  entity: CompanyEntity | UserEntity | ActorEntity
+  entity: CompanyEntity | UserEntity | ActorEntity,
 ): entity is UserEntity {
-  return 'username' in entity && !('ticker' in entity);
+  return "username" in entity && !("ticker" in entity);
 }
 
 /**
  * Type guard for actor entity
  */
 export function isActorEntity(
-  entity: CompanyEntity | UserEntity | ActorEntity
+  entity: CompanyEntity | UserEntity | ActorEntity,
 ): entity is ActorEntity {
-  return 'name' in entity && !('username' in entity) && !('ticker' in entity);
+  return "name" in entity && !("username" in entity) && !("ticker" in entity);
 }

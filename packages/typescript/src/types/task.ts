@@ -1,11 +1,11 @@
+import type { Memory } from "./memory";
+import type { UUID } from "./primitives";
 import type {
+  JsonValue,
   Task as ProtoTask,
   TaskMetadata as ProtoTaskMetadata,
   TaskStatus as ProtoTaskStatus,
 } from "./proto.js";
-import type { JsonValue } from "./proto.js";
-import type { Memory } from "./memory";
-import type { UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 

@@ -1,7 +1,7 @@
-import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as vm from "node:vm";
 
 import { build } from "esbuild";
@@ -27,7 +27,11 @@ function getPluginNameFromEntry(entryAbsPath: string): string {
 }
 
 async function readAllowlist(repoRoot: string): Promise<Allowlist> {
-  const allowlistPath = path.join(repoRoot, "plugins", "browser-compat.allowlist.json");
+  const allowlistPath = path.join(
+    repoRoot,
+    "plugins",
+    "browser-compat.allowlist.json",
+  );
   if (!existsSync(allowlistPath)) {
     return {};
   }
@@ -67,7 +71,10 @@ async function bundleBrowserEntry(entryAbsPath: string): Promise<string> {
   return first.text;
 }
 
-async function evaluateAsBrowserModule(code: string, url: string): Promise<void> {
+async function evaluateAsBrowserModule(
+  code: string,
+  url: string,
+): Promise<void> {
   const readableStream =
     typeof ReadableStream === "undefined" ? undefined : ReadableStream;
   const writableStream =
@@ -100,9 +107,7 @@ async function evaluateAsBrowserModule(code: string, url: string): Promise<void>
 }
 
 describe("plugins: browser import compatibility", () => {
-  test(
-    "all plugins are either browser-importable or explicitly allowlisted",
-    async () => {
+  test("all plugins are either browser-importable or explicitly allowlisted", async () => {
     const repoRoot = getRepoRoot();
     const allowlist = await readAllowlist(repoRoot);
 
@@ -114,8 +119,13 @@ describe("plugins: browser import compatibility", () => {
     // This test is meant to stay on as a regression guard.
     expect(pluginPkgs.length).toBeGreaterThan(0);
 
-    const failures: Array<{ plugin: string; entry: string; error: string }> = [];
-    const allowlisted: Array<{ plugin: string; reason: string; error: string }> = [];
+    const failures: Array<{ plugin: string; entry: string; error: string }> =
+      [];
+    const allowlisted: Array<{
+      plugin: string;
+      reason: string;
+      error: string;
+    }> = [];
 
     for (const pkgAbsPath of pluginPkgs) {
       const plugin = getPluginNameFromEntry(pkgAbsPath);
@@ -129,14 +139,15 @@ describe("plugins: browser import compatibility", () => {
         if (!hasIndexBrowserTs) {
           // 100% coverage: every plugin must either provide a browser entrypoint OR be allowlisted.
           throw new Error(
-            "Missing browser entrypoint: expected plugins/<plugin>/typescript/index.browser.ts"
+            "Missing browser entrypoint: expected plugins/<plugin>/typescript/index.browser.ts",
           );
         }
 
         const code = await bundleBrowserEntry(indexBrowserTs);
         await evaluateAsBrowserModule(code, `file://${indexBrowserTs}`);
       } catch (e) {
-        const errorText = e instanceof Error ? e.stack ?? e.message : String(e);
+        const errorText =
+          e instanceof Error ? (e.stack ?? e.message) : String(e);
         if (allowReason) {
           allowlisted.push({
             plugin,
@@ -154,7 +165,7 @@ describe("plugins: browser import compatibility", () => {
         // Intentional: keep a visible warning trail in CI output.
         // eslint-disable-next-line no-console
         console.warn(
-          `[browser-import allowlisted] ${item.plugin}: ${item.reason}\n${item.error}\n`
+          `[browser-import allowlisted] ${item.plugin}: ${item.reason}\n${item.error}\n`,
         );
       }
     }
@@ -163,10 +174,9 @@ describe("plugins: browser import compatibility", () => {
       const details = failures
         .map((f) => `- ${f.plugin}\n  entry: ${f.entry}\n  error: ${f.error}`)
         .join("\n\n");
-      throw new Error(`Browser import failures (${failures.length}):\n\n${details}\n`);
+      throw new Error(
+        `Browser import failures (${failures.length}):\n\n${details}\n`,
+      );
     }
-    },
-    60_000
-  );
+  }, 60_000);
 });
-

@@ -1,3 +1,4 @@
+import type { HandlerOptions } from "@elizaos/core";
 import {
   type Action,
   type ActionExample,
@@ -11,10 +12,9 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import type { HandlerOptions } from "@elizaos/core";
 import { commandExtractionTemplate } from "../generated/prompts/typescript/prompts.js";
-import type { ShellService } from "../services/shellService";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
+import type { ShellService } from "../services/shellService";
 export { commandExtractionTemplate };
 
 const extractCommand = async (

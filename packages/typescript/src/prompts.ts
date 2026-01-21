@@ -1130,7 +1130,9 @@ Your last autonomous note: "{{lastThought}}"
 Continue the task. Decide the next step and take action now.`;
 
 // UPPERCASE aliases for autonomy templates
-export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE = autonomyContinuousFirstTemplate;
-export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE = autonomyContinuousContinueTemplate;
+export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
+  autonomyContinuousFirstTemplate;
+export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
+  autonomyContinuousContinueTemplate;
 export const AUTONOMY_TASK_FIRST_TEMPLATE = autonomyTaskFirstTemplate;
 export const AUTONOMY_TASK_CONTINUE_TEMPLATE = autonomyTaskContinueTemplate;

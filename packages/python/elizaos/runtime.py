@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import re
 import uuid
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
-from elizaos.logger import Logger, create_logger
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
+from elizaos.logger import Logger, create_logger
 from elizaos.settings import decrypt_secret, get_salt
 from elizaos.types.agent import Character, TemplateType
 from elizaos.types.components import (
@@ -239,7 +238,11 @@ class AgentRuntime(IAgentRuntime):
                 from elizaos.advanced_planning import advanced_planning_plugin
 
                 # Register after bootstrap so core providers/actions are available.
-                insert_at = 1 if self._initial_plugins and self._initial_plugins[0].name == "bootstrap" else 0
+                insert_at = (
+                    1
+                    if self._initial_plugins and self._initial_plugins[0].name == "bootstrap"
+                    else 0
+                )
                 self._initial_plugins.insert(insert_at, advanced_planning_plugin)
 
         # Advanced memory is built into core, but only loaded when enabled on the character.
@@ -248,7 +251,11 @@ class AgentRuntime(IAgentRuntime):
             if not has_adv:
                 from elizaos.advanced_memory import advanced_memory_plugin
 
-                insert_at = 1 if self._initial_plugins and self._initial_plugins[0].name == "bootstrap" else 0
+                insert_at = (
+                    1
+                    if self._initial_plugins and self._initial_plugins[0].name == "bootstrap"
+                    else 0
+                )
                 self._initial_plugins.insert(insert_at, advanced_memory_plugin)
 
         for plugin in self._initial_plugins:
@@ -270,12 +277,20 @@ class AgentRuntime(IAgentRuntime):
                 if hasattr(settings, "disable_basic_capabilities"):
                     # Protobuf message
                     settings_disable_basic = getattr(settings, "disable_basic_capabilities", False)
-                    settings_enable_extended = getattr(settings, "enable_extended_capabilities", False)
+                    settings_enable_extended = getattr(
+                        settings, "enable_extended_capabilities", False
+                    )
                     settings_enable_autonomy = False  # Not in protobuf
                 elif isinstance(settings, dict):
                     # Dict-style
-                    settings_disable_basic = settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
-                    settings_enable_extended = settings.get("ENABLE_EXTENDED_CAPABILITIES") in (True, "true")
+                    settings_disable_basic = settings.get("DISABLE_BASIC_CAPABILITIES") in (
+                        True,
+                        "true",
+                    )
+                    settings_enable_extended = settings.get("ENABLE_EXTENDED_CAPABILITIES") in (
+                        True,
+                        "true",
+                    )
                     settings_enable_autonomy = settings.get("ENABLE_AUTONOMY") in (True, "true")
                 else:
                     settings_disable_basic = False
@@ -796,6 +811,7 @@ class AgentRuntime(IAgentRuntime):
                     if hasattr(options_obj, "parameters"):
                         try:
                             from google.protobuf.struct_pb2 import Struct
+
                             from elizaos.types.components import ActionParameters
                         except Exception:
                             pass

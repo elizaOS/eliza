@@ -1,10 +1,10 @@
 // @ts-nocheck
-import type { IAgentRuntime, Memory, ServiceTypeName, State, TestSuite } from "@elizaos/core";
+import type { IAgentRuntime, Memory, ServiceTypeName, State } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 import { captureImageAction, describeSceneAction } from "../../action";
 import type { VisionService } from "../../service";
 
-export class VisionBasicE2ETestSuite  {
+export class VisionBasicE2ETestSuite {
   name = "plugin-vision-basic-e2e";
   description = "Basic end-to-end tests for vision plugin functionality";
 

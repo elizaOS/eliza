@@ -96,8 +96,15 @@ export const updateContactAction: Action = {
         prompt,
       });
       const parsed = parseKeyValueXml<UpdateContactXmlResult>(response);
+      if (!parsed) {
+        logger.warn("[UpdateContact] Failed to parse response");
+        await callback?.({
+          text: "I couldn't understand the update request. Please try again.",
+        });
+        return;
+      }
 
-      const contactName = parsed?.contactName?.trim();
+      const contactName = parsed.contactName?.trim();
       if (!contactName) {
         logger.warn("[UpdateContact] No contact name provided");
         await callback?.({

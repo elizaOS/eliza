@@ -5,9 +5,9 @@
  * Used to exclude blocked or muted users from feeds and search results.
  */
 
-import { and, eq } from 'drizzle-orm';
-import { db } from '../db';
-import { userBlocks, userMutes } from '../schema';
+import { and, eq } from "drizzle-orm";
+import { db } from "../db";
+import { userBlocks, userMutes } from "../schema";
 
 /**
  * Get list of user IDs that the current user has blocked.
@@ -79,7 +79,7 @@ export async function getFilteredUserIds(userId: string): Promise<string[]> {
  */
 export async function hasBlocked(
   blockerId: string,
-  blockedId: string
+  blockedId: string,
 ): Promise<boolean> {
   const block = await db
     .select({ blockerId: userBlocks.blockerId })
@@ -87,8 +87,8 @@ export async function hasBlocked(
     .where(
       and(
         eq(userBlocks.blockerId, blockerId),
-        eq(userBlocks.blockedId, blockedId)
-      )
+        eq(userBlocks.blockedId, blockedId),
+      ),
     )
     .limit(1);
 
@@ -104,7 +104,7 @@ export async function hasBlocked(
  */
 export async function hasMuted(
   muterId: string,
-  mutedId: string
+  mutedId: string,
 ): Promise<boolean> {
   const mute = await db
     .select({ muterId: userMutes.muterId })
@@ -126,7 +126,7 @@ export async function hasMuted(
 export function filterPostsByModeration<T extends { authorId?: string }>(
   posts: T[],
   blockedUserIds: string[],
-  mutedUserIds: string[] = []
+  mutedUserIds: string[] = [],
 ): T[] {
   const excludedIds = new Set([...blockedUserIds, ...mutedUserIds]);
 

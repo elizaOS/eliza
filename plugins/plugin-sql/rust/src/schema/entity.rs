@@ -36,14 +36,11 @@ impl EntityRecord {
 
         let names: Vec<String> = serde_json::from_value(self.names.clone()).unwrap_or_default();
 
-        let metadata: std::collections::HashMap<String, serde_json::Value> =
-            serde_json::from_value(self.metadata.clone()).unwrap_or_default();
-
         Entity {
             id: Some(UUID::new(&self.id.to_string()).unwrap()),
-            names,
-            metadata,
-            agent_id: UUID::new(&self.agent_id.to_string()).unwrap(),
+            names: Some(names),
+            metadata: Some(self.metadata.clone()),
+            agent_id: Some(UUID::new(&self.agent_id.to_string()).unwrap()),
             components: None,
         }
     }

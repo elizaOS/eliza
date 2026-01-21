@@ -1,5 +1,5 @@
-import { logger } from '@polyagent/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { logger } from "@polyagent/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface PullToRefreshOptions {
   onRefresh: () => Promise<void> | void;
@@ -59,7 +59,7 @@ interface HTMLDivElementWithPTR extends HTMLDivElement {
  * });
  */
 export function usePullToRefresh(
-  options: PullToRefreshOptions
+  options: PullToRefreshOptions,
 ): PullToRefreshReturn {
   const {
     onRefresh,
@@ -85,12 +85,12 @@ export function usePullToRefresh(
   const triggerRefresh = useCallback(async () => {
     // Check and set locks atomically - only the first caller proceeds
     if (hasTriggeredRef.current || isRefreshingRef.current) {
-      logger.debug('[PTR] Already refreshing, ignoring duplicate call');
+      logger.debug("[PTR] Already refreshing, ignoring duplicate call");
       return;
     }
 
     // Set locks immediately
-    logger.debug('[PTR] Setting locks and starting refresh');
+    logger.debug("[PTR] Setting locks and starting refresh");
     hasTriggeredRef.current = true;
     isRefreshingRef.current = true;
 
@@ -108,7 +108,7 @@ export function usePullToRefresh(
     try {
       await onRefresh();
     } finally {
-      logger.debug('[PTR] Refresh complete');
+      logger.debug("[PTR] Refresh complete");
       // Keep spinner visible briefly
       await new Promise((resolve) => setTimeout(resolve, 200));
 
@@ -118,7 +118,7 @@ export function usePullToRefresh(
 
       // Reset locks after animation (with additional buffer to prevent rapid re-triggers)
       setTimeout(() => {
-        logger.debug('[PTR] Locks reset');
+        logger.debug("[PTR] Locks reset");
         hasTriggeredRef.current = false;
         isRefreshingRef.current = false;
         wheelAccumulator.current = 0;
@@ -134,10 +134,10 @@ export function usePullToRefresh(
         const old = nodeRef.current as HTMLDivElementWithPTR;
         const listeners = old._ptrListeners;
         if (listeners) {
-          old.removeEventListener('touchstart', listeners.start);
-          old.removeEventListener('touchmove', listeners.move);
-          old.removeEventListener('touchend', listeners.end);
-          old.removeEventListener('wheel', listeners.wheel);
+          old.removeEventListener("touchstart", listeners.start);
+          old.removeEventListener("touchmove", listeners.move);
+          old.removeEventListener("touchend", listeners.end);
+          old.removeEventListener("wheel", listeners.wheel);
         }
       }
 
@@ -254,7 +254,7 @@ export function usePullToRefresh(
             !hasTriggeredRef.current &&
             !isRefreshingRef.current
           ) {
-            logger.debug('[PTR Wheel] Triggering at distance:', { distance });
+            logger.debug("[PTR Wheel] Triggering at distance:", { distance });
             // Clear accumulator before triggering
             wheelAccumulator.current = 0;
             lastWheelTriggerRef.current = now;
@@ -273,10 +273,10 @@ export function usePullToRefresh(
       };
 
       // Attach
-      node.addEventListener('touchstart', onTouchStart, { passive: false });
-      node.addEventListener('touchmove', onTouchMove, { passive: false });
-      node.addEventListener('touchend', onTouchEnd, { passive: false });
-      node.addEventListener('wheel', onWheel, { passive: false });
+      node.addEventListener("touchstart", onTouchStart, { passive: false });
+      node.addEventListener("touchmove", onTouchMove, { passive: false });
+      node.addEventListener("touchend", onTouchEnd, { passive: false });
+      node.addEventListener("wheel", onWheel, { passive: false });
 
       // Store for cleanup
       (node as HTMLDivElementWithPTR)._ptrListeners = {
@@ -286,7 +286,7 @@ export function usePullToRefresh(
         wheel: onWheel,
       };
     },
-    [enabled, pullDistance, threshold, maxPullDistance, triggerRefresh]
+    [enabled, pullDistance, threshold, maxPullDistance, triggerRefresh],
   );
 
   // Cleanup
@@ -296,10 +296,10 @@ export function usePullToRefresh(
         const listeners = (nodeRef.current as HTMLDivElementWithPTR)
           ._ptrListeners;
         if (listeners) {
-          nodeRef.current.removeEventListener('touchstart', listeners.start);
-          nodeRef.current.removeEventListener('touchmove', listeners.move);
-          nodeRef.current.removeEventListener('touchend', listeners.end);
-          nodeRef.current.removeEventListener('wheel', listeners.wheel);
+          nodeRef.current.removeEventListener("touchstart", listeners.start);
+          nodeRef.current.removeEventListener("touchmove", listeners.move);
+          nodeRef.current.removeEventListener("touchend", listeners.end);
+          nodeRef.current.removeEventListener("wheel", listeners.wheel);
         }
       }
       if (wheelResetTimer.current) clearTimeout(wheelResetTimer.current);

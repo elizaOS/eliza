@@ -1,7 +1,7 @@
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { type Address, encodeFunctionData, type Hex } from "viem";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { WalletProvider } from "../providers/wallet";
 import { voteTemplate } from "../templates";
 import type { SupportedChain, Transaction, VoteParams } from "../types";

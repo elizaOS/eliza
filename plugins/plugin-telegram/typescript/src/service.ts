@@ -7,7 +7,6 @@ import {
   EventType,
   type IAgentRuntime,
   logger,
-  type Metadata,
   Role,
   type Room,
   Service,

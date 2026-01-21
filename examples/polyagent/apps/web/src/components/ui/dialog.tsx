@@ -1,5 +1,5 @@
-import { cn } from '@polyagent/shared';
-import type React from 'react';
+import { cn } from "@polyagent/shared";
+import type React from "react";
 
 /**
  * Dialog component for displaying modal dialogs.
@@ -17,7 +17,7 @@ import type React from 'react';
  * </Dialog>
  * ```
  */
-export interface DialogProps extends React.ComponentPropsWithoutRef<'div'> {
+export interface DialogProps extends React.ComponentPropsWithoutRef<"div"> {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -39,7 +39,7 @@ export const Dialog = ({
         onClick={() => onOpenChange?.(false)}
       />
       {/* Content Container */}
-      <div className={cn('relative z-50', className)} {...props}>
+      <div className={cn("relative z-50", className)} {...props}>
         {children}
       </div>
     </div>
@@ -55,7 +55,7 @@ export const Dialog = ({
  * @param props - DialogContent component props
  * @returns Dialog content element
  */
-export type DialogContentProps = React.ComponentPropsWithoutRef<'div'>;
+export type DialogContentProps = React.ComponentPropsWithoutRef<"div">;
 
 export const DialogContent = ({
   children,
@@ -65,9 +65,9 @@ export const DialogContent = ({
   return (
     <div
       className={cn(
-        'w-full rounded-lg border border-border bg-background shadow-lg',
-        'fade-in-0 zoom-in-95 animate-in duration-200',
-        className
+        "w-full rounded-lg border border-border bg-background shadow-lg",
+        "fade-in-0 zoom-in-95 animate-in duration-200",
+        className,
       )}
       onClick={(e) => e.stopPropagation()}
       {...props}
@@ -86,7 +86,7 @@ export const DialogContent = ({
  * @param props - DialogHeader component props
  * @returns Dialog header element
  */
-export type DialogHeaderProps = React.ComponentPropsWithoutRef<'div'>;
+export type DialogHeaderProps = React.ComponentPropsWithoutRef<"div">;
 
 export const DialogHeader = ({
   children,
@@ -96,8 +96,8 @@ export const DialogHeader = ({
   return (
     <div
       className={cn(
-        'flex flex-col space-y-1.5 text-center sm:text-left',
-        className
+        "flex flex-col space-y-1.5 text-center sm:text-left",
+        className,
       )}
       {...props}
     >
@@ -114,7 +114,7 @@ export const DialogHeader = ({
  * @param props - DialogTitle component props
  * @returns Dialog title element
  */
-export type DialogTitleProps = React.ComponentPropsWithoutRef<'h2'>;
+export type DialogTitleProps = React.ComponentPropsWithoutRef<"h2">;
 
 export const DialogTitle = ({
   children,
@@ -124,8 +124,8 @@ export const DialogTitle = ({
   return (
     <h2
       className={cn(
-        'font-semibold text-lg leading-none tracking-tight',
-        className
+        "font-semibold text-lg leading-none tracking-tight",
+        className,
       )}
       {...props}
     >
@@ -142,7 +142,7 @@ export const DialogTitle = ({
  * @param props - DialogDescription component props
  * @returns Dialog description element
  */
-export type DialogDescriptionProps = React.ComponentPropsWithoutRef<'p'>;
+export type DialogDescriptionProps = React.ComponentPropsWithoutRef<"p">;
 
 export const DialogDescription = ({
   children,
@@ -150,7 +150,7 @@ export const DialogDescription = ({
   ...props
 }: DialogDescriptionProps) => {
   return (
-    <p className={cn('text-muted-foreground text-sm', className)} {...props}>
+    <p className={cn("text-muted-foreground text-sm", className)} {...props}>
       {children}
     </p>
   );
@@ -165,7 +165,7 @@ export const DialogDescription = ({
  * @param props - DialogFooter component props
  * @returns Dialog footer element
  */
-export type DialogFooterProps = React.ComponentPropsWithoutRef<'div'>;
+export type DialogFooterProps = React.ComponentPropsWithoutRef<"div">;
 
 export const DialogFooter = ({
   children,
@@ -175,8 +175,8 @@ export const DialogFooter = ({
   return (
     <div
       className={cn(
-        'flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2',
-        className
+        "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+        className,
       )}
       {...props}
     >

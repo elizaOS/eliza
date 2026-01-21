@@ -1,4 +1,5 @@
 import { v4 } from "uuid";
+import { withCanonicalActionDocs } from "../action-docs.ts";
 import { createUniqueUuid } from "../entities.ts";
 import { logger } from "../logger.ts";
 import {
@@ -42,7 +43,6 @@ import type { ServiceClass } from "../types/plugin.ts";
 import { ChannelType, ContentType } from "../types/primitives.ts";
 import { getLocalServerUrl } from "../utils/node.ts";
 import { composePromptFromState, parseKeyValueXml } from "../utils.ts";
-import { withCanonicalActionDocs } from "../action-docs.ts";
 import * as actions from "./actions/index.ts";
 import * as autonomy from "./autonomy/index.ts";
 import * as evaluators from "./evaluators/index.ts";
@@ -435,7 +435,7 @@ const postGeneratedHandler = async ({
   await runtime.ensureRoomExists({
     id: roomId,
     name: `${runtime.character.name}'s Feed`,
-    source,
+    source: source ?? "unknown",
     type: ChannelType.FEED,
     channelId: `${userId}-home`,
     messageServerId: userId as UUID,
@@ -783,7 +783,7 @@ const handleServerSync = async ({
     },
     "Handling server sync event",
   );
-  await runtime.ensureConnections(entities, rooms, source, world);
+  await runtime.ensureConnections(entities, rooms, source ?? "unknown", world);
   runtime.logger.debug(
     {
       src: "plugin:bootstrap",
@@ -941,7 +941,7 @@ const events: PluginEvents = {
         payload.worldId,
         payload.roomId,
         channelType as ChannelType,
-        payload.source,
+        payload.source ?? "unknown",
       );
     },
   ],

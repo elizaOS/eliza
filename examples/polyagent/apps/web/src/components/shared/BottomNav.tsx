@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { cn } from '@babylon/shared';
-import { Bot, Home, Plus, Settings, User } from 'lucide-react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { cn } from "@babylon/shared";
+import { Bot, Home, Plus, Settings, User } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 /**
  * Bottom navigation component for mobile devices.
@@ -13,41 +13,41 @@ function BottomNavContent() {
 
   const navItems = [
     {
-      name: 'Home',
-      href: '/',
+      name: "Home",
+      href: "/",
       icon: Home,
-      color: '#0066FF',
-      active: pathname === '/',
+      color: "#0066FF",
+      active: pathname === "/",
     },
     {
-      name: 'Agents',
-      href: '/agents',
+      name: "Agents",
+      href: "/agents",
       icon: Bot,
-      color: '#0066FF',
+      color: "#0066FF",
       active:
-        pathname === '/agents' ||
-        (pathname.startsWith('/agents/') && !pathname.includes('/create')),
+        pathname === "/agents" ||
+        (pathname.startsWith("/agents/") && !pathname.includes("/create")),
     },
     {
-      name: 'Create',
-      href: '/agents/create',
+      name: "Create",
+      href: "/agents/create",
       icon: Plus,
-      color: '#22c55e',
-      active: pathname === '/agents/create',
+      color: "#22c55e",
+      active: pathname === "/agents/create",
     },
     {
-      name: 'Settings',
-      href: '/settings',
+      name: "Settings",
+      href: "/settings",
       icon: Settings,
-      color: '#0066FF',
-      active: pathname === '/settings',
+      color: "#0066FF",
+      active: pathname === "/settings",
     },
     {
-      name: 'Profile',
-      href: '/profile',
+      name: "Profile",
+      href: "/profile",
       icon: User,
-      color: '#0066FF',
-      active: pathname === '/profile',
+      color: "#0066FF",
+      active: pathname === "/profile",
     },
   ];
 
@@ -62,18 +62,18 @@ function BottomNavContent() {
                 key={item.name}
                 href={item.href}
                 className={cn(
-                  'flex h-12 w-12 items-center justify-center rounded-lg transition-colors duration-200',
-                  'hover:bg-sidebar-accent/50',
-                  'relative'
+                  "flex h-12 w-12 items-center justify-center rounded-lg transition-colors duration-200",
+                  "hover:bg-sidebar-accent/50",
+                  "relative",
                 )}
                 aria-label={item.name}
               >
                 <Icon
                   className={cn(
-                    'h-6 w-6 transition-colors duration-200',
+                    "h-6 w-6 transition-colors duration-200",
                     item.active
-                      ? 'text-sidebar-primary'
-                      : 'text-sidebar-foreground'
+                      ? "text-sidebar-primary"
+                      : "text-sidebar-foreground",
                   )}
                   style={{
                     color: item.active ? item.color : undefined,

@@ -1,53 +1,35 @@
+import type { Plugin } from "@elizaos/core";
 import {
   AgentRuntime,
   ChannelType,
-  createMessageMemory,
   type Character,
   type Content,
-  type IAgentRuntime,
+  createMessageMemory,
+  LLMMode,
   type LogBodyValue,
   type Memory,
   ModelType,
   stringToUuid,
   type UUID,
-  LLMMode,
 } from "@elizaos/core";
 import anthropicPlugin from "@elizaos/plugin-anthropic";
 import googleGenAIPlugin from "@elizaos/plugin-google-genai";
 import groqPlugin from "@elizaos/plugin-groq";
-import localAiPlugin from "../../../../plugins/plugin-local-ai/typescript/index.browser";
-import localdbPlugin from "../../../../plugins/plugin-localdb/typescript/index.browser";
 import openaiPlugin from "@elizaos/plugin-openai";
 import XAIPlugin from "@elizaos/plugin-xai";
-import elizaTownPlugin from "../plugins/elizaTownPlugin";
-import { getTownContextSnapshot, recordTownMessage } from "./townContext";
+import localAiPlugin from "../../../../plugins/plugin-local-ai/typescript/index.browser";
+import localdbPlugin from "../../../../plugins/plugin-localdb/typescript/index.browser";
 import { TOWN_AGENTS, type TownAgentDefinition } from "../../shared/agents";
 import { DEFAULT_AUDIO_RANGE_TILES } from "../../shared/types";
+import elizaTownPlugin from "../plugins/elizaTownPlugin";
 import {
+  defaultModelSettings,
   type ModelProvider,
   type ModelSettings,
-  defaultModelSettings,
 } from "../runtime/modelSettings";
-import type { Plugin } from "@elizaos/core";
+import { getTownContextSnapshot, recordTownMessage } from "./townContext";
 
 type PluginConfigValue = string | number | boolean | null | undefined;
-type PluginModelValue = string | number | boolean | null | object;
-type LooseTestSuite = {
-  name: string;
-  tests: Array<{
-    name: string;
-    fn: (runtime: IAgentRuntime) => Promise<void> | void;
-  }>;
-};
-
-type LoosePlugin = Omit<Plugin, "config" | "tests" | "models"> & {
-  config?: Record<string, PluginConfigValue>;
-  tests?: Plugin["tests"] | LooseTestSuite[];
-  models?: Record<
-    string,
-    (runtime: never, params: never) => Promise<PluginModelValue> | PluginModelValue
-  >;
-};
 
 type RuntimeBundle = {
   runtime: AgentRuntime;
@@ -108,7 +90,10 @@ function buildSocialContext(profile: TownAgentDefinition): string {
 }
 
 function buildPlugins(provider: ModelProvider): Plugin[] {
-  const basePlugins = [normalizePlugin(localdbPlugin), normalizePlugin(elizaTownPlugin)];
+  const basePlugins = [
+    normalizePlugin(localdbPlugin),
+    normalizePlugin(elizaTownPlugin),
+  ];
   switch (provider) {
     case "openai":
       return [...basePlugins, normalizePlugin(openaiPlugin)];
@@ -143,12 +128,13 @@ function normalizeConfig(
   return normalized;
 }
 
-function normalizePlugin(plugin: LoosePlugin): Plugin {
-  const { config, tests: _tests, ...rest } = plugin;
+function normalizePlugin(plugin: unknown): Plugin {
+  const pluginObj = plugin as Record<string, unknown>;
+  const { config, tests: _tests, ...rest } = pluginObj;
   return {
     ...rest,
-    config: normalizeConfig(config),
-  };
+    config: normalizeConfig(config as Record<string, PluginConfigValue>),
+  } as Plugin;
 }
 
 function applySettings(runtime: AgentRuntime, settings: ModelSettings): void {
@@ -158,24 +144,74 @@ function applySettings(runtime: AgentRuntime, settings: ModelSettings): void {
   if (settings.provider === "openai") {
     runtime.setSetting("OPENAI_ALLOW_BROWSER_API_KEY", "true");
     setOptionalSetting(runtime, "OPENAI_API_KEY", settings.openai.apiKey, true);
-    setOptionalSetting(runtime, "OPENAI_BASE_URL", settings.openai.baseUrl ?? "");
-    setOptionalSetting(runtime, "OPENAI_BROWSER_BASE_URL", settings.openai.baseUrl ?? "");
-    setOptionalSetting(runtime, "OPENAI_SMALL_MODEL", settings.openai.smallModel);
-    setOptionalSetting(runtime, "OPENAI_LARGE_MODEL", settings.openai.largeModel);
+    setOptionalSetting(
+      runtime,
+      "OPENAI_BASE_URL",
+      settings.openai.baseUrl ?? "",
+    );
+    setOptionalSetting(
+      runtime,
+      "OPENAI_BROWSER_BASE_URL",
+      settings.openai.baseUrl ?? "",
+    );
+    setOptionalSetting(
+      runtime,
+      "OPENAI_SMALL_MODEL",
+      settings.openai.smallModel,
+    );
+    setOptionalSetting(
+      runtime,
+      "OPENAI_LARGE_MODEL",
+      settings.openai.largeModel,
+    );
   }
 
   if (settings.provider === "anthropic") {
-    setOptionalSetting(runtime, "ANTHROPIC_API_KEY", settings.anthropic.apiKey, true);
-    setOptionalSetting(runtime, "ANTHROPIC_BASE_URL", settings.anthropic.baseUrl ?? "");
-    setOptionalSetting(runtime, "ANTHROPIC_BROWSER_BASE_URL", settings.anthropic.baseUrl ?? "");
-    setOptionalSetting(runtime, "ANTHROPIC_SMALL_MODEL", settings.anthropic.smallModel);
-    setOptionalSetting(runtime, "ANTHROPIC_LARGE_MODEL", settings.anthropic.largeModel);
+    setOptionalSetting(
+      runtime,
+      "ANTHROPIC_API_KEY",
+      settings.anthropic.apiKey,
+      true,
+    );
+    setOptionalSetting(
+      runtime,
+      "ANTHROPIC_BASE_URL",
+      settings.anthropic.baseUrl ?? "",
+    );
+    setOptionalSetting(
+      runtime,
+      "ANTHROPIC_BROWSER_BASE_URL",
+      settings.anthropic.baseUrl ?? "",
+    );
+    setOptionalSetting(
+      runtime,
+      "ANTHROPIC_SMALL_MODEL",
+      settings.anthropic.smallModel,
+    );
+    setOptionalSetting(
+      runtime,
+      "ANTHROPIC_LARGE_MODEL",
+      settings.anthropic.largeModel,
+    );
   }
 
   if (settings.provider === "google") {
-    setOptionalSetting(runtime, "GOOGLE_GENERATIVE_AI_API_KEY", settings.google.apiKey, true);
-    setOptionalSetting(runtime, "GOOGLE_SMALL_MODEL", settings.google.smallModel);
-    setOptionalSetting(runtime, "GOOGLE_LARGE_MODEL", settings.google.largeModel);
+    setOptionalSetting(
+      runtime,
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      settings.google.apiKey,
+      true,
+    );
+    setOptionalSetting(
+      runtime,
+      "GOOGLE_SMALL_MODEL",
+      settings.google.smallModel,
+    );
+    setOptionalSetting(
+      runtime,
+      "GOOGLE_LARGE_MODEL",
+      settings.google.largeModel,
+    );
   }
 
   if (settings.provider === "groq") {
@@ -210,7 +246,6 @@ function setOptionalSetting(
     runtime.setSetting(key, trimmed, secret);
   }
 }
-
 
 export async function getRuntimeForAgent(
   agentId: string,
@@ -445,7 +480,9 @@ export async function requestAgentMoveDecision(
   }
   const combinedText = buildCombinedText(responseText, responseThought);
   const snapshot = getTownContextSnapshot();
-  const nearbyRecipients = snapshot ? getNearbyAgentIds(snapshot.state.agents, agentId) : [];
+  const nearbyRecipients = snapshot
+    ? getNearbyAgentIds(snapshot.state.agents, agentId)
+    : [];
   recordTownMessage({
     authorId: agentId,
     text: combinedText,
@@ -474,6 +511,7 @@ export async function requestAgentGameDecision(
 
   const decisionPrompt = [
     "Decide your next action in the mafia game.",
+    "If you are mafia, prefer targets who are isolated (out of sight/hearing of others).",
     "Check the MAFIA_ROLE and MAFIA_GAME providers for your role and phase.",
     "If you have a valid game action, choose exactly one:",
     "MAFIA_KILL, MAFIA_INVESTIGATE, MAFIA_PROTECT, MAFIA_VOTE.",
@@ -553,7 +591,9 @@ export async function requestAgentGameDecision(
   }
   const combinedText = buildCombinedText(responseText, responseThought);
   const snapshot = getTownContextSnapshot();
-  const nearbyRecipients = snapshot ? getNearbyAgentIds(snapshot.state.agents, agentId) : [];
+  const nearbyRecipients = snapshot
+    ? getNearbyAgentIds(snapshot.state.agents, agentId)
+    : [];
   recordTownMessage({
     authorId: agentId,
     text: combinedText,
@@ -581,7 +621,9 @@ export async function requestAgentChatDecision(
   }
 
   const snapshot = getTownContextSnapshot();
-  const selfState = snapshot?.state.agents.find((agent) => agent.id === agentId);
+  const selfState = snapshot?.state.agents.find(
+    (agent) => agent.id === agentId,
+  );
   const statusLine = selfState
     ? `Your status: ${selfState.status}. Current task: ${selfState.lastAction ?? "none"}.`
     : "Your status is unknown.";
@@ -723,9 +765,13 @@ export async function generateAgentMessage(
 
   const combinedText = buildCombinedText(responseText, responseThought);
   const snapshot = getTownContextSnapshot();
-  const nearbyRecipients = snapshot ? getNearbyAgentIds(snapshot.state.agents, agentId) : [];
+  const nearbyRecipients = snapshot
+    ? getNearbyAgentIds(snapshot.state.agents, agentId)
+    : [];
   const resolvedParticipants =
-    participants && participants.length > 0 ? participants : [agentId, ...nearbyRecipients];
+    participants && participants.length > 0
+      ? participants
+      : [agentId, ...nearbyRecipients];
   recordTownMessage({
     authorId: agentId,
     text: combinedText,
@@ -776,7 +822,10 @@ function syncAutonomySettings(runtime: AgentRuntime): void {
   runtime.setSetting("AUTONOMY_ENABLED", enabled);
 }
 
-function buildCombinedText(responseText: string, responseThought: string): string {
+function buildCombinedText(
+  responseText: string,
+  responseThought: string,
+): string {
   const text = responseText.trim();
   const thought = responseThought.trim();
   if (!text) {
@@ -786,7 +835,11 @@ function buildCombinedText(responseText: string, responseThought: string): strin
 }
 
 function getNearbyAgentIds(
-  agents: Array<{ id: string; position: { x: number; y: number }; audioRangeTiles: number }>,
+  agents: Array<{
+    id: string;
+    position: { x: number; y: number };
+    audioRangeTiles: number;
+  }>,
   authorId: string,
 ): string[] {
   const author = agents.find((agent) => agent.id === authorId);
@@ -841,13 +894,16 @@ async function broadcastMessageToNearbyAgents(params: {
     return;
   }
   const recipients =
-    params.recipientIds ?? getNearbyAgentIds(snapshot.state.agents, params.authorId);
+    params.recipientIds ??
+    getNearbyAgentIds(snapshot.state.agents, params.authorId);
 
   if (recipients.length === 0) {
     return;
   }
 
-  const authorProfile = TOWN_AGENTS.find((agent) => agent.id === params.authorId);
+  const authorProfile = TOWN_AGENTS.find(
+    (agent) => agent.id === params.authorId,
+  );
   const authorName = authorProfile?.name ?? params.authorId;
   const authorEntityId = stringToUuid(params.authorId);
 

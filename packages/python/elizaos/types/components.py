@@ -29,7 +29,14 @@ HandlerCallback = Callable[[Content], Awaitable[list["Memory"]]]
 StreamChunkCallback = Callable[[str, str | None], Awaitable[None]]
 
 Handler = Callable[
-    ["IAgentRuntime", "Memory", "State | None", HandlerOptions | None, HandlerCallback | None, "list[Memory] | None"],
+    [
+        "IAgentRuntime",
+        "Memory",
+        "State | None",
+        HandlerOptions | None,
+        HandlerCallback | None,
+        "list[Memory] | None",
+    ],
     Awaitable[ActionResult | None],
 ]
 
@@ -110,12 +117,12 @@ class ProviderDefinition:  # runtime interface
     dynamic: bool | None
     position: int | None
     private: bool | None
-    get: Callable[["IAgentRuntime", "Memory", "State"], Awaitable[ProviderResult]]
+    get: Callable[[IAgentRuntime, Memory, State], Awaitable[ProviderResult]]
 
     def __init__(
         self,
         name: str,
-        get: Callable[["IAgentRuntime", "Memory", "State"], Awaitable[ProviderResult]],
+        get: Callable[[IAgentRuntime, Memory, State], Awaitable[ProviderResult]],
         description: str | None = None,
         dynamic: bool | None = None,
         position: int | None = None,

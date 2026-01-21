@@ -23,12 +23,20 @@ export const defaultWorldMap: WorldMapData = {
   animatedSprites: animatedsprites,
 };
 
-const WATER_SPRITE_SHEETS = new Set<string>(["gentlewaterfall.json", "gentlesplash.json"]);
+const WATER_SPRITE_SHEETS = new Set<string>([
+  "gentlewaterfall.json",
+  "gentlesplash.json",
+]);
 const WATER_SCAN_RADIUS_TILES = 2;
 const WATER_BG_TILE_IDS = buildWaterTileIds(WATER_SCAN_RADIUS_TILES);
 
 export function isWalkableTile(x: number, y: number): boolean {
-  if (x < 0 || y < 0 || x >= defaultWorldMap.width || y >= defaultWorldMap.height) {
+  if (
+    x < 0 ||
+    y < 0 ||
+    x >= defaultWorldMap.width ||
+    y >= defaultWorldMap.height
+  ) {
     return false;
   }
   if (isWaterTile(x, y)) {
@@ -75,7 +83,12 @@ function buildWaterTileIds(radius: number): Set<number> {
       for (let dy = -radius; dy <= radius; dy += 1) {
         const x = tileX + dx;
         const y = tileY + dy;
-        if (x < 0 || y < 0 || x >= defaultWorldMap.width || y >= defaultWorldMap.height) {
+        if (
+          x < 0 ||
+          y < 0 ||
+          x >= defaultWorldMap.width ||
+          y >= defaultWorldMap.height
+        ) {
           continue;
         }
         for (const layer of defaultWorldMap.bgTiles) {

@@ -1,0 +1,107 @@
+{
+  "name": "@elizaos/plugin-blooio",
+  "version": "1.0.10",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-blooio.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "express": "^4.18.2",
+    "body-parser": "^1.20.2",
+    "node-cache": "^5.1.2",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "vitest": "1.6.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "elizaos test",
+    "test:unit": "vitest",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "BLOOIO_API_KEY": {
+        "type": "string",
+        "description": "Blooio API key used to authenticate with the Blooio API",
+        "required": true,
+        "sensitive": true
+      },
+      "BLOOIO_WEBHOOK_URL": {
+        "type": "string",
+        "description": "Public URL for receiving Blooio webhooks (e.g., https://your-domain.com/webhook)",
+        "required": true,
+        "sensitive": false
+      },
+      "BLOOIO_WEBHOOK_SECRET": {
+        "type": "string",
+        "description": "Signing secret used to verify Blooio webhooks",
+        "required": true,
+        "sensitive": true
+      },
+      "BLOOIO_WEBHOOK_PORT": {
+        "type": "string",
+        "description": "Port to run the webhook server on (default: 3001)",
+        "required": false,
+        "sensitive": false
+      },
+      "BLOOIO_WEBHOOK_PATH": {
+        "type": "string",
+        "description": "Path to mount the webhook server (default: derived from BLOOIO_WEBHOOK_URL)",
+        "required": false,
+        "sensitive": false
+      },
+      "BLOOIO_BASE_URL": {
+        "type": "string",
+        "description": "Override Blooio API base URL",
+        "required": false,
+        "sensitive": false
+      },
+      "BLOOIO_FROM_NUMBER": {
+        "type": "string",
+        "description": "E.164 number to send messages from (must be assigned to your org)",
+        "required": false,
+        "sensitive": false
+      },
+      "BLOOIO_TEST_CHAT_ID": {
+        "type": "string",
+        "description": "Chat identifier to use for tests (phone, email, or group id)",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

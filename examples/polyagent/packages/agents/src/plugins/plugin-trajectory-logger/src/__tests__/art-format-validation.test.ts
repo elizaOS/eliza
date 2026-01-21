@@ -9,10 +9,10 @@
  * NOTE: Requires trajectory schema and TrajectoryLoggerService
  */
 
-import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test';
-import type { IAgentRuntime, Logger, UUID } from '@elizaos/core';
-import { createUniqueUuid } from '@elizaos/core';
-import type { JsonValue } from '../../../types/common';
+import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
+import type { IAgentRuntime, Logger, UUID } from "@elizaos/core";
+import { createUniqueUuid } from "@elizaos/core";
+import type { JsonValue } from "../../../types/common";
 import {
   extractSharedPrefix,
   groupTrajectories,
@@ -20,9 +20,9 @@ import {
   toARTMessages,
   toARTTrajectory,
   validateARTCompatibility,
-} from '../art-format';
-import { TrajectoryLoggerService } from '../TrajectoryLoggerService';
-import type { Trajectory } from '../types';
+} from "../art-format";
+import { TrajectoryLoggerService } from "../TrajectoryLoggerService";
+import type { Trajectory } from "../types";
 
 // Note: fs, path, and export functions are used in integration tests that are skipped in CI
 
@@ -92,7 +92,7 @@ const mockDb = {
     }),
     findUnique: mock(async (args: TrajectoryQueryArgs) => {
       const trajectoryId =
-        typeof args.where?.trajectoryId === 'string'
+        typeof args.where?.trajectoryId === "string"
           ? args.where.trajectoryId
           : null;
       return (
@@ -106,22 +106,22 @@ const mockDb = {
       const trajectoryIdFilter = args?.where?.trajectoryId;
       if (
         trajectoryIdFilter &&
-        typeof trajectoryIdFilter === 'object' &&
-        'in' in trajectoryIdFilter
+        typeof trajectoryIdFilter === "object" &&
+        "in" in trajectoryIdFilter
       ) {
         result = result.filter((t) =>
-          trajectoryIdFilter.in.includes(t.trajectoryId)
+          trajectoryIdFilter.in.includes(t.trajectoryId),
         );
       }
 
       const scenarioIdFilter = args?.where?.scenarioId;
       if (
         scenarioIdFilter &&
-        typeof scenarioIdFilter === 'object' &&
-        'in' in scenarioIdFilter
+        typeof scenarioIdFilter === "object" &&
+        "in" in scenarioIdFilter
       ) {
         result = result.filter(
-          (t) => t.scenarioId && scenarioIdFilter.in.includes(t.scenarioId)
+          (t) => t.scenarioId && scenarioIdFilter.in.includes(t.scenarioId),
         );
       }
 
@@ -130,9 +130,9 @@ const mockDb = {
     groupBy: mock(async (args: TrajectoryQueryArgs) => {
       // Mock grouping for scenario discovery
       // args: { by: ['scenarioId'], where: {...} }
-      if (args?.by?.includes('scenarioId')) {
+      if (args?.by?.includes("scenarioId")) {
         const scenarios = new Set(
-          createdTrajectories.map((t) => t.scenarioId).filter(Boolean)
+          createdTrajectories.map((t) => t.scenarioId).filter(Boolean),
         );
         return Array.from(scenarios).map((id) => ({ scenarioId: id }));
       }
@@ -145,11 +145,11 @@ const mockDb = {
   },
 };
 
-mock.module('@polyagent/db', () => ({
+mock.module("@polyagent/db", () => ({
   db: mockDb,
 }));
 
-describe('ART Format Validation', () => {
+describe("ART Format Validation", () => {
   let mockRuntime: Partial<IAgentRuntime>;
   const testTrajectoryIds: string[] = [];
 
@@ -162,10 +162,10 @@ describe('ART Format Validation', () => {
       trace: () => {},
       fatal: () => {},
       success: () => {},
-      level: 'info' as const,
+      level: "info" as const,
     };
 
-    const agentId = createUniqueUuid({} as IAgentRuntime, 'art-test-agent');
+    const agentId = createUniqueUuid({} as IAgentRuntime, "art-test-agent");
     mockRuntime = {
       agentId: agentId as UUID,
       logger: mockLogger as Logger,
@@ -175,7 +175,7 @@ describe('ART Format Validation', () => {
   afterAll(async () => {
     // Cleanup
     if (testTrajectoryIds.length > 0) {
-      const { db } = await import('@polyagent/db');
+      const { db } = await import("@polyagent/db");
       await db.trajectory.deleteMany({
         where: { trajectoryId: { in: testTrajectoryIds } },
       });
@@ -189,7 +189,7 @@ describe('ART Format Validation', () => {
         };
       }
 
-      if ('llmCallLog' in db) {
+      if ("llmCallLog" in db) {
         const dbWithLog = db as DbWithLlmCallLog;
         if (dbWithLog.llmCallLog?.deleteMany) {
           await dbWithLog.llmCallLog.deleteMany({
@@ -200,8 +200,8 @@ describe('ART Format Validation', () => {
     }
   });
 
-  describe('Message Array Conversion', () => {
-    it('should convert trajectory to OpenAGI message array format', () => {
+  describe("Message Array Conversion", () => {
+    it("should convert trajectory to OpenAGI message array format", () => {
       const logger = new TrajectoryLoggerService();
 
       const trajId = logger.startTrajectory(mockRuntime.agentId as string);
@@ -214,19 +214,19 @@ describe('ART Format Validation', () => {
       });
 
       logger.logLLMCall(stepId, {
-        model: 'llama-3.1-8b',
-        systemPrompt: 'You are a trading agent with momentum strategy.',
-        userPrompt: 'Current balance: $1000. BTC at 50%. Should you trade?',
-        response: 'I will buy YES shares in BTC because momentum is strong.',
+        model: "llama-3.1-8b",
+        systemPrompt: "You are a trading agent with momentum strategy.",
+        userPrompt: "Current balance: $1000. BTC at 50%. Should you trade?",
+        response: "I will buy YES shares in BTC because momentum is strong.",
         temperature: 0.8,
         maxTokens: 200,
-        purpose: 'action',
-        actionType: 'BUY_SHARES',
+        purpose: "action",
+        actionType: "BUY_SHARES",
       });
 
       logger.completeStep(trajId, stepId, {
-        actionType: 'BUY_SHARES',
-        actionName: 'BUY_SHARES',
+        actionType: "BUY_SHARES",
+        actionName: "BUY_SHARES",
         parameters: {},
         success: true,
       });
@@ -240,30 +240,30 @@ describe('ART Format Validation', () => {
 
       // Should have system message
       const systemMsg = messages.find(
-        (m: { role: string; content: string }) => m.role === 'system'
+        (m: { role: string; content: string }) => m.role === "system",
       );
       expect(systemMsg).toBeDefined();
-      expect(systemMsg!.content).toContain('trading agent');
+      expect(systemMsg?.content).toContain("trading agent");
 
       // Should have user message (observation)
       const userMsg = messages.find(
-        (m: { role: string; content: string }) => m.role === 'user'
+        (m: { role: string; content: string }) => m.role === "user",
       );
       expect(userMsg).toBeDefined();
-      expect(userMsg!.content).toContain('$1000');
-      expect(userMsg!.content).toContain('BTC');
+      expect(userMsg?.content).toContain("$1000");
+      expect(userMsg?.content).toContain("BTC");
 
       // Should have assistant message (action)
       const assistantMsg = messages.find(
-        (m: { role: string; content: string }) => m.role === 'assistant'
+        (m: { role: string; content: string }) => m.role === "assistant",
       );
       expect(assistantMsg).toBeDefined();
-      expect(assistantMsg!.content).toContain('buy');
+      expect(assistantMsg?.content).toContain("buy");
 
-      console.log('✅ Converts to valid message array');
+      console.log("✅ Converts to valid message array");
     });
 
-    it('should handle multi-turn conversations', () => {
+    it("should handle multi-turn conversations", () => {
       const logger = new TrajectoryLoggerService();
 
       const trajId = logger.startTrajectory(mockRuntime.agentId as string);
@@ -278,18 +278,18 @@ describe('ART Format Validation', () => {
       });
 
       logger.logLLMCall(step1, {
-        model: 'llama-3.1-8b',
-        systemPrompt: 'You are a trading agent.',
-        userPrompt: 'Market state: BTC at 50%, ETH at 60%. Analyze.',
-        response: 'BTC looks undervalued compared to ETH.',
+        model: "llama-3.1-8b",
+        systemPrompt: "You are a trading agent.",
+        userPrompt: "Market state: BTC at 50%, ETH at 60%. Analyze.",
+        response: "BTC looks undervalued compared to ETH.",
         temperature: 0.8,
         maxTokens: 100,
-        purpose: 'reasoning',
+        purpose: "reasoning",
       });
 
       logger.completeStep(trajId, step1, {
-        actionType: 'ANALYZE',
-        actionName: 'ANALYZE',
+        actionType: "ANALYZE",
+        actionName: "ANALYZE",
         parameters: {},
         success: true,
       });
@@ -304,19 +304,19 @@ describe('ART Format Validation', () => {
       });
 
       logger.logLLMCall(step2, {
-        model: 'llama-3.1-8b',
-        systemPrompt: 'You are a trading agent.',
-        userPrompt: 'Based on analysis, which should you buy?',
-        response: 'I will buy BTC YES shares for $100.',
+        model: "llama-3.1-8b",
+        systemPrompt: "You are a trading agent.",
+        userPrompt: "Based on analysis, which should you buy?",
+        response: "I will buy BTC YES shares for $100.",
         temperature: 0.8,
         maxTokens: 100,
-        purpose: 'action',
-        actionType: 'BUY_SHARES',
+        purpose: "action",
+        actionType: "BUY_SHARES",
       });
 
       logger.completeStep(trajId, step2, {
-        actionType: 'BUY_SHARES',
-        actionName: 'BUY_SHARES',
+        actionType: "BUY_SHARES",
+        actionName: "BUY_SHARES",
         parameters: {},
         success: true,
       });
@@ -328,25 +328,25 @@ describe('ART Format Validation', () => {
       expect(messages.length).toBeGreaterThanOrEqual(5); // system + 2 turns
 
       // Check pattern: system, user, assistant, user, assistant
-      expect(messages[0]!.role).toBe('system');
-      expect(messages[1]!.role).toBe('user');
-      expect(messages[2]!.role).toBe('assistant');
-      expect(messages[3]!.role).toBe('user');
-      expect(messages[4]!.role).toBe('assistant');
+      expect(messages[0]?.role).toBe("system");
+      expect(messages[1]?.role).toBe("user");
+      expect(messages[2]?.role).toBe("assistant");
+      expect(messages[3]?.role).toBe("user");
+      expect(messages[4]?.role).toBe("assistant");
 
-      console.log('✅ Multi-turn conversation preserved');
+      console.log("✅ Multi-turn conversation preserved");
     });
   });
 
-  describe('ART Trajectory Format', () => {
-    it('should convert to exact ART format (matches tic-tac-toe example)', () => {
+  describe("ART Trajectory Format", () => {
+    it("should convert to exact ART format (matches tic-tac-toe example)", () => {
       const logger = new TrajectoryLoggerService();
 
       const trajId = logger.startTrajectory(mockRuntime.agentId as string, {
-        scenarioId: 'trading-test-1',
+        scenarioId: "trading-test-1",
         metadata: {
-          agentModel: 'llama-3.1-8b',
-          goalDescription: 'maximize profit while managing risk',
+          agentModel: "llama-3.1-8b",
+          goalDescription: "maximize profit while managing risk",
         },
       });
 
@@ -359,72 +359,72 @@ describe('ART Format Validation', () => {
       });
 
       logger.logLLMCall(stepId, {
-        model: 'llama-3.1-8b',
-        systemPrompt: 'You are a trading agent.',
-        userPrompt: 'BTC at 50%. Trade?',
-        response: 'Buy YES $100',
+        model: "llama-3.1-8b",
+        systemPrompt: "You are a trading agent.",
+        userPrompt: "BTC at 50%. Trade?",
+        response: "Buy YES $100",
         temperature: 0.8,
         maxTokens: 100,
-        purpose: 'action',
-        actionType: 'BUY_SHARES',
+        purpose: "action",
+        actionType: "BUY_SHARES",
       });
 
       logger.completeStep(
         trajId!,
         stepId!,
         {
-          actionType: 'BUY_SHARES',
-          actionName: 'BUY_SHARES',
-          parameters: { marketId: 'btc', amount: 100 },
+          actionType: "BUY_SHARES",
+          actionName: "BUY_SHARES",
+          parameters: { marketId: "btc", amount: 100 },
           success: true,
           result: { shares: 95 },
         },
         {
           reward: 1.5,
-        }
+        },
       );
 
       const trajectory = logger.getActiveTrajectory(trajId!)!;
       const artTraj = toARTTrajectory(trajectory);
 
       // Match ART structure from tic-tac-toe example
-      expect(artTraj).toHaveProperty('messages');
-      expect(artTraj).toHaveProperty('reward');
-      expect(artTraj).toHaveProperty('metadata');
-      expect(artTraj).toHaveProperty('metrics');
+      expect(artTraj).toHaveProperty("messages");
+      expect(artTraj).toHaveProperty("reward");
+      expect(artTraj).toHaveProperty("metadata");
+      expect(artTraj).toHaveProperty("metrics");
 
       // Messages should be array of {role, content}
       expect(Array.isArray(artTraj.messages)).toBe(true);
       expect(artTraj.messages.length).toBeGreaterThan(0);
 
       for (const msg of artTraj.messages) {
-        expect(msg).toHaveProperty('role');
-        expect(msg).toHaveProperty('content');
-        expect(['system', 'user', 'assistant']).toContain(msg.role);
-        expect(typeof msg.content).toBe('string');
+        expect(msg).toHaveProperty("role");
+        expect(msg).toHaveProperty("content");
+        expect(["system", "user", "assistant"]).toContain(msg.role);
+        expect(typeof msg.content).toBe("string");
       }
 
       // Reward should be single number
-      expect(typeof artTraj.reward).toBe('number');
-      expect(isNaN(artTraj.reward)).toBe(false);
+      expect(typeof artTraj.reward).toBe("number");
+      expect(Number.isNaN(artTraj.reward)).toBe(false);
 
       // Metadata should have context for RULER
       expect(artTraj.metadata.trajectoryId).toBeDefined();
-      expect(artTraj.metadata.scenarioId).toBe('trading-test-1');
+      expect(artTraj.metadata.scenarioId).toBe("trading-test-1");
       expect(artTraj.metadata.environmentContext).toBeDefined();
 
-      console.log('✅ Matches ART format exactly');
+      console.log("✅ Matches ART format exactly");
     });
 
-    it('should include environment context for RULER judge', () => {
+    it("should include environment context for RULER judge", () => {
       const logger = new TrajectoryLoggerService();
 
       const trajId = logger.startTrajectory(mockRuntime.agentId as string, {
         metadata: {
-          goalDescription: 'make profitable trades',
+          goalDescription: "make profitable trades",
         },
       });
-      if (!trajId) throw new Error('Failed to start trajectory');
+      if (!trajId) throw new Error("Failed to start trajectory");
 
       const stepId = logger.startStep(trajId, {
         timestamp: Date.now(),
@@ -435,18 +435,18 @@ describe('ART Format Validation', () => {
       });
 
       logger.logLLMCall(stepId, {
-        model: 'test',
-        systemPrompt: 'System',
-        userPrompt: 'User',
-        response: 'Response',
+        model: "test",
+        systemPrompt: "System",
+        userPrompt: "User",
+        response: "Response",
         temperature: 0.8,
         maxTokens: 100,
-        purpose: 'action',
+        purpose: "action",
       });
 
       logger.completeStep(trajId, stepId, {
-        actionType: 'TEST',
-        actionName: 'TEST',
+        actionType: "TEST",
+        actionName: "TEST",
         parameters: {},
         success: true,
       });
@@ -460,33 +460,33 @@ describe('ART Format Validation', () => {
 
       // RULER needs this context to rank trajectories!
       expect(artTraj.metadata.environmentContext).toBeDefined();
-      expect(artTraj.metadata.environmentContext!.initialBalance).toBe(1000);
-      expect(artTraj.metadata.environmentContext!.finalBalance).toBe(950);
-      expect(artTraj.metadata.environmentContext!.initialPnL).toBe(50);
-      expect(artTraj.metadata.environmentContext!.finalPnL).toBe(55);
+      expect(artTraj.metadata.environmentContext?.initialBalance).toBe(1000);
+      expect(artTraj.metadata.environmentContext?.finalBalance).toBe(950);
+      expect(artTraj.metadata.environmentContext?.initialPnL).toBe(50);
+      expect(artTraj.metadata.environmentContext?.finalPnL).toBe(55);
       expect(
-        Array.isArray(artTraj.metadata.environmentContext!.actionsTaken)
+        Array.isArray(artTraj.metadata.environmentContext?.actionsTaken),
       ).toBe(true);
 
-      console.log('✅ Environment context available for RULER');
+      console.log("✅ Environment context available for RULER");
     });
 
-    it('should include game knowledge for RULER judge', () => {
+    it("should include game knowledge for RULER judge", () => {
       const logger = new TrajectoryLoggerService();
 
       const trajId = logger.startTrajectory(mockRuntime.agentId as string, {
         metadata: {
           // Game master knowledge!
           trueProbabilities: {
-            'btc-100k': 0.75, // Agent doesn't know this, but we do!
+            "btc-100k": 0.75, // Agent doesn't know this, but we do!
           },
           futureOutcomes: {
-            'btc-100k': 'YES', // We know the future!
-            'btc-price-1h': 0.65, // We know what price will be!
+            "btc-100k": "YES", // We know the future!
+            "btc-price-1h": 0.65, // We know what price will be!
           },
           hiddenVariables: {
-            momentum: 'bullish',
-            whaleActivity: 'accumulating',
+            momentum: "bullish",
+            whaleActivity: "accumulating",
           },
         },
       });
@@ -500,19 +500,19 @@ describe('ART Format Validation', () => {
       });
 
       logger.logLLMCall(stepId, {
-        model: 'test',
-        systemPrompt: 'System',
-        userPrompt: 'User',
-        response: 'Response',
+        model: "test",
+        systemPrompt: "System",
+        userPrompt: "User",
+        response: "Response",
         temperature: 0.8,
         maxTokens: 100,
-        purpose: 'action',
+        purpose: "action",
       });
 
       logger.completeStep(trajId, stepId, {
-        actionType: 'BUY_SHARES',
-        actionName: 'BUY_SHARES',
-        parameters: { marketId: 'btc-100k', side: 'YES' },
+        actionType: "BUY_SHARES",
+        actionName: "BUY_SHARES",
+        parameters: { marketId: "btc-100k", side: "YES" },
         success: true,
       });
 
@@ -521,24 +521,24 @@ describe('ART Format Validation', () => {
 
       // RULER can use this to judge decision quality!
       expect(artTraj.metadata.gameKnowledge).toBeDefined();
-      expect(artTraj.metadata.gameKnowledge!.trueProbabilities).toEqual({
-        'btc-100k': 0.75,
+      expect(artTraj.metadata.gameKnowledge?.trueProbabilities).toEqual({
+        "btc-100k": 0.75,
       });
-      expect(artTraj.metadata.gameKnowledge!.actualOutcomes).toEqual({
-        'btc-100k': 'YES',
-        'btc-price-1h': 0.65,
+      expect(artTraj.metadata.gameKnowledge?.actualOutcomes).toEqual({
+        "btc-100k": "YES",
+        "btc-price-1h": 0.65,
       });
 
-      console.log('✅ Game knowledge available for RULER');
+      console.log("✅ Game knowledge available for RULER");
     });
   });
 
-  describe('GRPO Grouping', () => {
-    it('should group trajectories by scenario', () => {
+  describe("GRPO Grouping", () => {
+    it("should group trajectories by scenario", () => {
       const logger = new TrajectoryLoggerService();
 
       // Create 4 trajectories with same scenario (like ART does!)
-      const scenarioId = 'test-scenario-001';
+      const scenarioId = "test-scenario-001";
       const trajectories: Trajectory[] = [];
 
       for (let i = 0; i < 4; i++) {
@@ -548,7 +548,7 @@ describe('ART Format Validation', () => {
             groupIndex: i,
           },
         });
-        if (!trajId) throw new Error('Failed to start trajectory');
+        if (!trajId) throw new Error("Failed to start trajectory");
         testTrajectoryIds.push(trajId);
 
         const stepId = logger.startStep(trajId, {
@@ -560,34 +560,34 @@ describe('ART Format Validation', () => {
         });
 
         logger.logLLMCall(stepId, {
-          model: 'llama-3.1-8b',
-          systemPrompt: 'You are a trading agent.', // Same system prompt
-          userPrompt: 'BTC at 50%. Trade?', // Same user prompt
+          model: "llama-3.1-8b",
+          systemPrompt: "You are a trading agent.", // Same system prompt
+          userPrompt: "BTC at 50%. Trade?", // Same user prompt
           response:
             i === 0
-              ? 'Buy $100'
+              ? "Buy $100"
               : i === 1
-                ? 'Buy $50'
+                ? "Buy $50"
                 : i === 2
-                  ? 'Skip'
-                  : 'Sell', // Different responses!
+                  ? "Skip"
+                  : "Sell", // Different responses!
           temperature: 0.8,
           maxTokens: 100,
-          purpose: 'action',
+          purpose: "action",
         });
 
         logger.completeStep(
           trajId,
           stepId,
           {
-            actionType: 'TEST',
-            actionName: 'TEST',
+            actionType: "TEST",
+            actionName: "TEST",
             parameters: {},
             success: true,
           },
           {
             reward: i * 0.5, // Different rewards
-          }
+          },
         );
 
         // Get trajectory from memory (don't call endTrajectory which needs DB)
@@ -601,22 +601,22 @@ describe('ART Format Validation', () => {
       const groups = groupTrajectories(trajectories);
 
       expect(groups).toHaveLength(1); // One scenario
-      expect(groups[0]!.trajectories).toHaveLength(4); // 4 parallel rollouts
-      expect(groups[0]!.scenarioId).toBe(scenarioId);
+      expect(groups[0]?.trajectories).toHaveLength(4); // 4 parallel rollouts
+      expect(groups[0]?.scenarioId).toBe(scenarioId);
 
-      console.log('✅ Groups trajectories by scenario');
+      console.log("✅ Groups trajectories by scenario");
     });
 
-    it('should extract shared prefix from trajectory group', () => {
+    it("should extract shared prefix from trajectory group", () => {
       const logger = new TrajectoryLoggerService();
       const trajectories: Trajectory[] = [];
 
       // Create 3 trajectories with same start, different endings
       for (let i = 0; i < 3; i++) {
         const trajId = logger.startTrajectory(mockRuntime.agentId as string, {
-          scenarioId: 'same-start-test',
+          scenarioId: "same-start-test",
         });
-        if (!trajId) throw new Error('Failed to start trajectory');
+        if (!trajId) throw new Error("Failed to start trajectory");
 
         const stepId = logger.startStep(trajId, {
           timestamp: Date.now(),
@@ -627,18 +627,18 @@ describe('ART Format Validation', () => {
         });
 
         logger.logLLMCall(stepId, {
-          model: 'llama-3.1-8b',
-          systemPrompt: 'You are a trading agent.', // SAME
-          userPrompt: 'BTC at 50%. What do you do?', // SAME
-          response: i === 0 ? 'Buy' : i === 1 ? 'Hold' : 'Sell', // DIFFERENT
+          model: "llama-3.1-8b",
+          systemPrompt: "You are a trading agent.", // SAME
+          userPrompt: "BTC at 50%. What do you do?", // SAME
+          response: i === 0 ? "Buy" : i === 1 ? "Hold" : "Sell", // DIFFERENT
           temperature: 0.8,
           maxTokens: 100,
-          purpose: 'action',
+          purpose: "action",
         });
 
         logger.completeStep(trajId, stepId, {
-          actionType: 'TEST',
-          actionName: 'TEST',
+          actionType: "TEST",
+          actionName: "TEST",
           parameters: {},
           success: true,
         });
@@ -651,28 +651,28 @@ describe('ART Format Validation', () => {
 
       // Should extract system + user messages (same across all 3)
       expect(sharedPrefix.length).toBeGreaterThanOrEqual(2);
-      expect(sharedPrefix[0]!.role).toBe('system');
-      expect(sharedPrefix[0]!.content).toBe('You are a trading agent.');
-      expect(sharedPrefix[1]!.role).toBe('user');
-      expect(sharedPrefix[1]!.content).toBe('BTC at 50%. What do you do?');
+      expect(sharedPrefix[0]?.role).toBe("system");
+      expect(sharedPrefix[0]?.content).toBe("You are a trading agent.");
+      expect(sharedPrefix[1]?.role).toBe("user");
+      expect(sharedPrefix[1]?.content).toBe("BTC at 50%. What do you do?");
 
-      console.log('✅ Shared prefix extracted (saves tokens for RULER!)');
+      console.log("✅ Shared prefix extracted (saves tokens for RULER!)");
     });
 
-    it('should prepare trajectory group for RULER ranking', () => {
+    it("should prepare trajectory group for RULER ranking", () => {
       const logger = new TrajectoryLoggerService();
       const trajectories: Trajectory[] = [];
 
       // Create trajectory group (N=4, like ART examples)
       for (let i = 0; i < 4; i++) {
         const trajId = logger.startTrajectory(mockRuntime.agentId as string, {
-          scenarioId: 'ruler-test',
+          scenarioId: "ruler-test",
           metadata: {
             groupIndex: i,
             initialBalance: 1000,
           },
         });
-        if (!trajId) throw new Error('Failed to start trajectory');
+        if (!trajId) throw new Error("Failed to start trajectory");
 
         const stepId = logger.startStep(trajId, {
           timestamp: Date.now(),
@@ -683,27 +683,27 @@ describe('ART Format Validation', () => {
         });
 
         logger.logLLMCall(stepId, {
-          model: 'llama-3.1-8b',
-          systemPrompt: 'You are a trading agent.',
-          userPrompt: 'BTC at 50%, balance $1000. Trade?',
+          model: "llama-3.1-8b",
+          systemPrompt: "You are a trading agent.",
+          userPrompt: "BTC at 50%, balance $1000. Trade?",
           response: `Buy $${100 + i * 50}`, // Different amounts
           temperature: 0.8,
           maxTokens: 100,
-          purpose: 'action',
+          purpose: "action",
         });
 
         logger.completeStep(
           trajId,
           stepId,
           {
-            actionType: 'BUY_SHARES',
-            actionName: 'BUY_SHARES',
+            actionType: "BUY_SHARES",
+            actionName: "BUY_SHARES",
             parameters: { amount: 100 + i * 50 },
             success: true,
           },
           {
             reward: i * 0.3,
-          }
+          },
         );
 
         const traj = logger.getActiveTrajectory(trajId)!;
@@ -722,34 +722,34 @@ describe('ART Format Validation', () => {
 
       // Shared prefix should have system + user (same for all)
       expect(rulerInput.sharedPrefix.length).toBeGreaterThan(0);
-      expect(rulerInput.sharedPrefix[0]!.role).toBe('system');
+      expect(rulerInput.sharedPrefix[0]?.role).toBe("system");
 
       // Suffixes should have different responses
-      expect(rulerInput.suffixes[0]![0]!.content).toContain('$100');
-      expect(rulerInput.suffixes[1]![0]!.content).toContain('$150');
-      expect(rulerInput.suffixes[2]![0]!.content).toContain('$200');
-      expect(rulerInput.suffixes[3]![0]!.content).toContain('$250');
+      expect(rulerInput.suffixes[0]?.[0]?.content).toContain("$100");
+      expect(rulerInput.suffixes[1]?.[0]?.content).toContain("$150");
+      expect(rulerInput.suffixes[2]?.[0]?.content).toContain("$200");
+      expect(rulerInput.suffixes[3]?.[0]?.content).toContain("$250");
 
       // Metadata should have environment context for judging
       for (const meta of rulerInput.metadata) {
         expect(meta.environmentContext).toBeDefined();
-        expect(meta.environmentContext!.finalBalance).toBeDefined();
-        expect(meta.environmentContext!.finalPnL).toBeDefined();
+        expect(meta.environmentContext?.finalBalance).toBeDefined();
+        expect(meta.environmentContext?.finalPnL).toBeDefined();
       }
 
-      console.log('✅ RULER input format correct');
+      console.log("✅ RULER input format correct");
     });
   });
 
-  describe('Export Validation', () => {
-    it('should convert trajectory to ART-compatible JSONL format', () => {
+  describe("Export Validation", () => {
+    it("should convert trajectory to ART-compatible JSONL format", () => {
       const logger = new TrajectoryLoggerService();
 
       // Create trajectory in memory
       const trajId = logger.startTrajectory(mockRuntime.agentId as string, {
-        scenarioId: 'art-test',
+        scenarioId: "art-test",
       });
-      if (!trajId) throw new Error('Failed to start trajectory');
+      if (!trajId) throw new Error("Failed to start trajectory");
       testTrajectoryIds.push(trajId);
 
       const stepId = logger.startStep(trajId, {
@@ -761,18 +761,18 @@ describe('ART Format Validation', () => {
       });
 
       logger.logLLMCall(stepId, {
-        model: 'test-model',
-        systemPrompt: 'You are a trading agent.',
-        userPrompt: 'What trade should I make?',
-        response: 'Buy BTC at $100',
+        model: "test-model",
+        systemPrompt: "You are a trading agent.",
+        userPrompt: "What trade should I make?",
+        response: "Buy BTC at $100",
         temperature: 0.7,
         maxTokens: 100,
-        purpose: 'action',
+        purpose: "action",
       });
 
       logger.completeStep(trajId, stepId, {
-        actionType: 'TRADE',
-        actionName: 'BUY',
+        actionType: "TRADE",
+        actionName: "BUY",
         parameters: { amount: 100 },
         success: true,
       });
@@ -790,14 +790,14 @@ describe('ART Format Validation', () => {
       // Validate message array
       for (const msg of artFormat.messages) {
         expect(msg.role).toMatch(/^(system|user|assistant)$/);
-        expect(typeof msg.content).toBe('string');
+        expect(typeof msg.content).toBe("string");
         expect(msg.content.length).toBeGreaterThan(0);
       }
 
-      console.log('✅ ART export format valid');
+      console.log("✅ ART export format valid");
     });
 
-    it('should create grouped trajectories for GRPO', () => {
+    it("should create grouped trajectories for GRPO", () => {
       const logger = new TrajectoryLoggerService();
       const scenarioId = `grpo-test-${Date.now()}`;
       const trajectories: Trajectory[] = [];
@@ -808,7 +808,7 @@ describe('ART Format Validation', () => {
           scenarioId,
           metadata: { groupIndex: i },
         });
-        if (!trajId) throw new Error('Failed to start trajectory');
+        if (!trajId) throw new Error("Failed to start trajectory");
         testTrajectoryIds.push(trajId);
 
         const stepId = logger.startStep(trajId, {
@@ -820,25 +820,25 @@ describe('ART Format Validation', () => {
         });
 
         logger.logLLMCall(stepId, {
-          model: 'test-model',
-          systemPrompt: 'You are a trading agent.',
-          userPrompt: 'What trade should I make?',
+          model: "test-model",
+          systemPrompt: "You are a trading agent.",
+          userPrompt: "What trade should I make?",
           response: `Trade response ${i}`,
           temperature: 0.7,
           maxTokens: 100,
-          purpose: 'action',
+          purpose: "action",
         });
 
         logger.completeStep(
           trajId,
           stepId,
           {
-            actionType: 'TRADE',
-            actionName: 'BUY',
+            actionType: "TRADE",
+            actionName: "BUY",
             parameters: { amount: 100 + i * 10 },
             success: true,
           },
-          { reward: i * 0.5 }
+          { reward: i * 0.5 },
         );
 
         const traj = logger.getActiveTrajectory(trajId);
@@ -849,22 +849,22 @@ describe('ART Format Validation', () => {
       const groups = groupTrajectories(trajectories);
 
       expect(groups).toHaveLength(1);
-      expect(groups[0]!.scenarioId).toBe(scenarioId);
-      expect(groups[0]!.trajectories).toHaveLength(5);
+      expect(groups[0]?.scenarioId).toBe(scenarioId);
+      expect(groups[0]?.trajectories).toHaveLength(5);
 
       // All trajectories should convert to ART format
-      for (const traj of groups[0]!.trajectories) {
+      for (const traj of groups[0]?.trajectories) {
         const artFormat = toARTTrajectory(traj);
         expect(artFormat.messages).toBeDefined();
         expect(Array.isArray(artFormat.messages)).toBe(true);
       }
 
-      console.log('✅ GRPO group export correct');
+      console.log("✅ GRPO group export correct");
     });
   });
 
-  describe('Compatibility Validation', () => {
-    it('should validate trajectory is ART-compatible', () => {
+  describe("Compatibility Validation", () => {
+    it("should validate trajectory is ART-compatible", () => {
       const logger = new TrajectoryLoggerService();
 
       const trajId = logger.startTrajectory(mockRuntime.agentId as string);
@@ -877,30 +877,30 @@ describe('ART Format Validation', () => {
       });
 
       logger.logLLMCall(stepId, {
-        model: 'llama-3.1-8b',
-        systemPrompt: 'You are a trading agent.',
+        model: "llama-3.1-8b",
+        systemPrompt: "You are a trading agent.",
         userPrompt:
-          'Current state: $1000 balance, BTC at 50%. What should you do?',
+          "Current state: $1000 balance, BTC at 50%. What should you do?",
         response:
-          'I will buy YES shares in BTC for $100 because momentum is strong.',
+          "I will buy YES shares in BTC for $100 because momentum is strong.",
         temperature: 0.8,
         maxTokens: 200,
-        purpose: 'action',
-        actionType: 'BUY_SHARES',
+        purpose: "action",
+        actionType: "BUY_SHARES",
       });
 
       logger.completeStep(
         trajId,
         stepId,
         {
-          actionType: 'BUY_SHARES',
-          actionName: 'BUY_SHARES',
+          actionType: "BUY_SHARES",
+          actionName: "BUY_SHARES",
           parameters: {},
           success: true,
         },
         {
           reward: 1.5,
-        }
+        },
       );
 
       const trajectory = logger.getActiveTrajectory(trajId)!;
@@ -909,10 +909,10 @@ describe('ART Format Validation', () => {
       expect(validation.valid).toBe(true);
       expect(validation.errors).toHaveLength(0);
 
-      console.log('✅ Trajectory is ART-compatible');
+      console.log("✅ Trajectory is ART-compatible");
     });
 
-    it('should detect incompatible trajectories', () => {
+    it("should detect incompatible trajectories", () => {
       const logger = new TrajectoryLoggerService();
 
       const trajId = logger.startTrajectory(mockRuntime.agentId as string);
@@ -926,8 +926,8 @@ describe('ART Format Validation', () => {
 
       // No LLM calls! (incompatible!)
       logger.completeStep(trajId, stepId, {
-        actionType: 'TEST',
-        actionName: 'TEST',
+        actionType: "TEST",
+        actionName: "TEST",
         parameters: {},
         success: true,
       });
@@ -937,12 +937,12 @@ describe('ART Format Validation', () => {
 
       expect(validation.valid).toBe(false);
       expect(validation.errors.length).toBeGreaterThan(0);
-      expect(validation.errors[0]).toContain('no LLM calls');
+      expect(validation.errors[0]).toContain("no LLM calls");
 
-      console.log('✅ Detects incompatible data');
+      console.log("✅ Detects incompatible data");
     });
 
-    it('should validate message array structure', () => {
+    it("should validate message array structure", () => {
       const logger = new TrajectoryLoggerService();
 
       const trajId = logger.startTrajectory(mockRuntime.agentId as string);
@@ -955,22 +955,22 @@ describe('ART Format Validation', () => {
       });
 
       logger.logLLMCall(stepId, {
-        model: 'llama-3.1-8b',
+        model: "llama-3.1-8b",
         systemPrompt:
-          'You are a trading agent with sophisticated risk management.',
+          "You are a trading agent with sophisticated risk management.",
         userPrompt:
-          'Portfolio: $1000, 2 open positions. BTC at 50%, ETH at 60%. Liquidity: BTC $1000, ETH $500. Recent: +$50 P&L. Should you make a trade? If yes, which market and how much?',
+          "Portfolio: $1000, 2 open positions. BTC at 50%, ETH at 60%. Liquidity: BTC $1000, ETH $500. Recent: +$50 P&L. Should you make a trade? If yes, which market and how much?",
         response:
-          'I will buy YES shares in BTC for $100. Reasoning: BTC is undervalued at 50% based on momentum indicators and recent volume increase.',
+          "I will buy YES shares in BTC for $100. Reasoning: BTC is undervalued at 50% based on momentum indicators and recent volume increase.",
         temperature: 0.8,
         maxTokens: 200,
-        purpose: 'action',
-        actionType: 'BUY_SHARES',
+        purpose: "action",
+        actionType: "BUY_SHARES",
       });
 
       logger.completeStep(trajId, stepId, {
-        actionType: 'BUY_SHARES',
-        actionName: 'BUY_SHARES',
+        actionType: "BUY_SHARES",
+        actionName: "BUY_SHARES",
         parameters: {},
         success: true,
       });
@@ -982,39 +982,39 @@ describe('ART Format Validation', () => {
       for (const msg of messages) {
         // Must have role
         expect(msg.role).toBeDefined();
-        expect(['system', 'user', 'assistant']).toContain(msg.role);
+        expect(["system", "user", "assistant"]).toContain(msg.role);
 
         // Must have content
         expect(msg.content).toBeDefined();
-        expect(typeof msg.content).toBe('string');
+        expect(typeof msg.content).toBe("string");
         expect(msg.content.length).toBeGreaterThan(0);
 
         // No undefined or null values
-        expect(msg.content).not.toBe('undefined');
-        expect(msg.content).not.toBe('null');
+        expect(msg.content).not.toBe("undefined");
+        expect(msg.content).not.toBe("null");
       }
 
       // System message should establish identity
       const systemMsg = messages.find(
-        (m: { role: string; content: string }) => m.role === 'system'
+        (m: { role: string; content: string }) => m.role === "system",
       )!;
       expect(systemMsg.content.length).toBeGreaterThan(20);
 
       // User message should have context
       const userMsg = messages.find(
-        (m: { role: string; content: string }) => m.role === 'user'
+        (m: { role: string; content: string }) => m.role === "user",
       )!;
       expect(userMsg.content.length).toBeGreaterThan(50);
-      expect(userMsg.content).toContain('$1000');
+      expect(userMsg.content).toContain("$1000");
 
       // Assistant message should have decision
       const assistantMsg = messages.find(
-        (m: { role: string; content: string }) => m.role === 'assistant'
+        (m: { role: string; content: string }) => m.role === "assistant",
       )!;
       expect(assistantMsg.content.length).toBeGreaterThan(20);
-      expect(assistantMsg.content.toLowerCase()).toContain('buy');
+      expect(assistantMsg.content.toLowerCase()).toContain("buy");
 
-      console.log('✅ Message array structure valid');
+      console.log("✅ Message array structure valid");
     });
   });
 });
@@ -1028,14 +1028,14 @@ async function _createCompleteARTTrajectory(
   options: {
     scenarioId?: string;
     groupIndex?: number;
-  } = {}
+  } = {},
 ): Promise<string> {
-  const trajId = logger.startTrajectory('test-agent-id', {
-    scenarioId: options.scenarioId || 'test-scenario',
+  const trajId = logger.startTrajectory("test-agent-id", {
+    scenarioId: options.scenarioId || "test-scenario",
     metadata: {
       groupIndex: options.groupIndex,
-      agentModel: 'llama-3.1-8b',
-      goalDescription: 'maximize profit',
+      agentModel: "llama-3.1-8b",
+      goalDescription: "maximize profit",
     },
   });
 
@@ -1048,40 +1048,40 @@ async function _createCompleteARTTrajectory(
   });
 
   logger.logProviderAccess(stepId, {
-    providerName: 'MARKETS',
+    providerName: "MARKETS",
     data: {
-      markets: [{ id: 'btc', price: 0.5, liquidity: 1000 }],
+      markets: [{ id: "btc", price: 0.5, liquidity: 1000 }],
     },
-    purpose: 'Get markets',
+    purpose: "Get markets",
   });
 
   logger.logLLMCall(stepId, {
-    model: 'llama-3.1-8b',
-    systemPrompt: 'You are a trading agent with momentum strategy.',
-    userPrompt: 'Balance: $1000. BTC at 50%. Trade?',
-    response: 'Buy BTC YES $100',
+    model: "llama-3.1-8b",
+    systemPrompt: "You are a trading agent with momentum strategy.",
+    userPrompt: "Balance: $1000. BTC at 50%. Trade?",
+    response: "Buy BTC YES $100",
     temperature: 0.8,
     maxTokens: 100,
-    purpose: 'action',
-    actionType: 'BUY_SHARES',
+    purpose: "action",
+    actionType: "BUY_SHARES",
   });
 
   logger.completeStep(
     trajId,
     stepId,
     {
-      actionType: 'BUY_SHARES',
-      actionName: 'BUY_SHARES',
-      parameters: { marketId: 'btc', amount: 100 },
+      actionType: "BUY_SHARES",
+      actionName: "BUY_SHARES",
+      parameters: { marketId: "btc", amount: 100 },
       success: true,
       result: { shares: 95 },
     },
     {
       reward: 1.0,
-    }
+    },
   );
 
-  await logger.endTrajectory(trajId, 'completed', {
+  await logger.endTrajectory(trajId, "completed", {
     finalBalance: 900,
     finalPnL: 55,
   });

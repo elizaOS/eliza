@@ -2,10 +2,10 @@ import type {
   DeriveKeyAttestationData,
   RemoteAttestationMessage,
   RemoteAttestationQuote,
+  TEEMode,
   TeeAgent,
   TeePluginConfig,
   TeeType,
-  TEEMode,
 } from "./proto.js";
 
 export type {

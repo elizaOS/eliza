@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-goals-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Goals management plugin for ElizaOS - tracking and achieving objectives",
   "type": "module",
   "main": "typescript/dist/index.js",

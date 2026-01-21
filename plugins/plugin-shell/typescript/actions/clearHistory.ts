@@ -9,8 +9,8 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { ShellService } from "../services/shellService";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
+import type { ShellService } from "../services/shellService";
 
 const spec = requireActionSpec("CLEAR_HISTORY");
 

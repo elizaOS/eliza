@@ -48,18 +48,61 @@
  * These are acceptable for v1 but noted for future improvement.
  */
 
-import type { IAgentRuntime, UUID, Component } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import type {
-  FormSession,
-  FormSubmission,
-  FormAutofillData,
-} from './types.ts';
+import type { Component, IAgentRuntime, JsonValue, UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import type { FormSession, FormSubmission, FormAutofillData } from "./types";
 import {
   FORM_SESSION_COMPONENT,
   FORM_SUBMISSION_COMPONENT,
   FORM_AUTOFILL_COMPONENT,
-} from './types.ts';
+} from "./types";
+
+const isRecord = (
+  value: JsonValue | object,
+): value is Record<string, JsonValue> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const resolveComponentContext = async (
+  runtime: IAgentRuntime,
+  roomId?: UUID,
+): Promise<{ roomId: UUID; worldId: UUID }> => {
+  if (roomId) {
+    const room = await runtime.getRoom(roomId);
+    return { roomId, worldId: room?.worldId ?? runtime.agentId };
+  }
+  return { roomId: runtime.agentId, worldId: runtime.agentId };
+};
+
+const isFormSession = (data: JsonValue | object): data is FormSession => {
+  if (!isRecord(data)) return false;
+  return (
+    typeof data.id === "string" &&
+    typeof data.formId === "string" &&
+    typeof data.entityId === "string" &&
+    typeof data.roomId === "string"
+  );
+};
+
+const isFormSubmission = (data: JsonValue | object): data is FormSubmission => {
+  if (!isRecord(data)) return false;
+  return (
+    typeof data.id === "string" &&
+    typeof data.formId === "string" &&
+    typeof data.sessionId === "string" &&
+    typeof data.entityId === "string"
+  );
+};
+
+const isFormAutofillData = (
+  data: JsonValue | object,
+): data is FormAutofillData => {
+  if (!isRecord(data)) return false;
+  return (
+    typeof data.formId === "string" &&
+    typeof data.updatedAt === "number" &&
+    typeof data.values === "object"
+  );
+};
 
 // ============================================================================
 // SESSION STORAGE
@@ -85,18 +128,21 @@ import {
 export async function getActiveSession(
   runtime: IAgentRuntime,
   entityId: UUID,
-  roomId: UUID
+  roomId: UUID,
 ): Promise<FormSession | null> {
   // Component type includes roomId for room-level scoping
-  const component = await runtime.getComponent(entityId, `${FORM_SESSION_COMPONENT}:${roomId}`);
+  const component = await runtime.getComponent(
+    entityId,
+    `${FORM_SESSION_COMPONENT}:${roomId}`,
+  );
 
-  if (!component) return null;
+  if (!component?.data || !isFormSession(component.data)) return null;
 
-  const session = component.data as unknown as FormSession;
+  const session = component.data;
 
   // Only return if active (not stashed, submitted, cancelled, or expired)
   // WHY: Other statuses require explicit action to restore/continue
-  if (session.status === 'active' || session.status === 'ready') {
+  if (session.status === "active" || session.status === "ready") {
     return session;
   }
 
@@ -117,7 +163,7 @@ export async function getActiveSession(
  */
 export async function getAllActiveSessions(
   runtime: IAgentRuntime,
-  entityId: UUID
+  entityId: UUID,
 ): Promise<FormSession[]> {
   const components = await runtime.getComponents(entityId);
 
@@ -125,9 +171,11 @@ export async function getAllActiveSessions(
   for (const component of components) {
     // Check if this is a form session component
     if (component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) {
-      const session = component.data as unknown as FormSession;
-      if (session.status === 'active' || session.status === 'ready') {
-        sessions.push(session);
+      if (component.data && isFormSession(component.data)) {
+        const session = component.data;
+        if (session.status === "active" || session.status === "ready") {
+          sessions.push(session);
+        }
       }
     }
   }
@@ -149,16 +197,18 @@ export async function getAllActiveSessions(
  */
 export async function getStashedSessions(
   runtime: IAgentRuntime,
-  entityId: UUID
+  entityId: UUID,
 ): Promise<FormSession[]> {
   const components = await runtime.getComponents(entityId);
 
   const sessions: FormSession[] = [];
   for (const component of components) {
     if (component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) {
-      const session = component.data as unknown as FormSession;
-      if (session.status === 'stashed') {
-        sessions.push(session);
+      if (component.data && isFormSession(component.data)) {
+        const session = component.data;
+        if (session.status === "stashed") {
+          sessions.push(session);
+        }
       }
     }
   }
@@ -182,15 +232,17 @@ export async function getStashedSessions(
 export async function getSessionById(
   runtime: IAgentRuntime,
   entityId: UUID,
-  sessionId: string
+  sessionId: string,
 ): Promise<FormSession | null> {
   const components = await runtime.getComponents(entityId);
 
   for (const component of components) {
     if (component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) {
-      const session = component.data as unknown as FormSession;
-      if (session.id === sessionId) {
-        return session;
+      if (component.data && isFormSession(component.data)) {
+        const session = component.data;
+        if (session.id === sessionId) {
+          return session;
+        }
       }
     }
   }
@@ -213,10 +265,12 @@ export async function getSessionById(
  */
 export async function saveSession(
   runtime: IAgentRuntime,
-  session: FormSession
+  session: FormSession,
 ): Promise<void> {
   const componentType = `${FORM_SESSION_COMPONENT}:${session.roomId}`;
   const existing = await runtime.getComponent(session.entityId, componentType);
+  const context = await resolveComponentContext(runtime, session.roomId);
+  const resolvedWorldId = existing?.worldId ?? context.worldId;
 
   const component: Component = {
     id: existing?.id || (uuidv4() as UUID),
@@ -224,13 +278,12 @@ export async function saveSession(
     agentId: runtime.agentId,
     roomId: session.roomId,
     // WHY preserve worldId: Avoids breaking existing component relationships
-    worldId: existing?.worldId || (uuidv4() as UUID),
+    worldId: resolvedWorldId,
     sourceEntityId: runtime.agentId,
     type: componentType,
     createdAt: existing?.createdAt || Date.now(),
     // Store session as component data
-    // WHY unknown cast: TypeScript can't know our data structure
-    data: session as unknown as Record<string, unknown>,
+    data: JSON.parse(JSON.stringify(session)) as Record<string, JsonValue>,
   };
 
   if (existing) {
@@ -253,7 +306,7 @@ export async function saveSession(
  */
 export async function deleteSession(
   runtime: IAgentRuntime,
-  session: FormSession
+  session: FormSession,
 ): Promise<void> {
   const componentType = `${FORM_SESSION_COMPONENT}:${session.roomId}`;
   const existing = await runtime.getComponent(session.entityId, componentType);
@@ -282,23 +335,23 @@ export async function deleteSession(
  */
 export async function saveSubmission(
   runtime: IAgentRuntime,
-  submission: FormSubmission
+  submission: FormSubmission,
 ): Promise<void> {
   // Use a unique component type per submission
   // WHY: Allows multiple submissions per form
   const componentType = `${FORM_SUBMISSION_COMPONENT}:${submission.formId}:${submission.id}`;
+  const context = await resolveComponentContext(runtime);
 
   const component: Component = {
     id: uuidv4() as UUID,
     entityId: submission.entityId,
     agentId: runtime.agentId,
-    // WHY uuidv4 for roomId: Submissions aren't room-specific
-    roomId: uuidv4() as UUID,
-    worldId: uuidv4() as UUID,
+    roomId: context.roomId,
+    worldId: context.worldId,
     sourceEntityId: runtime.agentId,
     type: componentType,
     createdAt: submission.submittedAt,
-    data: submission as unknown as Record<string, unknown>,
+    data: JSON.parse(JSON.stringify(submission)) as Record<string, JsonValue>,
   };
 
   await runtime.createComponent(component);
@@ -319,7 +372,7 @@ export async function saveSubmission(
 export async function getSubmissions(
   runtime: IAgentRuntime,
   entityId: UUID,
-  formId?: string
+  formId?: string,
 ): Promise<FormSubmission[]> {
   const components = await runtime.getComponents(entityId);
 
@@ -330,7 +383,9 @@ export async function getSubmissions(
 
   for (const component of components) {
     if (component.type.startsWith(prefix)) {
-      submissions.push(component.data as unknown as FormSubmission);
+      if (component.data && isFormSubmission(component.data)) {
+        submissions.push(component.data);
+      }
     }
   }
 
@@ -352,15 +407,17 @@ export async function getSubmissions(
 export async function getSubmissionById(
   runtime: IAgentRuntime,
   entityId: UUID,
-  submissionId: string
+  submissionId: string,
 ): Promise<FormSubmission | null> {
   const components = await runtime.getComponents(entityId);
 
   for (const component of components) {
     if (component.type.startsWith(`${FORM_SUBMISSION_COMPONENT}:`)) {
-      const submission = component.data as unknown as FormSubmission;
-      if (submission.id === submissionId) {
-        return submission;
+      if (component.data && isFormSubmission(component.data)) {
+        const submission = component.data;
+        if (submission.id === submissionId) {
+          return submission;
+        }
       }
     }
   }
@@ -387,14 +444,14 @@ export async function getSubmissionById(
 export async function getAutofillData(
   runtime: IAgentRuntime,
   entityId: UUID,
-  formId: string
+  formId: string,
 ): Promise<FormAutofillData | null> {
   const componentType = `${FORM_AUTOFILL_COMPONENT}:${formId}`;
   const component = await runtime.getComponent(entityId, componentType);
 
-  if (!component) return null;
+  if (!component?.data || !isFormAutofillData(component.data)) return null;
 
-  return component.data as unknown as FormAutofillData;
+  return component.data;
 }
 
 /**
@@ -416,10 +473,12 @@ export async function saveAutofillData(
   runtime: IAgentRuntime,
   entityId: UUID,
   formId: string,
-  values: Record<string, unknown>
+  values: Record<string, JsonValue>,
 ): Promise<void> {
   const componentType = `${FORM_AUTOFILL_COMPONENT}:${formId}`;
   const existing = await runtime.getComponent(entityId, componentType);
+  const context = await resolveComponentContext(runtime);
+  const resolvedWorldId = existing?.worldId ?? context.worldId;
 
   const data: FormAutofillData = {
     formId,
@@ -431,12 +490,12 @@ export async function saveAutofillData(
     id: existing?.id || (uuidv4() as UUID),
     entityId,
     agentId: runtime.agentId,
-    roomId: uuidv4() as UUID,
-    worldId: existing?.worldId || (uuidv4() as UUID),
+    roomId: context.roomId,
+    worldId: resolvedWorldId,
     sourceEntityId: runtime.agentId,
     type: componentType,
     createdAt: existing?.createdAt || Date.now(),
-    data: data as unknown as Record<string, unknown>,
+    data: JSON.parse(JSON.stringify(data)) as Record<string, JsonValue>,
   };
 
   if (existing) {
@@ -468,7 +527,7 @@ export async function saveAutofillData(
  */
 export async function getStaleSessions(
   runtime: IAgentRuntime,
-  afterInactiveMs: number
+  afterInactiveMs: number,
 ): Promise<FormSession[]> {
   // TODO: Implement proper querying across all entities
   // This would require either:
@@ -476,7 +535,9 @@ export async function getStaleSessions(
   // 2. A separate tracking table
   // 3. Periodic full scan (expensive)
 
-  runtime.logger.warn('getStaleSessions requires entity iteration - not implemented');
+  runtime.logger.warn(
+    "getStaleSessions requires entity iteration - not implemented",
+  );
   return [];
 }
 
@@ -491,8 +552,10 @@ export async function getStaleSessions(
  */
 export async function getExpiringSessions(
   runtime: IAgentRuntime,
-  withinMs: number
+  withinMs: number,
 ): Promise<FormSession[]> {
-  runtime.logger.warn('getExpiringSessions requires entity iteration - not implemented');
+  runtime.logger.warn(
+    "getExpiringSessions requires entity iteration - not implemented",
+  );
   return [];
 }

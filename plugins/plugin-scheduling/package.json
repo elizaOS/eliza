@@ -1,0 +1,39 @@
+{
+  "name": "@elizaos/plugin-scheduling",
+  "version": "1.0.0",
+  "description": "Scheduling and calendar coordination plugin for ElizaOS agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "ical-generator": "8.0.0",
+    "uuid": "11.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.9",
+    "@types/uuid": "10.0.0",
+    "tsup": "8.4.0",
+    "typescript": "5.7.3",
+    "vitest": "3.0.2"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

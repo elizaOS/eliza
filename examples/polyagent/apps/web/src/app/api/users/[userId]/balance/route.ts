@@ -64,15 +64,15 @@ import {
   RATE_LIMIT_CONFIGS,
   successResponse,
   withErrorHandling,
-} from '@polyagent/api';
-import { db, users } from '@polyagent/db';
+} from "@polyagent/api";
+import { db, users } from "@polyagent/db";
 import {
   convertBalanceToStrings,
   logger,
   UserIdParamSchema,
-} from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * GET Handler for User Balance
@@ -106,7 +106,7 @@ import { NextResponse } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // IP-based rate limiting for public endpoint (prevents enumeration attacks)
     // Uses Redis-backed rate limiting for serverless compatibility
@@ -121,7 +121,7 @@ export const GET = withErrorHandling(
       ? RATE_LIMIT_CONFIGS.PUBLIC_BALANCE_FETCH
       : RATE_LIMIT_CONFIGS.PUBLIC_BALANCE_FETCH_ANONYMOUS;
 
-    const rateLimitKey = clientIp ? `ip:${clientIp}` : 'ip:anonymous';
+    const rateLimitKey = clientIp ? `ip:${clientIp}` : "ip:anonymous";
     const rateLimit = await checkRateLimitAsync(rateLimitKey, rateLimitConfig);
 
     if (!rateLimit.allowed) {
@@ -129,15 +129,15 @@ export const GET = withErrorHandling(
       const retryAfterSeconds = rateLimit.retryAfter || 60;
       return NextResponse.json(
         {
-          error: 'Too many requests',
+          error: "Too many requests",
           retryAfter: retryAfterSeconds,
         },
         {
           status: 429,
           headers: {
-            'Retry-After': String(retryAfterSeconds),
+            "Retry-After": String(retryAfterSeconds),
           },
-        }
+        },
       );
     }
 
@@ -159,7 +159,7 @@ export const GET = withErrorHandling(
         })
         .returning();
       if (!newUser) {
-        throw new Error('Failed to create user');
+        throw new Error("Failed to create user");
       }
       dbUser = newUser;
     }
@@ -171,8 +171,8 @@ export const GET = withErrorHandling(
 
     if (!balanceData) {
       throw new BusinessLogicError(
-        'User balance not found',
-        'BALANCE_NOT_FOUND'
+        "User balance not found",
+        "BALANCE_NOT_FOUND",
       );
     }
 
@@ -186,9 +186,9 @@ export const GET = withErrorHandling(
     });
 
     logger.info(
-      'Balance fetched successfully (cached)',
+      "Balance fetched successfully (cached)",
       { userId: canonicalUserId, balance: balanceInfo.virtualBalance },
-      'GET /api/users/[userId]/balance'
+      "GET /api/users/[userId]/balance",
     );
 
     return successResponse({
@@ -197,5 +197,5 @@ export const GET = withErrorHandling(
       totalWithdrawn: balanceInfo.totalWithdrawn,
       lifetimePnL: balanceInfo.lifetimePnL,
     });
-  }
+  },
 );

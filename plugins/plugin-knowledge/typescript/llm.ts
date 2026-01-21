@@ -3,7 +3,7 @@ import { google } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateText as aiGenerateText, type ModelMessage, embed } from "ai";
+import { generateText as aiGenerateText, embed, type ModelMessage } from "ai";
 
 type AIModel = Parameters<typeof aiGenerateText>[0]["model"];
 

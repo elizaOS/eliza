@@ -5,14 +5,14 @@
  * This keeps the API route thin and the business logic portable.
  */
 
-import { db, type JsonValue } from '@polyagent/db';
+import { db, type JsonValue } from "@polyagent/db";
 import {
   type FeedbackType,
-  GameFeedbackSchema,
+  type GameFeedbackSchema,
   generateSnowflakeId,
   logger,
-} from '@polyagent/shared';
-import type { z } from 'zod';
+} from "@polyagent/shared";
+import type { z } from "zod";
 
 /**
  * Default score when no rating is provided.
@@ -30,9 +30,9 @@ export const RATING_SCORE_MULTIPLIER = 20;
  * Maps feedback type to category string for database storage.
  */
 export const FEEDBACK_CATEGORY_MAP: Record<FeedbackType, string> = {
-  bug: 'bug_report',
-  feature_request: 'feature_request',
-  performance: 'performance_issue',
+  bug: "bug_report",
+  feature_request: "feature_request",
+  performance: "performance_issue",
 };
 
 /**
@@ -42,7 +42,7 @@ export const FEEDBACK_CATEGORY_MAP: Record<FeedbackType, string> = {
  * @returns Score from 20-100 (if rating provided) or 50 (default)
  */
 export function calculateFeedbackScore(
-  rating: number | null | undefined
+  rating: number | null | undefined,
 ): number {
   if (rating != null) {
     return rating * RATING_SCORE_MULTIPLIER;
@@ -70,7 +70,7 @@ export interface CreateFeedbackResult {
  * @returns The created feedback record
  */
 export async function createGameFeedback(
-  input: CreateFeedbackInput
+  input: CreateFeedbackInput,
 ): Promise<CreateFeedbackResult> {
   const { userId, parsed } = input;
   const now = new Date();
@@ -90,14 +90,14 @@ export async function createGameFeedback(
       score: calculateFeedbackScore(parsed.rating),
       comment: parsed.description,
       category: FEEDBACK_CATEGORY_MAP[parsed.feedbackType],
-      interactionType: 'general_game_feedback',
+      interactionType: "general_game_feedback",
       metadata,
       createdAt: now,
       updatedAt: now,
     },
   });
 
-  logger.info('Game feedback submitted', {
+  logger.info("Game feedback submitted", {
     feedbackId: feedback.id,
     userId,
     type: parsed.feedbackType,

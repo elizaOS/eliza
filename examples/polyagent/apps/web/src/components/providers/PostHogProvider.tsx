@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from "next/navigation";
 /**
  * PostHog provider component for initializing PostHog analytics.
  *
@@ -16,8 +16,8 @@ import { usePathname, useSearchParams } from 'next/navigation';
  * @param props - PostHogProvider component props
  * @returns PostHog provider element
  */
-import { useEffect, useRef } from 'react';
-import { initPostHog, posthog } from '@/lib/posthog';
+import { useEffect, useRef } from "react";
+import { initPostHog, posthog } from "@/lib/posthog";
 
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -36,16 +36,16 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (pathname) {
       let url = window.origin + pathname;
-      if (searchParams && searchParams.toString()) {
-        url = url + `?${searchParams.toString()}`;
+      if (searchParams?.toString()) {
+        url = `${url}?${searchParams.toString()}`;
       }
 
       // Track pageview with PostHog
-      if (typeof window !== 'undefined' && posthog) {
-        posthog.capture('$pageview', {
+      if (typeof window !== "undefined" && posthog) {
+        posthog.capture("$pageview", {
           $current_url: url,
           $pathname: pathname,
-          $search_params: searchParams?.toString() || '',
+          $search_params: searchParams?.toString() || "",
         });
       }
     }

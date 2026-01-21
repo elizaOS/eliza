@@ -8,8 +8,6 @@ the expected response shape and basic caller behavior.
 
 from typing import TypedDict
 
-import pytest
-
 
 class Message(TypedDict):
     role: str
@@ -37,14 +35,10 @@ class OpenAIResponse(TypedDict):
     usage: Usage
 
 
-def call_openai(
-    messages: list[Message], model: str = "gpt-4o-mini", max_tokens: int = 100
-) -> OpenAIResponse:
+def call_openai(messages: list[Message], model: str = "gpt-4o-mini", max_tokens: int = 100) -> OpenAIResponse:
     """Return a deterministic OpenAI-like response (offline)."""
 
-    last_user = next(
-        (m["content"] for m in reversed(messages) if m["role"] == "user"), ""
-    )
+    last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
 
     if "exactly one word" in last_user.lower():
         content = "hello"

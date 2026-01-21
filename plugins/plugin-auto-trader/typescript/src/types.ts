@@ -1,4 +1,4 @@
-import { IAgentRuntime as AgentRuntime, UUID } from '@elizaos/core';
+import type { IAgentRuntime as AgentRuntime, UUID } from "@elizaos/core";
 
 export interface TokenBalance {
   tokenAddress: string;
@@ -71,18 +71,18 @@ export interface TradingStrategy {
   }): Promise<TradeOrder | null>;
   initialize?(agentRuntime?: AgentRuntime): Promise<void>;
   isReady(): boolean;
-  configure?(params: any): void;
+  configure?(params: Record<string, unknown>): void;
 }
 
 export enum TradeType {
-  BUY = 'BUY',
-  SELL = 'SELL',
+  BUY = "BUY",
+  SELL = "SELL",
 }
 
 export enum OrderType {
-  MARKET = 'MARKET',
-  LIMIT = 'LIMIT',
-  STOP = 'STOP',
+  MARKET = "MARKET",
+  LIMIT = "LIMIT",
+  STOP = "STOP",
 }
 
 export interface TradeOrder {
@@ -146,7 +146,7 @@ export interface HistoricalDataService {
     interval: string,
     startDate: Date,
     endDate: Date,
-    dataSource: string
+    dataSource: string,
   ): Promise<OHLCV[]>;
 }
 
@@ -221,8 +221,12 @@ export interface RandomStrategyParams {
 
 export interface RuleBasedStrategyParams {
   indicators?: string[];
-  buyConditions?: { [indicator: string]: { threshold: number; condition: 'above' | 'below' } };
-  sellConditions?: { [indicator: string]: { threshold: number; condition: 'above' | 'below' } };
+  buyConditions?: {
+    [indicator: string]: { threshold: number; condition: "above" | "below" };
+  };
+  sellConditions?: {
+    [indicator: string]: { threshold: number; condition: "above" | "below" };
+  };
   riskSettings?: {
     maxPositionSize?: number;
     stopLossPercentage?: number;
@@ -238,7 +242,7 @@ export interface LLMStrategyParams {
   temperature?: number;
   defaultTradeSizePercentage?: number;
   defaultFixedTradeQuantity?: number;
-  structuredOutputSchema?: any;
+  structuredOutputSchema?: Record<string, unknown>;
   systemPrompt?: string;
 }
 

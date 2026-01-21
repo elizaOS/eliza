@@ -9,13 +9,13 @@
  * @see src/lib/services/agent-registry.service.ts
  */
 
-import type { AgentRegistration, TrustLevel } from '@polyagent/agents';
-import { AgentStatus, AgentType, agentRegistry } from '@polyagent/agents';
-import { checkRateLimitAsync, RATE_LIMIT_CONFIGS } from '@polyagent/api';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import type { AgentRegistration, TrustLevel } from "@polyagent/agents";
+import { AgentStatus, AgentType, agentRegistry } from "@polyagent/agents";
+import { checkRateLimitAsync, RATE_LIMIT_CONFIGS } from "@polyagent/api";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 // Discovery filter type
 interface DiscoveryFilter {
@@ -25,7 +25,7 @@ interface DiscoveryFilter {
   requiredCapabilities?: string[];
   requiredSkills?: string[];
   requiredDomains?: string[];
-  matchMode?: 'all' | 'any';
+  matchMode?: "all" | "any";
   limit?: number;
   offset?: number;
 }
@@ -50,7 +50,7 @@ const DiscoveryBodySchema = z.object({
   requiredCapabilities: z.array(z.string()).optional(),
   requiredSkills: z.array(z.string()).optional(),
   requiredDomains: z.array(z.string()).optional(),
-  matchMode: z.enum(['all', 'any']).optional(),
+  matchMode: z.enum(["all", "any"]).optional(),
   search: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
   offset: z.coerce.number().int().min(0).optional().default(0),
@@ -61,11 +61,11 @@ const DiscoveryBodySchema = z.object({
  * Returns the agent registration if authenticated, null otherwise
  */
 async function authenticateRequest(
-  req: NextRequest
+  req: NextRequest,
 ): Promise<AgentRegistration | null> {
-  const authHeader = req.headers.get('Authorization');
+  const authHeader = req.headers.get("Authorization");
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return null;
   }
 
@@ -87,10 +87,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Unauthorized',
-        message: 'Invalid or missing API key',
+        error: "Unauthorized",
+        message: "Invalid or missing API key",
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -105,49 +105,49 @@ export async function GET(req: NextRequest) {
 
   const rateLimitResult = await checkRateLimitAsync(
     agent.agentId,
-    rateLimitConfig
+    rateLimitConfig,
   );
 
   if (!rateLimitResult.allowed) {
     logger.warn(
-      'External agent discovery rate limit exceeded',
+      "External agent discovery rate limit exceeded",
       {
         agentId: agent.agentId,
         retryAfter: rateLimitResult.retryAfter,
         limit: agentRateLimit,
       },
-      'ExternalAgentDiscovery'
+      "ExternalAgentDiscovery",
     );
 
     return NextResponse.json(
       {
         success: false,
-        error: 'Too Many Requests',
-        message: 'Rate limit exceeded for discovery requests',
+        error: "Too Many Requests",
+        message: "Rate limit exceeded for discovery requests",
         retryAfter: rateLimitResult.retryAfter,
       },
       {
         status: 429,
         headers: {
-          'Retry-After': String(rateLimitResult.retryAfter ?? 60),
-          'X-RateLimit-Limit': String(agentRateLimit),
-          'X-RateLimit-Remaining': String(rateLimitResult.remaining ?? 0),
+          "Retry-After": String(rateLimitResult.retryAfter ?? 60),
+          "X-RateLimit-Limit": String(agentRateLimit),
+          "X-RateLimit-Remaining": String(rateLimitResult.remaining ?? 0),
         },
-      }
+      },
     );
   }
 
   // Parse query parameters
   const { searchParams } = new URL(req.url);
   const query = {
-    types: searchParams.get('types') || undefined,
-    statuses: searchParams.get('statuses') || undefined,
-    minTrustLevel: searchParams.get('minTrustLevel') || undefined,
-    capabilities: searchParams.get('capabilities') || undefined,
-    skills: searchParams.get('skills') || undefined,
-    domains: searchParams.get('domains') || undefined,
-    limit: searchParams.get('limit') || undefined,
-    offset: searchParams.get('offset') || undefined,
+    types: searchParams.get("types") || undefined,
+    statuses: searchParams.get("statuses") || undefined,
+    minTrustLevel: searchParams.get("minTrustLevel") || undefined,
+    capabilities: searchParams.get("capabilities") || undefined,
+    skills: searchParams.get("skills") || undefined,
+    domains: searchParams.get("domains") || undefined,
+    limit: searchParams.get("limit") || undefined,
+    offset: searchParams.get("offset") || undefined,
   };
 
   const validatedResult = DiscoveryQuerySchema.safeParse(query);
@@ -155,10 +155,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Validation error',
+        error: "Validation error",
         details: validatedResult.error.issues,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -169,17 +169,17 @@ export async function GET(req: NextRequest) {
 
   // Filter by agent types
   if (validated.types) {
-    const types = validated.types.split(',').map((t) => t.trim());
+    const types = validated.types.split(",").map((t) => t.trim());
     filter.types = types.filter((t) =>
-      Object.values(AgentType).includes(t as AgentType)
+      Object.values(AgentType).includes(t as AgentType),
     ) as AgentType[];
   }
 
   // Filter by statuses
   if (validated.statuses) {
-    const statuses = validated.statuses.split(',').map((s) => s.trim());
+    const statuses = validated.statuses.split(",").map((s) => s.trim());
     filter.statuses = statuses.filter((s) =>
-      Object.values(AgentStatus).includes(s as AgentStatus)
+      Object.values(AgentStatus).includes(s as AgentStatus),
     ) as AgentStatus[];
   }
 
@@ -191,18 +191,18 @@ export async function GET(req: NextRequest) {
   // Filter by capabilities (actions)
   if (validated.capabilities) {
     filter.requiredCapabilities = validated.capabilities
-      .split(',')
+      .split(",")
       .map((c) => c.trim());
   }
 
   // Filter by OASF skills
   if (validated.skills) {
-    filter.requiredSkills = validated.skills.split(',').map((s) => s.trim());
+    filter.requiredSkills = validated.skills.split(",").map((s) => s.trim());
   }
 
   // Filter by OASF domains
   if (validated.domains) {
-    filter.requiredDomains = validated.domains.split(',').map((d) => d.trim());
+    filter.requiredDomains = validated.domains.split(",").map((d) => d.trim());
   }
 
   // Pagination
@@ -250,10 +250,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Unauthorized',
-        message: 'Invalid or missing API key',
+        error: "Unauthorized",
+        message: "Invalid or missing API key",
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -268,35 +268,35 @@ export async function POST(req: NextRequest) {
 
   const rateLimitResult = await checkRateLimitAsync(
     agent.agentId,
-    rateLimitConfig
+    rateLimitConfig,
   );
 
   if (!rateLimitResult.allowed) {
     logger.warn(
-      'External agent discovery rate limit exceeded',
+      "External agent discovery rate limit exceeded",
       {
         agentId: agent.agentId,
         retryAfter: rateLimitResult.retryAfter,
         limit: agentRateLimit,
       },
-      'ExternalAgentDiscovery'
+      "ExternalAgentDiscovery",
     );
 
     return NextResponse.json(
       {
         success: false,
-        error: 'Too Many Requests',
-        message: 'Rate limit exceeded for discovery requests',
+        error: "Too Many Requests",
+        message: "Rate limit exceeded for discovery requests",
         retryAfter: rateLimitResult.retryAfter,
       },
       {
         status: 429,
         headers: {
-          'Retry-After': String(rateLimitResult.retryAfter ?? 60),
-          'X-RateLimit-Limit': String(agentRateLimit),
-          'X-RateLimit-Remaining': String(rateLimitResult.remaining ?? 0),
+          "Retry-After": String(rateLimitResult.retryAfter ?? 60),
+          "X-RateLimit-Limit": String(agentRateLimit),
+          "X-RateLimit-Remaining": String(rateLimitResult.remaining ?? 0),
         },
-      }
+      },
     );
   }
 
@@ -308,10 +308,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Validation error',
-        message: 'Invalid JSON body',
+        error: "Validation error",
+        message: "Invalid JSON body",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -320,10 +320,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Validation error',
+        error: "Validation error",
         details: validatedBodyResult.error.issues,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 

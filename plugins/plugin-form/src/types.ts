@@ -33,7 +33,7 @@
  *    template literals for excellent IDE support and type safety.
  */
 
-import type { UUID } from '@elizaos/core';
+import type { JsonValue, UUID } from "@elizaos/core";
 
 // ============================================================================
 // FORM CONTROL - Individual field definition
@@ -82,9 +82,9 @@ export interface FormControlDependency {
   /** Key of the field this one depends on */
   field: string;
   /** When should this field be shown/asked */
-  condition: 'exists' | 'equals' | 'not_equals';
+  condition: "exists" | "equals" | "not_equals";
   /** Value to compare against for equals/not_equals */
-  value?: unknown;
+  value?: JsonValue;
 }
 
 /**
@@ -201,7 +201,7 @@ export interface FormControl {
 
   // ═══ DEFAULTS & CONDITIONS ═══
   /** Default value if user doesn't provide one */
-  defaultValue?: unknown;
+  defaultValue?: JsonValue;
   /** Conditional display/requirement based on another field */
   dependsOn?: FormControlDependency;
 
@@ -281,7 +281,7 @@ export interface FormControl {
    * - Avoids modifying core types
    * - Example: trading plugin adds 'slippage_tolerance'
    */
-  meta?: Record<string, unknown>;
+  meta?: Record<string, JsonValue>;
 }
 
 // ============================================================================
@@ -423,7 +423,7 @@ export interface FormDefinition {
    * - Deprecated forms shouldn't start new sessions
    * - Existing sessions on deprecated forms continue
    */
-  status?: 'draft' | 'active' | 'deprecated';
+  status?: "draft" | "active" | "deprecated";
 
   // ═══ PERMISSIONS ═══
   /**
@@ -473,7 +473,7 @@ export interface FormDefinition {
   i18n?: Record<string, FormDefinitionI18n>;
 
   // ═══ EXTENSION ═══
-  meta?: Record<string, unknown>;
+  meta?: Record<string, JsonValue>;
 }
 
 // ============================================================================
@@ -526,11 +526,11 @@ export interface FieldState {
    * - 'skipped': User explicitly skipped optional field
    * - 'pending': External type activated, waiting for confirmation
    */
-  status: 'empty' | 'filled' | 'uncertain' | 'invalid' | 'skipped' | 'pending';
+  status: "empty" | "filled" | "uncertain" | "invalid" | "skipped" | "pending";
 
   // ═══ VALUE ═══
   /** The current value (undefined if empty/skipped) */
-  value?: unknown;
+  value?: JsonValue;
 
   // ═══ CONFIDENCE ═══
   /**
@@ -543,7 +543,7 @@ export interface FieldState {
    */
   confidence?: number;
   /** Other possible interpretations of user message */
-  alternatives?: unknown[];
+  alternatives?: JsonValue[];
 
   // ═══ VALIDATION ═══
   /** Validation error message if status is 'invalid' */
@@ -562,7 +562,13 @@ export interface FieldState {
    * - Corrections show user engagement
    * - Useful for analytics
    */
-  source?: 'extraction' | 'autofill' | 'default' | 'manual' | 'correction' | 'external';
+  source?:
+    | "extraction"
+    | "autofill"
+    | "default"
+    | "manual"
+    | "correction"
+    | "external";
   /** ID of message that provided this value */
   messageId?: string;
   /** When the value was last updated */
@@ -597,7 +603,7 @@ export interface FieldState {
    */
   externalState?: {
     /** Current status of the external interaction */
-    status: 'pending' | 'confirmed' | 'failed' | 'expired';
+    status: "pending" | "confirmed" | "failed" | "expired";
     /** Reference used to match external events */
     reference?: string;
     /** Instructions shown to user (cached from activation) */
@@ -609,11 +615,11 @@ export interface FieldState {
     /** When the external process was confirmed */
     confirmedAt?: number;
     /** Data from the external confirmation (txId, signature, etc.) */
-    externalData?: Record<string, unknown>;
+    externalData?: Record<string, JsonValue>;
   };
 
   // ═══ EXTENSION ═══
-  meta?: Record<string, unknown>;
+  meta?: Record<string, JsonValue>;
 }
 
 // ============================================================================
@@ -632,9 +638,9 @@ export interface FieldHistoryEntry {
   /** Which field was changed */
   field: string;
   /** Previous value (to restore) */
-  oldValue: unknown;
+  oldValue: JsonValue;
   /** New value (for audit) */
-  newValue: unknown;
+  newValue: JsonValue;
   /** When the change happened */
   timestamp: number;
 }
@@ -702,7 +708,13 @@ export interface FormSession {
    * - 'cancelled': User abandoned
    * - 'expired': TTL exceeded
    */
-  status: 'active' | 'ready' | 'submitted' | 'stashed' | 'cancelled' | 'expired';
+  status:
+    | "active"
+    | "ready"
+    | "submitted"
+    | "stashed"
+    | "cancelled"
+    | "expired";
 
   // ═══ FIELD DATA ═══
   /** Current state of each field, keyed by control.key */
@@ -732,7 +744,7 @@ export interface FormSession {
    * - Affects how form behaves or what values are valid
    * - Stored with session for hook access
    */
-  context?: Record<string, unknown>;
+  context?: Record<string, JsonValue>;
   /** User's locale for i18n */
   locale?: string;
 
@@ -766,7 +778,7 @@ export interface FormSession {
   submittedAt?: number;
 
   // ═══ EXTENSION ═══
-  meta?: Record<string, unknown>;
+  meta?: Record<string, JsonValue>;
 }
 
 // ============================================================================
@@ -797,7 +809,7 @@ export interface FormSubmission {
   entityId: UUID;
 
   /** Field values keyed by control.key */
-  values: Record<string, unknown>;
+  values: Record<string, JsonValue>;
   /**
    * Same values but keyed by dbbind.
    *
@@ -806,14 +818,14 @@ export interface FormSubmission {
    * - No need to look up dbbind for each field
    * - Direct database insertion ready
    */
-  mappedValues?: Record<string, unknown>;
+  mappedValues?: Record<string, JsonValue>;
   /** File attachments keyed by control.key */
   files?: Record<string, FieldFile[]>;
 
   /** When the form was submitted */
   submittedAt: number;
 
-  meta?: Record<string, unknown>;
+  meta?: Record<string, JsonValue>;
 }
 
 // ============================================================================
@@ -831,11 +843,14 @@ export interface FormSubmission {
  */
 export interface TypeHandler {
   /** Validate a value. Return { valid: true } or { valid: false, error: '...' } */
-  validate?: (value: unknown, control: FormControl) => { valid: boolean; error?: string };
+  validate?: (
+    value: JsonValue,
+    control: FormControl,
+  ) => { valid: boolean; error?: string };
   /** Parse string input to appropriate type */
-  parse?: (value: string) => unknown;
+  parse?: (value: string) => JsonValue;
   /** Format value for display */
-  format?: (value: unknown) => string;
+  format?: (value: JsonValue) => string;
   /**
    * Description for LLM extraction.
    *
@@ -876,13 +891,13 @@ export interface ValidationResult {
  */
 export interface ActivationContext {
   /** Runtime for accessing services */
-  runtime: import('@elizaos/core').IAgentRuntime;
+  runtime: import("@elizaos/core").IAgentRuntime;
   /** The current form session */
   session: FormSession;
   /** The control being activated */
   control: FormControl;
   /** Filled subcontrol values, keyed by subcontrol key */
-  subValues: Record<string, unknown>;
+  subValues: Record<string, JsonValue>;
 }
 
 /**
@@ -907,7 +922,7 @@ export interface ExternalActivation {
   /** When this activation expires (timestamp) */
   expiresAt?: number;
   /** Arbitrary metadata from the widget */
-  meta?: Record<string, unknown>;
+  meta?: Record<string, JsonValue>;
 }
 
 /**
@@ -923,7 +938,7 @@ export interface ExternalActivation {
  */
 export interface ExternalFieldState {
   /** Current status of the external interaction */
-  status: 'pending' | 'confirmed' | 'failed' | 'expired';
+  status: "pending" | "confirmed" | "failed" | "expired";
   /** Reference used to match external events */
   reference?: string;
   /** Instructions shown to user (cached from activation) */
@@ -935,7 +950,7 @@ export interface ExternalFieldState {
   /** When the external process was confirmed */
   confirmedAt?: number;
   /** Data from the external confirmation (txId, signature, etc.) */
-  externalData?: Record<string, unknown>;
+  externalData?: Record<string, JsonValue>;
 }
 
 /**
@@ -1010,7 +1025,7 @@ export interface ExternalFieldState {
 export interface ControlType {
   /** Unique identifier for this control type */
   id: string;
-  
+
   /**
    * If true, this is a built-in type that should warn on override.
    * Built-in types: text, number, email, boolean, select, date, file
@@ -1018,25 +1033,25 @@ export interface ControlType {
   builtin?: boolean;
 
   // ═══ SIMPLE TYPE METHODS ═══
-  
+
   /**
    * Validate a value for this type.
    * Called during extraction and before submission.
    */
-  validate?: (value: unknown, control: FormControl) => ValidationResult;
-  
+  validate?: (value: JsonValue, control: FormControl) => ValidationResult;
+
   /**
    * Parse string input to the appropriate type.
    * Called when processing extracted values.
    */
-  parse?: (value: string) => unknown;
-  
+  parse?: (value: string) => JsonValue;
+
   /**
    * Format value for display to user.
    * Called when showing field values in context.
    */
-  format?: (value: unknown) => string;
-  
+  format?: (value: JsonValue) => string;
+
   /**
    * Description for LLM extraction.
    * Helps the LLM understand what to look for in user messages.
@@ -1044,7 +1059,7 @@ export interface ControlType {
   extractionPrompt?: string;
 
   // ═══ COMPOSITE TYPE METHODS ═══
-  
+
   /**
    * Return subcontrols that must be filled before parent is complete.
    *
@@ -1056,11 +1071,11 @@ export interface ControlType {
    */
   getSubControls?: (
     control: FormControl,
-    runtime: import('@elizaos/core').IAgentRuntime
+    runtime: import("@elizaos/core").IAgentRuntime,
   ) => FormControl[];
 
   // ═══ EXTERNAL TYPE METHODS ═══
-  
+
   /**
    * Activate the external process.
    *
@@ -1071,7 +1086,7 @@ export interface ControlType {
    * The reference is used to match incoming external events.
    */
   activate?: (context: ActivationContext) => Promise<ExternalActivation>;
-  
+
   /**
    * Deactivate/cancel a pending external process.
    *
@@ -1097,21 +1112,21 @@ export interface ControlType {
  * The evaluator emits these as it processes messages.
  */
 export type FormWidgetEventType =
-  | 'FORM_FIELD_EXTRACTED'      // Value extracted for any field
-  | 'FORM_SUBFIELD_UPDATED'     // Subcontrol value updated
-  | 'FORM_SUBCONTROLS_FILLED'   // All subcontrols of composite type filled
-  | 'FORM_EXTERNAL_ACTIVATED'   // External type activated
-  | 'FORM_FIELD_CONFIRMED'      // External field confirmed
-  | 'FORM_FIELD_CANCELLED';     // External field cancelled/expired
+  | "FORM_FIELD_EXTRACTED" // Value extracted for any field
+  | "FORM_SUBFIELD_UPDATED" // Subcontrol value updated
+  | "FORM_SUBCONTROLS_FILLED" // All subcontrols of composite type filled
+  | "FORM_EXTERNAL_ACTIVATED" // External type activated
+  | "FORM_FIELD_CONFIRMED" // External field confirmed
+  | "FORM_FIELD_CANCELLED"; // External field cancelled/expired
 
 /**
  * Payload for FORM_FIELD_EXTRACTED event
  */
 export interface FormFieldExtractedEvent {
-  type: 'FORM_FIELD_EXTRACTED';
+  type: "FORM_FIELD_EXTRACTED";
   sessionId: string;
   field: string;
-  value: unknown;
+  value: JsonValue;
   confidence: number;
 }
 
@@ -1119,11 +1134,11 @@ export interface FormFieldExtractedEvent {
  * Payload for FORM_SUBFIELD_UPDATED event
  */
 export interface FormSubfieldUpdatedEvent {
-  type: 'FORM_SUBFIELD_UPDATED';
+  type: "FORM_SUBFIELD_UPDATED";
   sessionId: string;
   parentField: string;
   subField: string;
-  value: unknown;
+  value: JsonValue;
   confidence: number;
 }
 
@@ -1131,17 +1146,17 @@ export interface FormSubfieldUpdatedEvent {
  * Payload for FORM_SUBCONTROLS_FILLED event
  */
 export interface FormSubcontrolsFilledEvent {
-  type: 'FORM_SUBCONTROLS_FILLED';
+  type: "FORM_SUBCONTROLS_FILLED";
   sessionId: string;
   field: string;
-  subValues: Record<string, unknown>;
+  subValues: Record<string, JsonValue>;
 }
 
 /**
  * Payload for FORM_EXTERNAL_ACTIVATED event
  */
 export interface FormExternalActivatedEvent {
-  type: 'FORM_EXTERNAL_ACTIVATED';
+  type: "FORM_EXTERNAL_ACTIVATED";
   sessionId: string;
   field: string;
   activation: ExternalActivation;
@@ -1151,18 +1166,18 @@ export interface FormExternalActivatedEvent {
  * Payload for FORM_FIELD_CONFIRMED event
  */
 export interface FormFieldConfirmedEvent {
-  type: 'FORM_FIELD_CONFIRMED';
+  type: "FORM_FIELD_CONFIRMED";
   sessionId: string;
   field: string;
-  value: unknown;
-  externalData?: Record<string, unknown>;
+  value: JsonValue;
+  externalData?: Record<string, JsonValue>;
 }
 
 /**
  * Payload for FORM_FIELD_CANCELLED event
  */
 export interface FormFieldCancelledEvent {
-  type: 'FORM_FIELD_CANCELLED';
+  type: "FORM_FIELD_CANCELLED";
   sessionId: string;
   field: string;
   reason: string;
@@ -1211,7 +1226,7 @@ export interface UncertainFieldSummary {
   key: string;
   label: string;
   /** The uncertain value */
-  value: unknown;
+  value: JsonValue;
   /** How confident the LLM was */
   confidence: number;
 }
@@ -1264,12 +1279,12 @@ export interface FormContextState {
   /** Next field to ask about */
   nextField: FormControl | null;
   /** Current session status */
-  status?: FormSession['status'];
+  status?: FormSession["status"];
   /** Number of stashed forms (for "you have saved forms" prompt) */
   stashedCount?: number;
   /** True if we asked "are you sure you want to cancel?" */
   pendingCancelConfirmation?: boolean;
-  
+
   /**
    * External fields waiting for confirmation.
    *
@@ -1295,22 +1310,22 @@ export interface FormContextState {
  */
 export type FormIntent =
   // Lifecycle - affects session state
-  | 'fill_form' // Providing field values
-  | 'submit' // Ready to submit
-  | 'stash' // Save for later
-  | 'restore' // Resume saved form
-  | 'cancel' // Abandon form
+  | "fill_form" // Providing field values
+  | "submit" // Ready to submit
+  | "stash" // Save for later
+  | "restore" // Resume saved form
+  | "cancel" // Abandon form
 
   // UX Magic - helper actions
-  | 'undo' // Revert last change
-  | 'skip' // Skip optional field
-  | 'explain' // "Why do you need this?"
-  | 'example' // "Give me an example"
-  | 'progress' // "How far am I?"
-  | 'autofill' // "Use my usual values"
+  | "undo" // Revert last change
+  | "skip" // Skip optional field
+  | "explain" // "Why do you need this?"
+  | "example" // "Give me an example"
+  | "progress" // "How far am I?"
+  | "autofill" // "Use my usual values"
 
   // Fallback
-  | 'other'; // Unknown intent
+  | "other"; // Unknown intent
 
 /**
  * Extraction result for a single field.
@@ -1324,13 +1339,13 @@ export interface ExtractionResult {
   /** Which field this is for */
   field: string;
   /** Extracted value */
-  value: unknown;
+  value: JsonValue;
   /** LLM confidence (0-1) */
   confidence: number;
   /** LLM reasoning (for debug mode) */
   reasoning?: string;
   /** Other possible values if uncertain */
-  alternatives?: unknown[];
+  alternatives?: JsonValue[];
   /** True if user is correcting previous value */
   isCorrection?: boolean;
 }
@@ -1365,7 +1380,7 @@ export interface IntentResult {
  * - Can be overridden per-control
  */
 export const FORM_CONTROL_DEFAULTS = {
-  type: 'text',
+  type: "text",
   required: false,
   confirmThreshold: 0.8,
 } as const;
@@ -1382,7 +1397,7 @@ export const FORM_CONTROL_DEFAULTS = {
  */
 export const FORM_DEFINITION_DEFAULTS = {
   version: 1,
-  status: 'active' as const,
+  status: "active" as const,
   ux: {
     allowUndo: true,
     allowSkip: true,
@@ -1416,17 +1431,17 @@ export const FORM_DEFINITION_DEFAULTS = {
  * - Scoped to entity, can include room in type
  * - Automatic CRUD via runtime
  */
-export const FORM_SESSION_COMPONENT = 'form_session';
+export const FORM_SESSION_COMPONENT = "form_session";
 
 /**
  * Component type prefix for form submissions.
  */
-export const FORM_SUBMISSION_COMPONENT = 'form_submission';
+export const FORM_SUBMISSION_COMPONENT = "form_submission";
 
 /**
  * Component type prefix for autofill data.
  */
-export const FORM_AUTOFILL_COMPONENT = 'form_autofill';
+export const FORM_AUTOFILL_COMPONENT = "form_autofill";
 
 /**
  * Autofill data stored per user per form.
@@ -1438,6 +1453,6 @@ export const FORM_AUTOFILL_COMPONENT = 'form_autofill';
  */
 export interface FormAutofillData {
   formId: string;
-  values: Record<string, unknown>;
+  values: Record<string, JsonValue>;
   updatedAt: number;
 }

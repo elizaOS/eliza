@@ -7,7 +7,6 @@ import {
   type Component,
   DatabaseAdapter,
   type Entity,
-  type JsonValue,
   type Log,
   type LogBody,
   logger,
@@ -23,6 +22,10 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+
+// JSON-serializable value type for metadata
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 import {
   and,
   cosineDistance,
@@ -267,11 +270,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           bio: agentTable.bio,
         })
         .from(agentTable);
-      return rows.map((row) => ({
-        ...row,
-        id: row.id as UUID,
-        bio: (row.bio === null ? "" : Array.isArray(row.bio) ? row.bio : row.bio) as string | string[],
-      } as Partial<Agent>));
+      return rows.map(
+        (row) =>
+          ({
+            ...row,
+            id: row.id as UUID,
+            bio: (row.bio === null ? "" : Array.isArray(row.bio) ? row.bio : row.bio) as
+              | string
+              | string[],
+          }) as Partial<Agent>
+      );
     });
     // Guard against null return
     return result || [];
@@ -305,10 +313,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await this.db.transaction(async (tx) => {
           const agentData = {
             ...agent,
-            createdAt: new Date(typeof agent.createdAt === "bigint" ? Number(agent.createdAt) : (agent.createdAt || Date.now())),
-            updatedAt: new Date(typeof agent.updatedAt === "bigint" ? Number(agent.updatedAt) : (agent.updatedAt || Date.now())),
+            createdAt: new Date(
+              typeof agent.createdAt === "bigint"
+                ? Number(agent.createdAt)
+                : agent.createdAt || Date.now()
+            ),
+            updatedAt: new Date(
+              typeof agent.updatedAt === "bigint"
+                ? Number(agent.updatedAt)
+                : agent.updatedAt || Date.now()
+            ),
           };
-          await tx.insert(agentTable).values(agentData as unknown as typeof agentTable.$inferInsert);
+          await tx
+            .insert(agentTable)
+            .values(agentData as unknown as typeof agentTable.$inferInsert);
         });
 
         return true;
@@ -1580,7 +1598,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           }
           if (!summary.metadata || Object.keys(summary.metadata).length === 0) {
             const metadata = (body.metadata as Record<string, unknown> | undefined) ?? undefined;
-            summary.metadata = metadata ? { ...metadata } as Record<string, JsonValue> : {};
+            summary.metadata = metadata ? ({ ...metadata } as Record<string, JsonValue>) : {};
           }
         }
 
@@ -1591,7 +1609,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           (row.status as RunStatus | undefined) ?? (bodyStatus as RunStatus | undefined);
 
         if (eventStatus === "started") {
-          const currentStartedAt = summary.startedAt === null ? null : typeof summary.startedAt === "bigint" ? Number(summary.startedAt) : summary.startedAt;
+          const currentStartedAt =
+            summary.startedAt === null
+              ? null
+              : typeof summary.startedAt === "bigint"
+                ? Number(summary.startedAt)
+                : summary.startedAt;
           summary.startedAt =
             currentStartedAt === null ? timestamp : Math.min(currentStartedAt, timestamp);
         } else if (
@@ -1602,7 +1625,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           summary.status = eventStatus;
           summary.endedAt = timestamp;
           if (summary.startedAt !== null) {
-            const startedAtNum = typeof summary.startedAt === "bigint" ? Number(summary.startedAt) : summary.startedAt;
+            const startedAtNum =
+              typeof summary.startedAt === "bigint" ? Number(summary.startedAt) : summary.startedAt;
             summary.durationMs = Math.max(timestamp - startedAtNum, 0);
           }
         }
@@ -1616,8 +1640,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
 
       runs.sort((a, b) => {
-        const aStarted = a.startedAt === null ? 0 : typeof a.startedAt === "bigint" ? Number(a.startedAt) : a.startedAt;
-        const bStarted = b.startedAt === null ? 0 : typeof b.startedAt === "bigint" ? Number(b.startedAt) : b.startedAt;
+        const aStarted =
+          a.startedAt === null
+            ? 0
+            : typeof a.startedAt === "bigint"
+              ? Number(a.startedAt)
+              : a.startedAt;
+        const bStarted =
+          b.startedAt === null
+            ? 0
+            : typeof b.startedAt === "bigint"
+              ? Number(b.startedAt)
+              : b.startedAt;
         return bStarted - aStarted;
       });
 
@@ -1723,12 +1757,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           errors: 0,
           evaluators: 0,
         };
-        // Cast to the proto-generated type that run.counts expects
-        // The proto type requires $typeName property, so we construct it with the required property
-        run.counts = {
-          ...counts,
-          $typeName: "eliza.v1.AgentRunCounts",
-        } as any;
+        // Cast through unknown to bridge the core type (without $typeName) to proto type (with $typeName)
+        run.counts = counts as unknown as typeof run.counts;
       }
 
       return {
@@ -3071,11 +3101,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         if (task.roomId !== undefined) updateValues.roomId = task.roomId;
         if (task.worldId !== undefined) updateValues.worldId = task.worldId;
         if (task.tags !== undefined) updateValues.tags = task.tags;
-        if (task.metadata !== undefined) updateValues.metadata = task.metadata as typeof taskTable.$inferInsert.metadata;
-        if (task.createdAt !== undefined && task.createdAt !== null) {
-          // task.createdAt is guaranteed to be number | bigint here (not null/undefined)
-          const createdAtValue = task.createdAt as number | bigint;
-          updateValues.createdAt = new Date(typeof createdAtValue === "bigint" ? Number(createdAtValue) : createdAtValue);
+        if (task.metadata !== undefined)
+          updateValues.metadata = task.metadata as typeof taskTable.$inferInsert.metadata;
+        // Handle createdAt if present in the task object (using type assertion for compatibility)
+        const taskWithCreatedAt = task as { createdAt?: number | bigint | null };
+        if (taskWithCreatedAt.createdAt !== undefined && taskWithCreatedAt.createdAt !== null) {
+          const createdAtValue = taskWithCreatedAt.createdAt;
+          updateValues.createdAt = new Date(
+            typeof createdAtValue === "bigint" ? Number(createdAtValue) : createdAtValue
+          );
         }
 
         // Always update the updatedAt timestamp as a Date (schema uses Date, not number)

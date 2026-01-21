@@ -1,7 +1,7 @@
-import type { InteractionError } from '@polyagent/shared';
-import { useEffect, useRef } from 'react';
-import { toast } from 'sonner';
-import { useInteractionStore } from '@/stores/interactionStore';
+import type { InteractionError } from "@polyagent/shared";
+import { useEffect, useRef } from "react";
+import { toast } from "sonner";
+import { useInteractionStore } from "@/stores/interactionStore";
 
 /**
  * Hook to display toast notifications for interaction errors.
@@ -32,7 +32,7 @@ export function useErrorToasts() {
       const prevError = prevErrors.get(key);
       if (!prevError || prevError.message !== error.message) {
         // Show error toast for new error
-        toast.error('Interaction Failed', {
+        toast.error("Interaction Failed", {
           description: error.message,
           duration: 4000,
         });

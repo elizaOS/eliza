@@ -7,12 +7,12 @@
  * @see packages/shared/src/config/default-config.ts for the canonical source
  */
 
-import type { Address } from 'viem';
+import type { Address } from "viem";
 import {
   type CoreContractAddresses,
   areContractsDeployed as checkContractsDeployed,
   PUBLIC_CONFIG,
-} from '../config';
+} from "../config";
 
 // =============================================================================
 // Types
@@ -78,7 +78,7 @@ export const BASE_MAINNET_CONTRACTS: ERC8004ContractAddresses = {
  * Get contract addresses for the specified chain ID
  */
 export function getERC8004ContractAddresses(
-  chainId: number
+  chainId: number,
 ): ERC8004ContractAddresses {
   switch (chainId) {
     case 31337:
@@ -99,4 +99,4 @@ export function areERC8004ContractsDeployed(chainId: number): boolean {
   return checkContractsDeployed(chainId);
 }
 
-export { CoreContractAddresses };
+export type { CoreContractAddresses };

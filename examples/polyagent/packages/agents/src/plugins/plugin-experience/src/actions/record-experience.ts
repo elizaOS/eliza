@@ -5,25 +5,25 @@ import {
   logger,
   type Memory,
   type State,
-} from '@elizaos/core';
+} from "@elizaos/core";
 
 export const recordExperienceAction: Action = {
-  name: 'RECORD_EXPERIENCE',
-  description: 'Manually record a learning experience',
+  name: "RECORD_EXPERIENCE",
+  description: "Manually record a learning experience",
 
   examples: [
     [
       {
-        name: 'User',
+        name: "User",
         content: {
-          text: 'Remember that installing dependencies is required for Python scripts',
+          text: "Remember that installing dependencies is required for Python scripts",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
           text: "I'll record that experience. Learning: Need to install dependencies before running Python scripts.",
-          action: 'RECORD_EXPERIENCE',
+          action: "RECORD_EXPERIENCE",
         },
       },
     ],
@@ -33,15 +33,15 @@ export const recordExperienceAction: Action = {
     void runtime; // Runtime currently unused during validation
 
     const text = message.content.text?.toLowerCase();
-    return text?.includes('remember') || text?.includes('record') || false;
+    return text?.includes("remember") || text?.includes("record") || false;
   },
 
   async handler(
     runtime: IAgentRuntime,
     message: Memory,
-    state?: State
+    state?: State,
   ): Promise<void> {
-    logger.info('Recording experience for message:', message.id);
+    logger.info("Recording experience for message:", message.id);
 
     // Create experience memory with context
     const experienceMemory: Memory = {
@@ -52,7 +52,7 @@ export const recordExperienceAction: Action = {
       content: {
         text: message.content.text,
         source: message.content.source,
-        type: 'experience',
+        type: "experience",
         context: state
           ? {
               recentMessages: state.values?.recentMessages,
@@ -65,7 +65,7 @@ export const recordExperienceAction: Action = {
     };
 
     // Store in experiences table
-    await runtime.createMemory(experienceMemory, 'experiences', true);
-    logger.info('Experience recorded successfully');
+    await runtime.createMemory(experienceMemory, "experiences", true);
+    logger.info("Experience recorded successfully");
   },
 };

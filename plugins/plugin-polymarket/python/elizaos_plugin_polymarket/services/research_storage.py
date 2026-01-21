@@ -5,11 +5,11 @@ Manages storage and retrieval of market research data using a cache system.
 Research results are stored with expiration tracking to ensure freshness.
 """
 
+import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
-import time
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -239,9 +239,7 @@ class ResearchStorageService:
         existing = await self.get_market_research(market_id)
 
         if existing is None:
-            logger.warning(
-                f"Cannot store result - no existing research for market {market_id}"
-            )
+            logger.warning(f"Cannot store result - no existing research for market {market_id}")
             return
 
         now = int(time.time())

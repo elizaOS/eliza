@@ -6,17 +6,17 @@
  * pattern for buying and selling shares in prediction markets.
  */
 
-import { getContractAddresses, getRpcUrl } from '@polyagent/contracts';
-import { CHAIN, logger } from '@polyagent/shared';
+import { getContractAddresses, getRpcUrl } from "@polyagent/contracts";
+import { CHAIN, logger } from "@polyagent/shared";
 import {
   type Address,
   createPublicClient,
   createWalletClient,
   http,
   type WalletClient,
-} from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
-import { BadRequestError } from '../errors';
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { BadRequestError } from "../errors";
 
 // Get contract addresses for current network
 const { diamond: DIAMOND_ADDRESS } = getContractAddresses();
@@ -24,78 +24,78 @@ const { diamond: DIAMOND_ADDRESS } = getContractAddresses();
 // Prediction Market Facet ABI (minimal for buy/sell)
 const PREDICTION_MARKET_ABI = [
   {
-    type: 'function',
-    name: 'buyShares',
+    type: "function",
+    name: "buyShares",
     inputs: [
-      { name: '_marketId', type: 'bytes32' },
-      { name: '_outcome', type: 'uint8' },
-      { name: '_numShares', type: 'uint256' },
+      { name: "_marketId", type: "bytes32" },
+      { name: "_outcome", type: "uint8" },
+      { name: "_numShares", type: "uint256" },
     ],
     outputs: [],
-    stateMutability: 'nonpayable',
+    stateMutability: "nonpayable",
   },
   {
-    type: 'function',
-    name: 'sellShares',
+    type: "function",
+    name: "sellShares",
     inputs: [
-      { name: '_marketId', type: 'bytes32' },
-      { name: '_outcome', type: 'uint8' },
-      { name: '_numShares', type: 'uint256' },
+      { name: "_marketId", type: "bytes32" },
+      { name: "_outcome", type: "uint8" },
+      { name: "_numShares", type: "uint256" },
     ],
     outputs: [],
-    stateMutability: 'nonpayable',
+    stateMutability: "nonpayable",
   },
   {
-    type: 'function',
-    name: 'getMarket',
-    inputs: [{ name: '_marketId', type: 'bytes32' }],
+    type: "function",
+    name: "getMarket",
+    inputs: [{ name: "_marketId", type: "bytes32" }],
     outputs: [
       {
-        type: 'tuple',
+        type: "tuple",
         components: [
-          { name: 'question', type: 'string' },
-          { name: 'numOutcomes', type: 'uint8' },
-          { name: 'liquidity', type: 'uint256' },
-          { name: 'createdAt', type: 'uint256' },
-          { name: 'resolveAt', type: 'uint256' },
-          { name: 'resolved', type: 'bool' },
-          { name: 'winningOutcome', type: 'uint8' },
-          { name: 'oracle', type: 'address' },
-          { name: 'totalVolume', type: 'uint256' },
-          { name: 'feeRate', type: 'uint256' },
+          { name: "question", type: "string" },
+          { name: "numOutcomes", type: "uint8" },
+          { name: "liquidity", type: "uint256" },
+          { name: "createdAt", type: "uint256" },
+          { name: "resolveAt", type: "uint256" },
+          { name: "resolved", type: "bool" },
+          { name: "winningOutcome", type: "uint8" },
+          { name: "oracle", type: "address" },
+          { name: "totalVolume", type: "uint256" },
+          { name: "feeRate", type: "uint256" },
         ],
       },
     ],
-    stateMutability: 'view',
+    stateMutability: "view",
   },
   {
-    type: 'function',
-    name: 'getPosition',
+    type: "function",
+    name: "getPosition",
     inputs: [
-      { name: '_user', type: 'address' },
-      { name: '_marketId', type: 'bytes32' },
+      { name: "_user", type: "address" },
+      { name: "_marketId", type: "bytes32" },
     ],
     outputs: [
       {
-        type: 'tuple',
+        type: "tuple",
         components: [
-          { name: 'totalInvested', type: 'uint256' },
-          { name: 'claimed', type: 'bool' },
+          { name: "totalInvested", type: "uint256" },
+          { name: "claimed", type: "bool" },
         ],
       },
     ],
-    stateMutability: 'view',
+    stateMutability: "view",
   },
   {
-    type: 'function',
-    name: 'calculateCost',
+    type: "function",
+    name: "calculateCost",
     inputs: [
-      { name: '_marketId', type: 'bytes32' },
-      { name: '_outcome', type: 'uint8' },
-      { name: '_numShares', type: 'uint256' },
+      { name: "_marketId", type: "bytes32" },
+      { name: "_outcome", type: "uint8" },
+      { name: "_numShares", type: "uint256" },
     ],
-    outputs: [{ name: 'cost', type: 'uint256' }],
-    stateMutability: 'view',
+    outputs: [{ name: "cost", type: "uint256" }],
+    stateMutability: "view",
   },
 ] as const;
 
@@ -123,21 +123,21 @@ export class OnChainPredictionMarketService {
    */
   async buyShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
+    outcome: "YES" | "NO",
     numShares: number,
-    userWalletClient: WalletClient
+    userWalletClient: WalletClient,
   ): Promise<{ txHash: string; sharesBought: number }> {
     if (!userWalletClient.account) {
-      throw new BadRequestError('Wallet client must have an account');
+      throw new BadRequestError("Wallet client must have an account");
     }
 
-    const outcomeIndex = outcome === 'YES' ? 1 : 0;
+    const outcomeIndex = outcome === "YES" ? 1 : 0;
 
     // First calculate cost
     const cost = (await this.publicClient.readContract({
       address: DIAMOND_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
-      functionName: 'calculateCost',
+      functionName: "calculateCost",
       args: [
         marketId as `0x${string}`,
         outcomeIndex,
@@ -145,7 +145,7 @@ export class OnChainPredictionMarketService {
       ],
     })) as bigint;
 
-    logger.info('Calculated on-chain cost', {
+    logger.info("Calculated on-chain cost", {
       marketId,
       outcome,
       numShares,
@@ -156,7 +156,7 @@ export class OnChainPredictionMarketService {
     const hash = await userWalletClient.writeContract({
       address: DIAMOND_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
-      functionName: 'buyShares',
+      functionName: "buyShares",
       args: [
         marketId as `0x${string}`,
         outcomeIndex,
@@ -172,7 +172,7 @@ export class OnChainPredictionMarketService {
       confirmations: 1,
     });
 
-    logger.info('Shares purchased on-chain', {
+    logger.info("Shares purchased on-chain", {
       marketId,
       outcome,
       txHash: receipt.transactionHash,
@@ -190,21 +190,21 @@ export class OnChainPredictionMarketService {
    */
   async sellShares(
     marketId: string,
-    outcome: 'YES' | 'NO',
+    outcome: "YES" | "NO",
     numShares: number,
-    userWalletClient: WalletClient
+    userWalletClient: WalletClient,
   ): Promise<{ txHash: string; sharesSold: number }> {
     if (!userWalletClient.account) {
-      throw new BadRequestError('Wallet client must have an account');
+      throw new BadRequestError("Wallet client must have an account");
     }
 
-    const outcomeIndex = outcome === 'YES' ? 1 : 0;
+    const outcomeIndex = outcome === "YES" ? 1 : 0;
 
     // Execute sell transaction
     const hash = await userWalletClient.writeContract({
       address: DIAMOND_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
-      functionName: 'sellShares',
+      functionName: "sellShares",
       args: [
         marketId as `0x${string}`,
         outcomeIndex,
@@ -220,7 +220,7 @@ export class OnChainPredictionMarketService {
       confirmations: 1,
     });
 
-    logger.info('Shares sold on-chain', {
+    logger.info("Shares sold on-chain", {
       marketId,
       outcome,
       txHash: receipt.transactionHash,
@@ -240,7 +240,7 @@ export class OnChainPredictionMarketService {
     const market = await this.publicClient.readContract({
       address: DIAMOND_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
-      functionName: 'getMarket',
+      functionName: "getMarket",
       args: [marketId as `0x${string}`],
     });
 
@@ -254,7 +254,7 @@ export class OnChainPredictionMarketService {
     const position = await this.publicClient.readContract({
       address: DIAMOND_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
-      functionName: 'getPosition',
+      functionName: "getPosition",
       args: [userAddress, marketId as `0x${string}`],
     });
 
@@ -266,7 +266,7 @@ export class OnChainPredictionMarketService {
    */
   static createBackendWalletClient(
     privateKey: string,
-    rpcUrl?: string
+    rpcUrl?: string,
   ): WalletClient {
     const account = privateKeyToAccount(privateKey as `0x${string}`);
 

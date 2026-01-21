@@ -4,11 +4,11 @@
  * @description Utilities for finding users by various identifiers (ID, privyId, username).
  */
 
-import { db, eq, or, users } from '@babylon/db';
-import type { InferSelectModel } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
-import type { SelectedFields } from 'drizzle-orm/pg-core';
-import { NotFoundError } from '../errors';
+import { db, eq, or, users } from "@babylon/db";
+import type { InferSelectModel } from "drizzle-orm";
+import { sql } from "drizzle-orm";
+import type { SelectedFields } from "drizzle-orm/pg-core";
+import { NotFoundError } from "../errors";
 
 type User = InferSelectModel<typeof users>;
 
@@ -32,7 +32,7 @@ type User = InferSelectModel<typeof users>;
  */
 export async function findUserByIdentifier(
   identifier: string,
-  _select?: Record<string, boolean>
+  _select?: Record<string, boolean>,
 ): Promise<User | null> {
   // Try to find by ID, privyId, or username (case-insensitive for username)
   const [user] = await db
@@ -42,8 +42,8 @@ export async function findUserByIdentifier(
       or(
         eq(users.id, identifier),
         eq(users.privyId, identifier),
-        sql`lower(${users.username}) = lower(${identifier})`
-      )
+        sql`lower(${users.username}) = lower(${identifier})`,
+      ),
     )
     .limit(1);
 
@@ -79,8 +79,8 @@ export async function findUserByIdentifierWithSelect<
       or(
         eq(users.id, identifier),
         eq(users.privyId, identifier),
-        sql`lower(${users.username}) = lower(${identifier})`
-      )
+        sql`lower(${users.username}) = lower(${identifier})`,
+      ),
     )
     .limit(1);
 
@@ -110,11 +110,11 @@ export async function findUserByIdentifierWithSelect<
  */
 export async function requireUserByIdentifier(
   identifier: string,
-  _select?: Record<string, boolean>
+  _select?: Record<string, boolean>,
 ): Promise<User> {
   const user = await findUserByIdentifier(identifier);
   if (!user) {
-    throw new NotFoundError('User', undefined, { identifier });
+    throw new NotFoundError("User", undefined, { identifier });
   }
   return user;
 }
@@ -146,7 +146,7 @@ export interface TargetLookupResult {
  * ```
  */
 export async function findTargetByIdentifier(
-  identifier: string
+  identifier: string,
 ): Promise<TargetLookupResult> {
   const user = await findUserByIdentifier(identifier);
 
@@ -179,12 +179,12 @@ export async function findTargetByIdentifier(
  * ```
  */
 export async function requireTargetByIdentifier(
-  identifier: string
+  identifier: string,
 ): Promise<TargetLookupResult & { target: string }> {
   const result = await findTargetByIdentifier(identifier);
 
   if (!result.target) {
-    throw new NotFoundError('User', undefined, { identifier });
+    throw new NotFoundError("User", undefined, { identifier });
   }
 
   return result as TargetLookupResult & { target: string };

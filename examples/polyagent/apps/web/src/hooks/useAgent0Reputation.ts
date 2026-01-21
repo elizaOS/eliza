@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 
 /**
  * Agent0 profile data structure
@@ -45,11 +45,11 @@ interface UseAgent0ReputationReturn {
  * @returns Agent0 profile, reputation summary, loading state, and availability
  */
 export function useAgent0Reputation(
-  agentId?: string
+  agentId?: string,
 ): UseAgent0ReputationReturn {
   const [profile, setProfile] = useState<Agent0Profile | null>(null);
   const [reputation, setReputation] = useState<Agent0ReputationSummary | null>(
-    null
+    null,
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -97,7 +97,7 @@ export function useAgent0Reputation(
       const agent0Profile: Agent0Profile = {
         tokenId: agent.agent0TokenId,
         name: agent.name,
-        walletAddress: agent.walletAddress ?? '',
+        walletAddress: agent.walletAddress ?? "",
         active: agent.isActive ?? false,
         reputation: agent.reputation
           ? {
@@ -121,7 +121,7 @@ export function useAgent0Reputation(
         setReputation(null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Unknown error'));
+      setError(err instanceof Error ? err : new Error("Unknown error"));
       setIsAgent0Available(false);
       setProfile(null);
       setReputation(null);

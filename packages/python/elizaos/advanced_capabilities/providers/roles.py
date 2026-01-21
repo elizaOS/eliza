@@ -40,7 +40,9 @@ async def get_roles(
                 entities = await asyncio.gather(
                     *(runtime.get_entity(entity_id) for entity_id in entity_ids)
                 )
-                for entity_id, entity, role in zip(entity_ids, entities, roles.values()):
+                for entity_id, entity, role in zip(
+                    entity_ids, entities, roles.values(), strict=False
+                ):
                     entity_name = entity.name if entity else str(entity_id)[:8]
 
                     role_info.append(

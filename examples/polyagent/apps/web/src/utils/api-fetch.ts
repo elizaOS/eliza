@@ -31,7 +31,7 @@ export interface ApiFetchOptions extends RequestInit {
  * @returns Access token or null if unavailable
  */
 export async function getPrivyAccessToken(): Promise<string | null> {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
 
   // ALWAYS call getAccessToken() on-demand - it auto-refreshes expired tokens
   if (window.__privyGetAccessToken) {
@@ -68,7 +68,7 @@ export async function getPrivyAccessToken(): Promise<string | null> {
  */
 export async function apiFetch(
   input: RequestInfo,
-  init: ApiFetchOptions = {}
+  init: ApiFetchOptions = {},
 ): Promise<Response> {
   const { auth = true, autoRetryOn401 = true, headers, ...rest } = init;
   const finalHeaders = new Headers(headers ?? {});
@@ -76,15 +76,15 @@ export async function apiFetch(
   // Always try to add the Authorization header with the access token.
   // This provides a fallback when HTTP-only cookies aren't available
   // (e.g., initial login, cross-origin requests, or cookie misconfiguration).
-  if (auth && !finalHeaders.has('Authorization')) {
+  if (auth && !finalHeaders.has("Authorization")) {
     const token = await getPrivyAccessToken();
     if (token) {
-      finalHeaders.set('Authorization', `Bearer ${token}`);
-    } else if (typeof window !== 'undefined') {
+      finalHeaders.set("Authorization", `Bearer ${token}`);
+    } else if (typeof window !== "undefined") {
       // Log when we can't get a token - helps debug auth issues
       console.warn(
-        '[apiFetch] No access token available for authenticated request:',
-        typeof input === 'string' ? input : (input as Request).url
+        "[apiFetch] No access token available for authenticated request:",
+        typeof input === "string" ? input : (input as Request).url,
       );
     }
   }
@@ -92,7 +92,7 @@ export async function apiFetch(
   let response = await fetch(input, {
     ...rest,
     headers: finalHeaders,
-    credentials: auth ? 'include' : (rest.credentials ?? 'same-origin'),
+    credentials: auth ? "include" : (rest.credentials ?? "same-origin"),
   });
 
   // If we get a 401 and auto-retry is enabled, refresh the token and retry
@@ -102,13 +102,13 @@ export async function apiFetch(
 
     if (freshToken) {
       // Update the Authorization header with the fresh token
-      finalHeaders.set('Authorization', `Bearer ${freshToken}`);
+      finalHeaders.set("Authorization", `Bearer ${freshToken}`);
 
       // Retry with the refreshed token
       response = await fetch(input, {
         ...rest,
         headers: finalHeaders,
-        credentials: 'include',
+        credentials: "include",
       });
     }
   }

@@ -29,23 +29,45 @@
 #![warn(missing_docs)]
 #![warn(rustdoc::missing_crate_level_docs)]
 
-pub mod character;
-pub mod advanced_planning;
-pub mod advanced_memory;
-pub mod autonomy;
-pub mod bootstrap_core;
-#[cfg(all(feature = "bootstrap-internal", feature = "native", not(feature = "wasm")))]
-pub mod bootstrap;
-#[cfg(all(feature = "bootstrap-internal", feature = "native", not(feature = "wasm")))]
-pub mod basic_capabilities;
-#[cfg(all(feature = "bootstrap-internal", feature = "native", not(feature = "wasm")))]
+#[cfg(all(
+    feature = "bootstrap-internal",
+    feature = "native",
+    not(feature = "wasm")
+))]
 pub mod advanced_capabilities;
-#[cfg(all(feature = "bootstrap-internal", feature = "native", not(feature = "wasm")))]
+#[cfg(all(feature = "native", not(feature = "wasm")))]
+pub mod advanced_memory;
+#[cfg(all(feature = "native", not(feature = "wasm")))]
+pub mod advanced_planning;
+#[cfg(all(feature = "native", not(feature = "wasm")))]
+pub mod autonomy;
+#[cfg(all(
+    feature = "bootstrap-internal",
+    feature = "native",
+    not(feature = "wasm")
+))]
+pub mod basic_capabilities;
+#[cfg(all(
+    feature = "bootstrap-internal",
+    feature = "native",
+    not(feature = "wasm")
+))]
+pub mod bootstrap;
+#[cfg(all(feature = "native", not(feature = "wasm")))]
+pub mod bootstrap_core;
+pub mod character;
+#[cfg(all(
+    feature = "bootstrap-internal",
+    feature = "native",
+    not(feature = "wasm")
+))]
 pub mod error;
-pub mod plugin;
 pub mod platform;
+pub mod plugin;
 pub mod prompts;
+#[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod runtime;
+#[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod services;
 pub mod settings;
 pub mod template;
@@ -53,6 +75,7 @@ pub mod types;
 pub mod xml;
 
 /// Auto-generated action/provider/evaluator docs from centralized specs
+#[allow(missing_docs)]
 pub mod generated;
 
 #[cfg(feature = "wasm")]
@@ -65,6 +88,7 @@ pub mod sync_runtime;
 pub use character::{
     build_character_plugins, merge_character_defaults, parse_character, validate_character,
 };
+#[cfg(all(feature = "native", not(feature = "wasm")))]
 pub use runtime::AgentRuntime;
 
 // Re-export agent types
@@ -93,30 +117,34 @@ pub use platform::{AnyArc, PlatformService};
 
 // Re-export unified runtime (works in both sync and async modes)
 pub use sync_runtime::{
-    // Unified types (primary API)
-    UnifiedDatabaseAdapter, UnifiedRuntime, UnifiedRuntimeOptions,
-    UnifiedMessageService, UnifiedMessageProcessingOptions, UnifiedMessageProcessingResult,
-    UnifiedModelHandler, UnifiedService,
-    // Unified handler traits
-    UnifiedActionHandler, UnifiedProviderHandler, UnifiedEvaluatorHandler,
-    UnifiedProviderResult,
+    // Backward compatibility aliases
+    DatabaseAdapterSync,
     // Event handler type
     EventHandler as UnifiedEventHandler,
-    // Backward compatibility aliases
-    DatabaseAdapterSync, SyncAgentRuntime, SyncMessageService,
-    SyncMessageProcessingResult, SyncModelHandler,
+    SyncAgentRuntime,
+    SyncMessageProcessingResult,
+    SyncMessageService,
+    SyncModelHandler,
+    // Unified handler traits
+    UnifiedActionHandler,
+    // Unified types (primary API)
+    UnifiedDatabaseAdapter,
+    UnifiedEvaluatorHandler,
+    UnifiedMessageProcessingOptions,
+    UnifiedMessageProcessingResult,
+    UnifiedMessageService,
+    UnifiedModelHandler,
+    UnifiedProviderHandler,
+    UnifiedProviderResult,
+    UnifiedRuntime,
+    UnifiedRuntimeOptions,
+    UnifiedService,
 };
 
 // Re-export generated action/provider/evaluator docs from centralized specs
 pub use generated::action_docs::{
-    CORE_ACTION_DOCS_JSON, ALL_ACTION_DOCS_JSON, CORE_PROVIDER_DOCS_JSON,
-    ALL_PROVIDER_DOCS_JSON, CORE_EVALUATOR_DOCS_JSON, ALL_EVALUATOR_DOCS_JSON,
-};
-pub use generated::spec_helpers::{
-    ActionDoc, ProviderDoc, EvaluatorDoc,
-    get_action_spec, require_action_spec,
-    get_provider_spec, require_provider_spec,
-    get_evaluator_spec, require_evaluator_spec,
+    ALL_ACTION_DOCS_JSON, ALL_EVALUATOR_DOCS_JSON, ALL_PROVIDER_DOCS_JSON, CORE_ACTION_DOCS_JSON,
+    CORE_EVALUATOR_DOCS_JSON, CORE_PROVIDER_DOCS_JSON,
 };
 
 /// Initialize the library (sets up panic hooks for WASM, logging, etc.)

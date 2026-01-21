@@ -67,8 +67,7 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
       ),
 
       ENABLE_CAST:
-        runtime.getSetting("ENABLE_CAST") ||
-        parseBooleanFromText(env.ENABLE_CAST || "true"),
+        runtime.getSetting("ENABLE_CAST") || parseBooleanFromText(env.ENABLE_CAST || "true"),
 
       CAST_INTERVAL_MIN: safeParseInt(
         runtime.getSetting("CAST_INTERVAL_MIN") as string,

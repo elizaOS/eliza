@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm';
+import { relations } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -9,8 +9,8 @@ import {
   text,
   timestamp,
   unique,
-} from 'drizzle-orm/pg-core';
-import { users } from './users';
+} from "drizzle-orm/pg-core";
+import { users } from "./users";
 
 /**
  * NFT Collection - Stores metadata for each NFT in the collection
@@ -19,31 +19,31 @@ import { users } from './users';
  * Each record represents one NFT in the Polyagent Top 100 collection.
  */
 export const nftCollection = pgTable(
-  'NftCollection',
+  "NftCollection",
   {
-    id: text('id').primaryKey(),
-    tokenId: integer('tokenId').unique().notNull(),
-    name: text('name').notNull(),
-    description: text('description'),
-    imageUrl: text('imageUrl').notNull(),
-    thumbnailUrl: text('thumbnailUrl'),
-    imageCid: text('imageCid'),
-    storyTitle: text('storyTitle'),
-    storyContent: text('storyContent'),
-    metadataUri: text('metadataUri'),
+    id: text("id").primaryKey(),
+    tokenId: integer("tokenId").unique().notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    imageUrl: text("imageUrl").notNull(),
+    thumbnailUrl: text("thumbnailUrl"),
+    imageCid: text("imageCid"),
+    storyTitle: text("storyTitle"),
+    storyContent: text("storyContent"),
+    metadataUri: text("metadataUri"),
     attributes:
-      json('attributes').$type<
+      json("attributes").$type<
         Array<{ trait_type: string; value: string | number }>
       >(),
-    contractAddress: text('contractAddress').notNull(),
-    chainId: integer('chainId').notNull().default(1),
-    createdAt: timestamp('createdAt', { mode: 'date' }).notNull().defaultNow(),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).notNull(),
+    contractAddress: text("contractAddress").notNull(),
+    chainId: integer("chainId").notNull().default(1),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull(),
   },
   (table) => [
-    index('NftCollection_tokenId_idx').on(table.tokenId),
-    index('NftCollection_contractAddress_idx').on(table.contractAddress),
-  ]
+    index("NftCollection_tokenId_idx").on(table.tokenId),
+    index("NftCollection_contractAddress_idx").on(table.contractAddress),
+  ],
 );
 
 /**
@@ -53,23 +53,23 @@ export const nftCollection = pgTable(
  * the current on-chain ownership state.
  */
 export const nftOwnership = pgTable(
-  'NftOwnership',
+  "NftOwnership",
   {
-    id: text('id').primaryKey(),
-    tokenId: integer('tokenId').notNull(),
-    ownerAddress: text('ownerAddress').notNull(),
-    userId: text('userId'),
-    acquiredAt: timestamp('acquiredAt', { mode: 'date' }).notNull(),
-    txHash: text('txHash'),
-    blockNumber: bigint('blockNumber', { mode: 'bigint' }),
-    updatedAt: timestamp('updatedAt', { mode: 'date' }).notNull(),
+    id: text("id").primaryKey(),
+    tokenId: integer("tokenId").notNull(),
+    ownerAddress: text("ownerAddress").notNull(),
+    userId: text("userId"),
+    acquiredAt: timestamp("acquiredAt", { mode: "date" }).notNull(),
+    txHash: text("txHash"),
+    blockNumber: bigint("blockNumber", { mode: "bigint" }),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull(),
   },
   (table) => [
-    unique('NftOwnership_tokenId_key').on(table.tokenId),
-    index('NftOwnership_ownerAddress_idx').on(table.ownerAddress),
-    index('NftOwnership_userId_idx').on(table.userId),
-    index('NftOwnership_updatedAt_idx').on(table.updatedAt),
-  ]
+    unique("NftOwnership_tokenId_key").on(table.tokenId),
+    index("NftOwnership_ownerAddress_idx").on(table.ownerAddress),
+    index("NftOwnership_userId_idx").on(table.userId),
+    index("NftOwnership_updatedAt_idx").on(table.updatedAt),
+  ],
 );
 
 /**
@@ -79,22 +79,22 @@ export const nftOwnership = pgTable(
  * Even if the NFT is later transferred, this record remains as provenance.
  */
 export const nftClaims = pgTable(
-  'NftClaim',
+  "NftClaim",
   {
-    id: text('id').primaryKey(),
-    tokenId: integer('tokenId').notNull(),
-    claimerUserId: text('claimerUserId'),
-    claimerAddress: text('claimerAddress').notNull(),
-    claimedAt: timestamp('claimedAt', { mode: 'date' }).notNull(),
-    txHash: text('txHash').notNull(),
-    snapshotRank: integer('snapshotRank'),
-    snapshotPoints: integer('snapshotPoints'),
+    id: text("id").primaryKey(),
+    tokenId: integer("tokenId").notNull(),
+    claimerUserId: text("claimerUserId"),
+    claimerAddress: text("claimerAddress").notNull(),
+    claimedAt: timestamp("claimedAt", { mode: "date" }).notNull(),
+    txHash: text("txHash").notNull(),
+    snapshotRank: integer("snapshotRank"),
+    snapshotPoints: integer("snapshotPoints"),
   },
   (table) => [
-    unique('NftClaim_tokenId_key').on(table.tokenId),
-    index('NftClaim_claimerUserId_idx').on(table.claimerUserId),
-    index('NftClaim_claimerAddress_idx').on(table.claimerAddress),
-  ]
+    unique("NftClaim_tokenId_key").on(table.tokenId),
+    index("NftClaim_claimerUserId_idx").on(table.claimerUserId),
+    index("NftClaim_claimerAddress_idx").on(table.claimerAddress),
+  ],
 );
 
 /**
@@ -104,26 +104,26 @@ export const nftClaims = pgTable(
  * midnight UTC snapshot of the leaderboard.
  */
 export const nftSnapshot = pgTable(
-  'NftSnapshot',
+  "NftSnapshot",
   {
-    id: text('id').primaryKey(),
-    userId: text('userId').notNull(),
-    walletAddress: text('walletAddress'),
-    rank: integer('rank').notNull(),
-    points: integer('points').notNull(),
-    snapshotTakenAt: timestamp('snapshotTakenAt', { mode: 'date' }).notNull(),
-    hasMinted: boolean('hasMinted').notNull().default(false),
-    mintedTokenId: integer('mintedTokenId'),
-    mintedAt: timestamp('mintedAt', { mode: 'date' }),
-    mintTxHash: text('mintTxHash'),
+    id: text("id").primaryKey(),
+    userId: text("userId").notNull(),
+    walletAddress: text("walletAddress"),
+    rank: integer("rank").notNull(),
+    points: integer("points").notNull(),
+    snapshotTakenAt: timestamp("snapshotTakenAt", { mode: "date" }).notNull(),
+    hasMinted: boolean("hasMinted").notNull().default(false),
+    mintedTokenId: integer("mintedTokenId"),
+    mintedAt: timestamp("mintedAt", { mode: "date" }),
+    mintTxHash: text("mintTxHash"),
   },
   (table) => [
-    unique('NftSnapshot_userId_key').on(table.userId),
+    unique("NftSnapshot_userId_key").on(table.userId),
     // Note: rank is NOT unique - it changes frequently during updates
-    index('NftSnapshot_walletAddress_idx').on(table.walletAddress),
-    index('NftSnapshot_hasMinted_idx').on(table.hasMinted),
-    index('NftSnapshot_rank_idx').on(table.rank),
-  ]
+    index("NftSnapshot_walletAddress_idx").on(table.walletAddress),
+    index("NftSnapshot_hasMinted_idx").on(table.hasMinted),
+    index("NftSnapshot_rank_idx").on(table.rank),
+  ],
 );
 
 // Relations

@@ -6,8 +6,8 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
+import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 
 function extractIssueNumber(text: string): number | null {
   const patterns = [/#(\d+)/, /issue\s*#?(\d+)/i, /pr\s*#?(\d+)/i, /pull\s*request\s*#?(\d+)/i];

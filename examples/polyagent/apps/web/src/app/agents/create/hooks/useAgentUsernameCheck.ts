@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 
 export type UsernameStatus =
-  | 'available'
-  | 'taken'
-  | 'checking'
-  | 'error'
+  | "available"
+  | "taken"
+  | "checking"
+  | "error"
   | null;
 
 interface UseAgentUsernameCheckResult {
@@ -21,11 +21,11 @@ interface UseAgentUsernameCheckResult {
  */
 export function useAgentUsernameCheck(
   username: string,
-  debounceMs = 500
+  debounceMs = 500,
 ): UseAgentUsernameCheckResult {
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>(null);
   const [usernameSuggestion, setUsernameSuggestion] = useState<string | null>(
-    null
+    null,
   );
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
 
@@ -42,26 +42,26 @@ export function useAgentUsernameCheck(
     // The API also enforces a 20-char limit
 
     setIsCheckingUsername(true);
-    setUsernameStatus('checking');
+    setUsernameStatus("checking");
 
     try {
       const response = await fetch(
-        `/api/onboarding/check-username?username=${encodeURIComponent(trimmed)}`
+        `/api/onboarding/check-username?username=${encodeURIComponent(trimmed)}`,
       );
 
       if (response.ok) {
         const result = await response.json();
-        setUsernameStatus(result.available ? 'available' : 'taken');
+        setUsernameStatus(result.available ? "available" : "taken");
         setUsernameSuggestion(
-          result.available ? null : result.suggestion || null
+          result.available ? null : result.suggestion || null,
         );
       } else {
-        setUsernameStatus('error');
+        setUsernameStatus("error");
         setUsernameSuggestion(null);
       }
     } catch (error) {
-      console.error('Username check failed:', error);
-      setUsernameStatus('error');
+      console.error("Username check failed:", error);
+      setUsernameStatus("error");
       setUsernameSuggestion(null);
     } finally {
       setIsCheckingUsername(false);

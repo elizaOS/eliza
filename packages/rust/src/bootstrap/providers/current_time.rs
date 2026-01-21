@@ -1,8 +1,8 @@
 //! CURRENT_TIME provider implementation.
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use chrono::Utc;
+use once_cell::sync::Lazy;
 
 use crate::error::PluginResult;
 use crate::generated::spec_helpers::require_provider_spec;
@@ -69,4 +69,3 @@ impl Provider for CurrentTimeProvider {
             .with_data("unixTimestamp", unix_timestamp))
     }
 }
-

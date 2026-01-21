@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Discord Agent - A full-featured AI agent running on Discord
  *
@@ -9,11 +10,11 @@
  * - Uses OpenAI for language understanding
  */
 
-import { config } from "dotenv";
-import { AgentRuntime, logger } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import discordPlugin from "@elizaos/plugin-discord";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
+import { config } from "dotenv";
 
 import { character } from "./character";
 import { registerDiscordHandlers, registerSlashCommands } from "./handlers";
@@ -30,7 +31,9 @@ function validateEnvironment(): void {
   const missing = required.filter((key) => !process.env[key]);
 
   if (missing.length > 0) {
-    console.error(`❌ Missing required environment variables: ${missing.join(", ")}`);
+    console.error(
+      `❌ Missing required environment variables: ${missing.join(", ")}`,
+    );
     console.error("   Copy env.example to .env and fill in your credentials.");
     process.exit(1);
   }
@@ -40,7 +43,9 @@ function validateEnvironment(): void {
     process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
 
   if (!hasModelProvider) {
-    console.error("❌ No model provider configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.");
+    console.error(
+      "❌ No model provider configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.",
+    );
     process.exit(1);
   }
 
@@ -62,9 +67,9 @@ async function main(): Promise<void> {
   const runtime = new AgentRuntime({
     character,
     plugins: [
-      sqlPlugin,       // Database persistence
-      openaiPlugin,    // LLM provider
-      discordPlugin,   // Discord client
+      sqlPlugin, // Database persistence
+      openaiPlugin, // LLM provider
+      discordPlugin, // Discord client
     ],
     logLevel: "info",
   });

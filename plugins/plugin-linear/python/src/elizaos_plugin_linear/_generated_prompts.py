@@ -103,7 +103,7 @@ Return ONLY a JSON object:
   "directId": "Issue ID if explicitly mentioned (e.g., ENG-123)",
   "searchBy": {
     "title": "Keywords from issue title if mentioned",
-    "assignee": "Name/email of assignee if mentioned", 
+    "assignee": "Name/email of assignee if mentioned",
     "priority": "Priority level if mentioned (urgent/high/normal/low or 1-4)",
     "team": "Team name or key if mentioned",
     "state": "Issue state if mentioned (todo/in-progress/done)",

@@ -8,15 +8,24 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { MinecraftService, MINECRAFT_SERVICE_TYPE } from "../services/minecraft-service.js";
+import {
+  MINECRAFT_SERVICE_TYPE,
+  type MinecraftService,
+} from "../services/minecraft-service.js";
 import { extractVec3 } from "./utils.js";
 
 export const minecraftGotoAction: Action = {
   name: "MC_GOTO",
   similes: ["MINECRAFT_GOTO", "WALK_TO", "MOVE_TO_COORDS"],
-  description: "Pathfind to a target (x y z). Provide coordinates like '10 64 -20' or JSON {\"x\":10,\"y\":64,\"z\":-20}.",
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+  description:
+    'Pathfind to a target (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
     return Boolean(service) && Boolean(extractVec3(message.content.text ?? ""));
   },
   handler: async (
@@ -26,8 +35,11 @@ export const minecraftGotoAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
-    if (!service) return { text: "Minecraft service is not available", success: false };
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
+    if (!service)
+      return { text: "Minecraft service is not available", success: false };
 
     const vec = extractVec3(message.content.text ?? "");
     if (!vec) return { text: "Missing coordinates (x y z)", success: false };
@@ -53,4 +65,3 @@ export const minecraftGotoAction: Action = {
     }
   },
 };
-

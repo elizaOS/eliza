@@ -4,8 +4,8 @@
  * Core providers included by default in the bootstrap plugin.
  */
 
-export { actionsProvider } from "./actions.ts";
 export { actionStateProvider } from "./actionState.ts";
+export { actionsProvider } from "./actions.ts";
 export { attachmentsProvider } from "./attachments.ts";
 export { capabilitiesProvider } from "./capabilities.ts";
 export { characterProvider } from "./character.ts";

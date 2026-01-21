@@ -201,7 +201,7 @@ Health check endpoint.
 {
   "status": "healthy",
   "runtime": "typescript|python|rust",
-  "version": "2.0.0"
+  "version": "2.0.0-alpha"
 }
 ```
 
@@ -215,7 +215,7 @@ Service info endpoint.
 {
   "name": "Eliza",
   "bio": "A helpful AI assistant.",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "powered_by": "elizaOS"
 }
 ```

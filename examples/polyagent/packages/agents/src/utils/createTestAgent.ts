@@ -6,12 +6,12 @@
  * @packageDocumentation
  */
 
-import { db, eq, like, userAgentConfigs, users } from '@polyagent/db';
-import { ethers } from 'ethers';
-import { agentRegistry } from '../services/agent-registry.service';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { generateSnowflakeId } from '../shared/snowflake';
+import { db, eq, like, userAgentConfigs, users } from "@polyagent/db";
+import { ethers } from "ethers";
+import { agentRegistry } from "../services/agent-registry.service";
+import { getAgentConfig } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { generateSnowflakeId } from "../shared/snowflake";
 
 export interface TestAgentConfig {
   username?: string;
@@ -23,7 +23,7 @@ export interface TestAgentConfig {
   autonomousDMs?: boolean;
   autonomousGroupChats?: boolean;
   systemPrompt?: string;
-  modelTier?: 'lite' | 'standard' | 'pro';
+  modelTier?: "lite" | "standard" | "pro";
 }
 
 export interface CreateTestAgentResult {
@@ -45,8 +45,8 @@ export interface CreateTestAgentResult {
  * @returns Test agent creation result
  */
 export async function createTestAgent(
-  prefix = 'test-agent',
-  config: TestAgentConfig = {}
+  prefix = "test-agent",
+  config: TestAgentConfig = {},
 ): Promise<CreateTestAgentResult> {
   const {
     username,
@@ -57,8 +57,8 @@ export async function createTestAgent(
     autonomousCommenting = true,
     autonomousDMs = false,
     autonomousGroupChats = false,
-    systemPrompt = 'You are an autonomous trading agent on Polyagent prediction markets. Make smart trading decisions based on market analysis.',
-    modelTier = 'lite',
+    systemPrompt = "You are an autonomous trading agent on Polyagent prediction markets. Make smart trading decisions based on market analysis.",
+    modelTier = "lite",
   } = config;
 
   // Try to find existing agent with same prefix
@@ -121,13 +121,13 @@ export async function createTestAgent(
 
     created = true;
 
-    logger.info('Created test agent', {
+    logger.info("Created test agent", {
       agentId: agent.id,
       username: agent.username,
       displayName: agent.displayName,
     });
   } else {
-    logger.info('Using existing test agent', {
+    logger.info("Using existing test agent", {
       agentId: agent.id,
       username: agent.username,
     });
@@ -140,48 +140,48 @@ export async function createTestAgent(
       const existingReg = await agentRegistry.getAgentById(agent.id);
 
       if (!existingReg) {
-        logger.info('Registering user agent...', { userId: agent.id });
+        logger.info("Registering user agent...", { userId: agent.id });
 
         // Get agent config for system prompt
         const agentConfig = await getAgentConfig(agent.id);
 
         await agentRegistry.registerUserAgent({
           userId: agent.id,
-          name: agent.displayName || agent.username || 'Test Agent',
+          name: agent.displayName || agent.username || "Test Agent",
           systemPrompt:
             agentConfig?.systemPrompt ||
-            'You are a helpful AI agent on Polyagent prediction market.',
+            "You are a helpful AI agent on Polyagent prediction market.",
           capabilities: {
             strategies: [
-              'prediction_markets',
-              'social_interaction',
-              'trading_analysis',
+              "prediction_markets",
+              "social_interaction",
+              "trading_analysis",
             ],
-            markets: ['prediction', 'perpetual', 'spot'],
+            markets: ["prediction", "perpetual", "spot"],
             actions: [
-              'trade',
-              'post',
-              'comment',
-              'like',
-              'message',
-              'analyze_market',
-              'manage_portfolio',
+              "trade",
+              "post",
+              "comment",
+              "like",
+              "message",
+              "analyze_market",
+              "manage_portfolio",
             ],
-            version: '1.0.0',
+            version: "1.0.0",
             x402Support: true,
-            platform: 'polyagent',
-            userType: 'user_controlled',
+            platform: "polyagent",
+            userType: "user_controlled",
             skills: [],
             domains: [],
           },
         });
-        logger.info('Registered test agent in registry', {
+        logger.info("Registered test agent in registry", {
           agentId: agent.id,
         });
       }
     } catch (err) {
       // Registration may fail if already registered, that's ok
-      logger.debug('Agent registry registration', {
+      logger.debug("Agent registry registration", {
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -209,8 +209,8 @@ export async function createTestAgent(
  */
 export async function createTestAgents(
   count: number,
-  prefix = 'test-agent',
-  baseConfig: TestAgentConfig = {}
+  prefix = "test-agent",
+  baseConfig: TestAgentConfig = {},
 ): Promise<CreateTestAgentResult[]> {
   const results: CreateTestAgentResult[] = [];
 
@@ -229,7 +229,7 @@ export async function createTestAgents(
  * @returns Number of agents deleted
  */
 export async function cleanupTestAgents(
-  prefix = 'test-agent'
+  prefix = "test-agent",
 ): Promise<number> {
   // Get test agents
   const testAgents = await db

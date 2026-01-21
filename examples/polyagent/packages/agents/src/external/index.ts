@@ -7,4 +7,4 @@
  * @packageDocumentation
  */
 
-export * from './ExternalAgentAdapter';
+export * from "./ExternalAgentAdapter";

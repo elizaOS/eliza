@@ -11,7 +11,9 @@ pub type JsonValue = serde_json::Value;
 /// Execution status of a task
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum TaskStatus {
+    #[default]
     Pending,
     Running,
     Completed,
@@ -20,11 +22,6 @@ pub enum TaskStatus {
     Cancelled,
 }
 
-impl Default for TaskStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
-}
 
 impl std::fmt::Display for TaskStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -42,16 +39,13 @@ impl std::fmt::Display for TaskStatus {
 /// User-controlled lifecycle status (separate from execution status)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum TaskUserStatus {
+    #[default]
     Open,
     Done,
 }
 
-impl Default for TaskUserStatus {
-    fn default() -> Self {
-        Self::Open
-    }
-}
 
 /// A single step within a task plan
 #[derive(Debug, Clone, Serialize, Deserialize)]

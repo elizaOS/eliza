@@ -11,9 +11,9 @@
  * ```
  */
 
-import { type RefObject, useEffect } from 'react';
+import { type RefObject, useEffect } from "react";
 
-type EventType = 'mousedown' | 'mouseup' | 'touchstart' | 'touchend';
+type EventType = "mousedown" | "mouseup" | "touchstart" | "touchend";
 
 /**
  * Hook that triggers callback when clicking outside the referenced element
@@ -25,7 +25,7 @@ type EventType = 'mousedown' | 'mouseup' | 'touchstart' | 'touchend';
 export function useOnClickOutside<T extends HTMLElement>(
   ref: RefObject<T | null>,
   handler: () => void,
-  eventType: EventType = 'mousedown'
+  eventType: EventType = "mousedown",
 ): void {
   useEffect(() => {
     const listener = (event: MouseEvent | TouchEvent) => {

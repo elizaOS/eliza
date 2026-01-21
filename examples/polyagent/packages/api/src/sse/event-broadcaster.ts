@@ -6,9 +6,9 @@
  * Provides high-level functions for broadcasting to channels and chat rooms.
  */
 
-import { logger } from '@polyagent/shared';
-import { publishEvent, type RealtimeChannel } from '../realtime';
-import type { JsonValue } from '../types';
+import { logger } from "@polyagent/shared";
+import { publishEvent, type RealtimeChannel } from "../realtime";
+import type { JsonValue } from "../types";
 
 export type Channel = RealtimeChannel;
 
@@ -54,11 +54,11 @@ export function getEventBroadcaster(): NoopBroadcaster {
  */
 export async function broadcastToChannel(
   channel: Channel,
-  data: Record<string, JsonValue>
+  data: Record<string, JsonValue>,
 ): Promise<void> {
   const message: BroadcastMessage = {
     channel,
-    type: (data.type as string) || 'update',
+    type: (data.type as string) || "update",
     data,
     timestamp: Date.now(),
   };
@@ -85,15 +85,15 @@ export async function broadcastChatMessage(
     createdAt: string;
     isGameChat?: boolean;
     isDMChat?: boolean;
-  }
+  },
 ): Promise<void> {
   logger.info(
-    'Broadcasting chat message',
+    "Broadcasting chat message",
     { chatId, messageId: message.id },
-    'Realtime'
+    "Realtime",
   );
   await broadcastToChannel(`chat:${chatId}`, {
-    type: 'new_message',
+    type: "new_message",
     message,
   });
 }
@@ -107,12 +107,12 @@ export async function broadcastChatMessage(
  */
 export interface TradeActivityData {
   tradeId: string;
-  marketType: 'prediction' | 'perp';
+  marketType: "prediction" | "perp";
   marketId: string | null;
   ticker: string | null;
   marketQuestion?: string;
-  action: 'open' | 'close';
-  side: 'long' | 'short' | 'yes' | 'no' | null;
+  action: "open" | "close";
+  side: "long" | "short" | "yes" | "no" | null;
   amount: number;
   price: number;
   pnl: number | null;
@@ -151,7 +151,7 @@ export interface MessageActivityData {
  * Unified agent activity event structure.
  */
 export interface AgentActivityEvent {
-  type: 'trade' | 'post' | 'comment' | 'message';
+  type: "trade" | "post" | "comment" | "message";
   agentId: string;
   agentName: string;
   timestamp: number;
@@ -176,8 +176,8 @@ export interface AgentActivityEvent {
 export async function broadcastAgentActivity(
   agentId: string,
   agentName: string,
-  activityType: AgentActivityEvent['type'],
-  data: AgentActivityEvent['data']
+  activityType: AgentActivityEvent["type"],
+  data: AgentActivityEvent["data"],
 ): Promise<void> {
   const activity: AgentActivityEvent = {
     type: activityType,
@@ -188,9 +188,9 @@ export async function broadcastAgentActivity(
   };
 
   logger.info(
-    'Broadcasting agent activity',
+    "Broadcasting agent activity",
     { agentId, type: activityType },
-    'Realtime'
+    "Realtime",
   );
 
   // Cast to Record<string, JsonValue> for type compatibility with broadcastToChannel
@@ -207,10 +207,10 @@ export async function broadcastTypingIndicator(
   chatId: string,
   userId: string,
   displayName: string,
-  isTyping: boolean
+  isTyping: boolean,
 ): Promise<void> {
   await broadcastToChannel(`chat:${chatId}`, {
-    type: 'typing_indicator',
+    type: "typing_indicator",
     userId,
     displayName,
     isTyping,

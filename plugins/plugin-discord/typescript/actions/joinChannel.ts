@@ -14,11 +14,11 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { BaseGuildVoiceChannel, TextChannel } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import { joinChannelTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 import type { VoiceManager } from "../voice";
 

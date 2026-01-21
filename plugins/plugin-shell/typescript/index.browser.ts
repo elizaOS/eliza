@@ -12,4 +12,3 @@ export const shellPlugin: Plugin = {
 };
 
 export default shellPlugin;
-

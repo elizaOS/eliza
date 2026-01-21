@@ -14,10 +14,10 @@ from .actions import (
     reply_action,
 )
 from .providers import (
-    basic_providers,
     action_state_provider,
     actions_provider,
     attachments_provider,
+    basic_providers,
     capabilities_provider,
     character_provider,
     choice_provider,
@@ -31,9 +31,9 @@ from .providers import (
     world_provider,
 )
 from .services import (
-    basic_services,
     EmbeddingService,
     TaskService,
+    basic_services,
 )
 
 __all__ = [

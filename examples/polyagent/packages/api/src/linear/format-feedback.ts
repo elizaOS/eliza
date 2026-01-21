@@ -1,4 +1,4 @@
-import { FEEDBACK_TYPE_CONFIG, type FeedbackType } from '@polyagent/shared';
+import { FEEDBACK_TYPE_CONFIG, type FeedbackType } from "@polyagent/shared";
 
 export type { FeedbackType };
 
@@ -19,7 +19,7 @@ export interface FeedbackData {
  */
 function getLinearLabel(feedbackType: FeedbackType): string {
   const config = FEEDBACK_TYPE_CONFIG[feedbackType];
-  return `${config.emoji} ${config.heading.split(' ')[0]}`; // "🐛 Bug", "✨ Feature", "⚡ Performance"
+  return `${config.emoji} ${config.heading.split(" ")[0]}`; // "🐛 Bug", "✨ Feature", "⚡ Performance"
 }
 
 /**
@@ -27,11 +27,11 @@ function getLinearLabel(feedbackType: FeedbackType): string {
  */
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 export function formatFeedbackForLinear(feedback: FeedbackData): {
@@ -54,45 +54,45 @@ export function formatFeedbackForLinear(feedback: FeedbackData): {
 
   const lines: string[] = [
     `## ${config.heading}`,
-    '',
-    '### Description',
-    '',
+    "",
+    "### Description",
+    "",
     safeDescription,
-    '',
+    "",
   ];
 
   if (safeSteps) {
-    lines.push('### Steps to Reproduce', '', safeSteps, '');
+    lines.push("### Steps to Reproduce", "", safeSteps, "");
   }
 
   if (feedback.screenshotUrl) {
     // URL is already validated by Zod schema, but escape for safety
     const safeUrl = escapeHtml(feedback.screenshotUrl);
-    lines.push('### Screenshot', '', `![Screenshot](${safeUrl})`, '');
+    lines.push("### Screenshot", "", `![Screenshot](${safeUrl})`, "");
   }
 
   if (feedback.rating != null) {
     lines.push(
-      '### Importance Rating',
-      '',
-      `${'⭐'.repeat(feedback.rating)} (${feedback.rating}/5)`,
-      ''
+      "### Importance Rating",
+      "",
+      `${"⭐".repeat(feedback.rating)} (${feedback.rating}/5)`,
+      "",
     );
   }
 
   lines.push(
-    '---',
-    '',
-    '### Submission Details',
-    '',
-    `- **Submitted by:** ${safeEmail ?? 'Unknown'}`,
+    "---",
+    "",
+    "### Submission Details",
+    "",
+    `- **Submitted by:** ${safeEmail ?? "Unknown"}`,
     `- **User ID:** \`${escapeHtml(feedback.userId)}\``,
     `- **Feedback ID:** \`${escapeHtml(feedback.id)}\``,
-    `- **Type:** ${config.heading}`
+    `- **Type:** ${config.heading}`,
   );
 
   return {
     title: `[${getLinearLabel(feedback.feedbackType)}] ${truncatedDesc}`,
-    description: lines.join('\n'),
+    description: lines.join("\n"),
   };
 }

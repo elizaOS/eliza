@@ -86,7 +86,7 @@
  * @see {@link /lib/onboarding/types} Onboarding types
  */
 
-import type { JsonValue } from '@babylon/api';
+import type { JsonValue } from "@babylon/api";
 import {
   authenticate,
   ConflictError,
@@ -97,7 +97,7 @@ import {
   PointsService,
   successResponse,
   withErrorHandling,
-} from '@babylon/api';
+} from "@babylon/api";
 import {
   and,
   db,
@@ -110,8 +110,8 @@ import {
   users,
   withRetry,
   withTransaction,
-} from '@babylon/db';
-import type { OnboardingProfilePayload } from '@babylon/shared';
+} from "@babylon/db";
+import type { OnboardingProfilePayload } from "@babylon/shared";
 import {
   checkForAdminEmail,
   generateSnowflakeId,
@@ -119,11 +119,11 @@ import {
   OnboardingProfileSchema,
   POINTS,
   type PrivyUserWithEmails,
-} from '@babylon/shared';
-import type { User as PrivyUser } from '@privy-io/server-auth';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@babylon/shared";
+import type { User as PrivyUser } from "@privy-io/server-auth";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 interface SignupRequestBody {
   username: string;
@@ -152,28 +152,28 @@ type PrivyUserWithSmartWallet = PrivyUser &
   };
 
 function pickEmbeddedEvmWallet(
-  user: PrivyUserWithSmartWallet
+  user: PrivyUserWithSmartWallet,
 ): PrivyWalletLite | null {
   const candidates: PrivyWalletLite[] = [];
   if (user.wallet) candidates.push(user.wallet);
   if (Array.isArray(user.linkedAccounts)) {
     for (const acc of user.linkedAccounts) {
-      if (acc?.type === 'wallet') candidates.push(acc);
+      if (acc?.type === "wallet") candidates.push(acc);
     }
   }
   return (
     candidates.find(
       (w) =>
-        (w.walletClientType === 'privy' || Boolean(w.id)) &&
-        (!w.chainType || w.chainType === 'ethereum') &&
-        typeof w.address === 'string'
+        (w.walletClientType === "privy" || Boolean(w.id)) &&
+        (!w.chainType || w.chainType === "ethereum") &&
+        typeof w.address === "string",
     ) ?? null
   );
 }
 
 async function ensureSmartWalletAddress(
   privyClient: ReturnType<typeof getPrivyClient>,
-  privyId: string
+  privyId: string,
 ): Promise<{
   smartWalletAddress: string | null;
   embeddedWalletAddress: string | null;
@@ -206,7 +206,7 @@ const SignupSchema = OnboardingProfileSchema.extend({
     .string()
     .min(1)
     .optional()
-    .or(z.literal('').transform(() => undefined)),
+    .or(z.literal("").transform(() => undefined)),
   isWaitlist: z.boolean().optional().default(false),
 });
 
@@ -245,7 +245,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (identityToken) {
     const privyClient = getPrivyClient();
     const identityUser = (await privyClient.getUserFromIdToken(
-      identityToken
+      identityToken,
     )) as PrivyUserWithSmartWallet;
 
     identityFarcasterUsername = identityUser.farcaster?.username ?? undefined;
@@ -255,15 +255,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     adminEmailResult = checkForAdminEmail(identityUser);
   } else {
     logger.info(
-      'Signup received no identity token; proceeding with provided payload only',
+      "Signup received no identity token; proceeding with provided payload only",
       undefined,
-      'POST /api/users/signup'
+      "POST /api/users/signup",
     );
   }
 
   // Check for imported social data from onboarding flow
-  const importedTwitter = parsedProfile.importedFrom === 'twitter';
-  const importedFarcaster = parsedProfile.importedFrom === 'farcaster';
+  const importedTwitter = parsedProfile.importedFrom === "twitter";
+  const importedFarcaster = parsedProfile.importedFrom === "farcaster";
 
   // Ensure smart wallet exists and prefer its address for DB persistence
   const privyClient = getPrivyClient();
@@ -284,12 +284,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           .select({ id: users.id })
           .from(users)
           .where(
-            sql`lower(${users.username}) = lower(${parsedProfile.username})`
+            sql`lower(${users.username}) = lower(${parsedProfile.username})`,
           )
           .limit(1);
 
         if (existingUsername && existingUsername.id !== canonicalUserId) {
-          throw new ConflictError('Username is already taken', 'User.username');
+          throw new ConflictError("Username is already taken", "User.username");
         }
 
         // Check if wallet address is already linked to another user
@@ -302,8 +302,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
           if (existingWallet && existingWallet.id !== canonicalUserId) {
             throw new ConflictError(
-              'Wallet address is already linked to another account',
-              'User.walletAddress'
+              "Wallet address is already linked to another account",
+              "User.walletAddress",
             );
           }
         }
@@ -349,12 +349,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           // User already has referredBy (set in /api/users/me)
           resolvedReferrerId = existingUser.referredBy;
           logger.info(
-            'Using existing referredBy from user record',
+            "Using existing referredBy from user record",
             {
               userId: canonicalUserId,
               referredBy: resolvedReferrerId,
             },
-            'POST /api/users/signup'
+            "POST /api/users/signup",
           );
         }
 
@@ -362,7 +362,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           username: parsedProfile.username,
           displayName: parsedProfile.displayName,
           email: parsedProfile.email || null,
-          bio: parsedProfile.bio ?? '',
+          bio: parsedProfile.bio ?? "",
           profileImageUrl: parsedProfile.profileImageUrl ?? null,
           coverImageUrl: parsedProfile.coverImageUrl ?? null,
           walletAddress,
@@ -370,7 +370,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           profileSetupCompletedAt: new Date(), // Track when profile was completed
           hasUsername: true,
           hasBio: Boolean(
-            parsedProfile.bio && parsedProfile.bio.trim().length > 0
+            parsedProfile.bio && parsedProfile.bio.trim().length > 0,
           ),
           hasProfileImage: Boolean(parsedProfile.profileImageUrl),
           // Waitlist users start with 100 points instead of 1000
@@ -382,14 +382,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
             ? {
                 tosAccepted: true,
                 tosAcceptedAt: new Date(),
-                tosAcceptedVersion: '2025-11-11',
+                tosAcceptedVersion: "2025-11-11",
               }
             : {}),
           ...(parsedProfile.privacyPolicyAccepted
             ? {
                 privacyPolicyAccepted: true,
                 privacyPolicyAcceptedAt: new Date(),
-                privacyPolicyAcceptedVersion: '2025-11-11',
+                privacyPolicyAcceptedVersion: "2025-11-11",
               }
             : {}),
         };
@@ -432,13 +432,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
           if (shouldPromoteToAdmin) {
             logger.info(
-              'Auto-promoting existing user to admin during signup based on verified email domain',
+              "Auto-promoting existing user to admin during signup based on verified email domain",
               {
                 userId: canonicalUserId,
-                emailDomain: adminEmail?.split('@')[1] ?? null,
+                emailDomain: adminEmail?.split("@")[1] ?? null,
                 emailCount: allVerifiedEmails.length,
               },
-              'POST /api/users/signup'
+              "POST /api/users/signup",
             );
           }
 
@@ -453,7 +453,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
             .where(eq(users.id, canonicalUserId))
             .returning();
           if (!updatedUser) {
-            throw new InternalServerError('Failed to update user record');
+            throw new InternalServerError("Failed to update user record");
           }
           user = updatedUser;
         } else {
@@ -468,13 +468,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
           if (shouldBeAdmin) {
             logger.info(
-              'Auto-promoting new signup user to admin based on verified email domain',
+              "Auto-promoting new signup user to admin based on verified email domain",
               {
                 userId: canonicalUserId,
-                emailDomain: newUserAdminEmail?.split('@')[1] ?? null,
+                emailDomain: newUserAdminEmail?.split("@")[1] ?? null,
                 emailCount: allVerifiedEmails.length,
               },
-              'POST /api/users/signup'
+              "POST /api/users/signup",
             );
           }
 
@@ -490,7 +490,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
             })
             .returning();
           if (!newUser) {
-            throw new InternalServerError('Failed to create user record');
+            throw new InternalServerError("Failed to create user record");
           }
           user = newUser;
         }
@@ -504,8 +504,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
             .where(
               and(
                 eq(referrals.referralCode, normalizedCode),
-                eq(referrals.referredUserId, user.id)
-              )
+                eq(referrals.referredUserId, user.id),
+              ),
             )
             .limit(1);
 
@@ -513,7 +513,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
             // Update existing record
             await tx
               .update(referrals)
-              .set({ status: 'pending' })
+              .set({ status: "pending" })
               .where(eq(referrals.id, existingReferral.id));
             resolvedReferralRecordId = existingReferral.id;
           } else {
@@ -526,11 +526,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
                 referrerId: resolvedReferrerId,
                 referralCode: normalizedCode,
                 referredUserId: user.id,
-                status: 'pending',
+                status: "pending",
               })
               .returning({ id: referrals.id });
             if (!referralRecord) {
-              throw new InternalServerError('Failed to create referral record');
+              throw new InternalServerError("Failed to create referral record");
             }
             resolvedReferralRecordId = referralRecord.id;
           }
@@ -544,17 +544,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
     },
     3, // maxRetries
-    200 // delayMs
+    200, // delayMs
   ).catch((error: unknown) => {
     // Improve error message for connection errors
     if (isRetryableError(toDatabaseErrorType(error))) {
       logger.error(
-        'Database connection error during signup transaction',
+        "Database connection error during signup transaction",
         { error: error instanceof Error ? error.message : String(error) },
-        'POST /api/users/signup'
+        "POST /api/users/signup",
       );
       throw new Error(
-        'Database connection error. Please try again in a moment.'
+        "Database connection error. Please try again in a moment.",
       );
     }
     throw error;
@@ -578,7 +578,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // Award points to REFERRER
     const referralResult = await PointsService.awardReferralSignup(
       result.referrerId,
-      result.user.id
+      result.user.id,
     );
     pointsAwarded.referral = referralResult.pointsAwarded;
 
@@ -588,8 +588,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       const refereeBonus = await PointsService.awardPoints(
         result.user.id,
         POINTS.REFERRAL_BONUS,
-        'referral_bonus',
-        { referrerId: result.referrerId }
+        "referral_bonus",
+        { referrerId: result.referrerId },
       );
       pointsAwarded.referralBonus = refereeBonus.pointsAwarded;
 
@@ -598,7 +598,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         await db
           .update(referrals)
           .set({
-            status: 'completed',
+            status: "completed",
             completedAt: new Date(),
           })
           .where(eq(referrals.id, result.referralRecordId));
@@ -612,8 +612,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         .where(
           and(
             eq(follows.followerId, result.user.id),
-            eq(follows.followingId, result.referrerId)
-          )
+            eq(follows.followingId, result.referrerId),
+          ),
         )
         .limit(1);
 
@@ -627,14 +627,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       }
 
       logger.info(
-        'Awarded referral points to both referrer and referee',
+        "Awarded referral points to both referrer and referee",
         {
           referrerId: result.referrerId,
           referredUserId: result.user.id,
           referrerPoints: referralResult.pointsAwarded,
           refereeBonus: refereeBonus.pointsAwarded,
         },
-        'POST /api/users/signup'
+        "POST /api/users/signup",
       );
     } else {
       // Referral was blocked (self-referral, weekly limit, etc.)
@@ -642,18 +642,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       if (result.referralRecordId) {
         await db
           .update(referrals)
-          .set({ status: 'rejected' })
+          .set({ status: "rejected" })
           .where(eq(referrals.id, result.referralRecordId));
       }
 
       logger.warn(
-        'Referral blocked - referrer not rewarded',
+        "Referral blocked - referrer not rewarded",
         {
           referrerId: result.referrerId,
           referredUserId: result.user.id,
           error: referralResult.error,
         },
-        'POST /api/users/signup'
+        "POST /api/users/signup",
       );
     }
   }
@@ -664,17 +664,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     if (farcasterUsername) {
       const pointsResult = await PointsService.awardFarcasterLink(
         result.user.id,
-        farcasterUsername
+        farcasterUsername,
       );
       pointsAwarded.farcaster = pointsResult.pointsAwarded;
       logger.info(
-        'Awarded Farcaster link points',
+        "Awarded Farcaster link points",
         {
           userId: result.user.id,
           username: farcasterUsername,
           points: pointsResult.pointsAwarded,
         },
-        'POST /api/users/signup'
+        "POST /api/users/signup",
       );
     }
   }
@@ -684,56 +684,56 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     if (twitterUsername) {
       const pointsResult = await PointsService.awardTwitterLink(
         result.user.id,
-        twitterUsername
+        twitterUsername,
       );
       pointsAwarded.twitter = pointsResult.pointsAwarded;
       logger.info(
-        'Awarded Twitter link points',
+        "Awarded Twitter link points",
         {
           userId: result.user.id,
           username: twitterUsername,
           points: pointsResult.pointsAwarded,
         },
-        'POST /api/users/signup'
+        "POST /api/users/signup",
       );
     }
   }
   if (walletAddress) {
     const pointsResult = await PointsService.awardWalletConnect(
       result.user.id,
-      walletAddress
+      walletAddress,
     );
     pointsAwarded.wallet = pointsResult.pointsAwarded;
     logger.info(
-      'Awarded wallet connect points',
+      "Awarded wallet connect points",
       {
         userId: result.user.id,
         address: walletAddress,
         points: pointsResult.pointsAwarded,
       },
-      'POST /api/users/signup'
+      "POST /api/users/signup",
     );
   }
 
   if (!result.user.pointsAwardedForProfile) {
     const pointsResult = await PointsService.awardProfileCompletion(
-      result.user.id
+      result.user.id,
     );
     pointsAwarded.profile = pointsResult.pointsAwarded;
     logger.info(
-      'Awarded profile completion points',
+      "Awarded profile completion points",
       { userId: result.user.id, points: pointsResult.pointsAwarded },
-      'POST /api/users/signup'
+      "POST /api/users/signup",
     );
   }
 
   const totalPointsAwarded = Object.values(pointsAwarded).reduce(
     (sum, p) => sum + p,
-    0
+    0,
   );
 
   logger.info(
-    'User completed off-chain onboarding',
+    "User completed off-chain onboarding",
     {
       userId: result.user.id,
       hasReferrer: Boolean(result.referrerId),
@@ -742,13 +742,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       hasFarcaster: result.user.hasFarcaster,
       hasTwitter: result.user.hasTwitter,
     },
-    'POST /api/users/signup'
+    "POST /api/users/signup",
   );
 
   await notifyNewAccount(result.user.id);
 
   // Track signup with PostHog
-  await trackServerEvent(result.user.id, 'signup_completed', {
+  await trackServerEvent(result.user.id, "signup_completed", {
     username: result.user.username,
     hasReferrer: Boolean(result.referrerId),
     hasFarcaster: result.user.hasFarcaster,

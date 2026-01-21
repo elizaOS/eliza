@@ -17,5 +17,5 @@
  * ```
  */
 
-export * from './deployment';
-export * from './types';
+export * from "./deployment";
+export * from "./types";

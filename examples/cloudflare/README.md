@@ -130,7 +130,7 @@ Returns information about the worker and character.
 {
   "name": "Eliza",
   "bio": "A helpful AI assistant powered by elizaOS.",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "powered_by": "elizaOS",
   "endpoints": {
     "POST /chat": "Send a message and receive a response",

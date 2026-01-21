@@ -38,4 +38,3 @@ def create_advanced_planning_plugin() -> Plugin:
 
 
 advanced_planning_plugin = create_advanced_planning_plugin()
-

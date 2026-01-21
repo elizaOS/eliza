@@ -4,21 +4,21 @@
  * Agent-to-Agent communication types following JSON-RPC 2.0 spec
  */
 
-import { z } from 'zod';
-import type { AgentCapabilities } from './agent-registry';
-import type { JsonRpcParams, JsonRpcResult, JsonValue } from './common';
-import { JsonValueSchema } from './common';
+import { z } from "zod";
+import type { AgentCapabilities } from "./agent-registry";
+import type { JsonRpcParams, JsonRpcResult, JsonValue } from "./common";
+import { JsonValueSchema } from "./common";
 
 // JSON-RPC 2.0 Base Types
 export interface JsonRpcRequest {
-  jsonrpc: '2.0';
+  jsonrpc: "2.0";
   method: string;
   params?: JsonRpcParams;
   id: string | number;
 }
 
 export interface JsonRpcResponse {
-  jsonrpc: '2.0';
+  jsonrpc: "2.0";
   result?: JsonRpcResult;
   error?: JsonRpcError;
   id: string | number | null;
@@ -31,7 +31,7 @@ export interface JsonRpcError {
 }
 
 export interface JsonRpcNotification {
-  jsonrpc: '2.0';
+  jsonrpc: "2.0";
   method: string;
   params?: JsonRpcParams;
 }
@@ -39,113 +39,113 @@ export interface JsonRpcNotification {
 // A2A Protocol Methods
 export enum A2AMethod {
   // Handshake & Authentication
-  HANDSHAKE = 'a2a.handshake',
-  AUTHENTICATE = 'a2a.authenticate',
+  HANDSHAKE = "a2a.handshake",
+  AUTHENTICATE = "a2a.authenticate",
 
   // Agent Discovery
-  DISCOVER_AGENTS = 'a2a.discover',
-  GET_AGENT_INFO = 'a2a.getInfo',
+  DISCOVER_AGENTS = "a2a.discover",
+  GET_AGENT_INFO = "a2a.getInfo",
 
   // Market Operations
-  GET_MARKET_DATA = 'a2a.getMarketData',
-  GET_MARKET_PRICES = 'a2a.getMarketPrices',
-  SUBSCRIBE_MARKET = 'a2a.subscribeMarket',
-  GET_PREDICTIONS = 'a2a.getPredictions',
-  GET_PERPETUALS = 'a2a.getPerpetuals',
-  BUY_SHARES = 'a2a.buyShares',
-  SELL_SHARES = 'a2a.sellShares',
-  OPEN_POSITION = 'a2a.openPosition',
-  CLOSE_POSITION = 'a2a.closePosition',
-  GET_POSITIONS = 'a2a.getPositions',
+  GET_MARKET_DATA = "a2a.getMarketData",
+  GET_MARKET_PRICES = "a2a.getMarketPrices",
+  SUBSCRIBE_MARKET = "a2a.subscribeMarket",
+  GET_PREDICTIONS = "a2a.getPredictions",
+  GET_PERPETUALS = "a2a.getPerpetuals",
+  BUY_SHARES = "a2a.buyShares",
+  SELL_SHARES = "a2a.sellShares",
+  OPEN_POSITION = "a2a.openPosition",
+  CLOSE_POSITION = "a2a.closePosition",
+  GET_POSITIONS = "a2a.getPositions",
 
   // Social Features
-  GET_FEED = 'a2a.getFeed',
-  GET_POST = 'a2a.getPost',
-  CREATE_POST = 'a2a.createPost',
-  DELETE_POST = 'a2a.deletePost',
-  LIKE_POST = 'a2a.likePost',
-  UNLIKE_POST = 'a2a.unlikePost',
-  SHARE_POST = 'a2a.sharePost',
-  GET_COMMENTS = 'a2a.getComments',
-  CREATE_COMMENT = 'a2a.createComment',
-  DELETE_COMMENT = 'a2a.deleteComment',
-  LIKE_COMMENT = 'a2a.likeComment',
+  GET_FEED = "a2a.getFeed",
+  GET_POST = "a2a.getPost",
+  CREATE_POST = "a2a.createPost",
+  DELETE_POST = "a2a.deletePost",
+  LIKE_POST = "a2a.likePost",
+  UNLIKE_POST = "a2a.unlikePost",
+  SHARE_POST = "a2a.sharePost",
+  GET_COMMENTS = "a2a.getComments",
+  CREATE_COMMENT = "a2a.createComment",
+  DELETE_COMMENT = "a2a.deleteComment",
+  LIKE_COMMENT = "a2a.likeComment",
 
   // User Management
-  GET_USER_PROFILE = 'a2a.getUserProfile',
-  UPDATE_PROFILE = 'a2a.updateProfile',
-  GET_BALANCE = 'a2a.getBalance',
-  GET_USER_WALLET = 'a2a.getUserWallet',
-  FOLLOW_USER = 'a2a.followUser',
-  UNFOLLOW_USER = 'a2a.unfollowUser',
-  GET_FOLLOWERS = 'a2a.getFollowers',
-  GET_FOLLOWING = 'a2a.getFollowing',
-  SEARCH_USERS = 'a2a.searchUsers',
+  GET_USER_PROFILE = "a2a.getUserProfile",
+  UPDATE_PROFILE = "a2a.updateProfile",
+  GET_BALANCE = "a2a.getBalance",
+  GET_USER_WALLET = "a2a.getUserWallet",
+  FOLLOW_USER = "a2a.followUser",
+  UNFOLLOW_USER = "a2a.unfollowUser",
+  GET_FOLLOWERS = "a2a.getFollowers",
+  GET_FOLLOWING = "a2a.getFollowing",
+  SEARCH_USERS = "a2a.searchUsers",
 
   // Trades
-  GET_TRADES = 'a2a.getTrades',
-  GET_TRADE_HISTORY = 'a2a.getTradeHistory',
+  GET_TRADES = "a2a.getTrades",
+  GET_TRADE_HISTORY = "a2a.getTradeHistory",
 
   // Chats & Messaging
-  GET_CHATS = 'a2a.getChats',
-  GET_CHAT_MESSAGES = 'a2a.getChatMessages',
-  SEND_MESSAGE = 'a2a.sendMessage',
-  CREATE_GROUP = 'a2a.createGroup',
-  LEAVE_CHAT = 'a2a.leaveChat',
-  GET_UNREAD_COUNT = 'a2a.getUnreadCount',
+  GET_CHATS = "a2a.getChats",
+  GET_CHAT_MESSAGES = "a2a.getChatMessages",
+  SEND_MESSAGE = "a2a.sendMessage",
+  CREATE_GROUP = "a2a.createGroup",
+  LEAVE_CHAT = "a2a.leaveChat",
+  GET_UNREAD_COUNT = "a2a.getUnreadCount",
 
   // Notifications
-  GET_NOTIFICATIONS = 'a2a.getNotifications',
-  MARK_NOTIFICATIONS_READ = 'a2a.markNotificationsRead',
-  GET_GROUP_INVITES = 'a2a.getGroupInvites',
-  ACCEPT_GROUP_INVITE = 'a2a.acceptGroupInvite',
-  DECLINE_GROUP_INVITE = 'a2a.declineGroupInvite',
+  GET_NOTIFICATIONS = "a2a.getNotifications",
+  MARK_NOTIFICATIONS_READ = "a2a.markNotificationsRead",
+  GET_GROUP_INVITES = "a2a.getGroupInvites",
+  ACCEPT_GROUP_INVITE = "a2a.acceptGroupInvite",
+  DECLINE_GROUP_INVITE = "a2a.declineGroupInvite",
 
   // Leaderboard & Stats
-  GET_LEADERBOARD = 'a2a.getLeaderboard',
-  GET_USER_STATS = 'a2a.getUserStats',
-  GET_SYSTEM_STATS = 'a2a.getSystemStats',
+  GET_LEADERBOARD = "a2a.getLeaderboard",
+  GET_USER_STATS = "a2a.getUserStats",
+  GET_SYSTEM_STATS = "a2a.getSystemStats",
 
   // Rewards & Referrals
-  GET_REFERRALS = 'a2a.getReferrals',
-  GET_REFERRAL_STATS = 'a2a.getReferralStats',
-  GET_REFERRAL_CODE = 'a2a.getReferralCode',
+  GET_REFERRALS = "a2a.getReferrals",
+  GET_REFERRAL_STATS = "a2a.getReferralStats",
+  GET_REFERRAL_CODE = "a2a.getReferralCode",
 
   // Reputation
-  GET_REPUTATION = 'a2a.getReputation',
-  GET_REPUTATION_BREAKDOWN = 'a2a.getReputationBreakdown',
+  GET_REPUTATION = "a2a.getReputation",
+  GET_REPUTATION_BREAKDOWN = "a2a.getReputationBreakdown",
 
   // Trending & Discovery
-  GET_TRENDING_TAGS = 'a2a.getTrendingTags',
-  GET_POSTS_BY_TAG = 'a2a.getPostsByTag',
+  GET_TRENDING_TAGS = "a2a.getTrendingTags",
+  GET_POSTS_BY_TAG = "a2a.getPostsByTag",
 
   // Organizations
-  GET_ORGANIZATIONS = 'a2a.getOrganizations',
+  GET_ORGANIZATIONS = "a2a.getOrganizations",
 
   // x402 Micropayments
-  PAYMENT_REQUEST = 'a2a.paymentRequest',
-  PAYMENT_RECEIPT = 'a2a.paymentReceipt',
+  PAYMENT_REQUEST = "a2a.paymentRequest",
+  PAYMENT_RECEIPT = "a2a.paymentReceipt",
 
   // Moderation
-  BLOCK_USER = 'a2a.blockUser',
-  UNBLOCK_USER = 'a2a.unblockUser',
-  MUTE_USER = 'a2a.muteUser',
-  UNMUTE_USER = 'a2a.unmuteUser',
-  REPORT_USER = 'a2a.reportUser',
-  REPORT_POST = 'a2a.reportPost',
-  GET_BLOCKS = 'a2a.getBlocks',
-  GET_MUTES = 'a2a.getMutes',
-  CHECK_BLOCK_STATUS = 'a2a.checkBlockStatus',
-  CHECK_MUTE_STATUS = 'a2a.checkMuteStatus',
+  BLOCK_USER = "a2a.blockUser",
+  UNBLOCK_USER = "a2a.unblockUser",
+  MUTE_USER = "a2a.muteUser",
+  UNMUTE_USER = "a2a.unmuteUser",
+  REPORT_USER = "a2a.reportUser",
+  REPORT_POST = "a2a.reportPost",
+  GET_BLOCKS = "a2a.getBlocks",
+  GET_MUTES = "a2a.getMutes",
+  CHECK_BLOCK_STATUS = "a2a.checkBlockStatus",
+  CHECK_MUTE_STATUS = "a2a.checkMuteStatus",
 
   // Points Transfer
-  TRANSFER_POINTS = 'a2a.transferPoints',
+  TRANSFER_POINTS = "a2a.transferPoints",
 
   // Favorites
-  FAVORITE_PROFILE = 'a2a.favoriteProfile',
-  UNFAVORITE_PROFILE = 'a2a.unfavoriteProfile',
-  GET_FAVORITES = 'a2a.getFavorites',
-  GET_FAVORITE_POSTS = 'a2a.getFavoritePosts',
+  FAVORITE_PROFILE = "a2a.favoriteProfile",
+  UNFAVORITE_PROFILE = "a2a.unfavoriteProfile",
+  GET_FAVORITES = "a2a.getFavorites",
+  GET_FAVORITE_POSTS = "a2a.getFavoritePosts",
 }
 
 // Agent Connection Types
@@ -295,8 +295,8 @@ export interface A2AEvent {
 }
 
 export enum A2AEventType {
-  AGENT_CONNECTED = 'agent.connected',
-  AGENT_DISCONNECTED = 'agent.disconnected',
-  MARKET_UPDATE = 'market.update',
-  PAYMENT_RECEIVED = 'payment.received',
+  AGENT_CONNECTED = "agent.connected",
+  AGENT_DISCONNECTED = "agent.disconnected",
+  MARKET_UPDATE = "market.update",
+  PAYMENT_RECEIVED = "payment.received",
 }

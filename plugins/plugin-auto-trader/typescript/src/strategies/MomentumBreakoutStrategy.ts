@@ -1,14 +1,13 @@
 import {
-  TradingStrategy,
-  TradeOrder,
-  TradeType,
+  type AgentState,
+  type OHLCV,
   OrderType,
-  StrategyContextMarketData,
-  AgentState,
-  PortfolioSnapshot,
-  OHLCV,
-} from '../types.ts';
-import { v4 as uuidv4 } from 'uuid';
+  type PortfolioSnapshot,
+  type StrategyContextMarketData,
+  type TradeOrder,
+  TradeType,
+  type TradingStrategy,
+} from "../types.ts";
 
 interface MomentumIndicators {
   // Price momentum
@@ -19,7 +18,7 @@ interface MomentumIndicators {
   // Volume analysis
   volumeRatio: number;
   volumeSpike: boolean;
-  volumeTrend: 'increasing' | 'decreasing' | 'stable';
+  volumeTrend: "increasing" | "decreasing" | "stable";
 
   // Volatility
   atr: number;
@@ -27,7 +26,7 @@ interface MomentumIndicators {
 
   // Trend strength
   adx: number;
-  trendDirection: 'bullish' | 'bearish' | 'neutral';
+  trendDirection: "bullish" | "bearish" | "neutral";
   trendStrength: number;
 
   // Market structure
@@ -38,10 +37,10 @@ interface MomentumIndicators {
 }
 
 export class MomentumBreakoutStrategy implements TradingStrategy {
-  public readonly id = 'momentum-breakout-v1';
-  public readonly name = 'Momentum Breakout Strategy';
+  public readonly id = "momentum-breakout-v1";
+  public readonly name = "Momentum Breakout Strategy";
   public readonly description =
-    'Captures momentum moves in volatile meme coins with volume confirmation';
+    "Captures momentum moves in volatile meme coins with volume confirmation";
 
   // Strategy parameters - adjusted for more realistic trading
   private readonly minVolumeRatio = 1.1; // Further reduced
@@ -61,7 +60,6 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
   // Add debug mode
   private debugMode = true; // Enable by default for testing
   private tradeAttempts = 0;
-  private currentPair: string | null = null; // Track the current pair being tested
   private hasLoggedStart = false;
 
   isReady(): boolean {
@@ -75,7 +73,7 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
 
     // Look for existing position first
     const existingPosition = holdings.find(
-      (key) => key !== 'USDC' && portfolioSnapshot.holdings[key] > 0
+      (key) => key !== "USDC" && portfolioSnapshot.holdings[key] > 0,
     );
 
     if (existingPosition) {
@@ -84,7 +82,7 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
 
     // If no position, look for any non-USDC key (even with 0 balance)
     // This happens when we have historical trades but currently flat
-    const potentialToken = holdings.find((key) => key !== 'USDC');
+    const potentialToken = holdings.find((key) => key !== "USDC");
 
     if (potentialToken) {
       return potentialToken;
@@ -93,15 +91,17 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     // If we only have USDC, we're likely at the start of a simulation
     // The token address should be inferred from the context
     // For now, we'll return a placeholder that will be replaced
-    console.warn('[MomentumBreakout] Could not infer trading pair from portfolio');
-    return 'UNKNOWN';
+    console.warn(
+      "[MomentumBreakout] Could not infer trading pair from portfolio",
+    );
+    return "UNKNOWN";
   }
 
   async decide(params: {
     marketData: StrategyContextMarketData;
     agentState: AgentState;
     portfolioSnapshot: PortfolioSnapshot;
-    agentRuntime?: any;
+    agentRuntime?: unknown;
   }): Promise<TradeOrder | null> {
     const { marketData, portfolioSnapshot } = params;
     const { priceData, currentPrice } = marketData;
@@ -109,7 +109,7 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     // Log initial info once
     if (!this.hasLoggedStart && this.debugMode) {
       console.log(`[MomentumBreakout] Strategy started:`, {
-        minPriceChange: (this.minPriceChange * 100).toFixed(1) + '%',
+        minPriceChange: `${(this.minPriceChange * 100).toFixed(1)}%`,
         minVolumeRatio: this.minVolumeRatio,
         dataPoints: priceData?.length || 0,
         initialPrice: currentPrice,
@@ -120,7 +120,9 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     // Need at least 100 candles for analysis
     if (!priceData || priceData.length < 100) {
       if (this.debugMode && this.tradeAttempts === 0) {
-        console.log(`[MomentumBreakout] Not enough data: ${priceData?.length || 0} candles`);
+        console.log(
+          `[MomentumBreakout] Not enough data: ${priceData?.length || 0} candles`,
+        );
       }
       return null;
     }
@@ -133,13 +135,20 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
 
     // Get current position - look for any non-USDC holding
     const holdings = Object.entries(portfolioSnapshot.holdings);
-    const assetHolding = holdings.find(([key, value]) => key !== 'USDC' && value > 0);
+    const assetHolding = holdings.find(
+      ([key, value]) => key !== "USDC" && value > 0,
+    );
     const hasPosition = assetHolding && assetHolding[1] > 0;
     const assetSymbol = assetHolding ? assetHolding[0] : null;
 
     // Position management
     if (hasPosition && this.activePosition && assetSymbol) {
-      return this.managePosition(currentPrice, indicators, assetSymbol, portfolioSnapshot);
+      return this.managePosition(
+        currentPrice,
+        indicators,
+        assetSymbol,
+        portfolioSnapshot,
+      );
     }
 
     // Entry logic - look for momentum breakout
@@ -148,28 +157,34 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     // Log first few evaluations for debugging
     if (this.debugMode && this.tradeAttempts < 5) {
       const conditions = this.evaluateEntryConditions(indicators);
-      console.log(`[MomentumBreakout] Early evaluation #${this.tradeAttempts + 1}:`, {
-        shouldEnter,
-        price: currentPrice.toFixed(6),
-        indicators: {
-          priceChange5m: (indicators.priceChange5m * 100).toFixed(3) + '%',
-          priceChange15m: (indicators.priceChange15m * 100).toFixed(3) + '%',
-          volumeRatio: indicators.volumeRatio.toFixed(2),
-          trend: indicators.trendDirection,
-          adx: indicators.adx.toFixed(1),
+      console.log(
+        `[MomentumBreakout] Early evaluation #${this.tradeAttempts + 1}:`,
+        {
+          shouldEnter,
+          price: currentPrice.toFixed(6),
+          indicators: {
+            priceChange5m: `${(indicators.priceChange5m * 100).toFixed(3)}%`,
+            priceChange15m: `${(indicators.priceChange15m * 100).toFixed(3)}%`,
+            volumeRatio: indicators.volumeRatio.toFixed(2),
+            trend: indicators.trendDirection,
+            adx: indicators.adx.toFixed(1),
+          },
+          conditions: {
+            momentum: conditions.hasMomentum,
+            volume: conditions.hasVolume,
+            trend: conditions.trendAligned,
+            notAtResistance: conditions.goodEntry,
+            metCount: `${conditions.metConditions}/4`,
+          },
         },
-        conditions: {
-          momentum: conditions.hasMomentum,
-          volume: conditions.hasVolume,
-          trend: conditions.trendAligned,
-          notAtResistance: conditions.goodEntry,
-          metCount: `${conditions.metConditions}/4`,
-        },
-      });
+      );
     }
 
     if (!hasPosition && shouldEnter) {
-      const positionSize = this.calculatePositionSize(portfolioSnapshot.totalValue, currentPrice);
+      const positionSize = this.calculatePositionSize(
+        portfolioSnapshot.totalValue,
+        currentPrice,
+      );
 
       if (positionSize > 0.001) {
         this.activePosition = {
@@ -184,8 +199,8 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
           positionSize: positionSize.toFixed(4),
           totalValue: portfolioSnapshot.totalValue.toFixed(2),
           indicators: {
-            priceChange5m: (indicators.priceChange5m * 100).toFixed(2) + '%',
-            priceChange15m: (indicators.priceChange15m * 100).toFixed(2) + '%',
+            priceChange5m: `${(indicators.priceChange5m * 100).toFixed(2)}%`,
+            priceChange15m: `${(indicators.priceChange15m * 100).toFixed(2)}%`,
             volumeRatio: indicators.volumeRatio.toFixed(2),
             trend: indicators.trendDirection,
             adx: indicators.adx.toFixed(1),
@@ -207,17 +222,20 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     this.tradeAttempts++;
     if (this.debugMode && this.tradeAttempts % 200 === 0) {
       const conditions = this.evaluateEntryConditions(indicators);
-      console.log(`[MomentumBreakout] Periodic evaluation #${this.tradeAttempts}:`, {
-        shouldEnter: conditions.metConditions >= 2,
-        price: currentPrice.toFixed(6),
-        conditions: {
-          momentum: conditions.hasMomentum,
-          volume: conditions.hasVolume,
-          trend: conditions.trendAligned,
-          notAtResistance: conditions.goodEntry,
-          metCount: `${conditions.metConditions}/4`,
+      console.log(
+        `[MomentumBreakout] Periodic evaluation #${this.tradeAttempts}:`,
+        {
+          shouldEnter: conditions.metConditions >= 2,
+          price: currentPrice.toFixed(6),
+          conditions: {
+            momentum: conditions.hasMomentum,
+            volume: conditions.hasVolume,
+            trend: conditions.trendAligned,
+            notAtResistance: conditions.goodEntry,
+            metCount: `${conditions.metConditions}/4`,
+          },
         },
-      });
+      );
     }
 
     return null;
@@ -225,17 +243,19 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
 
   private evaluateEntryConditions(indicators: MomentumIndicators) {
     const hasMomentum =
-      indicators.priceChange5m > this.minPriceChange && indicators.priceChange15m > -0.01; // Allow more negative 15m
+      indicators.priceChange5m > this.minPriceChange &&
+      indicators.priceChange15m > -0.01; // Allow more negative 15m
 
     const hasVolume =
       indicators.volumeRatio > this.minVolumeRatio ||
-      (indicators.volumeRatio > 1.0 && indicators.volumeTrend === 'increasing');
+      (indicators.volumeRatio > 1.0 && indicators.volumeTrend === "increasing");
 
     const trendAligned =
-      (indicators.trendDirection === 'bullish' && indicators.adx > 15) || // Reduced ADX requirement
+      (indicators.trendDirection === "bullish" && indicators.adx > 15) || // Reduced ADX requirement
       indicators.priceChange5m > this.minPriceChange * 1.5; // Lower threshold
 
-    const goodEntry = !indicators.nearResistance || indicators.priceChange5m > 0.005; // Allow entry near resistance if strong momentum
+    const goodEntry =
+      !indicators.nearResistance || indicators.priceChange5m > 0.005; // Allow entry near resistance if strong momentum
 
     const conditions = [hasMomentum, hasVolume, trendAligned, goodEntry];
     const metConditions = conditions.filter((c) => c).length;
@@ -253,9 +273,12 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     const currentPrice = priceData[priceData.length - 1].close;
 
     // Price momentum over different timeframes
-    const price5mAgo = priceData[Math.max(0, priceData.length - 5)]?.close || currentPrice;
-    const price15mAgo = priceData[Math.max(0, priceData.length - 15)]?.close || currentPrice;
-    const price60mAgo = priceData[Math.max(0, priceData.length - 60)]?.close || currentPrice;
+    const price5mAgo =
+      priceData[Math.max(0, priceData.length - 5)]?.close || currentPrice;
+    const price15mAgo =
+      priceData[Math.max(0, priceData.length - 15)]?.close || currentPrice;
+    const price60mAgo =
+      priceData[Math.max(0, priceData.length - 60)]?.close || currentPrice;
 
     const priceChange5m = (currentPrice - price5mAgo) / price5mAgo;
     const priceChange15m = (currentPrice - price15mAgo) / price15mAgo;
@@ -263,21 +286,22 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
 
     // Volume analysis
     const recentVolumes = priceData.slice(-20).map((c) => c.volume);
-    const avgVolume = recentVolumes.reduce((a, b) => a + b) / recentVolumes.length;
+    const avgVolume =
+      recentVolumes.reduce((a, b) => a + b) / recentVolumes.length;
     const currentVolume = priceData[priceData.length - 1].volume;
     const volumeRatio = currentVolume / avgVolume;
 
     // Volume trend
     const volumeTrend5 = recentVolumes.slice(-5).reduce((a, b) => a + b) / 5;
     const volumeTrend10 = recentVolumes.slice(-10).reduce((a, b) => a + b) / 10;
-    let volumeTrend: 'increasing' | 'decreasing' | 'stable';
+    let volumeTrend: "increasing" | "decreasing" | "stable";
 
     if (volumeTrend5 > volumeTrend10 * 1.2) {
-      volumeTrend = 'increasing';
+      volumeTrend = "increasing";
     } else if (volumeTrend5 < volumeTrend10 * 0.8) {
-      volumeTrend = 'decreasing';
+      volumeTrend = "decreasing";
     } else {
-      volumeTrend = 'stable';
+      volumeTrend = "stable";
     }
 
     // ATR for volatility
@@ -296,20 +320,20 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     // Trend direction
     const ema9 = this.calculateEMA(
       priceData.slice(-20).map((c) => c.close),
-      9
+      9,
     );
     const ema21 = this.calculateEMA(
       priceData.slice(-30).map((c) => c.close),
-      21
+      21,
     );
 
-    let trendDirection: 'bullish' | 'bearish' | 'neutral';
+    let trendDirection: "bullish" | "bearish" | "neutral";
     if (ema9 > ema21 * 1.01 && priceChange15m > 0) {
-      trendDirection = 'bullish';
+      trendDirection = "bullish";
     } else if (ema9 < ema21 * 0.99 && priceChange15m < 0) {
-      trendDirection = 'bearish';
+      trendDirection = "bearish";
     } else {
-      trendDirection = 'neutral';
+      trendDirection = "neutral";
     }
 
     return {
@@ -331,7 +355,10 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     };
   }
 
-  private shouldEnter(indicators: MomentumIndicators, currentPrice: number): boolean {
+  private shouldEnter(
+    indicators: MomentumIndicators,
+    _currentPrice: number,
+  ): boolean {
     const conditions = this.evaluateEntryConditions(indicators);
     return conditions.metConditions >= 2; // Reduced from 3 to 2 out of 4
   }
@@ -340,7 +367,7 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     currentPrice: number,
     indicators: MomentumIndicators,
     assetSymbol: string,
-    portfolio: PortfolioSnapshot
+    portfolio: PortfolioSnapshot,
   ): TradeOrder | null {
     if (!this.activePosition) return null;
 
@@ -355,7 +382,7 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
 
     // Exit conditions
     let shouldExit = false;
-    let exitReason = '';
+    let exitReason = "";
 
     // 1. Hit profit target
     if (profitPercent >= this.profitTarget) {
@@ -378,7 +405,7 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     // 4. Momentum reversal
     else if (indicators.priceChange5m < -0.01 && indicators.volumeRatio > 2) {
       shouldExit = true;
-      exitReason = 'Momentum reversal detected';
+      exitReason = "Momentum reversal detected";
     }
 
     if (shouldExit) {
@@ -397,7 +424,10 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     return null;
   }
 
-  private calculatePositionSize(portfolioValue: number, currentPrice: number): number {
+  private calculatePositionSize(
+    portfolioValue: number,
+    currentPrice: number,
+  ): number {
     // Risk-based position sizing
     // We want to risk maxRiskPerTrade of our portfolio
     // If we hit our stop loss, we should lose exactly that amount
@@ -460,10 +490,14 @@ export class MomentumBreakoutStrategy implements TradingStrategy {
     // Simplified ADX calculation
     const priceChanges = [];
     for (let i = 1; i < candles.length; i++) {
-      priceChanges.push(Math.abs(candles[i].close - candles[i - 1].close) / candles[i - 1].close);
+      priceChanges.push(
+        Math.abs(candles[i].close - candles[i - 1].close) /
+          candles[i - 1].close,
+      );
     }
 
-    const avgChange = priceChanges.reduce((a, b) => a + b) / priceChanges.length;
+    const avgChange =
+      priceChanges.reduce((a, b) => a + b) / priceChanges.length;
     return Math.min(avgChange * 1000, 100); // Scale to 0-100
   }
 }

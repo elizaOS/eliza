@@ -1,15 +1,15 @@
-import type {
-  ComponentTypeDefinition as ProtoComponentTypeDefinition,
-  JSONSchemaDefinition as ProtoJSONSchemaDefinition,
-  PluginManifest as ProtoPluginManifest,
-  RouteManifest as ProtoRouteManifest,
-} from "./proto.js";
-import type { JsonValue } from "./proto.js";
 import type { Character } from "./agent";
 import type { Action, Evaluator, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
+import type {
+  JsonValue,
+  ComponentTypeDefinition as ProtoComponentTypeDefinition,
+  JSONSchemaDefinition as ProtoJSONSchemaDefinition,
+  PluginManifest as ProtoPluginManifest,
+  RouteManifest as ProtoRouteManifest,
+} from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
 import type { TestSuite } from "./testing";
@@ -58,8 +58,8 @@ export interface RouteRequest {
  */
 export interface RouteResponse {
   status: (code: number) => RouteResponse;
-  json: (data: JsonValue) => RouteResponse;
-  send: (data: JsonValue) => RouteResponse;
+  json: (data: unknown) => RouteResponse;
+  send: (data: unknown) => RouteResponse;
   end: () => RouteResponse;
   setHeader?: (name: string, value: string | string[]) => RouteResponse;
   sendFile?: (path: string) => RouteResponse;
@@ -114,9 +114,11 @@ export type PluginEvents = {
 
 /** Internal type for runtime event storage - allows dynamic access for event registration */
 export type RuntimeEventStorage = PluginEvents & {
-  [key: string]: ((
-    params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
-  ) => Promise<void>)[] | undefined;
+  [key: string]:
+    | ((
+        params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
+      ) => Promise<void>)[]
+    | undefined;
 };
 
 export interface Plugin {

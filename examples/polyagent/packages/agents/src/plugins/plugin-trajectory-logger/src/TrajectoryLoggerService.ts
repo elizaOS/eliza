@@ -4,12 +4,12 @@
  * Core service for collecting agent interaction trajectories for RL training
  */
 
-import { db, llmCallLogs, trajectories } from '@polyagent/db';
-import type { JsonValue } from '@polyagent/shared';
-import type { UUID } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import { logger } from '../../../shared/logger';
-import { generateSnowflakeId } from '../../../shared/snowflake';
+import type { UUID } from "@elizaos/core";
+import { db, llmCallLogs, trajectories } from "@polyagent/db";
+import type { JsonValue } from "@polyagent/shared";
+import { v4 as uuidv4 } from "uuid";
+import { logger } from "../../../shared/logger";
+import { generateSnowflakeId } from "../../../shared/snowflake";
 import type {
   ActionAttempt,
   EnvironmentState,
@@ -18,7 +18,7 @@ import type {
   RewardComponents,
   Trajectory,
   TrajectoryStep,
-} from './types';
+} from "./types";
 
 export class TrajectoryLoggerService {
   private activeTrajectories: Map<string, Trajectory> = new Map();
@@ -35,7 +35,7 @@ export class TrajectoryLoggerService {
       batchId?: string;
       groupIndex?: number;
       metadata?: Record<string, JsonValue>;
-    } = {}
+    } = {},
   ): string {
     const trajectoryId = uuidv4();
     const now = Date.now();
@@ -57,7 +57,7 @@ export class TrajectoryLoggerService {
       },
       metrics: {
         episodeLength: 0,
-        finalStatus: 'completed',
+        finalStatus: "completed",
       },
       metadata: (options.metadata || {}) as Record<string, JsonValue>,
     };
@@ -86,10 +86,10 @@ export class TrajectoryLoggerService {
       llmCalls: [],
       providerAccesses: [],
       action: {
-        attemptId: '',
+        attemptId: "",
         timestamp: 0,
-        actionType: 'pending',
-        actionName: 'pending',
+        actionType: "pending",
+        actionName: "pending",
         parameters: {},
         success: false,
       },
@@ -107,17 +107,17 @@ export class TrajectoryLoggerService {
    */
   logLLMCall(
     stepId: string,
-    llmCall: Omit<LLMCall, 'callId' | 'timestamp'>
+    llmCall: Omit<LLMCall, "callId" | "timestamp">,
   ): void {
     const trajectory = this.findTrajectoryByStepId(stepId);
     if (!trajectory) {
-      logger.warn('Trajectory not found for LLM call', { stepId });
+      logger.warn("Trajectory not found for LLM call", { stepId });
       return;
     }
 
     const step = trajectory.steps.find((s) => s.stepId === stepId);
     if (!step) {
-      logger.warn('Step not found for LLM call', { stepId });
+      logger.warn("Step not found for LLM call", { stepId });
       return;
     }
 
@@ -133,11 +133,11 @@ export class TrajectoryLoggerService {
     this.saveLLMCallToDB(trajectory.trajectoryId, stepId, fullLLMCall).catch(
       (error) => {
         logger.error(
-          'Failed to save LLM call to database',
+          "Failed to save LLM call to database",
           error,
-          'TrajectoryLoggerService'
+          "TrajectoryLoggerService",
         );
-      }
+      },
     );
   }
 
@@ -147,7 +147,7 @@ export class TrajectoryLoggerService {
   private async saveLLMCallToDB(
     trajectoryId: string,
     stepId: string,
-    llmCall: LLMCall
+    llmCall: LLMCall,
   ): Promise<void> {
     await db.insert(llmCallLogs).values({
       id: await generateSnowflakeId(),
@@ -186,17 +186,17 @@ export class TrajectoryLoggerService {
    */
   logProviderAccess(
     stepId: string,
-    access: Omit<ProviderAccess, 'providerId' | 'timestamp'>
+    access: Omit<ProviderAccess, "providerId" | "timestamp">,
   ): void {
     const trajectory = this.findTrajectoryByStepId(stepId);
     if (!trajectory) {
-      logger.warn('Trajectory not found for provider access', { stepId });
+      logger.warn("Trajectory not found for provider access", { stepId });
       return;
     }
 
     const step = trajectory.steps.find((s) => s.stepId === stepId);
     if (!step) {
-      logger.warn('Step not found for provider access', { stepId });
+      logger.warn("Step not found for provider access", { stepId });
       return;
     }
 
@@ -214,11 +214,11 @@ export class TrajectoryLoggerService {
    */
   logLLMCallByTrajectoryId(
     trajectoryId: string,
-    llmCall: Omit<LLMCall, 'callId' | 'timestamp'>
+    llmCall: Omit<LLMCall, "callId" | "timestamp">,
   ): void {
     const stepId = this.activeStepIds.get(trajectoryId);
     if (!stepId) {
-      logger.warn('No active step for trajectory', { trajectoryId });
+      logger.warn("No active step for trajectory", { trajectoryId });
       return;
     }
     this.logLLMCall(stepId, llmCall);
@@ -229,11 +229,11 @@ export class TrajectoryLoggerService {
    */
   logProviderAccessByTrajectoryId(
     trajectoryId: string,
-    access: Omit<ProviderAccess, 'providerId' | 'timestamp'>
+    access: Omit<ProviderAccess, "providerId" | "timestamp">,
   ): void {
     const stepId = this.activeStepIds.get(trajectoryId);
     if (!stepId) {
-      logger.warn('No active step for trajectory', { trajectoryId });
+      logger.warn("No active step for trajectory", { trajectoryId });
       return;
     }
     this.logProviderAccess(stepId, access);
@@ -252,18 +252,18 @@ export class TrajectoryLoggerService {
   completeStep(
     trajectoryId: string,
     stepId: string,
-    action: Omit<ActionAttempt, 'attemptId' | 'timestamp'>,
-    rewardInfo?: { reward?: number; components?: Partial<RewardComponents> }
+    action: Omit<ActionAttempt, "attemptId" | "timestamp">,
+    rewardInfo?: { reward?: number; components?: Partial<RewardComponents> },
   ): void {
     const trajectory = this.activeTrajectories.get(trajectoryId);
     if (!trajectory) {
-      logger.warn('Trajectory not found for completeStep', { trajectoryId });
+      logger.warn("Trajectory not found for completeStep", { trajectoryId });
       return;
     }
 
     const step = trajectory.steps.find((s) => s.stepId === stepId);
     if (!step) {
-      logger.warn('Step not found for completeStep', { trajectoryId, stepId });
+      logger.warn("Step not found for completeStep", { trajectoryId, stepId });
       return;
     }
 
@@ -294,12 +294,12 @@ export class TrajectoryLoggerService {
    */
   completeCurrentStep(
     trajectoryId: string,
-    action: Omit<ActionAttempt, 'attemptId' | 'timestamp'>,
-    rewardInfo?: { reward?: number; components?: Partial<RewardComponents> }
+    action: Omit<ActionAttempt, "attemptId" | "timestamp">,
+    rewardInfo?: { reward?: number; components?: Partial<RewardComponents> },
   ): void {
     const stepId = this.activeStepIds.get(trajectoryId);
     if (!stepId) {
-      logger.warn('No active step for trajectory', { trajectoryId });
+      logger.warn("No active step for trajectory", { trajectoryId });
       return;
     }
     this.completeStep(trajectoryId, stepId, action, rewardInfo);
@@ -310,12 +310,12 @@ export class TrajectoryLoggerService {
    */
   async endTrajectory(
     trajectoryId: string,
-    status: 'completed' | 'terminated' | 'error' | 'timeout',
-    finalMetrics?: Record<string, JsonValue>
+    status: "completed" | "terminated" | "error" | "timeout",
+    finalMetrics?: Record<string, JsonValue>,
   ): Promise<void> {
     const trajectory = this.activeTrajectories.get(trajectoryId);
     if (!trajectory) {
-      logger.warn('Trajectory not found for endTrajectory', { trajectoryId });
+      logger.warn("Trajectory not found for endTrajectory", { trajectoryId });
       return;
     }
 
@@ -365,14 +365,14 @@ export class TrajectoryLoggerService {
     });
 
     logger.info(
-      'Trajectory saved to database',
+      "Trajectory saved to database",
       {
         trajectoryId,
         agentId: trajectory.agentId,
         steps: trajectory.steps.length,
         totalReward: trajectory.totalReward,
       },
-      'TrajectoryLoggerService'
+      "TrajectoryLoggerService",
     );
 
     // Keep in memory for retrieval

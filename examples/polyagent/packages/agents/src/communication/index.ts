@@ -7,5 +7,5 @@
  * @packageDocumentation
  */
 
-export * from './CommunicationHub';
-export * from './EventBus';
+export * from "./CommunicationHub";
+export * from "./EventBus";

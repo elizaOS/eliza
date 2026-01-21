@@ -9,27 +9,49 @@
 //   OptimizedMomentumStrategy,
 //   DEFAULT_PARAMS,
 // } from '../strategies/OptimizedMomentumStrategy.ts';
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 
 dotenv.config();
 
 // Early exit - services not implemented
 // This check ensures the script fails fast if run
-if (typeof require !== 'undefined' && require.main === module) {
-  throw new Error('This script requires SimulationService, StrategyRegistryService, HistoricalDataService, PerformanceReportingService, and OptimizedMomentumStrategy which are not yet implemented');
+if (typeof require !== "undefined" && require.main === module) {
+  throw new Error(
+    "This script requires SimulationService, StrategyRegistryService, HistoricalDataService, PerformanceReportingService, and OptimizedMomentumStrategy which are not yet implemented",
+  );
 }
 
 // Test tokens - expand this list for production
-const TEST_TOKENS = [
-  { address: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', symbol: 'BONK', name: 'Bonk' },
-  { address: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', symbol: 'WIF', name: 'dogwifhat' },
-  { address: '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr', symbol: 'POPCAT', name: 'Popcat' },
-  { address: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', symbol: 'JUP', name: 'Jupiter' },
-  { address: 'rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof', symbol: 'RENDER', name: 'Render' },
+const _TEST_TOKENS = [
+  {
+    address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+    symbol: "BONK",
+    name: "Bonk",
+  },
+  {
+    address: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+    symbol: "WIF",
+    name: "dogwifhat",
+  },
+  {
+    address: "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+    symbol: "POPCAT",
+    name: "Popcat",
+  },
+  {
+    address: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+    symbol: "JUP",
+    name: "Jupiter",
+  },
+  {
+    address: "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof",
+    symbol: "RENDER",
+    name: "Render",
+  },
 ];
 
 // Parameter grid for optimization
-const PARAM_GRID = {
+const _PARAM_GRID = {
   minVolumeRatio: [1.2, 1.5, 2.0],
   minPriceChange: [0.005, 0.008, 0.012],
   minTrendStrength: [20, 25, 30],
@@ -43,7 +65,7 @@ const PARAM_GRID = {
 };
 
 interface OptimizationResult {
-  params: any;
+  params: Record<string, unknown>;
   avgReturn: number;
   sharpeRatio: number;
   maxDrawdown: number;
@@ -54,16 +76,17 @@ interface OptimizationResult {
 }
 
 // Calculate Sharpe ratio
-function calculateSharpeRatio(returns: number[]): number {
+function _calculateSharpeRatio(returns: number[]): number {
   if (returns.length === 0) return 0;
   const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
-  const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
+  const variance =
+    returns.reduce((sum, r) => sum + (r - avgReturn) ** 2, 0) / returns.length;
   const stdDev = Math.sqrt(variance);
   return stdDev > 0 ? (avgReturn * 252) / (stdDev * Math.sqrt(252)) : 0; // Annualized
 }
 
 // Calculate max drawdown
-function calculateMaxDrawdown(portfolioValues: number[]): number {
+function _calculateMaxDrawdown(portfolioValues: number[]): number {
   let maxDrawdown = 0;
   let peak = portfolioValues[0];
 
@@ -81,26 +104,25 @@ function calculateMaxDrawdown(portfolioValues: number[]): number {
 }
 
 // Buy and hold benchmark - commented out until services are implemented
-async function runBuyAndHoldBenchmark(
+async function _runBuyAndHoldBenchmark(
   _simulationService: unknown,
   _token: unknown,
   _startDate: Date,
   _endDate: Date,
-  _initialCapital: number
+  _initialCapital: number,
 ): Promise<number> {
-  throw new Error('Services not implemented');
-  return 0;
+  throw new Error("Services not implemented");
 }
 
 // Test a single parameter combination - commented out until services are implemented
-async function testParameterCombination(
+async function _testParameterCombination(
   _params: unknown,
   _services: Map<string, unknown>,
   _tokens: unknown[],
   _timeframe: { start: Date; end: Date },
-  _initialCapital: number
+  _initialCapital: number,
 ): Promise<OptimizationResult> {
-  throw new Error('Services not implemented');
+  throw new Error("Services not implemented");
   /* Commented out until services are implemented
   const results = [];
   const returns = [];
@@ -142,7 +164,7 @@ async function testParameterCombination(
 
       // Track trades
       totalTrades += result.trades.length;
-      const wins = result.trades.filter((t: any) => t.realizedPnl && t.realizedPnl > 0).length;
+      const wins = result.trades.filter((t: { realizedPnl?: number }) => t.realizedPnl && t.realizedPnl > 0).length;
       totalWins += wins;
 
       results.push({
@@ -151,7 +173,7 @@ async function testParameterCombination(
         benchmarkReturn,
         outperformance: strategyReturn - benchmarkReturn,
         trades: result.trades.length,
-        portfolioValues: result.portfolioSnapshots.map((s: any) => s.totalValue),
+        portfolioValues: result.portfolioSnapshots.map((s: { totalValue: number }) => s.totalValue),
       });
     } catch (error) {
       console.error(`Error testing ${token.symbol}:`, error);
@@ -192,20 +214,12 @@ async function testParameterCombination(
     benchmarkOutperformance: avgReturn - avgBenchmark,
   };
   */
-  return {
-    params: {},
-    avgReturn: 0,
-    sharpeRatio: 0,
-    maxDrawdown: 0,
-    winRate: 0,
-    avgTradesPerDay: 0,
-    profitableTokens: 0,
-    benchmarkOutperformance: 0,
-  };
 }
 
 // Generate parameter combinations
-function* generateParamCombinations(grid: any): Generator<any> {
+function* _generateParamCombinations(
+  grid: Record<string, number[]>,
+): Generator<Record<string, unknown>> {
   const keys = Object.keys(grid);
   const values = keys.map((k) => grid[k]);
   const indices = new Array(keys.length).fill(0);
@@ -236,7 +250,9 @@ function* generateParamCombinations(grid: any): Generator<any> {
 }
 
 async function main() {
-  throw new Error('This script requires SimulationService, StrategyRegistryService, HistoricalDataService, PerformanceReportingService, and OptimizedMomentumStrategy which are not yet implemented');
+  throw new Error(
+    "This script requires SimulationService, StrategyRegistryService, HistoricalDataService, PerformanceReportingService, and OptimizedMomentumStrategy which are not yet implemented",
+  );
   /* Commented out until services are implemented
   console.log('🔧 Strategy Parameter Optimization\n');
 
@@ -373,6 +389,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  console.error("Fatal error:", error);
   process.exit(1);
 });

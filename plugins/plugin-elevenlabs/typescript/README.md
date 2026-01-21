@@ -7,7 +7,7 @@ This plugin provides integration with ElevenLabs text-to-speech services through
 Add the plugin to your character configuration:
 
 ```json
-"plugins": ["@elizaos-plugins/plugin-elevenlabs"]
+"plugins": ["@elizaos/plugin-elevenlabs"]
 ```
 
 ## Configuration

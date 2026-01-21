@@ -398,9 +398,7 @@ Aliases:
   }
 }
 
-function normalizeSubAgentType(
-  input: string | undefined,
-): SubAgentType | null {
+function normalizeSubAgentType(input: string | undefined): SubAgentType | null {
   const raw = (input ?? "").trim().toLowerCase();
   if (!raw) return null;
 

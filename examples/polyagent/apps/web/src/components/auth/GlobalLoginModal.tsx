@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
-import { useLoginModal } from '@/hooks/useLoginModal';
-import { LoginModal } from './LoginModal';
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import { useLoginModal } from "@/hooks/useLoginModal";
+import { LoginModal } from "./LoginModal";
 
 /**
  * Global login modal content component.
@@ -19,14 +19,14 @@ function GlobalLoginModalContent() {
   const searchParams = useSearchParams();
 
   // Check if dev mode is enabled via URL parameter
-  const isDevMode = searchParams.get('dev') === 'true';
+  const isDevMode = searchParams.get("dev") === "true";
 
   // Hide on production (polyagent.app) on home page unless ?dev=true
   const isProduction =
-    typeof window !== 'undefined' &&
-    window.location.hostname === 'polyagent.app';
+    typeof window !== "undefined" &&
+    window.location.hostname === "polyagent.app";
   const isHomePage =
-    typeof window !== 'undefined' && window.location.pathname === '/';
+    typeof window !== "undefined" && window.location.pathname === "/";
   const shouldHide = isProduction && isHomePage && !isDevMode;
 
   // If should be hidden, don't render anything

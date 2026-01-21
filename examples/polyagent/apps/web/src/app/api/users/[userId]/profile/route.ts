@@ -118,9 +118,9 @@ import {
   optionalAuth,
   successResponse,
   withErrorHandling,
-} from '@polyagent/api';
-import { logger, UserIdParamSchema } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
+} from "@polyagent/api";
+import { logger, UserIdParamSchema } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET Handler for User Profile
@@ -160,7 +160,7 @@ import type { NextRequest } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     const params = await context.params;
     const { userId } = UserIdParamSchema.parse(params);
@@ -205,7 +205,7 @@ export const GET = withErrorHandling(
       logger.info(
         "User not found - new Privy user who hasn't completed signup",
         { userId },
-        'GET /api/users/[userId]/profile'
+        "GET /api/users/[userId]/profile",
       );
       return successResponse({
         user: null,
@@ -216,9 +216,9 @@ export const GET = withErrorHandling(
     const stats = await cachedDb.getUserProfileStats(dbUser.id);
 
     logger.info(
-      'User profile fetched successfully',
+      "User profile fetched successfully",
       { userId, stats },
-      'GET /api/users/[userId]/profile'
+      "GET /api/users/[userId]/profile",
     );
 
     return successResponse({
@@ -261,5 +261,5 @@ export const GET = withErrorHandling(
         },
       },
     });
-  }
+  },
 );

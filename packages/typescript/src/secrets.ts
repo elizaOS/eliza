@@ -2,7 +2,9 @@ import type { Character } from "./types";
 import { detectEnvironment } from "./utils/environment";
 
 export function hasCharacterSecrets(character: Character): boolean {
-  return Boolean(character.secrets && Object.keys(character.secrets).length > 0);
+  return Boolean(
+    character.secrets && Object.keys(character.secrets).length > 0,
+  );
 }
 
 async function loadSecretsNodeImpl(character: Character): Promise<boolean> {
@@ -13,9 +15,7 @@ async function loadSecretsNodeImpl(character: Character): Promise<boolean> {
     }
   }
 
-  const existingSecrets = character.secrets
-    ? { ...character.secrets }
-    : {};
+  const existingSecrets = character.secrets ? { ...character.secrets } : {};
 
   character.secrets = {
     ...envVars,

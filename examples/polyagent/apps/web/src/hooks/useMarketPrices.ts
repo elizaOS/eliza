@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState } from "react";
 
-import { useSSEChannel } from '@/hooks/useSSE';
+import { useSSEChannel } from "@/hooks/useSSE";
 
 /**
  * Represents a live market price update.
@@ -21,23 +21,23 @@ const deriveTicker = (update: Record<string, unknown>): string | null => {
   const direct = normalizeTicker(update.ticker as string | undefined);
   if (direct) return direct;
 
-  if (update.metadata && typeof update.metadata === 'object') {
+  if (update.metadata && typeof update.metadata === "object") {
     const metaTicker = normalizeTicker(
-      (update.metadata as Record<string, unknown>).ticker as string | undefined
+      (update.metadata as Record<string, unknown>).ticker as string | undefined,
     );
     if (metaTicker) return metaTicker;
   }
 
   const organizationId =
-    typeof update.organizationId === 'string'
+    typeof update.organizationId === "string"
       ? update.organizationId
       : undefined;
-  return organizationId ? organizationId.toUpperCase().replace(/-/g, '') : null;
+  return organizationId ? organizationId.toUpperCase().replace(/-/g, "") : null;
 };
 
 const derivePrice = (update: Record<string, unknown>): number | null => {
   const candidate = update.price ?? update.newPrice;
-  const price = typeof candidate === 'number' ? candidate : Number(candidate);
+  const price = typeof candidate === "number" ? candidate : Number(candidate);
   return Number.isFinite(price) ? Number(price) : null;
 };
 
@@ -69,12 +69,12 @@ export function useMarketPrices(targetTickers: string[]) {
 
   const normalizedTargets = useMemo(
     () => targetTickers.filter(Boolean).map((ticker) => ticker.toUpperCase()),
-    [targetTickers]
+    [targetTickers],
   );
 
-  useSSEChannel('markets', (payload) => {
-    const type = typeof payload.type === 'string' ? payload.type : '';
-    if (type !== 'price_update' && type !== 'perp_price_update') return;
+  useSSEChannel("markets", (payload) => {
+    const type = typeof payload.type === "string" ? payload.type : "";
+    if (type !== "price_update" && type !== "perp_price_update") return;
 
     const updates = Array.isArray(payload.updates) ? payload.updates : [];
     if (updates.length === 0) return;
@@ -83,7 +83,7 @@ export function useMarketPrices(targetTickers: string[]) {
       const next = new Map(prev);
 
       for (const raw of updates) {
-        if (!raw || typeof raw !== 'object') continue;
+        if (!raw || typeof raw !== "object") continue;
         const update = raw as Record<string, unknown>;
 
         const ticker = deriveTicker(update);
@@ -102,7 +102,7 @@ export function useMarketPrices(targetTickers: string[]) {
           ticker,
           price,
           changePercent:
-            typeof update.changePercent === 'number'
+            typeof update.changePercent === "number"
               ? update.changePercent
               : undefined,
         });

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from elizaos.action_docs import get_canonical_action_example_calls
-from elizaos.generated.spec_helpers import require_provider_spec
 from google.protobuf.json_format import MessageToDict
 
+from elizaos.action_docs import get_canonical_action_example_calls
+from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 from elizaos.types.components import ActionExample
 
@@ -47,9 +47,7 @@ def _format_action_parameters(parameters: list[ActionParameter]) -> str:
         )
         enum_str = f" [values: {', '.join(param.schema_def.enum)}]" if param.schema_def.enum else ""
         examples_str = (
-            f" [examples: {', '.join(repr(v) for v in param.examples)}]"
-            if param.examples
-            else ""
+            f" [examples: {', '.join(repr(v) for v in param.examples)}]" if param.examples else ""
         )
         lines.append(
             f"    - {param.name}{required_str}: {param.description} ({type_str}{enum_str}{default_str}{examples_str})"
@@ -137,7 +135,9 @@ def format_action_call_examples(actions: list[Action], max_examples: int = 5) ->
             if not all(isinstance(a, str) for a in action_names):
                 continue
 
-            actions_xml = "\n".join(f"  <action>{_escape_xml_text(a)}</action>" for a in action_names)
+            actions_xml = "\n".join(
+                f"  <action>{_escape_xml_text(a)}</action>" for a in action_names
+            )
 
             params_xml = ""
             if isinstance(params, dict):
@@ -164,7 +164,9 @@ def format_action_call_examples(actions: list[Action], max_examples: int = 5) ->
                 if blocks_xml:
                     params_xml = "\n<params>\n" + "\n".join(blocks_xml) + "\n</params>"
 
-            blocks.append(f"User: {user}\nAssistant:\n<actions>\n{actions_xml}\n</actions>{params_xml}")
+            blocks.append(
+                f"User: {user}\nAssistant:\n<actions>\n{actions_xml}\n</actions>{params_xml}"
+            )
             if len(blocks) >= max_examples:
                 return "\n\n".join(blocks)
 
@@ -231,9 +233,7 @@ async def get_actions(
                             "description": p.description,
                             "required": bool(p.required),
                             "examples": p.examples,
-                            "schema": MessageToDict(
-                                p.schema, preserving_proto_field_name=False
-                            )
+                            "schema": MessageToDict(p.schema, preserving_proto_field_name=False)
                             if hasattr(p, "schema")
                             else None,
                         }

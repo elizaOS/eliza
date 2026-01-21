@@ -1,12 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  cleanupTestRuntime,
-  createTestRuntime,
-} from "./test-utils";
 import * as entities from "../entities";
 import * as logger_module from "../logger";
 import { findWorldsForOwner, getUserServerRole } from "../roles";
 import { type IAgentRuntime, Role, type UUID, type World } from "../types";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 describe("roles utilities", () => {
   let runtime: IAgentRuntime;

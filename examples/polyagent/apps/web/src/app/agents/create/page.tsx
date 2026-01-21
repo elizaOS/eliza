@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
-import { ArrowLeft, Bot, Loader2, Sparkles } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
-import { toast } from 'sonner';
-import { LoginButton } from '@/components/auth/LoginButton';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
+import { cn } from "@polyagent/shared";
+import { ArrowLeft, Bot, Loader2, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 
-type RiskTolerance = 'conservative' | 'moderate' | 'aggressive';
+type RiskTolerance = "conservative" | "moderate" | "aggressive";
 
 interface AgentFormData {
   name: string;
@@ -37,14 +37,16 @@ Always explain your reasoning before placing trades.`;
 const DEFAULT_TRADING_STRATEGY = `Focus on markets with high liquidity and clear resolution criteria. Prefer markets resolving within 1-2 weeks for faster capital turnover. Look for information asymmetry and news catalysts that may move prices.`;
 
 const RISK_DESCRIPTIONS: Record<RiskTolerance, string> = {
-  conservative: 'Small positions, prefer high-liquidity markets, avoid speculative bets',
-  moderate: 'Balanced approach, mix of safe and speculative positions',
-  aggressive: 'Larger positions, willing to take contrarian bets with higher upside',
+  conservative:
+    "Small positions, prefer high-liquidity markets, avoid speculative bets",
+  moderate: "Balanced approach, mix of safe and speculative positions",
+  aggressive:
+    "Larger positions, willing to take contrarian bets with higher upside",
 };
 
 function generateRandomUsername(): string {
-  const adjectives = ['swift', 'smart', 'keen', 'bold', 'wise', 'bright'];
-  const nouns = ['trader', 'oracle', 'sage', 'analyst', 'scout', 'hawk'];
+  const adjectives = ["swift", "smart", "keen", "bold", "wise", "bright"];
+  const nouns = ["trader", "oracle", "sage", "analyst", "scout", "hawk"];
   const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
   const noun = nouns[Math.floor(Math.random() * nouns.length)];
   const num = Math.floor(Math.random() * 1000);
@@ -63,27 +65,27 @@ export default function CreateAgentPage() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const [formData, setFormData] = useState<AgentFormData>({
-    name: '',
+    name: "",
     username: generateRandomUsername(),
-    bio: '',
+    bio: "",
     profileImageUrl: generateRandomProfilePic(),
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     tradingStrategy: DEFAULT_TRADING_STRATEGY,
-    riskTolerance: 'moderate',
+    riskTolerance: "moderate",
     maxPositionSize: 100,
     tradingEnabled: true,
   });
 
   const updateField = <K extends keyof AgentFormData>(
     field: K,
-    value: AgentFormData[K]
+    value: AgentFormData[K],
   ) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const generateWithAI = async (field: 'systemPrompt' | 'tradingStrategy') => {
+  const generateWithAI = async (field: "systemPrompt" | "tradingStrategy") => {
     if (!formData.name) {
-      toast.error('Please enter an agent name first');
+      toast.error("Please enter an agent name first");
       return;
     }
 
@@ -91,11 +93,11 @@ export default function CreateAgentPage() {
     const token = await getAccessToken();
 
     try {
-      const res = await fetch('/api/agents/generate-field', {
-        method: 'POST',
+      const res = await fetch("/api/agents/generate-field", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           field,
@@ -110,12 +112,12 @@ export default function CreateAgentPage() {
       if (res.ok) {
         const data = await res.json();
         updateField(field, data.content);
-        toast.success('Generated successfully');
+        toast.success("Generated successfully");
       } else {
-        toast.error('Failed to generate');
+        toast.error("Failed to generate");
       }
     } catch {
-      toast.error('Failed to generate');
+      toast.error("Failed to generate");
     } finally {
       setIsGenerating(false);
     }
@@ -123,15 +125,15 @@ export default function CreateAgentPage() {
 
   const handleCreate = useCallback(async () => {
     if (!formData.name.trim()) {
-      toast.error('Agent name is required');
+      toast.error("Agent name is required");
       return;
     }
     if (!formData.username.trim() || formData.username.length < 3) {
-      toast.error('Username must be at least 3 characters');
+      toast.error("Username must be at least 3 characters");
       return;
     }
     if (!formData.systemPrompt.trim()) {
-      toast.error('System prompt is required');
+      toast.error("System prompt is required");
       return;
     }
 
@@ -139,17 +141,17 @@ export default function CreateAgentPage() {
 
     const token = await getAccessToken();
     if (!token) {
-      toast.error('Please sign in to create an agent');
+      toast.error("Please sign in to create an agent");
       setIsCreating(false);
       return;
     }
 
     try {
-      const response = await fetch('/api/agents', {
-        method: 'POST',
+      const response = await fetch("/api/agents", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           name: formData.name,
@@ -171,17 +173,17 @@ export default function CreateAgentPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        toast.error(errorData.error || 'Failed to create agent');
+        toast.error(errorData.error || "Failed to create agent");
         setIsCreating(false);
         return;
       }
 
       const result = await response.json();
-      toast.success('Agent created successfully!');
+      toast.success("Agent created successfully!");
       router.push(`/agents/${result.agent.id}`);
     } catch (error) {
-      console.error('Failed to create agent:', error);
-      toast.error('Failed to create agent');
+      console.error("Failed to create agent:", error);
+      toast.error("Failed to create agent");
       setIsCreating(false);
     }
   }, [formData, getAccessToken, router]);
@@ -223,7 +225,7 @@ export default function CreateAgentPage() {
         {/* Header */}
         <div className="mb-8">
           <Button
-            onClick={() => router.push('/agents')}
+            onClick={() => router.push("/agents")}
             variant="ghost"
             className="mb-4 gap-2"
           >
@@ -257,28 +259,28 @@ export default function CreateAgentPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      updateField('profileImageUrl', generateRandomProfilePic())
+                      updateField("profileImageUrl", generateRandomProfilePic())
                     }
-                    className="absolute -bottom-1 -right-1 rounded-full bg-primary p-1.5 text-primary-foreground hover:bg-primary/90"
+                    className="absolute -right-1 -bottom-1 rounded-full bg-primary p-1.5 text-primary-foreground hover:bg-primary/90"
                   >
                     <Sparkles className="h-3 w-3" />
                   </button>
                 </div>
                 <div className="flex-1 space-y-3">
                   <div>
-                    <label className="mb-1 block text-sm font-medium">
+                    <label className="mb-1 block font-medium text-sm">
                       Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.name}
-                      onChange={(e) => updateField('name', e.target.value)}
+                      onChange={(e) => updateField("name", e.target.value)}
                       placeholder="e.g., Market Maven"
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium">
+                    <label className="mb-1 block font-medium text-sm">
                       Username <span className="text-red-500">*</span>
                     </label>
                     <div className="flex items-center">
@@ -288,8 +290,10 @@ export default function CreateAgentPage() {
                         value={formData.username}
                         onChange={(e) =>
                           updateField(
-                            'username',
-                            e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '')
+                            "username",
+                            e.target.value
+                              .toLowerCase()
+                              .replace(/[^a-z0-9_]/g, ""),
                           )
                         }
                         className="flex-1 border-0 bg-transparent px-1 py-2 text-sm focus:outline-none"
@@ -299,10 +303,10 @@ export default function CreateAgentPage() {
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium">Bio</label>
+                <label className="mb-1 block font-medium text-sm">Bio</label>
                 <textarea
                   value={formData.bio}
-                  onChange={(e) => updateField('bio', e.target.value)}
+                  onChange={(e) => updateField("bio", e.target.value)}
                   placeholder="A brief description of your agent..."
                   rows={2}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
@@ -313,18 +317,20 @@ export default function CreateAgentPage() {
 
           {/* Trading Strategy Section */}
           <section className="rounded-xl border border-border bg-card p-6">
-            <h2 className="mb-4 font-semibold text-lg">Trading Configuration</h2>
+            <h2 className="mb-4 font-semibold text-lg">
+              Trading Configuration
+            </h2>
             <div className="space-y-4">
               <div>
                 <div className="mb-1 flex items-center justify-between">
-                  <label className="text-sm font-medium">
+                  <label className="font-medium text-sm">
                     System Prompt <span className="text-red-500">*</span>
                   </label>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => generateWithAI('systemPrompt')}
+                    onClick={() => generateWithAI("systemPrompt")}
                     disabled={isGenerating}
                     className="gap-1 text-xs"
                   >
@@ -334,22 +340,25 @@ export default function CreateAgentPage() {
                 </div>
                 <textarea
                   value={formData.systemPrompt}
-                  onChange={(e) => updateField('systemPrompt', e.target.value)}
+                  onChange={(e) => updateField("systemPrompt", e.target.value)}
                   rows={6}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm focus:border-primary focus:outline-none"
                 />
                 <p className="mt-1 text-muted-foreground text-xs">
-                  Instructions that define how your agent thinks and makes decisions
+                  Instructions that define how your agent thinks and makes
+                  decisions
                 </p>
               </div>
               <div>
                 <div className="mb-1 flex items-center justify-between">
-                  <label className="text-sm font-medium">Trading Strategy</label>
+                  <label className="font-medium text-sm">
+                    Trading Strategy
+                  </label>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => generateWithAI('tradingStrategy')}
+                    onClick={() => generateWithAI("tradingStrategy")}
                     disabled={isGenerating}
                     className="gap-1 text-xs"
                   >
@@ -359,7 +368,9 @@ export default function CreateAgentPage() {
                 </div>
                 <textarea
                   value={formData.tradingStrategy}
-                  onChange={(e) => updateField('tradingStrategy', e.target.value)}
+                  onChange={(e) =>
+                    updateField("tradingStrategy", e.target.value)
+                  }
                   rows={4}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm focus:border-primary focus:outline-none"
                 />
@@ -375,21 +386,21 @@ export default function CreateAgentPage() {
             <h2 className="mb-4 font-semibold text-lg">Risk Management</h2>
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-medium">
+                <label className="mb-2 block font-medium text-sm">
                   Risk Tolerance
                 </label>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  {(['conservative', 'moderate', 'aggressive'] as const).map(
+                  {(["conservative", "moderate", "aggressive"] as const).map(
                     (level) => (
                       <button
                         key={level}
                         type="button"
-                        onClick={() => updateField('riskTolerance', level)}
+                        onClick={() => updateField("riskTolerance", level)}
                         className={cn(
-                          'rounded-lg border p-3 text-left transition-all',
+                          "rounded-lg border p-3 text-left transition-all",
                           formData.riskTolerance === level
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border hover:border-primary/50'
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/50",
                         )}
                       >
                         <p className="font-medium capitalize">{level}</p>
@@ -397,19 +408,19 @@ export default function CreateAgentPage() {
                           {RISK_DESCRIPTIONS[level]}
                         </p>
                       </button>
-                    )
+                    ),
                   )}
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium">
+                <label className="mb-1 block font-medium text-sm">
                   Max Position Size (USDC)
                 </label>
                 <input
                   type="number"
                   value={formData.maxPositionSize}
                   onChange={(e) =>
-                    updateField('maxPositionSize', Number(e.target.value))
+                    updateField("maxPositionSize", Number(e.target.value))
                   }
                   min={1}
                   max={10000}
@@ -429,17 +440,17 @@ export default function CreateAgentPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    updateField('tradingEnabled', !formData.tradingEnabled)
+                    updateField("tradingEnabled", !formData.tradingEnabled)
                   }
                   className={cn(
-                    'relative h-6 w-11 rounded-full transition-colors',
-                    formData.tradingEnabled ? 'bg-primary' : 'bg-muted'
+                    "relative h-6 w-11 rounded-full transition-colors",
+                    formData.tradingEnabled ? "bg-primary" : "bg-muted",
                   )}
                 >
                   <span
                     className={cn(
-                      'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-                      formData.tradingEnabled ? 'left-5' : 'left-0.5'
+                      "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+                      formData.tradingEnabled ? "left-5" : "left-0.5",
                     )}
                   />
                 </button>
@@ -452,7 +463,7 @@ export default function CreateAgentPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => router.push('/agents')}
+              onClick={() => router.push("/agents")}
               disabled={isCreating}
             >
               Cancel
@@ -468,7 +479,7 @@ export default function CreateAgentPage() {
                   Creating...
                 </>
               ) : (
-                'Create Agent'
+                "Create Agent"
               )}
             </Button>
           </div>

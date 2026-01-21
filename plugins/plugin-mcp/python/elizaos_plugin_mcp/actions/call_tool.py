@@ -66,7 +66,9 @@ class CallToolAction:
         client: McpClientProtocol | None = None,
     ) -> ActionResult:
         selected_tool_obj = context.state.get("selectedTool", {})
-        selected_tool: dict[str, object] = selected_tool_obj if isinstance(selected_tool_obj, dict) else {}
+        selected_tool: dict[str, object] = (
+            selected_tool_obj if isinstance(selected_tool_obj, dict) else {}
+        )
 
         tool_name_obj = selected_tool.get("name", "")
         server_name_obj = selected_tool.get("server", "")

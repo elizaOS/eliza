@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * TypeScript Plugin Bridge Runner for Python
  *
@@ -9,9 +10,9 @@
  * “performative” behavior and to make audits/reviews reproducible.
  */
 
-import { createInterface } from "node:readline";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import { createInterface } from "node:readline";
 
 const pluginPath = process.argv[2];
 if (!pluginPath) {
@@ -57,7 +58,7 @@ async function loadPlugin(absPath) {
   try {
     const mod = await import(absPath);
     return mod.default ?? mod.plugin ?? mod;
-  } catch (e) {
+  } catch (_e) {
     const require = createRequire(import.meta.url);
     const mod = require(absPath);
     return mod.default ?? mod.plugin ?? mod;
@@ -127,7 +128,11 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
         if (!action || typeof action.validate !== "function") {
           return { type: "validate.result", id, valid: false };
         }
-        const valid = await action.validate(null, request.memory, request.state);
+        const valid = await action.validate(
+          null,
+          request.memory,
+          request.state,
+        );
         return { type: "validate.result", id, valid: Boolean(valid) };
       }
 
@@ -137,7 +142,10 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
           return {
             type: "action.result",
             id,
-            result: { success: false, error: `Action not found: ${request.action}` },
+            result: {
+              success: false,
+              error: `Action not found: ${request.action}`,
+            },
           };
         }
         const result = await action.handler(
@@ -164,10 +172,18 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
       case "provider.get": {
         const provider = providers[request.provider];
         if (!provider || typeof provider.get !== "function") {
-          return { type: "provider.result", id, result: { text: null, values: null, data: null } };
+          return {
+            type: "provider.result",
+            id,
+            result: { text: null, values: null, data: null },
+          };
         }
         const result = await provider.get(null, request.memory, request.state);
-        return { type: "provider.result", id, result: result ?? { text: null, values: null, data: null } };
+        return {
+          type: "provider.result",
+          id,
+          result: result ?? { text: null, values: null, data: null },
+        };
       }
 
       case "evaluator.invoke": {
@@ -175,7 +191,11 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
         if (!evaluator || typeof evaluator.handler !== "function") {
           return { type: "action.result", id, result: null };
         }
-        const result = await evaluator.handler(null, request.memory, request.state);
+        const result = await evaluator.handler(
+          null,
+          request.memory,
+          request.state,
+        );
         return {
           type: "action.result",
           id,
@@ -192,10 +212,19 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
       }
 
       default:
-        return { type: "error", id, error: `Unknown request type: ${String(type)}` };
+        return {
+          type: "error",
+          id,
+          error: `Unknown request type: ${String(type)}`,
+        };
     }
   } catch (e) {
-    return { type: "error", id, error: formatError(e).message, details: INCLUDE_DETAILS ? formatError(e) : undefined };
+    return {
+      type: "error",
+      id,
+      error: formatError(e).message,
+      details: INCLUDE_DETAILS ? formatError(e) : undefined,
+    };
   }
 }
 
@@ -243,8 +272,13 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
       bufferedBytes -= len;
     }
 
-    const response = await handleRequest(request, plugin, actions, providers, evaluators);
+    const response = await handleRequest(
+      request,
+      plugin,
+      actions,
+      providers,
+      evaluators,
+    );
     process.stdout.write(`${JSON.stringify(response)}\n`);
   });
 })();
-

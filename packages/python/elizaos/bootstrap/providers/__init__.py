@@ -4,9 +4,9 @@ from .agent_settings import agent_settings_provider
 from .attachments import attachments_provider
 from .capabilities import capabilities_provider
 from .character import character_provider
-from .context_bench import context_bench_provider
 from .choice import choice_provider
 from .contacts import contacts_provider
+from .context_bench import context_bench_provider
 from .current_time import current_time_provider
 from .entities import entities_provider
 from .evaluators import evaluators_provider

@@ -1,4 +1,4 @@
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 
 /**
  * Visual indicator component for pull-to-refresh gesture.
@@ -39,11 +39,11 @@ export function PullToRefreshIndicator({
   return (
     <div
       className={cn(
-        'flex w-full items-center justify-center overflow-hidden bg-background',
+        "flex w-full items-center justify-center overflow-hidden bg-background",
         // Smooth collapse when refreshing ends
         !isRefreshing && pullDistance > 0
-          ? 'transition-all duration-300 ease-out'
-          : 'transition-opacity duration-100'
+          ? "transition-all duration-300 ease-out"
+          : "transition-opacity duration-100",
       )}
       style={{
         height: `${pullDistance}px`,
@@ -52,14 +52,14 @@ export function PullToRefreshIndicator({
     >
       <div
         className={cn(
-          'flex flex-col items-center gap-1 transition-colors duration-200',
-          isReady || isRefreshing ? 'text-[#3462f3]' : 'text-muted-foreground'
+          "flex flex-col items-center gap-1 transition-colors duration-200",
+          isReady || isRefreshing ? "text-[#3462f3]" : "text-muted-foreground",
         )}
       >
         <div
           className={cn(
-            'transition-transform duration-200',
-            isRefreshing && 'animate-spin'
+            "transition-transform duration-200",
+            isRefreshing && "animate-spin",
           )}
         >
           {isRefreshing ? (
@@ -99,10 +99,10 @@ export function PullToRefreshIndicator({
         </div>
         <span className="whitespace-nowrap font-medium text-xs">
           {isRefreshing
-            ? 'Refreshing...'
+            ? "Refreshing..."
             : isReady
-              ? 'Release to refresh'
-              : 'Pull to refresh'}
+              ? "Release to refresh"
+              : "Pull to refresh"}
         </span>
       </div>
     </div>

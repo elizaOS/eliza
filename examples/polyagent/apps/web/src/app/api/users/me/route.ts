@@ -148,15 +148,15 @@ import {
   InternalServerError,
   successResponse,
   withErrorHandling,
-} from '@polyagent/api';
-import { db, eq, sql, users } from '@polyagent/db';
+} from "@polyagent/api";
+import { db, eq, sql, users } from "@polyagent/db";
 import {
   checkForAdminEmail,
   logger,
   type PrivyUserWithEmails,
-} from '@polyagent/shared';
-import type { User as PrivyUser } from '@privy-io/server-auth';
-import type { NextRequest } from 'next/server';
+} from "@polyagent/shared";
+import type { User as PrivyUser } from "@privy-io/server-auth";
+import type { NextRequest } from "next/server";
 
 type PrivyWalletLite = {
   id?: string | null;
@@ -172,21 +172,21 @@ type PrivyUserWithSmartWallet = PrivyUser &
   };
 
 function pickEmbeddedEvmWallet(
-  user: PrivyUserWithSmartWallet
+  user: PrivyUserWithSmartWallet,
 ): PrivyWalletLite | null {
   const candidates: PrivyWalletLite[] = [];
   if (user.wallet) candidates.push(user.wallet);
   if (Array.isArray(user.linkedAccounts)) {
     for (const acc of user.linkedAccounts) {
-      if (acc?.type === 'wallet') candidates.push(acc);
+      if (acc?.type === "wallet") candidates.push(acc);
     }
   }
   return (
     candidates.find(
       (w) =>
-        (w.walletClientType === 'privy' || Boolean(w.id)) &&
-        (!w.chainType || w.chainType === 'ethereum') &&
-        typeof w.address === 'string'
+        (w.walletClientType === "privy" || Boolean(w.id)) &&
+        (!w.chainType || w.chainType === "ethereum") &&
+        typeof w.address === "string",
     ) ?? null
   );
 }
@@ -266,12 +266,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Extract referralCode from query params (passed from frontend)
   const { searchParams } = new URL(request.url);
-  const referralCode = searchParams.get('ref') || null;
+  const referralCode = searchParams.get("ref") || null;
 
   logger.info(
-    'Fetching user profile',
+    "Fetching user profile",
     { privyId, dbUserId: authUser.dbUserId, hasReferralCode: !!referralCode },
-    'GET /api/users/me'
+    "GET /api/users/me",
   );
 
   let [dbUser] = await db
@@ -319,7 +319,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     }
 
     logger.info(
-      'Fetched Privy user data for new user',
+      "Fetched Privy user data for new user",
       {
         privyId,
         hasEmail: !!email,
@@ -327,7 +327,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         hasTwitter: !!twitterUsername,
         hasSmartWallet: !!smartWalletAddress,
       },
-      'GET /api/users/me'
+      "GET /api/users/me",
     );
 
     // Resolve referrer if referralCode provided
@@ -346,20 +346,20 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         resolvedReferrerId = referrerByUsername.id;
 
         logger.info(
-          'Found valid referrer by username for new user',
+          "Found valid referrer by username for new user",
           {
             referrerId: referrerByUsername.id,
             referrerUsername: referrerByUsername.username,
             referredUserId: canonicalUserId,
             referralCode: normalizedCode,
           },
-          'GET /api/users/me'
+          "GET /api/users/me",
         );
       } else if (referrerByUsername?.id === canonicalUserId) {
         logger.warn(
-          'Self-referral attempt blocked (username lookup)',
+          "Self-referral attempt blocked (username lookup)",
           { userId: canonicalUserId, referralCode: normalizedCode },
-          'GET /api/users/me'
+          "GET /api/users/me",
         );
       } else {
         // If not found by username, try by referralCode
@@ -373,33 +373,33 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           resolvedReferrerId = referrerByCode.id;
 
           logger.info(
-            'Found valid referrer by referralCode for new user',
+            "Found valid referrer by referralCode for new user",
             {
               referrerId: referrerByCode.id,
               referrerUsername: referrerByCode.username,
               referredUserId: canonicalUserId,
               referralCode: normalizedCode,
             },
-            'GET /api/users/me'
+            "GET /api/users/me",
           );
         } else if (referrerByCode?.id === canonicalUserId) {
           logger.warn(
-            'Self-referral attempt blocked (referralCode lookup)',
+            "Self-referral attempt blocked (referralCode lookup)",
             { userId: canonicalUserId, referralCode: normalizedCode },
-            'GET /api/users/me'
+            "GET /api/users/me",
           );
         } else {
           logger.warn(
-            'Invalid referral code provided (not found by username or referralCode)',
+            "Invalid referral code provided (not found by username or referralCode)",
             { referralCode: normalizedCode, userId: canonicalUserId },
-            'GET /api/users/me'
+            "GET /api/users/me",
           );
         }
       }
     }
 
     logger.info(
-      'Creating minimal user record on first authentication',
+      "Creating minimal user record on first authentication",
       {
         privyId,
         userId: canonicalUserId,
@@ -409,7 +409,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         farcasterUsername,
         twitterUsername,
       },
-      'GET /api/users/me'
+      "GET /api/users/me",
     );
 
     const { smartWalletAddress: ensuredSmart, embeddedWalletAddress } =
@@ -428,13 +428,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     if (shouldBeAdmin) {
       logger.info(
-        'Auto-promoting user to admin based on verified email domain',
+        "Auto-promoting user to admin based on verified email domain",
         {
           privyId,
-          emailDomain: adminEmail?.split('@')[1] ?? null,
+          emailDomain: adminEmail?.split("@")[1] ?? null,
           emailCount: allVerifiedEmails.length,
         },
-        'GET /api/users/me'
+        "GET /api/users/me",
       );
     }
 
@@ -462,19 +462,19 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       .returning(userSelectFields);
 
     if (!newUser) {
-      throw new InternalServerError('Failed to create user record');
+      throw new InternalServerError("Failed to create user record");
     }
     dbUser = newUser;
 
     logger.info(
-      'Minimal user record created',
+      "Minimal user record created",
       {
         userId: dbUser.id,
         privyId,
         referredBy: dbUser.referredBy,
         email: dbUser.email,
       },
-      'GET /api/users/me'
+      "GET /api/users/me",
     );
   } else if (referralCode && dbUser && !dbUser.profileComplete) {
     // User exists BUT profile not complete - update referredBy with latest referral code (latest wins!)
@@ -507,13 +507,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         .returning(userSelectFields);
 
       if (!updatedUser) {
-        throw new InternalServerError('Failed to update user record');
+        throw new InternalServerError("Failed to update user record");
       }
       dbUser = updatedUser;
 
       if (previousReferrer && previousReferrer !== referrer.id) {
         logger.info(
-          'Updated user with NEW referrer (latest referral wins)',
+          "Updated user with NEW referrer (latest referral wins)",
           {
             userId: dbUser.id,
             previousReferrer,
@@ -521,39 +521,39 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             referrerUsername: referrer.username,
             referralCode,
           },
-          'GET /api/users/me'
+          "GET /api/users/me",
         );
       } else if (!previousReferrer) {
         logger.info(
-          'Updated existing user with referrer',
+          "Updated existing user with referrer",
           {
             userId: dbUser.id,
             referrerId: referrer.id,
             referrerUsername: referrer.username,
             referralCode,
           },
-          'GET /api/users/me'
+          "GET /api/users/me",
         );
       }
     } else if (referrer?.id === dbUser.id) {
       logger.warn(
-        'Self-referral attempt blocked for existing user',
+        "Self-referral attempt blocked for existing user",
         { userId: dbUser.id, referralCode },
-        'GET /api/users/me'
+        "GET /api/users/me",
       );
     }
   } else if (referralCode && dbUser && dbUser.profileComplete) {
     // User has completed profile - don't allow referral changes anymore
     logger.warn(
-      'Referral change blocked - profile already complete',
+      "Referral change blocked - profile already complete",
       { userId: dbUser.id, referralCode, existingReferrer: dbUser.referredBy },
-      'GET /api/users/me'
+      "GET /api/users/me",
     );
   }
 
   // At this point dbUser should always be defined (either fetched or created)
   if (!dbUser) {
-    throw new InternalServerError('Failed to create or find user record');
+    throw new InternalServerError("Failed to create or find user record");
   }
 
   // Auto-promote existing users to admin if they have a verified admin domain email
@@ -567,13 +567,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     if (shouldBeAdmin) {
       logger.info(
-        'Auto-promoting existing user to admin based on verified email domain',
+        "Auto-promoting existing user to admin based on verified email domain",
         {
           userId: dbUser.id,
-          emailDomain: adminEmail?.split('@')[1] ?? null,
+          emailDomain: adminEmail?.split("@")[1] ?? null,
           emailCount: allVerifiedEmails.length,
         },
-        'GET /api/users/me'
+        "GET /api/users/me",
       );
 
       const [updatedUser] = await db
@@ -635,7 +635,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const needsOnchain = dbUser.profileComplete && !dbUser.onChainRegistered;
 
   logger.info(
-    'Authenticated user profile fetched',
+    "Authenticated user profile fetched",
     {
       userId: dbUser.id,
       username: dbUser.username,
@@ -645,7 +645,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       needsOnboarding,
       needsOnchain,
     },
-    'GET /api/users/me'
+    "GET /api/users/me",
   );
 
   return successResponse({

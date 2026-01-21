@@ -105,10 +105,7 @@ export const scheduleFollowUpAction: Action = {
     const parsedResponse =
       parseKeyValueXml<ScheduleFollowUpXmlResult>(response);
     const contactName = parsedResponse?.contactName?.trim();
-    if (
-      !parsedResponse ||
-      (!contactName && !parsedResponse.entityId)
-    ) {
+    if (!parsedResponse || (!contactName && !parsedResponse.entityId)) {
       logger.warn(
         "[ScheduleFollowUp] Failed to parse follow-up information from response",
       );
@@ -125,9 +122,7 @@ export const scheduleFollowUpAction: Action = {
       if (entity?.id) {
         entityId = entity.id;
       } else {
-        throw new Error(
-          `Contact "${contactName}" not found in rolodex`,
-        );
+        throw new Error(`Contact "${contactName}" not found in rolodex`);
       }
     }
 

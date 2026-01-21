@@ -5,7 +5,7 @@
  */
 
 // Import and re-export AgentCapabilities from shared
-import type { AgentCapabilities } from '@polyagent/shared';
+import type { AgentCapabilities } from "@polyagent/shared";
 export type { AgentCapabilities };
 
 /**
@@ -13,13 +13,13 @@ export type { AgentCapabilities };
  */
 export enum AgentType {
   /** User-controlled agents */
-  USER_CONTROLLED = 'USER_CONTROLLED',
+  USER_CONTROLLED = "USER_CONTROLLED",
 
   /** Internal NPC agents */
-  NPC = 'NPC',
+  NPC = "NPC",
 
   /** External agents from ElizaOS, MCP, Agent0, etc. */
-  EXTERNAL = 'EXTERNAL',
+  EXTERNAL = "EXTERNAL",
 }
 
 /**
@@ -27,19 +27,19 @@ export enum AgentType {
  */
 export enum AgentStatus {
   /** Registry entry created, runtime not yet initialized */
-  REGISTERED = 'REGISTERED',
+  REGISTERED = "REGISTERED",
 
   /** AgentRuntime instance created and cached */
-  INITIALIZED = 'INITIALIZED',
+  INITIALIZED = "INITIALIZED",
 
   /** Agent actively participating */
-  ACTIVE = 'ACTIVE',
+  ACTIVE = "ACTIVE",
 
   /** Temporarily paused */
-  PAUSED = 'PAUSED',
+  PAUSED = "PAUSED",
 
   /** Runtime destroyed */
-  TERMINATED = 'TERMINATED',
+  TERMINATED = "TERMINATED",
 }
 
 /**
@@ -67,7 +67,7 @@ export enum TrustLevel {
  */
 export interface AgentCard {
   /** Agent card schema version */
-  version: '1.0';
+  version: "1.0";
 
   /** Unique agent identifier */
   agentId: string;
@@ -91,7 +91,7 @@ export interface AgentCard {
   /** Authentication requirements */
   authentication?: {
     required: boolean;
-    methods: ('apiKey' | 'oauth' | 'wallet')[];
+    methods: ("apiKey" | "oauth" | "wallet")[];
   };
 
   /** Usage limits and pricing */
@@ -220,7 +220,7 @@ export interface AgentDiscoveryFilter {
   requiredDomains?: string[];
 
   /** Match mode: 'any' (OR) or 'all' (AND) */
-  matchMode?: 'any' | 'all';
+  matchMode?: "any" | "all";
 
   /** Pagination */
   limit?: number;
@@ -238,7 +238,7 @@ export interface RuntimeCreationOptions {
   modelOverride?: string;
 
   /** Additional plugins beyond defaults */
-  additionalPlugins?: Array<import('@elizaos/core').Plugin>;
+  additionalPlugins?: Array<import("@elizaos/core").Plugin>;
 
   /** Skip automatic enhancement */
   skipEnhancement?: boolean;
@@ -261,14 +261,14 @@ export interface ExternalAgentConnectionParams {
   endpoint: string;
 
   /** Protocol type */
-  protocol: 'a2a' | 'mcp' | 'agent0' | 'custom';
+  protocol: "a2a" | "mcp" | "agent0" | "custom";
 
   /** Declared capabilities */
   capabilities: AgentCapabilities;
 
   /** Authentication credentials */
   authentication?: {
-    type: 'wallet' | 'apiKey' | 'oauth';
+    type: "wallet" | "apiKey" | "oauth";
     credentials: string;
   };
 

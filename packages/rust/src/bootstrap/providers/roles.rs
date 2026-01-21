@@ -92,9 +92,9 @@ impl Provider for RolesProvider {
         if let Some(entity_id) = message.entity_id {
             if let Ok(Some(entity)) = runtime.get_entity(entity_id).await {
                 if let Some(role) = entity.metadata.get("role") {
-                    let existing = role_info
-                        .iter()
-                        .any(|r| r.get("entityId").and_then(|v| v.as_str()) == Some(&entity_id.to_string()));
+                    let existing = role_info.iter().any(|r| {
+                        r.get("entityId").and_then(|v| v.as_str()) == Some(&entity_id.to_string())
+                    });
 
                     if !existing {
                         role_info.push(serde_json::json!({
@@ -108,14 +108,16 @@ impl Provider for RolesProvider {
         }
 
         if role_info.is_empty() {
-            return Ok(ProviderResult::new("")
-                .with_value("roleCount", 0i64));
+            return Ok(ProviderResult::new("").with_value("roleCount", 0i64));
         }
 
         let formatted: Vec<String> = role_info
             .iter()
             .map(|r| {
-                let name = r.get("entityName").and_then(|v| v.as_str()).unwrap_or("Unknown");
+                let name = r
+                    .get("entityName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
                 let role = r.get("role").and_then(|v| v.as_str()).unwrap_or("none");
                 format!("- {}: {}", name, role)
             })
@@ -125,8 +127,9 @@ impl Provider for RolesProvider {
 
         Ok(ProviderResult::new(text)
             .with_value("roleCount", role_info.len() as i64)
-            .with_data("roles", serde_json::to_value(&role_info).unwrap_or_default()))
+            .with_data(
+                "roles",
+                serde_json::to_value(&role_info).unwrap_or_default(),
+            ))
     }
 }
-
-

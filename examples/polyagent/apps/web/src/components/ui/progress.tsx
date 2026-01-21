@@ -1,5 +1,5 @@
-import { cn } from '@polyagent/shared';
-import React from 'react';
+import { cn } from "@polyagent/shared";
+import React from "react";
 
 /**
  * Progress bar component for displaying completion status.
@@ -15,7 +15,7 @@ import React from 'react';
  * <Progress value={50} max={100} />
  * ```
  */
-export interface ProgressProps extends React.ComponentPropsWithoutRef<'div'> {
+export interface ProgressProps extends React.ComponentPropsWithoutRef<"div"> {
   value?: number;
   max?: number;
 }
@@ -32,8 +32,8 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
         aria-valuemax={max}
         aria-valuenow={value}
         className={cn(
-          'relative h-4 w-full overflow-hidden rounded-full bg-secondary',
-          className
+          "relative h-4 w-full overflow-hidden rounded-full bg-secondary",
+          className,
         )}
         {...props}
       >
@@ -43,7 +43,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
         />
       </div>
     );
-  }
+  },
 );
 
-Progress.displayName = 'Progress';
+Progress.displayName = "Progress";

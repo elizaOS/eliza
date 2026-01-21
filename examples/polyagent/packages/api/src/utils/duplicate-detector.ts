@@ -5,8 +5,8 @@
  * Uses content hashing to detect exact and near-duplicate content.
  */
 
-import { logger } from '@polyagent/shared';
-import crypto from 'crypto';
+import crypto from "node:crypto";
+import { logger } from "@polyagent/shared";
 
 interface DuplicateRecord {
   contentHash: string;
@@ -23,15 +23,15 @@ const duplicateStore = new Map<string, DuplicateRecord[]>();
 export const DUPLICATE_DETECTION_CONFIGS = {
   POST: {
     windowMs: 5 * 60 * 1000, // 5 minutes
-    actionType: 'post',
+    actionType: "post",
   },
   COMMENT: {
     windowMs: 2 * 60 * 1000, // 2 minutes
-    actionType: 'comment',
+    actionType: "comment",
   },
   MESSAGE: {
     windowMs: 1 * 60 * 1000, // 1 minute
-    actionType: 'message',
+    actionType: "message",
   },
 } as const;
 
@@ -41,10 +41,10 @@ export const DUPLICATE_DETECTION_CONFIGS = {
  */
 function hashContent(content: string): string {
   // Normalize content: trim, lowercase, remove extra whitespace
-  const normalized = content.trim().toLowerCase().replace(/\s+/g, ' ');
+  const normalized = content.trim().toLowerCase().replace(/\s+/g, " ");
 
   // Create SHA-256 hash
-  return crypto.createHash('sha256').update(normalized).digest('hex');
+  return crypto.createHash("sha256").update(normalized).digest("hex");
 }
 
 /**
@@ -54,7 +54,7 @@ function hashContent(content: string): string {
 export function checkDuplicate(
   userId: string,
   content: string,
-  config: { windowMs: number; actionType: string }
+  config: { windowMs: number; actionType: string },
 ): { isDuplicate: boolean; lastPostedAt?: Date } {
   const key = `${userId}:${config.actionType}`;
   const contentHash = hashContent(content);
@@ -75,11 +75,11 @@ export function checkDuplicate(
 
   // Check for duplicate
   const duplicate = records.find(
-    (record) => record.contentHash === contentHash
+    (record) => record.contentHash === contentHash,
   );
 
   if (duplicate) {
-    logger.warn('Duplicate content detected', {
+    logger.warn("Duplicate content detected", {
       userId,
       actionType: config.actionType,
       contentHash,
@@ -98,7 +98,7 @@ export function checkDuplicate(
     timestamp: now,
   });
 
-  logger.debug('Content uniqueness check passed', {
+  logger.debug("Content uniqueness check passed", {
     userId,
     actionType: config.actionType,
     contentHash,
@@ -115,7 +115,7 @@ export function checkDuplicate(
 export function clearDuplicates(userId: string, actionType: string): void {
   const key = `${userId}:${actionType}`;
   duplicateStore.delete(key);
-  logger.info('Duplicate records cleared', { userId, actionType });
+  logger.info("Duplicate records cleared", { userId, actionType });
 }
 
 /**
@@ -123,7 +123,7 @@ export function clearDuplicates(userId: string, actionType: string): void {
  */
 export function clearAllDuplicates(): void {
   duplicateStore.clear();
-  logger.info('All duplicate records cleared');
+  logger.info("All duplicate records cleared");
 }
 
 /**
@@ -138,7 +138,7 @@ export function cleanupDuplicates(): void {
   for (const [key, records] of duplicateStore.entries()) {
     // Filter out old records
     const validRecords = records.filter(
-      (record) => now - record.timestamp < maxAge
+      (record) => now - record.timestamp < maxAge,
     );
 
     if (validRecords.length === 0) {
@@ -150,7 +150,7 @@ export function cleanupDuplicates(): void {
   }
 
   if (cleanedCount > 0) {
-    logger.info('Cleaned up old duplicate records', {
+    logger.info("Cleaned up old duplicate records", {
       cleanedCount,
       totalRemaining: duplicateStore.size,
     });
@@ -172,7 +172,7 @@ export function getDuplicateStats(): {
   };
 
   for (const [key, records] of duplicateStore.entries()) {
-    const actionType = key.split(':')[1] || 'unknown';
+    const actionType = key.split(":")[1] || "unknown";
     stats.totalRecords += records.length;
     stats.recordsByType[actionType] =
       (stats.recordsByType[actionType] || 0) + records.length;
@@ -182,6 +182,6 @@ export function getDuplicateStats(): {
 }
 
 // Run cleanup every 5 minutes
-if (typeof setInterval !== 'undefined') {
+if (typeof setInterval !== "undefined") {
   setInterval(cleanupDuplicates, 5 * 60 * 1000);
 }

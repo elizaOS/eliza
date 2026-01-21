@@ -1,13 +1,13 @@
+import type { Memory } from "./memory";
+import type { Content } from "./primitives";
 import type {
+  JsonValue,
   ActionExample as ProtoActionExample,
   ActionParameter as ProtoActionParameter,
   ActionParameterSchema as ProtoActionParameterSchema,
   ActionParameters as ProtoActionParametersType,
   EvaluationExample as ProtoEvaluationExample,
 } from "./proto.js";
-import type { JsonObject, JsonValue } from "./proto.js";
-import type { Memory } from "./memory";
-import type { Content } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
@@ -244,8 +244,11 @@ export type ProviderValue =
  * Data record type that accepts any JSON-serializable values.
  * This is broader than ProviderValue to accommodate domain types
  * like Memory[], Character, Content without requiring casts.
+ * The index signature allows dynamic property access.
  */
-export type ProviderDataRecord = Record<string, ProviderValue>;
+export type ProviderDataRecord = {
+  [key: string]: ProviderValue;
+};
 
 /**
  * Result returned by a provider

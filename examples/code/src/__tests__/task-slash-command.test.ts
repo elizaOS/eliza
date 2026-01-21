@@ -6,16 +6,16 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { handleTaskSlashCommand } from "../lib/task-slash-command.js";
 import {
+  type AgentProvider,
   AgentOrchestratorService as CodeTaskService,
   configureAgentOrchestratorPlugin,
-  type AgentProvider,
   type OrchestratedTask,
   type ProviderTaskExecutionContext,
   type TaskResult,
 } from "@elizaos/plugin-agent-orchestrator";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { handleTaskSlashCommand } from "../lib/task-slash-command.js";
 import type {
   CodeTask,
   CodeTaskMetadata,

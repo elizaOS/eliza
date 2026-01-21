@@ -1,8 +1,8 @@
 use crate::types::{ComputerUseConfig, ComputerUseMode};
 use anyhow::Result;
 use computeruse_rs::Desktop;
-use elizaos_plugin_mcp::{McpClient, StdioTransport, Transport};
 use elizaos_plugin_mcp::types::StdioServerConfig;
+use elizaos_plugin_mcp::{McpClient, StdioTransport, Transport};
 use serde_json::{json, Value};
 use std::env;
 use tracing::info;
@@ -130,7 +130,9 @@ impl ComputerUsePlugin {
     }
 
     fn mcp_mut(&mut self) -> Result<&mut McpClient> {
-        self.mcp.as_mut().ok_or_else(|| anyhow::anyhow!("MCP client not initialized"))
+        self.mcp
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("MCP client not initialized"))
     }
 
     /// Handle an action using a JSON arguments object.
@@ -152,7 +154,10 @@ impl ComputerUsePlugin {
                     .get("name")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing name"))?;
-                let desktop = self.desktop.as_ref().ok_or_else(|| anyhow::anyhow!("No desktop"))?;
+                let desktop = self
+                    .desktop
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No desktop"))?;
                 let _ = desktop.open_application(name)?;
                 Ok(json!({ "success": true }))
             }
@@ -161,8 +166,14 @@ impl ComputerUsePlugin {
                     .get("selector")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing selector"))?;
-                let timeout_ms = args.get("timeoutMs").and_then(|v| v.as_u64()).unwrap_or(5000);
-                let desktop = self.desktop.as_ref().ok_or_else(|| anyhow::anyhow!("No desktop"))?;
+                let timeout_ms = args
+                    .get("timeoutMs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(5000);
+                let desktop = self
+                    .desktop
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No desktop"))?;
                 let el = desktop
                     .locator(selector)
                     .first(Some(std::time::Duration::from_millis(timeout_ms)))
@@ -179,12 +190,18 @@ impl ComputerUsePlugin {
                     .get("text")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing text"))?;
-                let timeout_ms = args.get("timeoutMs").and_then(|v| v.as_u64()).unwrap_or(5000);
+                let timeout_ms = args
+                    .get("timeoutMs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(5000);
                 let clear = args
                     .get("clearBeforeTyping")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true);
-                let desktop = self.desktop.as_ref().ok_or_else(|| anyhow::anyhow!("No desktop"))?;
+                let desktop = self
+                    .desktop
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No desktop"))?;
                 let el = desktop
                     .locator(selector)
                     .first(Some(std::time::Duration::from_millis(timeout_ms)))
@@ -197,7 +214,10 @@ impl ComputerUsePlugin {
                 Ok(json!({ "success": true }))
             }
             (Some("local"), "COMPUTERUSE_GET_APPLICATIONS") => {
-                let desktop = self.desktop.as_ref().ok_or_else(|| anyhow::anyhow!("No desktop"))?;
+                let desktop = self
+                    .desktop
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No desktop"))?;
                 let apps = desktop.applications()?;
                 let names = apps
                     .into_iter()
@@ -213,7 +233,10 @@ impl ComputerUsePlugin {
                 let title = args.get("title").and_then(|v| v.as_str());
                 let max_depth = args.get("maxDepth").and_then(|v| v.as_u64());
 
-                let desktop = self.desktop.as_ref().ok_or_else(|| anyhow::anyhow!("No desktop"))?;
+                let desktop = self
+                    .desktop
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No desktop"))?;
                 let pid = computeruse_rs::find_pid_for_process(desktop, process)?;
                 let tree_config = max_depth.map(|d| computeruse_rs::TreeBuildConfig {
                     max_depth: Some(d as usize),
@@ -248,7 +271,10 @@ impl ComputerUsePlugin {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing selector"))?;
                 let process = args.get("process").and_then(|v| v.as_str());
-                let timeout_ms = args.get("timeoutMs").and_then(|v| v.as_u64()).unwrap_or(5000);
+                let timeout_ms = args
+                    .get("timeoutMs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(5000);
                 let (proc, sel) = parse_process_scoped_selector(selector, process)?;
                 let result = self
                     .mcp_mut()?
@@ -277,7 +303,10 @@ impl ComputerUsePlugin {
                     .get("text")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing text"))?;
-                let timeout_ms = args.get("timeoutMs").and_then(|v| v.as_u64()).unwrap_or(5000);
+                let timeout_ms = args
+                    .get("timeoutMs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(5000);
                 let clear = args
                     .get("clearBeforeTyping")
                     .and_then(|v| v.as_bool())
@@ -330,7 +359,9 @@ impl ComputerUsePlugin {
                 Ok(serde_json::to_value(result)?)
             }
 
-            _ => Ok(json!({ "success": false, "error": format!("Unknown action: {}", action_name) })),
+            _ => {
+                Ok(json!({ "success": false, "error": format!("Unknown action: {}", action_name) }))
+            }
         }
     }
 }
@@ -379,14 +410,16 @@ mod tests {
     #[test]
     fn parses_process_prefix() {
         let (proc, sel) =
-            parse_process_scoped_selector("process:notepad >> role:Button|name:Save", None).unwrap();
+            parse_process_scoped_selector("process:notepad >> role:Button|name:Save", None)
+                .unwrap();
         assert_eq!(proc, "notepad");
         assert_eq!(sel, "role:Button|name:Save");
     }
 
     #[test]
     fn uses_process_hint_when_no_prefix() {
-        let (proc, sel) = parse_process_scoped_selector("role:Button|name:Save", Some("notepad")).unwrap();
+        let (proc, sel) =
+            parse_process_scoped_selector("role:Button|name:Save", Some("notepad")).unwrap();
         assert_eq!(proc, "notepad");
         assert_eq!(sel, "role:Button|name:Save");
     }
@@ -397,4 +430,3 @@ mod tests {
         assert!(err.to_string().contains("Missing process"));
     }
 }
-

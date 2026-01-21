@@ -109,10 +109,12 @@ function filterTrajectories(trajectories: Trajectory[], options: ExportOptions):
     out = out.filter((t) => t.scenarioId && set.has(t.scenarioId));
   }
   if (typeof options.minReward === "number") {
-    out = out.filter((t) => t.totalReward >= options.minReward);
+    const minReward = options.minReward;
+    out = out.filter((t) => t.totalReward >= minReward);
   }
   if (typeof options.maxReward === "number") {
-    out = out.filter((t) => t.totalReward <= options.maxReward);
+    const maxReward = options.maxReward;
+    out = out.filter((t) => t.totalReward <= maxReward);
   }
 
   const limit = options.maxTrajectories || out.length;

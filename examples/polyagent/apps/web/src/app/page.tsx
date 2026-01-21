@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { cn } from '@babylon/shared';
-import { ArrowRight, Bot } from 'lucide-react';
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { LoginButton } from '@/components/auth/LoginButton';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { useAuth } from '@/hooks/useAuth';
+import { cn } from "@babylon/shared";
+import { ArrowRight, Bot } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { useAuth } from "@/hooks/useAuth";
 
 interface DashboardAgent {
   id: string;
@@ -76,17 +76,10 @@ interface DashboardPayload {
   };
 }
 
-function AgentCard({
-  agent,
-  href,
-}: {
-  agent: DashboardAgent;
-  href: string;
-}) {
-  const pnlColor =
-    agent.lifetimePnL >= 0 ? 'text-green-500' : 'text-red-500';
-  const pnlSign = agent.lifetimePnL >= 0 ? '+' : '';
-  const statusLabel = agent.status ? agent.status.toLowerCase() : 'idle';
+function AgentCard({ agent, href }: { agent: DashboardAgent; href: string }) {
+  const pnlColor = agent.lifetimePnL >= 0 ? "text-green-500" : "text-red-500";
+  const pnlSign = agent.lifetimePnL >= 0 ? "+" : "";
+  const statusLabel = agent.status ? agent.status.toLowerCase() : "idle";
 
   return (
     <Link
@@ -98,7 +91,7 @@ function AgentCard({
           {agent.profileImageUrl ? (
             <img
               src={agent.profileImageUrl}
-              alt={agent.displayName || 'Agent'}
+              alt={agent.displayName || "Agent"}
               className="h-12 w-12 object-cover"
             />
           ) : (
@@ -109,12 +102,12 @@ function AgentCard({
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-semibold text-foreground">
-            {agent.displayName || 'Agent'}
+            {agent.displayName || "Agent"}
           </h3>
           <p className="truncate text-muted-foreground text-sm">
             @{agent.username || agent.id.slice(0, 8)}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-muted-foreground text-xs">
             Status: {statusLabel}
           </p>
         </div>
@@ -126,7 +119,7 @@ function AgentCard({
         </div>
         <div>
           <p className="text-muted-foreground text-xs">Lifetime P&L</p>
-          <p className={cn('font-mono font-semibold', pnlColor)}>
+          <p className={cn("font-mono font-semibold", pnlColor)}>
             {pnlSign}$
             {Math.abs(agent.lifetimePnL).toLocaleString(undefined, {
               minimumFractionDigits: 2,
@@ -141,10 +134,10 @@ function AgentCard({
 function UnauthenticatedHero() {
   return (
     <div className="border border-border bg-card p-6 text-center">
-      <h2 className="mb-2 text-sm font-semibold text-foreground">
+      <h2 className="mb-2 font-semibold text-foreground text-sm">
         Create your own trading agents
       </h2>
-      <p className="mb-4 text-xs text-muted-foreground">
+      <p className="mb-4 text-muted-foreground text-xs">
         Sign in to create agents. Everyone can view the dashboard.
       </p>
       <LoginButton size="lg" />
@@ -175,11 +168,11 @@ export default function HomePage() {
 
     const loadDashboard = async () => {
       try {
-        const response = await fetch('/api/dashboard', {
+        const response = await fetch("/api/dashboard", {
           signal: controller.signal,
         });
         if (!response.ok) {
-          throw new Error('Failed to load dashboard');
+          throw new Error("Failed to load dashboard");
         }
         const data = (await response.json()) as DashboardPayload;
         if (isMounted) {
@@ -187,7 +180,7 @@ export default function HomePage() {
         }
       } catch (error) {
         if (!controller.signal.aborted) {
-          console.warn('Dashboard fetch failed:', error);
+          console.warn("Dashboard fetch failed:", error);
         }
       } finally {
         if (isMounted) {
@@ -227,7 +220,7 @@ export default function HomePage() {
           </div>
           <Link
             href="/agents"
-            className="flex items-center gap-2 border border-border px-4 py-2 text-sm text-foreground"
+            className="flex items-center gap-2 border border-border px-4 py-2 text-foreground text-sm"
           >
             Explore Agents
             <ArrowRight className="h-4 w-4" />
@@ -239,44 +232,44 @@ export default function HomePage() {
         <section>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Daily P&L</p>
+              <p className="text-muted-foreground text-xs">Daily P&L</p>
               <p
                 className={cn(
-                  'mt-2 font-mono text-lg',
+                  "mt-2 font-mono text-lg",
                   dashboard.pnlSummary.dailyPnL >= 0
-                    ? 'text-green-500'
-                    : 'text-red-500'
+                    ? "text-green-500"
+                    : "text-red-500",
                 )}
               >
-                {dashboard.pnlSummary.dailyPnL >= 0 ? '+' : '-'}$
+                {dashboard.pnlSummary.dailyPnL >= 0 ? "+" : "-"}$
                 {Math.abs(dashboard.pnlSummary.dailyPnL).toFixed(2)}
               </p>
             </div>
             <div className="border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Weekly P&L</p>
+              <p className="text-muted-foreground text-xs">Weekly P&L</p>
               <p
                 className={cn(
-                  'mt-2 font-mono text-lg',
+                  "mt-2 font-mono text-lg",
                   dashboard.pnlSummary.weeklyPnL >= 0
-                    ? 'text-green-500'
-                    : 'text-red-500'
+                    ? "text-green-500"
+                    : "text-red-500",
                 )}
               >
-                {dashboard.pnlSummary.weeklyPnL >= 0 ? '+' : '-'}$
+                {dashboard.pnlSummary.weeklyPnL >= 0 ? "+" : "-"}$
                 {Math.abs(dashboard.pnlSummary.weeklyPnL).toFixed(2)}
               </p>
             </div>
             <div className="border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Total P&L</p>
+              <p className="text-muted-foreground text-xs">Total P&L</p>
               <p
                 className={cn(
-                  'mt-2 font-mono text-lg',
+                  "mt-2 font-mono text-lg",
                   dashboard.pnlSummary.totalPnL >= 0
-                    ? 'text-green-500'
-                    : 'text-red-500'
+                    ? "text-green-500"
+                    : "text-red-500",
                 )}
               >
-                {dashboard.pnlSummary.totalPnL >= 0 ? '+' : '-'}$
+                {dashboard.pnlSummary.totalPnL >= 0 ? "+" : "-"}$
                 {Math.abs(dashboard.pnlSummary.totalPnL).toFixed(2)}
               </p>
             </div>
@@ -285,23 +278,23 @@ export default function HomePage() {
 
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">
+            <h2 className="font-semibold text-foreground text-sm">
               Top Performing Agents
             </h2>
             <Link
               href="/agents"
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
             >
               View all
               <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
           {loading ? (
-            <div className="border border-border bg-card p-6 text-sm text-muted-foreground">
+            <div className="border border-border bg-card p-6 text-muted-foreground text-sm">
               Loading agents...
             </div>
           ) : dashboard.topAgents.length === 0 ? (
-            <div className="border border-border bg-card p-6 text-sm text-muted-foreground">
+            <div className="border border-border bg-card p-6 text-muted-foreground text-sm">
               No agents yet.
             </div>
           ) : (
@@ -323,16 +316,16 @@ export default function HomePage() {
 
         <section className="grid gap-6 lg:grid-cols-2">
           <div>
-            <h2 className="mb-3 text-sm font-semibold text-foreground">
+            <h2 className="mb-3 font-semibold text-foreground text-sm">
               Recent Agent Trades
             </h2>
             <div className="border border-border bg-card">
               {loading ? (
-                <div className="p-6 text-sm text-muted-foreground">
+                <div className="p-6 text-muted-foreground text-sm">
                   Loading trades...
                 </div>
               ) : dashboard.recentTrades.length === 0 ? (
-                <div className="p-6 text-sm text-muted-foreground">
+                <div className="p-6 text-muted-foreground text-sm">
                   No trades yet.
                 </div>
               ) : (
@@ -347,8 +340,8 @@ export default function HomePage() {
                           {new Date(trade.executedAt).toLocaleString()}
                         </span>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {trade.action} {trade.side || ''} {trade.ticker || ''}
+                      <div className="text-muted-foreground text-xs">
+                        {trade.action} {trade.side || ""} {trade.ticker || ""}
                       </div>
                       <div className="flex items-center gap-4 text-xs">
                         <span>Amount: {trade.amount.toFixed(2)}</span>
@@ -357,8 +350,8 @@ export default function HomePage() {
                           <span
                             className={cn(
                               trade.pnl >= 0
-                                ? 'text-green-500'
-                                : 'text-red-500'
+                                ? "text-green-500"
+                                : "text-red-500",
                             )}
                           >
                             P&L: {trade.pnl.toFixed(2)}
@@ -373,16 +366,16 @@ export default function HomePage() {
           </div>
 
           <div>
-            <h2 className="mb-3 text-sm font-semibold text-foreground">
+            <h2 className="mb-3 font-semibold text-foreground text-sm">
               Agent Highlights
             </h2>
             <div className="border border-border bg-card">
               {loading ? (
-                <div className="p-6 text-sm text-muted-foreground">
+                <div className="p-6 text-muted-foreground text-sm">
                   Loading highlights...
                 </div>
               ) : dashboard.highlights.length === 0 ? (
-                <div className="p-6 text-sm text-muted-foreground">
+                <div className="p-6 text-muted-foreground text-sm">
                   No highlights yet.
                 </div>
               ) : (
@@ -397,10 +390,10 @@ export default function HomePage() {
                           {new Date(highlight.createdAt).toLocaleString()}
                         </span>
                       </div>
-                      <div className="mt-2 text-xs text-muted-foreground">
+                      <div className="mt-2 text-muted-foreground text-xs">
                         {highlight.type.toUpperCase()}
                       </div>
-                      <p className="mt-1 text-sm text-foreground">
+                      <p className="mt-1 text-foreground text-sm">
                         {highlight.message}
                       </p>
                     </div>
@@ -413,16 +406,16 @@ export default function HomePage() {
 
         <section className="grid gap-6 lg:grid-cols-2">
           <div>
-            <h2 className="mb-3 text-sm font-semibold text-foreground">
+            <h2 className="mb-3 font-semibold text-foreground text-sm">
               Weekly Leaderboard
             </h2>
             <div className="border border-border bg-card">
               {loading ? (
-                <div className="p-6 text-sm text-muted-foreground">
+                <div className="p-6 text-muted-foreground text-sm">
                   Loading leaderboard...
                 </div>
               ) : dashboard.weeklyLeaderboard.length === 0 ? (
-                <div className="p-6 text-sm text-muted-foreground">
+                <div className="p-6 text-muted-foreground text-sm">
                   No weekly data yet.
                 </div>
               ) : (
@@ -439,31 +432,34 @@ export default function HomePage() {
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">#{index + 1}</span>
+                          <span className="text-muted-foreground">
+                            #{index + 1}
+                          </span>
                           <span className="truncate font-semibold text-foreground">
                             {entry.agentName}
                           </span>
-                          <span className="truncate text-xs text-muted-foreground">
+                          <span className="truncate text-muted-foreground text-xs">
                             @{entry.username || entry.agentId.slice(0, 8)}
                           </span>
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          Trades: {entry.totalTrades} · Win rate:{' '}
+                        <div className="mt-1 text-muted-foreground text-xs">
+                          Trades: {entry.totalTrades} · Win rate:{" "}
                           {(entry.winRate * 100).toFixed(0)}%
                         </div>
                       </div>
                       <div className="text-right">
                         <div
                           className={cn(
-                            'font-mono',
-                            entry.pnl >= 0 ? 'text-green-500' : 'text-red-500'
+                            "font-mono",
+                            entry.pnl >= 0 ? "text-green-500" : "text-red-500",
                           )}
                         >
-                          {entry.pnl >= 0 ? '+' : '-'}$
+                          {entry.pnl >= 0 ? "+" : "-"}$
                           {Math.abs(entry.pnl).toFixed(2)}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          Sharpe {entry.sharpe.toFixed(2)} · Vol {entry.volatility.toFixed(2)}
+                        <div className="text-muted-foreground text-xs">
+                          Sharpe {entry.sharpe.toFixed(2)} · Vol{" "}
+                          {entry.volatility.toFixed(2)}
                         </div>
                       </div>
                     </Link>
@@ -474,16 +470,16 @@ export default function HomePage() {
           </div>
 
           <div>
-            <h2 className="mb-3 text-sm font-semibold text-foreground">
+            <h2 className="mb-3 font-semibold text-foreground text-sm">
               Monthly Leaderboard
             </h2>
             <div className="border border-border bg-card">
               {loading ? (
-                <div className="p-6 text-sm text-muted-foreground">
+                <div className="p-6 text-muted-foreground text-sm">
                   Loading leaderboard...
                 </div>
               ) : dashboard.monthlyLeaderboard.length === 0 ? (
-                <div className="p-6 text-sm text-muted-foreground">
+                <div className="p-6 text-muted-foreground text-sm">
                   No monthly data yet.
                 </div>
               ) : (
@@ -500,31 +496,34 @@ export default function HomePage() {
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">#{index + 1}</span>
+                          <span className="text-muted-foreground">
+                            #{index + 1}
+                          </span>
                           <span className="truncate font-semibold text-foreground">
                             {entry.agentName}
                           </span>
-                          <span className="truncate text-xs text-muted-foreground">
+                          <span className="truncate text-muted-foreground text-xs">
                             @{entry.username || entry.agentId.slice(0, 8)}
                           </span>
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          Trades: {entry.totalTrades} · Win rate:{' '}
+                        <div className="mt-1 text-muted-foreground text-xs">
+                          Trades: {entry.totalTrades} · Win rate:{" "}
                           {(entry.winRate * 100).toFixed(0)}%
                         </div>
                       </div>
                       <div className="text-right">
                         <div
                           className={cn(
-                            'font-mono',
-                            entry.pnl >= 0 ? 'text-green-500' : 'text-red-500'
+                            "font-mono",
+                            entry.pnl >= 0 ? "text-green-500" : "text-red-500",
                           )}
                         >
-                          {entry.pnl >= 0 ? '+' : '-'}$
+                          {entry.pnl >= 0 ? "+" : "-"}$
                           {Math.abs(entry.pnl).toFixed(2)}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          Sharpe {entry.sharpe.toFixed(2)} · Vol {entry.volatility.toFixed(2)}
+                        <div className="text-muted-foreground text-xs">
+                          Sharpe {entry.sharpe.toFixed(2)} · Vol{" "}
+                          {entry.volatility.toFixed(2)}
                         </div>
                       </div>
                     </Link>
@@ -537,12 +536,12 @@ export default function HomePage() {
 
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">
+            <h2 className="font-semibold text-foreground text-sm">
               Top Movers (24h)
             </h2>
             <Link
               href="/agents"
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
             >
               View agents
               <ArrowRight className="h-3 w-3" />
@@ -550,11 +549,11 @@ export default function HomePage() {
           </div>
           <div className="border border-border bg-card">
             {loading ? (
-              <div className="p-6 text-sm text-muted-foreground">
+              <div className="p-6 text-muted-foreground text-sm">
                 Loading movers...
               </div>
             ) : dashboard.topMovers.length === 0 ? (
-              <div className="p-6 text-sm text-muted-foreground">
+              <div className="p-6 text-muted-foreground text-sm">
                 No movers yet.
               </div>
             ) : (
@@ -573,17 +572,18 @@ export default function HomePage() {
                       <div className="font-semibold text-foreground">
                         {entry.agentName}
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        @{entry.username || entry.agentId.slice(0, 8)} · Trades {entry.trades24h}
+                      <div className="text-muted-foreground text-xs">
+                        @{entry.username || entry.agentId.slice(0, 8)} · Trades{" "}
+                        {entry.trades24h}
                       </div>
                     </div>
                     <div
                       className={cn(
-                        'font-mono',
-                        entry.pnl24h >= 0 ? 'text-green-500' : 'text-red-500'
+                        "font-mono",
+                        entry.pnl24h >= 0 ? "text-green-500" : "text-red-500",
                       )}
                     >
-                      {entry.pnl24h >= 0 ? '+' : '-'}$
+                      {entry.pnl24h >= 0 ? "+" : "-"}$
                       {Math.abs(entry.pnl24h).toFixed(2)}
                     </div>
                   </Link>

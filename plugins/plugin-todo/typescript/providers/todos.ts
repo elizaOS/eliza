@@ -8,13 +8,12 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { createTodoDataService } from "../services/todoDataService";
 import { allProviderDocs, type ProviderDoc } from "../generated/specs/specs";
+import { createTodoDataService } from "../services/todoDataService";
 
 const fallbackSpec: ProviderDoc = {
   name: "todos",
-  description:
-    "Information about the user's current tasks, completed tasks, and points",
+  description: "Information about the user's current tasks, completed tasks, and points",
 };
 const spec = allProviderDocs.find((doc) => doc.name === "todos") ?? fallbackSpec;
 

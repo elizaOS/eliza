@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-knowledge-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Knowledge and RAG plugin for elizaOS - provides retrieval augmented generation capabilities",
   "type": "module",
   "main": "typescript/dist/index.js",

@@ -14,4 +14,3 @@ export const polymarketPlugin: Plugin = {
 };
 
 export default polymarketPlugin;
-

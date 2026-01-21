@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-inmemorydb-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Pure in-memory, ephemeral database storage for elizaOS - no persistence, completely forgets on reset",
   "type": "module",
   "main": "typescript/dist/index.js",

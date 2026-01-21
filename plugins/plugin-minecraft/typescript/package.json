@@ -9,7 +9,12 @@
   "packageType": "plugin",
   "platform": "node",
   "license": "MIT",
-  "keywords": ["plugin", "elizaos", "minecraft", "mineflayer"],
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "minecraft",
+    "mineflayer"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/eliza"
@@ -23,7 +28,11 @@
       }
     }
   },
-  "files": ["dist", "README.md", "package.json"],
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
   "dependencies": {
     "ws": "^8.18.0",
     "zod": "^4.3.5"

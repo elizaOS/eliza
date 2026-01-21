@@ -1,11 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  cleanupTestRuntime,
-  createTestRuntime,
-} from "./test-utils";
 import { createService, defineService } from "../services";
 import type { IAgentRuntime, ServiceTypeName } from "../types";
 import { Service } from "../types";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 describe("service builder", () => {
   let runtime: IAgentRuntime;

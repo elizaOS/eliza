@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { AgentRuntime } from "../runtime";
-import type { Character, UUID } from "../types";
 import { MemoryService } from "../advanced-memory";
 import { LongTermMemoryCategory } from "../advanced-memory/types";
+import { AgentRuntime } from "../runtime";
+import type { Character, UUID } from "../types";
 
 describe("advanced memory (built-in)", () => {
   test("auto-loads providers + evaluators + memory service when enabled", async () => {
@@ -26,12 +26,22 @@ describe("advanced memory (built-in)", () => {
     // Service registration is async and waits for runtime init to complete.
     await runtime.getServiceLoadPromise("memory");
     expect(runtime.hasService("memory")).toBe(true);
-    expect(runtime.providers.some((p) => p.name === "LONG_TERM_MEMORY")).toBe(true);
-    expect(runtime.providers.some((p) => p.name === "SUMMARIZED_CONTEXT")).toBe(true);
-    expect(runtime.evaluators.some((e) => e.name === "MEMORY_SUMMARIZATION")).toBe(true);
-    expect(runtime.evaluators.some((e) => e.name === "LONG_TERM_MEMORY_EXTRACTION")).toBe(true);
+    expect(runtime.providers.some((p) => p.name === "LONG_TERM_MEMORY")).toBe(
+      true,
+    );
+    expect(runtime.providers.some((p) => p.name === "SUMMARIZED_CONTEXT")).toBe(
+      true,
+    );
+    expect(
+      runtime.evaluators.some((e) => e.name === "MEMORY_SUMMARIZATION"),
+    ).toBe(true);
+    expect(
+      runtime.evaluators.some((e) => e.name === "LONG_TERM_MEMORY_EXTRACTION"),
+    ).toBe(true);
 
-    const svc = (await runtime.getServiceLoadPromise("memory")) as MemoryService;
+    const svc = (await runtime.getServiceLoadPromise(
+      "memory",
+    )) as MemoryService;
     const config = svc.getConfig();
     expect(config.shortTermSummarizationThreshold).toBeGreaterThan(0);
     expect(config.longTermExtractionThreshold).toBeGreaterThan(0);
@@ -69,7 +79,9 @@ describe("advanced memory (built-in)", () => {
     await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 
     expect(runtime.hasService("memory")).toBe(false);
-    expect(runtime.providers.some((p) => p.name === "LONG_TERM_MEMORY")).toBe(false);
+    expect(runtime.providers.some((p) => p.name === "LONG_TERM_MEMORY")).toBe(
+      false,
+    );
   });
 
   test("searchLongTermMemories returns top matches and respects limit", async () => {
@@ -138,4 +150,3 @@ describe("advanced memory (built-in)", () => {
     expect(results).toEqual([]);
   });
 });
-

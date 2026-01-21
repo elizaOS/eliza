@@ -1,5 +1,5 @@
-import type { JsonObject } from "./protocol.js";
 import { z } from "zod";
+import type { JsonObject } from "./protocol.js";
 
 export interface MinecraftSession {
   botId: string;
@@ -54,4 +54,3 @@ export const minecraftWorldStateSchema = z
   .passthrough();
 
 export type MinecraftWorldState = z.infer<typeof minecraftWorldStateSchema>;
-

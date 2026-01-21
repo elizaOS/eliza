@@ -4,10 +4,10 @@
  * Toggle agent autonomous trading on/off.
  */
 
-import { db, eq, users } from '@babylon/db';
-import { authenticateUser } from '@babylon/api';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { authenticateUser } from "@babylon/api";
+import { db, eq, users } from "@babylon/db";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 interface ToggleAutonomyRequest {
   enabled: boolean;
@@ -15,7 +15,7 @@ interface ToggleAutonomyRequest {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(request);
   const { agentId } = await params;
@@ -26,15 +26,15 @@ export async function POST(
     body = await request.json();
   } catch {
     return NextResponse.json(
-      { error: 'Invalid request body' },
-      { status: 400 }
+      { error: "Invalid request body" },
+      { status: 400 },
     );
   }
 
-  if (typeof body.enabled !== 'boolean') {
+  if (typeof body.enabled !== "boolean") {
     return NextResponse.json(
-      { error: 'enabled must be a boolean' },
-      { status: 400 }
+      { error: "enabled must be a boolean" },
+      { status: 400 },
     );
   }
 
@@ -46,12 +46,12 @@ export async function POST(
     .limit(1);
 
   if (!agent || !agent.isAgent) {
-    return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
   // Verify ownership
   if (agent.managedBy !== user.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   // Update trading enabled status
@@ -71,7 +71,7 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(request);
   const { agentId } = await params;
@@ -89,12 +89,12 @@ export async function GET(
     .limit(1);
 
   if (!agent || !agent.isAgent) {
-    return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
   // Verify ownership
   if (agent.managedBy !== user.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   return NextResponse.json({

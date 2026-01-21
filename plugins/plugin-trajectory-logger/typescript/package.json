@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-trajectory-logger",
   "description": "Trajectory logging plugin for ElizaOS - capture agent interaction trajectories for RL training",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -28,12 +28,12 @@
     ".": {
       "types": "./dist/index.d.ts",
       "node": {
-        "types": "./dist/node/index.d.ts",
+        "types": "./dist/index.d.ts",
         "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
       "bun": {
-        "types": "./dist/node/index.d.ts",
+        "types": "./dist/index.d.ts",
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"

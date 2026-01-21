@@ -1,4 +1,4 @@
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 
 /**
  * Separator component for visual division between content sections.
@@ -18,22 +18,22 @@ import { cn } from '@polyagent/shared';
  */
 interface SeparatorProps {
   className?: string;
-  orientation?: 'horizontal' | 'vertical';
+  orientation?: "horizontal" | "vertical";
 }
 
 export function Separator({
   className,
-  orientation = 'horizontal',
+  orientation = "horizontal",
 }: SeparatorProps) {
-  if (orientation === 'vertical') {
+  if (orientation === "vertical") {
     return (
-      <div className={cn('h-full w-px', className)}>
+      <div className={cn("h-full w-px", className)}>
         <div
           className="h-full w-px rounded-full"
           style={{
             background:
-              'linear-gradient(180deg, transparent, rgba(28, 156, 240, 0.3), transparent)',
-            boxShadow: '1px 0 2px rgba(0, 0, 0, 0.1)',
+              "linear-gradient(180deg, transparent, rgba(28, 156, 240, 0.3), transparent)",
+            boxShadow: "1px 0 2px rgba(0, 0, 0, 0.1)",
           }}
         />
       </div>
@@ -41,13 +41,13 @@ export function Separator({
   }
 
   return (
-    <div className={cn('h-px w-full', className)}>
+    <div className={cn("h-px w-full", className)}>
       <div
         className="h-px w-full rounded-full"
         style={{
           background:
-            'linear-gradient(90deg, transparent, rgba(28, 156, 240, 0.3), transparent)',
-          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
+            "linear-gradient(90deg, transparent, rgba(28, 156, 240, 0.3), transparent)",
+          boxShadow: "0 1px 2px rgba(0, 0, 0, 0.1)",
         }}
       />
     </div>

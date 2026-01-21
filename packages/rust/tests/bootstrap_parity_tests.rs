@@ -81,4 +81,3 @@ async fn bootstrap_skips_character_provider_for_anonymous_runtime() -> Result<()
     assert!(!providers.contains(&"CHARACTER".to_string()));
     Ok(())
 }
-

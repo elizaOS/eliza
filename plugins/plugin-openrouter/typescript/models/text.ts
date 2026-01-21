@@ -1,9 +1,4 @@
-import type {
-  GenerateTextParams,
-  IAgentRuntime,
-  JsonValue,
-  TextStreamResult,
-} from "@elizaos/core";
+import type { GenerateTextParams, IAgentRuntime, JsonValue, TextStreamResult } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { generateText, streamText } from "ai";
 
@@ -24,8 +19,7 @@ function buildGenerateParams(
     maxOutputTokens?: number;
     maxTokens?: number;
   };
-  const resolvedMaxOutput =
-    paramsWithMax.maxOutputTokens ?? paramsWithMax.maxTokens ?? 8192;
+  const resolvedMaxOutput = paramsWithMax.maxOutputTokens ?? paramsWithMax.maxTokens ?? 8192;
 
   const openrouter = createOpenRouterProvider(runtime);
   const modelName =

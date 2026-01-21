@@ -238,7 +238,7 @@ def format_search_results(result: SearchResult) -> str:
         if market.outcomes and market.outcome_prices:
             price_parts = [
                 f"{outcome}: {_format_price(price)}"
-                for outcome, price in zip(market.outcomes, market.outcome_prices)
+                for outcome, price in zip(market.outcomes, market.outcome_prices, strict=True)
             ]
             lines.append(f"   📊 {' | '.join(price_parts)}")
 

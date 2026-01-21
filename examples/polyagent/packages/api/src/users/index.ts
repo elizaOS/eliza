@@ -9,7 +9,7 @@ export {
   type EnsureUserOptions,
   ensureUserForAuth,
   getCanonicalUserId,
-} from './ensure-user';
+} from "./ensure-user";
 
 export {
   findTargetByIdentifier,
@@ -18,4 +18,4 @@ export {
   requireTargetByIdentifier,
   requireUserByIdentifier,
   type TargetLookupResult,
-} from './user-lookup';
+} from "./user-lookup";

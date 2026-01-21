@@ -14,21 +14,21 @@ export {
 } from "./llmHelpers";
 
 export {
+  type BestPriceSide,
+  // Fetching
+  fetchOrderBookSummary,
+  inferMetricFromText,
+  inferSideFromText,
   // Types
   type LLMTokenResult,
   type LLMTokensResult,
+  // Normalization helpers
+  normalizeMetric,
+  normalizeSide,
   type OrderBookMetric,
-  type BestPriceSide,
   type OrderBookOptions,
   // Parameter parsing
   parseOrderBookParameters,
-  // Normalization helpers
-  normalizeMetric,
-  inferMetricFromText,
-  normalizeSide,
-  inferSideFromText,
   // LLM resolution
   resolveTokenIdFromLLM,
-  // Fetching
-  fetchOrderBookSummary,
 } from "./orderBook";

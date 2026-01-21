@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::{Action, ActionExample, ActionResult};
 use crate::service::CoderService;
+use crate::{Action, ActionExample, ActionResult};
 
 pub struct ChangeDirectoryAction;
 
@@ -58,7 +58,11 @@ impl Action for ChangeDirectoryAction {
         let result = svc.change_directory(conv, target).await;
         ActionResult {
             success: result.success,
-            text: if result.success { result.stdout } else { result.stderr },
+            text: if result.success {
+                result.stdout
+            } else {
+                result.stderr
+            },
             data: None,
             error: None,
         }
@@ -71,4 +75,3 @@ impl Action for ChangeDirectoryAction {
         }]
     }
 }
-

@@ -10,7 +10,9 @@ use tracing::info;
 
 use crate::error::Result;
 use crate::path_utils::{is_forbidden_command, is_safe_command, validate_path};
-use crate::types::{CommandHistoryEntry, CommandResult, FileOperation, FileOperationType, CodeConfig};
+use crate::types::{
+    CodeConfig, CommandHistoryEntry, CommandResult, FileOperation, FileOperationType,
+};
 
 pub struct CoderService {
     config: CodeConfig,
@@ -41,7 +43,11 @@ impl CoderService {
             .unwrap_or_else(|| self.config.allowed_directory.clone())
     }
 
-    pub fn get_command_history(&self, conversation_id: &str, limit: Option<usize>) -> Vec<CommandHistoryEntry> {
+    pub fn get_command_history(
+        &self,
+        conversation_id: &str,
+        limit: Option<usize>,
+    ) -> Vec<CommandHistoryEntry> {
         let all = self
             .history_by_conversation
             .get(conversation_id)
@@ -117,7 +123,10 @@ impl CoderService {
                 stderr: msg,
                 exit_code: Some(1),
                 error: Some("Coder disabled".to_string()),
-                executed_in: self.current_directory(conversation_id).display().to_string(),
+                executed_in: self
+                    .current_directory(conversation_id)
+                    .display()
+                    .to_string(),
             };
         }
 
@@ -130,7 +139,10 @@ impl CoderService {
                     stderr: "Cannot navigate outside allowed directory".to_string(),
                     exit_code: Some(1),
                     error: Some("Permission denied".to_string()),
-                    executed_in: self.current_directory(conversation_id).display().to_string(),
+                    executed_in: self
+                        .current_directory(conversation_id)
+                        .display()
+                        .to_string(),
                 }
             }
         };
@@ -144,7 +156,10 @@ impl CoderService {
                 stderr: "Not a directory".to_string(),
                 exit_code: Some(1),
                 error: Some("Not a directory".to_string()),
-                executed_in: self.current_directory(conversation_id).display().to_string(),
+                executed_in: self
+                    .current_directory(conversation_id)
+                    .display()
+                    .to_string(),
             };
         }
 
@@ -161,11 +176,17 @@ impl CoderService {
         }
     }
 
-    pub async fn read_file(&self, conversation_id: &str, filepath: &str) -> std::result::Result<String, String> {
+    pub async fn read_file(
+        &self,
+        conversation_id: &str,
+        filepath: &str,
+    ) -> std::result::Result<String, String> {
         if let Some(msg) = self.ensure_enabled() {
             return Err(msg);
         }
-        let resolved = self.resolve_within(conversation_id, filepath).ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
+        let resolved = self
+            .resolve_within(conversation_id, filepath)
+            .ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
         let meta = fs::metadata(&resolved).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 "File not found".to_string()
@@ -176,18 +197,31 @@ impl CoderService {
         if meta.is_dir() {
             return Err("Path is a directory".to_string());
         }
-        fs::read_to_string(&resolved).await.map_err(|e| e.to_string())
+        fs::read_to_string(&resolved)
+            .await
+            .map_err(|e| e.to_string())
     }
 
-    pub async fn write_file(&self, conversation_id: &str, filepath: &str, content: &str) -> std::result::Result<(), String> {
+    pub async fn write_file(
+        &self,
+        conversation_id: &str,
+        filepath: &str,
+        content: &str,
+    ) -> std::result::Result<(), String> {
         if let Some(msg) = self.ensure_enabled() {
             return Err(msg);
         }
-        let resolved = self.resolve_within(conversation_id, filepath).ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
+        let resolved = self
+            .resolve_within(conversation_id, filepath)
+            .ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
         if let Some(parent) = resolved.parent() {
-            fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| e.to_string())?;
         }
-        fs::write(&resolved, content).await.map_err(|e| e.to_string())
+        fs::write(&resolved, content)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     pub async fn edit_file(
@@ -200,7 +234,9 @@ impl CoderService {
         if let Some(msg) = self.ensure_enabled() {
             return Err(msg);
         }
-        let resolved = self.resolve_within(conversation_id, filepath).ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
+        let resolved = self
+            .resolve_within(conversation_id, filepath)
+            .ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
         let content = fs::read_to_string(&resolved).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 "File not found".to_string()
@@ -215,11 +251,17 @@ impl CoderService {
         fs::write(&resolved, next).await.map_err(|e| e.to_string())
     }
 
-    pub async fn list_files(&self, conversation_id: &str, dirpath: &str) -> std::result::Result<Vec<String>, String> {
+    pub async fn list_files(
+        &self,
+        conversation_id: &str,
+        dirpath: &str,
+    ) -> std::result::Result<Vec<String>, String> {
         if let Some(msg) = self.ensure_enabled() {
             return Err(msg);
         }
-        let resolved = self.resolve_within(conversation_id, dirpath).ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
+        let resolved = self
+            .resolve_within(conversation_id, dirpath)
+            .ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
         let mut entries = fs::read_dir(&resolved).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 "Directory not found".to_string()
@@ -234,7 +276,11 @@ impl CoderService {
                 continue;
             }
             let meta = e.metadata().await.map_err(|e| e.to_string())?;
-            items.push(if meta.is_dir() { format!("{}/", name) } else { name });
+            items.push(if meta.is_dir() {
+                format!("{}/", name)
+            } else {
+                name
+            });
         }
         items.sort();
         Ok(items)
@@ -254,8 +300,14 @@ impl CoderService {
         if needle.is_empty() {
             return Err("Missing pattern".to_string());
         }
-        let resolved = self.resolve_within(conversation_id, dirpath).ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
-        let limit = if max_matches == 0 { 50 } else { max_matches.min(500) };
+        let resolved = self
+            .resolve_within(conversation_id, dirpath)
+            .ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
+        let limit = if max_matches == 0 {
+            50
+        } else {
+            max_matches.min(500)
+        };
         let mut matches: Vec<(String, usize, String)> = vec![];
         self.search_dir(&resolved, needle.to_lowercase(), &mut matches, limit)
             .await
@@ -338,7 +390,11 @@ impl CoderService {
         Ok(())
     }
 
-    pub async fn execute_shell(&mut self, conversation_id: &str, command: &str) -> Result<CommandResult> {
+    pub async fn execute_shell(
+        &mut self,
+        conversation_id: &str,
+        command: &str,
+    ) -> Result<CommandResult> {
         if let Some(msg) = self.ensure_enabled() {
             return Ok(CommandResult {
                 success: false,
@@ -346,7 +402,10 @@ impl CoderService {
                 stderr: msg,
                 exit_code: Some(1),
                 error: Some("Coder disabled".to_string()),
-                executed_in: self.current_directory(conversation_id).display().to_string(),
+                executed_in: self
+                    .current_directory(conversation_id)
+                    .display()
+                    .to_string(),
             });
         }
 
@@ -358,7 +417,10 @@ impl CoderService {
                 stderr: "Invalid command".to_string(),
                 exit_code: Some(1),
                 error: Some("Empty command".to_string()),
-                executed_in: self.current_directory(conversation_id).display().to_string(),
+                executed_in: self
+                    .current_directory(conversation_id)
+                    .display()
+                    .to_string(),
             });
         }
 
@@ -369,7 +431,10 @@ impl CoderService {
                 stderr: "Command contains forbidden patterns".to_string(),
                 exit_code: Some(1),
                 error: Some("Security policy violation".to_string()),
-                executed_in: self.current_directory(conversation_id).display().to_string(),
+                executed_in: self
+                    .current_directory(conversation_id)
+                    .display()
+                    .to_string(),
             });
         }
 
@@ -380,7 +445,10 @@ impl CoderService {
                 stderr: "Command is forbidden by security policy".to_string(),
                 exit_code: Some(1),
                 error: Some("Forbidden command".to_string()),
-                executed_in: self.current_directory(conversation_id).display().to_string(),
+                executed_in: self
+                    .current_directory(conversation_id)
+                    .display()
+                    .to_string(),
             });
         }
 
@@ -401,10 +469,14 @@ impl CoderService {
             c
         };
 
-        cmd.current_dir(&cwd).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+        cmd.current_dir(&cwd)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
 
         let timeout_duration = Duration::from_millis(self.config.timeout_ms);
-        let spawn = cmd.spawn().map_err(|e| crate::error::CodeError::Process(e.to_string()))?;
+        let spawn = cmd
+            .spawn()
+            .map_err(|e| crate::error::CodeError::Process(e.to_string()))?;
 
         let output = timeout(timeout_duration, spawn.wait_with_output()).await;
 
@@ -444,11 +516,20 @@ impl CoderService {
     }
 
     pub async fn git(&mut self, conversation_id: &str, args: &str) -> Result<CommandResult> {
-        self.execute_shell(conversation_id, &format!("git {}", args)).await
+        self.execute_shell(conversation_id, &format!("git {}", args))
+            .await
     }
 
-    pub fn note_file_op(&mut self, conversation_id: &str, op_type: FileOperationType, target: &str) {
-        let cwd = self.current_directory(conversation_id).display().to_string();
+    pub fn note_file_op(
+        &mut self,
+        conversation_id: &str,
+        op_type: FileOperationType,
+        target: &str,
+    ) {
+        let cwd = self
+            .current_directory(conversation_id)
+            .display()
+            .to_string();
         let entry = CommandResult {
             success: true,
             stdout: "".to_string(),
@@ -468,4 +549,3 @@ impl CoderService {
         );
     }
 }
-

@@ -54,8 +54,10 @@ impl Evaluator for ReflectionEvaluator {
             .unwrap_or_default();
 
         if recent_messages.is_empty() {
-            return Ok(EvaluatorResult::pass(50, "No recent interactions to reflect on")
-                .with_detail("noInteractions", true));
+            return Ok(
+                EvaluatorResult::pass(50, "No recent interactions to reflect on")
+                    .with_detail("noInteractions", true),
+            );
         }
 
         // Format interactions
@@ -90,9 +92,7 @@ impl Evaluator for ReflectionEvaluator {
             .map(|s| s.as_str())
             .unwrap_or(REFLECTION_TEMPLATE);
 
-        let composed_state = runtime
-            .compose_state(message, &["RECENT_MESSAGES"])
-            .await?;
+        let composed_state = runtime.compose_state(message, &["RECENT_MESSAGES"]).await?;
 
         let prompt = runtime
             .compose_prompt(&composed_state, template)
@@ -109,8 +109,9 @@ impl Evaluator for ReflectionEvaluator {
             .ok_or_else(|| PluginError::ModelError("Expected text response".to_string()))?;
 
         // Parse XML response
-        let parsed = parse_key_value_xml(response_text)
-            .ok_or_else(|| PluginError::XmlParse("Failed to parse reflection response".to_string()))?;
+        let parsed = parse_key_value_xml(response_text).ok_or_else(|| {
+            PluginError::XmlParse("Failed to parse reflection response".to_string())
+        })?;
 
         let thought = parsed.get("thought").cloned().unwrap_or_default();
         let quality_str = parsed

@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from "react";
 
-import { useSSEChannel } from '@/hooks/useSSE';
-import type { TradeSide } from '@/types/markets';
+import { useSSEChannel } from "@/hooks/useSSE";
+import type { TradeSide } from "@/types/markets";
 
 /**
  * SSE event for perpetual market trades.
@@ -14,13 +14,13 @@ import type { TradeSide } from '@/types/markets';
  * - 'flip_position': Closed existing and opened inverse position
  */
 export interface PerpTradeSSE {
-  type: 'perp_trade';
+  type: "perp_trade";
   action:
-    | 'open'
-    | 'close'
-    | 'partial_close'
-    | 'add_to_position'
-    | 'flip_position';
+    | "open"
+    | "close"
+    | "partial_close"
+    | "add_to_position"
+    | "flip_position";
   ticker: string;
   side: TradeSide;
   size: number;
@@ -38,9 +38,9 @@ export interface PerpTradeSSE {
  * Type guard to check if data is a valid perp trade SSE payload.
  */
 const isPerpTradePayload = (data: unknown): data is PerpTradeSSE => {
-  if (!data || typeof data !== 'object' || data === null) return false;
+  if (!data || typeof data !== "object" || data === null) return false;
   const payload = data as { type?: string; ticker?: string };
-  return payload.type === 'perp_trade' && typeof payload.ticker === 'string';
+  return payload.type === "perp_trade" && typeof payload.ticker === "string";
 };
 
 /**
@@ -73,11 +73,11 @@ interface UsePerpMarketStreamOptions {
  */
 export function usePerpMarketStream(
   ticker: string | null,
-  { onTrade }: UsePerpMarketStreamOptions = {}
+  { onTrade }: UsePerpMarketStreamOptions = {},
 ) {
   const normalizedTicker = useMemo(
     () => (ticker ? ticker.toUpperCase() : null),
-    [ticker]
+    [ticker],
   );
 
   // Use ref to avoid stale closure issues with callbacks
@@ -96,10 +96,10 @@ export function usePerpMarketStream(
 
       onTradeRef.current?.(payload);
     },
-    [normalizedTicker]
+    [normalizedTicker],
   );
 
-  useSSEChannel('markets', handleMessage);
+  useSSEChannel("markets", handleMessage);
 }
 
 /**
@@ -146,14 +146,14 @@ export function usePerpMarketsSubscription({
     onTradeRef.current?.(payload);
   }, []);
 
-  useSSEChannel('markets', handleMessage);
+  useSSEChannel("markets", handleMessage);
 }
 
 /**
  * SSE event for perpetual market price updates.
  */
 export interface PerpPriceUpdateSSE {
-  type: 'perp_price_update';
+  type: "perp_price_update";
   ticker: string;
   organizationId?: string;
   newPrice?: number;
@@ -166,11 +166,11 @@ export interface PerpPriceUpdateSSE {
  * Type guard to check if data is a valid perp price update SSE payload.
  */
 const isPerpPriceUpdatePayload = (
-  data: unknown
+  data: unknown,
 ): data is { updates: PerpPriceUpdateSSE[] } => {
-  if (!data || typeof data !== 'object' || data === null) return false;
+  if (!data || typeof data !== "object" || data === null) return false;
   const payload = data as { type?: string; updates?: unknown[] };
-  return payload.type === 'perp_price_update' && Array.isArray(payload.updates);
+  return payload.type === "perp_price_update" && Array.isArray(payload.updates);
 };
 
 /**
@@ -199,11 +199,11 @@ export function usePerpPriceSubscription({
     if (!isPerpPriceUpdatePayload(payload)) return;
 
     for (const update of payload.updates) {
-      if (update && typeof update === 'object' && update.ticker) {
+      if (update && typeof update === "object" && update.ticker) {
         onPriceUpdateRef.current?.(update);
       }
     }
   }, []);
 
-  useSSEChannel('markets', handleMessage);
+  useSSEChannel("markets", handleMessage);
 }

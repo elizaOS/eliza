@@ -1,4 +1,4 @@
-declare module '@polyagent/contracts/deployments/local' {
+declare module "@polyagent/contracts/deployments/local" {
   interface Contracts {
     diamond: string;
     diamondCutFacet: string;
@@ -31,7 +31,7 @@ declare module '@polyagent/contracts/deployments/local' {
   export default deployment;
 }
 
-declare module '@polyagent/contracts/deployments/base-sepolia' {
+declare module "@polyagent/contracts/deployments/base-sepolia" {
   interface Contracts {
     diamond: string;
     diamondCutFacet: string;
@@ -64,7 +64,7 @@ declare module '@polyagent/contracts/deployments/base-sepolia' {
   export default deployment;
 }
 
-declare module '@polyagent/contracts/deployments/base' {
+declare module "@polyagent/contracts/deployments/base" {
   interface Contracts {
     diamond: string;
     diamondCutFacet: string;

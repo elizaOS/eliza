@@ -31,7 +31,9 @@ class GenerateResponseAction:
     async def validate(self, context: "Mapping[str, object] | object") -> bool:
         return True
 
-    async def handler(self, context: "Mapping[str, object] | object") -> dict[str, object]:
+    async def handler(
+        self, context: "Mapping[str, object] | object"
+    ) -> dict[str, object]:
         message = context.get("message", {}) if isinstance(context, dict) else {}
         content = message.get("content", {}) if isinstance(message, dict) else {}
 

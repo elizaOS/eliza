@@ -10,7 +10,7 @@
  * Run with: POLYMARKET_LIVE_TESTS=1 bun test placeOrder.e2e.test.ts
  */
 
-import { beforeAll, afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 
@@ -56,7 +56,10 @@ interface MarketSearchResult {
 /**
  * Search for a market by name and return the token info
  */
-async function searchMarket(searchTerm: string, outcome: "yes" | "no"): Promise<MarketSearchResult | null> {
+async function searchMarket(
+  searchTerm: string,
+  outcome: "yes" | "no"
+): Promise<MarketSearchResult | null> {
   const params = new URLSearchParams({
     q: searchTerm,
     limit_per_type: "10",
@@ -78,7 +81,7 @@ async function searchMarket(searchTerm: string, outcome: "yes" | "no"): Promise<
   console.log(`[Test] Found ${events.length} events`);
 
   // Find matching market - require "miami" and "heat" to both be present
-  const normalizedSearch = searchTerm.toLowerCase().trim();
+  const _normalizedSearch = searchTerm.toLowerCase().trim();
   // For Miami Heat, require both "miami" and "heat" to match
   const requiredWords = ["miami", "heat"];
 
@@ -167,7 +170,10 @@ describe("Place Order E2E Test", () => {
     it("should find the Miami Heat playoffs market", async () => {
       if (!runLiveTests) return;
 
-      marketResult = await searchMarket(TEST_CONFIG.marketSearch, TEST_CONFIG.outcome as "yes" | "no");
+      marketResult = await searchMarket(
+        TEST_CONFIG.marketSearch,
+        TEST_CONFIG.outcome as "yes" | "no"
+      );
 
       expect(marketResult).not.toBeNull();
       expect(marketResult?.tokenId).toBeDefined();
@@ -192,13 +198,19 @@ describe("Place Order E2E Test", () => {
         process.env.WALLET_PRIVATE_KEY ||
         process.env.PRIVATE_KEY;
 
+      if (!privateKey) {
+        console.log("[Test] Skipping: No private key configured");
+        return;
+      }
+
       // ethers v6 uses JsonRpcProvider directly
-      const JsonRpcProvider = ethers.JsonRpcProvider || (ethers as Record<string, unknown>).providers?.JsonRpcProvider;
+      const JsonRpcProvider =
+        ethers.JsonRpcProvider || (ethers as Record<string, unknown>).providers?.JsonRpcProvider;
       const Wallet = ethers.Wallet;
       const Contract = ethers.Contract;
 
       const provider = new JsonRpcProvider("https://polygon-rpc.com");
-      const wallet = new Wallet(privateKey!, provider);
+      const wallet = new Wallet(privateKey, provider);
 
       // Get USDC balance from contract
       const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
@@ -236,19 +248,25 @@ describe("Place Order E2E Test", () => {
         process.env.WALLET_PRIVATE_KEY ||
         process.env.PRIVATE_KEY;
 
+      if (!privateKey) {
+        console.log("[Test] Skipping: No private key configured");
+        return;
+      }
+
       const chainId = 137; // Polygon mainnet
       const clobApiUrl = process.env.CLOB_API_URL || "https://clob.polymarket.com";
 
       // Get or create API credentials
-      let clobApiKey = process.env.CLOB_API_KEY;
-      let clobApiSecret = process.env.CLOB_API_SECRET || process.env.CLOB_SECRET;
-      let clobApiPassphrase = process.env.CLOB_API_PASSPHRASE || process.env.CLOB_PASS_PHRASE;
+      const clobApiKey = process.env.CLOB_API_KEY;
+      const clobApiSecret = process.env.CLOB_API_SECRET || process.env.CLOB_SECRET;
+      const clobApiPassphrase = process.env.CLOB_API_PASSPHRASE || process.env.CLOB_PASS_PHRASE;
 
-      const JsonRpcProvider = ethers.JsonRpcProvider || (ethers as Record<string, unknown>).providers?.JsonRpcProvider;
+      const JsonRpcProvider =
+        ethers.JsonRpcProvider || (ethers as Record<string, unknown>).providers?.JsonRpcProvider;
       const Wallet = ethers.Wallet;
 
       const provider = new JsonRpcProvider("https://polygon-rpc.com");
-      const wallet = new Wallet(privateKey!, provider);
+      const wallet = new Wallet(privateKey, provider);
 
       let client: InstanceType<typeof ClobClient>;
 
@@ -310,9 +328,17 @@ describe("Place Order E2E Test", () => {
       } else {
         // Check for Cloudflare block
         const errorStr = JSON.stringify(response);
-        if (errorStr.includes("Cloudflare") || errorStr.includes("403") || errorStr.includes("blocked")) {
-          console.log(`[Test] ⚠️ Order blocked by Cloudflare. This is expected in test environment.`);
-          console.log(`[Test] ⚠️ Please test order placement via the TUI: bun run polymarket-demo.ts chat --execute`);
+        if (
+          errorStr.includes("Cloudflare") ||
+          errorStr.includes("403") ||
+          errorStr.includes("blocked")
+        ) {
+          console.log(
+            `[Test] ⚠️ Order blocked by Cloudflare. This is expected in test environment.`
+          );
+          console.log(
+            `[Test] ⚠️ Please test order placement via the TUI: bun run polymarket-demo.ts chat --execute`
+          );
           console.log(`[Test] ⚠️ Say: "Put $1 on No for Miami Heat playoffs"`);
           // Don't fail the test - Cloudflare blocking is an infrastructure issue, not code issue
           expect(true).toBe(true);
@@ -339,12 +365,18 @@ describe("Place Order E2E Test", () => {
         process.env.WALLET_PRIVATE_KEY ||
         process.env.PRIVATE_KEY;
 
-      const JsonRpcProvider = ethers.JsonRpcProvider || (ethers as Record<string, unknown>).providers?.JsonRpcProvider;
+      if (!privateKey) {
+        console.log("[Test] Skipping: No private key configured");
+        return;
+      }
+
+      const JsonRpcProvider =
+        ethers.JsonRpcProvider || (ethers as Record<string, unknown>).providers?.JsonRpcProvider;
       const Wallet = ethers.Wallet;
       const Contract = ethers.Contract;
 
       const provider = new JsonRpcProvider("https://polygon-rpc.com");
-      const wallet = new Wallet(privateKey!, provider);
+      const wallet = new Wallet(privateKey, provider);
 
       // Get updated USDC balance
       const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
@@ -392,11 +424,17 @@ describe("Place Order E2E Test", () => {
         return;
       }
 
-      const JsonRpcProvider = ethers.JsonRpcProvider || (ethers as Record<string, unknown>).providers?.JsonRpcProvider;
+      if (!privateKey) {
+        console.log("[Test] Skipping order verification - no private key");
+        return;
+      }
+
+      const JsonRpcProvider =
+        ethers.JsonRpcProvider || (ethers as Record<string, unknown>).providers?.JsonRpcProvider;
       const Wallet = ethers.Wallet;
 
       const provider = new JsonRpcProvider("https://polygon-rpc.com");
-      const wallet = new Wallet(privateKey!, provider);
+      const wallet = new Wallet(privateKey, provider);
 
       const client = new ClobClient(clobApiUrl, chainId, wallet, {
         key: clobApiKey,
@@ -409,7 +447,8 @@ describe("Place Order E2E Test", () => {
       console.log(`[Test] Open orders: ${openOrders.length}`);
 
       const ourOrder = openOrders.find(
-        (o: { id?: string; asset_id?: string }) => o.id === orderId || o.asset_id === marketResult?.tokenId
+        (o: { id?: string; asset_id?: string }) =>
+          o.id === orderId || o.asset_id === marketResult?.tokenId
       );
 
       if (ourOrder) {

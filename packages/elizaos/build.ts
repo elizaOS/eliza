@@ -142,8 +142,18 @@ function copyDir(src: string, dest: string): void {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
 
+    // Skip broken symlinks and non-existent files
+    if (!fs.existsSync(srcPath)) {
+      console.warn(`⚠️  Skipping broken symlink or missing file: ${srcPath}`);
+      continue;
+    }
+
     if (entry.isDirectory()) {
       copyDir(srcPath, destPath);
+    } else if (entry.isSymbolicLink()) {
+      // For symlinks, copy the target file content instead of the symlink
+      const realPath = fs.realpathSync(srcPath);
+      fs.copyFileSync(realPath, destPath);
     } else {
       fs.copyFileSync(srcPath, destPath);
     }

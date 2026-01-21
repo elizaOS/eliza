@@ -28,8 +28,8 @@ pub mod testing;
 
 // From primitives
 pub use primitives::{
-    as_uuid, string_to_uuid, Content, Media, MentionContext, Metadata, UUIDError, DEFAULT_UUID_STR,
-    UUID,
+    as_uuid, string_to_uuid, ChannelType, Content, Media, MentionContext, Metadata, UUIDError,
+    DEFAULT_UUID_STR, UUID,
 };
 
 // From agent
@@ -46,9 +46,7 @@ pub use components::{
 };
 
 // From memory
-pub use memory::{
-    Memory, MemoryMetadata, MemoryType, MessageMemory,
-};
+pub use memory::{Memory, MemoryMetadata, MemoryType, MessageMemory};
 
 // From environment
 pub use environment::{

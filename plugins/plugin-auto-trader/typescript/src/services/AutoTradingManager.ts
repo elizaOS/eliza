@@ -1,30 +1,52 @@
-import { Service, type IAgentRuntime, logger } from '@elizaos/core';
-import type { TradingStrategy, TradeOrder, Position, OHLCV, PortfolioSnapshot, StrategyContextMarketData, AgentState } from '../types.ts';
-import { TradeType, OrderType } from '../types.ts';
-import { v4 as uuidv4 } from 'uuid';
-import type { SwapService } from './SwapService.ts';
-import type { TokenValidationService } from './TokenValidationService.ts';
-import type { TradingTrajectoryService, TradingEnvironmentState } from './TradingTrajectoryService.ts';
-import { LLMStrategy } from '../strategies/LLMStrategy.ts';
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { LLMStrategy } from "../strategies/LLMStrategy.ts";
+import type {
+  AgentState,
+  OHLCV,
+  PortfolioSnapshot,
+  Position,
+  StrategyContextMarketData,
+  TradeOrder,
+  TradingStrategy,
+} from "../types.ts";
+import { OrderType, TradeType } from "../types.ts";
+import type { SwapService } from "./SwapService.ts";
+import type { TokenValidationService } from "./TokenValidationService.ts";
+import type {
+  TradingEnvironmentState,
+  TradingTrajectoryService,
+} from "./TradingTrajectoryService.ts";
 
 /** Risk management helper */
 class RiskManager {
   constructor(
     private maxDailyLoss = 1000,
     private stopLossPercent = 0.05,
-    private takeProfitPercent = 0.1
+    private takeProfitPercent = 0.1,
   ) {}
 
-  checkLimits(dailyPnL: number, position: Position, currentPrice: number): { shouldExit: boolean; reason?: string } {
+  checkLimits(
+    dailyPnL: number,
+    position: Position,
+    currentPrice: number,
+  ): { shouldExit: boolean; reason?: string } {
     if (dailyPnL < -this.maxDailyLoss) {
-      return { shouldExit: true, reason: 'Daily loss limit exceeded' };
+      return { shouldExit: true, reason: "Daily loss limit exceeded" };
     }
-    const pnlPercent = (currentPrice - position.entryPrice) / position.entryPrice;
+    const pnlPercent =
+      (currentPrice - position.entryPrice) / position.entryPrice;
     if (pnlPercent < -this.stopLossPercent) {
-      return { shouldExit: true, reason: `Stop loss at ${(pnlPercent * 100).toFixed(1)}%` };
+      return {
+        shouldExit: true,
+        reason: `Stop loss at ${(pnlPercent * 100).toFixed(1)}%`,
+      };
     }
     if (pnlPercent > this.takeProfitPercent) {
-      return { shouldExit: true, reason: `Take profit at ${(pnlPercent * 100).toFixed(1)}%` };
+      return {
+        shouldExit: true,
+        reason: `Take profit at ${(pnlPercent * 100).toFixed(1)}%`,
+      };
     }
     return { shouldExit: false };
   }
@@ -32,17 +54,35 @@ class RiskManager {
 
 /** Trade analytics tracker */
 class Analytics {
-  private trades: Array<{ timestamp: number; type: TradeType; price: number; quantity: number; realizedPnL?: number; txId?: string }> = [];
+  private trades: Array<{
+    timestamp: number;
+    type: TradeType;
+    price: number;
+    quantity: number;
+    realizedPnL?: number;
+    txId?: string;
+  }> = [];
 
-  trackTrade(trade: { type: TradeType; price: number; quantity: number; realizedPnL?: number; txId?: string }): void {
+  trackTrade(trade: {
+    type: TradeType;
+    price: number;
+    quantity: number;
+    realizedPnL?: number;
+    txId?: string;
+  }): void {
     this.trades.push({ ...trade, timestamp: Date.now() });
   }
 
   getMetrics() {
     const todayStart = new Date().setHours(0, 0, 0, 0);
-    const winning = this.trades.filter(t => (t.realizedPnL || 0) > 0);
-    const totalPnL = this.trades.reduce((sum, t) => sum + (t.realizedPnL || 0), 0);
-    const dailyPnL = this.trades.filter(t => t.timestamp >= todayStart).reduce((sum, t) => sum + (t.realizedPnL || 0), 0);
+    const winning = this.trades.filter((t) => (t.realizedPnL || 0) > 0);
+    const totalPnL = this.trades.reduce(
+      (sum, t) => sum + (t.realizedPnL || 0),
+      0,
+    );
+    const dailyPnL = this.trades
+      .filter((t) => t.timestamp >= todayStart)
+      .reduce((sum, t) => sum + (t.realizedPnL || 0), 0);
 
     return {
       totalPnL,
@@ -69,7 +109,12 @@ export interface TradingStatus {
   isTrading: boolean;
   strategy?: string;
   positions: Position[];
-  performance: { totalPnL: number; dailyPnL: number; winRate: number; totalTrades: number };
+  performance: {
+    totalPnL: number;
+    dailyPnL: number;
+    winRate: number;
+    totalTrades: number;
+  };
 }
 
 interface TransactionRecord {
@@ -84,8 +129,9 @@ interface TransactionRecord {
 }
 
 export class AutoTradingManager extends Service {
-  public static readonly serviceType = 'AutoTradingManager';
-  public readonly capabilityDescription = 'Trading service with LLM strategies and Jupiter swap execution';
+  public static readonly serviceType = "AutoTradingManager";
+  public readonly capabilityDescription =
+    "Trading service with LLM strategies and Jupiter swap execution";
 
   private strategies = new Map<string, TradingStrategy>();
   private activeStrategy?: TradingStrategy;
@@ -100,27 +146,35 @@ export class AutoTradingManager extends Service {
   private validationService: TokenValidationService | null = null;
   private trajectoryService: TradingTrajectoryService | null = null;
 
-  constructor(runtime: IAgentRuntime) {
-    super(runtime);
-  }
-
-  public static async start(runtime: IAgentRuntime): Promise<AutoTradingManager> {
+  public static async start(
+    runtime: IAgentRuntime,
+  ): Promise<AutoTradingManager> {
     const instance = new AutoTradingManager(runtime);
     await instance.initialize();
     return instance;
   }
 
   private async initialize(): Promise<void> {
-    this.swapService = this.runtime.getService('SwapService') as SwapService | null;
-    this.validationService = this.runtime.getService('TokenValidationService') as TokenValidationService | null;
-    this.trajectoryService = this.runtime.getService('TradingTrajectoryService') as TradingTrajectoryService | null;
+    this.swapService = this.runtime.getService(
+      "SwapService",
+    ) as SwapService | null;
+    this.validationService = this.runtime.getService(
+      "TokenValidationService",
+    ) as TokenValidationService | null;
+    this.trajectoryService = this.runtime.getService(
+      "TradingTrajectoryService",
+    ) as TradingTrajectoryService | null;
 
     const liveReady = this.swapService?.isReady();
     const trajectoryEnabled = this.trajectoryService?.isEnabled();
-    logger.info(`[AutoTradingManager] Initialized (live: ${liveReady ? 'yes' : 'no'}, trajectory: ${trajectoryEnabled ? 'yes' : 'no'})`);
+    logger.info(
+      `[AutoTradingManager] Initialized (live: ${liveReady ? "yes" : "no"}, trajectory: ${trajectoryEnabled ? "yes" : "no"})`,
+    );
 
     await this.registerDefaultStrategies();
-    logger.info(`[AutoTradingManager] Loaded ${this.strategies.size} strategies`);
+    logger.info(
+      `[AutoTradingManager] Loaded ${this.strategies.size} strategies`,
+    );
   }
 
   public async stop(): Promise<void> {
@@ -128,11 +182,16 @@ export class AutoTradingManager extends Service {
   }
 
   private async registerDefaultStrategies(): Promise<void> {
-    const [{ MomentumBreakoutStrategy }, { MeanReversionStrategy }, { RuleBasedStrategy }, { RandomStrategy }] = await Promise.all([
-      import('../strategies/MomentumBreakoutStrategy.ts'),
-      import('../strategies/MeanReversionStrategy.ts'),
-      import('../strategies/RuleBasedStrategy.ts'),
-      import('../strategies/RandomStrategy.ts'),
+    const [
+      { MomentumBreakoutStrategy },
+      { MeanReversionStrategy },
+      { RuleBasedStrategy },
+      { RandomStrategy },
+    ] = await Promise.all([
+      import("../strategies/MomentumBreakoutStrategy.ts"),
+      import("../strategies/MeanReversionStrategy.ts"),
+      import("../strategies/RuleBasedStrategy.ts"),
+      import("../strategies/RandomStrategy.ts"),
     ]);
 
     const llm = new LLMStrategy();
@@ -149,12 +208,16 @@ export class AutoTradingManager extends Service {
   }
 
   public async startTrading(config: TradingConfig): Promise<void> {
-    if (this.isTrading) throw new Error('Already trading');
+    if (this.isTrading) throw new Error("Already trading");
 
     const strategy = this.strategies.get(config.strategy);
     if (!strategy) throw new Error(`Strategy "${config.strategy}" not found`);
 
-    this.riskManager = new RiskManager(config.maxDailyLoss, config.stopLossPercent, config.takeProfitPercent);
+    this.riskManager = new RiskManager(
+      config.maxDailyLoss,
+      config.stopLossPercent,
+      config.takeProfitPercent,
+    );
     this.activeStrategy = strategy;
     this.currentConfig = config;
     this.isTrading = true;
@@ -169,17 +232,27 @@ export class AutoTradingManager extends Service {
       });
     }
 
-    logger.info(`[AutoTradingManager] Started: ${strategy.name}, interval: ${config.intervalMs}ms`);
+    logger.info(
+      `[AutoTradingManager] Started: ${strategy.name}, interval: ${config.intervalMs}ms`,
+    );
 
-    this.tradingInterval = setInterval(() => this.tradingLoop().catch(e => logger.error('[AutoTradingManager] Loop error:', e)), config.intervalMs);
-    this.tradingLoop().catch(e => logger.error('[AutoTradingManager] Initial loop error:', e));
+    this.tradingInterval = setInterval(
+      () =>
+        this.tradingLoop().catch((e) =>
+          logger.error("[AutoTradingManager] Loop error:", e),
+        ),
+      config.intervalMs,
+    );
+    this.tradingLoop().catch((e) =>
+      logger.error("[AutoTradingManager] Initial loop error:", e),
+    );
   }
 
   public async stopTrading(): Promise<void> {
     // End trajectory logging session
     if (this.trajectoryService?.isEnabled()) {
       const envState = await this.getEnvironmentState();
-      await this.trajectoryService.endSession('completed', envState);
+      await this.trajectoryService.endSession("completed", envState);
     }
 
     this.isTrading = false;
@@ -188,7 +261,7 @@ export class AutoTradingManager extends Service {
       clearInterval(this.tradingInterval);
       this.tradingInterval = undefined;
     }
-    logger.info('[AutoTradingManager] Stopped');
+    logger.info("[AutoTradingManager] Stopped");
   }
 
   private async tradingLoop(): Promise<void> {
@@ -196,7 +269,10 @@ export class AutoTradingManager extends Service {
 
     // For 'auto' mode (LLM strategy), the strategy handles token discovery
     // We call processToken once with null to trigger the strategy's internal token selection
-    if (this.currentConfig.tokens.length === 1 && this.currentConfig.tokens[0] === 'auto') {
+    if (
+      this.currentConfig.tokens.length === 1 &&
+      this.currentConfig.tokens[0] === "auto"
+    ) {
       await this.processToken(null);
     } else {
       // For explicit token lists, process each token
@@ -215,14 +291,20 @@ export class AutoTradingManager extends Service {
 
     // For auto mode (token=null), LLM strategy handles its own token discovery
     // For explicit tokens, we get market data for that specific token
-    const marketData = token ? await this.getMarketData(token) : this.createAutoModeMarketData();
+    const marketData = token
+      ? await this.getMarketData(token)
+      : this.createAutoModeMarketData();
     if (!marketData) return;
 
     // Check risk limits for existing positions
     if (token) {
       const position = this.positions.get(token);
       if (position && marketData.currentPrice) {
-        const exitCheck = this.riskManager.checkLimits(this.analytics.getMetrics().dailyPnL, position, marketData.currentPrice);
+        const exitCheck = this.riskManager.checkLimits(
+          this.analytics.getMetrics().dailyPnL,
+          position,
+          marketData.currentPrice,
+        );
         if (exitCheck.shouldExit) {
           const order: TradeOrder = {
             action: TradeType.SELL,
@@ -230,7 +312,7 @@ export class AutoTradingManager extends Service {
             quantity: position.amount,
             orderType: OrderType.MARKET,
             timestamp: Date.now(),
-            reason: exitCheck.reason || 'Risk limit exit',
+            reason: exitCheck.reason || "Risk limit exit",
           };
           await this.executeTrade(order);
           return;
@@ -243,7 +325,11 @@ export class AutoTradingManager extends Service {
       if (posToken !== token) {
         const posMarketData = await this.getMarketData(posToken);
         if (posMarketData?.currentPrice) {
-          const exitCheck = this.riskManager.checkLimits(this.analytics.getMetrics().dailyPnL, position, posMarketData.currentPrice);
+          const exitCheck = this.riskManager.checkLimits(
+            this.analytics.getMetrics().dailyPnL,
+            position,
+            posMarketData.currentPrice,
+          );
           if (exitCheck.shouldExit) {
             const order: TradeOrder = {
               action: TradeType.SELL,
@@ -251,7 +337,7 @@ export class AutoTradingManager extends Service {
               quantity: position.amount,
               orderType: OrderType.MARKET,
               timestamp: Date.now(),
-              reason: exitCheck.reason || 'Risk limit exit',
+              reason: exitCheck.reason || "Risk limit exit",
             };
             await this.executeTrade(order);
           }
@@ -272,13 +358,21 @@ export class AutoTradingManager extends Service {
       recentTrades: this.analytics.getMetrics().totalTrades,
     };
 
-    const decision = await this.activeStrategy.decide({ marketData, agentState, portfolioSnapshot, agentRuntime: this.runtime });
-    
+    const decision = await this.activeStrategy.decide({
+      marketData,
+      agentState,
+      portfolioSnapshot,
+      agentRuntime: this.runtime,
+    });
+
     if (decision) {
       await this.executeTrade(decision);
     } else {
       // Log HOLD decision
-      this.trajectoryService?.completeTradingStep({ order: null, success: true });
+      this.trajectoryService?.completeTradingStep({
+        order: null,
+        success: true,
+      });
     }
   }
 
@@ -292,11 +386,13 @@ export class AutoTradingManager extends Service {
   }
 
   public async executeTrade(order: TradeOrder): Promise<string> {
-    if (!this.isTrading) throw new Error('Not currently trading');
+    if (!this.isTrading) throw new Error("Not currently trading");
 
-    const [token] = order.pair.split('/');
-    const isLive = this.runtime.getSetting('TRADING_MODE') === 'live' && this.swapService?.isReady();
-    const slippageBps = Number(this.runtime.getSetting('SLIPPAGE_BPS')) || 100;
+    const [token] = order.pair.split("/");
+    const isLive =
+      this.runtime.getSetting("TRADING_MODE") === "live" &&
+      this.swapService?.isReady();
+    const slippageBps = Number(this.runtime.getSetting("SLIPPAGE_BPS")) || 100;
     let txId: string;
     let signature: string | undefined;
 
@@ -305,21 +401,34 @@ export class AutoTradingManager extends Service {
       if (order.action === TradeType.BUY && this.validationService) {
         const validation = await this.validationService.validateToken(token);
         if (!validation.isValid) {
-          throw new Error(`Validation failed: ${validation.rejectionReasons.join(', ')}`);
+          throw new Error(
+            `Validation failed: ${validation.rejectionReasons.join(", ")}`,
+          );
         }
       }
 
-      const result = order.action === TradeType.BUY
-        ? await this.swapService!.buy(token, (order.price || 0) * order.quantity / await this.getSolPrice(), slippageBps)
-        : await this.swapService!.sell(token, order.quantity, slippageBps);
+      const result =
+        order.action === TradeType.BUY
+          ? await this.swapService?.buy(
+              token,
+              ((order.price || 0) * order.quantity) /
+                (await this.getSolPrice()),
+              slippageBps,
+            )
+          : await this.swapService?.sell(token, order.quantity, slippageBps);
 
-      if (!result.success) throw new Error(`Swap failed: ${result.error}`);
-      txId = result.signature!;
+      if (!result || !result.success)
+        throw new Error(`Swap failed: ${result?.error ?? "unknown error"}`);
+      txId = result.signature ?? "";
       signature = result.signature;
-      logger.info(`[AutoTradingManager] ${order.action}: ${result.inputAmount} → ${result.outputAmount} (${result.explorerUrl})`);
+      logger.info(
+        `[AutoTradingManager] ${order.action}: ${result.inputAmount ?? "?"} → ${result.outputAmount ?? "?"} (${result.explorerUrl ?? ""})`,
+      );
     } else {
       txId = `paper_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      logger.info(`[AutoTradingManager] Paper ${order.action}: ${order.quantity} ${token}`);
+      logger.info(
+        `[AutoTradingManager] Paper ${order.action}: ${order.quantity} ${token}`,
+      );
     }
 
     this.transactionHistory.push({
@@ -356,7 +465,9 @@ export class AutoTradingManager extends Service {
       const existing = this.positions.get(token);
       if (existing) {
         const newQty = existing.amount + order.quantity;
-        existing.entryPrice = (existing.entryPrice * existing.amount + price * order.quantity) / newQty;
+        existing.entryPrice =
+          (existing.entryPrice * existing.amount + price * order.quantity) /
+          newQty;
         existing.amount = newQty;
       } else {
         this.positions.set(token, {
@@ -371,7 +482,13 @@ export class AutoTradingManager extends Service {
       const position = this.positions.get(token);
       if (position) {
         const realizedPnL = order.quantity * (price - position.entryPrice);
-        this.analytics.trackTrade({ type: order.action, price, quantity: order.quantity, realizedPnL, txId });
+        this.analytics.trackTrade({
+          type: order.action,
+          price,
+          quantity: order.quantity,
+          realizedPnL,
+          txId,
+        });
         position.amount -= order.quantity;
         if (position.amount <= 0) this.positions.delete(token);
       }
@@ -379,9 +496,11 @@ export class AutoTradingManager extends Service {
   }
 
   private async getSolPrice(): Promise<number> {
-    const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    const resp = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
+    );
     if (resp.ok) {
-      const data = await resp.json() as { solana: { usd: number } };
+      const data = (await resp.json()) as { solana: { usd: number } };
       return data.solana.usd;
     }
     return 150;
@@ -412,7 +531,9 @@ export class AutoTradingManager extends Service {
     return this.transactionHistory.slice(-limit);
   }
 
-  private async getMarketData(token: string): Promise<StrategyContextMarketData | null> {
+  private async getMarketData(
+    _token: string,
+  ): Promise<StrategyContextMarketData | null> {
     const basePrice = 100 + Math.random() * 10;
     const priceData: OHLCV[] = Array.from({ length: 100 }, (_, i) => ({
       timestamp: Date.now() - (100 - i) * 60000,
@@ -423,7 +544,11 @@ export class AutoTradingManager extends Service {
       volume: 1000 + Math.random() * 1000,
     }));
 
-    return { currentPrice: basePrice, lastPrices: priceData.slice(-10).map(d => d.close), priceData };
+    return {
+      currentPrice: basePrice,
+      lastPrices: priceData.slice(-10).map((d) => d.close),
+      priceData,
+    };
   }
 
   private getHoldingsSnapshot(): Record<string, number> {

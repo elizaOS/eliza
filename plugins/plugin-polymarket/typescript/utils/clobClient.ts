@@ -76,9 +76,7 @@ type PolymarketServiceLike = {
   ensureApiCredentials?: (options?: { allowCreate?: boolean }) => Promise<ApiKeyCreds | null>;
 };
 
-async function getPolymarketService(
-  runtime: IAgentRuntime
-): Promise<PolymarketServiceLike | null> {
+async function getPolymarketService(runtime: IAgentRuntime): Promise<PolymarketServiceLike | null> {
   const existing = runtime.getService(POLYMARKET_SERVICE_NAME) as PolymarketServiceLike | null;
   if (existing) {
     return existing;
@@ -89,7 +87,9 @@ async function getPolymarketService(
   try {
     // The runtime implementation accepts plugin-defined service name strings,
     // but the interface only declares ServiceTypeName. Use a type assertion.
-    const loadService = runtime.getServiceLoadPromise as (s: string) => Promise<PolymarketServiceLike>;
+    const loadService = runtime.getServiceLoadPromise as (
+      s: string
+    ) => Promise<PolymarketServiceLike>;
     const loaded = await loadService(POLYMARKET_SERVICE_NAME);
     return loaded;
   } catch {

@@ -1,5 +1,6 @@
 {
   "author": "Mediar AI",
+  "private": true,
   "dependencies": {
     "zod": "^3.22.4"
   },
@@ -39,7 +40,7 @@
     "url": "https://github.com/mediar-ai/computeruse"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "echo 'Skipping workflow build - requires @mediar-ai/computeruse'",
     "dev": "tsc --watch",
     "test": "jest"
   },

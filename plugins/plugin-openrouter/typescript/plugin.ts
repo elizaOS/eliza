@@ -100,11 +100,9 @@ export const openrouterPlugin: Plugin = {
 
   tests: [
     {
-      $typeName: "eliza.v1.TestSuite",
       name: "openrouter_plugin_tests",
       tests: [
         {
-          $typeName: "eliza.v1.TestCase",
           name: "openrouter_test_text_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
@@ -123,7 +121,6 @@ export const openrouterPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "openrouter_test_text_large",
           fn: async (runtime: IAgentRuntime) => {
             try {
@@ -142,7 +139,6 @@ export const openrouterPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "openrouter_test_object_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
@@ -162,7 +158,6 @@ export const openrouterPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "openrouter_test_text_embedding",
           fn: async (runtime: IAgentRuntime) => {
             try {

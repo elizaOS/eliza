@@ -1,11 +1,11 @@
+import type { Memory } from "./memory";
+import type { Content, UUID } from "./primitives";
 import type {
   MessageResult as ProtoMessageResult,
   MessageStreamChunkPayload as ProtoMessageStreamChunkPayload,
   MessageStreamErrorPayload as ProtoMessageStreamErrorPayload,
   TargetInfo as ProtoTargetInfo,
 } from "./proto.js";
-import type { Memory } from "./memory";
-import type { Content, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
 /**

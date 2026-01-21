@@ -1,8 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  cleanupTestRuntime,
-  createTestRuntime,
-} from "./test-utils";
 import type { Content, Entity, IAgentRuntime, Memory, State } from "../types";
 import * as utils from "../utils";
 import {
@@ -23,6 +19,7 @@ import {
   truncateToCompleteSentence,
   validateUuid,
 } from "../utils";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 describe("Utils Comprehensive Tests", () => {
   describe("parseBooleanFromText", () => {

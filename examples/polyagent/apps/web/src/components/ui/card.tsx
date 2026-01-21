@@ -1,5 +1,5 @@
-import { cn } from '@polyagent/shared';
-import type React from 'react';
+import { cn } from "@polyagent/shared";
+import type React from "react";
 
 /**
  * Card component for displaying content in a contained card layout.
@@ -23,7 +23,7 @@ export const Card = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'div'>) => (
+}: React.ComponentPropsWithoutRef<"div">) => (
   <div className={cn(className)} {...props}>
     {children}
   </div>
@@ -40,7 +40,7 @@ export const CardHeader = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'div'>) => (
+}: React.ComponentPropsWithoutRef<"div">) => (
   <div className={cn(className)} {...props}>
     {children}
   </div>
@@ -57,7 +57,7 @@ export const CardTitle = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'h3'>) => (
+}: React.ComponentPropsWithoutRef<"h3">) => (
   <h3 className={cn(className)} {...props}>
     {children}
   </h3>
@@ -74,7 +74,7 @@ export const CardDescription = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'p'>) => (
+}: React.ComponentPropsWithoutRef<"p">) => (
   <p className={cn(className)} {...props}>
     {children}
   </p>
@@ -91,7 +91,7 @@ export const CardContent = ({
   children,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<'div'>) => (
+}: React.ComponentPropsWithoutRef<"div">) => (
   <div className={cn(className)} {...props}>
     {children}
   </div>

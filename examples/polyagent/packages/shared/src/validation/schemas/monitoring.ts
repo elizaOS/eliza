@@ -2,17 +2,17 @@
  * Monitoring and SSE-related validation schemas
  */
 
-import { z } from 'zod';
-import { PaginationSchema, SnowflakeIdSchema } from './common';
+import { z } from "zod";
+import { PaginationSchema, SnowflakeIdSchema } from "./common";
 
 /**
  * SSE channel schema
  */
 export const SSEChannelSchema = z.enum([
-  'feed',
-  'markets',
-  'breaking-news',
-  'upcoming-events',
+  "feed",
+  "markets",
+  "breaking-news",
+  "upcoming-events",
 ]);
 
 /**
@@ -52,6 +52,6 @@ export const MarkNotificationsReadSchema = z
       (data.notificationIds && data.notificationIds.length > 0),
     {
       message:
-        'Either markAllAsRead must be true or notificationIds array must be provided',
-    }
+        "Either markAllAsRead must be true or notificationIds array must be provided",
+    },
   );

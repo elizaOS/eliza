@@ -53,7 +53,7 @@ def valid_plugin_spec() -> dict:
     return {
         "name": "@test/plugin-example",
         "description": "A test plugin for testing purposes",
-        "version": "2.0.0",
+        "version": "2.0.0-alpha",
         "actions": [
             {
                 "name": "testAction",

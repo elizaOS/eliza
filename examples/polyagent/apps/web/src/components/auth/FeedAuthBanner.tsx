@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
-import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { cn } from "@polyagent/shared";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 /**
  * Feed authentication banner content component.
@@ -20,12 +20,12 @@ function FeedAuthBannerContent() {
   const searchParams = useSearchParams();
 
   // Check if dev mode is enabled via URL parameter (for staging testing)
-  const isDevMode = searchParams.get('dev') === 'true';
+  const isDevMode = searchParams.get("dev") === "true";
 
   // Hide when WAITLIST_MODE is enabled on home page (unless ?dev=true)
-  const isWaitlistMode = process.env.NEXT_PUBLIC_WAITLIST_MODE === 'true';
+  const isWaitlistMode = process.env.NEXT_PUBLIC_WAITLIST_MODE === "true";
   const isHomePage =
-    typeof window !== 'undefined' && window.location.pathname === '/';
+    typeof window !== "undefined" && window.location.pathname === "/";
   const shouldHide = isWaitlistMode && isHomePage && !isDevMode;
 
   // If should be hidden, don't render anything
@@ -46,9 +46,9 @@ function FeedAuthBannerContent() {
   return (
     <div
       className={cn(
-        'fixed right-0 bottom-0 left-0 z-50',
-        'bg-background text-foreground',
-        'border-border border-t-2'
+        "fixed right-0 bottom-0 left-0 z-50",
+        "bg-background text-foreground",
+        "border-border border-t-2",
       )}
     >
       <div className="mx-auto max-w-7xl px-4 py-4">
@@ -61,11 +61,11 @@ function FeedAuthBannerContent() {
             <button
               onClick={login}
               className={cn(
-                'px-6 py-2 font-bold',
-                'bg-background text-foreground',
-                'hover:bg-background/90 hover:text-foreground',
-                'transition-colors',
-                'bg-primary text-primary-foreground'
+                "px-6 py-2 font-bold",
+                "bg-background text-foreground",
+                "hover:bg-background/90 hover:text-foreground",
+                "transition-colors",
+                "bg-primary text-primary-foreground",
               )}
             >
               Log in

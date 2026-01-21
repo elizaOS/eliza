@@ -58,7 +58,11 @@
  * @see GDPR Article 20 - Right to data portability
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@polyagent/api';
+import {
+  authenticate,
+  successResponse,
+  withErrorHandling,
+} from "@polyagent/api";
 import {
   agentPerformanceMetrics,
   balanceTransactions,
@@ -77,19 +81,19 @@ import {
   referrals,
   tradingFees,
   users,
-} from '@polyagent/db';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+} from "@polyagent/db";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const authUser = await authenticate(request);
   const userId = authUser.dbUserId ?? authUser.userId;
 
   logger.info(
-    'User requested data export',
+    "User requested data export",
     { userId },
-    'GET /api/users/export-data'
+    "GET /api/users/export-data",
   );
 
   // Fetch all user data from database
@@ -290,7 +294,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       })
       .from(feedbacks)
       .where(
-        or(eq(feedbacks.fromUserId, userId), eq(feedbacks.toUserId, userId))
+        or(eq(feedbacks.fromUserId, userId), eq(feedbacks.toUserId, userId)),
       ),
     db
       .select({
@@ -343,7 +347,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   ]);
 
   if (!user) {
-    return successResponse({ error: 'User not found' }, 404);
+    return successResponse({ error: "User not found" }, 404);
   }
 
   // Compile all data into a comprehensive export
@@ -351,13 +355,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     export_info: {
       exported_at: new Date().toISOString(),
       user_id: userId,
-      format_version: '1.0',
+      format_version: "1.0",
     },
     personal_information: {
       ...user,
       // Important notice about blockchain data
       blockchain_notice:
-        'On-chain data (wallet address, NFT token ID, registration transaction) is recorded on public blockchain and cannot be deleted.',
+        "On-chain data (wallet address, NFT token ID, registration transaction) is recorded on public blockchain and cannot be deleted.",
     },
     content: {
       posts: userPosts,
@@ -401,8 +405,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   return new NextResponse(JSON.stringify(exportData, null, 2), {
     status: 200,
     headers: {
-      'Content-Type': 'application/json',
-      'Content-Disposition': `attachment; filename="polyagent-data-export-${userId}-${Date.now()}.json"`,
+      "Content-Type": "application/json",
+      "Content-Disposition": `attachment; filename="polyagent-data-export-${userId}-${Date.now()}.json"`,
     },
   });
 });

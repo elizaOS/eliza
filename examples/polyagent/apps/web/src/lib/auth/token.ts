@@ -32,7 +32,7 @@
  * @returns The access token if available, null otherwise
  */
 export function getAuthToken(): string | null {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return null;
   }
   return window.__privyAccessToken ?? null;

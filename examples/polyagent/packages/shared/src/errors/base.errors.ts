@@ -22,7 +22,7 @@ export abstract class PolyagentError extends Error {
     public readonly code: string,
     public readonly statusCode: number = 500,
     public readonly isOperational: boolean = true,
-    context?: Record<string, unknown>
+    context?: Record<string, unknown>,
   ) {
     super(message);
     this.name = this.constructor.name;
@@ -51,7 +51,7 @@ export abstract class PolyagentError extends Error {
       statusCode: this.statusCode,
       timestamp: this.timestamp,
       context: this.context,
-      ...(process.env.NODE_ENV === 'development' && { stack: this.stack }),
+      ...(process.env.NODE_ENV === "development" && { stack: this.stack }),
     };
   }
 }
@@ -66,9 +66,9 @@ export class ValidationError extends PolyagentError {
   constructor(
     message: string,
     public readonly fields?: string[],
-    public readonly violations?: Array<{ field: string; message: string }>
+    public readonly violations?: Array<{ field: string; message: string }>,
   ) {
-    super(message, 'VALIDATION_ERROR', 400, true, { fields, violations });
+    super(message, "VALIDATION_ERROR", 400, true, { fields, violations });
   }
 }
 
@@ -82,10 +82,10 @@ export class AuthenticationError extends PolyagentError {
   constructor(
     message: string,
     public readonly reason:
-      | 'NO_TOKEN'
-      | 'INVALID_TOKEN'
-      | 'EXPIRED_TOKEN'
-      | 'INVALID_CREDENTIALS'
+      | "NO_TOKEN"
+      | "INVALID_TOKEN"
+      | "EXPIRED_TOKEN"
+      | "INVALID_CREDENTIALS",
   ) {
     super(message, `AUTH_${reason}`, 401, true, { reason });
   }
@@ -101,9 +101,9 @@ export class AuthorizationError extends PolyagentError {
   constructor(
     message: string,
     public readonly resource: string,
-    public readonly action: string
+    public readonly action: string,
   ) {
-    super(message, 'FORBIDDEN', 403, true, { resource, action });
+    super(message, "FORBIDDEN", 403, true, { resource, action });
   }
 }
 
@@ -117,7 +117,7 @@ export class NotFoundError extends PolyagentError {
   constructor(
     resource: string,
     identifier?: string | number,
-    customMessage?: string
+    customMessage?: string,
   ) {
     const message =
       customMessage ||
@@ -125,7 +125,7 @@ export class NotFoundError extends PolyagentError {
         ? `${resource} not found: ${identifier}`
         : `${resource} not found`);
 
-    super(message, 'NOT_FOUND', 404, true, { resource, identifier });
+    super(message, "NOT_FOUND", 404, true, { resource, identifier });
   }
 }
 
@@ -138,9 +138,9 @@ export class NotFoundError extends PolyagentError {
 export class ConflictError extends PolyagentError {
   constructor(
     message: string,
-    public readonly conflictingResource?: string
+    public readonly conflictingResource?: string,
   ) {
-    super(message, 'CONFLICT', 409, true, { conflictingResource });
+    super(message, "CONFLICT", 409, true, { conflictingResource });
   }
 }
 
@@ -154,13 +154,13 @@ export class DatabaseError extends PolyagentError {
   constructor(
     message: string,
     public readonly operation: string,
-    originalError?: Error
+    originalError?: Error,
   ) {
-    super(message, 'DATABASE_ERROR', 500, true, {
+    super(message, "DATABASE_ERROR", 500, true, {
       operation,
       originalError: originalError?.message,
       originalStack:
-        process.env.NODE_ENV === 'development'
+        process.env.NODE_ENV === "development"
           ? originalError?.stack
           : undefined,
     });
@@ -177,9 +177,9 @@ export class ExternalServiceError extends PolyagentError {
   constructor(
     service: string,
     message: string,
-    public readonly originalStatusCode?: number
+    public readonly originalStatusCode?: number,
   ) {
-    super(`${service}: ${message}`, 'EXTERNAL_SERVICE_ERROR', 502, true, {
+    super(`${service}: ${message}`, "EXTERNAL_SERVICE_ERROR", 502, true, {
       service,
       originalStatusCode,
     });
@@ -196,14 +196,14 @@ export class RateLimitError extends PolyagentError {
   constructor(
     public readonly limit: number,
     public readonly windowMs: number,
-    public readonly retryAfter?: number
+    public readonly retryAfter?: number,
   ) {
     super(
       `Rate limit exceeded: ${limit} requests per ${windowMs}ms`,
-      'RATE_LIMIT',
+      "RATE_LIMIT",
       429,
       true,
-      { limit, windowMs, retryAfter }
+      { limit, windowMs, retryAfter },
     );
   }
 }
@@ -218,7 +218,7 @@ export class BusinessLogicError extends PolyagentError {
   constructor(
     message: string,
     code: string,
-    context?: Record<string, unknown>
+    context?: Record<string, unknown>,
   ) {
     super(message, code, 400, true, context);
   }
@@ -232,7 +232,7 @@ export class BusinessLogicError extends PolyagentError {
  */
 export class BadRequestError extends PolyagentError {
   constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 'BAD_REQUEST', 400, true, details);
+    super(message, "BAD_REQUEST", 400, true, details);
   }
 }
 
@@ -244,10 +244,10 @@ export class BadRequestError extends PolyagentError {
  */
 export class InternalServerError extends PolyagentError {
   constructor(
-    message = 'An unexpected error occurred',
-    details?: Record<string, unknown>
+    message = "An unexpected error occurred",
+    details?: Record<string, unknown>,
   ) {
-    super(message, 'INTERNAL_ERROR', 500, false, details);
+    super(message, "INTERNAL_ERROR", 500, false, details);
   }
 }
 
@@ -259,9 +259,9 @@ export class InternalServerError extends PolyagentError {
  */
 export class ServiceUnavailableError extends PolyagentError {
   constructor(
-    message = 'Service temporarily unavailable',
-    public readonly retryAfter?: number
+    message = "Service temporarily unavailable",
+    public readonly retryAfter?: number,
   ) {
-    super(message, 'SERVICE_UNAVAILABLE', 503, true, { retryAfter });
+    super(message, "SERVICE_UNAVAILABLE", 503, true, { retryAfter });
   }
 }

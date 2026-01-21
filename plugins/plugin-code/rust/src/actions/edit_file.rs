@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::{Action, ActionExample, ActionResult};
 use crate::service::CoderService;
+use crate::{Action, ActionExample, ActionResult};
 
 pub struct EditFileAction;
 
@@ -81,4 +81,3 @@ impl Action for EditFileAction {
         }]
     }
 }
-

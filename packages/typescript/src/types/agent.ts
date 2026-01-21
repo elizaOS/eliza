@@ -1,4 +1,7 @@
+import type { KnowledgeSourceItem } from "./knowledge";
+import type { Content } from "./primitives";
 import type {
+  JsonValue,
   Agent as ProtoAgent,
   AgentStatus as ProtoAgentStatus,
   Character as ProtoCharacter,
@@ -6,21 +9,16 @@ import type {
   MessageExample as ProtoMessageExample,
   MessageExampleGroup as ProtoMessageExampleGroup,
 } from "./proto.js";
-import type { JsonValue } from "./proto.js";
-import type { KnowledgeItem } from "./knowledge";
 import type { State } from "./state";
-import type { Content } from "./primitives";
 
 export type TemplateType =
   | string
-  | ((
-      params: {
-        state:
-          | State
-          | Record<string, string | number | boolean | null | undefined>
-          | object;
-      },
-    ) => string);
+  | ((params: {
+      state:
+        | State
+        | Record<string, string | number | boolean | null | undefined>
+        | object;
+    }) => string);
 
 /**
  * Example message for demonstration
@@ -31,7 +29,10 @@ export interface MessageExample
 }
 
 export interface MessageExampleGroup
-  extends Omit<ProtoMessageExampleGroup, "$typeName" | "$unknown" | "examples"> {
+  extends Omit<
+    ProtoMessageExampleGroup,
+    "$typeName" | "$unknown" | "examples"
+  > {
   examples: MessageExample[];
 }
 
@@ -61,7 +62,7 @@ export type Character = Partial<
   settings?: CharacterSettings;
   secrets?: Record<string, string | number | boolean>;
   messageExamples?: MessageExampleGroup[];
-  knowledge?: KnowledgeItem[];
+  knowledge?: KnowledgeSourceItem[];
 };
 
 export enum AgentStatus {

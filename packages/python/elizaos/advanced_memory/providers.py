@@ -48,7 +48,9 @@ async def context_summary_get(runtime, message, _state=None) -> ProviderResult:
             data={},
         )
 
-    summary_only = f"**Previous Conversation** ({current.message_count} messages)\n{current.summary}"
+    summary_only = (
+        f"**Previous Conversation** ({current.message_count} messages)\n{current.summary}"
+    )
     summary_with_topics = (
         summary_only + f"\n*Topics: {', '.join(current.topics)}*"
         if current.topics
@@ -86,4 +88,3 @@ context_summary_provider = Provider(
     position=96,
     get=context_summary_get,
 )
-

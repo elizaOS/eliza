@@ -14,7 +14,7 @@
  * Provides structured error handling with timestamps, context, and proper
  * error codes for API responses.
  */
-import type { JsonValue } from '../types/common';
+import type { JsonValue } from "../types/common";
 
 export abstract class PolyagentError extends Error {
   public readonly timestamp: Date;
@@ -25,7 +25,7 @@ export abstract class PolyagentError extends Error {
     public readonly code: string,
     public readonly statusCode: number = 500,
     public readonly isOperational: boolean = true,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
     super(message);
     this.name = this.constructor.name;
@@ -45,7 +45,7 @@ export abstract class PolyagentError extends Error {
       statusCode: this.statusCode,
       timestamp: this.timestamp,
       context: this.context,
-      ...(process.env.NODE_ENV === 'development' && { stack: this.stack }),
+      ...(process.env.NODE_ENV === "development" && { stack: this.stack }),
     };
   }
 }
@@ -59,13 +59,13 @@ export class ValidationError extends PolyagentError {
   constructor(
     message: string,
     public readonly fields?: string[],
-    public readonly violations?: Array<{ field: string; message: string }>
+    public readonly violations?: Array<{ field: string; message: string }>,
   ) {
     const context: Record<string, JsonValue> = {};
     if (fields !== undefined) context.fields = fields as JsonValue;
     if (violations !== undefined)
       context.violations = violations as unknown as JsonValue;
-    super(message, 'VALIDATION_ERROR', 400, true, context);
+    super(message, "VALIDATION_ERROR", 400, true, context);
   }
 }
 
@@ -78,10 +78,10 @@ export class AuthenticationError extends PolyagentError {
   constructor(
     message: string,
     public readonly reason:
-      | 'NO_TOKEN'
-      | 'INVALID_TOKEN'
-      | 'EXPIRED_TOKEN'
-      | 'INVALID_CREDENTIALS'
+      | "NO_TOKEN"
+      | "INVALID_TOKEN"
+      | "EXPIRED_TOKEN"
+      | "INVALID_CREDENTIALS",
   ) {
     super(message, `AUTH_${reason}`, 401, true, { reason });
   }
@@ -96,9 +96,9 @@ export class AuthorizationError extends PolyagentError {
   constructor(
     message: string,
     public readonly resource: string,
-    public readonly action: string
+    public readonly action: string,
   ) {
-    super(message, 'FORBIDDEN', 403, true, { resource, action });
+    super(message, "FORBIDDEN", 403, true, { resource, action });
   }
 }
 
@@ -111,7 +111,7 @@ export class NotFoundError extends PolyagentError {
   constructor(
     resource: string,
     identifier?: string | number,
-    customMessage?: string
+    customMessage?: string,
   ) {
     const message =
       customMessage ||
@@ -121,7 +121,7 @@ export class NotFoundError extends PolyagentError {
 
     const context: Record<string, JsonValue> = { resource };
     if (identifier !== undefined) context.identifier = identifier as JsonValue;
-    super(message, 'NOT_FOUND', 404, true, context);
+    super(message, "NOT_FOUND", 404, true, context);
   }
 }
 
@@ -133,12 +133,12 @@ export class NotFoundError extends PolyagentError {
 export class ConflictError extends PolyagentError {
   constructor(
     message: string,
-    public readonly conflictingResource?: string
+    public readonly conflictingResource?: string,
   ) {
     const context: Record<string, JsonValue> = {};
     if (conflictingResource !== undefined)
       context.conflictingResource = conflictingResource as JsonValue;
-    super(message, 'CONFLICT', 409, true, context);
+    super(message, "CONFLICT", 409, true, context);
   }
 }
 
@@ -151,15 +151,15 @@ export class DatabaseError extends PolyagentError {
   constructor(
     message: string,
     public readonly operation: string,
-    originalError?: Error
+    originalError?: Error,
   ) {
     const context: Record<string, JsonValue> = { operation };
     if (originalError?.message)
       context.originalError = originalError.message as JsonValue;
-    if (process.env.NODE_ENV === 'development' && originalError?.stack) {
+    if (process.env.NODE_ENV === "development" && originalError?.stack) {
       context.originalStack = originalError.stack as JsonValue;
     }
-    super(message, 'DATABASE_ERROR', 500, true, context);
+    super(message, "DATABASE_ERROR", 500, true, context);
   }
 }
 
@@ -172,17 +172,17 @@ export class ExternalServiceError extends PolyagentError {
   constructor(
     service: string,
     message: string,
-    public readonly originalStatusCode?: number
+    public readonly originalStatusCode?: number,
   ) {
     const context: Record<string, JsonValue> = { service };
     if (originalStatusCode !== undefined)
       context.originalStatusCode = originalStatusCode as JsonValue;
     super(
       `${service}: ${message}`,
-      'EXTERNAL_SERVICE_ERROR',
+      "EXTERNAL_SERVICE_ERROR",
       502,
       true,
-      context
+      context,
     );
   }
 }
@@ -194,16 +194,16 @@ export class RateLimitError extends PolyagentError {
   constructor(
     public readonly limit: number,
     public readonly windowMs: number,
-    public readonly retryAfter?: number
+    public readonly retryAfter?: number,
   ) {
     const context: Record<string, JsonValue> = { limit, windowMs };
     if (retryAfter !== undefined) context.retryAfter = retryAfter as JsonValue;
     super(
       `Rate limit exceeded: ${limit} requests per ${windowMs}ms`,
-      'RATE_LIMIT',
+      "RATE_LIMIT",
       429,
       true,
-      context
+      context,
     );
   }
 }
@@ -215,7 +215,7 @@ export class BusinessLogicError extends PolyagentError {
   constructor(
     message: string,
     code: string,
-    context?: Record<string, JsonValue>
+    context?: Record<string, JsonValue>,
   ) {
     super(message, code, 400, true, context);
   }
@@ -226,7 +226,7 @@ export class BusinessLogicError extends PolyagentError {
  */
 export class BadRequestError extends PolyagentError {
   constructor(message: string, details?: Record<string, JsonValue>) {
-    super(message, 'BAD_REQUEST', 400, true, details);
+    super(message, "BAD_REQUEST", 400, true, details);
   }
 }
 
@@ -235,10 +235,10 @@ export class BadRequestError extends PolyagentError {
  */
 export class InternalServerError extends PolyagentError {
   constructor(
-    message = 'An unexpected error occurred',
-    details?: Record<string, JsonValue>
+    message = "An unexpected error occurred",
+    details?: Record<string, JsonValue>,
   ) {
-    super(message, 'INTERNAL_ERROR', 500, false, details);
+    super(message, "INTERNAL_ERROR", 500, false, details);
   }
 }
 
@@ -247,12 +247,12 @@ export class InternalServerError extends PolyagentError {
  */
 export class ServiceUnavailableError extends PolyagentError {
   constructor(
-    message = 'Service temporarily unavailable',
-    public readonly retryAfter?: number
+    message = "Service temporarily unavailable",
+    public readonly retryAfter?: number,
   ) {
     const context: Record<string, JsonValue> = {};
     if (retryAfter !== undefined) context.retryAfter = retryAfter;
-    super(message, 'SERVICE_UNAVAILABLE', 503, true, context);
+    super(message, "SERVICE_UNAVAILABLE", 503, true, context);
   }
 }
 
@@ -264,22 +264,22 @@ export class ServiceUnavailableError extends PolyagentError {
  */
 export class Agent0Error extends ExternalServiceError {
   public readonly operation:
-    | 'register'
-    | 'feedback'
-    | 'reputation'
-    | 'search'
-    | 'discovery';
+    | "register"
+    | "feedback"
+    | "reputation"
+    | "search"
+    | "discovery";
   public readonly agent0Code?: string;
 
   constructor(
     message: string,
-    operation: 'register' | 'feedback' | 'reputation' | 'search' | 'discovery',
+    operation: "register" | "feedback" | "reputation" | "search" | "discovery",
     agent0Code?: string,
     originalError?: Error,
-    originalStatusCode?: number
+    originalStatusCode?: number,
   ) {
     // Pass enhanced context to parent
-    super('Agent0', message, originalStatusCode);
+    super("Agent0", message, originalStatusCode);
     this.operation = operation;
     this.agent0Code = agent0Code;
 
@@ -291,7 +291,7 @@ export class Agent0Error extends ExternalServiceError {
         agent0Code,
         originalError: originalError?.message,
         originalStack:
-          process.env.NODE_ENV === 'development'
+          process.env.NODE_ENV === "development"
             ? originalError?.stack
             : undefined,
       },
@@ -316,16 +316,16 @@ export class Agent0Error extends ExternalServiceError {
 
     // Specific retryable error codes
     const retryableMessages = [
-      'ECONNRESET',
-      'ETIMEDOUT',
-      'ENOTFOUND',
-      'NetworkError',
-      'timeout',
-      'network',
+      "ECONNRESET",
+      "ETIMEDOUT",
+      "ENOTFOUND",
+      "NetworkError",
+      "timeout",
+      "network",
     ];
 
     return retryableMessages.some((msg) =>
-      this.message.toLowerCase().includes(msg.toLowerCase())
+      this.message.toLowerCase().includes(msg.toLowerCase()),
     );
   }
 }
@@ -341,9 +341,9 @@ export class Agent0RegistrationError extends Agent0Error {
     agentName?: string,
     agent0Code?: string,
     originalError?: Error,
-    originalStatusCode?: number
+    originalStatusCode?: number,
   ) {
-    super(message, 'register', agent0Code, originalError, originalStatusCode);
+    super(message, "register", agent0Code, originalError, originalStatusCode);
     this.agentName = agentName;
 
     Object.assign(this, {
@@ -370,9 +370,9 @@ export class Agent0FeedbackError extends Agent0Error {
     feedbackId?: string,
     agent0Code?: string,
     originalError?: Error,
-    originalStatusCode?: number
+    originalStatusCode?: number,
   ) {
-    super(message, 'feedback', agent0Code, originalError, originalStatusCode);
+    super(message, "feedback", agent0Code, originalError, originalStatusCode);
     this.feedbackId = feedbackId;
 
     Object.assign(this, {
@@ -399,9 +399,9 @@ export class Agent0ReputationError extends Agent0Error {
     tokenId?: number,
     agent0Code?: string,
     originalError?: Error,
-    originalStatusCode?: number
+    originalStatusCode?: number,
   ) {
-    super(message, 'reputation', agent0Code, originalError, originalStatusCode);
+    super(message, "reputation", agent0Code, originalError, originalStatusCode);
     this.tokenId = tokenId;
 
     Object.assign(this, {
@@ -428,9 +428,9 @@ export class Agent0SearchError extends Agent0Error {
     filters?: Record<string, JsonValue>,
     agent0Code?: string,
     originalError?: Error,
-    originalStatusCode?: number
+    originalStatusCode?: number,
   ) {
-    super(message, 'search', agent0Code, originalError, originalStatusCode);
+    super(message, "search", agent0Code, originalError, originalStatusCode);
     this.filters = filters;
 
     Object.assign(this, {
@@ -454,7 +454,7 @@ export class Agent0DuplicateFeedbackError extends Agent0FeedbackError {
     super(
       `Duplicate feedback submission for feedback ${feedbackId} targeting agent ${targetAgentId}`,
       feedbackId,
-      'DUPLICATE_FEEDBACK'
+      "DUPLICATE_FEEDBACK",
     );
 
     Object.assign(this, {

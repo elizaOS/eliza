@@ -37,8 +37,8 @@ function isValidTodoInput(
 }
 
 import { composePrompt } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { extractTodoTemplate as extractTodoTemplateBase } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 const extractTodoTemplate = (text: string, messageHistory: string) => {
   return composePrompt({

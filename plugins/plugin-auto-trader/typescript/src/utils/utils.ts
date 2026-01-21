@@ -1,7 +1,15 @@
-import { logger, type IAgentRuntime } from '@elizaos/core';
+import { type IAgentRuntime, logger } from "@elizaos/core";
+
 // JsonValue is not directly exported from @elizaos/core, define locally
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-import { PublicKey } from '@solana/web3.js';
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+import { PublicKey } from "@solana/web3.js";
 
 /**
  * Validates a Solana address format
@@ -21,10 +29,10 @@ export function isValidSolanaAddress(address: string): boolean {
 export async function fetchWithRetry(
   url: string,
   options: RequestInit = {},
-  chain: 'solana' | 'base' = 'solana',
-  maxRetries = 3
+  chain: "solana" | "base" = "solana",
+  maxRetries = 3,
 ): Promise<JsonValue> {
-  let lastError: Error = new Error('No attempts made');
+  let lastError: Error = new Error("No attempts made");
 
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -34,8 +42,8 @@ export async function fetchWithRetry(
       );
 
       const headers = {
-        Accept: 'application/json',
-        'x-chain': chain,
+        Accept: "application/json",
+        "x-chain": chain,
         ...options.headers,
       };
 
@@ -47,7 +55,9 @@ export async function fetchWithRetry(
       const responseText = await response.text();
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}, message: ${responseText}`);
+        throw new Error(
+          `HTTP error! status: ${response.status}, message: ${responseText}`,
+        );
       }
 
       return JSON.parse(responseText) as JsonValue;
@@ -77,14 +87,16 @@ export async function fetchWithRetry(
  * Decodes a base58 string to Uint8Array
  */
 export function decodeBase58(str: string): Uint8Array {
-  const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  const ALPHABET_MAP = new Map(ALPHABET.split('').map((c, i) => [c, BigInt(i)]));
+  const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  const ALPHABET_MAP = new Map(
+    ALPHABET.split("").map((c, i) => [c, BigInt(i)]),
+  );
 
   let result = BigInt(0);
   for (const char of str) {
     const value = ALPHABET_MAP.get(char);
     if (value === undefined) {
-      throw new Error('Invalid base58 character');
+      throw new Error("Invalid base58 character");
     }
     result = result * BigInt(58) + value;
   }
@@ -96,7 +108,7 @@ export function decodeBase58(str: string): Uint8Array {
   }
 
   // Add leading zeros
-  for (let i = 0; i < str.length && str[i] === '1'; i++) {
+  for (let i = 0; i < str.length && str[i] === "1"; i++) {
     bytes.unshift(0);
   }
 
@@ -112,16 +124,22 @@ export interface AnalyzedToken {
   symbol: string;
 }
 
+/** State object that may contain analyzed tokens history */
+interface TokenHistoryState {
+  analyzed_tokens_history?: string;
+  [key: string]: unknown;
+}
+
 /**
  * Manages analyzed token history
  */
 export async function manageAnalyzedTokens(
-  runtime: IAgentRuntime,
-  state: any,
-  newToken?: AnalyzedToken
+  _runtime: IAgentRuntime,
+  state: TokenHistoryState | null | undefined,
+  newToken?: AnalyzedToken,
 ): Promise<AnalyzedToken[]> {
   try {
-    const historyKey = 'analyzed_tokens_history';
+    const historyKey = "analyzed_tokens_history";
     let history: AnalyzedToken[] = [];
 
     if (state?.[historyKey]) {
@@ -132,13 +150,14 @@ export async function manageAnalyzedTokens(
         }
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        logger.warn({ error: message }, 'Failed to parse token history');
+        logger.warn({ error: message }, "Failed to parse token history");
       }
     }
 
     const now = Date.now();
     history = history.filter(
-      (token) => token?.timestamp && now - token.timestamp < 24 * 60 * 60 * 1000 // 24 hours
+      (token) =>
+        token?.timestamp && now - token.timestamp < 24 * 60 * 60 * 1000, // 24 hours
     );
 
     if (newToken) {
@@ -149,7 +168,7 @@ export async function manageAnalyzedTokens(
           symbol: newToken.symbol,
           historySize: history.length,
         },
-        'Added new token to analysis history',
+        "Added new token to analysis history",
       );
     }
 
@@ -160,10 +179,10 @@ export async function manageAnalyzedTokens(
   } catch (error) {
     logger.error(
       {
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
         errorStack: error instanceof Error ? error.stack : undefined,
       },
-      'Failed to manage token history',
+      "Failed to manage token history",
     );
     return [];
   }

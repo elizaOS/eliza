@@ -1,6 +1,7 @@
 //! Auto-generated canonical action/provider/evaluator docs.
 //! DO NOT EDIT - Generated from packages/prompts/specs/**.
 
+/// JSON documentation for core actions.
 pub const CORE_ACTION_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "actions": [
@@ -1243,6 +1244,8 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
     }
   ]
 }"#;
+
+/// JSON documentation for all actions (core and plugins).
 pub const ALL_ACTION_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "actions": [
@@ -2683,6 +2686,18 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "CONFIRM_MEETING",
+      "description": "Confirm or decline attendance for a scheduled meeting",
+      "parameters": [],
+      "similes": [
+        "ACCEPT_MEETING",
+        "CONFIRM_ATTENDANCE",
+        "RSVP_YES",
+        "DECLINE_MEETING",
+        "CANCEL_ATTENDANCE"
+      ]
+    },
+    {
       "name": "CREATE_GITHUB_BRANCH",
       "description": "",
       "parameters": [
@@ -3087,6 +3102,15 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SWAP",
         "BUY_TOKEN",
         "SELL_TOKEN"
+      ]
+    },
+    {
+      "name": "FORM_RESTORE",
+      "description": "Restore a previously stashed form session",
+      "parameters": [],
+      "similes": [
+        "RESUME_FORM",
+        "CONTINUE_FORM"
       ]
     },
     {
@@ -3757,6 +3781,18 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "SCHEDULE_MEETING",
+      "description": "Schedule a meeting between multiple participants by finding a suitable time slot",
+      "parameters": [],
+      "similes": [
+        "BOOK_MEETING",
+        "ARRANGE_MEETING",
+        "SET_UP_MEETING",
+        "PLAN_MEETING",
+        "CREATE_MEETING"
+      ]
+    },
+    {
       "name": "SEARCH_KNOWLEDGE",
       "description": "Search the knowledge base for specific information",
       "parameters": [],
@@ -3869,6 +3905,18 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "parameters": []
     },
     {
+      "name": "SET_AVAILABILITY",
+      "description": "Set the user's availability for scheduling meetings",
+      "parameters": [],
+      "similes": [
+        "UPDATE_AVAILABILITY",
+        "SET_SCHEDULE",
+        "UPDATE_SCHEDULE",
+        "SET_FREE_TIME",
+        "WHEN_FREE"
+      ]
+    },
+    {
       "name": "START_TRADING",
       "description": "Start automated trading with a specified strategy. Supports ANY Solana token.",
       "parameters": [],
@@ -3897,6 +3945,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     }
   ]
 }"#;
+
+/// JSON documentation for core providers.
 pub const CORE_PROVIDER_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "providers": [
@@ -4027,6 +4077,8 @@ pub const CORE_PROVIDER_DOCS_JSON: &str = r#"{
     }
   ]
 }"#;
+
+/// JSON documentation for all providers (core and plugins).
 pub const ALL_PROVIDER_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "providers": [
@@ -4157,6 +4209,8 @@ pub const ALL_PROVIDER_DOCS_JSON: &str = r#"{
     }
   ]
 }"#;
+
+/// JSON documentation for core evaluators.
 pub const CORE_EVALUATOR_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "evaluators": [
@@ -4312,6 +4366,8 @@ pub const CORE_EVALUATOR_DOCS_JSON: &str = r#"{
     }
   ]
 }"#;
+
+/// JSON documentation for all evaluators (core and plugins).
 pub const ALL_EVALUATOR_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "evaluators": [

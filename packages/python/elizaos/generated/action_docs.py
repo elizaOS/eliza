@@ -6,9 +6,7 @@ DO NOT EDIT - Generated from packages/prompts/specs/**.
 from __future__ import annotations
 
 import json
-
 from typing import Literal, TypedDict
-
 
 JsonSchemaType = Literal["string", "number", "boolean", "object", "array"]
 ActionDocParameterExampleValue = str | int | float | bool | None
@@ -19,8 +17,8 @@ class ActionDocParameterSchema(TypedDict, total=False):
     description: str
     default: ActionDocParameterExampleValue
     enum: list[str]
-    properties: dict[str, "ActionDocParameterSchema"]
-    items: "ActionDocParameterSchema"
+    properties: dict[str, ActionDocParameterSchema]
+    items: ActionDocParameterSchema
     minimum: float
     maximum: float
     pattern: str
@@ -2774,6 +2772,18 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
+      "name": "CONFIRM_MEETING",
+      "description": "Confirm or decline attendance for a scheduled meeting",
+      "parameters": [],
+      "similes": [
+        "ACCEPT_MEETING",
+        "CONFIRM_ATTENDANCE",
+        "RSVP_YES",
+        "DECLINE_MEETING",
+        "CANCEL_ATTENDANCE"
+      ]
+    },
+    {
       "name": "CREATE_GITHUB_BRANCH",
       "description": "",
       "parameters": [
@@ -3178,6 +3188,15 @@ _ALL_ACTION_DOCS_JSON = """{
         "SWAP",
         "BUY_TOKEN",
         "SELL_TOKEN"
+      ]
+    },
+    {
+      "name": "FORM_RESTORE",
+      "description": "Restore a previously stashed form session",
+      "parameters": [],
+      "similes": [
+        "RESUME_FORM",
+        "CONTINUE_FORM"
       ]
     },
     {
@@ -3848,6 +3867,18 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
+      "name": "SCHEDULE_MEETING",
+      "description": "Schedule a meeting between multiple participants by finding a suitable time slot",
+      "parameters": [],
+      "similes": [
+        "BOOK_MEETING",
+        "ARRANGE_MEETING",
+        "SET_UP_MEETING",
+        "PLAN_MEETING",
+        "CREATE_MEETING"
+      ]
+    },
+    {
       "name": "SEARCH_KNOWLEDGE",
       "description": "Search the knowledge base for specific information",
       "parameters": [],
@@ -3958,6 +3989,18 @@ _ALL_ACTION_DOCS_JSON = """{
       "name": "SEND_MMS",
       "description": "Send an MMS (multimedia message) with images, audio, or video via Twilio",
       "parameters": []
+    },
+    {
+      "name": "SET_AVAILABILITY",
+      "description": "Set the user's availability for scheduling meetings",
+      "parameters": [],
+      "similes": [
+        "UPDATE_AVAILABILITY",
+        "SET_SCHEDULE",
+        "UPDATE_SCHEDULE",
+        "SET_FREE_TIME",
+        "WHEN_FREE"
+      ]
     },
     {
       "name": "START_TRADING",

@@ -54,8 +54,8 @@
  * This gives users a chance to save their work.
  */
 
-import type { FormDefinition, FormSession } from './types.ts';
-import { FORM_DEFINITION_DEFAULTS } from './types.ts';
+import type { FormDefinition, FormSession } from "./types";
+import { FORM_DEFINITION_DEFAULTS } from "./types";
 
 /**
  * Calculate TTL based on user effort.
@@ -72,13 +72,17 @@ import { FORM_DEFINITION_DEFAULTS } from './types.ts';
  * @param form - Form definition with TTL configuration
  * @returns Expiration timestamp (milliseconds since epoch)
  */
-export function calculateTTL(session: FormSession, form?: FormDefinition): number {
+export function calculateTTL(
+  session: FormSession,
+  form?: FormDefinition,
+): number {
   const config = form?.ttl || {};
 
   // Get configuration with defaults
   const minDays = config.minDays ?? FORM_DEFINITION_DEFAULTS.ttl.minDays;
   const maxDays = config.maxDays ?? FORM_DEFINITION_DEFAULTS.ttl.maxDays;
-  const multiplier = config.effortMultiplier ?? FORM_DEFINITION_DEFAULTS.ttl.effortMultiplier;
+  const multiplier =
+    config.effortMultiplier ?? FORM_DEFINITION_DEFAULTS.ttl.effortMultiplier;
 
   // Calculate effort in minutes
   const minutesSpent = session.effort.timeSpentMs / 60000;
@@ -111,7 +115,10 @@ export function calculateTTL(session: FormSession, form?: FormDefinition): numbe
  * @param form - Form definition with nudge configuration
  * @returns true if a nudge should be sent
  */
-export function shouldNudge(session: FormSession, form?: FormDefinition): boolean {
+export function shouldNudge(
+  session: FormSession,
+  form?: FormDefinition,
+): boolean {
   const nudgeConfig = form?.nudge;
 
   // Nudging disabled
@@ -121,7 +128,8 @@ export function shouldNudge(session: FormSession, form?: FormDefinition): boolea
 
   // Already at max nudges
   // WHY limit: Don't annoy users with endless reminders
-  const maxNudges = nudgeConfig?.maxNudges ?? FORM_DEFINITION_DEFAULTS.nudge.maxNudges;
+  const maxNudges =
+    nudgeConfig?.maxNudges ?? FORM_DEFINITION_DEFAULTS.nudge.maxNudges;
   if ((session.nudgeCount || 0) >= maxNudges) {
     return false;
   }
@@ -129,7 +137,8 @@ export function shouldNudge(session: FormSession, form?: FormDefinition): boolea
   // Check if enough time has passed since last interaction
   // WHY time check: Don't nudge active users
   const afterInactiveHours =
-    nudgeConfig?.afterInactiveHours ?? FORM_DEFINITION_DEFAULTS.nudge.afterInactiveHours;
+    nudgeConfig?.afterInactiveHours ??
+    FORM_DEFINITION_DEFAULTS.nudge.afterInactiveHours;
   const inactiveMs = afterInactiveHours * 60 * 60 * 1000;
 
   const timeSinceInteraction = Date.now() - session.effort.lastInteractionAt;
@@ -158,7 +167,10 @@ export function shouldNudge(session: FormSession, form?: FormDefinition): boolea
  * @param withinMs - Time window in milliseconds
  * @returns true if session expires within the window
  */
-export function isExpiringSoon(session: FormSession, withinMs: number): boolean {
+export function isExpiringSoon(
+  session: FormSession,
+  withinMs: number,
+): boolean {
   return session.expiresAt - Date.now() < withinMs;
 }
 
@@ -207,7 +219,7 @@ export function formatTimeRemaining(session: FormSession): string {
   const remaining = session.expiresAt - Date.now();
 
   if (remaining <= 0) {
-    return 'expired';
+    return "expired";
   }
 
   const hours = Math.floor(remaining / (60 * 60 * 1000));
@@ -215,17 +227,17 @@ export function formatTimeRemaining(session: FormSession): string {
 
   // Show days if more than 24 hours
   if (days > 0) {
-    return `${days} day${days > 1 ? 's' : ''}`;
+    return `${days} day${days > 1 ? "s" : ""}`;
   }
 
   // Show hours if more than 1 hour
   if (hours > 0) {
-    return `${hours} hour${hours > 1 ? 's' : ''}`;
+    return `${hours} hour${hours > 1 ? "s" : ""}`;
   }
 
   // Show minutes for less than 1 hour
   const minutes = Math.floor(remaining / (60 * 1000));
-  return `${minutes} minute${minutes > 1 ? 's' : ''}`;
+  return `${minutes} minute${minutes > 1 ? "s" : ""}`;
 }
 
 /**
@@ -244,18 +256,18 @@ export function formatEffort(session: FormSession): string {
   const minutes = Math.floor(session.effort.timeSpentMs / 60000);
 
   if (minutes < 1) {
-    return 'just started';
+    return "just started";
   }
 
   if (minutes < 60) {
-    return `${minutes} minute${minutes > 1 ? 's' : ''}`;
+    return `${minutes} minute${minutes > 1 ? "s" : ""}`;
   }
 
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
 
   if (remainingMinutes === 0) {
-    return `${hours} hour${hours > 1 ? 's' : ''}`;
+    return `${hours} hour${hours > 1 ? "s" : ""}`;
   }
 
   return `${hours}h ${remainingMinutes}m`;

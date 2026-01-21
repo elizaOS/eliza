@@ -11,6 +11,8 @@
  */
 
 import { v4 } from "uuid";
+import { withCanonicalActionDocs } from "../action-docs.ts";
+import * as autonomy from "../autonomy/index.ts";
 import { createUniqueUuid } from "../entities.ts";
 import { logger } from "../logger.ts";
 import {
@@ -52,8 +54,6 @@ import type { ServiceClass } from "../types/plugin.ts";
 import { ChannelType, ContentType } from "../types/primitives.ts";
 import { getLocalServerUrl } from "../utils/node.ts";
 import { composePromptFromState, parseKeyValueXml } from "../utils.ts";
-import { withCanonicalActionDocs } from "../action-docs.ts";
-import * as autonomy from "../autonomy/index.ts";
 
 const ROLE_OWNER: Role = "OWNER";
 
@@ -61,32 +61,30 @@ const ROLE_OWNER: Role = "OWNER";
 export * from "./actions/index.ts";
 export * from "./providers/index.ts";
 
+// Import advanced capabilities
+import {
+  advancedActions,
+  advancedCapabilities,
+  advancedEvaluators,
+  advancedProviders,
+  advancedServices,
+} from "../advanced-capabilities/index.ts";
 // Import for local use
 import * as actions from "./actions/index.ts";
 import * as providers from "./providers/index.ts";
 
-// Import advanced capabilities
-import {
-  advancedCapabilities,
-  advancedProviders,
-  advancedActions,
-  advancedEvaluators,
-  advancedServices,
-} from "../advanced-capabilities/index.ts";
-
-// Re-export advanced capabilities
-export {
-  advancedCapabilities,
-  advancedProviders,
-  advancedActions,
-  advancedEvaluators,
-  advancedServices,
-} from "../advanced-capabilities/index.ts";
-
 // Re-export advanced capability modules
 export * from "../advanced-capabilities/actions/index.ts";
-export * from "../advanced-capabilities/providers/index.ts";
 export * from "../advanced-capabilities/evaluators/index.ts";
+// Re-export advanced capabilities
+export {
+  advancedActions,
+  advancedCapabilities,
+  advancedEvaluators,
+  advancedProviders,
+  advancedServices,
+} from "../advanced-capabilities/index.ts";
+export * from "../advanced-capabilities/providers/index.ts";
 
 // Re-export autonomy
 export * from "../autonomy/index.ts";

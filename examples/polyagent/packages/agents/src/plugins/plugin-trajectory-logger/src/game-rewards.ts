@@ -8,8 +8,8 @@
  * post quality metrics, user engagement, and long-term trajectory outcomes.
  */
 
-import type { JsonValue } from '../../../types/common';
-import type { Trajectory, TrajectoryStep } from './types';
+import type { JsonValue } from "../../../types/common";
+import type { Trajectory, TrajectoryStep } from "./types";
 
 /**
  * Compute trajectory reward using game knowledge
@@ -47,7 +47,7 @@ export function computeStepReward(step: TrajectoryStep): number {
  * @returns Game state object with market conditions and NPC relationships
  */
 export async function buildGameStateFromDB(
-  _trajectoryId: string
+  _trajectoryId: string,
 ): Promise<Record<string, JsonValue>> {
   return {};
 }
@@ -61,7 +61,7 @@ export async function buildGameStateFromDB(
  * @param _trajectoryIds - Array of trajectory IDs to recompute rewards for
  */
 export async function recomputeTrajectoryRewards(
-  _trajectoryIds: string[]
+  _trajectoryIds: string[],
 ): Promise<void> {
   // Implementation pending: Reward recomputation logic
 }

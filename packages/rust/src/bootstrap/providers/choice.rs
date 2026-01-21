@@ -50,10 +50,8 @@ impl Provider for ChoiceProvider {
             .and_then(|v| v.as_array().cloned())
             .unwrap_or_default();
 
-        let all_choices: Vec<serde_json::Value> = choices
-            .into_iter()
-            .chain(state_choices)
-            .collect();
+        let all_choices: Vec<serde_json::Value> =
+            choices.into_iter().chain(state_choices).collect();
 
         if all_choices.is_empty() {
             return Ok(ProviderResult::new("")
@@ -93,8 +91,13 @@ impl Provider for ChoiceProvider {
         Ok(ProviderResult::new(text)
             .with_value("hasChoices", true)
             .with_value("choiceCount", all_choices.len() as i64)
-            .with_data("choiceLabels", serde_json::to_value(&labels).unwrap_or_default())
-            .with_data("choices", serde_json::to_value(&all_choices).unwrap_or_default()))
+            .with_data(
+                "choiceLabels",
+                serde_json::to_value(&labels).unwrap_or_default(),
+            )
+            .with_data(
+                "choices",
+                serde_json::to_value(&all_choices).unwrap_or_default(),
+            ))
     }
 }
-

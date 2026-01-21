@@ -7,8 +7,8 @@
  * external agents and cron jobs.
  */
 
-import type IORedis from 'ioredis';
-import { logger } from '../shared/logger';
+import type IORedis from "ioredis";
+import { logger } from "../shared/logger";
 
 // Redis client type and availability checker
 // These are injected at runtime or fallback to in-memory
@@ -44,10 +44,10 @@ const agentSessions = new Map<string, AgentSession>();
 
 // Session duration: 24 hours
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
-const SESSION_PREFIX = 'agent:session:';
+const SESSION_PREFIX = "agent:session:";
 const useRedis = isRedisAvailable() && redis !== null;
-const DEFAULT_TEST_AGENT_ID = 'polyagent-agent-alice';
-const isProduction = process.env.NODE_ENV === 'production';
+const DEFAULT_TEST_AGENT_ID = "polyagent-agent-alice";
+const isProduction = process.env.NODE_ENV === "production";
 
 /**
  * Clean up expired sessions
@@ -102,7 +102,7 @@ export function cleanupExpiredSessions(): void {
  */
 export function verifyAgentCredentials(
   agentId: string,
-  agentSecret: string
+  agentSecret: string,
 ): boolean {
   // Get configured agent credentials from environment
   const configuredAgentId =
@@ -112,18 +112,18 @@ export function verifyAgentCredentials(
 
   if (!configuredAgentSecret) {
     logger.error(
-      'CRON_SECRET not configured in environment',
+      "CRON_SECRET not configured in environment",
       undefined,
-      'AgentAuth'
+      "AgentAuth",
     );
     return false;
   }
 
   if (!configuredAgentId) {
     logger.error(
-      'POLYAGENT_AGENT_ID must be configured in production environments',
+      "POLYAGENT_AGENT_ID must be configured in production environments",
       undefined,
-      'AgentAuth'
+      "AgentAuth",
     );
     return false;
   }
@@ -150,7 +150,7 @@ export function verifyAgentCredentials(
  */
 export async function createAgentSession(
   agentId: string,
-  sessionToken: string
+  sessionToken: string,
 ): Promise<AgentSession> {
   const expiresAt = Date.now() + SESSION_DURATION;
   const session: AgentSession = {
@@ -161,7 +161,7 @@ export async function createAgentSession(
 
   if (useRedis && redis) {
     const key = `${SESSION_PREFIX}${sessionToken}`;
-    await redis.set(key, JSON.stringify(session), 'PX', SESSION_DURATION);
+    await redis.set(key, JSON.stringify(session), "PX", SESSION_DURATION);
   } else {
     agentSessions.set(sessionToken, session);
   }
@@ -188,7 +188,7 @@ export async function createAgentSession(
  * ```
  */
 export async function verifyAgentSession(
-  sessionToken: string
+  sessionToken: string,
 ): Promise<{ agentId: string } | null> {
   if (useRedis && redis) {
     const key = `${SESSION_PREFIX}${sessionToken}`;

@@ -24,4 +24,3 @@ async def test_advanced_planning_not_loaded_when_disabled() -> None:
     )
     await runtime.initialize()
     assert runtime.get_service("planning") is None
-

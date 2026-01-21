@@ -52,9 +52,9 @@ import {
   findUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@polyagent/api';
-import { logger, UserIdParamSchema } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
+} from "@polyagent/api";
+import { logger, UserIdParamSchema } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/users/[userId]/is-new
@@ -63,7 +63,7 @@ import type { NextRequest } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Optional authentication - if not authenticated, return needsSetup: false
     const authUser = await authenticate(request).catch(() => null);
@@ -72,9 +72,9 @@ export const GET = withErrorHandling(
 
     if (!authUser) {
       logger.info(
-        'Unauthenticated user checking is-new status',
+        "Unauthenticated user checking is-new status",
         {},
-        'GET /api/users/[userId]/is-new'
+        "GET /api/users/[userId]/is-new",
       );
       return successResponse({ needsSetup: false });
     }
@@ -97,18 +97,18 @@ export const GET = withErrorHandling(
     // Ensure requesting user matches the target user
     if (authUser.userId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only check your own setup status',
-        'user-setup',
-        'read'
+        "You can only check your own setup status",
+        "user-setup",
+        "read",
       );
     }
 
     if (!dbUser) {
       // User doesn't exist yet - needs setup
       logger.info(
-        'User not found, needs setup',
+        "User not found, needs setup",
         { userId: canonicalUserId },
-        'GET /api/users/[userId]/is-new'
+        "GET /api/users/[userId]/is-new",
       );
       return successResponse({ needsSetup: true });
     }
@@ -123,9 +123,9 @@ export const GET = withErrorHandling(
         !dbUser.hasBio);
 
     logger.info(
-      'User setup status checked',
+      "User setup status checked",
       { userId: canonicalUserId, needsSetup },
-      'GET /api/users/[userId]/is-new'
+      "GET /api/users/[userId]/is-new",
     );
 
     return successResponse({
@@ -135,5 +135,5 @@ export const GET = withErrorHandling(
       hasBio: dbUser.hasBio || false,
       hasProfileImage: dbUser.hasProfileImage || false,
     });
-  }
+  },
 );

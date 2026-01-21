@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "lint": "biome check .",
+    "lint": "biome check --write --unsafe .",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --verbose",
     "level-editor": "vite src/editor/",
     "le": "vite src/editor/"

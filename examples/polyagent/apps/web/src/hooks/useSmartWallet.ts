@@ -1,15 +1,15 @@
-import { logger, WALLET_ERROR_MESSAGES } from '@polyagent/shared';
-import { useWallets } from '@privy-io/react-auth';
-import type { SmartWalletClientType } from '@privy-io/react-auth/smart-wallets';
-import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import type { Hex } from 'viem';
+import { logger, WALLET_ERROR_MESSAGES } from "@polyagent/shared";
+import { useWallets } from "@privy-io/react-auth";
+import type { SmartWalletClientType } from "@privy-io/react-auth/smart-wallets";
+import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { Hex } from "viem";
 
 type SmartWalletTxInput = Parameters<
-  SmartWalletClientType['sendTransaction']
+  SmartWalletClientType["sendTransaction"]
 >[0];
 type SmartWalletTxOptions = Parameters<
-  SmartWalletClientType['sendTransaction']
+  SmartWalletClientType["sendTransaction"]
 >[1];
 
 /**
@@ -25,7 +25,7 @@ interface UseSmartWalletResult {
   /** Function to send a transaction via the smart wallet */
   sendSmartWalletTransaction: (
     input: SmartWalletTxInput,
-    options?: SmartWalletTxOptions
+    options?: SmartWalletTxOptions,
   ) => Promise<Hex>;
 }
 
@@ -64,8 +64,8 @@ export function useSmartWallet(): UseSmartWalletResult {
 
   // Check if embedded wallet exists
   const hasEmbeddedWallet = useMemo(
-    () => wallets.some((w) => w.walletClientType === 'privy'),
-    [wallets]
+    () => wallets.some((w) => w.walletClientType === "privy"),
+    [wallets],
   );
 
   // Only log when the state changes, not on every render
@@ -75,7 +75,7 @@ export function useSmartWallet(): UseSmartWalletResult {
 
     if (lastLoggedState.current !== hasClient) {
       lastLoggedState.current = hasClient;
-      logger.debug('Smart wallet client state changed', {
+      logger.debug("Smart wallet client state changed", {
         hasClient,
         hasAddress,
         address: client?.account?.address,
@@ -90,9 +90,9 @@ export function useSmartWallet(): UseSmartWalletResult {
         if (!client) {
           hasLoggedWarning.current = true;
           const message = hasEmbeddedWallet
-            ? 'Smart wallet client not initialized despite embedded wallet existing. This may indicate a Privy configuration issue.'
-            : 'Smart wallet client not initialized. Embedded wallet may not be created yet.';
-          logger.warn(message, { hasEmbeddedWallet }, 'useSmartWallet');
+            ? "Smart wallet client not initialized despite embedded wallet existing. This may indicate a Privy configuration issue."
+            : "Smart wallet client not initialized. Embedded wallet may not be created yet.";
+          logger.warn(message, { hasEmbeddedWallet }, "useSmartWallet");
         }
       }, 5000); // Wait 5 seconds before warning
     }
@@ -108,13 +108,13 @@ export function useSmartWallet(): UseSmartWalletResult {
   const smartWalletAddress = typedClient?.account?.address;
   const smartWalletReady = useMemo(
     () => Boolean(typedClient && smartWalletAddress),
-    [typedClient, smartWalletAddress]
+    [typedClient, smartWalletAddress],
   );
 
   const sendSmartWalletTransaction = useCallback(
     async (
       input: SmartWalletTxInput,
-      options?: SmartWalletTxOptions
+      options?: SmartWalletTxOptions,
     ): Promise<Hex> => {
       if (!typedClient || !smartWalletAddress) {
         throw new Error(WALLET_ERROR_MESSAGES.NO_EMBEDDED_WALLET);
@@ -122,7 +122,7 @@ export function useSmartWallet(): UseSmartWalletResult {
 
       return await typedClient.sendTransaction(input, options);
     },
-    [typedClient, smartWalletAddress]
+    [typedClient, smartWalletAddress],
   );
 
   return {

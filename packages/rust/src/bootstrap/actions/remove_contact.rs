@@ -25,7 +25,11 @@ impl Action for RemoveContactAction {
 
     fn similes(&self) -> &[&'static str] {
         static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
-            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+            SPEC.similes
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
         });
         &SIMILES
     }
@@ -67,10 +71,11 @@ impl Action for RemoveContactAction {
             &format!("Removed contact {}", entity_id),
         );
 
-        Ok(ActionResult::success(format!("Removed {} from contacts.", entity_name))
-            .with_value("contactRemoved", true)
-            .with_data("entityId", entity_id.to_string())
-            .with_data("removed", true))
+        Ok(
+            ActionResult::success(format!("Removed {} from contacts.", entity_name))
+                .with_value("contactRemoved", true)
+                .with_data("entityId", entity_id.to_string())
+                .with_data("removed", true),
+        )
     }
 }
-

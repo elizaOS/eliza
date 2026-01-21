@@ -4,27 +4,31 @@ import type {
   TownAgentStatus,
   TownMessage,
   TownObjective,
+  TownObjectiveStatus,
   TownState,
   Vector2,
 } from "../../shared/types";
-import { DEFAULT_AUDIO_RANGE_TILES, DEFAULT_VISION_RANGE_TILES } from "../../shared/types";
+import {
+  DEFAULT_AUDIO_RANGE_TILES,
+  DEFAULT_VISION_RANGE_TILES,
+} from "../../shared/types";
 import { defaultWorldMap, isWalkableTile } from "../../shared/worldMap";
+import type { ModelSettings } from "../runtime/modelSettings";
 import {
   requestAgentChatDecision,
   requestAgentGameDecision,
   requestAgentMoveDecision,
   sendProximityNotice,
 } from "./elizaTownRuntime";
-import type { ModelSettings } from "../runtime/modelSettings";
 import {
+  advanceMafiaPhase,
+  buildMafiaGameViewForAgent,
+  getNightActionStatus,
+  getVoteStatus,
   type MafiaGameState,
   type MafiaGameUpdate,
   type MafiaGameView,
   type MafiaNightAction,
-  getNightActionStatus,
-  getVoteStatus,
-  advanceMafiaPhase,
-  buildMafiaGameViewForAgent,
   pauseMafiaGame,
   resetMafiaGame,
   startMafiaRound,
@@ -212,7 +216,10 @@ export class TownSimulation {
   private settingsProvider: () => ModelSettings;
   private gameState: MafiaGameState;
 
-  constructor(settingsProvider: () => ModelSettings, snapshot?: TownSimulationSnapshot | null) {
+  constructor(
+    settingsProvider: () => ModelSettings,
+    snapshot?: TownSimulationSnapshot | null,
+  ) {
     this.settingsProvider = settingsProvider;
     this.walkableTiles = buildWalkableTiles();
     this.navigator = new NavigationSystem();
@@ -266,7 +273,8 @@ export class TownSimulation {
         existing.moveStartAt = existing.moveStartAt ?? null;
         existing.moveFrom = existing.moveFrom ?? null;
         existing.moveTo = existing.moveTo ?? null;
-        existing.nextDecisionAt = existing.nextDecisionAt ?? now + randomJitter();
+        existing.nextDecisionAt =
+          existing.nextDecisionAt ?? now + randomJitter();
         existing.nextGameDecisionAt =
           existing.nextGameDecisionAt ?? now + randomJitter();
         existing.nextChatAt = existing.nextChatAt ?? now + randomJitter();
@@ -278,7 +286,8 @@ export class TownSimulation {
           : [];
         existing.navigationToken = existing.navigationToken ?? 0;
         existing.hasAiControl = existing.hasAiControl ?? false;
-        existing.nextWanderAt = existing.nextWanderAt ?? now + Math.random() * 2000;
+        existing.nextWanderAt =
+          existing.nextWanderAt ?? now + Math.random() * 2000;
       }
     }
 
@@ -308,7 +317,9 @@ export class TownSimulation {
   }
 
   queueMove(request: MoveRequest, isAiDriven = true): MoveResult {
-    const agent = this.state.agents.find((entry) => entry.id === request.agentId);
+    const agent = this.state.agents.find(
+      (entry) => entry.id === request.agentId,
+    );
     if (!agent) {
       return { success: false, message: "Agent not found." };
     }
@@ -325,13 +336,20 @@ export class TownSimulation {
       meta.hasAiControl = true;
     }
 
-    const target = resolveMoveTarget(request, this.state.agents, POINTS_OF_INTEREST);
+    const target = resolveMoveTarget(
+      request,
+      this.state.agents,
+      POINTS_OF_INTEREST,
+    );
     if (!target) {
       return { success: false, message: "Unable to resolve move target." };
     }
 
     const occupiedTiles = buildOccupiedTiles(this.state.agents, agent.id);
-    const availableTarget = findNearestAvailable(target.position, occupiedTiles);
+    const availableTarget = findNearestAvailable(
+      target.position,
+      occupiedTiles,
+    );
     if (!availableTarget) {
       return { success: false, message: "No available tile near the target." };
     }
@@ -448,7 +466,9 @@ export class TownSimulation {
     participants?: string[];
     createdAt?: number;
   }): TownMessage | null {
-    const agent = this.state.agents.find((entry) => entry.id === params.authorId);
+    const agent = this.state.agents.find(
+      (entry) => entry.id === params.authorId,
+    );
     if (!agent) {
       return null;
     }
@@ -609,7 +629,8 @@ export class TownSimulation {
         } catch {
           // Skip if the runtime is unavailable or request fails.
         }
-        meta.nextGameDecisionAt = now + GAME_DECISION_INTERVAL_MS + randomJitter();
+        meta.nextGameDecisionAt =
+          now + GAME_DECISION_INTERVAL_MS + randomJitter();
         remainingGameDecisions -= 1;
       }
     }
@@ -663,7 +684,11 @@ export class TownSimulation {
       }
       const isIdle =
         !meta.pendingNavigation && meta.path.length === 0 && !meta.hasAiControl;
-      if (isIdle && meta.nextWanderAt !== undefined && now >= meta.nextWanderAt) {
+      if (
+        isIdle &&
+        meta.nextWanderAt !== undefined &&
+        now >= meta.nextWanderAt
+      ) {
         this.queueRandomWander(agent, now);
       }
     }
@@ -769,7 +794,9 @@ export class TownSimulation {
       }
 
       const moveActive =
-        meta.moveStartAt !== null && meta.moveFrom !== null && meta.moveTo !== null;
+        meta.moveStartAt !== null &&
+        meta.moveFrom !== null &&
+        meta.moveTo !== null;
 
       if (!moveActive && meta.path.length === 0) {
         const renderPosition = agent.renderPosition ?? agent.position;
@@ -861,7 +888,12 @@ export class TownSimulation {
         };
       }
 
-      if (moveActive && meta.moveFrom && meta.moveTo && meta.moveStartAt !== null) {
+      if (
+        moveActive &&
+        meta.moveFrom &&
+        meta.moveTo &&
+        meta.moveStartAt !== null
+      ) {
         const progress = (now - meta.moveStartAt) / MOVE_DURATION_MS;
         const t = clamp01(progress);
         const renderPosition = lerpVector(meta.moveFrom, meta.moveTo, t);
@@ -1001,7 +1033,9 @@ export class TownSimulation {
   }
 
   private isAgentAliveInGame(agentId: string): boolean {
-    const player = this.gameState.players.find((entry) => entry.agentId === agentId);
+    const player = this.gameState.players.find(
+      (entry) => entry.agentId === agentId,
+    );
     return player ? player.alive : true;
   }
 
@@ -1023,7 +1057,11 @@ export class TownSimulation {
           currentNearby.add(other.id);
           if (!meta.nearbyAgentIds.includes(other.id)) {
             notifications.push(
-              sendProximityNotice(agent.id, other.name, this.settingsProvider()),
+              sendProximityNotice(
+                agent.id,
+                other.name,
+                this.settingsProvider(),
+              ),
             );
           }
         }
@@ -1045,7 +1083,9 @@ export class TownSimulation {
       const dx = Math.abs(tile.x - agent.position.x);
       const dy = Math.abs(tile.y - agent.position.y);
       const dist = Math.max(dx, dy);
-      return dist >= 2 && dist <= 6 && !occupiedTiles.has(`${tile.x},${tile.y}`);
+      return (
+        dist >= 2 && dist <= 6 && !occupiedTiles.has(`${tile.x},${tile.y}`)
+      );
     });
     if (nearbyTiles.length === 0) {
       meta.nextWanderAt = now + 2000 + Math.random() * 3000;
@@ -1074,7 +1114,12 @@ export class TownSimulation {
         continue;
       }
       const occupiedTiles = buildOccupiedTiles(this.state.agents, agent.id);
-      const target = this.pickInitialTarget(agent, occupiedTiles, reservedTargets, poiCandidates);
+      const target = this.pickInitialTarget(
+        agent,
+        occupiedTiles,
+        reservedTargets,
+        poiCandidates,
+      );
       if (!target) {
         continue;
       }
@@ -1128,7 +1173,9 @@ export class TownSimulation {
     const attempts = Math.min(20, this.walkableTiles.length);
     for (let i = 0; i < attempts; i += 1) {
       const candidate =
-        this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)];
+        this.walkableTiles[
+          Math.floor(Math.random() * this.walkableTiles.length)
+        ];
       if (!candidate) {
         continue;
       }
@@ -1236,7 +1283,10 @@ function updateObjectivesForAgents(
       if (!agent) {
         continue;
       }
-      if (distanceTiles(agent.position, objective.location) > OBJECTIVE_COMPLETE_RADIUS_TILES) {
+      if (
+        distanceTiles(agent.position, objective.location) >
+        OBJECTIVE_COMPLETE_RADIUS_TILES
+      ) {
         continue;
       }
       if (completedBy === objective.completedBy) {
@@ -1248,8 +1298,10 @@ function updateObjectivesForAgents(
     if (completedBy === objective.completedBy) {
       return objective;
     }
-    const status =
-      completedBy.length >= objective.assignedAgentIds.length ? "completed" : objective.status;
+    const status: TownObjectiveStatus =
+      completedBy.length >= objective.assignedAgentIds.length
+        ? "completed"
+        : objective.status;
     return {
       ...objective,
       completedBy,
@@ -1306,7 +1358,10 @@ function createInitialAgents(walkableTiles: Vector2[]): TownAgent[] {
   });
 }
 
-function mergeAgents(walkableTiles: Vector2[], agents: TownAgent[]): TownAgent[] {
+function mergeAgents(
+  walkableTiles: Vector2[],
+  agents: TownAgent[],
+): TownAgent[] {
   const defaults = createInitialAgents(walkableTiles);
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
   return defaults.map((base) => {
@@ -1354,7 +1409,10 @@ function resolveMoveTarget(
     };
   }
 
-  if (typeof request.target !== "string" || request.target.trim().length === 0) {
+  if (
+    typeof request.target !== "string" ||
+    request.target.trim().length === 0
+  ) {
     return null;
   }
   const target = request.target.trim();
@@ -1398,7 +1456,10 @@ function resolveMoveTarget(
   return null;
 }
 
-function findAgentByIdentifier(identifier: string, agents: TownAgent[]): TownAgent | null {
+function findAgentByIdentifier(
+  identifier: string,
+  agents: TownAgent[],
+): TownAgent | null {
   const normalized = identifier.toLowerCase();
   for (const agent of agents) {
     if (agent.id.toLowerCase() === normalized) {
@@ -1411,7 +1472,10 @@ function findAgentByIdentifier(identifier: string, agents: TownAgent[]): TownAge
   return null;
 }
 
-function findAgentByPartialName(query: string, agents: TownAgent[]): TownAgent | null {
+function findAgentByPartialName(
+  query: string,
+  agents: TownAgent[],
+): TownAgent | null {
   const normalized = query.toLowerCase();
   if (normalized.length === 0) {
     return null;
@@ -1471,7 +1535,10 @@ function parseTargetCoordinate(target: string): Vector2 | null {
   return null;
 }
 
-function buildOccupiedTiles(agents: TownAgent[], ignoreId: string): Set<string> {
+function buildOccupiedTiles(
+  agents: TownAgent[],
+  ignoreId: string,
+): Set<string> {
   const occupied = new Set<string>();
   for (const agent of agents) {
     if (agent.id === ignoreId) {
@@ -1482,11 +1549,21 @@ function buildOccupiedTiles(agents: TownAgent[], ignoreId: string): Set<string> 
   return occupied;
 }
 
-function isTileAvailable(position: Vector2, occupiedTiles: Set<string>): boolean {
-  return isWalkableTile(position.x, position.y) && !occupiedTiles.has(coordKey(position));
+function isTileAvailable(
+  position: Vector2,
+  occupiedTiles: Set<string>,
+): boolean {
+  return (
+    isWalkableTile(position.x, position.y) &&
+    !occupiedTiles.has(coordKey(position))
+  );
 }
 
-function isTileOccupied(position: Vector2, agents: TownAgent[], ignoreId: string): boolean {
+function isTileOccupied(
+  position: Vector2,
+  agents: TownAgent[],
+  ignoreId: string,
+): boolean {
   for (const agent of agents) {
     if (agent.id === ignoreId) {
       continue;
@@ -1498,7 +1575,10 @@ function isTileOccupied(position: Vector2, agents: TownAgent[], ignoreId: string
   return false;
 }
 
-function findNearestAvailable(position: Vector2, occupiedTiles: Set<string>): Vector2 | null {
+function findNearestAvailable(
+  position: Vector2,
+  occupiedTiles: Set<string>,
+): Vector2 | null {
   const queue: Vector2[] = [position];
   const visited = new Set<string>([coordKey(position)]);
   while (queue.length > 0) {
@@ -1520,7 +1600,6 @@ function findNearestAvailable(position: Vector2, occupiedTiles: Set<string>): Ve
   }
   return null;
 }
-
 
 function findPath(
   start: Vector2,
@@ -1616,7 +1695,6 @@ function orientationForStep(from: Vector2, to: Vector2): number {
   return from.x === to.x && from.y === to.y ? 90 : 0;
 }
 
-
 function buildPointsOfInterest(): PointOfInterest[] {
   const width = defaultWorldMap.width;
   const height = defaultWorldMap.height;
@@ -1626,14 +1704,19 @@ function buildPointsOfInterest(): PointOfInterest[] {
     y: Math.round(y / defaultWorldMap.tileDim),
   });
   const firstSpriteTile = (sheet: string): Vector2 | null => {
-    const sprite = defaultWorldMap.animatedSprites.find((entry) => entry.sheet === sheet);
+    const sprite = defaultWorldMap.animatedSprites.find(
+      (entry) => entry.sheet === sheet,
+    );
     return sprite ? tileFromPixels(sprite.x, sprite.y) : null;
   };
   const bridgeTileIds = new Set<number>([
     11, 12, 13, 14, 15, 56, 57, 58, 59, 60, 101, 102, 103, 104, 105, 146, 147,
     148, 149, 150, 191, 192, 193, 194, 195, 236, 237, 238, 239, 240,
   ]);
-  const bridgeClusters = findTileClusters(defaultWorldMap.bgTiles, bridgeTileIds);
+  const bridgeClusters = findTileClusters(
+    defaultWorldMap.bgTiles,
+    bridgeTileIds,
+  );
   const bridgeCluster = bridgeClusters.sort((a, b) => b.size - a.size)[0];
   const windmillTiles = Array.from(
     new Map(
@@ -1646,7 +1729,9 @@ function buildPointsOfInterest(): PointOfInterest[] {
     ).values(),
   ).sort((a, b) => a.x - b.x);
 
-  const candidates: Array<Omit<PointOfInterest, "position"> & { position: Vector2 | null }> = [
+  const candidates: Array<
+    Omit<PointOfInterest, "position"> & { position: Vector2 | null }
+  > = [
     {
       id: "town-square",
       name: "Town Square",
@@ -1742,7 +1827,9 @@ function buildObjectives(agentIds: string[], round: number): TownObjective[] {
       if (!template) {
         continue;
       }
-      const poi = POINTS_OF_INTEREST.find((entry) => entry.id === template.poiId);
+      const poi = POINTS_OF_INTEREST.find(
+        (entry) => entry.id === template.poiId,
+      );
       if (!poi) {
         continue;
       }
@@ -1762,7 +1849,10 @@ function buildObjectives(agentIds: string[], round: number): TownObjective[] {
   return objectives;
 }
 
-function findNearestWalkable(position: Vector2, used?: Set<string>): Vector2 | null {
+function findNearestWalkable(
+  position: Vector2,
+  used?: Set<string>,
+): Vector2 | null {
   if (isWalkableTile(position.x, position.y)) {
     if (!used || !used.has(coordKey(position))) {
       return position;

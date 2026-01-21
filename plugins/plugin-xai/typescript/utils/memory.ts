@@ -6,7 +6,10 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import type { WorldOwnership } from "@elizaos/core/types/proto.js";
+
+// WorldOwnership type for world metadata
+type WorldOwnership = { ownerId: string };
+
 import type { Post as ClientPost } from "../client";
 
 export interface XContextOptions {

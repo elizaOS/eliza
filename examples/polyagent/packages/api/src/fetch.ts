@@ -37,7 +37,7 @@ export interface ApiFetchOptions extends RequestInit {
  * @private
  */
 export async function getPrivyAccessToken(): Promise<string | null> {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
 
   // ALWAYS call getAccessToken() on-demand - it auto-refreshes expired tokens
   // Per Privy best practices: never rely on cached tokens, always fetch fresh
@@ -93,7 +93,7 @@ export async function apiFetch(input: RequestInfo, init: ApiFetchOptions = {}) {
   let response = await fetch(input, {
     ...rest,
     headers: finalHeaders,
-    credentials: auth ? 'include' : (rest.credentials ?? 'same-origin'),
+    credentials: auth ? "include" : (rest.credentials ?? "same-origin"),
   });
 
   // If we get a 401 and auto-retry is enabled, refresh the token and retry
@@ -106,7 +106,7 @@ export async function apiFetch(input: RequestInfo, init: ApiFetchOptions = {}) {
     response = await fetch(input, {
       ...rest,
       headers: finalHeaders,
-      credentials: 'include',
+      credentials: "include",
     });
   }
 

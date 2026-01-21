@@ -7,9 +7,11 @@ import type {
   Room,
   World,
 } from "./environment";
+import type { Memory, MemoryMetadata } from "./memory";
+import type { Metadata, UUID } from "./primitives";
 import type {
+  JsonValue,
   ActionLogBody as ProtoActionLogBody,
-  ActionLogContent as ProtoActionLogContent,
   ActionLogPrompt as ProtoActionLogPrompt,
   ActionLogResult as ProtoActionLogResult,
   AgentRunCounts as ProtoAgentRunCounts,
@@ -21,17 +23,12 @@ import type {
   EmbeddingSearchResult as ProtoEmbeddingSearchResult,
   EvaluatorLogBody as ProtoEvaluatorLogBody,
   Log as ProtoLog,
-  LogBody as ProtoLogBody,
   MemoryRetrievalOptions as ProtoMemoryRetrievalOptions,
   MemorySearchOptions as ProtoMemorySearchOptions,
   ModelActionContext as ProtoModelActionContext,
   ModelLogBody as ProtoModelLogBody,
   MultiRoomMemoryOptions as ProtoMultiRoomMemoryOptions,
-  VectorDimension as ProtoVectorDimension,
 } from "./proto.js";
-import type { JsonValue } from "./proto.js";
-import type { Memory, MemoryMetadata } from "./memory";
-import type { Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
 
 /**
@@ -214,15 +211,15 @@ export interface AgentRunCounts
 
 export interface AgentRunSummary
   extends Omit<
-      ProtoAgentRunSummary,
-      | "$typeName"
-      | "$unknown"
-      | "status"
-      | "startedAt"
-      | "endedAt"
-      | "durationMs"
-      | "metadata"
-    > {
+    ProtoAgentRunSummary,
+    | "$typeName"
+    | "$unknown"
+    | "status"
+    | "startedAt"
+    | "endedAt"
+    | "durationMs"
+    | "metadata"
+  > {
   status: RunStatus | ProtoDbRunStatus;
   startedAt: number | bigint | null;
   endedAt: number | bigint | null;

@@ -61,17 +61,17 @@
  * @see {@link https://sdk.ag0.xyz/} Agent0 SDK documentation
  */
 
-import type { AgentCard } from '@polyagent/agents';
-import { agentRegistry } from '@polyagent/agents';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import type { AgentCard } from "@polyagent/agents";
+import { agentRegistry } from "@polyagent/agents";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const { agentId } = await params;
 
@@ -80,8 +80,8 @@ export async function GET(
 
   if (!agent) {
     return NextResponse.json(
-      { error: 'Agent not found', agentId },
-      { status: 404 }
+      { error: "Agent not found", agentId },
+      { status: 404 },
     );
   }
 
@@ -91,10 +91,10 @@ export async function GET(
   }
 
   // Build agent card from registration data
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 
   const agentCard: AgentCard = {
-    version: '1.0',
+    version: "1.0",
     agentId: agent.agentId,
     name: agent.name,
     description: agent.systemPrompt,
@@ -130,7 +130,7 @@ export async function GET(
       skillsCount: agent.capabilities.skills?.length || 0,
       domainsCount: agent.capabilities.domains?.length || 0,
     },
-    'AgentCard'
+    "AgentCard",
   );
 
   return NextResponse.json(agentCard, { status: 200 });

@@ -290,15 +290,32 @@ export async function updateWorldSettings(
  */
 function formatSettingsList(worldSettings: WorldSettings): string {
   const settings = Object.entries(worldSettings)
-    .filter(([key]) => !key.startsWith("_")) // Skip internal settings
-    .map(([key, setting]: [string, Setting]) => {
-      const status = setting.value !== null ? "Configured" : "Not configured";
-      const required = setting.required ? "Required" : "Optional";
-      return `- ${setting.name} (${key}): ${status}, ${required}`;
+    .filter(([key, value]) => !key.startsWith("_") && isSetting(value)) // Skip internal settings and non-Setting values
+    .map(([key, setting]) => {
+      const typedSetting = setting as Setting;
+      const status =
+        typedSetting.value !== null ? "Configured" : "Not configured";
+      const required = typedSetting.required ? "Required" : "Optional";
+      return `- ${typedSetting.name} (${key}): ${status}, ${required}`;
     })
     .join("\n");
 
   return settings || "No settings available";
+}
+
+/**
+ * Type guard to check if a value is a Setting object
+ */
+function isSetting(
+  value: Setting | Record<string, Setting> | undefined,
+): value is Setting {
+  return (
+    value !== undefined &&
+    typeof value === "object" &&
+    "name" in value &&
+    "description" in value &&
+    "dependsOn" in value
+  );
 }
 
 /**
@@ -444,15 +461,16 @@ async function processSettingUpdates(
   // Process all updates
   for (const update of updates) {
     const setting = updatedState[update.key];
-    if (!setting) {
+    if (!setting || !isSetting(setting)) {
       continue;
     }
 
     // Check dependencies if they exist
     if (setting.dependsOn?.length) {
-      const dependenciesMet = setting.dependsOn.every(
-        (dep) => updatedState[dep] && updatedState[dep].value !== null,
-      );
+      const dependenciesMet = setting.dependsOn.every((dep) => {
+        const depSetting = updatedState[dep];
+        return depSetting && isSetting(depSetting) && depSetting.value !== null;
+      });
       if (!dependenciesMet) {
         messages.push(`Cannot update ${setting.name} - dependencies not met`);
         continue;

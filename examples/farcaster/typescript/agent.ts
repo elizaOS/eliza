@@ -35,7 +35,9 @@ async function main(): Promise<void> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`❌ ${message}`);
-    console.error("   Copy examples/farcaster/env.example to examples/farcaster/.env and fill in credentials.");
+    console.error(
+      "   Copy examples/farcaster/env.example to examples/farcaster/.env and fill in credentials.",
+    );
     process.exit(1);
   }
 
@@ -58,7 +60,9 @@ async function main(): Promise<void> {
   console.log(`\n✅ Agent "${character.name}" is now running on Farcaster.`);
   console.log(`   Dry run mode: ${process.env.FARCASTER_DRY_RUN === "true"}`);
   console.log(`   Casting enabled: ${process.env.ENABLE_CAST === "true"}`);
-  console.log(`   Polling interval: ${process.env.FARCASTER_POLL_INTERVAL ?? "120"}s`);
+  console.log(
+    `   Polling interval: ${process.env.FARCASTER_POLL_INTERVAL ?? "120"}s`,
+  );
   console.log("\n   Press Ctrl+C to stop.\n");
 
   const shutdown = async (signal: string): Promise<void> => {

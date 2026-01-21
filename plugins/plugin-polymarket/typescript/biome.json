@@ -12,7 +12,13 @@
       "a11y": {
         "useButtonType": "off"
       },
-      "style": {},
+      "style": {
+        "noNonNullAssertion": "warn"
+      },
+      "suspicious": {
+        "noTemplateCurlyInString": "warn",
+        "useIterableCallbackReturn": "warn"
+      },
       "complexity": {
         "noCommaOperator": "off"
       }

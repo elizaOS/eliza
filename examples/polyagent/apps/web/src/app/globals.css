@@ -203,13 +203,13 @@ button:disabled {
 
 /* Allow rounded elements to maintain their rounded state */
 [class*="rounded-full"] {
-  border-radius: 9999px !important;
+  border-radius: 9999px;
 }
 
 /* Allow bottom nav to have rounded bottom corners */
 .bottom-nav-rounded {
-  border-bottom-left-radius: 12px !important;
-  border-bottom-right-radius: 12px !important;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
 
 @keyframes accordion-down {

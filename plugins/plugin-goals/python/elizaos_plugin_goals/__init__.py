@@ -11,6 +11,7 @@ from elizaos_plugin_goals.actions import (
     CreateGoalAction,
     UpdateGoalAction,
 )
+from elizaos_plugin_goals.plugin import goals_plugin
 from elizaos_plugin_goals.prompts import (
     CHECK_SIMILARITY_TEMPLATE,
     EXTRACT_CANCELLATION_TEMPLATE,
@@ -27,7 +28,6 @@ from elizaos_plugin_goals.prompts import (
 )
 from elizaos_plugin_goals.providers import GoalsProvider
 from elizaos_plugin_goals.service import GoalDataService, GoalDataServiceWrapper
-from elizaos_plugin_goals.plugin import goals_plugin
 from elizaos_plugin_goals.types import (
     ConfirmationResult,
     CreateGoalParams,

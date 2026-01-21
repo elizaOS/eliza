@@ -5,7 +5,7 @@
  * Falls back to heuristic scoring based on trajectory metrics.
  */
 
-import type { RewardComponents, Trajectory } from './types';
+import type { RewardComponents, Trajectory } from "./types";
 
 /**
  * Scoring options for the reward service
@@ -72,7 +72,7 @@ export class RewardService {
 
     // Score each trajectory
     const rawScores = await Promise.all(
-      trajectories.map((t) => this.scoreTrajectory(t))
+      trajectories.map((t) => this.scoreTrajectory(t)),
     );
 
     // Normalize to 0-1 range relative to group
@@ -105,7 +105,7 @@ export class RewardService {
     }
 
     // 3. Episode completion (weight: 0.2)
-    const completionScore = metrics.finalStatus === 'completed' ? 1 : -0.5;
+    const completionScore = metrics.finalStatus === "completed" ? 1 : -0.5;
     reward += completionScore * 0.2;
     weightSum += 0.2;
 
@@ -166,7 +166,7 @@ export class RewardService {
  * @param options - Configuration options
  */
 export function createRewardService(
-  options: RewardServiceOptions = {}
+  options: RewardServiceOptions = {},
 ): RewardService {
   return new RewardService(options);
 }
@@ -191,7 +191,7 @@ export async function scoreTrajectory(trajectory: Trajectory): Promise<number> {
  * @returns Array of normalized scores (0-1)
  */
 export async function scoreTrajectoryGroup(
-  trajectories: Trajectory[]
+  trajectories: Trajectory[],
 ): Promise<number[]> {
   const service = new RewardService();
   return service.scoreTrajectoryGroup(trajectories);

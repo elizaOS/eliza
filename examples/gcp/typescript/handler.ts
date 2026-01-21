@@ -13,8 +13,8 @@ import {
 import {
   AgentRuntime,
   ChannelType,
-  createCharacter,
   type Character,
+  createCharacter,
   createMessageMemory,
   stringToUuid,
   type UUID,

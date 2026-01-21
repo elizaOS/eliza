@@ -10,10 +10,10 @@
  * @remarks Base mainnet support will be added when contracts are deployed.
  */
 
-import { getCurrentChainId, getCurrentRpcUrl } from '@polyagent/shared';
-import type { Address } from 'viem';
-import baseSepoliaDeployment from '../../deployments/base-sepolia';
-import localDeployment from '../../deployments/local';
+import { getCurrentChainId, getCurrentRpcUrl } from "@polyagent/shared";
+import type { Address } from "viem";
+import baseSepoliaDeployment from "../../deployments/base-sepolia";
+import localDeployment from "../../deployments/local";
 
 /**
  * Deployed contract addresses for the current network.
@@ -67,7 +67,7 @@ export function getContractAddresses(): DeployedContracts {
       identityRegistry: localDeployment.contracts.identityRegistry as Address,
       reputationSystem: localDeployment.contracts.reputationSystem as Address,
       chainId: 31337,
-      network: 'localnet',
+      network: "localnet",
     };
   }
 
@@ -87,13 +87,13 @@ export function getContractAddresses(): DeployedContracts {
       reputationSystem: baseSepoliaDeployment.contracts
         .reputationSystem as Address,
       chainId: 84532,
-      network: 'base-sepolia',
+      network: "base-sepolia",
     };
   }
 
   if (chainId === 8453) {
     throw new Error(
-      'Base mainnet contracts are not yet deployed. Use localnet or base-sepolia.'
+      "Base mainnet contracts are not yet deployed. Use localnet or base-sepolia.",
     );
   }
 
@@ -106,7 +106,7 @@ export function getContractAddresses(): DeployedContracts {
     identityRegistry: localDeployment.contracts.identityRegistry as Address,
     reputationSystem: localDeployment.contracts.reputationSystem as Address,
     chainId: 31337,
-    network: 'localnet',
+    network: "localnet",
   };
 }
 

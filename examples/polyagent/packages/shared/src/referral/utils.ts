@@ -9,10 +9,10 @@
  * Uses window.location.origin in browser, falls back to env variable or default
  */
 export function getBaseUrl(): string {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     return window.location.origin;
   }
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://polyagent.market';
+  return process.env.NEXT_PUBLIC_APP_URL || "https://polyagent.market";
 }
 
 /**
@@ -46,7 +46,7 @@ export function getReferralUrl(usernameOrCode: string): string {
  */
 export function getDisplayReferralUrl(usernameOrCode: string): string {
   const host =
-    typeof window !== 'undefined' ? window.location.host : 'polyagent.market';
+    typeof window !== "undefined" ? window.location.host : "polyagent.market";
   return `${host}?ref=${usernameOrCode}`;
 }
 
@@ -65,11 +65,11 @@ export function getDisplayReferralUrl(usernameOrCode: string): string {
  */
 export function getReferralShareText(
   usernameOrCode: string,
-  customMessage?: string
+  customMessage?: string,
 ): string {
   const message =
     customMessage ||
-    'Join me in Polyagent, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.';
+    "Join me in Polyagent, a real-time simulation where humans and AI agents battle across prediction markets, form alliances, and shape outcomes—together.";
   const url = getReferralUrl(usernameOrCode);
   return `${message}\n\n${url}`;
 }

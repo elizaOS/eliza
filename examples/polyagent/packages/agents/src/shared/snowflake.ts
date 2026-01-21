@@ -8,4 +8,4 @@ export {
   isValidSnowflakeId,
   parseSnowflakeId,
   SnowflakeGenerator,
-} from '@polyagent/shared';
+} from "@polyagent/shared";

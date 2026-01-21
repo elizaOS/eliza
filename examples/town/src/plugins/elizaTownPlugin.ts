@@ -1,18 +1,22 @@
 import type {
   Action,
-  ActionResult,
   ActionParameters,
+  ActionResult,
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
-  State,
   Room,
+  State,
   UUID,
 } from "@elizaos/core";
+import type { TownAgent, Vector2 } from "../../shared/types";
+import {
+  DEFAULT_AUDIO_RANGE_TILES,
+  DEFAULT_VISION_RANGE_TILES,
+} from "../../shared/types";
 import { defaultWorldMap } from "../../shared/worldMap";
-import type { TownObjective, Vector2 } from "../../shared/types";
-import { DEFAULT_AUDIO_RANGE_TILES, DEFAULT_VISION_RANGE_TILES } from "../../shared/types";
+import type { MafiaNightActionType } from "../simulation/mafiaGame";
 import {
   emoteTownAgent,
   getTownContextSnapshot,
@@ -23,7 +27,6 @@ import {
   submitTownVote,
 } from "../simulation/townContext";
 import type { MoveRequest } from "../simulation/townSimulation";
-import type { MafiaNightActionType } from "../simulation/mafiaGame";
 
 const PROVIDER_NAME = "ELIZA_TOWN";
 const ACTION_NAME = "MOVE";
@@ -37,7 +40,11 @@ const NEXT_TO_RANGE_TILES = 1;
 const townProvider: Provider = {
   name: PROVIDER_NAME,
   description: "Town map, agents, and points of interest for Eliza Town.",
-  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
     const snapshot = getTownContextSnapshot();
     if (!snapshot) {
       return {
@@ -97,8 +104,10 @@ const townProvider: Provider = {
       };
     }
 
-    const visionRangeTiles = currentAgent.visionRangeTiles ?? DEFAULT_VISION_RANGE_TILES;
-    const audioRangeTiles = currentAgent.audioRangeTiles ?? DEFAULT_AUDIO_RANGE_TILES;
+    const visionRangeTiles =
+      currentAgent.visionRangeTiles ?? DEFAULT_VISION_RANGE_TILES;
+    const audioRangeTiles =
+      currentAgent.audioRangeTiles ?? DEFAULT_AUDIO_RANGE_TILES;
     const visibility = buildVisibilitySnapshot(
       currentAgent.position,
       state.agents,
@@ -112,6 +121,8 @@ const townProvider: Provider = {
       `You: ${currentAgent.name} (${currentAgent.id}) @ ${formatCoord(currentAgent.position)}`,
       `Status: ${currentAgent.status}`,
       `Task: ${currentAgent.lastAction ?? "none"}`,
+      `Vision radius: ${visionRangeTiles} tiles`,
+      `Hearing radius: ${audioRangeTiles} tiles`,
       "",
       "Visibility:",
       `Next to you: ${formatVisibilityLine(visibility.nextTo)}`,
@@ -162,7 +173,11 @@ const townProvider: Provider = {
 const mafiaRoleProvider: Provider = {
   name: ROLE_PROVIDER_NAME,
   description: "Your secret role and objectives in the mafia game.",
-  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
     const snapshot = getTownContextSnapshot();
     if (!snapshot) {
       return {
@@ -171,7 +186,10 @@ const mafiaRoleProvider: Provider = {
         data: { mafiaAvailable: false },
       };
     }
-    const currentAgent = resolveAgentFromSnapshot(snapshot.state.agents, runtime);
+    const currentAgent = resolveAgentFromSnapshot(
+      snapshot.state.agents,
+      runtime,
+    );
     if (!currentAgent) {
       return {
         text: "[MAFIA_ROLE]\nRole unavailable (agent not found).\n[/MAFIA_ROLE]",
@@ -191,7 +209,7 @@ const mafiaRoleProvider: Provider = {
     const investigation = gameView.you.lastInvestigation;
     const nameLookup = buildAgentNameLookup(snapshot.state.agents);
     const investigationLabel = investigation
-      ? nameLookup.get(investigation.target) ?? investigation.target
+      ? (nameLookup.get(investigation.target) ?? investigation.target)
       : null;
     const roleText = [
       "[MAFIA_ROLE]",
@@ -202,7 +220,9 @@ const mafiaRoleProvider: Provider = {
       ...roleBrief.goals.map((goal) => `- ${goal}`),
       "",
       "Night action:",
-      roleBrief.nightAction ? `Use ${formatNightAction(roleBrief.nightAction)}.` : "None.",
+      roleBrief.nightAction
+        ? `Use ${formatNightAction(roleBrief.nightAction)}.`
+        : "None.",
       "",
       investigation
         ? `Last investigation: ${investigationLabel} is ${
@@ -237,7 +257,11 @@ const mafiaRoleProvider: Provider = {
 const mafiaGameProvider: Provider = {
   name: GAME_PROVIDER_NAME,
   description: "Public game phase, eliminations, and action windows.",
-  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
     const snapshot = getTownContextSnapshot();
     if (!snapshot) {
       return {
@@ -246,7 +270,10 @@ const mafiaGameProvider: Provider = {
         data: { mafiaAvailable: false },
       };
     }
-    const currentAgent = resolveAgentFromSnapshot(snapshot.state.agents, runtime);
+    const currentAgent = resolveAgentFromSnapshot(
+      snapshot.state.agents,
+      runtime,
+    );
     if (!currentAgent) {
       return {
         text: "[MAFIA_GAME]\nGame state unavailable (agent not found).\n[/MAFIA_GAME]",
@@ -304,7 +331,9 @@ const mafiaGameProvider: Provider = {
         round: gameView.round,
         isPaused: gameView.isPaused,
         winner: gameView.winner,
-        aliveAgentIds: gameView.publicPlayers.filter((player) => player.alive).map((p) => p.agentId),
+        aliveAgentIds: gameView.publicPlayers
+          .filter((player) => player.alive)
+          .map((p) => p.agentId),
         eliminations: gameView.eliminations,
         availableActions: gameView.availableActions,
       },
@@ -315,7 +344,11 @@ const mafiaGameProvider: Provider = {
 const objectivesProvider: Provider = {
   name: OBJECTIVES_PROVIDER_NAME,
   description: "Round objectives and tasks to keep townsfolk busy.",
-  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
     const snapshot = getTownContextSnapshot();
     if (!snapshot) {
       return {
@@ -325,14 +358,18 @@ const objectivesProvider: Provider = {
       };
     }
     const objectives = snapshot.state.objectives ?? [];
-    const currentAgent = resolveAgentFromSnapshot(snapshot.state.agents, runtime);
+    const currentAgent = resolveAgentFromSnapshot(
+      snapshot.state.agents,
+      runtime,
+    );
     const assignedObjectives = currentAgent
       ? objectives.filter((objective) =>
           objective.assignedAgentIds.includes(currentAgent.id),
         )
       : [];
-    const completedCount = objectives.filter((objective) => objective.status === "completed")
-      .length;
+    const completedCount = objectives.filter(
+      (objective) => objective.status === "completed",
+    ).length;
     const assignedCompleted = assignedObjectives.filter(
       (objective) => objective.status === "completed",
     ).length;
@@ -345,7 +382,7 @@ const objectivesProvider: Provider = {
         ? assignedObjectives.map((objective) => {
             const statusIcon = objective.status === "completed" ? "✓" : "•";
             const poiLabel = objective.poiId
-              ? poiNames.get(objective.poiId) ?? objective.poiId
+              ? (poiNames.get(objective.poiId) ?? objective.poiId)
               : "unknown";
             return `${statusIcon} ${objective.title} @ ${poiLabel} ${formatCoord(objective.location)}`;
           })
@@ -626,7 +663,11 @@ const emoteAction: Action = {
 const roomMessagesProvider: Provider = {
   name: ROOM_MESSAGES_PROVIDER_NAME,
   description: "Recent messages across all rooms the agent is in.",
-  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
     const roomIds = await runtime.getRoomsForParticipant(runtime.agentId);
     if (roomIds.length === 0) {
       throw new Error("No rooms found for agent.");
@@ -711,7 +752,8 @@ const roomMessagesProvider: Provider = {
 
     const roomsText = roomSummaries
       .map((room) => {
-        const lines = room.messages.length > 0 ? room.messages : ["(no recent messages)"];
+        const lines =
+          room.messages.length > 0 ? room.messages : ["(no recent messages)"];
         return [`Room: ${room.roomName}`, ...lines].join("\n");
       })
       .join("\n\n");
@@ -803,7 +845,12 @@ type VisibilitySnapshot = {
 function buildVisibilitySnapshot(
   origin: Vector2,
   agents: Array<{ id: string; name: string; position: Vector2 }>,
-  pointsOfInterest: Array<{ id: string; name: string; emoji: string; position: Vector2 }>,
+  pointsOfInterest: Array<{
+    id: string;
+    name: string;
+    emoji: string;
+    position: Vector2;
+  }>,
   visionRangeTiles: number,
 ): VisibilitySnapshot {
   const visibleAgents: VisibleAgent[] = [];
@@ -888,7 +935,10 @@ function distanceTiles(a: Vector2, b: Vector2): number {
   return Math.max(dx, dy);
 }
 
-function getVisibilityBand(distance: number, visionRangeTiles: number): VisibilityBand | null {
+function getVisibilityBand(
+  distance: number,
+  visionRangeTiles: number,
+): VisibilityBand | null {
   if (distance <= NEXT_TO_RANGE_TILES) {
     return "next_to";
   }
@@ -902,9 +952,9 @@ function getVisibilityBand(distance: number, visionRangeTiles: number): Visibili
 }
 
 function resolveAgentFromSnapshot(
-  agents: Array<{ id: string; name: string; position: Vector2 }>,
+  agents: TownAgent[],
   runtime: IAgentRuntime,
-): { id: string; name: string; position: Vector2 } | null {
+): TownAgent | null {
   const agentKey = resolveRuntimeAgentKey(runtime);
   return (
     agents.find(
@@ -917,13 +967,16 @@ function resolveAgentFromSnapshot(
 
 function isAutonomyRoom(room: Room): boolean {
   const metaType = room.metadata?.type;
-  const metaTypeString = typeof metaType === "string" ? metaType.toLowerCase() : "";
+  const metaTypeString =
+    typeof metaType === "string" ? metaType.toLowerCase() : "";
   return metaTypeString === "autonomous" || room.name === "Autonomous Thoughts";
 }
 
 function readMemoryText(memory: Memory): string | null {
   const text = memory.content?.text;
-  return typeof text === "string" && text.trim().length > 0 ? text.trim() : null;
+  return typeof text === "string" && text.trim().length > 0
+    ? text.trim()
+    : null;
 }
 
 async function buildEntityNameLookup(
@@ -938,7 +991,7 @@ async function buildEntityNameLookup(
       const entity = await runtime.getEntityById(entityId);
       const name =
         entity && Array.isArray(entity.names) && entity.names.length > 0
-          ? entity.names[0] ?? String(entityId)
+          ? (entity.names[0] ?? String(entityId))
           : String(entityId);
       return [entityId, name] as const;
     }),
@@ -1081,7 +1134,8 @@ function resolveTargetId(params?: ActionParameters): string | null {
   }
   if (params && typeof params === "object") {
     const paramsRecord = params as Record<string, unknown>;
-    const nested = paramsRecord.MOVE ?? paramsRecord.move ?? paramsRecord.target;
+    const nested =
+      paramsRecord.MOVE ?? paramsRecord.move ?? paramsRecord.target;
     if (nested && typeof nested === "object") {
       const nestedRecord = nested as Record<string, unknown>;
       return readTargetFromRecord(nestedRecord);
@@ -1112,4 +1166,3 @@ function readNumber(value: unknown): number | null {
   }
   return null;
 }
-

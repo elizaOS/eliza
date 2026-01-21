@@ -12,11 +12,11 @@ import {
   hashApiKey,
   successResponse,
   withErrorHandling,
-} from '@polyagent/api';
-import { asUser, generateSnowflakeId, userApiKeys } from '@polyagent/db';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@polyagent/api";
+import { asUser, generateSnowflakeId, userApiKeys } from "@polyagent/db";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const CreateApiKeySchema = z.object({
   name: z.string().optional(),
@@ -52,9 +52,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   });
 
   logger.info(
-    'API keys listed',
+    "API keys listed",
     { userId: authUser.userId, count: maskedKeys.length },
-    'API Keys'
+    "API Keys",
   );
 
   return successResponse({ keys: maskedKeys });
@@ -89,13 +89,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   });
 
   if (!createdKey[0]) {
-    throw new Error('Failed to create API key');
+    throw new Error("Failed to create API key");
   }
 
   logger.info(
-    'API key created',
+    "API key created",
     { userId: authUser.userId, keyId: createdKey[0].id },
-    'API Keys'
+    "API Keys",
   );
 
   // Return full key only once (on creation)
@@ -105,6 +105,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     name: createdKey[0].name,
     createdAt: createdKey[0].createdAt.toISOString(),
     message:
-      'API key created successfully. Save this key - it will not be shown again.',
+      "API key created successfully. Save this key - it will not be shown again.",
   });
 });

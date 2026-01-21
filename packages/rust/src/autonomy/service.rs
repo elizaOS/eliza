@@ -209,7 +209,11 @@ impl AutonomyService {
         };
 
         // Ensure world exists
-        if adapter.get_world(&self.autonomous_world_id).await?.is_none() {
+        if adapter
+            .get_world(&self.autonomous_world_id)
+            .await?
+            .is_none()
+        {
             let world = World {
                 id: self.autonomous_world_id.clone(),
                 name: Some("Autonomy World".to_string()),
@@ -297,7 +301,7 @@ impl AutonomyService {
             .filter(|m| {
                 m.entity_id == *agent_id
                     && m.content.extra.get("isAutonomous").and_then(Value::as_bool) == Some(true)
-                    && m.content.text.as_deref().unwrap_or("").trim().len() > 0
+                    && !m.content.text.as_deref().unwrap_or("").trim().is_empty()
             })
             .max_by_key(|m| m.created_at.unwrap_or(0))
             .and_then(|m| m.content.text)
@@ -408,10 +412,12 @@ impl AutonomyService {
             }
         };
 
-        let mut content = Content::default();
-        content.text = Some(prompt);
-        content.source = Some("autonomy-service".to_string());
-        content.channel_type = Some("SELF".to_string());
+        let mut content = Content {
+            text: Some(prompt),
+            source: Some("autonomy-service".to_string()),
+            channel_type: Some("SELF".to_string()),
+            ..Default::default()
+        };
         content
             .extra
             .insert("isAutonomous".to_string(), Value::Bool(true));
@@ -422,9 +428,10 @@ impl AutonomyService {
             AutonomyMode::Task => "task",
             AutonomyMode::Continuous => "continuous",
         };
-        content
-            .extra
-            .insert("autonomyMode".to_string(), Value::String(mode_str.to_string()));
+        content.extra.insert(
+            "autonomyMode".to_string(),
+            Value::String(mode_str.to_string()),
+        );
         let ts_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -433,13 +440,16 @@ impl AutonomyService {
             .extra
             .insert("timestamp".to_string(), Value::Number(Number::from(ts_ms)));
 
-        let mut msg = crate::types::memory::Memory::new(rt.agent_id.clone(), self.autonomous_room_id.clone(), content);
+        let mut msg = crate::types::memory::Memory::new(
+            rt.agent_id.clone(),
+            self.autonomous_room_id.clone(),
+            content,
+        );
         msg.world_id = Some(self.autonomous_world_id.clone());
         msg.agent_id = Some(rt.agent_id.clone());
 
-        let callback: crate::types::components::HandlerCallback = Box::new(|_content: Content| {
-            Box::pin(async move { Vec::new() })
-        });
+        let callback: crate::types::components::HandlerCallback =
+            Box::new(|_content: Content| Box::pin(async move { Vec::new() }));
 
         let service = rt.message_service();
         let _ = service
@@ -450,9 +460,7 @@ impl AutonomyService {
     }
 
     async fn get_last_autonomous_thought(&self, rt: &AgentRuntime) -> Option<String> {
-        let Some(adapter) = rt.get_adapter() else {
-            return None;
-        };
+        let adapter = rt.get_adapter()?;
         let params = GetMemoriesParams {
             room_id: Some(self.autonomous_room_id.clone()),
             count: Some(3),
@@ -569,4 +577,3 @@ mod tests {
         assert_eq!(thought.as_deref(), Some("second"));
     }
 }
-

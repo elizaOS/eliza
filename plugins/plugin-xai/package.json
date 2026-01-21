@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-xai-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "type": "module",
   "main": "typescript/dist/cjs/index.node.cjs",
   "module": "typescript/dist/node/index.node.js",

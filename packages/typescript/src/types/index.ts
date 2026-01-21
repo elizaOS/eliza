@@ -1,4 +1,8 @@
 // Core types
+
+export { logger } from "../logger";
+// Utilities that are part of the public API.
+export { addHeader, composePromptFromState, parseKeyValueXml } from "../utils";
 export * from "./agent";
 export * from "./components";
 export * from "./database";
@@ -17,6 +21,7 @@ export * from "./prompts";
 // Use these for new code and cross-language interoperability
 export * as proto from "./proto.js";
 // Re-export proto utilities for JSON conversion
+// JsonValue is also exported from primitives.ts, but we explicitly export it here for clarity
 export { fromJson, type JsonObject, type JsonValue, toJson } from "./proto.js";
 export * from "./runtime";
 export * from "./service";
@@ -27,8 +32,3 @@ export * from "./streaming";
 export * from "./task";
 export * from "./tee";
 export * from "./testing";
-
-// Utilities that are part of the public API.
-export { composePromptFromState, parseKeyValueXml } from "../utils";
-export { addHeader } from "../utils";
-export { logger } from "../logger";
