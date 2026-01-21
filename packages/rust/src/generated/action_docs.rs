@@ -1,7 +1,6 @@
 //! Auto-generated canonical action/provider/evaluator docs.
 //! DO NOT EDIT - Generated from packages/prompts/specs/**.
 
-/// JSON documentation for core actions.
 pub const CORE_ACTION_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "actions": [
@@ -1244,8 +1243,6 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
     }
   ]
 }"#;
-
-/// JSON documentation for all actions (core and plugins).
 pub const ALL_ACTION_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "actions": [
@@ -3945,8 +3942,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     }
   ]
 }"#;
-
-/// JSON documentation for core providers.
 pub const CORE_PROVIDER_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "providers": [
@@ -4077,8 +4072,6 @@ pub const CORE_PROVIDER_DOCS_JSON: &str = r#"{
     }
   ]
 }"#;
-
-/// JSON documentation for all providers (core and plugins).
 pub const ALL_PROVIDER_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "providers": [
@@ -4209,8 +4202,6 @@ pub const ALL_PROVIDER_DOCS_JSON: &str = r#"{
     }
   ]
 }"#;
-
-/// JSON documentation for core evaluators.
 pub const CORE_EVALUATOR_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "evaluators": [
@@ -4366,8 +4357,6 @@ pub const CORE_EVALUATOR_DOCS_JSON: &str = r#"{
     }
   ]
 }"#;
-
-/// JSON documentation for all evaluators (core and plugins).
 pub const ALL_EVALUATOR_DOCS_JSON: &str = r#"{
   "version": "1.0.0",
   "evaluators": [
