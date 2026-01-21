@@ -2210,9 +2210,13 @@ end code: {final_code}
                             f"{chr(10).join(validated_parts)}\n\n"
                             f"Please complete: {', '.join(missing) if missing else 'all fields'}"
                         )
-                        # Store in state for next iteration
+                        # Store in state for next iteration (may fail on protobuf)
                         if hasattr(state, "values"):
-                            state.values["_smartRetryContext"] = smart_retry_context
+                            try:
+                                state.values["_smartRetryContext"] = smart_retry_context
+                            except TypeError:
+                                # Protobuf messages don't support item assignment
+                                pass
 
                 self.logger.warn(
                     f"dynamic_prompt_exec_from_state retry {current_retry}/{max_retries} "
